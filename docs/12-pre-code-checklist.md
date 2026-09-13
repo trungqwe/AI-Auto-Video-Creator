@@ -27,7 +27,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS E3 (ADR-0009 Subprocess Broker OS isolation, Windows DPAPI Vault, Broker-owned provisioning, live E3 probe xác thực Drive thật) |
 | G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS strict version (Python, uv, PG, Temporal, ffprobe WAV duration > 0, fail-closed dynamic matrix observation) |
 | ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất qua Broker Subprocess boundary |
-| M2 | 🟢 `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` | Kích hoạt ngày 13-09-2026 sau khi M1 được User Checkpoint phê duyệt |
+| M2 | 🟢 `IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 AUTHORIZED)` | M2-P0 đã được nghiệm thu ACCEPTED/CLOSED; M2-P1 đã hoàn tất chuẩn hóa kế hoạch kỹ thuật theo 10 điểm hẹp trước Behavioral RED |
 | M3 / Module A | ⛔ `NOT AUTHORIZED` | Tiếp tục bị khóa chặt; không được bắt đầu trước khi M2 đạt exit gate và có User Checkpoint riêng |
 
 Đây là bảng trạng thái có thẩm quyền trước lệnh code đầu tiên. Kết quả P2/P3 đã đạt được ghi `PASS_M1_SCOPE`; G01/G04 toàn phần vẫn `PARTIALLY_PROVEN` cho tới khi đủ evidence các milestone tiếp theo.
@@ -174,19 +174,23 @@ Sau các đợt re-audit độc lập R4, R5 và R5.1 (HEAD commit `08c857c`), t
 - **Milestone M2**: `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` (bắt đầu chu trình chuẩn bị SPEC và PLAN).
 - **Milestone M3 và Phân hệ A**: Tiếp tục duy trì trạng thái `NOT AUTHORIZED` (khóa chặt cho tới khi M2 hoàn tất exit gate và có User Checkpoint riêng).
 
-## Trạng thái sau Hoàn tất Khắc phục Kiểm toán M2-P0 (Cập nhật sau Re-Audit R2: 13-09-2026)
+## Trạng thái Nghiệm thu M2-P0 & Khởi động Chuẩn bị M2-P1 (13-09-2026)
 
-M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules) đã hoàn tất khắc phục toàn diện 3 BLOCKER cuối từ Independent Re-Audit R2 và sẵn sàng nghiệm thu tại trạng thái `M2-P0_READY_FOR_REVIEW`:
-- **Semantic Evaluator Profile Registry & Dispatch Pattern**: Khái quát hóa `PackageSemanticProfile` và `SemanticProfileRegistry`. Triển khai `M2P0SemanticProfile` riêng cho M2-P0. Đảm bảo fail-closed tuyệt đối (unknown package/profile bị BLOCK; cross-package spoofing bị chặn). Mở extension point `register_semantic_profile` cho P1-P8 mà không sửa đổi core validator.
-- **Chứng minh Kép Frozen Backend Graph & Clean Wheel Install**:
-  - *Proof A (Frozen Project Environment)*: Tạo clean isolated virtualenv, cài đặt dependencies đóng băng từ `src/controlplane/requirements.lock`, xác nhận observed installed versions khớp 100% lockfile (`psycopg-pool==3.3.1`, `fastapi==0.141.1`, `pydantic-core==2.46.5`, v.v.).
-  - *Proof B (Wheel Clean Install)*: Build wheel theo PEP 517 và cài đặt với `--no-deps` vào clean venv; thực thi import và CLI entrypoint `controlplane.entrypoint:main` thành công 100% không dùng `.pth`.
-  - Dynamic `uv` resolver (`resolve_uv_executable`), fail-closed không silent skip nếu binary thiếu.
-  - Negative test: mutate lockfile với version không tương thích -> fail closed.
-- **Làm rõ Build-System Version Pins Claim**: Xác nhận `setuptools==75.8.0` và `wheel==0.45.1` là exact build-system version pins khai báo trong `pyproject.toml` `[build-system] requires`, không overclaim là nằm trong runtime lockfile.
-- **Single-Pipeline Deterministic Evidence Synthesis & Provenance Tracking**: Triển khai `synthesizer.py` thực thi tuần tự tuyến tính theo một `run_id` duy nhất (`run-m2-p0-...`): M1 suite -> M2-P0 suite -> Final Secret Scan (lần scan duy nhất tạo artifact cuối) -> observed metrics extraction -> status.json -> status.md -> commands.jsonl (với execution metadata khớp 100% timestamp và tệp) -> hashes.sha256 acyclic DAG -> read-only integrity, semantic và provenance verification.
-- **Kết quả Kiểm thử Hiện hành**: 33/33 tests M2-P0 PASSED, 93/93 tests hồi quy M1 PASSED (0 failed, 0 skipped), 6/6 Package Gates PASSED.
-- **Ranh giới Bắt buộc**: Dừng lại tại `M2-P0_READY_FOR_REVIEW`. Tuyệt đối không bắt đầu M2-P1. M3 và Phân hệ A tiếp tục bị khóa chặt (`NOT AUTHORIZED`).
+Người dùng đã CHẤP THUẬN chính thức kết quả Milestone M2-P0 tại commit `d84c1d7`:
+- **M2-P0**: `ACCEPTED / CLOSED` (33/33 tests PASSED, 93/93 tests hồi quy M1 PASSED, 6/6 Package Gates PASS, deterministic provenance 1:1, SHA-256 DAG hợp lệ).
+- **M2-P1**: `AUTHORIZED TO IMPLEMENT` theo quy trình chuẩn: `RED → IMPLEMENT → RUN → TEST → FIX → VERIFY → EVIDENCE → COMMIT`.
+- **Hiệu chỉnh Kế hoạch Kỹ thuật M2-P1 Trước Behavioral RED**: Hoàn tất 100% việc chuẩn hóa tài liệu đặc tả và kế hoạch thực thi theo 10 điểm kỹ thuật bắt buộc:
+  1. Đồng bộ metadata: M2 = `IMPLEMENTATION IN PROGRESS`, M2-P0 = `ACCEPTED / CLOSED`, M2-P1 = `AUTHORIZED`.
+  2. Khóa Allowed File Scope của P1: bổ sung chính xác `profile_p1.py` và `synthesizer_p1.py`; cấm sửa core evaluator/validator.
+  3. Áp dụng Disposable Test Database (`m2_p1_test_<uuid>`), không parameterized schema; schema cố định `controlplane`; admin test DSN từ environment; destructive guard yêu cầu tên DB hợp lệ test + `is_test_env=True` (cấm generic `allow_destructive=True`).
+  4. Phân biệt rõ `AuthSession` (`cp_auth_sessions`) phục vụ identity/control plane foundation với `AppSession` (`cp_app_sessions` dành cho desktop app data model).
+  5. Đầy đủ `IWorkspaceRepository`, `IActorRepository`, `IAuthSessionRepository`; workspace-scoped methods (zero unscoped get_by_id); composite FK DB-level invariants ngăn cross-workspace.
+  6. Khóa transaction ownership: `SqlUnitOfWork` sở hữu đúng một pooled connection và một DB transaction; repository không tự acquire pool connection, không commit/rollback; `TransactionManager` chỉ là UoW factory/coordinator.
+  7. Siết migration runner oracle: forward regex `^\d{4}_[a-z0-9_]+\.sql$`, rollback regex `^\d{4}_[a-z0-9_]+\.rollback\.sql$`; bounded advisory lock timeout 5s; fail-closed khi gap, missing file, duplicate, tamper; 0001 rollback dọn dẹp và drop schema `controlplane`.
+  8. Loại bỏ vòng tự tham chiếu: không đưa live evidence test vào `m2-p1-tests.xml`; lưu stdout RED thô vào `red-p1-stdout.txt`.
+  9. Đăng ký semantic profile tất định qua extension point `register_semantic_profile(M2P1SemanticProfile())`.
+  10. Khóa 6 machine-readable gates (`GATE-P1-01` .. `GATE-P1-06`) trước khi viết test RED.
+- **Ranh giới Bắt buộc**: Chưa viết code implementation và chưa viết test RED. Dừng tại `M2-P1_PLAN_READY_FOR_RED_REVIEW`. M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
 
 
 

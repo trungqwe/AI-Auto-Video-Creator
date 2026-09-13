@@ -1,8 +1,8 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** BẢN THẢO TRÌNH DUYỆT (AUTHORIZED FOR PLANNING — M2_PLAN_READY_FOR_FINAL_APPROVAL)  
-**Ngày lập:** 13-09-2026 (Cập nhật chuẩn hóa sau Independent Plan Review)  
+**Trạng thái:** IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 AUTHORIZED)  
+**Ngày lập:** 13-09-2026 (Cập nhật chuẩn hóa trước Behavioral RED M2-P1)  
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
@@ -38,11 +38,6 @@ Milestone M2 xây dựng lõi điều khiển (**Control Plane**) và nền tả
 - State machines cho Operation, Batch, Job, Stage Run, Artifact Location.
 - Module J configuration revision immutability & secret handle boundary.
 - Module I artifact metadata skeleton (version, location, cleanup eligibility).
-- Module G orchestration shell, execution grants, batch capacity reservation, variant reservation, completion ledger skeleton.
-- Module H Control API REST `/v1`, local HTTPS, security middleware (Host, Origin, CSRF Double Submit Cookie, secret redaction, safe technical detail storage).
-- Module H SSE `/v1/operations/stream` với cursor-based resume và resync handling.
-- Module H Admin UI: React, TypeScript, AG Grid Community, hiển thị tiếng Việt, bảng dữ liệu, form gửi command mẫu, live stream SSE, error modal.
-- Kiểm thử toàn diện: Architecture/import boundary test (AST), Unit, Contract, Concurrency, Fault-injection, Security scanner độc lập của M2, Migration rollback (chạy trên disposable test database), Browser E2E thật qua Playwright TypeScript.
 - Evidence protocol khóa từ P0: `status.json` machine-readable source of truth, `commands.jsonl`, `red-observations.md`, `red-<package>-stdout.txt`, `hashes.sha256` (DAG exclude itself).
 
 ### 2.2. Ngoài Phạm vi M2 (Out-of-Scope - Cấm Thực Hiện)
@@ -106,9 +101,10 @@ src/controlplane/
 - Lý do: Kiểm soát trực tiếp connection và transaction boundaries, không phụ thuộc ORM SQLAlchemy cồng kềnh, tương thích hoàn toàn với kiến trúc data model thuần PostgreSQL.
 
 ### 4.2. Thiết kế Chi tiết 8 Tiêu chuẩn Migration Runner
-1. **Dedicated Connection & Session-Level Advisory Lock**:
+1. **Dedicated Connection & Bounded Session-Level Advisory Lock**:
    - Migration runner mở **một connection chuyên biệt (dedicated connection)** tồn tại trong suốt phiên chạy migration.
-   - Chiếm khóa session-level advisory lock: `SELECT pg_advisory_lock(hashtext('controlplane_migrations'));` khi bắt đầu và giải phóng bằng `SELECT pg_advisory_unlock(hashtext('controlplane_migrations'));` trong khối `finally`. Khóa này **không bị giải phóng** khi mỗi migration kết thúc transaction.
+   - Chiếm khóa session-level advisory lock có chặn thời gian (bounded lock acquisition): Dùng `SELECT pg_try_advisory_lock(hashtext('controlplane_migrations'));` kết hợp deadline đồng hồ đơn điệu (`monotonic clock deadline`, mặc định timeout 5.0 giây, có thể cấu hình). Nếu hết timeout không chiếm được khóa -> Ném lỗi fail-closed `MigrationLockTimeoutError`.
+   - Giải phóng khóa bằng `SELECT pg_advisory_unlock(hashtext('controlplane_migrations'));` trong khối `finally`. Khóa này **không bị giải phóng** khi mỗi migration kết thúc transaction nội bộ.
 2. **Version Table (`cp_schema_migrations`)**:
    ```sql
    CREATE TABLE IF NOT EXISTS controlplane.cp_schema_migrations (
@@ -119,15 +115,27 @@ src/controlplane/
        execution_ms INT NOT NULL
    );
    ```
-3. **Checksum Verification**: Mỗi tệp migration được băm SHA-256 nội dung. Khi chạy, runner kiểm tra toàn bộ migration đã áp dụng xem checksum có khớp không; nếu phát hiện bị can thiệp (tampered) -> fail-closed ngay lập tức.
-4. **Strict Ordering**: Tên tệp có dạng `XXXX_name.sql` (ví dụ `0001_initial_controlplane.sql`). Runner từ chối chạy nếu có khoảng trống (gap) hoặc sai thứ tự.
+3. **Checksum Verification & Tamper Detection**:
+   - Mỗi tệp migration forward được băm SHA-256 nội dung.
+   - Khi khởi chạy, runner kiểm tra toàn bộ migration đã áp dụng trong DB xem checksum có khớp tệp tương ứng trên đĩa không. Nếu phát hiện tệp bị sửa đổi hoặc tệp đã apply bị xóa khỏi đĩa -> Ném lỗi fail-closed `MigrationChecksumMismatchError` / `MigrationMissingFileError` ngay lập tức.
+4. **Strict Ordering, Regex Discovery & Gap Detection**:
+   - Forward migration filename pattern: `^\d{4}_[a-z0-9_]+\.sql$` (ví dụ `0001_initial_controlplane.sql`).
+   - Rollback migration filename pattern: `^\d{4}_[a-z0-9_]+\.rollback\.sql$`.
+   - Cơ chế discovery chỉ quét các tệp khớp regex forward, tuyệt đối không để tệp rollback bị nhận diện nhầm thành forward migration.
+   - Runner từ chối chạy và fail-closed nếu phát hiện trùng lặp version (`DuplicateMigrationVersionError`) hoặc có khoảng trống giữa các version (`MigrationVersionGapError`).
 5. **Transactional SQL Only & Fail-Closed**:
    - Mọi tệp migration M2 bắt buộc chỉ chứa DDL/DML có thể bọc trong transaction (`BEGIN ... COMMIT`).
    - Nếu migration thất bại: transaction `ROLLBACK` sạch sẽ; không ghi nhận bản ghi `applied` trong DB; ghi nhận execution evidence `FAIL`; runner dừng lại và ứng dụng startup fail-closed. Không cần persisted dirty state vì transaction đã rollback hoàn toàn.
 6. **Forward Migration**: Từng tệp migration chạy trong transaction riêng; chỉ commit sau khi lệnh SQL thành công và đã ghi bản ghi vào `cp_schema_migrations`.
-7. **Rollback Migration & Isolated Test DB Guard**:
+7. **Rollback Migration & Disposable Test Database Protocol**:
    - Mỗi migration `XXXX_name.sql` bắt buộc có `XXXX_name.rollback.sql` tương ứng.
-   - **Guard nghiêm ngặt**: Kiểm thử chu trình rollback full down/up **chỉ được phép chạy trên disposable isolated test database/schema** (tạo mới và xóa bỏ trong test runner). Tuyệt đối không chạy destructive rollback trên database nghiệp vụ hoặc môi trường dev đang dùng.
+   - Migration `0001` rollback đưa cơ sở dữ liệu về trạng thái tiền-0001: dọn dẹp toàn bộ owned objects và xóa schema `controlplane` bằng `DROP SCHEMA IF EXISTS controlplane CASCADE;`.
+   - **Disposable Test Database (Không Parameterized Schema)**:
+     * Kiểm thử chu trình rollback full down/up và integration tests **bắt buộc chạy trên disposable test database** độc lập được tạo mới cho mỗi run (`m2_p1_test_<uuid>`).
+     * Admin test DSN được nạp từ biến môi trường/cấu hình kiểm thử an toàn (`M2_TEST_PG_DSN` hoặc `TEST_DATABASE_URL`), tuyệt đối không hard-code credentials vào source/docs/evidence.
+     * Chạy migration production thật với schema cố định `controlplane` (tuyệt đối không template hoặc thay thế schema name bên trong production SQL).
+     * Dọn dẹp sạch sẽ bằng `DROP DATABASE` trong teardown của test suite.
+     * **Destructive Guard**: Thao tác drop/rollback yêu cầu database name phải hợp lệ cho test (tiền tố `m2_p1_test_` hoặc hậu tố `_test`) KÈM explicit test-mode flag (`is_test_env=True`). Cấm dùng cờ generic `allow_destructive=True` đơn thuần để bypass bảo vệ production.
 8. **Interrupted Migration Recovery**: Nếu tiến trình migration bị ngắt đột ngột (killed), connection bị đóng sẽ tự động giải phóng session-level advisory lock; transaction đang dở dang tự động rollback an toàn.
 
 ---
@@ -153,6 +161,31 @@ src/controlplane/
 ---
 
 ## 6. Đặc tả Chi tiết Các Phân hệ Cốt lõi
+
+### 6.0. Nền tảng Định danh, Workspace & Phiên Xác thực (M2-P1)
+- **Phân biệt `AuthSession` vs `AppSession`**:
+  * M2-P1 chỉ thiết lập nền tảng định danh cốt lõi: `Workspace`, `Actor`, và `AuthSession` (phiên xác thực / điều khiển control plane). Bảng dữ liệu tương ứng là `controlplane.cp_auth_sessions`.
+  * `AppSession` (bảng `controlplane.cp_app_sessions`) được dự lưu cho phiên mở ứng dụng desktop theo Data Model (`started_at`, `ended_at`, `output_folder`, `completed_count`, `operational_status`) và không nằm trong phạm vi hoàn thiện của M2-P1.
+- **Repository Interface & Workspace-Scoped Context**:
+  * M2-P1 cung cấp đầy đủ: `IWorkspaceRepository`, `IActorRepository`, `IAuthSessionRepository` và các Postgres adapters tương ứng.
+  * Mọi aggregate/entity thuộc sở hữu của workspace bắt buộc phải liên kết workspace server-side.
+  * Tuyệt đối không cung cấp hàm unscoped `get_by_id(id)` cho actor hay session business access. Mọi truy vấn và thao tác bắt buộc thông qua workspace scope: `get_by_id(workspace_id, entity_id)` hoặc workspace-bound repository instance.
+- **Ràng buộc Bất biến ở Tầng Cơ sở Dữ liệu (DB-Level Invariants)**:
+  * Ngăn chặn cross-workspace ở tầng DB schema, không phụ thuộc duy nhất vào filter mã nguồn Python:
+    1. Các trường quan hệ sở hữu workspace (`workspace_id`) bắt buộc `NOT NULL`.
+    2. Bảng `controlplane.cp_actors` có unique constraint `UNIQUE (workspace_id, actor_id)`.
+    3. Bảng `controlplane.cp_auth_sessions` có composite foreign key:
+       ```sql
+       FOREIGN KEY (workspace_id, actor_id) 
+       REFERENCES controlplane.cp_actors(workspace_id, actor_id) 
+       ON DELETE CASCADE
+       ```
+       Đảm bảo DB tự động từ chối bất kỳ session nào cố tình gắn với actor thuộc workspace khác.
+- **Transaction Ownership & Unit of Work**:
+  * `SqlUnitOfWork` sở hữu duy nhất **một pooled connection** và **một DB transaction** trong mỗi phiên UoW.
+  * Repositories nhận và sử dụng connection từ UoW, không tự lấy connection từ pool, không tự `commit()` hoặc `rollback()`.
+  * `TransactionManager` đóng vai trò factory/coordinator tạo UoW, không phải là transaction owner thứ hai.
+  * Đảm bảo tính nguyên tử: Tạo Workspace + Actor + AuthSession trong 1 UoW commit đồng thời; xảy ra lỗi thì rollback toàn bộ và connection trả về pool ở trạng thái hoàn toàn sạch sẽ.
 
 ### 6.1. Common Envelopes & Idempotency Store (M2-P2)
 - **Durable `CommandReceipt`**: Bảng `controlplane.cp_command_receipts` lưu trữ biên nhận bền vững (`receipt_id`, `command_id`, `disposition`: `ACCEPTED`/`REJECTED`/`DUPLICATE`, `operation_id`, `resource_ref`, `accepted_at`, `current_revision`).

@@ -6,6 +6,22 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Added
 
+- Nghiệm thu Milestone M2-P0 & Hiệu chỉnh Kế hoạch Kỹ thuật Milestone M2-P1 (13-09-2026):
+  - Người dùng chính thức nghiệm thu `M2-P0 = ACCEPTED / CLOSED` tại commit `d84c1d7` với 33/33 tests PASSED, 93/93 tests hồi quy M1 PASSED (0 failed, 0 skipped), 6/6 Package Gates PASS, deterministic provenance 1:1, SHA-256 DAG hợp lệ.
+  - Ủy quyền triển khai `M2-P1 = AUTHORIZED TO IMPLEMENT` theo chu trình chuẩn `RED → IMPLEMENT → RUN → TEST → FIX → VERIFY → EVIDENCE → COMMIT`.
+  - Hoàn tất hiệu chỉnh kế hoạch kỹ thuật M2-P1 (docs-only correction) bám sát 10 điểm kỹ thuật hẹp của Người dùng trước khi bắt đầu Behavioral RED:
+    1. Đồng bộ metadata: M2 = `IMPLEMENTATION IN PROGRESS`, M2-P0 = `ACCEPTED / CLOSED`, M2-P1 = `AUTHORIZED` trong `spec.md` và `implementation-plan.md`.
+    2. Khóa Allowed File Scope của P1: bổ sung chính xác `profile_p1.py` và `synthesizer_p1.py`; cấm sửa core evaluator/validator.
+    3. Áp dụng Disposable Test Database (`m2_p1_test_<uuid>`), không parameterized schema; schema cố định `controlplane`; admin test DSN từ environment; destructive guard yêu cầu tên DB hợp lệ test + `is_test_env=True` (cấm generic `allow_destructive=True`).
+    4. Phân biệt rõ `AuthSession` (`cp_auth_sessions`) phục vụ identity/control plane foundation với `AppSession` (`cp_app_sessions` dành cho desktop app data model).
+    5. Đầy đủ `IWorkspaceRepository`, `IActorRepository`, `IAuthSessionRepository`; workspace-scoped methods (zero unscoped get_by_id); composite FK DB-level invariants ngăn cross-workspace.
+    6. Khóa transaction ownership: `SqlUnitOfWork` sở hữu đúng một pooled connection và một DB transaction; repository không tự acquire pool connection, không commit/rollback; `TransactionManager` chỉ là UoW factory/coordinator.
+    7. Siết migration runner oracle: forward regex `^\d{4}_[a-z0-9_]+\.sql$`, rollback regex `^\d{4}_[a-z0-9_]+\.rollback\.sql$`; bounded advisory lock timeout 5s với `pg_try_advisory_lock` và monotonic deadline; fail-closed khi gap, missing file, duplicate, tamper; 0001 rollback dọn dẹp và drop schema `controlplane`.
+    8. Loại bỏ vòng tự tham chiếu: không đưa live evidence test vào `m2-p1-tests.xml`; lưu stdout RED thô vào `red-p1-stdout.txt`.
+    9. Đăng ký semantic profile tất định qua extension point `register_semantic_profile(M2P1SemanticProfile())`.
+    10. Khóa 6 machine-readable gates (`GATE-P1-01` .. `GATE-P1-06`) trước khi viết test RED.
+  - Dừng tại `M2-P1_PLAN_READY_FOR_RED_REVIEW`. M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
+
 - Hoàn tất khắc phục toàn diện đợt Tái kiểm toán Độc lập R2 Milestone M2-P0 (13-09-2026):
   - Khái quát hóa Semantic Evaluator Profile Registry & Dispatch Pattern: Xây dựng `PackageSemanticProfile` và `SemanticProfileRegistry`; triển khai `M2P0SemanticProfile` quản lý policy P0; fail-closed chặn đứng unknown profile và cross-package spoofing; mở rộng cho P1-P8 qua extension point `register_semantic_profile` mà không sửa core validator.
   - Chứng minh Kép Frozen Backend Graph & Clean Wheel Install: Tạo clean venv với dynamic uv binary resolver (`resolve_uv_executable`); thực hiện Proof A (cài đặt frozen từ `requirements.lock`, kiểm chứng observed package versions khớp 100%) và Proof B (build wheel và cài đặt với `--no-deps`, thực thi import và entrypoint sạch); bổ sung negative test mutate lockfile fail closed.
