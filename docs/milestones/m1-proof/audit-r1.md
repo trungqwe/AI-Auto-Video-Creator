@@ -100,3 +100,22 @@ Completion kiểm fence, registry và reservation hash, nhưng quality_report_re
 P0/P1 hiện hành: **CORRECTION_REQUIRED**. P2: **NOT_STARTED**, bị chặn bởi dependency P0/P1 chưa được chấp nhận sau audit. M1: **IN PROGRESS — CORRECTION_REQUIRED**. Không mở M2/M3/Module A.
 
 Không sửa code trong lượt audit. Giữ nguyên evidence lịch sử; báo cáo này phủ định kết luận PASS hiện hành, không phủ định các lần test đã chạy. Khắc phục bằng RED/GREEN đúng oracle trong P0/P1 rồi re-audit. Chưa có bằng chứng buộc redesign hoặc mở lại ADR kiến trúc.
+
+## Hậu kiểm sau khắc phục
+
+Ngày hậu kiểm: 13-09-2026. Evidence: `evidence/m1-remediation-r1/`.
+
+| Issue | Đánh giá lại | Thay đổi tối thiểu | Kết quả |
+|---|---|---|---|
+| M1-AUD-B01 | Hợp lý | Advisory lock theo workspace/aggregate và barrier race test | CLOSED |
+| M1-AUD-B02 | Hợp lý | Workspace epoch authority, truyền epoch qua event và chặn fence hạ ngược | CLOSED |
+| M1-AUD-B03 | Hợp lý | Allowlist + recursive secret scan tại mọi persistence boundary P1 | CLOSED |
+| M1-AUD-M01 | Hợp lý | Capture/validator đo live runtime, file hash và PostgreSQL probe | CLOSED |
+| M1-AUD-M02 | Hợp lý | Receipt v2 scope workspace, fingerprint operation type/input, guarded transition | CLOSED |
+| M1-AUD-M03 | Hợp lý | Bind grant/result với operation/input và receipt idempotent | CLOSED |
+| M1-AUD-M04 | Hợp lý | Barrier deterministic, process restart giữ DB, command/timestamp/hash mới | CLOSED_WITH_LIMITATION |
+| M1-AUD-M05 | Hợp lý | Owner admission bind exact refs/hash/revision, QC và cloud verification | CLOSED |
+
+Giới hạn M04: stdout/timestamp RED đã không được lưu trước remediation không được dựng ngược. `red-observations.md` ghi riêng mức bằng chứng thật; kết luận đóng dựa trên acceptance mới có process restart/barrier và không thay đổi evidence lịch sử.
+
+Hậu kiểm chạy `42 passed`, migration `up/down/up` qua, lock 45 package khớp, compile/diff check qua và credential-pattern scan không có match. Không phát hiện lý do mở lại ADR. P0/P1 trở lại `PASS`; P2 `READY`. G01/G04 vẫn `NOT TESTED`; M1 chưa PASS; M2/M3/Module A vẫn `NOT AUTHORIZED`.

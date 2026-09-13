@@ -31,14 +31,22 @@ def load_completion_api():
         missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
     assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
     media_usage = importlib.import_module("m1proof.media_usage")
+    completion_admission = importlib.import_module("m1proof.completion_admission")
     assert hasattr(media_usage, "PostgresMediaUsageOwnerPort"), (
         "P1 media usage owner port is not implemented"
     )
-    return contracts, media_usage
+    return contracts, media_usage, completion_admission
 
 
 def seed_completion_context() -> None:
     with psycopg.connect(DSN) as connection:
+        connection.execute(
+            """
+            INSERT INTO workspace_epochs
+                (workspace_id, recovery_epoch, epoch_sequence, updated_at)
+            VALUES ('workspace-1', 'epoch-current', 1, now())
+            """
+        )
         connection.execute(
             """
             INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)
@@ -69,6 +77,24 @@ def seed_completion_context() -> None:
             INSERT INTO variant_reservations (
                 workspace_id, reservation_id, job_id, output_hash, state
             ) VALUES ('workspace-1', 'variant-1', 'job-1', %s, 'active')
+            """,
+            (OUTPUT_HASH,),
+        )
+        connection.execute(
+            """
+            INSERT INTO completion_admissions (
+                workspace_id, job_id, output_artifact_id, output_hash,
+                quality_report_ref, cloud_location_ref,
+                snapshot_ref, script_ref, plan_ref, variant_validation_ref,
+                output_metadata_ref, expected_variant_registry_revision,
+                quality_passed, cloud_verified, admitted_at
+            ) VALUES (
+                'workspace-1', 'job-1', 'artifact-output-1', %s,
+                'quality-report-pass-1', 'drive-location-verified-1',
+                'snapshot-1', 'script-1', 'plan-1', 'variant-validation-1',
+                'output-metadata-1', 1,
+                true, true, now()
+            )
             """,
             (OUTPUT_HASH,),
         )
@@ -161,16 +187,18 @@ def completion_state() -> tuple[object, ...]:
 )
 def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
     prepare_database()
-    contracts, media_usage = load_completion_api()
+    contracts, media_usage, admission = load_completion_api()
     seed_completion_context()
     service = contracts.ContractProofService(DSN)
     owner_port = media_usage.PostgresMediaUsageOwnerPort()
+    admission_port = admission.PostgresCompletionAdmissionOwnerPort()
     command = make_completion(contracts)
 
     with pytest.raises(contracts.InjectedFailure, match=crash_boundary):
         service.complete_video(
             command,
             media_usage_port=owner_port,
+            completion_admission_port=admission_port,
             inject_failure=crash_boundary,
         )
 
@@ -186,7 +214,11 @@ def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -
         0,
     )
 
-    receipt = service.complete_video(command, media_usage_port=owner_port)
+    receipt = service.complete_video(
+        command,
+        media_usage_port=owner_port,
+        completion_admission_port=admission_port,
+    )
     assert receipt.disposition == "accepted"
     assert receipt.completed_count == 1
     assert receipt.variant_registry_revision == 2
@@ -205,20 +237,26 @@ def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -
 
 def test_lost_ack_and_duplicate_completion_return_one_committed_result() -> None:
     prepare_database()
-    contracts, media_usage = load_completion_api()
+    contracts, media_usage, admission = load_completion_api()
     seed_completion_context()
     service = contracts.ContractProofService(DSN)
     owner_port = media_usage.PostgresMediaUsageOwnerPort()
+    admission_port = admission.PostgresCompletionAdmissionOwnerPort()
     command = make_completion(contracts)
 
     with pytest.raises(contracts.OutcomeUnknown) as failure:
         service.complete_video(
             command,
             media_usage_port=owner_port,
+            completion_admission_port=admission_port,
             inject_failure="after_commit_before_ack",
         )
 
-    duplicate = service.complete_video(command, media_usage_port=owner_port)
+    duplicate = service.complete_video(
+        command,
+        media_usage_port=owner_port,
+        completion_admission_port=admission_port,
+    )
     assert duplicate.disposition == "duplicate"
     assert duplicate.receipt_id == failure.value.receipt_id
     assert duplicate.completed_count == 1
@@ -242,4 +280,8 @@ def test_lost_ack_and_duplicate_completion_return_one_committed_result() -> None
         contracts.IdempotencyConflict,
         match="IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD",
     ):
-        service.complete_video(changed_output, media_usage_port=owner_port)
+        service.complete_video(
+            changed_output,
+            media_usage_port=owner_port,
+            completion_admission_port=admission_port,
+        )

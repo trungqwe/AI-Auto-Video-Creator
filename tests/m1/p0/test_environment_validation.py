@@ -56,5 +56,5 @@ def test_validator_rejects_tampered_locked_section(tmp_path: Path) -> None:
     fixture_path = tmp_path / "environment.json"
     write_fixture(fixture_path, payload)
 
-    with pytest.raises(ValueError, match="project section mismatch"):
+    with pytest.raises(ValueError, match="uv.lock live hash mismatch"):
         validator(BOOTSTRAP_PATH, fixture_path)

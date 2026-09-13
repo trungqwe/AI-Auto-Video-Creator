@@ -1,4 +1,5 @@
 import importlib
+import subprocess
 import sys
 from pathlib import Path
 
@@ -47,12 +48,16 @@ def test_duplicate_and_reordered_events_do_not_repeat_projection_side_effect() -
     module = load_contract_module()
     require_api(module, "DomainEvent", "EventGap")
     service = module.ContractProofService(DSN)
+    service.set_workspace_epoch(
+        workspace_id="workspace-1", recovery_epoch="epoch-2", epoch_sequence=2
+    )
 
     event_1 = module.DomainEvent(
         event_id="event-1",
         workspace_id="workspace-1",
         aggregate_id="aggregate-events",
         aggregate_revision=1,
+        recovery_epoch="epoch-2",
         payload={"value": "one"},
     )
     event_2 = event_1.model_copy(
@@ -87,6 +92,9 @@ def test_lost_ack_after_commit_returns_existing_receipt() -> None:
     module = load_contract_module()
     require_api(module, "OutcomeUnknown")
     service = module.ContractProofService(DSN)
+    service.set_workspace_epoch(
+        workspace_id="workspace-1", recovery_epoch="epoch-2", epoch_sequence=2
+    )
     command = make_mutation(module, key="lost-ack")
 
     with pytest.raises(module.OutcomeUnknown) as failure:
@@ -108,14 +116,54 @@ def test_lost_ack_after_commit_returns_existing_receipt() -> None:
     assert counts == (1, 1, 1)
 
 
+def test_lost_ack_is_recovered_after_real_process_restart() -> None:
+    prepare_database()
+    script = f"""
+import os, sys
+sys.path.insert(0, {str(REPOSITORY_ROOT / 'src')!r})
+from m1proof.contracts import ContractProofService, MutationCommand, OutcomeUnknown
+service = ContractProofService({DSN!r})
+service.set_workspace_epoch(workspace_id='workspace-1', recovery_epoch='epoch-2', epoch_sequence=2)
+command = MutationCommand(command_id='process-1', idempotency_key='process-key', workspace_id='workspace-1', aggregate_id='process-aggregate', expected_revision=0, recovery_epoch='epoch-2', execution_generation=1, payload={{'value': 'once'}})
+try:
+    service.execute_mutation(command, inject_failure='after_commit_before_ack')
+except OutcomeUnknown:
+    os._exit(23)
+"""
+    first = subprocess.run([sys.executable, "-c", script], check=False)
+    assert first.returncode == 23
+
+    module = load_contract_module()
+    duplicate = module.ContractProofService(DSN).execute_mutation(
+        module.MutationCommand(
+            command_id="process-1",
+            idempotency_key="process-key",
+            workspace_id="workspace-1",
+            aggregate_id="process-aggregate",
+            expected_revision=0,
+            recovery_epoch="epoch-2",
+            execution_generation=1,
+            payload={"value": "once"},
+        )
+    )
+    assert duplicate.disposition == "duplicate"
+
+
 def test_stale_generation_or_recovery_epoch_cannot_commit_result() -> None:
     prepare_database()
     module = load_contract_module()
     require_api(module, "ActivityCommit", "StaleExecution")
     service = module.ContractProofService(DSN)
+    service.set_workspace_epoch(
+        workspace_id="workspace-1",
+        recovery_epoch="epoch-current",
+        epoch_sequence=2,
+    )
     service.set_execution_fence(
         workspace_id="workspace-1",
         grant_id="grant-1",
+        operation_key="operation-1",
+        input_fingerprint="input-1",
         execution_generation=4,
         recovery_epoch="epoch-current",
     )
@@ -124,6 +172,8 @@ def test_stale_generation_or_recovery_epoch_cannot_commit_result() -> None:
         result_id="result-old-generation",
         workspace_id="workspace-1",
         grant_id="grant-1",
+        operation_key="operation-1",
+        input_fingerprint="input-1",
         execution_generation=3,
         recovery_epoch="epoch-current",
         payload={"result": "late"},
@@ -138,7 +188,9 @@ def test_stale_generation_or_recovery_epoch_cannot_commit_result() -> None:
         service.commit_activity_result(stale_epoch)
 
     with psycopg.connect(DSN) as connection:
-        assert connection.execute("SELECT count(*) FROM accepted_activity_results").fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT count(*) FROM accepted_activity_results_v2"
+        ).fetchone()[0] == 0
 
 
 def test_unknown_external_outcome_requires_reconciliation_before_retry() -> None:
@@ -146,6 +198,9 @@ def test_unknown_external_outcome_requires_reconciliation_before_retry() -> None
     module = load_contract_module()
     require_api(module, "ExternalOperationRequest", "ReconciliationRequired")
     service = module.ContractProofService(DSN)
+    service.set_workspace_epoch(
+        workspace_id="workspace-1", recovery_epoch="epoch-2", epoch_sequence=2
+    )
     request = module.ExternalOperationRequest(
         operation_key="external-operation-1",
         workspace_id="workspace-1",
@@ -155,14 +210,20 @@ def test_unknown_external_outcome_requires_reconciliation_before_retry() -> None
     )
 
     prepared = service.prepare_external_operation(request)
-    service.mark_operation_started(request.operation_key)
-    service.mark_operation_outcome_unknown(request.operation_key)
+    service.mark_operation_started(
+        request.workspace_id, request.operation_key, request.recovery_epoch
+    )
+    service.mark_operation_outcome_unknown(
+        request.workspace_id, request.operation_key, request.recovery_epoch
+    )
 
     with pytest.raises(module.ReconciliationRequired, match="RECONCILIATION_REQUIRED"):
         service.retry_external_operation(request)
 
     reconciled = service.reconcile_external_operation(
+        request.workspace_id,
         request.operation_key,
+        request.recovery_epoch,
         output_refs={"external_ref": "redacted-ref"},
     )
     repeated = service.retry_external_operation(request)

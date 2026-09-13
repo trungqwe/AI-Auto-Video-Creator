@@ -1,7 +1,7 @@
 # M1 — Implementation Plan cho Evidence Prototype
 
 **Milestone:** M1 — `R0 Evidence Prototype`  
-**Trạng thái:** `IN PROGRESS — P0/P1 CORRECTION_REQUIRED; P2 CHƯA ĐƯỢC BẮT ĐẦU`
+**Trạng thái:** `IN PROGRESS — P0/P1 PASS SAU KHẮC PHỤC; P2 READY`
 **Quyền implementation:** chỉ M1; M2, M3 và Phân hệ A bị khóa  
 **Version set:** [M1-R1](./version-lock.md)  
 **Evidence root:** [evidence](./evidence/README.md)  
@@ -52,9 +52,9 @@ Trạng thái thực thi hiện hành:
 
 | Work package | Trạng thái |
 |---|---|
-| M1-P0 | `CORRECTION_REQUIRED` |
-| M1-P1 | `CORRECTION_REQUIRED` |
-| M1-P2 | `NOT_STARTED` — chờ khắc phục P0/P1 |
+| M1-P0 | `PASS` — audit remediation R1 đã kiểm tra lại |
+| M1-P1 | `PASS` — audit remediation R1 đã kiểm tra lại |
+| M1-P2 | `NOT_STARTED — READY` |
 | M1-P3..P6 | `NOT_STARTED` |
 
 ```text
@@ -639,6 +639,6 @@ User đã cấp và kích hoạt quyền implementation chỉ cho M1. M1-P0 và 
 - không tự mở M2/M3/Phân hệ A dù P0/P1 đã PASS;
 - mỗi package tiếp tục phải test-first, lưu RED/GREEN và dừng ngay khi điều kiện STOP xảy ra.
 
-## Trạng thái sau audit M1 R1
+## Trạng thái sau khắc phục audit M1 R1
 
-Audit ngày 13-09-2026 tại `docs/milestones/m1-proof/audit-r1.md` mở 3 BLOCKER và 5 MAJOR. P0/P1 hiện `CORRECTION_REQUIRED`; P2 chưa được bắt đầu vì dependency chưa đạt. Các kết luận PASS trước audit trong tài liệu này chỉ là lịch sử. Giữ nguyên evidence cũ; G01/G04 NOT TESTED và M2/M3/Module A NOT AUTHORIZED. Chưa sửa implementation trong lượt audit.
+Ba BLOCKER và năm MAJOR đã được khắc phục và kiểm tra lại tại `evidence/m1-remediation-r1/`. P0/P1 trở lại `PASS`; P2 `NOT_STARTED — READY`. Evidence lịch sử được giữ nguyên, RED không có stdout lưu từ trước không bị dựng ngược. G01/G04 vẫn `NOT TESTED`; M2/M3/Module A vẫn `NOT AUTHORIZED`.

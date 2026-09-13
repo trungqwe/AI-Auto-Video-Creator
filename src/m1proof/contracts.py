@@ -79,6 +79,7 @@ class DomainEvent(BaseModel):
     workspace_id: str
     aggregate_id: str
     aggregate_revision: int
+    recovery_epoch: str
     payload: dict[str, object]
 
 
@@ -88,9 +89,19 @@ class ActivityCommit(BaseModel):
     result_id: str
     workspace_id: str
     grant_id: str
+    operation_key: str
+    input_fingerprint: str
     execution_generation: int
     recovery_epoch: str
     payload: dict[str, object]
+
+
+class ActivityReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    operation_key: str
+    receipt_id: str
+    disposition: Literal["accepted", "duplicate"]
 
 
 class ExternalOperationRequest(BaseModel):
@@ -176,6 +187,26 @@ class MediaUsageOwnerPort(Protocol):
     ) -> None: ...
 
 
+class CompletionAdmissionOwnerPort(Protocol):
+    def require_admitted(
+        self,
+        connection: psycopg.Connection,
+        *,
+        workspace_id: str,
+        job_id: str,
+        output_artifact_id: str,
+        output_hash: str,
+        quality_report_ref: str,
+        cloud_location_ref: str,
+        snapshot_ref: str,
+        script_ref: str,
+        plan_ref: str,
+        variant_validation_ref: str,
+        output_metadata_ref: str,
+        expected_variant_registry_revision: int,
+    ) -> bool: ...
+
+
 class OutboxDispatcher:
     """Deliver one unpublished event and checkpoint only after the callback returns."""
 
@@ -188,7 +219,7 @@ class OutboxDispatcher:
             row = connection.execute(
                 """
                 SELECT event_id, workspace_id, aggregate_id,
-                       aggregate_revision, payload
+                       aggregate_revision, recovery_epoch, payload
                   FROM outbox_events
                  WHERE published_at IS NULL
                  ORDER BY occurred_at, event_id
@@ -204,7 +235,8 @@ class OutboxDispatcher:
                 workspace_id=row[1],
                 aggregate_id=row[2],
                 aggregate_revision=row[3],
-                payload=row[4],
+                recovery_epoch=row[4],
+                payload=row[5],
             )
             self._consumer(event)
             if inject_failure == "after_dispatch_before_checkpoint":
@@ -237,6 +269,11 @@ def find_sensitive_key(value: object, path: str = "payload") -> str | None:
     return None
 
 
+def require_safe_payload(value: dict[str, object], *, allowed_keys: set[str]) -> None:
+    if find_sensitive_key(value) is not None or not set(value).issubset(allowed_keys):
+        raise SensitiveDataRejected("SENSITIVE_DATA_REJECTED")
+
+
 def canonical_fingerprint(command: MutationCommand) -> str:
     logical_input = command.model_dump(
         exclude={"command_id", "idempotency_key"},
@@ -265,9 +302,70 @@ def completion_fingerprint(command: CompletionCommand) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
+def external_operation_fingerprint(request: ExternalOperationRequest) -> str:
+    logical_input = {
+        "operation_type": request.operation_type,
+        "input_payload": request.input_payload,
+    }
+    canonical = json.dumps(
+        logical_input, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 class ContractProofService:
     def __init__(self, dsn: str) -> None:
         self._dsn = dsn
+
+    def set_workspace_epoch(
+        self,
+        *,
+        workspace_id: str,
+        recovery_epoch: str,
+        epoch_sequence: int,
+    ) -> None:
+        with psycopg.connect(self._dsn) as connection:
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"workspace-epoch:{workspace_id}",),
+            )
+            current = connection.execute(
+                """
+                SELECT recovery_epoch, epoch_sequence FROM workspace_epochs
+                 WHERE workspace_id = %s FOR UPDATE
+                """,
+                (workspace_id,),
+            ).fetchone()
+            if current is not None:
+                if current == (recovery_epoch, epoch_sequence):
+                    return
+                if epoch_sequence <= current[1]:
+                    raise StaleExecution("STALE_EPOCH_SEQUENCE")
+            connection.execute(
+                """
+                INSERT INTO workspace_epochs (
+                    workspace_id, recovery_epoch, epoch_sequence, updated_at
+                ) VALUES (%s, %s, %s, %s)
+                ON CONFLICT (workspace_id) DO UPDATE SET
+                    recovery_epoch = EXCLUDED.recovery_epoch,
+                    epoch_sequence = EXCLUDED.epoch_sequence,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (workspace_id, recovery_epoch, epoch_sequence, datetime.now(UTC)),
+            )
+
+    @staticmethod
+    def _require_current_epoch(
+        connection: psycopg.Connection,
+        workspace_id: str,
+        recovery_epoch: str,
+    ) -> None:
+        current = connection.execute(
+            "SELECT recovery_epoch FROM workspace_epochs WHERE workspace_id = %s",
+            (workspace_id,),
+        ).fetchone()
+        if current is None or current[0] != recovery_epoch:
+            raise StaleExecution("STALE_RECOVERY_EPOCH")
 
     def execute_mutation(
         self,
@@ -275,8 +373,7 @@ class ContractProofService:
         *,
         inject_failure: str | None = None,
     ) -> CommandReceipt:
-        if find_sensitive_key(command.payload) is not None:
-            raise SensitiveDataRejected("SENSITIVE_DATA_REJECTED")
+        require_safe_payload(command.payload, allowed_keys={"value"})
         fingerprint = canonical_fingerprint(command)
         receipt_id = str(
             uuid.uuid5(
@@ -287,6 +384,9 @@ class ContractProofService:
         now = datetime.now(UTC)
 
         with psycopg.connect(self._dsn) as connection:
+            self._require_current_epoch(
+                connection, command.workspace_id, command.recovery_epoch
+            )
             connection.execute(
                 "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
                 (f"{command.workspace_id}:{command.idempotency_key}",),
@@ -313,6 +413,10 @@ class ContractProofService:
                     accepted_at=existing[4],
                 )
 
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"aggregate:{command.workspace_id}:{command.aggregate_id}",),
+            )
             current = connection.execute(
                 """
                 SELECT revision
@@ -413,9 +517,15 @@ class ContractProofService:
         return receipt
 
     def consume_event(self, consumer_id: str, event: DomainEvent) -> bool:
+        require_safe_payload(
+            event.payload, allowed_keys={"value", "aggregate_id", "revision"}
+        )
         now = datetime.now(UTC)
         lock_key = f"{consumer_id}:{event.workspace_id}:{event.aggregate_id}"
         with psycopg.connect(self._dsn) as connection:
+            self._require_current_epoch(
+                connection, event.workspace_id, event.recovery_epoch
+            )
             connection.execute(
                 "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
                 (lock_key,),
@@ -484,10 +594,40 @@ class ContractProofService:
         *,
         workspace_id: str,
         grant_id: str,
+        operation_key: str,
+        input_fingerprint: str,
         execution_generation: int,
         recovery_epoch: str,
     ) -> None:
         with psycopg.connect(self._dsn) as connection:
+            self._require_current_epoch(connection, workspace_id, recovery_epoch)
+            grant_current = connection.execute(
+                """
+                SELECT operation_key, input_fingerprint,
+                       execution_generation, recovery_epoch
+                  FROM execution_grants_v2
+                 WHERE workspace_id = %s AND grant_id = %s
+                 FOR UPDATE
+                """,
+                (workspace_id, grant_id),
+            ).fetchone()
+            if (
+                grant_current is not None
+                and grant_current[3] == recovery_epoch
+                and grant_current[2] == execution_generation
+                and grant_current[:2] != (operation_key, input_fingerprint)
+            ):
+                raise StaleExecution("ACTIVITY_GRANT_CONFLICT")
+            current = connection.execute(
+                """
+                SELECT execution_generation, recovery_epoch FROM execution_fences
+                 WHERE workspace_id = %s AND grant_id = %s FOR UPDATE
+                """,
+                (workspace_id, grant_id),
+            ).fetchone()
+            if current is not None and current[1] == recovery_epoch:
+                if execution_generation < current[0]:
+                    raise StaleExecution("STALE_EXECUTION_GENERATION")
             connection.execute(
                 """
                 INSERT INTO execution_fences (
@@ -507,33 +647,96 @@ class ContractProofService:
                     datetime.now(UTC),
                 ),
             )
+            connection.execute(
+                """
+                INSERT INTO execution_grants_v2 (
+                    workspace_id, grant_id, operation_key, input_fingerprint,
+                    execution_generation, recovery_epoch, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (workspace_id, grant_id) DO UPDATE SET
+                    operation_key = EXCLUDED.operation_key,
+                    input_fingerprint = EXCLUDED.input_fingerprint,
+                    execution_generation = EXCLUDED.execution_generation,
+                    recovery_epoch = EXCLUDED.recovery_epoch,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    workspace_id,
+                    grant_id,
+                    operation_key,
+                    input_fingerprint,
+                    execution_generation,
+                    recovery_epoch,
+                    datetime.now(UTC),
+                ),
+            )
 
-    def commit_activity_result(self, result: ActivityCommit) -> None:
+    def commit_activity_result(self, result: ActivityCommit) -> ActivityReceipt:
+        require_safe_payload(result.payload, allowed_keys={"result"})
+        result_fingerprint = hashlib.sha256(
+            json.dumps(result.payload, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+        receipt_id = str(
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"activity:{result.workspace_id}:{result.operation_key}",
+            )
+        )
         with psycopg.connect(self._dsn) as connection:
+            self._require_current_epoch(
+                connection, result.workspace_id, result.recovery_epoch
+            )
             fence = connection.execute(
                 """
-                SELECT execution_generation, recovery_epoch
-                  FROM execution_fences
+                SELECT operation_key, input_fingerprint,
+                       execution_generation, recovery_epoch
+                  FROM execution_grants_v2
                  WHERE workspace_id = %s AND grant_id = %s
                  FOR UPDATE
                 """,
                 (result.workspace_id, result.grant_id),
             ).fetchone()
-            if fence is None or fence[0] != result.execution_generation:
+            if fence is None or fence[2] != result.execution_generation:
                 raise StaleExecution("STALE_EXECUTION_GENERATION")
-            if fence[1] != result.recovery_epoch:
+            if fence[3] != result.recovery_epoch:
                 raise StaleExecution("STALE_RECOVERY_EPOCH")
+            if fence[0] != result.operation_key or fence[1] != result.input_fingerprint:
+                raise StaleExecution("ACTIVITY_BINDING_MISMATCH")
+            existing = connection.execute(
+                """
+                SELECT input_fingerprint, result_fingerprint, receipt_id
+                  FROM accepted_activity_results_v2
+                 WHERE workspace_id = %s AND operation_key = %s
+                """,
+                (result.workspace_id, result.operation_key),
+            ).fetchone()
+            if existing is not None:
+                if existing[0] != result.input_fingerprint:
+                    raise IdempotencyConflict("ACTIVITY_INPUT_CONFLICT")
+                if existing[1] != result_fingerprint:
+                    raise IdempotencyConflict("ACTIVITY_RESULT_CONFLICT")
+                return ActivityReceipt(
+                    operation_key=result.operation_key,
+                    receipt_id=existing[2],
+                    disposition="duplicate",
+                )
             connection.execute(
                 """
-                INSERT INTO accepted_activity_results (
-                    result_id, workspace_id, grant_id, execution_generation,
-                    recovery_epoch, payload, committed_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (result_id) DO NOTHING
+                INSERT INTO accepted_activity_results_v2 (
+                    workspace_id, operation_key, result_id, receipt_id,
+                    input_fingerprint, result_fingerprint, grant_id,
+                    execution_generation, recovery_epoch, payload, committed_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
-                    result.result_id,
                     result.workspace_id,
+                    result.operation_key,
+                    result.result_id,
+                    receipt_id,
+                    result.input_fingerprint,
+                    result_fingerprint,
                     result.grant_id,
                     result.execution_generation,
                     result.recovery_epoch,
@@ -541,40 +744,53 @@ class ContractProofService:
                     datetime.now(UTC),
                 ),
             )
+        return ActivityReceipt(
+            operation_key=result.operation_key,
+            receipt_id=receipt_id,
+            disposition="accepted",
+        )
 
     def prepare_external_operation(
         self, request: ExternalOperationRequest
     ) -> OperationReceipt:
-        fingerprint = hashlib.sha256(
-            json.dumps(
-                request.input_payload,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest()
-        receipt_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"operation:{request.operation_key}"))
+        require_safe_payload(request.input_payload, allowed_keys={"artifact_id"})
+        fingerprint = external_operation_fingerprint(request)
+        receipt_id = str(
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"operation:{request.workspace_id}:{request.operation_key}",
+            )
+        )
         now = datetime.now(UTC)
         with psycopg.connect(self._dsn) as connection:
+            self._require_current_epoch(
+                connection, request.workspace_id, request.recovery_epoch
+            )
             connection.execute(
                 "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
-                (request.operation_key,),
+                (f"operation:{request.workspace_id}:{request.operation_key}",),
             )
             existing = connection.execute(
                 """
-                SELECT input_fingerprint FROM operation_receipts
-                 WHERE operation_key = %s
+                SELECT input_fingerprint, recovery_epoch
+                  FROM operation_receipts_v2
+                 WHERE workspace_id = %s AND operation_key = %s
                 """,
-                (request.operation_key,),
+                (request.workspace_id, request.operation_key),
             ).fetchone()
             if existing is not None:
                 if existing[0] != fingerprint:
                     raise IdempotencyConflict(
                         "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD"
                     )
-                return self._load_operation_receipt(connection, request.operation_key)
+                if existing[1] != request.recovery_epoch:
+                    raise StaleExecution("STALE_OPERATION_EPOCH")
+                return self._load_operation_receipt(
+                    connection, request.workspace_id, request.operation_key
+                )
             connection.execute(
                 """
-                INSERT INTO operation_receipts (
+                INSERT INTO operation_receipts_v2 (
                     operation_key, receipt_id, workspace_id, operation_type,
                     input_fingerprint, recovery_epoch, state, output_refs,
                     attempt, created_at, updated_at
@@ -592,60 +808,89 @@ class ContractProofService:
                     now,
                 ),
             )
-            return self._load_operation_receipt(connection, request.operation_key)
+            return self._load_operation_receipt(
+                connection, request.workspace_id, request.operation_key
+            )
 
-    def mark_operation_started(self, operation_key: str) -> None:
-        self._set_operation_state(operation_key, "started")
+    def mark_operation_started(
+        self, workspace_id: str, operation_key: str, recovery_epoch: str
+    ) -> None:
+        self._set_operation_state(
+            workspace_id, operation_key, recovery_epoch, "prepared", "started"
+        )
 
-    def mark_operation_outcome_unknown(self, operation_key: str) -> None:
-        self._set_operation_state(operation_key, "outcome_unknown")
+    def mark_operation_outcome_unknown(
+        self, workspace_id: str, operation_key: str, recovery_epoch: str
+    ) -> None:
+        self._set_operation_state(
+            workspace_id, operation_key, recovery_epoch, "started", "outcome_unknown"
+        )
 
     def retry_external_operation(
         self, request: ExternalOperationRequest
     ) -> OperationReceipt:
-        fingerprint = hashlib.sha256(
-            json.dumps(
-                request.input_payload,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest()
+        fingerprint = external_operation_fingerprint(request)
         with psycopg.connect(self._dsn) as connection:
-            receipt = self._load_operation_receipt(connection, request.operation_key)
+            self._require_current_epoch(
+                connection, request.workspace_id, request.recovery_epoch
+            )
+            receipt = self._load_operation_receipt(
+                connection, request.workspace_id, request.operation_key
+            )
             row = connection.execute(
                 """
-                SELECT input_fingerprint, state FROM operation_receipts
-                 WHERE operation_key = %s
+                SELECT input_fingerprint, state, recovery_epoch
+                  FROM operation_receipts_v2
+                 WHERE workspace_id = %s AND operation_key = %s
                 """,
-                (request.operation_key,),
+                (request.workspace_id, request.operation_key),
             ).fetchone()
             if row[0] != fingerprint:
                 raise IdempotencyConflict(
                     "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD"
                 )
+            if row[2] != request.recovery_epoch:
+                raise StaleExecution("STALE_OPERATION_EPOCH")
             if row[1] == "outcome_unknown":
                 raise ReconciliationRequired("RECONCILIATION_REQUIRED")
             return receipt
 
     def reconcile_external_operation(
-        self, operation_key: str, *, output_refs: dict[str, object]
+        self,
+        workspace_id: str,
+        operation_key: str,
+        recovery_epoch: str,
+        *,
+        output_refs: dict[str, object],
     ) -> OperationReceipt:
+        require_safe_payload(output_refs, allowed_keys={"external_ref"})
         with psycopg.connect(self._dsn) as connection:
-            connection.execute(
+            self._require_current_epoch(connection, workspace_id, recovery_epoch)
+            updated = connection.execute(
                 """
-                UPDATE operation_receipts
+                UPDATE operation_receipts_v2
                    SET state = 'succeeded', output_refs = %s, updated_at = %s
-                 WHERE operation_key = %s AND state = 'outcome_unknown'
+                 WHERE workspace_id = %s AND operation_key = %s
+                   AND recovery_epoch = %s AND state = 'outcome_unknown'
                 """,
-                (Jsonb(output_refs), datetime.now(UTC), operation_key),
+                (
+                    Jsonb(output_refs),
+                    datetime.now(UTC),
+                    workspace_id,
+                    operation_key,
+                    recovery_epoch,
+                ),
             )
-            return self._load_operation_receipt(connection, operation_key)
+            if updated.rowcount != 1:
+                raise ContractProofError("INVALID_OPERATION_TRANSITION")
+            return self._load_operation_receipt(connection, workspace_id, operation_key)
 
     def complete_video(
         self,
         command: CompletionCommand,
         *,
         media_usage_port: MediaUsageOwnerPort,
+        completion_admission_port: CompletionAdmissionOwnerPort,
         inject_failure: str | None = None,
     ) -> CompletionReceipt:
         if find_sensitive_key(command.model_dump(mode="python")) is not None:
@@ -667,6 +912,9 @@ class ContractProofService:
         completed_at = datetime.now(UTC)
 
         with psycopg.connect(self._dsn) as connection:
+            self._require_current_epoch(
+                connection, command.workspace_id, command.recovery_epoch
+            )
             connection.execute(
                 "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
                 (f"completion:{command.workspace_id}:{command.idempotency_key}",),
@@ -751,6 +999,25 @@ class ContractProofService:
             ).fetchone()
             if variant != (command.job_id, command.output_hash, "active"):
                 raise ContractProofError("VARIANT_RESERVATION_INVALID")
+
+            if not completion_admission_port.require_admitted(
+                connection,
+                workspace_id=command.workspace_id,
+                job_id=command.job_id,
+                output_artifact_id=command.output_artifact_id,
+                output_hash=command.output_hash,
+                quality_report_ref=command.quality_report_ref,
+                cloud_location_ref=command.cloud_location_ref,
+                snapshot_ref=command.snapshot_ref,
+                script_ref=command.script_ref,
+                plan_ref=command.plan_ref,
+                variant_validation_ref=command.variant_validation_ref,
+                output_metadata_ref=command.output_metadata_ref,
+                expected_variant_registry_revision=(
+                    command.expected_variant_registry_revision
+                ),
+            ):
+                raise ContractProofError("COMPLETION_NOT_ADMITTED")
 
             next_registry_revision = registry[0] + 1
             batch = connection.execute(
@@ -928,18 +1195,34 @@ class ContractProofService:
             raise OutcomeUnknown(receipt.receipt_id)
         return receipt
 
-    def _set_operation_state(self, operation_key: str, state: str) -> None:
+    def _set_operation_state(
+        self,
+        workspace_id: str,
+        operation_key: str,
+        recovery_epoch: str,
+        expected_state: str,
+        next_state: str,
+    ) -> None:
         with psycopg.connect(self._dsn) as connection:
+            self._require_current_epoch(connection, workspace_id, recovery_epoch)
             updated = connection.execute(
                 """
-                UPDATE operation_receipts
+                UPDATE operation_receipts_v2
                    SET state = %s, updated_at = %s
-                 WHERE operation_key = %s
+                 WHERE workspace_id = %s AND operation_key = %s
+                   AND recovery_epoch = %s AND state = %s
                 """,
-                (state, datetime.now(UTC), operation_key),
+                (
+                    next_state,
+                    datetime.now(UTC),
+                    workspace_id,
+                    operation_key,
+                    recovery_epoch,
+                    expected_state,
+                ),
             )
             if updated.rowcount != 1:
-                raise ContractProofError("OPERATION_NOT_FOUND")
+                raise ContractProofError("INVALID_OPERATION_TRANSITION")
 
     @staticmethod
     def _inject(inject_failure: str | None, boundary: str) -> None:
@@ -977,15 +1260,15 @@ class ContractProofService:
 
     @staticmethod
     def _load_operation_receipt(
-        connection: psycopg.Connection, operation_key: str
+        connection: psycopg.Connection, workspace_id: str, operation_key: str
     ) -> OperationReceipt:
         row = connection.execute(
             """
             SELECT operation_key, receipt_id, state, output_refs, attempt
-              FROM operation_receipts
-             WHERE operation_key = %s
+              FROM operation_receipts_v2
+             WHERE workspace_id = %s AND operation_key = %s
             """,
-            (operation_key,),
+            (workspace_id, operation_key),
         ).fetchone()
         if row is None:
             raise ContractProofError("OPERATION_NOT_FOUND")

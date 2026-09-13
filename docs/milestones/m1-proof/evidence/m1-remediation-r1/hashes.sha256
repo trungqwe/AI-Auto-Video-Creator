@@ -1,0 +1,8 @@
+f1324433d3a20fd112eed96deebd14a455b62b77a2a5de3d9ea77d7bd873ec5e  environment-live.json
+31bae731c8ec80e52fbd9a75b3969d0d556e7489f48fc13d151c0c0cfe4e9380  ../../../../../uv.lock
+b39e84c33ebcb2cbd313c57b51cc3b9a953f19bd22fb0ee07cc0291c30144d58  ../../../../../src/m1proof/contracts.py
+50779672fbff5c2535b83ec6bde51f6d174bd6101efb2607c480a38bd8e43d71  ../../../../../src/m1proof/environment.py
+b08e5ed68e5616f3b554513a2d4c289b50a6c263900b67380c9f08070040f3f4  ../../../../../src/m1proof/completion_admission.py
+a1ded8b3ab6678d3ffad7cf69fd94c8ef86d32e96a05a0f2d0e0002279adafb9  ../../../../../sql/m1/p1_schema.sql
+3b39e912a09f4a0af49b933282fb2c4559808619952152c98463adacf54c84a7  ../../../../../sql/m1/remediation_r1_up.sql
+12c35a66c71c39e58eebc8f2021aa8d9af8f7e74d60a353019928f7c8b354010  ../../../../../sql/m1/remediation_r1_down.sql

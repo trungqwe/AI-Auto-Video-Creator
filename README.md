@@ -7,7 +7,7 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | Hạng mục | Trạng thái |
 |---|---|
 | M0 Design | `APPROVED` |
-| M1 Evidence Prototype | `IN PROGRESS — P0/P1 CORRECTION_REQUIRED; P2 BLOCKED BY DEPENDENCY` |
+| M1 Evidence Prototype | `IN PROGRESS — P0/P1 PASS AFTER REMEDIATION; P2 READY` |
 | G01 Temporal | `NOT TESTED` |
 | G04 Drive/OAuth | `NOT TESTED` |
 | M2 | `NOT AUTHORIZED` |
@@ -15,7 +15,7 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 
 Phạm vi implementation hiện được phép chỉ là `M1-P0 → M1-P6`. M1 phải đi theo test-first, lưu evidence thật và dừng khi gặp điều kiện STOP. Không được bắt đầu M2, M3 hoặc Phân hệ A trước khi M1 qua exit gate, được audit và người dùng xác nhận checkpoint tiếp theo.
 
-M1-P0 đã tạo môi trường CPython 3.13.15/uv 0.12.13, frozen `uv.lock`, PostgreSQL 18.6 preflight và test harness có evidence. M1-P1 đã chứng minh trong phạm vi proof các semantics idempotency, outbox/dedupe, fencing, receipt/reconciliation và completion Unit of Work với 18 test, coverage 94%. Các kết quả này không thay đổi trạng thái `NOT TESTED` của G01/G04; work package kế tiếp là M1-P2.
+M1-P0/P1 đã qua remediation audit R1 với live environment probe, epoch authority, aggregate serialization, operation/activity receipts có scope, secret boundary và completion admission owner validation. Acceptance hiện có 42 test qua; coverage run gần nhất đạt 93%. G01/G04 vẫn `NOT TESTED`; work package kế tiếp là M1-P2.
 
 ## Bắt đầu một phiên làm việc
 
@@ -55,6 +55,6 @@ Chỉ đọc sâu contracts/ADR được work package hiện tại trích dẫn;
 
 Remote chính: <https://github.com/trungqwe/AI-Auto-Video-Creator>
 
-## Trạng thái sau audit M1 R1
+## Trạng thái sau khắc phục audit M1 R1
 
-Audit ngày 13-09-2026 tại `docs/milestones/m1-proof/audit-r1.md` mở 3 BLOCKER và 5 MAJOR. P0/P1 hiện `CORRECTION_REQUIRED`; P2 chưa được bắt đầu vì dependency chưa đạt. Các kết luận PASS trước audit trong tài liệu này chỉ là lịch sử. Giữ nguyên evidence cũ; G01/G04 NOT TESTED và M2/M3/Module A NOT AUTHORIZED. Chưa sửa implementation trong lượt audit.
+Ba BLOCKER và năm MAJOR đã được khắc phục và kiểm tra lại; evidence mới nằm tại `docs/milestones/m1-proof/evidence/m1-remediation-r1/`. P0/P1 `PASS`, P2 `READY`; M1 chưa PASS. G01/G04 vẫn `NOT TESTED`; M2/M3/Module A vẫn `NOT AUTHORIZED`.

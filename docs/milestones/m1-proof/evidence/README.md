@@ -24,6 +24,6 @@ RED của P0 phải đến từ `environment.json` chưa tồn tại hoặc sai 
 
 Hợp đồng chi tiết nằm tại [M1 implementation plan](../implementation-plan.md). Version có thẩm quyền nằm tại [M1-R1 version lock](../version-lock.md).
 
-## Trạng thái sau audit M1 R1
+## Trạng thái sau khắc phục audit M1 R1
 
-Audit ngày 13-09-2026 tại `docs/milestones/m1-proof/audit-r1.md` mở 3 BLOCKER và 5 MAJOR. P0/P1 hiện `CORRECTION_REQUIRED`; P2 chưa được bắt đầu vì dependency chưa đạt. Các kết luận PASS trước audit trong tài liệu này chỉ là lịch sử. Giữ nguyên evidence cũ; G01/G04 NOT TESTED và M2/M3/Module A NOT AUTHORIZED. Chưa sửa implementation trong lượt audit.
+Evidence remediation mới nằm tại `m1-remediation-r1/`; evidence P0/P1 lịch sử không bị sửa. Hậu kiểm đóng ba BLOCKER và năm MAJOR với giới hạn RED history được ghi rõ. P0/P1 `PASS`, P2 `READY`; G01/G04 vẫn `NOT TESTED` và M2/M3/Module A vẫn `NOT AUTHORIZED`.

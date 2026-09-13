@@ -32,6 +32,11 @@ def test_dispatch_crash_before_checkpoint_is_recovered_by_consumer_dedupe() -> N
     prepare_database()
     module = load_contract_module()
     service = module.ContractProofService(DSN)
+    service.set_workspace_epoch(
+        workspace_id="workspace-1",
+        recovery_epoch="epoch-dispatch",
+        epoch_sequence=1,
+    )
     command = module.MutationCommand(
         command_id="command-dispatch",
         idempotency_key="dispatch-key",
@@ -81,4 +86,3 @@ def test_dispatch_crash_before_checkpoint_is_recovered_by_consumer_dedupe() -> N
     assert published_at is not None
     assert apply_count == 1
     assert len(delivered) == 2
-

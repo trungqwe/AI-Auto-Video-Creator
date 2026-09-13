@@ -1,6 +1,7 @@
 import importlib
 import json
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -21,6 +22,13 @@ def prepare_database() -> None:
     with psycopg.connect(DSN, autocommit=True) as connection:
         connection.execute(schema)
         connection.execute("SELECT m1_p1_reset()")
+        connection.execute(
+            """
+            INSERT INTO workspace_epochs
+                (workspace_id, recovery_epoch, epoch_sequence, updated_at)
+            VALUES ('workspace-1', 'epoch-1', 1, now())
+            """
+        )
 
 
 def load_contract_module():
@@ -80,6 +88,71 @@ def test_concurrent_duplicate_commands_commit_only_once() -> None:
 
     assert {receipt.disposition for receipt in receipts} == {"accepted", "duplicate"}
     assert len({receipt.receipt_id for receipt in receipts}) == 1
+    assert table_count("proof_aggregates") == 1
+    assert table_count("command_receipts") == 1
+    assert table_count("outbox_events") == 1
+
+
+def test_concurrent_distinct_commands_cannot_both_create_same_revision(
+    monkeypatch,
+) -> None:
+    prepare_database()
+    module = load_contract_module()
+    real_connect = module.psycopg.connect
+    revision_read_barrier = threading.Barrier(2)
+
+    class BarrierConnection:
+        def __init__(self, connection):
+            self._connection = connection
+            self._aggregate_lock_seen = False
+
+        def __enter__(self):
+            self._connection.__enter__()
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return self._connection.__exit__(exc_type, exc_value, traceback)
+
+        def execute(self, query, params=None):
+            cursor = self._connection.execute(query, params)
+            query_text = str(query)
+            if (
+                "pg_advisory_xact_lock" in query_text
+                and params
+                and str(params[0]).startswith("aggregate:")
+            ):
+                self._aggregate_lock_seen = True
+            if (
+                not self._aggregate_lock_seen
+                and "SELECT revision" in query_text
+                and "proof_aggregates" in query_text
+            ):
+                revision_read_barrier.wait(timeout=5)
+            return cursor
+
+    def synchronized_connect(*args, **kwargs):
+        return BarrierConnection(real_connect(*args, **kwargs))
+
+    monkeypatch.setattr(module.psycopg, "connect", synchronized_connect)
+    commands = [
+        make_command(module, key="create-a", value="a"),
+        make_command(module, key="create-b", value="b"),
+    ]
+
+    def execute(command):
+        try:
+            return module.ContractProofService(DSN).execute_mutation(command)
+        except module.ContractProofError as error:
+            return error
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(execute, commands))
+
+    accepted = [item for item in outcomes if isinstance(item, module.CommandReceipt)]
+    conflicts = [item for item in outcomes if isinstance(item, module.ContractProofError)]
+    assert len(accepted) == 1
+    assert len(conflicts) == 1
+    assert "REVISION_CONFLICT" in str(conflicts[0])
     assert table_count("proof_aggregates") == 1
     assert table_count("command_receipts") == 1
     assert table_count("outbox_events") == 1

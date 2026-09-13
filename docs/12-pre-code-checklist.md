@@ -3,7 +3,7 @@
 **Ngày lập:** 12-09-2026  
 **Trạng thái:** M0 APPROVED/CLOSED; M1 đang triển khai, P0/P1 PASS và P2 là package tiếp theo
 **Cổng áp dụng:** M0 → M1 của [roadmap](./11-roadmap.md)  
-**Căn cứ audit hiện hành:** [AUDIT.md, mục 11](../AUDIT.md#11-khắc-phục-hậu-kiểm-theo-yêu-cầu-người-dùng)
+**Căn cứ audit hiện hành:** [M1 audit R1 và hậu kiểm](./milestones/m1-proof/audit-r1.md#hậu-kiểm-sau-khắc-phục)
 
 ## 1. Mục đích và cách đọc
 
@@ -22,7 +22,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | PCC-026 | ✅ `CLOSED` | User đã đọc và chấp thuận baseline hiện hành |
 | PCC-027 | ✅ `CLOSED — M1 ONLY` | Quyền implementation chỉ áp dụng M1 |
 | ROADMAP-OPEN-002 | ✅ `CLOSED_FOR_M1_R1` | Version set đã chọn; compatibility chưa được chứng minh |
-| M1 | 🟡 `IN PROGRESS — P0/P1 CORRECTION_REQUIRED; P2 BLOCKED BY DEPENDENCY` | M1 chưa PASS; G01/G04 chưa được thử |
+| M1 | 🟡 `IN PROGRESS — P0/P1 PASS AFTER REMEDIATION; P2 READY` | M1 chưa PASS; G01/G04 chưa được thử |
 | G01 Temporal | ⬜ `NOT TESTED` | P2 chưa chạy; không có kết luận scoped hoặc toàn phần |
 | G04 Drive/OAuth | ⬜ `NOT TESTED` | P3 chưa chạy; không được thay external proof bằng mock |
 | ROADMAP-OPEN-003 | 🟡 `OPEN — BLOCKS M1-P3 ONLY` | Không chặn M1-P0/P1/P2; thiếu credential thật sẽ trả `BLOCKED_EXTERNAL` |
@@ -140,12 +140,12 @@ Checklist không phải lệnh cài thư viện, khởi tạo framework, triển
 | Phạm vi work package được phép | M1-P0 → M1-P6 theo dependency; M1-P3 có thể BLOCKED_EXTERNAL. Chưa cho phép M2/M3/Phân hệ A |
 | Version set trước code | M1-R1 đã khóa; ROADMAP-OPEN-002=CLOSED_FOR_M1_R1 |
 | Thời điểm và thông điệp xác nhận | 13-09-2026; xác nhận trong yêu cầu làm rõ open case và lập kế hoạch M1 |
-| Trạng thái cổng hiện hành | M0 APPROVED; M1 IN PROGRESS — P0/P1 CORRECTION_REQUIRED; P2 BLOCKED BY DEPENDENCY; G01/G04 NOT TESTED; M2 và M3/Module A NOT AUTHORIZED |
+| Trạng thái cổng hiện hành | M0 APPROVED; M1 IN PROGRESS — P0/P1 PASS AFTER REMEDIATION; P2 READY; G01/G04 NOT TESTED; M2 và M3/Module A NOT AUTHORIZED |
 
 Trạng thái phê duyệt đã được đồng bộ vào roadmap và module plan. Nếu có sửa đổi đáng kể sau phê duyệt, xác định phần ảnh hưởng và kiểm toán lại trước khi dùng bản mới.
 
 **Kết luận:** Baseline thiết kế và version set M1-R1 đã được user chấp thuận; quyền code chỉ giới hạn M1. M1-P0/P1 đã PASS theo test-first và evidence; package tiếp theo là M1-P2. Không tự mở M2/M3/Phân hệ A.
 
-## Trạng thái sau audit M1 R1
+## Trạng thái sau khắc phục audit M1 R1
 
-Audit ngày 13-09-2026 tại `docs/milestones/m1-proof/audit-r1.md` mở 3 BLOCKER và 5 MAJOR. P0/P1 hiện `CORRECTION_REQUIRED`; P2 chưa được bắt đầu vì dependency chưa đạt. Các kết luận PASS trước audit trong tài liệu này chỉ là lịch sử. Giữ nguyên evidence cũ; G01/G04 NOT TESTED và M2/M3/Module A NOT AUTHORIZED. Chưa sửa implementation trong lượt audit.
+Các issue audit R1 đã được đóng bằng test và evidence mới tại `docs/milestones/m1-proof/evidence/m1-remediation-r1/`. P0/P1 `PASS`; P2 `READY`. G01/G04 vẫn `NOT TESTED`; ROADMAP-OPEN-003 chỉ chặn P3; M2/M3/Module A vẫn `NOT AUTHORIZED`.
