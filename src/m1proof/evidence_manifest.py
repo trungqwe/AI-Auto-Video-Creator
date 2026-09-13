@@ -35,11 +35,14 @@ REQUIRED_M1_PACKAGES = [
     "m1-p3",
     "m1-p4",
     "m1-p5",
+    "m1-p6",
 ]
 
 MANDATORY_PACKAGE_FILES = {
     "common": ["commands.jsonl", "status.md"],
     "m1-p0": ["bootstrap.json", "environment.json"],
+    "m1-p2": ["temporal_server_evidence.json"],
+    "m1-p3": ["drive_e3_evidence.json"],
     "m1-p5": ["compatibility_matrix.json"],
 }
 
@@ -233,7 +236,10 @@ def build_m1_evidence_manifest(project_root: Path) -> Dict[str, Any]:
         # Check required files
         missing_req = check_package_mandatory_files(pkg_id, pkg_dir)
         if missing_req:
-            pkg_status = f"MISSING_REQUIRED_EVIDENCE:{','.join(missing_req)}"
+            if any(f in ["temporal_server_evidence.json", "drive_e3_evidence.json"] for f in missing_req):
+                pkg_status = f"CAPABILITY_EVIDENCE_MISSING:{','.join(missing_req)}"
+            else:
+                pkg_status = f"MISSING_REQUIRED_EVIDENCE:{','.join(missing_req)}"
         else:
             pkg_status = parse_package_status_from_evidence(pkg_dir)
 
@@ -250,6 +256,27 @@ def build_m1_evidence_manifest(project_root: Path) -> Dict[str, Any]:
             "evidence_files": pkg_files,
         }
 
+    # Dynamic classification of evidence based on verified artifacts
+    p3_has_e3 = False
+    p3_cap_file = evidence_dir / "m1-p3" / "drive_e3_evidence.json"
+    if p3_cap_file.is_file():
+        try:
+            p3_data = json.loads(p3_cap_file.read_text(encoding="utf-8"))
+            if p3_data.get("status") == "PASS_E3_LIVE" and p3_data.get("sha256_verified") is True:
+                p3_has_e3 = True
+        except Exception:
+            p3_has_e3 = False
+
+    evidence_classification = {
+        "m1-p0": "E2-INT (Runtime & Live PostgreSQL 18.6 Preflight)",
+        "m1-p1": "E2-INT (Contract Fencing, Advisory CAS & Concurrency)",
+        "m1-p2": "E2-INT (Exact Temporal Server 1.31.2 Binary Integration & Replay)",
+        "m1-p3": "E3 (Live External Verification on Google Drive API & ADR-0009 Broker)" if p3_has_e3 else "E2-INT (Unproven External Scope: Missing Drive E3 Verification)",
+        "m1-p4": "E2 (SQLite WAL Journal & Windows Atomic File Write)",
+        "m1-p5": "E2-INT (Compatibility Matrix, Strict Version & ffprobe Verification)",
+        "m1-p6": "AUDIT (Fail-Closed Manifest Builder & Exit Gate Evaluation)",
+    }
+
     manifest = {
         "schema_version": "1.0",
         "milestone": "M1",
@@ -263,15 +290,7 @@ def build_m1_evidence_manifest(project_root: Path) -> Dict[str, Any]:
             "G04": "PARTIALLY_PROVEN",
             "G07": "SMOKE_COMPATIBILITY_PASS_M1_SCOPE",
         },
-        "evidence_classification": {
-            "m1-p0": "E2-INT (Runtime & Live PostgreSQL 18.6 Preflight)",
-            "m1-p1": "E2-INT (Contract Fencing, Advisory CAS & Concurrency)",
-            "m1-p2": "E2-INT (Exact Temporal Server 1.31.2 Binary Integration & Replay)",
-            "m1-p3": "E3 (Live External Probe on Google Drive API & ADR-0009 Token Broker)",
-            "m1-p4": "E2 (SQLite WAL Journal & Windows Atomic File Write)",
-            "m1-p5": "E2-INT (Compatibility Matrix, Strict Version & ffprobe Verification)",
-            "m1-p6": "AUDIT (Fail-Closed Manifest Builder & Exit Gate Evaluation)",
-        },
+        "evidence_classification": evidence_classification,
         "contracts_audited": [
             "CT-CMN-001..013",
             "CT-EVT-001..005",

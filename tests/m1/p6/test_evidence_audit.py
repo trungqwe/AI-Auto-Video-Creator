@@ -182,3 +182,40 @@ def test_tst_m1_p6_007_missing_mandatory_evidence_blocks_ready(tmp_path: Path):
 
     outcome = evaluate_milestone_gates(manifest_broken)
     assert outcome["m1_status"] != "READY_FOR_USER_CHECKPOINT"
+
+
+def test_tst_m1_p6_008_capability_evidence_fail_closed(tmp_path: Path):
+    """TST-M1-P6-008 (R4-04):
+    Manifest builder and gate engine must enforce machine-readable capability evidence:
+    - REQUIRED_M1_PACKAGES must explicitly include m1-p6.
+    - P2 requires temporal_server_evidence.json.
+    - P3 requires drive_e3_evidence.json.
+    - evidence_classification['m1-p3'] must not claim E3 without drive_e3_evidence.json.
+    """
+    from m1proof.evidence_manifest import REQUIRED_M1_PACKAGES
+
+    # 1. m1-p6 must be a required milestone package
+    assert "m1-p6" in REQUIRED_M1_PACKAGES
+
+    fake_root = tmp_path / "repo_cap"
+    evidence_dir = fake_root / "docs" / "milestones" / "m1-proof" / "evidence"
+    for pkg in REQUIRED_M1_PACKAGES:
+        pdir = evidence_dir / pkg
+        pdir.mkdir(parents=True)
+        (pdir / "status.md").write_text("Trạng thái: PASS", encoding="utf-8")
+        (pdir / "commands.jsonl").write_text("{}", encoding="utf-8")
+        (pdir / "hashes.sha256").write_text("hash  status.md", encoding="utf-8")
+        (pdir / "red-observations.md").write_text("RED", encoding="utf-8")
+
+    (evidence_dir / "m1-p0" / "bootstrap.json").write_text("{}", encoding="utf-8")
+    (evidence_dir / "m1-p0" / "environment.json").write_text("{}", encoding="utf-8")
+    (evidence_dir / "m1-p5" / "compatibility_matrix.json").write_text("{}", encoding="utf-8")
+    (fake_root / "uv.lock").write_text("uv_lock_test_content", encoding="utf-8")
+
+    # Khi thiếu temporal_server_evidence.json ở P2 -> Builder báo CAPABILITY_EVIDENCE_MISSING
+    manifest = build_m1_evidence_manifest(fake_root)
+    assert "CAPABILITY_EVIDENCE_MISSING" in manifest["packages"]["m1-p2"]["status"]
+    assert "temporal_server_evidence.json" in manifest["packages"]["m1-p2"]["status"]
+
+    # evidence_classification không được claim E3 nếu thiếu drive_e3_evidence.json
+    assert manifest["evidence_classification"]["m1-p3"] != "E3"

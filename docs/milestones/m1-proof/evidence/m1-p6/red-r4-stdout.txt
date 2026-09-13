@@ -1,0 +1,74 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 3 items
+
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_012_broker_http_process_boundary FAILED [ 33%]
+tests/m1/p5/test_compatibility_smoke.py::test_tst_m1_p5_008_dynamic_matrix_observation FAILED [ 66%]
+tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_008_capability_evidence_fail_closed FAILED [100%]
+
+================================== FAILURES ===================================
+_______________ test_tst_m1_p3_012_broker_http_process_boundary _______________
+
+    def test_tst_m1_p3_012_broker_http_process_boundary():
+        """TST-M1-P3-012 (R4-01):
+        Desktop client giao tiếp với CloudTokenBroker qua HTTP IPC process boundary.
+        Desktop chỉ nhận ephemeral access capability trong bộ nhớ (creds.refresh_token is None).
+        Desktop không sở hữu refresh token; refresh lifecycle được ủy quyền qua broker HTTP endpoint.
+        """
+>       from m1proof.broker_service import run_broker_http_server, CloudTokenBrokerServer
+E       ModuleNotFoundError: No module named 'm1proof.broker_service'
+
+tests\m1\p3\test_oauth_lifecycle.py:185: ModuleNotFoundError
+________________ test_tst_m1_p5_008_dynamic_matrix_observation ________________
+
+tmp_path = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-128/test_tst_m1_p5_008_dynamic_mat0')
+
+    def test_tst_m1_p5_008_dynamic_matrix_observation(tmp_path: Path):
+        """TST-M1-P5-008 (R4-05):
+        Compatibility matrix must be generated dynamically from real runtime observation:
+        - timestamp must reflect current UTC execution time (not hardcoded static string).
+        - observed fields must be populated from actual inspection.
+        - result must be evaluated dynamically (PASS if observed == expected, FAIL otherwise).
+        """
+        from datetime import datetime, timezone
+        matrix = generate_compatibility_matrix(output_path=tmp_path / "matrix_dyn.json")
+    
+        # 1. Timestamp must be dynamically generated (within 120s of now)
+        ts_str = matrix.get("timestamp", "")
+        matrix_time = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        delta = abs((now - matrix_time).total_seconds())
+>       assert delta < 120, f"Timestamp is hardcoded or stale! Delta: {delta}s, ts: {ts_str}"
+E       AssertionError: Timestamp is hardcoded or stale! Delta: 23547.221754s, ts: 2026-09-13T15:00:00Z
+E       assert 23547.221754 < 120
+
+tests\m1\p5\test_compatibility_smoke.py:145: AssertionError
+_____________ test_tst_m1_p6_008_capability_evidence_fail_closed ______________
+
+tmp_path = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-128/test_tst_m1_p6_008_capability_0')
+
+    def test_tst_m1_p6_008_capability_evidence_fail_closed(tmp_path: Path):
+        """TST-M1-P6-008 (R4-04):
+        Manifest builder and gate engine must enforce machine-readable capability evidence:
+        - REQUIRED_M1_PACKAGES must explicitly include m1-p6.
+        - P2 requires temporal_server_evidence.json.
+        - P3 requires drive_e3_evidence.json.
+        - evidence_classification['m1-p3'] must not claim E3 without drive_e3_evidence.json.
+        """
+        from m1proof.evidence_manifest import REQUIRED_M1_PACKAGES
+    
+        # 1. m1-p6 must be a required milestone package
+>       assert "m1-p6" in REQUIRED_M1_PACKAGES
+E       AssertionError: assert 'm1-p6' in ['m1-p0', 'm1-p1', 'm1-p2', 'm1-p3', 'm1-p4', 'm1-p5']
+
+tests\m1\p6\test_evidence_audit.py:198: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_012_broker_http_process_boundary
+FAILED tests/m1/p5/test_compatibility_smoke.py::test_tst_m1_p5_008_dynamic_matrix_observation
+FAILED tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_008_capability_evidence_fail_closed
+============================== 3 failed in 0.29s ==============================

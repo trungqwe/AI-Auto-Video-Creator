@@ -89,7 +89,7 @@ G, H và J là năng lực xuyên suốt: được dựng tối thiểu từ M2 
 | Mốc | Kết quả người dùng nhìn thấy | Phân hệ trọng tâm | Gate/checkpoint | Trạng thái |
 |---|---|---|---|---|
 | M0 | Bộ thiết kế nhất quán và quyết định cho phép code | Toàn hệ thống | Audit trước code + user approval | APPROVED / CLOSED |
-| M1 | Proof chứng minh nền workflow/storage khả thi; test harness sẵn sàng | G, I, J | G01 sớm, G04 sớm, compatibility smoke | IN PROGRESS — P0/P1 PASS AFTER REMEDIATION; P2 READY |
+| M1 | Proof chứng minh nền workflow/storage khả thi; test harness sẵn sàng | G, I, J | G01 sớm, G04 sớm, compatibility smoke | READY_FOR_USER_CHECKPOINT — P0-P6 PASS (Audit R4 hoàn tất, 87 passed, 0 skipped, coverage 87%) |
 | M2 | UI quản trị tối thiểu thấy command, state, log, config và artifact metadata | G, H, I, J | Contract/state/security foundation | NOT AUTHORIZED |
 | M3 | Thêm nguồn, quét, chuẩn hóa, chống trùng và xem bài/sự kiện | A, B, G, H | User duyệt A-B; collection/content tests | NOT AUTHORIZED — MODULE A BỊ KHÓA |
 | M4 | Kho media/hook có provenance; sync cloud/local và xử lý ảnh nền tảng | C, E một phần, I, H | Drive/integrity/cleanup checkpoint | CHƯA BẮT ĐẦU |

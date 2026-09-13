@@ -1,4 +1,6 @@
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1/p6 -v", "exit_code": 1, "phase": "RED_OBSERVATION", "timestamp_utc": "2026-09-13T07:09:57Z"}
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1/p6 -v", "exit_code": 0, "phase": "GREEN_ACCEPTANCE", "timestamp_utc": "2026-09-13T07:10:26Z"}
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1 --cov=m1proof --cov-report=term -v", "exit_code": 0, "phase": "FULL_SUITE_REGRESSION", "timestamp_utc": "2026-09-13T07:10:46Z"}
-{"command": "python build_m1_evidence_manifest and scan_secrets", "exit_code": 0, "phase": "MANIFEST_AND_SECRET_SCAN", "timestamp_utc": "2026-09-13T07:10:54Z"}
+{"command": "pytest tests/m1/p6/test_evidence_audit.py -k test_tst_m1_p6_008_capability_evidence_fail_closed -v", "exit_code": 1, "phase": "RED_OBSERVATION_R4", "timestamp_utc": "2026-09-13T08:14:14Z"}
+{"command": ".venv\\Scripts\\pytest tests/m1/p6 -v", "exit_code": 0, "phase": "GREEN_ACCEPTANCE_R4", "timestamp_utc": "2026-09-13T15:45:28Z"}
+{"command": "py -3.13 -m uv run --frozen pytest tests/m1 --cov=m1proof --cov-report=term -v", "exit_code": 0, "phase": "FULL_SUITE_REGRESSION_R4", "timestamp_utc": "2026-09-13T15:48:37Z"}

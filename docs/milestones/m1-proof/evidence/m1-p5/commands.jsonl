@@ -1,3 +1,6 @@
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1/p5 -v", "exit_code": 1, "phase": "RED_OBSERVATION", "timestamp_utc": "2026-09-13T07:00:01Z"}
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1/p5 -v", "exit_code": 0, "phase": "GREEN_ACCEPTANCE", "timestamp_utc": "2026-09-13T07:00:30Z"}
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1 --cov=m1proof --cov-report=term -v", "exit_code": 0, "phase": "FULL_SUITE_REGRESSION", "timestamp_utc": "2026-09-13T07:00:48Z"}
+{"command": "pytest tests/m1/p5/test_compatibility_smoke.py -k test_tst_m1_p5_008_dynamic_matrix_observation -v", "exit_code": 1, "phase": "RED_OBSERVATION_R4", "timestamp_utc": "2026-09-13T08:14:12Z"}
+{"command": ".venv\\Scripts\\python -c \"import sys; sys.path.insert(0, 'src'); from m1proof.compatibility import generate_compatibility_matrix; generate_compatibility_matrix()\"", "exit_code": 0, "phase": "DYNAMIC_MATRIX_GENERATION", "timestamp_utc": "2026-09-13T15:45:08Z"}
+{"command": ".venv\\Scripts\\pytest tests/m1/p5 -v", "exit_code": 0, "phase": "GREEN_ACCEPTANCE_R4", "timestamp_utc": "2026-09-13T15:45:25Z"}

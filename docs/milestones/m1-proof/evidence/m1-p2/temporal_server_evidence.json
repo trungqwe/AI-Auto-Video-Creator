@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "component": "temporal_server",
+  "expected_version": "1.31.2",
+  "observed_version": "1.31.2",
+  "binary_path": "tools/temporal/temporal-server.exe",
+  "binary_sha256": "5575b3693f37c9c0f19379a5744210ad9558ada54dadb2d1eabe74001a1f5e6b",
+  "archive_sha256": "044a4610695bb31bd5b982c818cd406c2ca88279ddaa776391a7dc909afe7a67",
+  "grpc_endpoint": "127.0.0.1:7233",
+  "persistence": "sqlite_in_memory",
+  "sdk_version": "1.32.0",
+  "integration_tests": [
+    {
+      "id": "TST-M1-P2-008",
+      "name": "exact_temporal_server_binary_handshake",
+      "status": "PASS"
+    },
+    {
+      "id": "TST-M1-P2-009",
+      "name": "exact_temporal_server_worker_roundtrip",
+      "status": "PASS"
+    },
+    {
+      "id": "TST-M1-P2-010",
+      "name": "exact_temporal_server_retry_idempotency_boundary",
+      "status": "PASS"
+    }
+  ],
+  "execution_result": "PASS",
+  "timestamp_utc": "2026-09-13T07:44:15Z"
+}

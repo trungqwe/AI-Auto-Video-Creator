@@ -1,10 +1,12 @@
 # M1-P3 — Bằng chứng quan sát RED (Test-First)
 
-**Ngày ghi nhận:** 13-09-2026  
-**Lệnh thực thi:** `py -3.13 -m uv run --frozen pytest tests/m1/p3 -v`  
-**Kết quả:** 5 FAILED, 2 PASSED trong 0.37s (exit code 1).
+**Ngày ghi nhận ban đầu:** 13-09-2026  
+**Lệnh thực thi ban đầu:** `py -3.13 -m uv run --frozen pytest tests/m1/p3 -v`  
+**Kết quả ban đầu:** 5 FAILED, 2 PASSED trong 0.37s (exit code 1).
 
-## Chi tiết các ca kiểm thử RED đúng Oracle
+---
+
+## 1. Chi tiết các ca kiểm thử RED ban đầu (M1-P3 Implementation Phase)
 
 1. **`TST-M1-P3-002` (`test_drive_resumable_upload.py`):**
    - **Mục tiêu:** Phân loại timeout mạng trước/sau khi gửi byte (phân biệt `RETRYABLE` vs `UNKNOWN_OUTCOME`).
@@ -33,4 +35,19 @@
 
 ---
 
-Bằng chứng RED này chứng minh các bài kiểm thử M1-P3 đã phản ánh đúng các invariant nghiệp vụ trước khi triển khai mã nguồn chính thức.
+## 2. Ghi nhận Độ lệch Lịch sử (Historical Deviation Note)
+
+> [!WARNING]
+> **Deviation: `RED_EVIDENCE_MISSING_FOR_R3_REMEDIATION`**  
+> Trong đợt kiểm toán độc lập R3, các ca kiểm thử `TST-M1-P3-008..011` đã được phát triển để khắc phục ADR-0009 nhưng chưa lưu tách riêng tệp log stdout của giai đoạn RED trước khi viết mã nguồn. Để tuân thủ nguyên tắc minh bạch tuyệt đối, độ lệch này được ghi nhận công khai và không phục dựng log giả mạo.
+
+---
+
+## 3. Bằng chứng Quan sát RED Đợt Audit R4 (R4-03 Evidence)
+
+Trước khi thực hiện cải tiến R4 (HTTP Process Boundary cho Broker), bài kiểm thử `TST-M1-P3-012` đã được tạo lập trước và chứng kiến trạng thái RED đúng oracle:
+
+- **Lệnh thực thi:** `pytest tests/m1/p3/test_oauth_lifecycle.py -k test_tst_m1_p3_012_broker_http_process_boundary -v`
+- **Kết quả:** `FAILED` đúng oracle (exit code 1).
+- **Hiện tượng quan sát:** `ImportError: cannot import name 'CloudTokenBrokerServer' from 'm1proof.broker_service'`
+- **Tệp bằng chứng thô:** `docs/milestones/m1-proof/evidence/m1-p6/red-r4-stdout.txt`

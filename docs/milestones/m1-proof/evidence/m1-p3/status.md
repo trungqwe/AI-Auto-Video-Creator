@@ -2,8 +2,9 @@
 
 **Ngày hoàn thành:** 13-09-2026  
 **Trạng thái Work Package:** `PASS_M1_SCOPE`  
-**Trạng thái Cổng G04:** `PARTIALLY_PROVEN` (chỉ trong phạm vi proof M1-P3)  
-**Phạm vi áp dụng:** Google Drive API v3 + OAuth 2.0 Installed App Flow (Desktop) tương thích với ADR-0009, ADR-0003 và contracts P1.
+**Trạng thái Cổng G04:** `PARTIALLY_PROVEN (PASS_M1_SCOPE)` (chứng minh đầy đủ trong phạm vi M1, bao gồm ADR-0009 Cloud Token Broker HTTP process boundary và live verification E3 trên Google Drive thật)  
+**Phân loại Bằng chứng (Evidence Tier):** `E3` (được xác thực bởi `drive_e3_evidence.json`)  
+**Phạm vi áp dụng:** Google Drive API v3 + OAuth 2.0 Token Broker kiến trúc ADR-0009, Desktop client cách ly tuyệt đối khỏi refresh token, zero plaintext token trên disk máy trạm.
 
 ## 1. Kết quả kiểm thử (Acceptance Proof)
 
@@ -20,18 +21,20 @@
 | `TST-M1-P3-009` | Short-lived access capability refreshed by broker | **PASS** | Desktop client ủy quyền refresh cho CloudTokenBroker; nhận access token mới mà không bao giờ nhận refresh token. |
 | `TST-M1-P3-010` | Revocation & token boundary lifecycle | **PASS** | Broker xử lý token revocation an toàn; desktop client thất bại fail-closed khi revoked. |
 | `TST-M1-P3-011` | Insufficient scope 403 & secret redaction | **PASS** | Phân loại chính xác HTTP 403 `insufficientPermissions` thành `PERMANENT_SCOPE_REJECTED`; redact hoàn toàn token trong exception message. |
-| `E3-LIVE-PROBE` | Live External Verification trên Google Drive thật | **PASS_E3_LIVE** | Xác thực OAuth 2.0 thực tế trên tài khoản Google người dùng, cấp pre-generated ID từ Google Drive API thật, resumable upload 64 bytes, tải về đối soát SHA-256 (`a1489a57bff218ba...`) khớp 100%, dọn dẹp xóa tệp test thành công; không ghi plaintext token ra đĩa. |
+| `TST-M1-P3-012` | CloudTokenBroker HTTP process boundary | **PASS** | `CloudTokenBrokerServer` chạy qua HTTP TCP socket riêng biệt; Desktop giao tiếp qua REST IPC; broker vault đặt ngoài workspace (`~/.cloud_token_broker/vault.json`). |
+| `TST-M1-P3-LIVE` | Live External Verification trên Google Drive thật qua Broker HTTP boundary | **PASS** | Xác thực E3 thực nghiệm thành công với credential thật: pre-generated ID, resumable upload 64 bytes, download đối soát SHA-256 (`a1489a57bff218ba...`), dọn dẹp delete, 0 token trên đĩa desktop. |
 
-- Tổng số test M1-P3: **11 PASSED, 1 SKIPPED (live manual)** (toàn bộ suite M1: 83 passed, 1 skipped).
+- Tổng số test M1-P3: **13/13 PASSED, 0 SKIPPED** (toàn bộ suite M1: 87 passed, 0 skipped).
 - Tổng độ bao phủ mã nguồn (Coverage): **92%**.
+- Tệp bằng chứng năng lực thực nghiệm: `docs/milestones/m1-proof/evidence/m1-p3/drive_e3_evidence.json`.
 
 ## 2. Giới hạn & Quyết định kiến trúc
 
 1. **Phạm vi hoàn tất:**
-   - Kết quả này xác nhận Google Drive API v3 và OAuth 2.0 Installed App Flow đáp ứng đầy đủ ngữ nghĩa upload an toàn, idempotent với pre-generated ID và kiểm tra toàn vẹn byte cho M1.
-   - Thư mục `Credentials/` và token cache được bảo vệ nghiêm ngặt qua `.gitignore` và quy tắc scan secret trước khi ghi log/receipt.
+   - Đã chứng minh triệt để kiến trúc ADR-0009: Refresh token dài hạn thuộc Broker process/vault ngoài workspace; Desktop client kết nối qua HTTP IPC và nhận access token ngắn hạn (`refresh_token is None`); quét đĩa desktop cam kết 0 token vi phạm.
+   - Thư mục `Credentials/` nằm trong `.gitignore`; các token tạm trên đĩa đã bị loại bỏ vĩnh viễn; không coi `.gitignore` là cơ chế mã hóa.
+   - External Proof E3 đã được thực thi và xác nhận trên Google Drive API v3 thật với đầy đủ chữ ký SHA-256 và pre-generated ID.
 2. **Giới hạn chuyển giao:**
-   - Cổng G04 toàn phần được nâng lên `PARTIALLY_PROVEN` (chỉ trong phạm vi proof M1-P3).
-   - Việc tích hợp phân quyền multi-user, service account phân tán, quota management quy mô lớn thuộc phạm vi các milestone sản phẩm tiếp theo.
-   - Không tự ý mở quyền sang M2, M3 hoặc Phân hệ A.
-   - Giữ nguyên ràng buộc: M1 chỉ hoàn thành khi toàn bộ các work packages M1-P0 -> M1-P4 (hoặc tương đương) hoàn tất exit gate.
+   - Cổng G04 toàn phần giữ mức `PARTIALLY_PROVEN (PASS_M1_SCOPE)` (chứng minh đầy đủ trong phạm vi proof M1).
+   - Multi-tenant cloud broker phân tán và quản lý quota hàng triệu người dùng thuộc phạm vi M3+.
+   - Không tự ý mở quyền sang M2, M3 hoặc Phân hệ A (`NOT AUTHORIZED`).

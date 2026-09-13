@@ -1,10 +1,12 @@
 # M1-P6 — Red Observations (Test-First Evidence)
 
-**Ngày ghi nhận:** 13-09-2026  
-**Lệnh thực thi:** `py -3.13 -m uv run --frozen pytest tests/m1/p6 -v`  
-**Kết quả quan sát:** 5 FAILED in 0.07s (Exit Code: 1)
+**Ngày ghi nhận ban đầu:** 13-09-2026  
+**Lệnh thực thi ban đầu:** `py -3.13 -m uv run --frozen pytest tests/m1/p6 -v`  
+**Kết quả quan sát ban đầu:** 5 FAILED in 0.07s (Exit Code: 1)
 
-## Danh sách các ca kiểm thử thất bại theo đúng Oracle
+---
+
+## 1. Danh sách các ca kiểm thử thất bại ban đầu theo đúng Oracle
 
 | Test ID | Tên ca kiểm thử | Nguyên nhân RED quan sát được |
 |---|---|---|
@@ -14,17 +16,21 @@
 | `TST-M1-P6-004` | `test_tst_m1_p6_004_scoped_gate_boundary_protection` | `NotImplementedError: Stub: evaluate_milestone_gates not implemented` |
 | `TST-M1-P6-005` | `test_tst_m1_p6_005_secret_and_canary_scanner_fail_closed` | `NotImplementedError: Stub: scan_secrets_in_directory not implemented` |
 
-## Trích xuất log kiểm thử RED
+---
 
-```text
-=========================== short test summary info ===========================
-FAILED tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_001_manifest_schema_and_completeness_validation
-FAILED tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_002_artifact_hash_tampering_and_missing_file_detection
-FAILED tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_003_milestone_exit_rule_engine_gate_enforcement
-FAILED tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_004_scoped_gate_boundary_protection
-FAILED tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_005_secret_and_canary_scanner_fail_closed
-============================== 5 failed in 0.07s ==============================
-```
+## 2. Ghi nhận Độ lệch Lịch sử (Historical Deviation Note)
 
-## Kết luận
-Bằng chứng RED được xác nhận hợp lệ: toàn bộ 5 bài test thất bại thuần túy do thiếu mã nguồn nghiệp vụ thực tế trong stub, không có lỗi cấu hình hay thiếu package môi trường.
+> [!WARNING]
+> **Deviation: `RED_EVIDENCE_MISSING_FOR_R3_REMEDIATION`**  
+> Trong đợt kiểm toán độc lập R3, các ca kiểm thử `TST-M1-P6-006` (fail-closed package status parser) và `TST-M1-P6-007` (missing mandatory evidence blocks ready) đã được phát triển để tăng cường an toàn cho manifest builder nhưng chưa lưu tách riêng tệp log stdout của giai đoạn RED. Độ lệch này được ghi nhận công khai theo nguyên tắc minh bạch dữ liệu kiểm toán.
+
+---
+
+## 3. Bằng chứng Quan sát RED Đợt Audit R4 (R4-03 Evidence)
+
+Trước khi thực hiện cải tiến R4 (Capability Evidence Fail-Closed & Package Inclusion), bài kiểm thử `TST-M1-P6-008` đã được tạo lập trước và chứng kiến trạng thái RED đúng oracle:
+
+- **Lệnh thực thi:** `pytest tests/m1/p6/test_evidence_audit.py -k test_tst_m1_p6_008_capability_evidence_fail_closed -v`
+- **Kết quả:** `FAILED` đúng oracle (exit code 1).
+- **Hiện tượng quan sát:** `AssertionError: assert 'm1-p6' in REQUIRED_M1_PACKAGES` (m1-p6 chưa được đưa vào mandatory packages hoặc thiếu capability check cho p2/p3/p5).
+- **Tệp bằng chứng thô:** `docs/milestones/m1-proof/evidence/m1-p6/red-r4-stdout.txt`

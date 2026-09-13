@@ -31,6 +31,7 @@ def sample_valid_manifest() -> Dict[str, Any]:
             "m1-p3": {"status": "PASS", "evidence_files": []},
             "m1-p4": {"status": "PASS", "evidence_files": []},
             "m1-p5": {"status": "PASS", "evidence_files": []},
+            "m1-p6": {"status": "PASS", "evidence_files": []},
         },
         "gates": {
             "G01": "PARTIALLY_PROVEN",

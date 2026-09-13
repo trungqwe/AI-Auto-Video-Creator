@@ -125,3 +125,28 @@ def test_tst_m1_p5_007_machine_readable_compatibility_matrix(tmp_path: Path):
     assert matrix["runtimes"]["postgresql"]["expected"] == "18.6"
     assert matrix["runtimes"]["temporal_server"]["expected"] == "1.31.2"
     assert matrix["runtimes"]["ffmpeg"]["binary_sha256"] == "f845a09b5467cf11651385e0be0dd4df6f70519264f8af2115e3acd6ab7f9480"
+
+
+def test_tst_m1_p5_008_dynamic_matrix_observation(tmp_path: Path):
+    """TST-M1-P5-008 (R4-05):
+    Compatibility matrix must be generated dynamically from real runtime observation:
+    - timestamp must reflect current UTC execution time (not hardcoded static string).
+    - observed fields must be populated from actual inspection.
+    - result must be evaluated dynamically (PASS if observed == expected, FAIL otherwise).
+    """
+    from datetime import datetime, timezone
+    import platform
+    matrix = generate_compatibility_matrix(output_path=tmp_path / "matrix_dyn.json")
+
+    # 1. Timestamp must be dynamically generated (within 120s of now)
+    ts_str = matrix.get("timestamp", "")
+    matrix_time = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+    now = datetime.now(timezone.utc)
+    delta = abs((now - matrix_time).total_seconds())
+    assert delta < 120, f"Timestamp is hardcoded or stale! Delta: {delta}s, ts: {ts_str}"
+
+    # 2. Results must be dynamically evaluated based on matching
+    cpython_entry = matrix["runtimes"]["cpython"]
+    assert cpython_entry["observed"] == platform.python_version()
+    expected_result = "PASS" if cpython_entry["observed"] == cpython_entry["expected"] else "FAIL"
+    assert cpython_entry["result"] == expected_result

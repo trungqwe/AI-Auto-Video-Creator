@@ -20,8 +20,9 @@
 | `TST-M1-P2-009` | Exact Temporal Server 1.31.2 worker roundtrip | **PASS** | Đăng ký namespace, khởi động Temporal Worker, thực thi Workflow + Activity roundtrip trên server 1.31.2 thật. |
 | `TST-M1-P2-010` | Exact Temporal Server 1.31.2 retry idempotency | **PASS** | Mô phỏng transient activity failure; Temporal server 1.31.2 thực hiện retry tự động, activity hoàn thành chính xác 1 lần. |
 
-- Tổng số test M1-P2: **10/10 PASSED** (toàn bộ suite M1: 83 passed, 1 skipped).
+- Tổng số test M1-P2: **10/10 PASSED** (toàn bộ suite M1: 87 passed, 0 skipped).
 - Tổng độ bao phủ mã nguồn (Coverage): **93%**.
+- Tệp bằng chứng máy chủ thực tế: `docs/milestones/m1-proof/evidence/m1-p2/temporal_server_evidence.json`.
 
 ## 2. Giới hạn & Quyết định kiến trúc
 
@@ -30,5 +31,5 @@
    - Trạng thái ADR-0003 chuyển từ `Conditional` sang `PROVEN_IN_M1_SCOPE`.
 2. **Giới hạn chuyển giao:**
    - Cổng G01 toàn phần vẫn ở mức `PARTIALLY_PROVEN` do các bài kiểm thử nâng cấp server dài hạn và replay trên môi trường production thực tế thuộc trách nhiệm của các milestone M2–M7.
-   - Không tự ý mở quyền sang M2, M3 hoặc Phân hệ A.
-   - Cổng G04 (Drive/OAuth M1-P3) tiếp tục giữ trạng thái `NOT TESTED` và bị chặn bởi `ROADMAP-OPEN-003` cho đến khi có credential thật.
+   - Không tự ý mở quyền sang M2, M3 hoặc Phân hệ A (`NOT AUTHORIZED`).
+   - Cổng G04 (Drive/OAuth M1-P3) đã được xác thực thành công trong phạm vi M1-P3 qua ADR-0009 Cloud Token Broker HTTP boundary và E3 live probe.

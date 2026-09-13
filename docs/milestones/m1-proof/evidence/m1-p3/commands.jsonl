@@ -1,5 +1,8 @@
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1/p3 -v", "exit_code": 1, "phase": "RED_OBSERVATION", "timestamp_utc": "2026-09-13T06:22:15Z"}
-{"command": "py -3.13 -m uv run --frozen python -u src/m1proof/drive_live_probe.py", "exit_code": 0, "phase": "LIVE_E3_PROBE", "timestamp_utc": "2026-09-13T06:39:24Z"}
+{"command": "py -3.13 -m uv run --frozen python -u src/m1proof/drive_live_probe.py", "exit_code": 0, "phase": "LIVE_E3_PROBE_INITIAL", "timestamp_utc": "2026-09-13T06:39:24Z"}
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1/p3 -v", "exit_code": 0, "phase": "GREEN_ACCEPTANCE", "timestamp_utc": "2026-09-13T06:39:34Z"}
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1 --cov=m1proof --cov-report=term -v", "exit_code": 0, "phase": "FULL_SUITE_REGRESSION", "timestamp_utc": "2026-09-13T06:39:50Z"}
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1/p3 -v", "exit_code": 0, "phase": "ADR_0009_REMEDIATION_ACCEPTANCE", "timestamp_utc": "2026-09-13T07:29:40Z"}
+{"command": "pytest tests/m1/p3/test_oauth_lifecycle.py -k test_tst_m1_p3_012_broker_http_process_boundary -v", "exit_code": 1, "phase": "RED_OBSERVATION_R4", "timestamp_utc": "2026-09-13T08:14:10Z"}
+{"command": ".venv\\Scripts\\python src/m1proof/drive_live_probe.py", "exit_code": 0, "phase": "LIVE_E3_PROBE_BROKER_BOUNDARY", "timestamp_utc": "2026-09-13T08:47:35Z"}
+{"command": ".venv\\Scripts\\pytest tests/m1/p3 -v", "exit_code": 0, "phase": "GREEN_ACCEPTANCE_R4", "timestamp_utc": "2026-09-13T08:47:50Z"}

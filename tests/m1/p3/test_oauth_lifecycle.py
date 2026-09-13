@@ -174,3 +174,37 @@ def test_tst_m1_p3_011_insufficient_scope_classification():
     )
     assert result["classification"] == "INSUFFICIENT_SCOPE_ERROR"
     assert result["retryable"] is False
+
+
+def test_tst_m1_p3_012_broker_http_process_boundary():
+    """TST-M1-P3-012 (R4-01):
+    Desktop client giao tiếp với CloudTokenBroker qua HTTP IPC process boundary.
+    Desktop chỉ nhận ephemeral access capability trong bộ nhớ (creds.refresh_token is None).
+    Desktop không sở hữu refresh token; refresh lifecycle được ủy quyền qua broker HTTP endpoint.
+    """
+    from m1proof.broker_service import run_broker_http_server, CloudTokenBrokerServer
+    from m1proof.oauth_broker import DesktopOAuthClient
+
+    server = CloudTokenBrokerServer(host="127.0.0.1", port=18088)
+    server.start()
+    try:
+        server.register_account("acc-http-test", refresh_token="1//MOCK_REAL_REFRESH_TOKEN_PROC_BOUNDARY")
+        desktop = DesktopOAuthClient(broker_url=f"http://127.0.0.1:{server.port}", account_id="acc-http-test")
+
+        # 1. Desktop xin access token qua HTTP
+        creds = desktop.acquire_short_lived_credentials()
+        assert creds.token is not None
+        assert creds.refresh_token is None  # Ranh giới: Desktop không nhận refresh token
+
+        # 2. Desktop xin refresh qua HTTP broker
+        new_creds = desktop.refresh_via_broker()
+        assert new_creds.token is not None
+        assert new_creds.token != creds.token
+        assert new_creds.refresh_token is None
+
+        # 3. Desktop revoke qua HTTP broker
+        revoked = desktop.revoke()
+        assert revoked is True
+        assert desktop.has_active_credentials() is False
+    finally:
+        server.stop()

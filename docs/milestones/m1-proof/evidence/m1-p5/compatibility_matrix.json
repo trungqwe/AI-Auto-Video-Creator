@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "milestone": "M1-R1",
-  "timestamp": "2026-09-13T15:00:00Z",
+  "timestamp": "2026-09-13T08:45:10.383431+00:00",
   "runtimes": {
     "cpython": {
       "expected": "3.13.15",

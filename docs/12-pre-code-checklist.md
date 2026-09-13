@@ -1,9 +1,9 @@
 # AI Auto Video Creator — Checklist cuối trước code
 
-**Ngày lập:** 12-09-2026 (Cập nhật sau Audit R3: 13-09-2026)  
-**Trạng thái:** M0 APPROVED/CLOSED; M1 HOÀN TẤT KHẮC PHỤC KIỂM TOÁN ĐỘC LẬP (P0-P6 PASS, 83 passed, 1 skipped), Audit R3 hoàn tất -> Chờ User Checkpoint duyệt M1  
+**Ngày lập:** 12-09-2026 (Cập nhật sau Audit R4: 13-09-2026)  
+**Trạng thái:** M0 APPROVED/CLOSED; M1 HOÀN TẤT KHẮC PHỤC KIỂM TOÁN ĐỘC LẬP R4 (P0-P6 PASS, 87 passed, 0 skipped, coverage 87%), Audit R4 hoàn tất -> Sẵn sàng cho User Checkpoint duyệt M1  
 **Cổng áp dụng:** M0 → M1 của [roadmap](./11-roadmap.md)  
-**Căn cứ audit hiện hành:** [M1 audit R3](./milestones/m1-proof/audit-r3.md), [M1 audit R2](./milestones/m1-proof/audit-r2.md) và [M1 audit R1](./milestones/m1-proof/audit-r1.md)
+**Căn cứ audit hiện hành:** [M1 audit R4](./milestones/m1-proof/audit-r4.md), [M1 audit R3](./milestones/m1-proof/audit-r3.md), [M1 audit R2](./milestones/m1-proof/audit-r2.md) và [M1 audit R1](./milestones/m1-proof/audit-r1.md)
 
 ## 1. Mục đích và cách đọc
 
@@ -12,7 +12,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 - `[x]` nghĩa là có bằng chứng hoàn tất **ở cấp tài liệu** trong phạm vi nêu rõ.
 - `[ ]` nghĩa là chưa hoàn tất hoặc chưa có xác nhận; không được tự đánh dấu để mở cổng.
 - “Không còn BLOCKER” chỉ nói đến phát hiện thiết kế đã biết sau khắc phục, không có nghĩa mọi proof, cấu hình production hoặc kiểm thử runtime đã đạt.
-- Phê duyệt baseline và quyền code M1 đã được ghi nhận ngày 13-09-2026. Quyền đó đã được kích hoạt cho M1; P0-P6 đã hoàn tất và vượt qua Audit R3, nhưng không mở quyền cho M2/M3/Phân hệ A.
+- Phê duyệt baseline và quyền code M1 đã được ghi nhận ngày 13-09-2026. Quyền đó đã được kích hoạt cho M1; P0-P6 đã hoàn tất và vượt qua Audit R4, nhưng không mở quyền cho M2/M3/Phân hệ A.
 
 ### 1.1. Trạng thái cổng hiện hành
 
@@ -22,11 +22,11 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | PCC-026 | ✅ `CLOSED` | User đã đọc và chấp thuận baseline hiện hành |
 | PCC-027 | ✅ `CLOSED — M1 ONLY` | Quyền implementation chỉ áp dụng M1 (đã hoàn tất P0-P6) |
 | ROADMAP-OPEN-002 | ✅ `CLOSED_FOR_M1_R1` | Version set đã chọn; compatibility đã test strict và matrix export ở P5 |
-| M1 | 🟢 `READY_FOR_USER_CHECKPOINT` | Toàn bộ P0-P6 đã PASS; 83 passed, 1 skipped; Audit R3 đạt; sẵn sàng trình User |
+| M1 | 🟢 `READY_FOR_USER_CHECKPOINT` | Toàn bộ P0-P6 đã PASS; 87 passed, 0 skipped; Audit R4 đạt; sẵn sàng trình User |
 | G01 Temporal | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P2 đã PASS trên exact official binary `temporal-server.exe` v1.31.2 port 7233 |
-| G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS (ADR-0009 Cloud Token Broker, 0 refresh token trên disk, E3 live probe) |
-| G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS strict version (Python, uv, PG, Temporal, ffprobe WAV duration > 0) |
-| ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất |
+| G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS E3 (ADR-0009 Cloud Token Broker HTTP boundary, 0 refresh token trên disk, live E3 probe xác thực Drive thật) |
+| G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS strict version (Python, uv, PG, Temporal, ffprobe WAV duration > 0, dynamic matrix observation) |
+| ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất qua Broker HTTP boundary |
 | M2 | ⛔ `NOT AUTHORIZED` | Chỉ được xem xét sau M1 exit, audit và checkpoint user |
 | M3 / Module A | ⛔ `NOT AUTHORIZED` | Không được triển khai trong M1 |
 

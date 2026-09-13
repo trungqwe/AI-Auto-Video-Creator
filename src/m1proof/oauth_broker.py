@@ -55,18 +55,38 @@ class DesktopOAuthClient:
     """Desktop client operating under ADR-0009 constraints.
     
     Holds ONLY short-lived access tokens in memory.
+    Communicates with CloudTokenBroker via HTTP IPC or local broker instance.
     Cannot refresh directly without delegating to the Cloud Token Broker.
     """
 
-    def __init__(self, broker: CloudTokenBroker, account_id: str):
+    def __init__(
+        self,
+        broker: Optional[CloudTokenBroker] = None,
+        account_id: str = "default",
+        broker_url: Optional[str] = None,
+    ):
         self.broker = broker
         self.account_id = account_id
+        self.broker_url = broker_url.rstrip("/") if broker_url else None
         self._credentials: Optional[Credentials] = None
 
     def acquire_short_lived_credentials(self) -> Credentials:
         """Acquire short-lived credentials from broker without receiving refresh token."""
-        token_str = self.broker.mint_short_lived_token(self.account_id)
-        # Explicitly set refresh_token=None to enforce ADR-0009 boundary in memory
+        if self.broker_url:
+            import urllib.request
+            req = urllib.request.Request(
+                f"{self.broker_url}/api/token",
+                data=json.dumps({"account_id": self.account_id}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                token_str = data["access_token"]
+        elif self.broker:
+            token_str = self.broker.mint_short_lived_token(self.account_id)
+        else:
+            raise ValueError("Neither broker instance nor broker_url provided")
+
         creds = Credentials(
             token=token_str,
             refresh_token=None,
@@ -77,6 +97,23 @@ class DesktopOAuthClient:
 
     def refresh_via_broker(self) -> Credentials:
         """When access token expires, desktop delegates refresh to broker."""
+        if self.broker_url:
+            import urllib.request
+            req = urllib.request.Request(
+                f"{self.broker_url}/api/refresh",
+                data=json.dumps({"account_id": self.account_id}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                token_str = data["access_token"]
+            creds = Credentials(
+                token=token_str,
+                refresh_token=None,
+                scopes=DRIVE_FILE_SCOPE,
+            )
+            self._credentials = creds
+            return creds
         return self.acquire_short_lived_credentials()
 
     def get_credentials(self) -> Optional[Credentials]:
@@ -87,7 +124,24 @@ class DesktopOAuthClient:
 
     def revoke(self) -> bool:
         """Revoke credentials at broker and clear local memory."""
-        broker_revoked = self.broker.revoke(self.account_id)
+        if self.broker_url:
+            import urllib.request
+            req = urllib.request.Request(
+                f"{self.broker_url}/api/revoke",
+                data=json.dumps({"account_id": self.account_id}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    broker_revoked = (data.get("status") == "REVOKED")
+            except Exception:
+                broker_revoked = False
+        elif self.broker:
+            broker_revoked = self.broker.revoke(self.account_id)
+        else:
+            broker_revoked = False
+
         self._credentials = None
         return broker_revoked
 

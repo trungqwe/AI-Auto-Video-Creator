@@ -81,13 +81,15 @@
         "commands.jsonl",
         "hashes.sha256",
         "red-observations.md",
-        "status.md"
+        "status.md",
+        "temporal_server_evidence.json"
       ]
     },
     "m1-p3": {
       "status": "PASS",
       "evidence_files": [
         "commands.jsonl",
+        "drive_e3_evidence.json",
         "hashes.sha256",
         "red-observations.md",
         "status.md"
@@ -111,6 +113,16 @@
         "red-observations.md",
         "status.md"
       ]
+    },
+    "m1-p6": {
+      "status": "PASS",
+      "evidence_files": [
+        "commands.jsonl",
+        "hashes.sha256",
+        "red-observations.md",
+        "red-r4-stdout.txt",
+        "status.md"
+      ]
     }
   },
   "gates": {
@@ -122,7 +134,7 @@
     "m1-p0": "E2-INT (Runtime & Live PostgreSQL 18.6 Preflight)",
     "m1-p1": "E2-INT (Contract Fencing, Advisory CAS & Concurrency)",
     "m1-p2": "E2-INT (Exact Temporal Server 1.31.2 Binary Integration & Replay)",
-    "m1-p3": "E3 (Live External Probe on Google Drive API & ADR-0009 Token Broker)",
+    "m1-p3": "E3 (Live External Verification on Google Drive API & ADR-0009 Broker)",
     "m1-p4": "E2 (SQLite WAL Journal & Windows Atomic File Write)",
     "m1-p5": "E2-INT (Compatibility Matrix, Strict Version & ffprobe Verification)",
     "m1-p6": "AUDIT (Fail-Closed Manifest Builder & Exit Gate Evaluation)"
@@ -374,11 +386,11 @@
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p2/commands.jsonl",
-      "sha256": "28c8dbd7a6aa1f809746c52f6c091cf80198bc16fc650cbcb0f8e8e7a211ec1d"
+      "sha256": "44e1df3b266c0ddd9cef57ba6f584ad921a80593d57947a7c514617697386202"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p2/hashes.sha256",
-      "sha256": "ab14fd6611d296ae1191aac4ff77b9775326a6b287da4da55d73fa9eaca6a973"
+      "sha256": "3aa4f8e4bdcc5e7f5d39edbc75451ac53b1e41ff76e890da6bc542207343af7c"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p2/red-observations.md",
@@ -386,23 +398,31 @@
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p2/status.md",
-      "sha256": "3ab99f2db4746a3314b6a8769c15fa38982e786badcd0fd6434acf0b0e7f0a29"
+      "sha256": "58c77be90193dbfdf2f8a890b9a67682212a6721e1137ad88a21cc1a8ddcd5d7"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p2/temporal_server_evidence.json",
+      "sha256": "265bca45318b6080e9ea0ae66763378364c6bfed4cb7da171cdd981299c54fd2"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p3/commands.jsonl",
-      "sha256": "883a5972b360082ef2e917781647163ae8c9e5f38d537332926077e099386c48"
+      "sha256": "ef685808af9c38ea1186daa44d36ac2cacd49582af3cc493180f5d8db1314562"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p3/drive_e3_evidence.json",
+      "sha256": "c30e8f8ce0d5fde7e853220fc0abc2941080e7c02898ddf89a5efb4de8154146"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p3/hashes.sha256",
-      "sha256": "248014f255804f59120efd3c358ae7a737732523ec03f09c5f6b88a522856ecf"
+      "sha256": "89081fd2fbbbc58a90842ffe876b44b678b0282ef6373684473cfadce77c41b5"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p3/red-observations.md",
-      "sha256": "3ee4f65a189081e075ed547c9a1814a83cf20c37af1ce444e2ccb8d4af4126d0"
+      "sha256": "007c370f3d54855a5d326150a37f864d653ac9b4de4bc91cb40c03bb3b137860"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p3/status.md",
-      "sha256": "f95046c1d48a738c0c1ed032eb6a8870c8d9c53edd3eb702e4cd6a423cd08d29"
+      "sha256": "a2d227dede0bb4f7cb844ad39e5b2fb19434451d59d477afff630c2c888793a7"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p4/commands.jsonl",
@@ -422,23 +442,43 @@
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p5/commands.jsonl",
-      "sha256": "c80326547a7eefe5394ef6adc7ccbecdd7b76d94b8badf404a9240426729fa07"
+      "sha256": "5d55f8a11f0fa9278e32333e7b6ff2228c6c709714cc52a5cc6cb13434ecbf84"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p5/compatibility_matrix.json",
-      "sha256": "389c4e463ef7ef7c8d8e964027e06307eeac9c06f6046702931d87118a3369ab"
+      "sha256": "f8d74f73c016c920614d1e186e27a5fa8b0238ca3a47d52a6e9e062467116fe5"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p5/hashes.sha256",
-      "sha256": "8d9fc7b6f640b7acd23a618910b8c8c6183408706766ef1309e3681ffdceb4df"
+      "sha256": "e69ef5a8b2030775a3e93a32fa6f768ecb2cee8bdbfb82258597e25c16969330"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p5/red-observations.md",
-      "sha256": "411d3705e262bbe8ef5468271ba84ae7bee0f735310e190601da16bdc685479e"
+      "sha256": "e7d745e2f760e5ca167b54f7059186fefc1fe08a9b8f68007310723090732cfb"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p5/status.md",
-      "sha256": "a2c1a1a8068491c14df80351933c7dc8e7ed4edb359c54076d149c46cfae658c"
+      "sha256": "cae6a849e6e8282c887749642e03d13545cdc760aa6b03b118f19b4b160460e6"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p6/commands.jsonl",
+      "sha256": "48075d56b20f7722c503d265cc730d8f844b047ea84c3c1007ca38702b1c2054"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p6/hashes.sha256",
+      "sha256": "043cbf43b571e08df44b1b7c16d99f96c686e3d563cf9f2d0c8695024eb2858c"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p6/red-observations.md",
+      "sha256": "376c37b52268f39d812f0eaccc48f0b30968d8f07b22c044ae34c0959c77d31c"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p6/red-r4-stdout.txt",
+      "sha256": "3d0a90f110ec7c8c955559415e5a7ba15685d3bf8693ee123279da309cea412f"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p6/status.md",
+      "sha256": "5c9302772485bfe304331b1d2583ed8e9c17ca96e76263bb308d7fb0447f76ef"
     }
   ]
 }
