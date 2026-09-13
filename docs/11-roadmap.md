@@ -1,7 +1,7 @@
 # AI Auto Video Creator - Lộ trình xây dựng toàn dự án
 
 **Tệp:** `docs/11-roadmap.md`  
-**Trạng thái:** Đã được người dùng phê duyệt làm baseline; M0 CLOSED, M1 READY_FOR_USER_CHECKPOINT (Hoàn tất Audit R5.1, 93 tests PASSED)  
+**Trạng thái:** Đã được người dùng phê duyệt làm baseline; M0 APPROVED/CLOSED; M1 ACCEPTED/CLOSED (User Checkpoint 13-09-2026, 93 tests PASSED, Audit R5 + R5.1 ACCEPTED); M2 AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION; M3 và Phân hệ A NOT AUTHORIZED  
 **Ngày lập:** 12-09-2026  
 **Ngày phê duyệt M0 và khóa M1-R1:** 13-09-2026  
 **Phạm vi:** từ kết thúc thiết kế trước code đến baseline vận hành đầu tiên  
@@ -89,8 +89,8 @@ G, H và J là năng lực xuyên suốt: được dựng tối thiểu từ M2 
 | Mốc | Kết quả người dùng nhìn thấy | Phân hệ trọng tâm | Gate/checkpoint | Trạng thái |
 |---|---|---|---|---|
 | M0 | Bộ thiết kế nhất quán và quyết định cho phép code | Toàn hệ thống | Audit trước code + user approval | APPROVED / CLOSED |
-| M1 | Proof chứng minh nền workflow/storage khả thi; test harness sẵn sàng | G, I, J | G01 sớm, G04 sớm, compatibility smoke | READY_FOR_USER_CHECKPOINT — P0-P6 PASS (Audit R4 hoàn tất, 87 passed, 0 skipped, coverage 87%) |
-| M2 | UI quản trị tối thiểu thấy command, state, log, config và artifact metadata | G, H, I, J | Contract/state/security foundation | NOT AUTHORIZED |
+| M1 | Proof chứng minh nền workflow/storage khả thi; test harness sẵn sàng | G, I, J | G01 sớm, G04 sớm, compatibility smoke | ACCEPTED / CLOSED — P0-P6 PASS (User Checkpoint 13-09-2026 sau Audit R5.1, 93 passed, 0 skipped, coverage 83%) |
+| M2 | UI quản trị tối thiểu thấy command, state, log, config và artifact metadata | G, H, I, J | Contract/state/security foundation | AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION (Kích hoạt sau User Checkpoint M1) |
 | M3 | Thêm nguồn, quét, chuẩn hóa, chống trùng và xem bài/sự kiện | A, B, G, H | User duyệt A-B; collection/content tests | NOT AUTHORIZED — MODULE A BỊ KHÓA |
 | M4 | Kho media/hook có provenance; sync cloud/local và xử lý ảnh nền tảng | C, E một phần, I, H | Drive/integrity/cleanup checkpoint | CHƯA BẮT ĐẦU |
 | M5 | Tạo snapshot, góc kể, script, chọn media và kế hoạch dựng | D, B, C, G, J, H | G06 phần nội dung + user duyệt D | CHƯA BẮT ĐẦU |
@@ -159,7 +159,7 @@ Kết thúc toàn bộ giai đoạn thiết kế, phát hiện mâu thuẫn cu�
 
 **Kế hoạch thực thi có thẩm quyền:** [M1 implementation plan](./milestones/m1-proof/implementation-plan.md)  
 **Khóa phiên bản:** [M1-R1 version lock](./milestones/m1-proof/version-lock.md)  
-**Trạng thái:** `READY_FOR_USER_CHECKPOINT`; Toàn bộ P0–P6 đã PASS (83 passed, 1 skipped); Báo cáo [Audit R3](./milestones/m1-proof/audit-r3.md) đạt; G01 và G04 đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)`; G07 đạt `SMOKE_COMPATIBILITY_PASS_M1_SCOPE`. Đang chờ User Checkpoint duyệt M1 trước khi mở M2. M2, M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
+**Trạng thái:** `ACCEPTED / CLOSED` ngày 13-09-2026 theo User Checkpoint chính thức sau independent re-audit HEAD `08c857c`. Toàn bộ P0–P6 đã PASS (93 passed, 0 skipped, coverage 83%); Báo cáo Audit R5 kèm R5.1 Addendum đạt; G01 và G04 đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)`; G07 đạt `SMOKE_COMPATIBILITY_PASS_M1_SCOPE`. Limitation DPAPI cùng một Windows user được giữ nguyên. Toàn bộ Audit R1–R5/R5.1 và evidence lịch sử được lưu giữ đầy đủ. Quyền lập kế hoạch và triển khai cho M2 đã được kích hoạt. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ### Mục tiêu
 
@@ -211,6 +211,10 @@ Nếu M1-P3 là `BLOCKED_EXTERNAL`, M1 cũng kết luận `BLOCKED_EXTERNAL` t�
 - Không “đi tiếp rồi sửa sau” với các lỗi này.
 
 ## 8. M2 — Control plane và nền tảng có thể quan sát
+
+**Kế hoạch thực thi có thẩm quyền:** [M2 implementation plan](./milestones/m2-control-plane/implementation-plan.md)  
+**Đặc tả kỹ thuật:** [M2 technical spec](./milestones/m2-control-plane/spec.md)  
+**Trạng thái:** `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` ngày 13-09-2026 theo quyết định User Checkpoint sau khi M1 được chấp thuận. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ### Mục tiêu
 

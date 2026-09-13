@@ -9,12 +9,12 @@
 
 - Bắt đầu phiên bằng `HANDOFF.md`, sau đó đọc checklist, roadmap và plan của milestone đang hoạt động.
 - Không suy diễn trạng thái từ tài liệu lịch sử. Trạng thái hiện hành nằm trong `docs/12-pre-code-checklist.md`.
-- Chỉ M1 được phép implementation. M2, M3 và Module A bị khóa tới khi M1 qua exit gate, audit và user checkpoint.
+- Milestone M1 đã ACCEPTED / CLOSED. Milestone M2 được phép planning và implementation theo kế hoạch được duyệt. M3 và Phân hệ A tiếp tục bị khóa chặt tới khi M2 qua exit gate, audit và user checkpoint riêng.
 - Không ghi giả định thành quyết định. Nội dung chưa được xác nhận phải ghi `GIẢ ĐỊNH` hoặc open item với gate rõ ràng.
 
 ## Quy tắc implementation
 
-- Tuân thủ test-first và evidence protocol của M1 plan.
+- Tuân thủ test-first và evidence protocol của milestone plan đang hoạt động.
 - Phải chứng kiến RED đúng oracle trước implementation; setup/import/binary missing không phải RED hợp lệ.
 - Không dùng `latest`, không đổi M1-R1 âm thầm và không dùng mock để tuyên bố external gate PASS.
 - Không commit secret, token, credential, dữ liệu cá nhân, log chưa redacted hoặc media không rõ quyền sử dụng.

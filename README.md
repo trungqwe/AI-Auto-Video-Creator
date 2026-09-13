@@ -7,14 +7,14 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | Hạng mục | Trạng thái |
 |---|---|
 | M0 Design | `APPROVED` |
-| M1 Evidence Prototype | `READY_FOR_USER_CHECKPOINT` |
+| M1 Evidence Prototype | `ACCEPTED / CLOSED` |
 | G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G04 Drive/OAuth | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G07 Compatibility | `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` |
-| M2 | `NOT AUTHORIZED` |
+| M2 Control Plane | `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
-Toàn bộ các work package M1 (`M1-P0 → M1-P6`) đã hoàn thành và đạt PASS 100% sau khi khắc phục triệt để các phát hiện kiểm toán độc lập R5 và R5.1. Tổng cộng **93 passed, 0 skipped** (coverage 83%), 85 artifacts có hash toàn vẹn trong manifest, 0 secret rò rỉ, và Báo cáo Kiểm toán Exit Gate `docs/milestones/m1-proof/audit-r5.md` (kèm R5.1 Addendum) đã hoàn tất. Milestone M1 hiện đang ở trạng thái `READY_FOR_USER_CHECKPOINT`. Không được bắt đầu M2, M3 hoặc Phân hệ A trước khi người dùng xác nhận phê duyệt checkpoint M1.
+Toàn bộ các work package M1 (`M1-P0 → M1-P6`) đã được Người dùng CHẤP THUẬN chính thức tại User Checkpoint ngày 13-09-2026 sau independent re-audit HEAD `08c857c`: M1 chuyển sang `ACCEPTED / CLOSED` (93 passed, 0 skipped, coverage 83%, Audit R5 + R5.1 ACCEPTED). Quyền lập kế hoạch và triển khai cho Milestone M2 được kích hoạt: `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION`. Toàn bộ Milestone M3 và Phân hệ A tiếp tục bị khóa chặt (`NOT AUTHORIZED`) cho đến khi M2 đạt exit gate và có User Checkpoint riêng.
 
 ## Bắt đầu một phiên làm việc
 
@@ -54,6 +54,7 @@ Chỉ đọc sâu contracts/ADR được work package hiện tại trích dẫn;
 
 Remote chính: <https://github.com/trungqwe/AI-Auto-Video-Creator>
 
-## Trạng thái sau M1-P6 & Hoàn thành Khắc phục Kiểm toán Độc lập (Audit R5 & R5.1 Addendum)
-M1-P0 đến M1-P6 đã hoàn tất `PASS` toàn bộ **93 passed, 0 skipped** tests. G01 và G04 đều đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)` (với bằng chứng tích hợp exact `temporal-server.exe` 1.31.2 binary qua gRPC 7233, ADR-0009 Subprocess Broker OS isolation, kho mã hóa Windows DPAPI native, broker-owned OAuth provisioning, 0 refresh token trên desktop disk, live E3 verification trên Google Drive thật) và G07 đạt `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` (strict equality + fail-closed dynamic matrix observation + ffprobe WAV duration) với đầy đủ bằng chứng, nhật ký thực thi, hash SHA-256 và Báo cáo Kiểm toán `docs/milestones/m1-proof/audit-r5.md`. Milestone M1 sẵn sàng cho User Checkpoint (`READY_FOR_USER_CHECKPOINT`); M2/M3/Module A tiếp tục bị khóa (`NOT AUTHORIZED`) theo quy định.
+## Trạng thái sau User Checkpoint M1 & Kích hoạt Milestone M2
+Milestone M1 (`M1-P0 → M1-P6`) đã hoàn tất 100% và được Người dùng phê duyệt chính thức (`ACCEPTED / CLOSED`) với **93 passed, 0 skipped** tests, Audit R5 + R5.1 ACCEPTED, G01 và G04 giữ `PARTIALLY_PROVEN (PASS_M1_SCOPE)`, G07 giữ `SMOKE_COMPATIBILITY_PASS_M1_SCOPE`. Milestone M2 chính thức chuyển sang `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION`. Milestone M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
+
 

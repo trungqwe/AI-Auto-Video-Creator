@@ -1,8 +1,8 @@
 # AI Auto Video Creator — Checklist cuối trước code
 
-**Ngày lập:** 12-09-2026 (Cập nhật sau Audit R5.1: 13-09-2026)  
-**Trạng thái:** M0 APPROVED/CLOSED; M1 HOÀN TẤT KHẮC PHỤC KIỂM TOÁN ĐỘC LẬP R5.1 (P0-P6 PASS, 93 passed, 0 skipped, coverage 83%), Audit R5 + R5.1 Addendum hoàn tất -> Sẵn sàng cho User Checkpoint duyệt M1  
-**Cổng áp dụng:** M0 → M1 của [roadmap](./11-roadmap.md)  
+**Ngày lập:** 12-09-2026 (Cập nhật sau User Checkpoint M1: 13-09-2026)  
+**Trạng thái:** M0 APPROVED/CLOSED; M1 ACCEPTED/CLOSED (User Checkpoint 13-09-2026 sau Audit R5.1, 93 tests PASSED, Audit R5 + R5.1 ACCEPTED); M2 AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION; M3 và Phân hệ A NOT AUTHORIZED  
+**Cổng áp dụng:** M1 → M2 của [roadmap](./11-roadmap.md)  
 **Căn cứ audit hiện hành:** [M1 audit R5 (kèm R5.1 Addendum)](./milestones/m1-proof/audit-r5.md), [M1 audit R4](./milestones/m1-proof/audit-r4.md), [M1 audit R3](./milestones/m1-proof/audit-r3.md), [M1 audit R2](./milestones/m1-proof/audit-r2.md) và [M1 audit R1](./milestones/m1-proof/audit-r1.md)
 
 ## 1. Mục đích và cách đọc
@@ -12,7 +12,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 - `[x]` nghĩa là có bằng chứng hoàn tất **ở cấp tài liệu** trong phạm vi nêu rõ.
 - `[ ]` nghĩa là chưa hoàn tất hoặc chưa có xác nhận; không được tự đánh dấu để mở cổng.
 - “Không còn BLOCKER” chỉ nói đến phát hiện thiết kế đã biết sau khắc phục, không có nghĩa mọi proof, cấu hình production hoặc kiểm thử runtime đã đạt.
-- Phê duyệt baseline và quyền code M1 đã được ghi nhận ngày 13-09-2026. Quyền đó đã được kích hoạt cho M1; P0-P6 đã hoàn tất và vượt qua Audit R5.1, nhưng không mở quyền cho M2/M3/Phân hệ A.
+- Phê duyệt baseline và quyền code M1 đã được kích hoạt ngày 13-09-2026 (đã hoàn tất P0-P6, vượt qua Audit R5.1 và được Người dùng nghiệm thu ACCEPTED/CLOSED). Quyền lập kế hoạch và triển khai cho M2 đã chính thức được kích hoạt. Không mở quyền cho M3/Phân hệ A.
 
 ### 1.1. Trạng thái cổng hiện hành
 
@@ -20,15 +20,15 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 |---|---|---|
 | M0 DESIGN | ✅ `APPROVED` | Baseline thiết kế đã được user chấp thuận |
 | PCC-026 | ✅ `CLOSED` | User đã đọc và chấp thuận baseline hiện hành |
-| PCC-027 | ✅ `CLOSED — M1 ONLY` | Quyền implementation chỉ áp dụng M1 (đã hoàn tất P0-P6) |
+| PCC-027 | ✅ `CLOSED — M1 ACCEPTED, M2 AUTHORIZED` | M1 hoàn tất & ACCEPTED; M2 được phép planning & implementation |
 | ROADMAP-OPEN-002 | ✅ `CLOSED_FOR_M1_R1` | Version set đã chọn; compatibility đã test strict và matrix export ở P5 |
-| M1 | 🟢 `READY_FOR_USER_CHECKPOINT` | Toàn bộ P0-P6 đã PASS; 93 passed, 0 skipped; Audit R5.1 đạt; sẵn sàng trình User |
+| M1 | 🟢 `ACCEPTED / CLOSED` | Toàn bộ P0-P6 đã PASS; 93 passed, 0 skipped; Audit R5 + R5.1 ACCEPTED; User Checkpoint 13-09-2026 |
 | G01 Temporal | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P2 đã PASS trên exact official binary `temporal-server.exe` v1.31.2 port 7233 |
 | G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS E3 (ADR-0009 Subprocess Broker OS isolation, Windows DPAPI Vault, Broker-owned provisioning, live E3 probe xác thực Drive thật) |
 | G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS strict version (Python, uv, PG, Temporal, ffprobe WAV duration > 0, fail-closed dynamic matrix observation) |
 | ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất qua Broker Subprocess boundary |
-| M2 | ⛔ `NOT AUTHORIZED` | Chỉ được xem xét sau M1 exit, audit và checkpoint user |
-| M3 / Module A | ⛔ `NOT AUTHORIZED` | Không được triển khai trong M1 |
+| M2 | 🟢 `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` | Kích hoạt ngày 13-09-2026 sau khi M1 được User Checkpoint phê duyệt |
+| M3 / Module A | ⛔ `NOT AUTHORIZED` | Tiếp tục bị khóa chặt; không được bắt đầu trước khi M2 đạt exit gate và có User Checkpoint riêng |
 
 Đây là bảng trạng thái có thẩm quyền trước lệnh code đầu tiên. Kết quả P2/P3 đã đạt được ghi `PASS_M1_SCOPE`; G01/G04 toàn phần vẫn `PARTIALLY_PROVEN` cho tới khi đủ evidence các milestone tiếp theo.
 
@@ -82,7 +82,7 @@ Nguồn có thẩm quyền: [charter](./00-project-charter.md), [product spec](.
 | PCC-024 | Có bảo vệ dữ liệu, secret và quan sát lỗi | [x] Có cleanup authorization, provenance, secret boundary và logging/monitoring tests. [storage](./09-contracts/10-storage-contracts.md), [security](./09-contracts/11-configuration-security-contracts.md), [10](./10-test-strategy.md). |
 | PCC-025 | Open item và giả định không bị coi là quyết định ngầm | [x] Open item có gate/owner theo tài liệu gốc; checklist không xác nhận thay user. Phân loại tại mục 5. |
 | PCC-026 | Người dùng đã đọc và chấp thuận bộ kế hoạch hiện hành | [x] User đã chấp thuận baseline 00–12, ADR, contracts, audit, roadmap và kế hoạch Phân hệ A sau khắc phục ngày 13-09-2026. |
-| PCC-027 | Người dùng cho phép bước qua ranh giới code | [x] Quyền implementation đã cấp và đang được thực thi **chỉ cho M1 Evidence Prototype**. M2/M3/Phân hệ A chưa được phép. |
+| PCC-027 | Người dùng cho phép bước qua ranh giới code | [x] Quyền implementation đã cấp cho M1 (ĐÃ HOÀN TẤT & ACCEPTED) và M2 (ĐÃ ĐƯỢC PHÊ DUYỆT BẮT ĐẦU). M3/Phân hệ A chưa được phép. |
 | PCC-028 | Runtime/dependency/test-tool versions đã khóa trước test code đầu tiên | [x] `ROADMAP-OPEN-002=CLOSED_FOR_M1_R1`; version set và quy tắc revision/rollback ghi tại [M1-R1 lock](./milestones/m1-proof/version-lock.md). Không đồng nghĩa compatibility/G01/G04/G07 PASS. |
 
 ## 4. Xác nhận khắc phục audit
@@ -137,15 +137,15 @@ Checklist không phải lệnh cài thư viện, khởi tạo framework, triển
 |---|---|
 | Bộ tài liệu trình duyệt | 00–03, 05–08, ADR, 09-contracts, 10, 11, module A spec/plan, AUDIT mục 11 và checklist 12 này |
 | User đã đọc và chấp thuận kế hoạch sau audit | ĐÃ XÁC NHẬN cho baseline hiện hành |
-| User cho phép code | ĐÃ XÁC NHẬN, chỉ trong M1 Evidence Prototype |
-| Phạm vi work package được phép | M1-P0 → M1-P6 theo dependency; M1-P3 có thể BLOCKED_EXTERNAL. Chưa cho phép M2/M3/Phân hệ A |
+| User cho phép code | ĐÃ XÁC NHẬN: M1 hoàn tất & ACCEPTED; M2 được phép planning & implementation |
+| Phạm vi work package được phép | M2 Control Plane theo dependency của M2 implementation plan. Chưa cho phép M3/Phân hệ A |
 | Version set trước code | M1-R1 đã khóa; ROADMAP-OPEN-002=CLOSED_FOR_M1_R1 |
-| Thời điểm và thông điệp xác nhận | 13-09-2026; xác nhận trong yêu cầu làm rõ open case và lập kế hoạch M1 |
-| Trạng thái cổng hiện hành | M0 APPROVED; M1 HOÀN TẤT (P0-P6 PASS); G01/G04 PARTIALLY_PROVEN; G07 SMOKE_COMPATIBILITY_PASS_M1_SCOPE; M2 và M3/Module A NOT AUTHORIZED (chờ User Checkpoint duyệt M1) |
+| Thời điểm và thông điệp xác nhận | 13-09-2026; User Checkpoint chính thức chấp thuận M1 và kích hoạt M2 |
+| Trạng thái cổng hiện hành | M0 APPROVED; M1 ACCEPTED/CLOSED (P0-P6 PASS, 93/93 passed); G01/G04 PARTIALLY_PROVEN; G07 SMOKE_COMPATIBILITY_PASS_M1_SCOPE; M2 AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION; M3 và Phân hệ A NOT AUTHORIZED |
 
 Trạng thái phê duyệt đã được đồng bộ vào roadmap và module plan. Nếu có sửa đổi đáng kể sau phê duyệt, xác định phần ảnh hưởng và kiểm toán lại trước khi dùng bản mới.
 
-**Kết luận:** M1 đã hoàn tất 100% (P0..P6 PASS, 83/84 passed, 1 skipped manual, Audit R3 hoàn thành). Trạng thái hiện tại: `READY_FOR_USER_CHECKPOINT`. Không tự mở M2/M3/Phân hệ A cho đến khi User duyệt checkpoint.
+**Kết luận:** M1 đã hoàn tất 100% và được Người dùng nghiệm thu chính thức (`ACCEPTED / CLOSED`). M2 chính thức chuyển sang `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION`. Không được bắt đầu M3 hoặc Phân hệ A trước khi M2 đạt exit gate và có User Checkpoint riêng.
 
 ## Trạng thái sau M1-P2 Temporal G01 Proof
 
@@ -165,5 +165,13 @@ M1-P5 đã hoàn thành với 10 bài test đạt GREEN, evidence đầy đủ t
 
 ## Trạng thái sau M1-P6 Evidence Synthesis & Audit R3
 
-M1-P6 đã hoàn thành với 7 bài test đạt GREEN (nâng tổng số test hồi quy M1 lên 83 passed, 1 skipped, coverage >91%). Evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p6/` và manifest tổng hợp tại `docs/milestones/m1-proof/evidence/manifest.json` chứa đầy đủ artifacts có SHA-256 hash toàn vẹn 100%. Trình parse trạng thái động fail-closed và secret scanner xác nhận 0 credential bị lộ. Báo cáo Kiểm toán M1 Exit Gate `docs/milestones/m1-proof/audit-r3.md` đã được lập với kết luận: **READY FOR USER CHECKPOINT**. M2/M3/Module A tiếp tục bị khóa (`NOT AUTHORIZED`) cho đến khi có quyết định chính thức từ User.
+M1-P6 đã hoàn thành với 7 bài test đạt GREEN (nâng tổng số test hồi quy M1 lên 83 passed, 1 skipped, coverage >91%). Evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p6/` và manifest tổng hợp tại `docs/milestones/m1-proof/evidence/manifest.json` chứa đầy đủ artifacts có SHA-256 hash toàn vẹn 100%. Trình parse trạng thái động fail-closed và secret scanner xác nhận 0 credential bị lộ. Báo cáo Kiểm toán M1 Exit Gate `docs/milestones/m1-proof/audit-r3.md` đã được lập với kết luận: **READY FOR USER CHECKPOINT**.
+
+## Trạng thái sau User Checkpoint M1 & Kích hoạt Milestone M2 (13-09-2026)
+
+Sau các đợt re-audit độc lập R4, R5 và R5.1 (HEAD commit `08c857c`), toàn bộ 93 bài test của Milestone M1 đạt GREEN (93 passed, 0 skipped, coverage 83%), Báo cáo Kiểm toán Exit Gate `docs/milestones/m1-proof/audit-r5.md` (kèm R5.1 Addendum) được phê duyệt, Người dùng đã CHẤP THUẬN chính thức:
+- **Milestone M1**: `ACCEPTED / CLOSED`.
+- **Milestone M2**: `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` (bắt đầu chu trình chuẩn bị SPEC và PLAN).
+- **Milestone M3 và Phân hệ A**: Tiếp tục duy trì trạng thái `NOT AUTHORIZED` (khóa chặt cho tới khi M2 hoàn tất exit gate và có User Checkpoint riêng).
+
 
