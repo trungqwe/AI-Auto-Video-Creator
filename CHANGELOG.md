@@ -6,6 +6,8 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Added
 
+- Correction docs-only M2-P2 theo independent audit `236378f6ec442f9fcd7e84507a60b6e1b5b1b7a3`: khóa full `ProblemDetail` surface, RFC 8785 JCS byte canonicalization/test vectors, PostgreSQL CAS production primitive, replay `duplicate` transient semantics, narrowed receipt-only concurrency claim, RED/final evidence artifact protocol và envelope matrix. Điểm dừng: `M2-P2_PLAN_READY_FOR_RED_APPROVAL`; không có P2 source/test/evidence runtime.
+
 - Chuẩn hóa SPEC/implementation plan M2-P2 trước RED: khóa đúng contract scope `CT-CMN-001/002/003/005/006/010/011`, qualifier nền tảng `CT-API-001` và `ADR-0004`; chốt schema/rollback production `0002`, canonical request hash, receipt/replay/revision semantics, exact 11 mandatory RED oracle, 6 gates và discipline evidence P2. Không có source, test hoặc runtime evidence P2. Điểm dừng: `M2-P2_PLAN_READY_FOR_REVIEW`.
 
 - Independent audit tại `90f4195e928ecbf5622d9760465a5d09d8b4f867` chính thức chấp thuận/đóng `M2-P1`: exact P1 11/11 GREEN, frozen M2-P0 33/33, M1 93/93, PostgreSQL 18.6, Python 3.13.15, psycopg 3.3.5, psycopg-pool 3.3.1, production pool `psycopg_pool.ConnectionPool`, `CREATEDB=true`, orphan DB=0, secret scan CLEAN, 6/6 P1 gates PASS và evidence provenance/hash DAG PASS. `M2-P2_AUTHORIZED` chỉ cho `SPEC → PLAN → RED`; cấm implementation P2 trước Behavioral RED hợp lệ có evidence và independent audit. M3/Phân hệ A vẫn `NOT AUTHORIZED`.
