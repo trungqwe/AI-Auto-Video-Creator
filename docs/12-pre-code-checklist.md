@@ -1,9 +1,9 @@
 # AI Auto Video Creator — Checklist cuối trước code
 
-**Ngày lập:** 12-09-2026  
-**Trạng thái:** M0 APPROVED/CLOSED; M1 HOÀN TẤT (P0-P6 PASS), Audit R2 hoàn tất -> Chờ User Checkpoint duyệt M1  
+**Ngày lập:** 12-09-2026 (Cập nhật sau Audit R3: 13-09-2026)  
+**Trạng thái:** M0 APPROVED/CLOSED; M1 HOÀN TẤT KHẮC PHỤC KIỂM TOÁN ĐỘC LẬP (P0-P6 PASS, 83 passed, 1 skipped), Audit R3 hoàn tất -> Chờ User Checkpoint duyệt M1  
 **Cổng áp dụng:** M0 → M1 của [roadmap](./11-roadmap.md)  
-**Căn cứ audit hiện hành:** [M1 audit R2](./milestones/m1-proof/audit-r2.md) và [M1 audit R1](./milestones/m1-proof/audit-r1.md)
+**Căn cứ audit hiện hành:** [M1 audit R3](./milestones/m1-proof/audit-r3.md), [M1 audit R2](./milestones/m1-proof/audit-r2.md) và [M1 audit R1](./milestones/m1-proof/audit-r1.md)
 
 ## 1. Mục đích và cách đọc
 
@@ -12,7 +12,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 - `[x]` nghĩa là có bằng chứng hoàn tất **ở cấp tài liệu** trong phạm vi nêu rõ.
 - `[ ]` nghĩa là chưa hoàn tất hoặc chưa có xác nhận; không được tự đánh dấu để mở cổng.
 - “Không còn BLOCKER” chỉ nói đến phát hiện thiết kế đã biết sau khắc phục, không có nghĩa mọi proof, cấu hình production hoặc kiểm thử runtime đã đạt.
-- Phê duyệt baseline và quyền code M1 đã được ghi nhận ngày 13-09-2026. Quyền đó đã được kích hoạt cho M1; P0-P6 đã hoàn tất, nhưng không mở quyền cho M2/M3/Phân hệ A.
+- Phê duyệt baseline và quyền code M1 đã được ghi nhận ngày 13-09-2026. Quyền đó đã được kích hoạt cho M1; P0-P6 đã hoàn tất và vượt qua Audit R3, nhưng không mở quyền cho M2/M3/Phân hệ A.
 
 ### 1.1. Trạng thái cổng hiện hành
 
@@ -21,11 +21,11 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | M0 DESIGN | ✅ `APPROVED` | Baseline thiết kế đã được user chấp thuận |
 | PCC-026 | ✅ `CLOSED` | User đã đọc và chấp thuận baseline hiện hành |
 | PCC-027 | ✅ `CLOSED — M1 ONLY` | Quyền implementation chỉ áp dụng M1 (đã hoàn tất P0-P6) |
-| ROADMAP-OPEN-002 | ✅ `CLOSED_FOR_M1_R1` | Version set đã chọn; compatibility đã smoke test đạt ở P5 |
-| M1 | 🟢 `READY_FOR_USER_CHECKPOINT` | Toàn bộ P0-P6 đã PASS; 74/74 tests đạt; Audit R2 đạt; sẵn sàng trình User |
-| G01 Temporal | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P2 đã PASS trong phạm vi M1; server upgrade thuộc M2-M7 |
-| G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS (bao gồm E3 live probe trên Google Drive thật) |
-| G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS smoke test tương thích (Python, uv, PG, Temporal, FFmpeg) |
+| ROADMAP-OPEN-002 | ✅ `CLOSED_FOR_M1_R1` | Version set đã chọn; compatibility đã test strict và matrix export ở P5 |
+| M1 | 🟢 `READY_FOR_USER_CHECKPOINT` | Toàn bộ P0-P6 đã PASS; 83 passed, 1 skipped; Audit R3 đạt; sẵn sàng trình User |
+| G01 Temporal | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P2 đã PASS trên exact official binary `temporal-server.exe` v1.31.2 port 7233 |
+| G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS (ADR-0009 Cloud Token Broker, 0 refresh token trên disk, E3 live probe) |
+| G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS strict version (Python, uv, PG, Temporal, ffprobe WAV duration > 0) |
 | ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất |
 | M2 | ⛔ `NOT AUTHORIZED` | Chỉ được xem xét sau M1 exit, audit và checkpoint user |
 | M3 / Module A | ⛔ `NOT AUTHORIZED` | Không được triển khai trong M1 |
@@ -145,15 +145,15 @@ Checklist không phải lệnh cài thư viện, khởi tạo framework, triển
 
 Trạng thái phê duyệt đã được đồng bộ vào roadmap và module plan. Nếu có sửa đổi đáng kể sau phê duyệt, xác định phần ảnh hưởng và kiểm toán lại trước khi dùng bản mới.
 
-**Kết luận:** M1 đã hoàn tất 100% (P0..P6 PASS, 74/74 tests, Audit R2 hoàn thành). Trạng thái hiện tại: `READY_FOR_USER_CHECKPOINT`. Không tự mở M2/M3/Phân hệ A cho đến khi User duyệt checkpoint.
+**Kết luận:** M1 đã hoàn tất 100% (P0..P6 PASS, 83/84 passed, 1 skipped manual, Audit R3 hoàn thành). Trạng thái hiện tại: `READY_FOR_USER_CHECKPOINT`. Không tự mở M2/M3/Phân hệ A cho đến khi User duyệt checkpoint.
 
 ## Trạng thái sau M1-P2 Temporal G01 Proof
 
-M1-P2 đã hoàn thành với 7 bài test đạt GREEN, evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p2/`. P0/P1/P2 `PASS`; G01 `PARTIALLY_PROVEN (PASS_M1_SCOPE)`. ROADMAP-OPEN-003 chỉ chặn P3; M2/M3/Module A vẫn `NOT AUTHORIZED`.
+M1-P2 đã hoàn thành với 10 bài test đạt GREEN, evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p2/`. P0/P1/P2 `PASS`; G01 `PARTIALLY_PROVEN (PASS_M1_SCOPE)`. Đã chứng minh trên exact official binary `temporal-server.exe` v1.31.2 port 7233 loopback, roundtrip workflow/activity, idempotent retry, payload boundaries. M2/M3/Module A vẫn `NOT AUTHORIZED`.
 
 ## Trạng thái sau M1-P3 Google Drive & OAuth G04 Proof
 
-M1-P3 đã hoàn thành với 8 bài test (7 unit/integration + 1 live E3 verification trên Google Drive thật) đạt GREEN, evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p3/`. P0/P1/P2/P3 `PASS`; G01 và G04 đều đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)`. ROADMAP-OPEN-003 đã được đóng cho M1-P3 (`CLOSED_FOR_M1_P3`). Thư mục `Credentials/` và token cache được bảo vệ tuyệt đối qua `.gitignore`.
+M1-P3 đã hoàn thành với 12 bài test (11 automated passed + 1 skipped manual live interactive), evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p3/`. P0/P1/P2/P3 `PASS`; G01 và G04 đều đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)`. Đã chứng minh tuân thủ tuyệt đối ADR-0009: Cloud Token Broker sở hữu refresh token, Desktop client chỉ nhận ephemeral access capability trong bộ nhớ (`refresh_token=None`), 0 refresh token plaintext trên đĩa, tệp `token_e3_test.json` đã bị xóa.
 
 ## Trạng thái sau M1-P4 Local Journal & Recovery Proof
 
@@ -161,9 +161,9 @@ M1-P4 đã hoàn thành với 6 bài test đạt GREEN, evidence đầy đủ t�
 
 ## Trạng thái sau M1-P5 Compatibility Smoke
 
-M1-P5 đã hoàn thành với 6 bài test đạt GREEN, evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p5/`. P0/P1/P2/P3/P4/P5 `PASS`. Đã kiểm chứng: CPython 3.13.15, uv 0.12.13, khóa `uv.lock` frozen, PostgreSQL 18.6 rollback và lưu trữ UTF-8 tiếng Việt hoàn hảo, Temporal SDK 1.32.0 handshake/replay xác định, ranh giới client Google không rò rỉ secret khi thiếu khóa, và binary FFmpeg thực tế (`C:\ffmpeg\bin\ffmpeg.exe`, SHA-256: `f845a09b...`) probe media an toàn bằng argument array.
+M1-P5 đã hoàn thành với 10 bài test đạt GREEN, evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p5/`. P0/P1/P2/P3/P4/P5 `PASS`. Đã kiểm chứng: so khớp nghiêm ngặt (strict equality) Python 3.13.15, uv 0.12.13, PostgreSQL 18.6, psycopg 3.3.5, Temporal Server 1.31.2, Temporal SDK 1.32.0; kiểm tra đa phương tiện qua `ffprobe` trên fixture WAV chuẩn (duration > 0, PCM 16-bit stereo); xuất `compatibility_matrix.json`.
 
-## Trạng thái sau M1-P6 Evidence Synthesis & Audit R2
+## Trạng thái sau M1-P6 Evidence Synthesis & Audit R3
 
-M1-P6 đã hoàn thành với 5 bài test đạt GREEN (nâng tổng số test hồi quy M1 lên 74/74 tests PASSED, coverage 88%). Evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p6/` và manifest tổng hợp tại `docs/milestones/m1-proof/evidence/manifest.json` chứa 75 artifacts có SHA-256 hash toàn vẹn 100%. Trình quét secret fail-closed xác nhận 0 credential bị lộ. Báo cáo Kiểm toán M1 Exit Gate `docs/milestones/m1-proof/audit-r2.md` đã được lập với kết luận: **READY FOR USER CHECKPOINT**. M2/M3/Module A tiếp tục bị khóa (`NOT AUTHORIZED`) cho đến khi có quyết định chính thức từ User.
+M1-P6 đã hoàn thành với 7 bài test đạt GREEN (nâng tổng số test hồi quy M1 lên 83 passed, 1 skipped, coverage >91%). Evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p6/` và manifest tổng hợp tại `docs/milestones/m1-proof/evidence/manifest.json` chứa đầy đủ artifacts có SHA-256 hash toàn vẹn 100%. Trình parse trạng thái động fail-closed và secret scanner xác nhận 0 credential bị lộ. Báo cáo Kiểm toán M1 Exit Gate `docs/milestones/m1-proof/audit-r3.md` đã được lập với kết luận: **READY FOR USER CHECKPOINT**. M2/M3/Module A tiếp tục bị khóa (`NOT AUTHORIZED`) cho đến khi có quyết định chính thức từ User.
 

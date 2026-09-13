@@ -16,8 +16,11 @@
 | `TST-M1-P2-005` | Workflow replay versioning & patch | **PASS** | History sinh ra bởi V1 replay thành công trên V2 qua `workflow.patched()`; thay đổi nondeterministic bị detector từ chối. |
 | `TST-M1-P2-006` | Unknown outcome reconciliation routing | **PASS** | Khi gặp `UnknownExternalOutcomeError`, Temporal không retry mù mà định tuyến vào `reconcile_external_outcome_activity`. |
 | `TST-M1-P2-007` | Payload boundaries & secret redaction | **PASS** | Secret canary (`ghp_...`) và binary blob thô bị chặn tại boundary; Event history Temporal được xác nhận hoàn toàn sạch. |
+| `TST-M1-P2-008` | Exact Temporal Server 1.31.2 execution & handshake | **PASS** | Chạy exact binary official temporal-server.exe v1.31.2 trên port 7233 loopback; kết nối gRPC, verify exact version 1.31.2. |
+| `TST-M1-P2-009` | Exact Temporal Server 1.31.2 worker roundtrip | **PASS** | Đăng ký namespace, khởi động Temporal Worker, thực thi Workflow + Activity roundtrip trên server 1.31.2 thật. |
+| `TST-M1-P2-010` | Exact Temporal Server 1.31.2 retry idempotency | **PASS** | Mô phỏng transient activity failure; Temporal server 1.31.2 thực hiện retry tự động, activity hoàn thành chính xác 1 lần. |
 
-- Tổng số test M1 hiện hành: **49/49 PASSED** (thời gian chạy ~8.71s).
+- Tổng số test M1-P2: **10/10 PASSED** (toàn bộ suite M1: 83 passed, 1 skipped).
 - Tổng độ bao phủ mã nguồn (Coverage): **93%**.
 
 ## 2. Giới hạn & Quyết định kiến trúc

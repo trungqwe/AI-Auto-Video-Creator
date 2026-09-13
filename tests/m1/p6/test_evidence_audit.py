@@ -1,11 +1,14 @@
-"""Audit, integrity and gate enforcement tests for M1-P6 (TST-M1-P6-001..005)."""
+"""Audit, integrity and gate enforcement tests for M1-P6 (TST-M1-P6-001..008)."""
 from __future__ import annotations
 import hashlib
+import json
 from pathlib import Path
 from typing import Any, Dict
 import pytest
 from m1proof.evidence_manifest import (
+    build_m1_evidence_manifest,
     evaluate_milestone_gates,
+    parse_package_status_from_evidence,
     scan_secrets_in_directory,
     validate_manifest_artifacts,
     validate_manifest_schema,
@@ -13,16 +16,15 @@ from m1proof.evidence_manifest import (
 
 def test_tst_m1_p6_001_manifest_schema_and_completeness_validation(sample_valid_manifest: Dict[str, Any]):
     """TST-M1-P6-001: Manifest schema rejects incomplete sections and missing mandatory fields."""
-    # Case A: Manifest đầy đủ hợp lệ
     assert validate_manifest_schema(sample_valid_manifest) is True
 
-    # Case B: Thiếu trường bắt buộc (ví dụ version_lock)
+    # Thiếu trường bắt buộc (ví dụ version_lock)
     invalid_manifest = dict(sample_valid_manifest)
     del invalid_manifest["version_lock"]
     with pytest.raises(ValueError, match="Missing mandatory field: version_lock"):
         validate_manifest_schema(invalid_manifest)
 
-    # Case C: Thiếu một package bắt buộc trong packages
+    # Thiếu một package bắt buộc trong packages
     invalid_pkg_manifest = dict(sample_valid_manifest)
     invalid_pkg_manifest["packages"] = dict(sample_valid_manifest["packages"])
     del invalid_pkg_manifest["packages"]["m1-p3"]
@@ -49,13 +51,13 @@ def test_tst_m1_p6_002_artifact_hash_tampering_and_missing_file_detection(tmp_pa
     assert res["tampered"] == []
     assert res["missing"] == []
 
-    # Giả lập can thiệp sửa đổi byte tệp (tampering)
+    # Can thiệp sửa đổi byte tệp (tampering)
     valid_file.write_bytes(b"TAMPERED_MODIFIED_CONTENT")
     res_tampered = validate_manifest_artifacts(manifest, project_root=tmp_path)
     assert res_tampered["valid"] is False
     assert len(res_tampered["tampered"]) == 1
 
-    # Giả lập tệp bị xóa hoặc không tồn tại (missing)
+    # Tệp bị xóa hoặc không tồn tại (missing)
     missing_manifest = {
         "artifacts": [
             {"path": str(tmp_path / "ghost_file.txt"), "sha256": original_hash},
@@ -80,11 +82,17 @@ def test_tst_m1_p6_003_milestone_exit_rule_engine_gate_enforcement(sample_valid_
     outcome_blocked = evaluate_milestone_gates(blocked_manifest)
     assert outcome_blocked["m1_status"] == "BLOCKED_EXTERNAL"
 
-    # Case C: Có package bị FAIL
+    # Case C: Có package bị STOPPED
+    stopped_manifest = dict(sample_valid_manifest)
+    stopped_manifest["packages"] = dict(sample_valid_manifest["packages"])
+    stopped_manifest["packages"]["m1-p4"] = {"status": "STOPPED", "evidence_files": []}
+    outcome_stopped = evaluate_milestone_gates(stopped_manifest)
+    assert outcome_stopped["m1_status"] == "CORRECTION_REQUIRED"
+
+    # Case D: Có package bị FAIL
     failed_manifest = dict(sample_valid_manifest)
     failed_manifest["packages"] = dict(sample_valid_manifest["packages"])
     failed_manifest["packages"]["m1-p2"] = {"status": "FAIL", "evidence_files": []}
-
     outcome_failed = evaluate_milestone_gates(failed_manifest)
     assert outcome_failed["m1_status"] == "FAILED"
 
@@ -95,7 +103,6 @@ def test_tst_m1_p6_004_scoped_gate_boundary_protection(sample_valid_manifest: Di
     illegal_g01 = dict(sample_valid_manifest)
     illegal_g01["gates"] = dict(sample_valid_manifest["gates"])
     illegal_g01["gates"]["G01"] = "PASS"
-
     with pytest.raises(ValueError, match="G01 cannot claim full PASS in M1"):
         evaluate_milestone_gates(illegal_g01)
 
@@ -103,7 +110,6 @@ def test_tst_m1_p6_004_scoped_gate_boundary_protection(sample_valid_manifest: Di
     illegal_g04 = dict(sample_valid_manifest)
     illegal_g04["gates"] = dict(sample_valid_manifest["gates"])
     illegal_g04["gates"]["G04"] = "PASS"
-
     with pytest.raises(ValueError, match="G04 cannot claim full PASS in M1"):
         evaluate_milestone_gates(illegal_g04)
 
@@ -114,11 +120,9 @@ def test_tst_m1_p6_005_secret_and_canary_scanner_fail_closed(tmp_path: Path):
     clean_dir.mkdir()
     (clean_dir / "status.md").write_text("# Clean status report\nAll tests passed.", encoding="utf-8")
 
-    # Thư mục sạch -> 0 phát hiện
     findings_clean = scan_secrets_in_directory(clean_dir)
     assert findings_clean == []
 
-    # Tạo tệp chứa canary secret (ví dụ GitHub token hoặc OAuth token)
     dirty_dir = tmp_path / "dirty_evidence"
     dirty_dir.mkdir()
     (dirty_dir / "leaked_log.txt").write_text(
@@ -129,3 +133,52 @@ def test_tst_m1_p6_005_secret_and_canary_scanner_fail_closed(tmp_path: Path):
     findings_dirty = scan_secrets_in_directory(dirty_dir)
     assert len(findings_dirty) >= 1
     assert any("ghp_" in f["pattern"] or "github_token" in f["rule"] for f in findings_dirty)
+
+
+def test_tst_m1_p6_006_fail_closed_package_status_parser(tmp_path: Path):
+    """TST-M1-P6-006: Fail-closed parsing of status.md without hard-coding PASS."""
+    # Case A: status.md chứa PASS
+    pkg_dir = tmp_path / "pkg_pass"
+    pkg_dir.mkdir()
+    (pkg_dir / "status.md").write_text("# Status\nTrạng thái: PASS\nAll green.", encoding="utf-8")
+    status = parse_package_status_from_evidence(pkg_dir)
+    assert status == "PASS"
+
+    # Case B: status.md chứa STOPPED
+    pkg_stopped = tmp_path / "pkg_stopped"
+    pkg_stopped.mkdir()
+    (pkg_stopped / "status.md").write_text("# Status\nTrạng thái: STOPPED\nDependency missing.", encoding="utf-8")
+    assert parse_package_status_from_evidence(pkg_stopped) == "STOPPED"
+
+    # Case C: Thiếu status.md -> Fail closed
+    pkg_empty = tmp_path / "pkg_empty"
+    pkg_empty.mkdir()
+    assert parse_package_status_from_evidence(pkg_empty) == "MISSING_STATUS_RECORD"
+
+
+def test_tst_m1_p6_007_missing_mandatory_evidence_blocks_ready(tmp_path: Path):
+    """TST-M1-P6-007: Missing required evidence files (commands.jsonl, hashes.sha256, etc) rejects PASS."""
+    fake_root = tmp_path / "repo"
+    evidence_dir = fake_root / "docs" / "milestones" / "m1-proof" / "evidence"
+    for pkg in ["m1-p0", "m1-p1", "m1-p2", "m1-p3", "m1-p4", "m1-p5"]:
+        pdir = evidence_dir / pkg
+        pdir.mkdir(parents=True)
+        (pdir / "status.md").write_text("Trạng thái: PASS", encoding="utf-8")
+        (pdir / "commands.jsonl").write_text("{}", encoding="utf-8")
+        (pdir / "hashes.sha256").write_text("hash  status.md", encoding="utf-8")
+        (pdir / "red-observations.md").write_text("RED", encoding="utf-8")
+
+    # Tạo file uv.lock giả lập
+    (fake_root / "uv.lock").write_text("uv_lock_test_content", encoding="utf-8")
+
+    # Khi đầy đủ -> builder parse ra PASS
+    manifest = build_m1_evidence_manifest(fake_root)
+    assert manifest["packages"]["m1-p1"]["status"] == "PASS"
+
+    # Xóa file bắt buộc hashes.sha256 của P1 -> Status chuyển sang MISSING_REQUIRED_EVIDENCE
+    (evidence_dir / "m1-p1" / "hashes.sha256").unlink()
+    manifest_broken = build_m1_evidence_manifest(fake_root)
+    assert "MISSING_REQUIRED_EVIDENCE" in manifest_broken["packages"]["m1-p1"]["status"]
+
+    outcome = evaluate_milestone_gates(manifest_broken)
+    assert outcome["m1_status"] != "READY_FOR_USER_CHECKPOINT"

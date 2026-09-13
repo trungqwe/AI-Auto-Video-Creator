@@ -11,7 +11,7 @@
 - **Phạm vi:** Toàn bộ Milestone M1 bao gồm 7 Work Packages (P0..P6), tài liệu kiến trúc/hợp đồng liên quan, toàn bộ cây bằng chứng `docs/milestones/m1-proof/evidence/` và manifest tổng hợp `manifest.json`.
 - **Căn cứ quy định:** 
   - Quy tắc làm việc tại [AGENTS.md](file:///d:/AI%20Auto%20Video%20Creator/AGENTS.md): "Chỉ M1 được phép implementation. M2, M3 và Phân hệ A bị khóa tới khi M1 qua exit gate, audit và user checkpoint."
-  - Tiêu chí nghiệm thu tại [docs/milestones/m1-proof/plan.md](file:///d:/AI%20Auto%20Video%20Creator/docs/milestones/m1-proof/plan.md) và [docs/12-pre-code-checklist.md](file:///d:/AI%20Auto%20Video%20Creator/docs/12-pre-code-checklist.md).
+  - Tiêu chí nghiệm thu tại [docs/milestones/m1-proof/implementation-plan.md](file:///d:/AI%20Auto%20Video%20Creator/docs/milestones/m1-proof/implementation-plan.md) và [docs/12-pre-code-checklist.md](file:///d:/AI%20Auto%20Video%20Creator/docs/12-pre-code-checklist.md).
   - Kết quả giải quyết các phát hiện từ [docs/milestones/m1-proof/audit-r1.md](file:///d:/AI%20Auto%20Video%20Creator/docs/milestones/m1-proof/audit-r1.md).
 
 ---

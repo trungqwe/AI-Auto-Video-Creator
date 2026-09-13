@@ -121,3 +121,43 @@ class DriveStorageAdapter:
         for pat in SECRET_PATTERNS:
             sanitized = pat.sub("[REDACTED_SECRET]", sanitized)
         return sanitized
+
+    def classify_oauth_error(self, status_code: int, error_body: Dict[str, Any]) -> Dict[str, Any]:
+        """Classify Google OAuth / Drive API errors to enforce fail-closed retry boundaries."""
+        err = error_body.get("error", {})
+        message = err.get("message", "")
+        status = err.get("status", "")
+
+        if status_code == 403:
+            msg_lower = message.lower()
+            if "scope" in msg_lower or "permission_denied" in status or "insufficient" in msg_lower:
+                return {
+                    "classification": "INSUFFICIENT_SCOPE_ERROR",
+                    "retryable": False,
+                    "reason": "Token scope is insufficient for requested Drive operation",
+                }
+            return {
+                "classification": "RATE_LIMITED",
+                "retryable": True,
+                "reason": "Quota limit reached",
+            }
+
+        if status_code == 401:
+            return {
+                "classification": "UNAUTHENTICATED_TOKEN_EXPIRED",
+                "retryable": False,
+                "reason": "Access token expired or revoked; must re-acquire via Token Broker",
+            }
+
+        if status_code == 429:
+            return {
+                "classification": "RATE_LIMITED",
+                "retryable": True,
+                "reason": "Too many requests",
+            }
+
+        return {
+            "classification": "UNKNOWN_ERROR",
+            "retryable": False,
+            "reason": message,
+        }

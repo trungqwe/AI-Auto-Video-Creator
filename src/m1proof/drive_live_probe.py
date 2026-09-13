@@ -18,46 +18,40 @@ sys.stderr.reconfigure(line_buffering=True)
 
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
-def get_or_create_e3_credentials(client_secrets_path: Path, token_cache_path: Path) -> Credentials:
-    """Retrieve existing cached credentials or run desktop authorization flow."""
-    creds = None
-    if token_cache_path.is_file():
-        try:
-            creds = Credentials.from_authorized_user_file(str(token_cache_path), DRIVE_SCOPES)
-            print("[OAUTH] Found cached token at Credentials/token_e3_test.json")
-        except Exception as e:
-            print(f"[OAUTH] Cached token invalid: {e}")
-            creds = None
+def get_or_create_e3_credentials(client_secrets_path: Path, token_cache_path: Optional[Path] = None) -> Credentials:
+    """Acquire short-lived credentials for E3 probe conforming strictly to ADR-0009.
+    
+    The refresh token is managed by the Broker context; Desktop only receives
+    in-memory short-lived access tokens (never stored plaintext on disk).
+    """
+    flow = InstalledAppFlow.from_client_secrets_file(
+        str(client_secrets_path),
+        scopes=DRIVE_SCOPES,
+    )
+    auth_prompt = (
+        "\n=======================================================\n"
+        "[OAUTH REQUIRED] Please authorize Google Drive access:\n"
+        "{url}\n"
+        "=======================================================\n"
+    )
+    print("[OAUTH] Starting local HTTP server to receive OAuth callback...")
+    full_creds = flow.run_local_server(
+        port=0,
+        open_browser=True,
+        prompt="consent",
+        authorization_prompt_message=auth_prompt,
+        timeout_seconds=300,
+    )
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            from google.auth.transport.requests import Request
-            print("[OAUTH] Refreshing expired access token...")
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                str(client_secrets_path),
-                scopes=DRIVE_SCOPES,
-            )
-            auth_prompt = (
-                "\n=======================================================\n"
-                "[OAUTH REQUIRED] Please authorize Google Drive access:\n"
-                "{url}\n"
-                "=======================================================\n"
-            )
-            print("[OAUTH] Starting local HTTP server to receive OAuth callback...")
-            creds = flow.run_local_server(
-                port=0,
-                open_browser=True,
-                prompt="consent",
-                authorization_prompt_message=auth_prompt,
-                timeout_seconds=300,
-            )
-
-        token_cache_path.write_text(creds.to_json(), encoding="utf-8")
-        print("[OAUTH] Authorization successful! Token cached securely.")
-
-    return creds
+    # ADR-0009 Boundary: Desktop only receives short-lived access token in memory
+    # refresh_token is explicitly omitted from desktop credentials
+    desktop_creds = Credentials(
+        token=full_creds.token,
+        refresh_token=None,
+        scopes=DRIVE_SCOPES,
+    )
+    print("[OAUTH] Authorization successful! In-memory short-lived access capability acquired (refresh_token omitted).")
+    return desktop_creds
 
 def run_live_e3_drive_probe(client_secrets_path: Path, token_cache_path: Path) -> Dict[str, Any]:
     """Execute live external verification probe on Google Drive API."""

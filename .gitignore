@@ -41,3 +41,12 @@ desktop.ini
 # Logs must be added deliberately after redaction
 *.log
 
+# Binaries and downloaded tooling
+*.exe
+*.zip
+tools/temporal/temporal-server.exe
+
+# Scratch & local exports
+scratch/
+AI Auto Video Creator.json
+

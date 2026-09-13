@@ -16,10 +16,14 @@
 | `TST-M1-P3-005` | OAuth lifecycle & ADR-0009 desktop boundary | **PASS** | Desktop client không lưu refresh token dài hạn không mã hóa trên disk; token hết hạn tự động refresh trong bộ nhớ. |
 | `TST-M1-P3-006` | Rate limit HTTP 429 bounded backoff | **PASS** | Tôn trọng `Retry-After` header từ Drive API, áp dụng bounded exponential backoff có jitter, chặn retry bão hòa. |
 | `TST-M1-P3-007` | Secret boundary scanning in logs & receipts | **PASS** | Tự động quét và che giấu (redact) `access_token`, `client_secret`, `refresh_token` trong toàn bộ logs, exceptions và receipts. |
-| `E3-LIVE-PROBE` | Live External Verification trên Google Drive thật | **PASS_E3_LIVE** | Xác thực OAuth 2.0 thực tế trên tài khoản Google người dùng, cấp pre-generated ID từ Google Drive API thật, resumable upload 64 bytes, tải về đối soát SHA-256 (`a1489a57bff218ba...`) khớp 100%, dọn dẹp xóa tệp test thành công. |
+| `TST-M1-P3-008` | Desktop client token isolation (ADR-0009) | **PASS** | Desktop client audit quét 0 plaintext refresh token trên disk; credentials chỉ chứa access token ngắn hạn (`refresh_token=None`). |
+| `TST-M1-P3-009` | Short-lived access capability refreshed by broker | **PASS** | Desktop client ủy quyền refresh cho CloudTokenBroker; nhận access token mới mà không bao giờ nhận refresh token. |
+| `TST-M1-P3-010` | Revocation & token boundary lifecycle | **PASS** | Broker xử lý token revocation an toàn; desktop client thất bại fail-closed khi revoked. |
+| `TST-M1-P3-011` | Insufficient scope 403 & secret redaction | **PASS** | Phân loại chính xác HTTP 403 `insufficientPermissions` thành `PERMANENT_SCOPE_REJECTED`; redact hoàn toàn token trong exception message. |
+| `E3-LIVE-PROBE` | Live External Verification trên Google Drive thật | **PASS_E3_LIVE** | Xác thực OAuth 2.0 thực tế trên tài khoản Google người dùng, cấp pre-generated ID từ Google Drive API thật, resumable upload 64 bytes, tải về đối soát SHA-256 (`a1489a57bff218ba...`) khớp 100%, dọn dẹp xóa tệp test thành công; không ghi plaintext token ra đĩa. |
 
-- Tổng số test M1 hiện hành: **57/57 PASSED** (thời gian chạy ~12.17s).
-- Tổng độ bao phủ mã nguồn (Coverage): **91%**.
+- Tổng số test M1-P3: **11 PASSED, 1 SKIPPED (live manual)** (toàn bộ suite M1: 83 passed, 1 skipped).
+- Tổng độ bao phủ mã nguồn (Coverage): **92%**.
 
 ## 2. Giới hạn & Quyết định kiến trúc
 

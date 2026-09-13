@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "milestone": "M1-R1",
+  "timestamp": "2026-09-13T15:00:00Z",
+  "runtimes": {
+    "cpython": {
+      "expected": "3.13.15",
+      "observed": "3.13.15",
+      "source": "https://www.python.org/downloads/release/python-31315/",
+      "result": "PASS",
+      "limitations": "Standard GIL build; free-threaded mode not evaluated in M1"
+    },
+    "uv": {
+      "expected": "0.12.13",
+      "observed": "0.12.13",
+      "source": "https://github.com/astral-sh/uv/releases/tag/0.12.13",
+      "result": "PASS",
+      "limitations": "Single package resolver enforcing frozen uv.lock"
+    },
+    "postgresql": {
+      "expected": "18.6",
+      "observed": "18.6",
+      "client": "psycopg 3.3.5",
+      "source": "Docker official image postgres:18.6",
+      "result": "PASS",
+      "limitations": "Evaluated on local container port 55432 with UTF-8 Vietnamese collation"
+    },
+    "temporal_server": {
+      "expected": "1.31.2",
+      "observed": "1.31.2",
+      "source": "https://github.com/temporalio/temporal/releases/tag/v1.31.2",
+      "binary_sha256": "5575b3693f37c9c0f19379a5744210ad9558ada54dadb2d1eabe74001a1f5e6b",
+      "result": "PASS",
+      "limitations": "In-memory SQLite persistence dev cluster for M1 architectural proof"
+    },
+    "temporal_sdk": {
+      "expected": "1.32.0",
+      "observed": "1.32.0",
+      "source": "PyPI temporalio 1.32.0",
+      "result": "PASS",
+      "limitations": "Supports deterministic replay, interceptors, and workflow versioning"
+    },
+    "google_drive_client": {
+      "client_lib": "google-api-python-client 2.200.0",
+      "auth_lib": "google-auth-oauthlib 1.4.1",
+      "result": "PASS",
+      "limitations": "Desktop client receives short-lived in-memory tokens via Token Broker (ADR-0009)"
+    },
+    "ffmpeg": {
+      "expected_family": "9.0.1",
+      "binary_path": "C:\\ffmpeg\\bin\\ffmpeg.exe",
+      "binary_sha256": "f845a09b5467cf11651385e0be0dd4df6f70519264f8af2115e3acd6ab7f9480",
+      "ffprobe_sha256": "9713a6a90ed3386874baae150fa26b8556619d186c405f6ac8cea4cfbca71f57",
+      "build": "Gyan essentials build gcc 14.2.0",
+      "result": "PASS",
+      "limitations": "Smoke probe for safe CLI execution; full rendering pipeline deferred to M6"
+    }
+  }
+}

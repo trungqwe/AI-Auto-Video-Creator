@@ -79,3 +79,98 @@ def test_tst_m1_p3_007_secret_boundary_scanning_in_logs_and_receipts():
     sanitized_log = adapter.log_safe_message(f"Upload failed with token: {CANARY_SECRET}")
     assert CANARY_SECRET not in sanitized_log
     assert "[REDACTED_SECRET]" in sanitized_log
+
+
+def test_tst_m1_p3_008_adr0009_token_placement_and_desktop_disk_audit(tmp_path: Path):
+    """TST-M1-P3-008:
+    Broker (J/Cloud-side) sở hữu refresh token dài hạn.
+    Desktop client CHỈ nhận short-lived access token trong memory (creds.refresh_token is None).
+    Desktop disk tuyệt đối không chứa refresh token plaintext.
+    """
+    from m1proof.oauth_broker import CloudTokenBroker, DesktopOAuthClient, audit_desktop_token_storage
+
+    broker = CloudTokenBroker()
+    broker.store_refresh_token(account_id="acc-1", refresh_token="1//MOCK_LONG_TERM_REFRESH_TOKEN_12345")
+
+    desktop = DesktopOAuthClient(broker=broker, account_id="acc-1")
+    creds = desktop.acquire_short_lived_credentials()
+
+    # Ranh giới bộ nhớ: Desktop có access token nhưng KHÔNG có refresh token
+    assert creds is not None
+    assert creds.token is not None
+    assert creds.refresh_token is None
+
+    # Ranh giới ổ đĩa: Kiểm tra toàn bộ desktop scratch/tmp dir không có refresh token
+    clean_dir = tmp_path / "desktop_workspace"
+    clean_dir.mkdir()
+    (clean_dir / "app_config.json").write_text('{"mode": "desktop_worker"}', encoding="utf-8")
+    
+    findings = audit_desktop_token_storage(clean_dir)
+    assert findings == []
+
+    # Giả lập vi phạm: ghi refresh token plaintext ra đĩa desktop
+    violation_file = clean_dir / "leaked_token.json"
+    violation_file.write_text('{"refresh_token": "1//LEAKED_PLAINTEXT_REFRESH_TOKEN"}', encoding="utf-8")
+    findings_violation = audit_desktop_token_storage(clean_dir)
+    assert len(findings_violation) >= 1
+    assert any("refresh_token" in f["pattern"] for f in findings_violation)
+
+
+def test_tst_m1_p3_009_desktop_refresh_delegation_to_broker():
+    """TST-M1-P3-009:
+    Desktop không có refresh token nên không thể tự refresh.
+    Khi access token hết hạn, Desktop phải ủy quyền qua Broker để nhận token mới.
+    """
+    from m1proof.oauth_broker import CloudTokenBroker, DesktopOAuthClient
+    from google.auth.exceptions import RefreshError
+
+    broker = CloudTokenBroker()
+    broker.store_refresh_token(account_id="acc-2", refresh_token="1//MOCK_REFRESH_TOKEN_ABC")
+
+    desktop = DesktopOAuthClient(broker=broker, account_id="acc-2")
+    creds = desktop.acquire_short_lived_credentials()
+
+    # 1. Desktop tự refresh trực tiếp phải thất bại do thiếu refresh_token
+    with pytest.raises(RefreshError, match="The credentials do not contain the necessary fields need to refresh the access token"):
+        from google.auth.transport.requests import Request
+        creds.refresh(Request())
+
+    # 2. Desktop xin refresh qua Broker -> Thành công, nhận access token mới
+    new_creds = desktop.refresh_via_broker()
+    assert new_creds.token is not None
+    assert new_creds.token != creds.token  # Token mới được sinh ra
+    assert new_creds.refresh_token is None  # Vẫn không tiết lộ refresh token cho desktop
+
+
+def test_tst_m1_p3_010_token_revocation_boundary():
+    """TST-M1-P3-010:
+    Revoke vô hiệu hóa token trên Broker và xóa sạch session trên Desktop.
+    """
+    from m1proof.oauth_broker import CloudTokenBroker, DesktopOAuthClient
+
+    broker = CloudTokenBroker()
+    broker.store_refresh_token(account_id="acc-3", refresh_token="1//MOCK_REFRESH_TOKEN_XYZ")
+
+    desktop = DesktopOAuthClient(broker=broker, account_id="acc-3")
+    desktop.acquire_short_lived_credentials()
+    assert desktop.has_active_credentials() is True
+
+    # Thực hiện thu hồi quyền (Revoke)
+    revoked = desktop.revoke()
+    assert revoked is True
+    assert desktop.has_active_credentials() is False
+    assert broker.has_refresh_token("acc-3") is False
+
+
+def test_tst_m1_p3_011_insufficient_scope_classification():
+    """TST-M1-P3-011:
+    Scope không đủ quyền (ví dụ chỉ có metadata read) bị Drive adapter phân loại
+    thành INSUFFICIENT_SCOPE_ERROR và không retry mù.
+    """
+    adapter = DriveStorageAdapter()
+    result = adapter.classify_oauth_error(
+        status_code=403,
+        error_body={"error": {"code": 403, "message": "The request is missing a valid API key or scope.", "status": "PERMISSION_DENIED"}}
+    )
+    assert result["classification"] == "INSUFFICIENT_SCOPE_ERROR"
+    assert result["retryable"] is False

@@ -159,7 +159,7 @@ Kết thúc toàn bộ giai đoạn thiết kế, phát hiện mâu thuẫn cu�
 
 **Kế hoạch thực thi có thẩm quyền:** [M1 implementation plan](./milestones/m1-proof/implementation-plan.md)  
 **Khóa phiên bản:** [M1-R1 version lock](./milestones/m1-proof/version-lock.md)  
-**Trạng thái:** `IN PROGRESS`; M1-P0 và M1-P1 đã PASS, M1-P2 là package tiếp theo. M1 chưa PASS; G01 Temporal và G04 Drive/OAuth đều `NOT TESTED`.
+**Trạng thái:** `READY_FOR_USER_CHECKPOINT`; Toàn bộ P0–P6 đã PASS (83 passed, 1 skipped); Báo cáo [Audit R3](./milestones/m1-proof/audit-r3.md) đạt; G01 và G04 đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)`; G07 đạt `SMOKE_COMPATIBILITY_PASS_M1_SCOPE`. Đang chờ User Checkpoint duyệt M1 trước khi mở M2. M2, M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ### Mục tiêu
 

@@ -1,3 +1,4 @@
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1/p2 -v", "exit_code": 1, "phase": "RED_OBSERVATION", "timestamp_utc": "2026-09-13T06:04:30Z"}
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1/p2 -v", "exit_code": 0, "phase": "GREEN_ACCEPTANCE", "timestamp_utc": "2026-09-13T06:06:55Z"}
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1 --cov=m1proof --cov-report=term -q", "exit_code": 0, "phase": "FULL_SUITE_REGRESSION", "timestamp_utc": "2026-09-13T06:07:10Z"}
+{"command": "py -3.13 -m uv run --frozen pytest tests/m1/p2/test_exact_temporal_server_integration.py -v", "exit_code": 0, "phase": "EXACT_SERVER_INTEGRATION_VERIFICATION", "timestamp_utc": "2026-09-13T07:44:15Z"}

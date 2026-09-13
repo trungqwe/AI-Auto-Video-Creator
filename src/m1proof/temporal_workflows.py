@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from datetime import timedelta
 from typing import Any, Dict
-from temporalio import workflow
+from temporalio import activity, workflow
 from temporalio.client import Client, WorkflowHandle
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError
@@ -167,3 +167,61 @@ class M1ProofWorkflow:
             "stage_2": act2.status,
             "stage_executions": self.stage_executions,
         }
+
+
+# =========================================================================
+# Workflows and Activities for Exact Temporal Server Integration (P2/G01)
+# =========================================================================
+
+@activity.defn
+async def m1_sample_activity(payload: str) -> str:
+    return f"PROCESSED_BY_ACTIVITY:{payload}"
+
+
+@workflow.defn
+class M1SampleRoundtripWorkflow:
+    @workflow.run
+    async def run(self, input_data: str) -> str:
+        return await workflow.execute_activity(
+            m1_sample_activity,
+            input_data,
+            start_to_close_timeout=timedelta(seconds=10),
+        )
+
+
+_idempotency_store: Dict[str, Dict[str, Any]] = {}
+_attempt_counter: Dict[str, int] = {}
+
+
+@activity.defn
+async def m1_idempotent_activity(params: Dict[str, Any]) -> Dict[str, Any]:
+    key = params["idempotency_key"]
+    _attempt_counter[key] = _attempt_counter.get(key, 0) + 1
+    current_attempt = _attempt_counter[key]
+
+    if current_attempt == 1:
+        # Simulate network failure after committing receipt
+        _idempotency_store[key] = {"receipt_id": f"rcpt-{key}", "status": "COMMITTED"}
+        raise RuntimeError("SIMULATED_TRANSIENT_NETWORK_DROP")
+
+    # On second attempt, receipt is already present
+    return {
+        "receipt": _idempotency_store[key],
+        "attempts": current_attempt,
+        "reused": True,
+    }
+
+
+@workflow.defn
+class M1IdempotentRetryWorkflow:
+    @workflow.run
+    async def run(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        return await workflow.execute_activity(
+            m1_idempotent_activity,
+            params,
+            start_to_close_timeout=timedelta(seconds=10),
+            retry_policy=RetryPolicy(
+                maximum_attempts=3,
+                initial_interval=timedelta(milliseconds=50),
+            ),
+        )

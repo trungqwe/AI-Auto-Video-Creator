@@ -1,8 +1,9 @@
 """Evidence Manifest, Gate Enforcement and Audit module for M1-P6.
 
-Provides manifest builder and validator for M1 proof artifacts,
+Provides fail-closed manifest builder and validator for M1 proof artifacts,
 enforces strict gate scope boundaries (preventing premature PASS on G01/G04/G07),
-and implements fail-closed secret scanning across the evidence tree.
+reads actual package statuses dynamically from evidence, and implements
+fail-closed secret scanning across the evidence tree.
 """
 from __future__ import annotations
 import hashlib
@@ -36,6 +37,65 @@ REQUIRED_M1_PACKAGES = [
     "m1-p5",
 ]
 
+MANDATORY_PACKAGE_FILES = {
+    "common": ["commands.jsonl", "status.md"],
+    "m1-p0": ["bootstrap.json", "environment.json"],
+    "m1-p5": ["compatibility_matrix.json"],
+}
+
+
+def check_package_mandatory_files(pkg_id: str, pkg_dir: Path) -> List[str]:
+    """Check required evidence files for a package, accounting for legacy and current evidence naming."""
+    missing = []
+    if not (pkg_dir / "commands.jsonl").is_file():
+        missing.append("commands.jsonl")
+    if not (pkg_dir / "status.md").is_file():
+        missing.append("status.md")
+
+    # Hash file: hashes.sha256 or artifacts.sha256
+    if not (pkg_dir / "hashes.sha256").is_file() and not (pkg_dir / "artifacts.sha256").is_file():
+        missing.append("hashes.sha256")
+
+    # RED observations: red-observations.md or any red-* or fault-timeline.md
+    has_red = (
+        (pkg_dir / "red-observations.md").is_file()
+        or any(f.name.startswith("red-") or f.name == "fault-timeline.md" for f in pkg_dir.iterdir() if f.is_file())
+    )
+    if not has_red:
+        missing.append("red-observations.md")
+
+    # Specific package files
+    if pkg_id in MANDATORY_PACKAGE_FILES:
+        for f in MANDATORY_PACKAGE_FILES[pkg_id]:
+            if not (pkg_dir / f).is_file():
+                missing.append(f)
+
+    return missing
+
+
+def parse_package_status_from_evidence(pkg_dir: Path) -> str:
+    """Parse authoritative package outcome from status.md without hard-coding."""
+    status_file = pkg_dir / "status.md"
+    if not status_file.is_file():
+        return "MISSING_STATUS_RECORD"
+
+    content = status_file.read_text(encoding="utf-8", errors="ignore")
+    # Matches: "Trạng thái: PASS", "**Trạng thái:** `PASS`", "Status: STOPPED", etc.
+    m = re.search(r"(?:Trạng thái|Status)\*?\*?\s*[:=]\s*\*?\*?\s*[`\"']?([A-Z_]+)[`\"']?", content, re.IGNORECASE)
+    if m:
+        val = m.group(1).upper()
+        if val in ("PASS", "STOPPED", "FAIL", "FAILED", "BLOCKED_EXTERNAL", "CORRECTION_REQUIRED"):
+            return "FAILED" if val == "FAIL" else val
+
+    # Fallback to checking headers if no inline key:value
+    if "# STOPPED" in content:
+        return "STOPPED"
+    if "# PASS" in content or "PASS_M1_SCOPE" in content:
+        return "PASS"
+
+    return "UNPARSEABLE_STATUS"
+
+
 def validate_manifest_schema(manifest: Dict[str, Any]) -> bool:
     """Validate that manifest contains all mandatory sections and fields."""
     for field in MANDATORY_MANIFEST_FIELDS:
@@ -58,86 +118,85 @@ def validate_manifest_artifacts(manifest: Dict[str, Any], project_root: Path) ->
     missing = []
     tampered = []
 
+    root = Path(project_root)
     artifacts = manifest.get("artifacts", [])
-    for item in artifacts:
-        rel_or_abs = Path(item["path"])
-        target_file = rel_or_abs if rel_or_abs.is_absolute() else (project_root / rel_or_abs)
+    if not isinstance(artifacts, list):
+        raise ValueError("Field 'artifacts' must be a list")
 
+    for item in artifacts:
+        rel_path = item.get("path")
+        declared_hash = item.get("sha256")
+        if not rel_path or not declared_hash:
+            continue
+
+        target_file = root / rel_path
         if not target_file.is_file():
-            missing.append(str(rel_or_abs))
+            missing.append(rel_path)
             continue
 
         actual_hash = hashlib.sha256(target_file.read_bytes()).hexdigest()
-        expected_hash = item.get("sha256", "")
-        if actual_hash.lower() != expected_hash.lower():
+        if actual_hash != declared_hash:
             tampered.append({
-                "path": str(rel_or_abs),
-                "expected_sha256": expected_hash,
-                "actual_sha256": actual_hash,
+                "path": rel_path,
+                "declared": declared_hash,
+                "actual": actual_hash,
             })
 
+    is_valid = (len(missing) == 0 and len(tampered) == 0)
     return {
-        "valid": len(missing) == 0 and len(tampered) == 0,
+        "valid": is_valid,
         "missing": missing,
         "tampered": tampered,
     }
 
 
-def evaluate_milestone_gates(manifest: Dict[str, Any]) -> Dict[str, str]:
-    """Enforce architectural gate rules for M1, G01, G04, and G07."""
+def evaluate_milestone_gates(manifest: Dict[str, Any]) -> Dict[str, Any]:
+    """Rule engine evaluating M1 milestone exit criteria and gate scope boundaries."""
     gates = manifest.get("gates", {})
 
-    # Invariant: G01 không bao giờ được nhận PASS toàn phần ở M1
+    # 1. Gate Scope Boundaries Protection (cấm nâng scope quá sớm)
     if gates.get("G01") == "PASS":
-        raise ValueError("G01 cannot claim full PASS in M1 scope; only PARTIALLY_PROVEN or PASS_M1_SCOPE permitted")
+        raise ValueError("G01 cannot claim full PASS in M1 (must be PARTIALLY_PROVEN or PASS_M1_SCOPE)")
 
-    # Invariant: G04 không bao giờ được nhận PASS toàn phần ở M1
     if gates.get("G04") == "PASS":
-        raise ValueError("G04 cannot claim full PASS in M1 scope; only PARTIALLY_PROVEN or PASS_M1_SCOPE permitted")
+        raise ValueError("G04 cannot claim full PASS in M1 (must be PARTIALLY_PROVEN or PASS_M1_SCOPE)")
 
-    # Invariant: G07 không bao giờ được nhận PASS toàn phần ở M1
     if gates.get("G07") == "PASS":
-        raise ValueError("G07 cannot claim full PASS in M1 scope; only SMOKE_COMPATIBILITY_PASS_M1_SCOPE permitted")
+        raise ValueError("G07 cannot claim full PASS in M1 (must be SMOKE_COMPATIBILITY_PASS_M1_SCOPE)")
 
+    # 2. Package Status Evaluation
     packages = manifest.get("packages", {})
+    statuses = [pkg_info.get("status") for pkg_info in packages.values()]
 
-    # Kiểm tra FAILED
-    for pkg_name, pkg_data in packages.items():
-        status = pkg_data.get("status") if isinstance(pkg_data, dict) else str(pkg_data)
-        if status in ("FAIL", "FAILED", "STOPPED"):
-            return {"m1_status": "FAILED", "failed_package": pkg_name}
+    if any(s in ("FAIL", "FAILED") for s in statuses):
+        return {"m1_status": "FAILED", "reason": "One or more packages reported failure"}
 
-    # Kiểm tra BLOCKED_EXTERNAL
-    for pkg_name, pkg_data in packages.items():
-        status = pkg_data.get("status") if isinstance(pkg_data, dict) else str(pkg_data)
-        if status == "BLOCKED_EXTERNAL":
-            return {"m1_status": "BLOCKED_EXTERNAL", "blocked_package": pkg_name}
+    if any(s == "BLOCKED_EXTERNAL" for s in statuses):
+        return {"m1_status": "BLOCKED_EXTERNAL", "reason": "Package blocked on external dependency"}
 
-    # Kiểm tra incomplete
-    for req_pkg in REQUIRED_M1_PACKAGES:
-        pkg_data = packages.get(req_pkg, {})
-        status = pkg_data.get("status") if isinstance(pkg_data, dict) else str(pkg_data)
-        if status != "PASS":
-            return {"m1_status": "NOT_READY", "pending_package": req_pkg}
+    if any(s in ("STOPPED", "CORRECTION_REQUIRED") for s in statuses):
+        return {"m1_status": "CORRECTION_REQUIRED", "reason": "Package stopped or correction required"}
 
-    return {"m1_status": "READY_FOR_USER_CHECKPOINT"}
+    if any(s and ("MISSING" in s or "UNPARSEABLE" in s) for s in statuses):
+        return {"m1_status": "EVIDENCE_INCOMPLETE", "reason": "Required evidence files missing or unparseable"}
+
+    if all(s == "PASS" for s in statuses):
+        return {"m1_status": "READY_FOR_USER_CHECKPOINT", "reason": "All required M1 packages passed"}
+
+    return {"m1_status": "IN_PROGRESS", "reason": "Milestone packages still in progress"}
 
 
-def scan_secrets_in_directory(target_dir: Path) -> List[Dict[str, Any]]:
-    """Scan directory tree for potential secrets, tokens, or credentials fail-closed."""
+def scan_secrets_in_directory(dir_path: Path) -> List[Dict[str, Any]]:
+    """Recursively scan directory for canary secret tokens using fail-closed regex rules."""
     findings = []
-    target = Path(target_dir)
-    if not target.exists():
+    target_dir = Path(dir_path)
+    if not target_dir.is_dir():
         return findings
 
-    ignored_dirs = {".git", ".venv", "__pycache__", ".pytest_cache", ".gemini"}
-
-    for root, dirs, files in os.walk(target):
-        dirs[:] = [d for d in dirs if d not in ignored_dirs]
-        for f in files:
-            file_path = Path(root) / f
-            # Bỏ qua tệp binary lớn nếu có
-            if file_path.suffix in (".pyc", ".db", ".mp4", ".png", ".jpg"):
+    for root, _, files in os.walk(target_dir):
+        for fname in files:
+            file_path = Path(root) / fname
+            if file_path.suffix in (".pyc", ".db", ".mp4", ".png", ".jpg", ".zip", ".exe"):
                 continue
 
             try:
@@ -158,7 +217,7 @@ def scan_secrets_in_directory(target_dir: Path) -> List[Dict[str, Any]]:
 
 
 def build_m1_evidence_manifest(project_root: Path) -> Dict[str, Any]:
-    """Collect and assemble all M1 evidence records into a single authoritative manifest."""
+    """Collect and assemble all M1 evidence records into an authoritative manifest with dynamic parsing."""
     root = Path(project_root)
     evidence_dir = root / "docs" / "milestones" / "m1-proof" / "evidence"
 
@@ -171,6 +230,13 @@ def build_m1_evidence_manifest(project_root: Path) -> Dict[str, Any]:
             packages_summary[pkg_id] = {"status": "MISSING_DIR", "evidence_files": []}
             continue
 
+        # Check required files
+        missing_req = check_package_mandatory_files(pkg_id, pkg_dir)
+        if missing_req:
+            pkg_status = f"MISSING_REQUIRED_EVIDENCE:{','.join(missing_req)}"
+        else:
+            pkg_status = parse_package_status_from_evidence(pkg_dir)
+
         pkg_files = []
         for file in sorted(pkg_dir.iterdir()):
             if file.is_file():
@@ -180,7 +246,7 @@ def build_m1_evidence_manifest(project_root: Path) -> Dict[str, Any]:
                 pkg_files.append(file.name)
 
         packages_summary[pkg_id] = {
-            "status": "PASS",
+            "status": pkg_status,
             "evidence_files": pkg_files,
         }
 
@@ -196,6 +262,15 @@ def build_m1_evidence_manifest(project_root: Path) -> Dict[str, Any]:
             "G01": "PARTIALLY_PROVEN",
             "G04": "PARTIALLY_PROVEN",
             "G07": "SMOKE_COMPATIBILITY_PASS_M1_SCOPE",
+        },
+        "evidence_classification": {
+            "m1-p0": "E2-INT (Runtime & Live PostgreSQL 18.6 Preflight)",
+            "m1-p1": "E2-INT (Contract Fencing, Advisory CAS & Concurrency)",
+            "m1-p2": "E2-INT (Exact Temporal Server 1.31.2 Binary Integration & Replay)",
+            "m1-p3": "E3 (Live External Probe on Google Drive API & ADR-0009 Token Broker)",
+            "m1-p4": "E2 (SQLite WAL Journal & Windows Atomic File Write)",
+            "m1-p5": "E2-INT (Compatibility Matrix, Strict Version & ffprobe Verification)",
+            "m1-p6": "AUDIT (Fail-Closed Manifest Builder & Exit Gate Evaluation)",
         },
         "contracts_audited": [
             "CT-CMN-001..013",

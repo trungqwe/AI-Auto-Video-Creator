@@ -31,8 +31,14 @@ def ffmpeg_bin_path() -> str:
 
 @pytest.fixture
 def sample_media_fixture(tmp_path: Path) -> Path:
-    """Provide a small synthetic media file for probe testing."""
-    fixture_file = tmp_path / "smoke_test_fixture.mp4"
-    # Dùng header MP4 tối thiểu hoặc synthetic byte stream có thể probe
-    fixture_file.write_bytes(b"\x00\x00\x00\x1cftypisom\x00\x00\x02\x00isomiso2mp41\x00\x00\x00\x08free")
+    """Provide a structurally valid audio media fixture (RIFF WAV) recognized by FFmpeg and ffprobe."""
+    import wave
+    fixture_file = tmp_path / "smoke_test_fixture.wav"
+    with wave.open(str(fixture_file), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        # Generate 0.5 seconds of PCM audio frames (22050 samples = 44100 bytes)
+        frames = bytes(44100)
+        w.writeframes(frames)
     return fixture_file

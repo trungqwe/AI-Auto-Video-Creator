@@ -106,6 +106,7 @@
       "status": "PASS",
       "evidence_files": [
         "commands.jsonl",
+        "compatibility_matrix.json",
         "hashes.sha256",
         "red-observations.md",
         "status.md"
@@ -116,6 +117,15 @@
     "G01": "PARTIALLY_PROVEN",
     "G04": "PARTIALLY_PROVEN",
     "G07": "SMOKE_COMPATIBILITY_PASS_M1_SCOPE"
+  },
+  "evidence_classification": {
+    "m1-p0": "E2-INT (Runtime & Live PostgreSQL 18.6 Preflight)",
+    "m1-p1": "E2-INT (Contract Fencing, Advisory CAS & Concurrency)",
+    "m1-p2": "E2-INT (Exact Temporal Server 1.31.2 Binary Integration & Replay)",
+    "m1-p3": "E3 (Live External Probe on Google Drive API & ADR-0009 Token Broker)",
+    "m1-p4": "E2 (SQLite WAL Journal & Windows Atomic File Write)",
+    "m1-p5": "E2-INT (Compatibility Matrix, Strict Version & ffprobe Verification)",
+    "m1-p6": "AUDIT (Fail-Closed Manifest Builder & Exit Gate Evaluation)"
   },
   "contracts_audited": [
     "CT-CMN-001..013",
@@ -128,7 +138,7 @@
   "artifacts": [
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p0/artifacts.sha256",
-      "sha256": "5f623d032cbc2451d6b695a828f023cd99399bc4e783ed7f2f3a9d1b37e833f4"
+      "sha256": "a9b2de47704ec071c649757e6b6e850aa956b738ec9f49e96b634823d70b5ca8"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p0/bootstrap.json",
@@ -208,7 +218,7 @@
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p1/artifacts.sha256",
-      "sha256": "b2f20998123be9f69463b693114e84eadbfb89b9e971d0a41821c337fbcea9e6"
+      "sha256": "30363928cbd58e0b8968608425b7a42f5a49a876b9224b037e5db89f4b8ff92c"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p1/commands.jsonl",
@@ -364,11 +374,11 @@
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p2/commands.jsonl",
-      "sha256": "6307e5440347968f8ceaef1c08e3cf43a5c00262b130426d7fd28ceea8a8d996"
+      "sha256": "28c8dbd7a6aa1f809746c52f6c091cf80198bc16fc650cbcb0f8e8e7a211ec1d"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p2/hashes.sha256",
-      "sha256": "297f555634498fe1bceae3bd836776cb7f9c4509bd32d9f37694150236e7ee97"
+      "sha256": "ab14fd6611d296ae1191aac4ff77b9775326a6b287da4da55d73fa9eaca6a973"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p2/red-observations.md",
@@ -376,15 +386,15 @@
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p2/status.md",
-      "sha256": "2db696b26959d05f91ff59ef45dc270179a15255f6aa7afecff985a25ff3f672"
+      "sha256": "3ab99f2db4746a3314b6a8769c15fa38982e786badcd0fd6434acf0b0e7f0a29"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p3/commands.jsonl",
-      "sha256": "bd1a661d5b582832a07d13d8fc1c15096944c628c3bb14bc333e123a6bc2eefd"
+      "sha256": "883a5972b360082ef2e917781647163ae8c9e5f38d537332926077e099386c48"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p3/hashes.sha256",
-      "sha256": "630d4141ee21289d74a196e6350bd37fc07b87f1a5821acd7ca6b8f3ad1709fd"
+      "sha256": "248014f255804f59120efd3c358ae7a737732523ec03f09c5f6b88a522856ecf"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p3/red-observations.md",
@@ -392,7 +402,7 @@
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p3/status.md",
-      "sha256": "2f75674cc14013338177758df19e99fa13ee04dffab1a996510be176f6d60f56"
+      "sha256": "f95046c1d48a738c0c1ed032eb6a8870c8d9c53edd3eb702e4cd6a423cd08d29"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p4/commands.jsonl",
@@ -400,7 +410,7 @@
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p4/hashes.sha256",
-      "sha256": "3dfef07d553a62578f68fdff2b310e18d54f2d6caefc3507c6bd390a947299b2"
+      "sha256": "e2eb6867ea11196542a5867cd64dc924c775def204b8c550b5dee5ccdc1b4458"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p4/red-observations.md",
@@ -415,8 +425,12 @@
       "sha256": "c80326547a7eefe5394ef6adc7ccbecdd7b76d94b8badf404a9240426729fa07"
     },
     {
+      "path": "docs/milestones/m1-proof/evidence/m1-p5/compatibility_matrix.json",
+      "sha256": "389c4e463ef7ef7c8d8e964027e06307eeac9c06f6046702931d87118a3369ab"
+    },
+    {
       "path": "docs/milestones/m1-proof/evidence/m1-p5/hashes.sha256",
-      "sha256": "8122aec8a38ee175947785540d41230274b662b86654dcf8658974465275a4c0"
+      "sha256": "8d9fc7b6f640b7acd23a618910b8c8c6183408706766ef1309e3681ffdceb4df"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p5/red-observations.md",
