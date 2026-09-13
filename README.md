@@ -7,15 +7,15 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | Hạng mục | Trạng thái |
 |---|---|
 | M0 Design | `APPROVED` |
-| M1 Evidence Prototype | `IN PROGRESS — P0/P1 PASS AFTER REMEDIATION; P2 READY` |
-| G01 Temporal | `NOT TESTED` |
+| M1 Evidence Prototype | `IN PROGRESS — P0/P1/P2 PASS; P3 BLOCKED_EXTERNAL` |
+| G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G04 Drive/OAuth | `NOT TESTED` |
 | M2 | `NOT AUTHORIZED` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
 Phạm vi implementation hiện được phép chỉ là `M1-P0 → M1-P6`. M1 phải đi theo test-first, lưu evidence thật và dừng khi gặp điều kiện STOP. Không được bắt đầu M2, M3 hoặc Phân hệ A trước khi M1 qua exit gate, được audit và người dùng xác nhận checkpoint tiếp theo.
 
-M1-P0/P1 đã qua remediation audit R1 với live environment probe, epoch authority, aggregate serialization, operation/activity receipts có scope, secret boundary và completion admission owner validation. Acceptance hiện có 42 test qua; coverage run gần nhất đạt 93%. G01/G04 vẫn `NOT TESTED`; work package kế tiếp là M1-P2.
+M1-P0, P1 và P2 đã hoàn tất PASS: P0/P1 qua remediation audit R1, P2 Temporal G01 proof đạt 7/7 test acceptance qua (worker lifecycle, idempotency lost-ACK, stale generation, child isolation, replay versioning/patching, unknown reconciliation và payload boundaries). Tổng test suite hiện có 49 test qua; coverage đạt 93%. G01 đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)`; work package kế tiếp là M1-P3 (đang chờ external credential thật).
 
 ## Bắt đầu một phiên làm việc
 
@@ -55,6 +55,6 @@ Chỉ đọc sâu contracts/ADR được work package hiện tại trích dẫn;
 
 Remote chính: <https://github.com/trungqwe/AI-Auto-Video-Creator>
 
-## Trạng thái sau khắc phục audit M1 R1
+## Trạng thái sau M1-P2 Temporal Proof
 
-Ba BLOCKER và năm MAJOR đã được khắc phục và kiểm tra lại; evidence mới nằm tại `docs/milestones/m1-proof/evidence/m1-remediation-r1/`. P0/P1 `PASS`, P2 `READY`; M1 chưa PASS. G01/G04 vẫn `NOT TESTED`; M2/M3/Module A vẫn `NOT AUTHORIZED`.
+M1-P0, P1 và P2 đã hoàn tất `PASS`; G01 đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)` với evidence tại `docs/milestones/m1-proof/evidence/m1-p2/`. G04 vẫn `NOT TESTED`; P3 bị chặn bởi `ROADMAP-OPEN-003`; M2/M3/Module A vẫn `NOT AUTHORIZED`.

@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Added
 
+- Hoàn thành M1-P2 Temporal G01 Proof: kiểm chứng Temporal Server 1.31.2 và Python SDK 1.32.0 với 7 bài test-first (worker offline/resume, idempotency lost-ACK, stale generation fencing, child failure isolation, replay versioning/patching, unknown outcome reconciliation và payload/history secret boundaries).
 - M1-P1 contract proof cho idempotency, optimistic revision, outbox/consumer dedupe, fencing theo generation/recovery epoch, operation receipt/reconciliation và lọc dữ liệu nhạy cảm.
 - Completion Unit of Work proof ghi nguyên tử completion ledger, batch/capacity, variant registry/reservation, `MediaUsage` qua owner port, outbox và cleanup eligibility; có fault injection tại từng ranh giới và lost-ACK recovery.
 - M1-P0 environment capture/validation, frozen dependency lock, PostgreSQL 18.6 preflight và test harness với evidence RED/GREEN.
@@ -17,6 +18,8 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Changed
 
+- M1-P2 chuyển sang `PASS_M1_SCOPE`; G01 chuyển sang `PARTIALLY_PROVEN`.
+- P0/P1/P2 đạt `PASS`, package tiếp theo là M1-P3 (chờ credential Drive/OAuth thật).
 - Khắc phục toàn bộ 3 BLOCKER và 5 MAJOR của audit M1 R1: aggregate race, recovery epoch, secret boundaries, live environment probe, scoped operation/activity receipts, restart evidence và completion admission.
 - P0/P1 trở lại `PASS` sau remediation review; P2 chuyển `READY`, nhưng M1/G01/G04 chưa PASS.
 - M1 tiếp tục `IN PROGRESS`; M1-P0 và M1-P1 đạt PASS, M1-P2 Temporal G01 là work package tiếp theo. M1 và G01/G04 chưa PASS.
