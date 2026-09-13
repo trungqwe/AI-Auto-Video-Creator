@@ -17,17 +17,20 @@ Không có giá trị DSN nào được đọc ra stdout/evidence. Không sử d
 
 Vì thiếu `M2_TEST_PG_DSN`, fixture không được phép tạo database disposable. Do đó không có runtime evidence về `m2_p1_test_<uuid>` trong lần chạy này, và 11 oracle hiện đều không được chạy hay tính là RED sau correction. Fixture đã được đổi sang function scope: khi prerequisite sẵn sàng, từng mandatory oracle tạo database `m2_p1_test_<uuid>` riêng; kiểm tra `current_database()` ở target đúng identity đó; đóng mọi target connection trước teardown; rồi dùng admin connection khác target để `DROP DATABASE` sau khi xác minh exact regex/identity.
 
-Raw prerequisite output nằm tại `red-p1-prerequisite-stdout.txt`; nó xác nhận blocker được báo đúng ở setup, không bị ngụy trang thành RED:
+Raw prerequisite đơn lẻ nằm tại `red-p1-prerequisite-stdout.txt`; nó xác nhận blocker được báo đúng ở setup, không bị ngụy trang thành RED:
 
 ```text
 Command: .venv\Scripts\python.exe -m pytest tests\m2\test_p1_db_and_workspace.py::test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db -vv
 Observed: ERROR at setup — Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
 ```
 
+Lần xác nhận mới chạy nguyên bộ 11 oracle cũng dừng hoàn toàn tại cùng prerequisite. Raw stdout đầy đủ đã được lưu trước diễn giải này tại `red-p1-prerequisite-full-suite-stdout.txt`: 11 test được collect, 11 lỗi setup đều là `BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required`, và không có test nào chạm behavioral oracle. Vì vậy kết quả này không được tính là RED cho bất kỳ test ID nào.
+
 ## Raw evidence
 
 - `red-p1-collect-stdout.txt`: raw `--collect-only` của exact 11 oracle sau correction.
 - `red-p1-prerequisite-stdout.txt`: raw `BLOCKED_EXTERNAL` run sau correction.
+- `red-p1-prerequisite-full-suite-stdout.txt`: raw full-suite `BLOCKED_EXTERNAL` hiện hành; 11/11 test dừng ở fixture trước behavioral oracle.
 - `red-p1-stdout.txt`: RED P1-008 lịch sử đã được independent audit tại commit `65af9f84f881e03e7be95d1dda44243030aca1f6` xác nhận hợp lệ. Vì P1-008 nay cũng dùng function-scoped disposable fixture, nó phải được rerun sau khi DSN có sẵn.
 - Mỗi RED run trên PostgreSQL sau này sẽ lưu raw stdout riêng thành `red-p1-<run-id>-stdout.txt` trước mọi human interpretation.
 
@@ -35,7 +38,7 @@ Observed: ERROR at setup — Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is require
 
 ```text
 Command: .venv\\Scripts\\python.exe -m pytest tests\\m2\\test_p1_db_and_workspace.py --collect-only -q
-Result: 11 tests collected in 0.07s; raw output: `red-p1-collect-stdout.txt`.
+Result: 11 tests collected in 0.57s; raw output: `red-p1-collect-stdout.txt`.
 ```
 
 Collection hoàn tất không có `ModuleNotFoundError`, syntax error, hay test bị skip. Các stub chỉ tồn tại để import thành công; mọi public method chưa hiện thực đều ném `NotImplementedError`.

@@ -1,0 +1,192 @@
+Command:
+& .\.venv\Scripts\python.exe -m pytest tests\m2\test_p1_db_and_workspace.py -vv
+
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 11 items
+
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db ERROR [  9%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_002_migration_checksum_tamper_rejected ERROR [ 18%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected ERROR [ 27%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_004_bounded_advisory_lock_and_timeout ERROR [ 36%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback ERROR [ 45%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement ERROR [ 54%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented ERROR [ 63%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_008_destructive_guard_rejects_non_test_db ERROR [ 72%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_009_applied_migration_file_missing_rejected ERROR [ 81%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record ERROR [ 90%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool ERROR [100%]
+
+=================================== ERRORS ====================================
+_ ERROR at setup of test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db _
+
+    @pytest.fixture
+    def disposable_db() -> Iterator[DisposableDatabase]:
+        """Create one exact-name PostgreSQL database per mandatory oracle invocation."""
+        admin_dsn = os.environ.get("M2_TEST_PG_DSN")
+        if not admin_dsn:
+>           pytest.fail(
+                "BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; "
+                "no fallback credential or mock database is permitted."
+            )
+E           Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+
+tests\m2\test_p1_db_and_workspace.py:119: Failed
+___ ERROR at setup of test_tst_m2_p1_002_migration_checksum_tamper_rejected ___
+
+    @pytest.fixture
+    def disposable_db() -> Iterator[DisposableDatabase]:
+        """Create one exact-name PostgreSQL database per mandatory oracle invocation."""
+        admin_dsn = os.environ.get("M2_TEST_PG_DSN")
+        if not admin_dsn:
+>           pytest.fail(
+                "BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; "
+                "no fallback credential or mock database is permitted."
+            )
+E           Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+
+tests\m2\test_p1_db_and_workspace.py:119: Failed
+_ ERROR at setup of test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected _
+
+    @pytest.fixture
+    def disposable_db() -> Iterator[DisposableDatabase]:
+        """Create one exact-name PostgreSQL database per mandatory oracle invocation."""
+        admin_dsn = os.environ.get("M2_TEST_PG_DSN")
+        if not admin_dsn:
+>           pytest.fail(
+                "BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; "
+                "no fallback credential or mock database is permitted."
+            )
+E           Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+
+tests\m2\test_p1_db_and_workspace.py:119: Failed
+___ ERROR at setup of test_tst_m2_p1_004_bounded_advisory_lock_and_timeout ____
+
+    @pytest.fixture
+    def disposable_db() -> Iterator[DisposableDatabase]:
+        """Create one exact-name PostgreSQL database per mandatory oracle invocation."""
+        admin_dsn = os.environ.get("M2_TEST_PG_DSN")
+        if not admin_dsn:
+>           pytest.fail(
+                "BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; "
+                "no fallback credential or mock database is permitted."
+            )
+E           Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+
+tests\m2\test_p1_db_and_workspace.py:119: Failed
+_ ERROR at setup of test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback _
+
+    @pytest.fixture
+    def disposable_db() -> Iterator[DisposableDatabase]:
+        """Create one exact-name PostgreSQL database per mandatory oracle invocation."""
+        admin_dsn = os.environ.get("M2_TEST_PG_DSN")
+        if not admin_dsn:
+>           pytest.fail(
+                "BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; "
+                "no fallback credential or mock database is permitted."
+            )
+E           Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+
+tests\m2\test_p1_db_and_workspace.py:119: Failed
+_ ERROR at setup of test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement _
+
+    @pytest.fixture
+    def disposable_db() -> Iterator[DisposableDatabase]:
+        """Create one exact-name PostgreSQL database per mandatory oracle invocation."""
+        admin_dsn = os.environ.get("M2_TEST_PG_DSN")
+        if not admin_dsn:
+>           pytest.fail(
+                "BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; "
+                "no fallback credential or mock database is permitted."
+            )
+E           Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+
+tests\m2\test_p1_db_and_workspace.py:119: Failed
+_ ERROR at setup of test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented _
+
+    @pytest.fixture
+    def disposable_db() -> Iterator[DisposableDatabase]:
+        """Create one exact-name PostgreSQL database per mandatory oracle invocation."""
+        admin_dsn = os.environ.get("M2_TEST_PG_DSN")
+        if not admin_dsn:
+>           pytest.fail(
+                "BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; "
+                "no fallback credential or mock database is permitted."
+            )
+E           Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+
+tests\m2\test_p1_db_and_workspace.py:119: Failed
+_ ERROR at setup of test_tst_m2_p1_008_destructive_guard_rejects_non_test_db __
+
+    @pytest.fixture
+    def disposable_db() -> Iterator[DisposableDatabase]:
+        """Create one exact-name PostgreSQL database per mandatory oracle invocation."""
+        admin_dsn = os.environ.get("M2_TEST_PG_DSN")
+        if not admin_dsn:
+>           pytest.fail(
+                "BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; "
+                "no fallback credential or mock database is permitted."
+            )
+E           Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+
+tests\m2\test_p1_db_and_workspace.py:119: Failed
+_ ERROR at setup of test_tst_m2_p1_009_applied_migration_file_missing_rejected _
+
+    @pytest.fixture
+    def disposable_db() -> Iterator[DisposableDatabase]:
+        """Create one exact-name PostgreSQL database per mandatory oracle invocation."""
+        admin_dsn = os.environ.get("M2_TEST_PG_DSN")
+        if not admin_dsn:
+>           pytest.fail(
+                "BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; "
+                "no fallback credential or mock database is permitted."
+            )
+E           Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+
+tests\m2\test_p1_db_and_workspace.py:119: Failed
+_ ERROR at setup of test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record _
+
+    @pytest.fixture
+    def disposable_db() -> Iterator[DisposableDatabase]:
+        """Create one exact-name PostgreSQL database per mandatory oracle invocation."""
+        admin_dsn = os.environ.get("M2_TEST_PG_DSN")
+        if not admin_dsn:
+>           pytest.fail(
+                "BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; "
+                "no fallback credential or mock database is permitted."
+            )
+E           Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+
+tests\m2\test_p1_db_and_workspace.py:119: Failed
+_ ERROR at setup of test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool _
+
+    @pytest.fixture
+    def disposable_db() -> Iterator[DisposableDatabase]:
+        """Create one exact-name PostgreSQL database per mandatory oracle invocation."""
+        admin_dsn = os.environ.get("M2_TEST_PG_DSN")
+        if not admin_dsn:
+>           pytest.fail(
+                "BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; "
+                "no fallback credential or mock database is permitted."
+            )
+E           Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+
+tests\m2\test_p1_db_and_workspace.py:119: Failed
+=========================== short test summary info ===========================
+ERROR tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db - Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+ERROR tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_002_migration_checksum_tamper_rejected - Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+ERROR tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected - Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+ERROR tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_004_bounded_advisory_lock_and_timeout - Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+ERROR tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback - Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+ERROR tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement - Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+ERROR tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented - Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+ERROR tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_008_destructive_guard_rejects_non_test_db - Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+ERROR tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_009_applied_migration_file_missing_rejected - Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+ERROR tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record - Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+ERROR tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool - Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+============================= 11 errors in 0.15s ==============================
