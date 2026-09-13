@@ -1,7 +1,7 @@
 # AI Auto Video Creator — Checklist cuối trước code
 
 **Ngày lập:** 12-09-2026  
-**Trạng thái:** M0 APPROVED/CLOSED; M1 đang triển khai, P0/P1/P2 PASS, P3 đang chờ credential thật (BLOCKED_EXTERNAL)
+**Trạng thái:** M0 APPROVED/CLOSED; M1 đang triển khai, P0/P1/P2/P3 PASS, P4 là bước tiếp theo  
 **Cổng áp dụng:** M0 → M1 của [roadmap](./11-roadmap.md)  
 **Căn cứ audit hiện hành:** [M1 audit R1 và hậu kiểm](./milestones/m1-proof/audit-r1.md#hậu-kiểm-sau-khắc-phục)
 
@@ -22,14 +22,14 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | PCC-026 | ✅ `CLOSED` | User đã đọc và chấp thuận baseline hiện hành |
 | PCC-027 | ✅ `CLOSED — M1 ONLY` | Quyền implementation chỉ áp dụng M1 |
 | ROADMAP-OPEN-002 | ✅ `CLOSED_FOR_M1_R1` | Version set đã chọn; compatibility chưa được chứng minh |
-| M1 | 🟡 `IN PROGRESS — P0/P1/P2 PASS; P3 BLOCKED_EXTERNAL` | M1 chưa PASS; G01 đạt PASS_M1_SCOPE, G04 chưa thử |
+| M1 | 🟡 `IN PROGRESS — P0/P1/P2/P3 PASS` | M1 chưa hoàn tất toàn bộ; G01 và G04 đều đạt PASS_M1_SCOPE |
 | G01 Temporal | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P2 đã PASS trong phạm vi M1; server upgrade thuộc M2-M7 |
-| G04 Drive/OAuth | ⬜ `NOT TESTED` | P3 chưa chạy; không được thay external proof bằng mock |
-| ROADMAP-OPEN-003 | 🟡 `OPEN — BLOCKS M1-P3 ONLY` | Không chặn M1-P0/P1/P2; thiếu credential thật làm P3 BLOCKED_EXTERNAL |
+| G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS (bao gồm E3 live probe trên Google Drive thật) |
+| ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất |
 | M2 | ⛔ `NOT AUTHORIZED` | Chỉ được xem xét sau M1 exit, audit và checkpoint user |
 | M3 / Module A | ⛔ `NOT AUTHORIZED` | Không được triển khai trong M1 |
 
-Đây là bảng trạng thái có thẩm quyền trước lệnh code đầu tiên. Kết quả P2/P3 sau này nếu đạt chỉ được ghi `PASS_M1_SCOPE`; G01/G04 toàn phần vẫn `PARTIALLY_PROVEN` cho tới khi đủ evidence các milestone tiếp theo.
+Đây là bảng trạng thái có thẩm quyền trước lệnh code đầu tiên. Kết quả P2/P3 đã đạt được ghi `PASS_M1_SCOPE`; G01/G04 toàn phần vẫn `PARTIALLY_PROVEN` cho tới khi đủ evidence các milestone tiếp theo.
 
 ## 2. Mục tiêu chung để xác nhận
 
@@ -144,8 +144,12 @@ Checklist không phải lệnh cài thư viện, khởi tạo framework, triển
 
 Trạng thái phê duyệt đã được đồng bộ vào roadmap và module plan. Nếu có sửa đổi đáng kể sau phê duyệt, xác định phần ảnh hưởng và kiểm toán lại trước khi dùng bản mới.
 
-**Kết luận:** Baseline thiết kế và version set M1-R1 đã được user chấp thuận; quyền code chỉ giới hạn M1. M1-P0/P1/P2 đã PASS theo test-first và evidence; package tiếp theo là M1-P3 (đang chờ external credential). Không tự mở M2/M3/Phân hệ A.
+**Kết luận:** Baseline thiết kế và version set M1-R1 đã được user chấp thuận; quyền code chỉ giới hạn M1. M1-P0/P1/P2/P3 đã PASS theo test-first và evidence; package tiếp theo là M1-P4 (Local Processing FFmpeg & Whisper). Không tự mở M2/M3/Phân hệ A.
 
 ## Trạng thái sau M1-P2 Temporal G01 Proof
 
 M1-P2 đã hoàn thành với 7 bài test đạt GREEN, evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p2/`. P0/P1/P2 `PASS`; G01 `PARTIALLY_PROVEN (PASS_M1_SCOPE)`. ROADMAP-OPEN-003 chỉ chặn P3; M2/M3/Module A vẫn `NOT AUTHORIZED`.
+
+## Trạng thái sau M1-P3 Google Drive & OAuth G04 Proof
+
+M1-P3 đã hoàn thành với 8 bài test (7 unit/integration + 1 live E3 verification trên Google Drive thật) đạt GREEN, evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p3/`. P0/P1/P2/P3 `PASS`; G01 và G04 đều đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)`. ROADMAP-OPEN-003 đã được đóng cho M1-P3 (`CLOSED_FOR_M1_P3`). Thư mục `Credentials/` và token cache được bảo vệ tuyệt đối qua `.gitignore`. Package tiếp theo là M1-P4; M2/M3/Module A vẫn `NOT AUTHORIZED`.

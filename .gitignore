@@ -24,6 +24,8 @@ temp/
 credentials*.json
 client_secret*.json
 token*.json
+Credentials/
+credentials/
 *.pem
 *.key
 *.p12

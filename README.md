@@ -7,15 +7,15 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | Hạng mục | Trạng thái |
 |---|---|
 | M0 Design | `APPROVED` |
-| M1 Evidence Prototype | `IN PROGRESS — P0/P1/P2 PASS; P3 BLOCKED_EXTERNAL` |
+| M1 Evidence Prototype | `IN PROGRESS — P0/P1/P2/P3 PASS` |
 | G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
-| G04 Drive/OAuth | `NOT TESTED` |
+| G04 Drive/OAuth | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | M2 | `NOT AUTHORIZED` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
 Phạm vi implementation hiện được phép chỉ là `M1-P0 → M1-P6`. M1 phải đi theo test-first, lưu evidence thật và dừng khi gặp điều kiện STOP. Không được bắt đầu M2, M3 hoặc Phân hệ A trước khi M1 qua exit gate, được audit và người dùng xác nhận checkpoint tiếp theo.
 
-M1-P0, P1 và P2 đã hoàn tất PASS: P0/P1 qua remediation audit R1, P2 Temporal G01 proof đạt 7/7 test acceptance qua (worker lifecycle, idempotency lost-ACK, stale generation, child isolation, replay versioning/patching, unknown reconciliation và payload boundaries). Tổng test suite hiện có 49 test qua; coverage đạt 93%. G01 đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)`; work package kế tiếp là M1-P3 (đang chờ external credential thật).
+M1-P0, P1, P2 và P3 đã hoàn tất PASS: P0/P1 qua remediation audit R1, P2 Temporal G01 proof đạt 7/7 test, P3 Google Drive & OAuth G04 proof đạt 8/8 test (bao gồm kiểm thử Live E3 probe trên Google Drive thật với token OAuth xác thực). Tổng test suite hiện có 57 test qua; coverage đạt 91%. Cả G01 và G04 đều đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)`; work package kế tiếp là M1-P4 (Local Processing FFmpeg & Whisper).
 
 ## Bắt đầu một phiên làm việc
 
@@ -55,6 +55,6 @@ Chỉ đọc sâu contracts/ADR được work package hiện tại trích dẫn;
 
 Remote chính: <https://github.com/trungqwe/AI-Auto-Video-Creator>
 
-## Trạng thái sau M1-P2 Temporal Proof
+## Trạng thái sau M1-P3 Google Drive & OAuth Proof
 
-M1-P0, P1 và P2 đã hoàn tất `PASS`; G01 đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)` với evidence tại `docs/milestones/m1-proof/evidence/m1-p2/`. G04 vẫn `NOT TESTED`; P3 bị chặn bởi `ROADMAP-OPEN-003`; M2/M3/Module A vẫn `NOT AUTHORIZED`.
+M1-P0, P1, P2 và P3 đã hoàn tất `PASS`; G01 và G04 đều đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)` với evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p2/` và `docs/milestones/m1-proof/evidence/m1-p3/`. Work package tiếp theo là M1-P4 (Local Processing FFmpeg & Whisper); M2/M3/Module A vẫn `NOT AUTHORIZED`.
