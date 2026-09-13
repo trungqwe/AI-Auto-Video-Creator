@@ -11,10 +11,10 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G04 Drive/OAuth | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G07 Compatibility | `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` |
-| M2 Control Plane | `M2-P1_READY_FOR_REVIEW_R2` (11/11 P1, P0 33/33, M1 93/93, runtime capability/orphan=0; chờ independent audit) |
+| M2 Control Plane | `M2-P1_ACCEPTED_CLOSED; M2-P2_AUTHORIZED` (P1 11/11, frozen P0 33/33, M1 93/93; P2 chỉ SPEC/PLAN/Behavioral RED) |
 | M3 / Module A | `NOT AUTHORIZED` |
 
-Toàn bộ các work package M1 (`M1-P0 → M1-P6`) đã được Người dùng CHẤP THUẬN chính thức tại User Checkpoint ngày 13-09-2026 sau independent re-audit HEAD `08c857c`: M1 chuyển sang `ACCEPTED / CLOSED` (93 passed, 0 skipped, coverage 83%, Audit R5 + R5.1 ACCEPTED). M2-P0 đã được Người dùng CHẤP THUẬN chính thức (`ACCEPTED / CLOSED`) tại HEAD commit `d84c1d7`. Independent audit xác nhận M2-P1 Behavioral RED trên PostgreSQL 18.6 là 11/11 ở cấp package (5 direct-target, 6 upstream-path), nên implementation P1 được ủy quyền. Toàn bộ Milestone M3 và Phân hệ A tiếp tục bị khóa chặt (`NOT AUTHORIZED`).
+Toàn bộ các work package M1 (`M1-P0 → M1-P6`) đã được Người dùng CHẤP THUẬN chính thức tại User Checkpoint ngày 13-09-2026 sau independent re-audit HEAD `08c857c`: M1 chuyển sang `ACCEPTED / CLOSED` (93 passed, 0 skipped, coverage 83%, Audit R5 + R5.1 ACCEPTED). M2-P0 và M2-P1 đã được CHẤP THUẬN / ĐÓNG; independent audit tại `90f4195e928ecbf5622d9760465a5d09d8b4f867` xác nhận P1 11/11, frozen P0 33/33, M1 93/93, 6/6 gate PASS và evidence provenance/hash DAG PASS. M2-P2 được ủy quyền cho SPEC, PLAN và Behavioral RED, nhưng implementation vẫn bị cấm trước RED hợp lệ có evidence và independent audit. Toàn bộ Milestone M3 và Phân hệ A tiếp tục bị khóa chặt (`NOT AUTHORIZED`).
 
 ## Bắt đầu một phiên làm việc
 
@@ -71,4 +71,4 @@ Milestone M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Archite
 
 Milestone M2-P1 (PostgreSQL Foundation, Raw SQL Migrations & Workspace/Identity/Session Foundation) đã được User chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`. Có đúng 11 behavioral oracle importable. Correction R2 sau audit `2541c58a85c301c9499d7179f54b4f6607b2c524` dùng production migration để xác minh composite FK P1-006, chứng minh rollback side-effect P1-010, bổ sung crash-release P1-004, khóa `psycopg_pool.ConnectionPool` và exact fixture identity.
 
-Trạng thái hiện hành: `M2-P1_READY_FOR_REVIEW_R2`. P1 đã chạy đủ 11/11 mandatory oracle GREEN trên PostgreSQL 18.6 thật, frozen M2-P0 regression exact 33/33, M1 regression 93/93, runtime capability cùng run (Python 3.13.15, psycopg 3.3.5, psycopg-pool 3.3.1, orphan DB 0), secret scan CLEAN và P1-aware verifier PASS. Evidence nằm tại `docs/milestones/m2-control-plane/evidence/m2-p1/`; đang dừng để independent audit R2, không mở P2. M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
+Trạng thái hiện hành: `M2-P1_ACCEPTED_CLOSED; M2-P2_AUTHORIZED`. Independent audit tại `90f4195e928ecbf5622d9760465a5d09d8b4f867` xác nhận P1 exact 11/11 mandatory oracle GREEN trên PostgreSQL 18.6 thật, frozen M2-P0 exact 33/33, M1 exact 93/93, Python 3.13.15, psycopg 3.3.5, psycopg-pool 3.3.1, production pool `psycopg_pool.ConnectionPool`, `CREATEDB=true`, orphan DB 0, secret scan CLEAN, 6/6 gate PASS và P1-aware verifier PASS. M2-P2 chỉ được SPEC, PLAN và Behavioral RED; không implementation trước RED hợp lệ có evidence và independent audit. M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).

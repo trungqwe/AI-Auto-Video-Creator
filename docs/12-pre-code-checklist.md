@@ -27,7 +27,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS E3 (ADR-0009 Subprocess Broker OS isolation, Windows DPAPI Vault, Broker-owned provisioning, live E3 probe xác thực Drive thật) |
 | G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS strict version (Python, uv, PG, Temporal, ffprobe WAV duration > 0, fail-closed dynamic matrix observation) |
 | ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất qua Broker Subprocess boundary |
-| M2 | 🟡 `M2-P1_READY_FOR_REVIEW_R2` | P1 correction R2 đã chạy GREEN 11/11 trên PostgreSQL 18.6 disposable thật; frozen P0 33/33, M1 93/93, runtime capability/orphan=0, 6/6 gate PASS; chờ independent audit, P2 vẫn khóa |
+| M2 | 🟡 `M2-P2_AUTHORIZED` | Independent audit tại `90f4195e928ecbf5622d9760465a5d09d8b4f867` đã chấp thuận/đóng P1: exact P1 11/11 GREEN, frozen P0 33/33, M1 93/93, 6/6 gate PASS, provenance/hash DAG PASS, orphan DB=0. P2 chỉ được lập kế hoạch và thu Behavioral RED; cấm implementation trước khi RED P2 hợp lệ được chứng kiến, lưu evidence và được audit độc lập. |
 | M3 / Module A | ⛔ `NOT AUTHORIZED` | Tiếp tục bị khóa chặt; không được bắt đầu trước khi M2 đạt exit gate và có User Checkpoint riêng |
 
 Đây là bảng trạng thái có thẩm quyền trước lệnh code đầu tiên. Kết quả P2/P3 đã đạt được ghi `PASS_M1_SCOPE`; G01/G04 toàn phần vẫn `PARTIALLY_PROVEN` cho tới khi đủ evidence các milestone tiếp theo.
@@ -145,7 +145,7 @@ Checklist không phải lệnh cài thư viện, khởi tạo framework, triển
 
 Trạng thái phê duyệt đã được đồng bộ vào roadmap và module plan. Nếu có sửa đổi đáng kể sau phê duyệt, xác định phần ảnh hưởng và kiểm toán lại trước khi dùng bản mới.
 
-**Kết luận:** M1 đã hoàn tất 100% và được Người dùng nghiệm thu chính thức (`ACCEPTED / CLOSED`). M2 chính thức chuyển sang `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION`. Không được bắt đầu M3 hoặc Phân hệ A trước khi M2 đạt exit gate và có User Checkpoint riêng.
+**Kết luận:** M1 và M2-P0/P1 đã được Người dùng nghiệm thu chính thức (`ACCEPTED / CLOSED`). M2-P2 là `AUTHORIZED` theo chu trình `SPEC → PLAN → RED → IMPLEMENT → RUN → TEST → FIX → VERIFY → EVIDENCE → COMMIT`; quyền hiện tại chỉ bao gồm SPEC, PLAN và Behavioral RED. Không được bắt đầu implementation P2 trước khi RED P2 hợp lệ được chứng kiến, lưu evidence và qua independent audit. Không được bắt đầu M3 hoặc Phân hệ A trước khi M2 đạt exit gate và có User Checkpoint riêng.
 
 ## Trạng thái sau M1-P2 Temporal G01 Proof
 
@@ -174,11 +174,12 @@ Sau các đợt re-audit độc lập R4, R5 và R5.1 (HEAD commit `08c857c`), t
 - **Milestone M2**: `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` (bắt đầu chu trình chuẩn bị SPEC và PLAN).
 - **Milestone M3 và Phân hệ A**: Tiếp tục duy trì trạng thái `NOT AUTHORIZED` (khóa chặt cho tới khi M2 hoàn tất exit gate và có User Checkpoint riêng).
 
-## Trạng thái Nghiệm thu M2-P0 & M2-P1 Behavioral RED (13-09-2026)
+## Trạng thái Nghiệm thu M2-P0/P1 & Ủy quyền M2-P2 (13-09-2026)
 
 Người dùng đã CHẤP THUẬN chính thức kết quả Milestone M2-P0 tại commit `d84c1d7`:
 - **M2-P0**: `ACCEPTED / CLOSED` (33/33 tests PASSED, 93/93 tests hồi quy M1 PASSED, 6/6 Package Gates PASS, deterministic provenance 1:1, SHA-256 DAG hợp lệ).
 - **M2-P1 Plan**: `ACCEPTED` sau independent re-audit tại HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`; User đã ủy quyền Behavioral RED, nhưng không ủy quyền implementation trước evidence RED hợp lệ.
 - **Hiệu chỉnh Kế hoạch Kỹ thuật Cuối**: `implementation-plan.md` đã thay P1-007 bằng public port read/status/revoke/expire thật, có traceability cho cả 11 oracle, khóa exact accepted P0 testcase-name set 33/33, bắt buộc migration fault sandbox, và tách migration rollback guard khỏi admin database teardown.
 - **Checkpoint Behavioral RED độc lập tại commit `e42bd90e8cd8ff0e688a2db78407ef9e32d660b9`**: Audit xác nhận PostgreSQL 18.6 riêng biệt đã chạy exact 11 oracle function-scoped (run `ba8100a55e714332a3ebe41ca9d18944`), cleanup không để lại database. Cả 11 là Behavioral RED ở cấp package: P1-001/005/006/007/008 là direct-target, P1-002/003/004/009/010/011 là upstream-path prerequisite behavior cùng package. Không có setup failure hay unexpected pass. Phase là `M2-P1_RED_CONFIRMED`; implementation P1 được ủy quyền. Không sửa implementation P0, không mở P2; M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
-- **M2-P1 implementation/evidence checkpoint hiện hành**: correction R2 đã xác minh 11/11 mandatory oracle GREEN trên PostgreSQL 18.6 thật với disposable DB function-scoped; P1-006 dùng production migration composite FK, P1-010 chứng minh transactional probe rollback, P1-004 có crash-release proof, pool là `psycopg_pool.ConnectionPool` bắt buộc và guard khớp exact fixture identity. Frozen P0 exact set 33/33, M1 93/93, runtime capability cùng run, secret scan 0 findings, provenance và SHA-256 DAG hợp lệ. P1-aware `synthesizer_p1.py --verify-only` trả `VALIDATION: PASS`; phase dừng tại `M2-P1_READY_FOR_REVIEW_R2` để independent audit. Không mở P2.
+- **M2-P1 acceptance checkpoint hiện hành**: Independent audit tại `90f4195e928ecbf5622d9760465a5d09d8b4f867` chấp thuận `M2-P1 = ACCEPTED / CLOSED`: exact 11/11 mandatory oracle GREEN trên PostgreSQL 18.6 thật với disposable DB function-scoped; P1-006 dùng production migration composite FK, P1-010 chứng minh transactional probe rollback, P1-004 có crash-release proof, pool là `psycopg_pool.ConnectionPool` bắt buộc và guard khớp exact fixture identity. Frozen P0 exact set 33/33, M1 93/93, runtime capability cùng run, secret scan 0 findings, provenance và SHA-256 DAG hợp lệ; P1-aware `synthesizer_p1.py --verify-only` trả `VALIDATION: PASS`.
+- **M2-P2 authorization checkpoint hiện hành**: `M2-P2_AUTHORIZED` chỉ cho `SPEC → PLAN → RED`. Không được tạo implementation P2 trước khi Behavioral RED P2 hợp lệ được chứng kiến, lưu raw stdout/evidence và qua independent audit. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.

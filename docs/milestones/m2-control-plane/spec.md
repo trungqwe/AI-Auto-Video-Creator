@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1_READY_FOR_REVIEW_R2` (M2-P0 ACCEPTED / CLOSED; P1 correction/evidence R2 hoàn tất, chờ independent audit)
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_AUTHORIZED` (Independent audit tại `90f4195e928ecbf5622d9760465a5d09d8b4f867` đã chấp thuận P1.)
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** `M2-P1_READY_FOR_REVIEW_R2`. Không mở M2-P2, M3 hoặc Phân hệ A trước independent audit và User Checkpoint riêng.
+**Điểm dừng bắt buộc:** `M2-P2_AUTHORIZED`. P2 chỉ được SPEC, PLAN và Behavioral RED; cấm implementation P2 cho tới khi RED hợp lệ được chứng kiến, lưu evidence và qua independent audit. M3 hoặc Phân hệ A vẫn `NOT AUTHORIZED` cho tới khi M2 đạt exit gate và có User Checkpoint riêng.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)

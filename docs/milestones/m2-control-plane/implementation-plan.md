@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1_READY_FOR_REVIEW_R2` (M2-P0 ACCEPTED / CLOSED, P1 correction và evidence R2 đã hoàn tất; chờ independent audit)
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_AUTHORIZED` (Independent audit tại `90f4195e928ecbf5622d9760465a5d09d8b4f867` đã chấp thuận P1.)
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** `M2-P1_READY_FOR_REVIEW_R2`. Behavioral RED đã được independent audit xác nhận trước implementation; sau correction P1 có 11/11 oracle GREEN trên PostgreSQL disposable thật, frozen M2-P0 regression exact 33/33, M1 regression exact 93/93, runtime capability khóa đúng Python 3.13.15/psycopg 3.3.5/psycopg-pool 3.3.1/PostgreSQL 18.6 với orphan DB = 0, 6/6 gate PASS, secret scan CLEAN và P1-aware `--verify-only` PASS. Không sửa P0 implementation và không mở P2; dừng để independent audit R2 review evidence.
+**Điểm dừng bắt buộc hiện hành:** `M2-P2_AUTHORIZED`. M2-P1 là `ACCEPTED / CLOSED`: independent audit xác nhận P1 exact 11/11 GREEN, frozen M2-P0 exact 33/33, M1 exact 93/93, PostgreSQL 18.6, Python 3.13.15, psycopg 3.3.5, psycopg-pool 3.3.1, production pool `psycopg_pool.ConnectionPool`, `CREATEDB=true`, orphan DB = 0, secret scan CLEAN, 6/6 gate PASS và provenance/hash DAG PASS. Với P2, chỉ được thực hiện `SPEC → PLAN → RED`; không viết implementation trước khi Behavioral RED P2 hợp lệ được chứng kiến, lưu evidence và qua independent audit. Không sửa P0; M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -266,6 +266,7 @@ graph TD
 
 ### M2-P2: Envelopes, RFC 9457 ProblemDetail, Optimistic Concurrency & Durable Idempotency
 
+- **Authorization hiện hành:** `M2-P2_AUTHORIZED` cho SPEC, PLAN và Behavioral RED. **Cấm** mọi implementation P2 cho tới khi tất cả oracle RED đã được chứng kiến đúng hành vi, có stdout/evidence thô và được independent audit chấp thuận.
 - **Requirement / CT / INV IDs**: `CT-CMN-001..006`, `ADR-0004`, `ADR-0005`, `ADR-0010`.
 - **Dependencies**: M2-P1.
 - **Mục tiêu**:
