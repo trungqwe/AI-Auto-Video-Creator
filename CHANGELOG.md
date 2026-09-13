@@ -6,6 +6,8 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Added
 
+- Hoàn tất M2-P1 implementation và evidence: raw SQL migration runner với strict ordering/checksum/bounded advisory lock, disposable rollback guard, UnitOfWork/pool cleanliness, Workspace/Actor/AuthSession repositories và composite workspace FK. P1 synthesis xác nhận 11/11 mandatory oracle GREEN, frozen M2-P0 exact 33/33, M1 93/93, secret scan CLEAN, provenance/hash DAG hợp lệ; `synthesizer_p1.py --verify-only` đạt `VALIDATION: PASS`. Trạng thái dừng: `M2-P1_READY_FOR_REVIEW`; không mở P2.
+
 - Independent audit xác nhận `M2-P1_RED_CONFIRMED` tại checkpoint `e42bd90e8cd8ff0e688a2db78407ef9e32d660b9`: PostgreSQL 18.6 thật đã collect/chạy exact 11 oracle function-scoped, 11/11 là Behavioral RED cấp package (5 direct-target, 6 upstream-path), 0 setup failure, 0 unexpected pass và 0 orphan database. M2-P1 implementation được ủy quyền; P0 không đổi và P2 vẫn khóa.
 
 - Chạy Behavioral RED M2-P1 trên PostgreSQL 18.6 riêng biệt với exact 11 oracle function-scoped (run `ba8100a55e714332a3ebe41ca9d18944`): cleanup không để lại disposable database; 5 failure là `VALID_BEHAVIORAL_RED` và 6 là `ORACLE_MISMATCH`, nên phase chuyển `M2-P1_BEHAVIORAL_RED_CORRECTION_REQUIRED`. Bổ sung raw prerequisite/collection/full output và che `repr` DSN của fixture chỉ trong test harness. Không có production behavior, không sửa P0 và không mở P2.

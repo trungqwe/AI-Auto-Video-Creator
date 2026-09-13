@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 Plan ACCEPTED, Behavioral RED CONFIRMED, P1 IMPLEMENT AUTHORIZED)
+**Trạng thái:** `M2-P1_READY_FOR_REVIEW` (M2-P0 ACCEPTED / CLOSED, M2-P1 implementation và evidence đã hoàn tất; chờ independent audit)
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** `M2-P1_RED_CONFIRMED`. Independent audit xác nhận exact 11 oracle đã chạy trên PostgreSQL 18.6 thật, 11/11 là Behavioral RED ở cấp package (5 direct-target, 6 upstream-path; 0 setup failure, 0 unexpected pass, 0 orphan database). Implementation P1 được ủy quyền trong Allowed File Scope theo `RED → IMPLEMENT → RUN → TEST → FIX → VERIFY → EVIDENCE → COMMIT`; không sửa P0 implementation và không mở P2. Điểm dừng tiếp theo sau GREEN/evidence hoàn chỉnh là `M2-P1_READY_FOR_REVIEW`.
+**Điểm dừng bắt buộc hiện hành:** `M2-P1_READY_FOR_REVIEW`. Behavioral RED đã được independent audit xác nhận trước implementation; P1 hiện có 11/11 oracle GREEN trên PostgreSQL disposable thật, frozen M2-P0 regression 33/33, M1 regression 93/93, 6/6 gate PASS, secret scan CLEAN và P1-aware `--verify-only` PASS. Không sửa P0 implementation và không mở P2; dừng để independent audit review evidence.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -171,6 +171,7 @@ graph TD
   - `src/controlplane/application/identity/**`
   - `src/controlplane/infrastructure/evidence/profile_p1.py`
   - `src/controlplane/infrastructure/evidence/synthesizer_p1.py`
+  - `src/controlplane/pyproject.toml` (chỉ bổ sung package/data inclusion để wheel chứa implementation P1; không đổi dependency/version lock)
   - `tests/m2/test_p1_db_and_workspace.py`
   - `docs/milestones/m2-control-plane/evidence/m2-p1/**`
 - **Forbidden File Scope**:

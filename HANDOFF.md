@@ -1,8 +1,9 @@
 # HANDOFF
 
 - Đã quyết định:
-  1. M1 là `ACCEPTED / CLOSED` (93/93 hồi quy PASS); M2-P0 là `ACCEPTED / CLOSED` tại `d84c1d7` (33/33 P0, 93/93 M1, 6/6 gates PASS).
-  2. Independent audit đối chiếu commit `e42bd90e8cd8ff0e688a2db78407ef9e32d660b9` xác nhận `M2-P1_RED_CONFIRMED`: PostgreSQL 18.6 chạy exact 11 oracle function-scoped, 11/11 Behavioral RED cấp package (5 direct-target, 6 upstream-path), 0 setup failure, 0 unexpected pass, 0 orphan database.
-  3. M2-P1 implementation được ủy quyền đúng Allowed File Scope: migration raw SQL, safety guard, UoW/pool, repositories và identity use cases, P1 evidence extension. P0 không đổi; P2/M3/Phân hệ A vẫn `NOT AUTHORIZED`.
-- Tệp cần đọc tiếp: `docs/12-pre-code-checklist.md`, `docs/milestones/m2-control-plane/implementation-plan.md`, `docs/milestones/m2-control-plane/evidence/m2-p1/red-observations.md`, `tests/m2/test_p1_db_and_workspace.py`, `src/controlplane/infrastructure/db/migration_runner.py`, `uow.py`, `safety.py` và identity ports.
-- Điểm tiếp tục: triển khai P1 theo `RED → IMPLEMENT → RUN → TEST → FIX → VERIFY → EVIDENCE → COMMIT`; không hạ/đổi 11 oracle. Sau 11/11 GREEN, frozen P0 33/33, M1 93/93, six P1 gates/evidence verifier PASS thì dừng `M2-P1_READY_FOR_REVIEW`; không mở P2.
+  1. M1 là `ACCEPTED / CLOSED` (93/93 hồi quy PASS); M2-P0 là `ACCEPTED / CLOSED` (33/33 P0, 93/93 M1, 6/6 gates PASS).
+  2. Behavioral RED M2-P1 đã được independent audit xác nhận trước implementation; không có thay đổi oracle, không sửa P0 và không mở P2.
+  3. M2-P1 implementation/evidence đã hoàn tất trong Allowed File Scope: raw SQL migration runner, safety guard, UoW/pool, repositories, identity use cases và P1 evidence profile/synthesizer.
+- Bằng chứng mới: `docs/milestones/m2-control-plane/evidence/m2-p1/status.json`, `m2-p1-tests.xml`, `m2-p0-regression.xml`, `m1-regression.xml`, `secret-scan.json`, `hashes.sha256`; verifier `python -m controlplane.infrastructure.evidence.synthesizer_p1 --verify-only` đạt `VALIDATION: PASS`.
+- Tệp cần đọc tiếp: `docs/12-pre-code-checklist.md`, `docs/milestones/m2-control-plane/implementation-plan.md`, `docs/milestones/m2-control-plane/evidence/m2-p1/status.md`, `src/controlplane/infrastructure/db/migration_runner.py`, `uow.py`, `repositories.py`, `src/controlplane/infrastructure/evidence/profile_p1.py` và `synthesizer_p1.py`.
+- Điểm tiếp tục: dừng tại `M2-P1_READY_FOR_REVIEW` để independent audit review evidence. Không bắt đầu P2, M3 hoặc Phân hệ A.

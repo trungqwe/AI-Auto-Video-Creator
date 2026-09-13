@@ -1,0 +1,93 @@
+{
+  "schema_version": "m2_package_status_v1",
+  "milestone": "M2",
+  "package": "M2-P1",
+  "package_name": "PostgreSQL Foundation, Raw SQL Migrations & Workspace/Identity/Session Foundation",
+  "run_id": "run-m2-p1-20260913153148",
+  "semantic_profile": "m2-p1",
+  "status": "READY_FOR_REVIEW",
+  "timestamp_utc": "2026-09-13T15:32:41.364168+00:00",
+  "gates": [
+    {
+      "gate_id": "GATE-P1-01",
+      "name": "Migration Safety & Strict Ordering",
+      "status": "PASS",
+      "evidence_files": [
+        "m2-p1-tests.xml",
+        "m2-p1-tests-report.txt"
+      ]
+    },
+    {
+      "gate_id": "GATE-P1-02",
+      "name": "Bounded Advisory Lock & Checksum Verification",
+      "status": "PASS",
+      "evidence_files": [
+        "m2-p1-tests.xml",
+        "m2-p1-tests-report.txt"
+      ]
+    },
+    {
+      "gate_id": "GATE-P1-03",
+      "name": "UnitOfWork Atomic Transaction & Connection Cleanliness",
+      "status": "PASS",
+      "evidence_files": [
+        "m2-p1-tests.xml",
+        "m2-p1-tests-report.txt"
+      ]
+    },
+    {
+      "gate_id": "GATE-P1-04",
+      "name": "Workspace/Actor/AuthSession DB-Level Isolation & Invariants",
+      "status": "PASS",
+      "evidence_files": [
+        "m2-p1-tests.xml",
+        "m2-p1-tests-report.txt"
+      ]
+    },
+    {
+      "gate_id": "GATE-P1-05",
+      "name": "Frozen M2-P0 and M1 Regression",
+      "status": "PASS",
+      "evidence_files": [
+        "m2-p0-regression.xml",
+        "m2-p0-regression-report.txt",
+        "m1-regression.xml",
+        "m1-regression-report.txt",
+        "commands.jsonl"
+      ]
+    },
+    {
+      "gate_id": "GATE-P1-06",
+      "name": "Security Scan & Deterministic Evidence Provenance",
+      "status": "PASS",
+      "evidence_files": [
+        "secret-scan.json",
+        "commands.jsonl"
+      ]
+    }
+  ],
+  "evidence_summary": {
+    "p1_tests": {
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "m2_p0_regression_tests": {
+      "total": 33,
+      "passed": 33,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "m1_regression_tests": {
+      "total": 93,
+      "passed": 93,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "secret_scan_violations": 0
+  }
+}

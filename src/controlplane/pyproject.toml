@@ -23,7 +23,11 @@ controlplane = "controlplane.entrypoint:main"
 "controlplane" = "."
 "controlplane.domain" = "domain"
 "controlplane.domain.interfaces" = "domain/interfaces"
+"controlplane.domain.identity" = "domain/identity"
+"controlplane.application" = "application"
+"controlplane.application.identity" = "application/identity"
 "controlplane.infrastructure" = "infrastructure"
+"controlplane.infrastructure.db" = "infrastructure/db"
 "controlplane.infrastructure.evidence" = "infrastructure/evidence"
 "controlplane.infrastructure.security" = "infrastructure/security"
 
@@ -32,7 +36,14 @@ packages = [
     "controlplane",
     "controlplane.domain",
     "controlplane.domain.interfaces",
+    "controlplane.domain.identity",
+    "controlplane.application",
+    "controlplane.application.identity",
     "controlplane.infrastructure",
+    "controlplane.infrastructure.db",
     "controlplane.infrastructure.evidence",
     "controlplane.infrastructure.security",
 ]
+
+[tool.setuptools.package-data]
+"controlplane.infrastructure.db" = ["migrations/*.sql"]

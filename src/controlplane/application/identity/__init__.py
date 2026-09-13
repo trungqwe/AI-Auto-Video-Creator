@@ -1,1 +1,1 @@
-"""Structural application identity ports for the authorized M2-P1 RED phase."""
+"""Application identity use cases backed by an injected M2-P1 Unit of Work."""

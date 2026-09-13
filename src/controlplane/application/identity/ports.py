@@ -1,12 +1,8 @@
-"""Structural public use-case ports for M2-P1 identity persistence.
-
-There is deliberately no generic Workspace or Actor delete port.  Lifecycle
-changes are limited to status mutation, AuthSession revoke, and AuthSession
-expire when the implementation phase is separately authorized.
-"""
+"""Workspace, actor and AuthSession application services."""
 from __future__ import annotations
 
-from typing import Any, Protocol
+from datetime import datetime
+from typing import Any, Protocol, TypeVar
 
 
 class UnitOfWorkFactory(Protocol):
@@ -17,28 +13,41 @@ class UnitOfWorkFactory(Protocol):
         ...
 
 
-class WorkspaceUseCases:
-    """Importable workspace use-case port; behavior is intentionally absent in RED."""
+T = TypeVar("T")
 
+
+def _run(factory: UnitOfWorkFactory, operation: Any) -> T:
+    with factory.unit_of_work() as unit_of_work:
+        return operation(unit_of_work)
+
+
+class WorkspaceUseCases:
     def __init__(self, unit_of_work_factory: UnitOfWorkFactory) -> None:
         self._unit_of_work_factory = unit_of_work_factory
 
     def create(self, workspace_id: str, name: str, status: str) -> Any:
-        raise NotImplementedError("M2-P1 RED: WorkspaceUseCases.create is not implemented.")
+        return _run(
+            self._unit_of_work_factory,
+            lambda uow: uow.workspaces.create(workspace_id, name, status),
+        )
 
     def get(self, workspace_id: str, target_workspace_id: str) -> Any:
-        raise NotImplementedError("M2-P1 RED: WorkspaceUseCases.get is not implemented.")
+        return _run(
+            self._unit_of_work_factory,
+            lambda uow: uow.workspaces.get(workspace_id, target_workspace_id),
+        )
 
     def list(self, workspace_id: str) -> list[Any]:
-        raise NotImplementedError("M2-P1 RED: WorkspaceUseCases.list is not implemented.")
+        return _run(self._unit_of_work_factory, lambda uow: uow.workspaces.list(workspace_id))
 
     def update_status(self, workspace_id: str, target_workspace_id: str, status: str) -> Any:
-        raise NotImplementedError("M2-P1 RED: WorkspaceUseCases.update_status is not implemented.")
+        return _run(
+            self._unit_of_work_factory,
+            lambda uow: uow.workspaces.update_status(workspace_id, target_workspace_id, status),
+        )
 
 
 class ActorUseCases:
-    """Importable actor use-case port; behavior is intentionally absent in RED."""
-
     def __init__(self, unit_of_work_factory: UnitOfWorkFactory) -> None:
         self._unit_of_work_factory = unit_of_work_factory
 
@@ -50,35 +59,60 @@ class ActorUseCases:
         display_name: str,
         status: str,
     ) -> Any:
-        raise NotImplementedError("M2-P1 RED: ActorUseCases.create is not implemented.")
+        return _run(
+            self._unit_of_work_factory,
+            lambda uow: uow.actors.create(
+                workspace_id, actor_id, actor_type, display_name, status
+            ),
+        )
 
     def get(self, workspace_id: str, actor_id: str) -> Any:
-        raise NotImplementedError("M2-P1 RED: ActorUseCases.get is not implemented.")
+        return _run(self._unit_of_work_factory, lambda uow: uow.actors.get(workspace_id, actor_id))
 
     def list(self, workspace_id: str) -> list[Any]:
-        raise NotImplementedError("M2-P1 RED: ActorUseCases.list is not implemented.")
+        return _run(self._unit_of_work_factory, lambda uow: uow.actors.list(workspace_id))
 
     def update_status(self, workspace_id: str, actor_id: str, status: str) -> Any:
-        raise NotImplementedError("M2-P1 RED: ActorUseCases.update_status is not implemented.")
+        return _run(
+            self._unit_of_work_factory,
+            lambda uow: uow.actors.update_status(workspace_id, actor_id, status),
+        )
 
 
 class AuthSessionUseCases:
-    """Importable session use-case port; behavior is intentionally absent in RED."""
-
     def __init__(self, unit_of_work_factory: UnitOfWorkFactory) -> None:
         self._unit_of_work_factory = unit_of_work_factory
 
-    def create(self, workspace_id: str, actor_id: str, session_id: str, status: str) -> Any:
-        raise NotImplementedError("M2-P1 RED: AuthSessionUseCases.create is not implemented.")
+    def create(
+        self,
+        workspace_id: str,
+        actor_id: str,
+        session_id: str,
+        status: str,
+        expires_at: datetime | None = None,
+    ) -> Any:
+        return _run(
+            self._unit_of_work_factory,
+            lambda uow: uow.auth_sessions.create(workspace_id, actor_id, session_id, status, expires_at),
+        )
 
     def get(self, workspace_id: str, session_id: str) -> Any:
-        raise NotImplementedError("M2-P1 RED: AuthSessionUseCases.get is not implemented.")
+        return _run(
+            self._unit_of_work_factory,
+            lambda uow: uow.auth_sessions.get(workspace_id, session_id),
+        )
 
     def list(self, workspace_id: str) -> list[Any]:
-        raise NotImplementedError("M2-P1 RED: AuthSessionUseCases.list is not implemented.")
+        return _run(self._unit_of_work_factory, lambda uow: uow.auth_sessions.list(workspace_id))
 
     def revoke(self, workspace_id: str, session_id: str) -> Any:
-        raise NotImplementedError("M2-P1 RED: AuthSessionUseCases.revoke is not implemented.")
+        return _run(
+            self._unit_of_work_factory,
+            lambda uow: uow.auth_sessions.update_status(workspace_id, session_id, "revoked"),
+        )
 
     def expire(self, workspace_id: str, session_id: str) -> Any:
-        raise NotImplementedError("M2-P1 RED: AuthSessionUseCases.expire is not implemented.")
+        return _run(
+            self._unit_of_work_factory,
+            lambda uow: uow.auth_sessions.update_status(workspace_id, session_id, "expired"),
+        )

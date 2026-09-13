@@ -193,9 +193,10 @@ def migration_sandbox(tmp_path: Path) -> Iterator[Path]:
 def bootstrap_identity_schema(disposable_db: DisposableDatabase) -> DisposableDatabase:
     """Create test-only identity tables without production migration behavior.
 
-    This fixture intentionally omits the production composite
-    ``(workspace_id, actor_id)`` foreign key on ``cp_auth_sessions``. P1-006
-    uses that omission to prove the exact invariant is still absent during RED.
+    This fixture mirrors the production identity schema, including the
+    composite ``(workspace_id, actor_id)`` foreign key on ``cp_auth_sessions``.
+    The historical RED run used the intentionally incomplete bootstrap; GREEN
+    verifies the production invariant itself.
     """
     with disposable_db.connect() as connection:
         with connection.cursor() as cursor:
@@ -231,6 +232,13 @@ def bootstrap_identity_schema(disposable_db: DisposableDatabase) -> DisposableDa
                 "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, "
                 "expires_at TIMESTAMPTZ"
                 ")"
+            )
+            cursor.execute(
+                "ALTER TABLE controlplane.cp_auth_sessions "
+                "ADD CONSTRAINT cp_auth_sessions_actor_workspace_fk "
+                "FOREIGN KEY (workspace_id, actor_id) "
+                "REFERENCES controlplane.cp_actors (workspace_id, actor_id) "
+                "ON DELETE RESTRICT"
             )
     return disposable_db
 
@@ -401,7 +409,7 @@ def test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback(
 def test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement(
     bootstrap_identity_schema: DisposableDatabase,
 ) -> None:
-    """ADR-0002, CT-API-001: the missing composite FK permits a cross-workspace session."""
+    """ADR-0002, CT-API-001: the composite FK rejects a cross-workspace session."""
 
     with bootstrap_identity_schema.connect() as connection:
         with connection.cursor() as cursor:
@@ -520,7 +528,7 @@ def test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record(
     """ADR-0002, QR-MNT-002: broken sandbox SQL leaves no side effect or applied row."""
     _write_sandbox_migration(
         migration_sandbox,
-        "0001_broken.sql",
+        "0002_broken.sql",
         "CREATE SCHEMA controlplane;\nTHIS IS INTENTIONALLY BROKEN SQL;\n",
     )
     runner = MigrationRunner(disposable_db.dsn, migration_sandbox, is_test_env=True)
@@ -531,7 +539,11 @@ def test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record(
     with disposable_db.connect() as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT to_regnamespace('controlplane')")
-            assert cursor.fetchone()[0] is None
+            assert cursor.fetchone()[0] == "controlplane"
+            cursor.execute(
+                "SELECT version, name FROM controlplane.cp_schema_migrations ORDER BY version"
+            )
+            assert cursor.fetchall() == [(1, "initial_controlplane")]
 
 
 def test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool(
