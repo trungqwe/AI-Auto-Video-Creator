@@ -1,7 +1,7 @@
 # HANDOFF
 
-- Đã quyết định: M1, M2-P0 và M2-P1 là `ACCEPTED / CLOSED`. M2-P2 là `M2-P2_PLAN_READY_FOR_RED_APPROVAL_R2`: scope contracts, schema `0002`, RFC 8785 JCS property sort theo raw/unescaped unsigned UTF-16 code units, replay receipt, PostgreSQL CAS, exact 11 oracle, sáu gates và evidence protocol đã khóa.
-- Semantics khóa: ProblemDetail transport-neutral đủ 12 field với required/nullability rõ; persisted receipt chỉ `accepted`/`rejected`, replay trả cùng receipt và `duplicate` transient; CAS là `UPDATE ... WHERE revision = expected_revision` qua P1 UoW, aggregate probe relation test-only.
-- Chưa được phép: Behavioral RED hay implementation P2, P3, M3 và Phân hệ A.
-- Tệp cần đọc tiếp: `docs/12-pre-code-checklist.md`, `docs/milestones/m2-control-plane/spec.md`, `docs/milestones/m2-control-plane/implementation-plan.md`, `docs/09-contracts/00-common-contract.md`, `docs/10-test-strategy.md`, `docs/adr/0004-commit-idempotency-and-fencing.md`.
-- Điểm tiếp tục: independent review/approval plan P2; chỉ sau đó mới tạo Behavioral RED P2 và raw evidence trên PostgreSQL disposable thật.
+- Đã quyết định: M1, M2-P0, M2-P1 là `ACCEPTED / CLOSED`; P2 plan được audit chấp thuận. Exact 11 P2 Behavioral RED oracle và structural P2 stubs đã được tạo; stubs chỉ ném `NotImplementedError`, không có production behavior/migration/JCS/CAS/persistence.
+- Trạng thái: `M2-P2_BEHAVIORAL_RED_BLOCKED_EXTERNAL`. Run `run-m2-p2-20260914011618` collect exact 11 nhưng `M2_TEST_PG_DSN=UNSET`; PostgreSQL/CREATEDB/orphan chưa kiểm tra, full run không khởi động và 0 oracle được tính Behavioral RED.
+- Evidence: `docs/milestones/m2-control-plane/evidence/m2-p2/red-p2-runtime-run-m2-p2-20260914011618-collect-stdout.txt`, `red-p2-runtime-run-m2-p2-20260914011618-prerequisite-stdout.txt`, `red-observations.md`.
+- Tệp cần đọc tiếp: `docs/12-pre-code-checklist.md`, `docs/milestones/m2-control-plane/implementation-plan.md`, `tests/m2/test_p2_envelopes_and_idempotency.py`, P2 evidence.
+- Điểm tiếp tục: cung cấp `M2_TEST_PG_DSN` PostgreSQL 18.6 thật với `CREATEDB`, chạy new unique run ID collection + full exact 11, verify orphan=0, lưu raw full stdout trước observations. Không implementation P2/P3/M3/Module A.

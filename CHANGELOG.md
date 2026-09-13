@@ -6,6 +6,8 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Added
 
+- Bắt đầu Behavioral RED M2-P2 sau audit plan `8bbc61ff22f5ef5009e8ba3cf75f08b1291573c3`: tạo đúng 11 oracle khóa và structural stubs chỉ ném `NotImplementedError`; collect đạt 11/11. `M2_TEST_PG_DSN` không có, nên PostgreSQL/CREATEDB/orphan prerequisite được ghi `BLOCKED_EXTERNAL`, không có full-run/evidence RED giả và implementation vẫn khóa.
+
 - Correction docs-only M2-P2 R2 theo independent audit `21c97bebd936e50aa43cff352d426f781a820fdb`: property names RFC 8785/JCS được sort raw/unescaped theo unsigned UTF-16 code units, không dùng Unicode code-point/UTF-8/UTF-32 ordering; P2-004 có vector non-BMP với canonical bytes và SHA-256 cố định. Điểm dừng: `M2-P2_PLAN_READY_FOR_RED_APPROVAL_R2`.
 
 - Correction docs-only M2-P2 theo independent audit `236378f6ec442f9fcd7e84507a60b6e1b5b1b7a3`: khóa full `ProblemDetail` surface, RFC 8785 JCS byte canonicalization/test vectors, PostgreSQL CAS production primitive, replay `duplicate` transient semantics, narrowed receipt-only concurrency claim, RED/final evidence artifact protocol và envelope matrix. Điểm dừng: `M2-P2_PLAN_READY_FOR_RED_APPROVAL`; không có P2 source/test/evidence runtime.

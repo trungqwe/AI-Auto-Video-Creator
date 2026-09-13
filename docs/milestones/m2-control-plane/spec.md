@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_PLAN_READY_FOR_RED_APPROVAL_R2` (RFC 8785/JCS property sorting đã được hiệu chỉnh trước Behavioral RED.)
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_BEHAVIORAL_RED_BLOCKED_EXTERNAL` (P2 plan ACCEPTED; collection exact 11 đạt nhưng PostgreSQL prerequisite chưa có.)
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** `M2-P2_PLAN_READY_FOR_RED_APPROVAL_R2`. Chờ independent review/approval SPEC/plan trước Behavioral RED; cấm Behavioral RED và implementation P2 trong checkpoint này. Implementation chỉ có thể được xét sau RED hợp lệ, evidence và independent audit. M3 hoặc Phân hệ A vẫn `NOT AUTHORIZED` cho tới khi M2 đạt exit gate và có User Checkpoint riêng.
+**Điểm dừng bắt buộc:** `M2-P2_BEHAVIORAL_RED_BLOCKED_EXTERNAL`. P2 plan đã ACCEPTED và collection exact 11 đạt, nhưng `M2_TEST_PG_DSN` chưa có; không thể chạy RED PostgreSQL thật hoặc kiểm orphan. Implementation chỉ có thể được xét sau RED hợp lệ, evidence và independent audit. M3 hoặc Phân hệ A vẫn `NOT AUTHORIZED` cho tới khi M2 đạt exit gate và có User Checkpoint riêng.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
