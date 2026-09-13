@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_AUTHORIZED` (Independent audit tại `90f4195e928ecbf5622d9760465a5d09d8b4f867` đã chấp thuận P1.)
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_PLAN_READY_FOR_REVIEW` (SPEC/plan P2 đã được khóa trước Behavioral RED.)
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** `M2-P2_AUTHORIZED`. M2-P1 là `ACCEPTED / CLOSED`: independent audit xác nhận P1 exact 11/11 GREEN, frozen M2-P0 exact 33/33, M1 exact 93/93, PostgreSQL 18.6, Python 3.13.15, psycopg 3.3.5, psycopg-pool 3.3.1, production pool `psycopg_pool.ConnectionPool`, `CREATEDB=true`, orphan DB = 0, secret scan CLEAN, 6/6 gate PASS và provenance/hash DAG PASS. Với P2, chỉ được thực hiện `SPEC → PLAN → RED`; không viết implementation trước khi Behavioral RED P2 hợp lệ được chứng kiến, lưu evidence và qua independent audit. Không sửa P0; M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** `M2-P2_PLAN_READY_FOR_REVIEW`. M2-P1 là `ACCEPTED / CLOSED`; SPEC/plan P2 đã khóa requirement scope, schema, oracle và gates trước RED. Chờ independent review plan; không viết Behavioral RED hay implementation P2 trong checkpoint này. Sau RED hợp lệ, raw evidence và independent audit mới được xét quyền implementation. Không sửa P0; M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -266,40 +266,51 @@ graph TD
 
 ### M2-P2: Envelopes, RFC 9457 ProblemDetail, Optimistic Concurrency & Durable Idempotency
 
-- **Authorization hiện hành:** `M2-P2_AUTHORIZED` cho SPEC, PLAN và Behavioral RED. **Cấm** mọi implementation P2 cho tới khi tất cả oracle RED đã được chứng kiến đúng hành vi, có stdout/evidence thô và được independent audit chấp thuận.
-- **Requirement / CT / INV IDs**: `CT-CMN-001..006`, `ADR-0004`, `ADR-0005`, `ADR-0010`.
+- **Authorization / checkpoint hiện hành:** User đã ủy quyền P2 cho SPEC, PLAN và Behavioral RED; checkpoint đang dừng tại `M2-P2_PLAN_READY_FOR_REVIEW`. **Cấm** viết Behavioral RED hoặc implementation P2 cho tới khi independent review plan kết thúc; implementation vẫn chỉ được xét sau RED hợp lệ, stdout/evidence thô và independent audit.
+- **Requirement / contract IDs**: `CT-CMN-001` (MessageEnvelope), `CT-CMN-002` (CommandEnvelope), `CT-CMN-003` (CommandReceipt), `CT-CMN-005` (RevisionedResource), `CT-CMN-006` (TimestampPolicy), `CT-CMN-010` (ProblemDetail), `CT-CMN-011` (IdempotencyPolicy), `CT-API-001` **chỉ** cho nền tảng idempotency/`expected_revision`/conflict semantics trước HTTP boundary, và `ADR-0004` cho durable receipt/idempotency/commit semantics. Không thuộc P2: `CT-CMN-004` (QueryPage), FastAPI/API mapping, `ADR-0005`, `ADR-0010`, outbox hoặc state machine.
 - **Dependencies**: M2-P1.
 - **Mục tiêu**:
-  1. Hiện thực hóa các domain model Envelope: `MessageEnvelope`, `CommandEnvelope`, timestamp RFC 3339 UTC, correlation_id và causation_id.
-  2. Bền vững hóa `CommandReceipt` trong bảng `controlplane.cp_command_receipts` (`receipt_id`, `command_id`, `disposition`, `operation_id`, `resource_ref`, `accepted_at`, `current_revision`).
-  3. Migration tạo bảng `controlplane.cp_idempotency_records` (`idempotency_key`, `workspace_id`, `command_name`, `request_hash`, `receipt_id`, `created_at`, `expires_at` [nullable, no auto-purge in M2]).
-  4. Hiện thực hóa `IdempotencyManager`:
-     - Cùng key + cùng request_hash -> Trả về `CommandReceipt` bền vững đã lưu.
-     - Cùng key + khác payload -> Báo lỗi `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD`.
-  5. Business uniqueness: Ràng buộc unique constraints trên aggregate nghiệp vụ là lớp bảo vệ thứ hai sau idempotency.
-  6. Kiểm soát đồng thời lạc quan: Kiểm tra `expected_revision` khớp với aggregate revision; trả về domain error transport-neutral `RevisionConflictError` (không phụ thuộc HTTP). Lớp API sau này chịu trách nhiệm map sang RFC 9457 409 `REVISION_CONFLICT`.
+  1. Hiện thực hóa `MessageEnvelope`/`CommandEnvelope` với trường bắt buộc, `workspace_id`, correlation/causation và timestamp UTC RFC 3339 theo `CT-CMN-001/002/006`.
+  2. Hiện thực hóa `ProblemDetail` transport-neutral theo `CT-CMN-010`: `code`, `category`, `retryable`, `correlation_id` ổn định; `status` chỉ mang HTTP status tại HTTP boundary sau này. Public detail không chứa stack trace, raw secret hay technical reference không an toàn. Không có FastAPI middleware hay HTTP mapper ở P2.
+  3. Tạo migration production `0002_idempotency_and_receipts.sql` và `0002_idempotency_and_receipts.rollback.sql`. `cp_command_receipts` có `receipt_id` PK, `workspace_id` NOT NULL FK P1 workspace, `command_id` NOT NULL, `disposition` (`accepted` hoặc `rejected`; không dùng `duplicate` làm durable receipt), `operation_id` nullable, `resource_ref` nullable JSONB, `accepted_at` NOT NULL UTC, `current_revision` nullable; unique `(workspace_id, command_id)`. `cp_idempotency_records` có PK `(workspace_id, command_name, idempotency_key)`, `request_hash` NOT NULL SHA-256, `receipt_id` NOT NULL FK `cp_command_receipts(receipt_id)`, `created_at` NOT NULL UTC, `expires_at` nullable. FK receipt phải cùng `workspace_id` bằng composite unique `(workspace_id, receipt_id)` ở receipt và composite FK ở record. Rollback chỉ drop hai P2 tables/constraints, không đụng schema hay objects P1.
+  4. Khóa identity hash: canonical logical request là object JSON UTF-8 deterministic với keys sort đệ quy, không whitespace; gồm `workspace_id`, `command_name`, `payload` đã canonical, `expected_revision` khi command mutation revisioned và `policy_revision_id` khi có. Loại trừ `message_id`, `command_id`, correlation/causation IDs và timestamps vì chúng thay đổi giữa retry. SHA-256 chạy trên bytes canonical, không hash raw JSON.
+  5. Cùng `(workspace_id, command_name, idempotency_key)` và cùng canonical hash luôn trả **cùng durable `receipt_id`**/logical result. `duplicate` chỉ là response/projection classification cho replay, không tạo receipt bền vững mới, operation/resource mới hay mutation mới. Hash khác trả `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD`; workspace khác độc lập. Record không auto-purge trong M2 và restart không reset state.
+  6. Nền optimistic concurrency: aggregate revision đọc cùng resource; create khởi tạo revision 1, update commit thành công tăng đúng một lần. `expected_revision` stale trả `RevisionConflictError` chứa current revision, không mutation và server không auto-merge; rollback không tăng revision; hai writer cùng expected revision có tối đa một commit. Mapping HTTP 409 thuộc P7/API.
 - **Allowed File Scope**:
   - `src/controlplane/domain/common/**`
+  - `src/controlplane/application/ports/**`
   - `src/controlplane/infrastructure/db/migrations/0002_idempotency_and_receipts.*`
   - `src/controlplane/application/idempotency/**`
+  - `src/controlplane/application/concurrency/**`
+  - `src/controlplane/infrastructure/db/idempotency/**`
+  - `src/controlplane/infrastructure/evidence/profile_p2.py`, `src/controlplane/infrastructure/evidence/synthesizer_p2.py`
   - `tests/m2/test_p2_envelopes_and_idempotency.py`
   - `docs/milestones/m2-control-plane/evidence/m2-p2/**`
 - **Forbidden File Scope**:
-  - `src/controlplane/api/**`, `src/controlplane/ui/**`, `src/m1proof/**`.
-- **RED Oracle**:
-  - `test_tst_m2_p2_001_envelope_invariants_and_rfc3339`: Envelope thiếu correlation_id hoặc sai format RFC 3339 -> FAILED vì thiếu validator.
-  - `test_tst_m2_p2_002_durable_command_receipt_persistence`: Gửi command -> FAILED vì bảng cp_command_receipts chưa ghi nhận.
-  - `test_tst_m2_p2_003_idempotency_key_reused_different_payload_rejected`: Tái sử dụng key với payload khác -> FAILED vì chưa có hash mismatch detection.
-  - `test_tst_m2_p2_004_optimistic_concurrency_revision_conflict`: expected_revision không khớp -> FAILED vì chưa có revision conflict check.
-- **Positive Tests**: Envelope serialization chuẩn; replay cùng payload trả về đúng receipt bền vững đã commit; revision tăng đơn điệu sau commit.
-- **Negative Tests**: Tái sử dụng key khác payload trả `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD`; revision cũ trả `RevisionConflictError`.
-- **Concurrency / Fault / Security Tests**: Concurrent requests cùng key trong transaction song song; kiểm tra request hash sử dụng SHA-256; không purge tự động idempotency records.
-- **Migration / Rollback**: `0002_idempotency_and_receipts.sql` và rollback tương ứng trên isolated test DB.
-- **Evidence**: `docs/milestones/m2-control-plane/evidence/m2-p2/` (`commands.jsonl`, `status.json`, `status.md`, `red-observations.md`, `red-p2-stdout.txt`, `hashes.sha256`).
-- **PASS Criteria**: Evidence validator P0 đạt PASS; 93 tests M1 tiếp tục PASS; 100% tests P2 đạt GREEN.
-- **STOP Condition**: Idempotency cho phép ghi đè response với payload khác hoặc receipt không được persist bền vững.
-- **Claim Allowed**: "M2-P2 hoàn tất: Envelopes, CommandReceipt bền vững, Idempotency store và Concurrency control đã hoạt động."
-- **Claim Forbidden**: "Transactional outbox đã sẵn sàng."
+  - `src/controlplane/api/**`, `src/controlplane/ui/**`, `src/m1proof/**`, `src/controlplane/infrastructure/db/migrations/0001_*`.
+- **Port/adapter boundary**: domain/common chỉ giữ model/error; application coordinator chỉ gọi injected repository/UoW ports; PostgreSQL adapter dùng đúng connection do `SqlUnitOfWork` P1 sở hữu. Repository không tự acquire pool, commit hay rollback.
+- **Mandatory Behavioral RED catalogue (exact, locked before RED)**:
+
+| Testcase | Traceability | Expected RED riêng |
+|---|---|---|
+| `test_tst_m2_p2_001_envelope_required_fields_and_rfc3339_utc` | `CT-CMN-001`, `CT-CMN-002`, `CT-CMN-006` | Thiếu required field hoặc timestamp không UTC/RFC 3339 chưa bị từ chối. |
+| `test_tst_m2_p2_002_problem_detail_transport_neutral_safe_contract` | `CT-CMN-010` | ProblemDetail thiếu stable fields hoặc public detail lộ stack/secret. |
+| `test_tst_m2_p2_003_durable_command_receipt_persistence` | `CT-CMN-003`, `ADR-0004` | Command accepted chưa tạo receipt durable đúng workspace. |
+| `test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt` | `CT-CMN-011`, `ADR-0004` | Canonical-equivalent JSON không replay cùng receipt/result. |
+| `test_tst_m2_p2_005_same_key_different_payload_rejected` | `CT-CMN-011`, `CT-CMN-003` | Hash logic khác không trả `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD`. |
+| `test_tst_m2_p2_006_concurrent_same_key_same_payload_one_logical_receipt` | `CT-CMN-011`, `ADR-0004` | Hai transaction thật cùng request tạo hơn một receipt/record hoặc không cùng logical result. |
+| `test_tst_m2_p2_007_concurrent_same_key_different_payload_rejects_loser` | `CT-CMN-011`, `ADR-0004` | Race cho hai payload tạo receipt/resource thứ hai thay vì một winner và một reject. |
+| `test_tst_m2_p2_008_workspace_scoped_idempotency_isolation_and_restart` | `CT-CMN-011`, `CT-API-001` (foundation only) | Cùng key ở hai workspace collision/cross-leak hoặc restart mất durable state. |
+| `test_tst_m2_p2_009_successful_revision_update_increments_exactly_once` | `CT-CMN-005`, `CT-API-001` (foundation only) | Commit đúng expected revision không tăng chính xác một lần. |
+| `test_tst_m2_p2_010_stale_revision_conflict_zero_mutation_and_current_revision` | `CT-CMN-005`, `CT-API-001` (foundation only) | Stale update không trả `RevisionConflictError`/current revision hoặc làm mutation. |
+| `test_tst_m2_p2_011_production_0002_forward_rollback_and_constraints` | `CT-CMN-003`, `CT-CMN-011`, `ADR-0004` | Migration production thiếu schema/unique/composite FK hoặc rollback đụng P1 objects. |
+
+- **DB-oracle discipline**: P2 durability/concurrency/migration tests chạy PostgreSQL 18.6 disposable database thật qua P1 migration runner/UoW; không mock repository. Mỗi test function-scoped DB; race dùng hai transaction/request cùng workspace/command/key/payload. Oracle phải bootstrap prerequisite tối thiểu hoặc chạy migration cần thiết để không bị unimplemented capability không liên quan che failure.
+- **Machine-readable gates**: `GATE-P2-01` envelope/error contract; `GATE-P2-02` durable receipt/idempotency; `GATE-P2-03` canonical replay/concurrency/workspace isolation; `GATE-P2-04` optimistic revision; `GATE-P2-05` migration/runtime/P1+P0+M1 regression; `GATE-P2-06` evidence/security/provenance. Không gate nào claim API/FastAPI/HTTP security/outbox.
+- **Evidence**: `profile_p2.py`/`synthesizer_p2.py` phải register profile trong cả synthesis và `--verify-only` cùng process. Fail-closed nếu thiếu/sai exact 11 testcase, P2 không all GREEN, P1 không exact 11/11, P0 không exact 33/33, M1 không exact 93/93, runtime PostgreSQL/Python/psycopg lock sai, orphan DB khác 0, secret scan không CLEAN, hoặc provenance/hash DAG invalid. Evidence: `docs/milestones/m2-control-plane/evidence/m2-p2/` (`commands.jsonl`, `status.json`, `status.md`, `red-observations.md`, `red-p2-stdout.txt`, `hashes.sha256`).
+- **STOP Condition**: Idempotency ghi đè payload khác, tạo logical operation/resource thứ hai, leak cross-workspace, revision stale mutation, hoặc receipt không durable.
+- **Claim Allowed**: "M2-P2 hoàn tất: common envelope/error foundation transport-neutral, CommandReceipt durable, idempotency durable và optimistic revision foundation đã được kiểm chứng."
+- **Claim Forbidden**: "HTTP Control API/FastAPI ProblemDetail mapper, transactional outbox, SSE, state machine đã sẵn sàng" hoặc "M2-P3 đã được mở."
 
 ---
 

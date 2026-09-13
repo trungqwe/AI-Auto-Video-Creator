@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_AUTHORIZED` (Independent audit tại `90f4195e928ecbf5622d9760465a5d09d8b4f867` đã chấp thuận P1.)
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_PLAN_READY_FOR_REVIEW` (SPEC/plan P2 đã được khóa trước Behavioral RED.)
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** `M2-P2_AUTHORIZED`. P2 chỉ được SPEC, PLAN và Behavioral RED; cấm implementation P2 cho tới khi RED hợp lệ được chứng kiến, lưu evidence và qua independent audit. M3 hoặc Phân hệ A vẫn `NOT AUTHORIZED` cho tới khi M2 đạt exit gate và có User Checkpoint riêng.
+**Điểm dừng bắt buộc:** `M2-P2_PLAN_READY_FOR_REVIEW`. Chờ independent review SPEC/plan trước Behavioral RED; cấm Behavioral RED và implementation P2 trong checkpoint này. Implementation chỉ có thể được xét sau RED hợp lệ, evidence và independent audit. M3 hoặc Phân hệ A vẫn `NOT AUTHORIZED` cho tới khi M2 đạt exit gate và có User Checkpoint riêng.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
@@ -199,12 +199,11 @@ src/controlplane/
   * Evidence P1 bắt buộc chứa và semantic profile trực tiếp kiểm tra `m2-p1-tests.xml`, `m2-p0-regression.xml`, `m2-p0-regression-report.txt`, `m1-regression.xml`, `m1-regression-report.txt`, `runtime-capability.json`, `secret-scan.json`, cùng provenance/hash DAG. Runtime phải khóa Python 3.13.15, psycopg 3.3.5, psycopg-pool 3.3.1 (`psycopg_pool.ConnectionPool`), PostgreSQL 18.6, CREATEDB=true và orphan DB=0 trong cùng `run_id`; thiếu, skipped, failed/error, sai metrics, regression không đạt, runtime mismatch, secret scan dirty hoặc provenance mismatch đều fail-closed.
 
 ### 6.1. Common Envelopes & Idempotency Store (M2-P2)
-- **Durable `CommandReceipt`**: Bảng `controlplane.cp_command_receipts` lưu trữ biên nhận bền vững (`receipt_id`, `command_id`, `disposition`: `ACCEPTED`/`REJECTED`/`DUPLICATE`, `operation_id`, `resource_ref`, `accepted_at`, `current_revision`).
-- **Idempotency Store**: Bảng `controlplane.cp_idempotency_records` (`idempotency_key`, `workspace_id`, `command_name`, `request_hash`, `receipt_id`, `created_at`, `expires_at` [nullable, no auto-purge in M2]).
-  - Cùng key + cùng request_hash -> Trả về `CommandReceipt` đã lưu.
-  - Cùng key + khác payload -> Báo lỗi `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD` (409 Conflict).
-- **Business Uniqueness**: Lớp bảo vệ thứ hai sau idempotency (unique constraint trên các aggregate nghiệp vụ).
-- **Transport-Neutral Domain Errors**: Domain định nghĩa các exceptions thuần túy (`RevisionConflictError`, `IdempotencyConflictError`, `ForbiddenTransitionError`). Lớp API adapter (FastAPI) chịu trách nhiệm map các domain error này sang RFC 9457 `ProblemDetail`.
+- **Phạm vi contract chính xác**: `CT-CMN-001/002/003/005/006/010/011`, `CT-API-001` chỉ cho nền tảng idempotency/expected-revision/conflict semantics, và `ADR-0004`. Không triển khai `CT-CMN-004`, HTTP API, FastAPI mapper, outbox hoặc state machine ở P2.
+- **Envelope và lỗi**: `MessageEnvelope`/`CommandEnvelope` có identity, workspace, correlation/causation và timestamp UTC RFC 3339. `ProblemDetail` là data contract transport-neutral theo RFC 9457 với `code`, `category`, `retryable`, `correlation_id` ổn định; public detail không chứa raw secret/stack trace. HTTP `status` và mapping 409 nằm ở P7/API.
+- **Schema P2 (`0002_idempotency_and_receipts`)**: `cp_command_receipts` có `receipt_id` PK, `workspace_id`, `command_id`, `disposition` (`accepted`/`rejected`), `operation_id` nullable, `resource_ref` JSONB nullable, `accepted_at`, `current_revision` nullable và unique `(workspace_id, command_id)` cùng composite unique `(workspace_id, receipt_id)`. `cp_idempotency_records` có PK `(workspace_id, command_name, idempotency_key)`, `request_hash`, `receipt_id`, `created_at`, `expires_at` nullable và composite FK `(workspace_id, receipt_id)` về receipt. Rollback chỉ gỡ objects `0002`, không sửa `0001` hay P1.
+- **Idempotency semantics**: SHA-256 chạy trên JSON UTF-8 canonical với keys sort đệ quy; identity gồm workspace, command name, canonical payload, `expected_revision` khi có và `policy_revision_id` khi có; loại trừ message/command/correlation/causation IDs cùng timestamps. Cùng workspace/key/command/hash trả cùng durable `receipt_id` và logical result; `duplicate` chỉ là response/projection classification, không là receipt mới. Hash khác trả `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD`; workspace khác độc lập, restart không reset state và M2 không auto-purge.
+- **Optimistic revision**: resource mới bắt đầu revision 1; commit update hợp lệ tăng đúng một lần. Stale `expected_revision` trả `RevisionConflictError` có current revision, zero mutation và không auto-merge; rollback không tăng revision; hai writer cùng revision có tối đa một commit.
 
 ### 6.2. Transactional Outbox & Operation Stream Projection (M2-P3)
 - **Outbox Event Schema (CT-EVT-001..005)**:
