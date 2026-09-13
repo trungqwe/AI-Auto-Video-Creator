@@ -2,15 +2,16 @@
   "schema_version": "m2_capability_toolchain_v1",
   "milestone": "M2",
   "package": "M2-P0",
-  "timestamp_utc": "2026-09-13T11:36:00Z",
+  "timestamp_utc": "2026-09-13T12:08:20Z",
   "runtime_environment": {
     "python": {
       "version": "3.13.15",
       "executable": "D:\\AI Auto Video Creator\\.venv\\Scripts\\python.exe"
     },
     "node": {
-      "version": "v22.17.0",
+      "live_tested_runtime": "v22.17.0",
       "channel": "Maintenance LTS",
+      "reviewed_candidate": "v24.x (Active LTS candidate evaluated, live-tested selected is v22.17.0 on user workstation)",
       "selection_rationale": "Verified native on workstation; 100% compatible with Vite 6.2, React 18.3, AG Grid 32.3.9, Playwright 1.50 without v8 drift or deprecations."
     },
     "npm": {
@@ -23,25 +24,54 @@
     }
   },
   "backend_dependencies": {
-    "packaging_strategy": "PEP 517/621 standard package via src/controlplane/pyproject.toml; entrypoint controlplane.entrypoint:main; .pth workspace link; zero sys.path hacks",
+    "packaging_strategy": "PEP 517/621 standard package via src/controlplane/pyproject.toml; entrypoint controlplane.entrypoint:main; wheel verified in isolated venv without .pth",
+    "build_system": {
+      "backend": "setuptools.build_meta",
+      "requires": [
+        "setuptools==75.8.0",
+        "wheel==0.45.1"
+      ]
+    },
+    "lockfiles": [
+      "src/controlplane/uv.lock",
+      "src/controlplane/requirements.lock"
+    ],
     "exact_locks": {
       "fastapi": "0.141.1",
       "uvicorn": "0.52.4",
       "httpx": "0.28.1",
       "pydantic": "2.13.5",
+      "pydantic-core": "2.46.5",
       "psycopg": "3.3.5",
       "psycopg-binary": "3.3.5",
       "psycopg-pool": "3.3.1",
-      "temporalio": "1.32.0",
-      "google-api-python-client": "2.200.0",
-      "google-auth-oauthlib": "1.4.1",
-      "pytest": "9.1.1",
-      "pytest-asyncio": "1.4.0",
-      "pytest-cov": "7.1.0"
+      "starlette": "1.6.0",
+      "anyio": "4.15.1",
+      "click": "8.5.0",
+      "h11": "0.16.0",
+      "httpcore": "1.0.9",
+      "idna": "3.19",
+      "certifi": "2026.7.22",
+      "annotated-doc": "0.0.5",
+      "annotated-types": "0.8.0",
+      "typing-extensions": "4.16.0",
+      "typing-inspection": "0.4.4",
+      "tzdata": "2026.4"
     }
   },
   "frontend_dependencies": {
     "package_universe": "src/controlplane/ui/package.json",
+    "machine_lock": {
+      "packageManager": "npm@10.9.2",
+      "engines": {
+        "node": ">=22.17.0 <23.0.0",
+        "npm": "10.9.2"
+      },
+      "manifest_files": [
+        "src/controlplane/ui/.nvmrc",
+        "src/controlplane/ui/.node-version"
+      ]
+    },
     "exact_locks": {
       "react": "18.3.1",
       "react-dom": "18.3.1",

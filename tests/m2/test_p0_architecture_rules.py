@@ -61,6 +61,18 @@ def test_tst_m2_p0_001_rejects_m1proof_prototype_import(tmp_path: Path) -> None:
     assert "m1proof" in violations[0].message
 
 
+def test_tst_m2_p0_001_rejects_src_m1proof_prefix_import(tmp_path: Path) -> None:
+    """Negative test: production code importing src.m1proof prefix must be rejected with ARCH-RULE-001."""
+    bad_file = tmp_path / "infra_service.py"
+    bad_file.write_text("import src.m1proof.environment as env\n", encoding="utf-8")
+
+    violations = check_file_boundary(bad_file, is_domain_layer=False)
+    assert len(violations) == 1
+    assert violations[0].rule_violated == "ARCH-RULE-001:NO_M1_PROTOTYPE_IMPORT"
+    assert "src.m1proof" in violations[0].message
+
+
+
 def test_tst_m2_p0_001_domain_rejects_outer_layer_import(tmp_path: Path) -> None:
     """Negative test: domain importing infrastructure must be rejected with ARCH-RULE-003."""
     bad_domain_file = tmp_path / "domain_service.py"

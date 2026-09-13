@@ -6,15 +6,15 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Added
 
-- Hoàn tất Milestone M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules) (13-09-2026):
-  - Khóa chính xác 100% Toolchain Backend (FastAPI 0.141.1 hỗ trợ native SSE >= 0.135.0, Uvicorn 0.52.4, HTTPX 0.28.1, psycopg-pool 3.3.1, Pydantic 2.13.5, CPython 3.13.15) và Frontend (Node v22.17.0 LTS, npm 10.9.2, React 18.3.1, AG Grid Community 32.3.9 v32-lts, TypeScript 5.7.3, Vite 6.2.0, Playwright 1.50.1). Duy nhất một frontend package universe tại `src/controlplane/ui/package.json` và `package-lock.json`. Tuyệt đối không floating versions.
-  - Thiết lập Production Packaging Strategy: Chuẩn hóa package PEP 517/621 tại `src/controlplane/pyproject.toml`, CLI entrypoint `controlplane.entrypoint:main`, liên kết workspace qua `controlplane.pth`. Kiểm chứng import thành công từ subprocess độc lập, cam kết 0 sys.path hacks.
-  - Triển khai AST Architecture Boundary Validator (`ast_checker.py`): Kiểm tra tĩnh cây cú pháp trừu tượng, xác nhận 0 vi phạm trên toàn bộ `src/controlplane`, bảo vệ nghiêm ngặt Domain Purity (cấm mọi framework ngoài trong domain layer) và ngăn chặn triệt để import prototype `m1proof`.
-  - Triển khai Evidence Validator (`validator.py`) & Hash DAG: Khóa thẩm quyền machine authority duy nhất tại `status.json` (schema `m2_package_status_v1`), DAG `hashes.sha256` loại trừ chính nó (chống hash tự tham chiếu), cơ chế kiểm tra gate fail-closed được kiểm chứng qua 18 bài automated tests.
-  - Khởi tạo Skeleton Interfaces thuần túy (`IUnitOfWork`, `IRepository`, `IStateMachine`, `IOutboxWriter`, `ISecretVault`) ném `NotImplementedError` phục vụ behavioral RED bắt buộc từ P1 trở đi.
-  - Bảo toàn 100% Milestone M1 regression suite: 93/93 tests M1 PASSED (0 skipped, 0 failed).
-  - Quét an toàn thông tin: 0 phát hiện rò rỉ token, password hay private key.
-  - Tạo trọn vẹn thư mục bằng chứng `docs/milestones/m2-control-plane/evidence/m2-p0/` và đạt trạng thái `READY_FOR_REVIEW`.
+- Hoàn tất khắc phục toàn diện đợt Tái kiểm toán Độc lập Milestone M2-P0 (13-09-2026):
+  - Tách bạch Hai tầng Evidence Verification: Triển khai `evaluator.py` và cập nhật `validator.py` phân tách tầng Toàn vẹn (Integrity: JSON schema, băm SHA-256 DAG loại trừ chính nó, chống tệp mồ côi) và tầng Ngữ nghĩa (Semantic: đọc trực tiếp JUnit XML `m2-p0-tests.xml`, `m1-regression.xml` và `secret-scan.json`; không tin con số tự khai; chặn đứng hoàn toàn hiện tượng false-PASS do rehash tệp FAILED).
+  - Reproducible Production Packaging: Chuẩn hóa package PEP 517/621 tại `src/controlplane/pyproject.toml`, loại bỏ hoàn toàn việc dùng `.pth` làm bằng chứng package gate; kiểm chứng tự động tạo clean virtualenv, build wheel `controlplane-0.2.0-py3-none-any.whl`, cài đặt vào môi trường cô lập không có `.pth` và thực thi thành công CLI entrypoint.
+  - Đồng bộ Build Backend & Exact Build Lock: Khóa thống nhất `setuptools==75.8.0` và `wheel==0.45.1` trên toàn bộ tài liệu, pyproject, lockfiles và build tests.
+  - Khóa Toàn bộ Resolved Backend Dependency Graph: Tạo `src/controlplane/requirements.lock` và `src/controlplane/uv.lock` giải quyết chính xác 21 packages (bao gồm `psycopg-pool==3.3.1`, `fastapi==0.141.1`, `pydantic-core==2.46.5`).
+  - Machine-Lock Frontend Node/npm: Khai báo `packageManager: npm@10.9.2`, `engines` (`node >=22.17.0 <23.0.0`, `npm 10.9.2`), `.nvmrc` và `.node-version` (`22.17.0`) trong `src/controlplane/ui/`.
+  - Harden AST Architecture Boundary Validator: Bổ sung bộ lọc và negative tests chặn đứng các tiền tố `m1proof.*` và `src.m1proof.*`.
+  - Secret Scan Evidence Thật: Quét toàn diện 37 tệp (code, config, log, evidence XML/TXT/JSON/MD), xuất `secret-scan.json` máy đọc được với 0 finding.
+  - Bộ kiểm thử M2-P0 nâng lên **25/25 tests PASSED**; hồi quy M1 tiếp tục **93/93 tests PASSED**; 6/6 Package Gates đạt `PASS`; tạo trọn vẹn thư mục bằng chứng `docs/milestones/m2-control-plane/evidence/m2-p0/` và đạt trạng thái `READY_FOR_REVIEW`.
 
 
 - Phê duyệt User Checkpoint Milestone M1 và kích hoạt Milestone M2 (13-09-2026):

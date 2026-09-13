@@ -58,13 +58,14 @@ Remote chính: <https://github.com/trungqwe/AI-Auto-Video-Creator>
 Milestone M1 (`M1-P0 → M1-P6`) đã hoàn tất 100% và được Người dùng phê duyệt chính thức (`ACCEPTED / CLOSED`) với **93 passed, 0 skipped** tests, Audit R5 + R5.1 ACCEPTED. Milestone M2 chính thức chuyển sang `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION`. Milestone M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ## Trạng thái Hoàn tất Milestone M2-P0
-Milestone M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules) đã hoàn tất 100% và dừng tại `M2-P0_READY_FOR_REVIEW`:
-- Khóa chính xác 100% Backend (FastAPI 0.141.1 native SSE, Uvicorn 0.52.4, HTTPX 0.28.1, psycopg-pool 3.3.1, Pydantic 2.13.5) và Frontend (Node v22.17.0 LTS, npm 10.9.2, React 18.3.1, AG Grid Community 32.3.9 v32-lts, Vite 6.2.0, Playwright 1.50.1).
-- Single package universe tại `src/controlplane/ui/package.json`. Không floating versions.
-- Standard Python package tại `src/controlplane/pyproject.toml`, entrypoint `controlplane.entrypoint:main`, import sạch không sys.path hack.
-- AST boundary checker bảo vệ Domain Purity (100% pure domain, 0 external framework, cấm import m1proof).
-- Evidence Validator fail-closed, hash DAG không tự tham chiếu, machine authority tại `status.json` (schema `m2_package_status_v1`).
-- Toàn bộ 18/18 tests M2-P0 PASSED; 93/93 tests hồi quy M1 PASSED; 0 secret leaks.
+Milestone M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules) đã hoàn tất khắc phục toàn diện sau Independent Audit R1 và dừng tại `M2-P0_READY_FOR_REVIEW`:
+- Khóa chính xác 100% Backend (FastAPI 0.141.1 native SSE, Uvicorn 0.52.4, HTTPX 0.28.1, psycopg-pool 3.3.1, Pydantic 2.13.5; build-system setuptools 75.8.0, wheel 0.45.1) và Frontend (Node v22.17.0 LTS, npm 10.9.2, React 18.3.1, AG Grid Community 32.3.9 v32-lts, Vite 6.2.0, Playwright 1.50.1).
+- Single package universe tại `src/controlplane/ui/package.json` với machine-lock `packageManager: npm@10.9.2`, `engines`, `.nvmrc`, `.node-version`.
+- Standard Python package tại `src/controlplane/pyproject.toml`, resolved graph tại `requirements.lock` & `uv.lock`. Chứng minh tự động tạo clean virtualenv, build wheel và cài đặt thành công, không dùng .pth làm package gate foundation.
+- AST boundary checker bảo vệ Domain Purity và chặn triệt để `m1proof.*`, `src.m1proof.*`.
+- Evidence Validator hai tầng (Integrity + Semantic) trích xuất trực tiếp từ JUnit XML (`m2-p0-tests.xml`, `m1-regression.xml`) và `secret-scan.json`, chống triệt để false-PASS.
+- Toàn bộ 25/25 tests M2-P0 PASSED; 93/93 tests hồi quy M1 PASSED; 6/6 Package Gates PASSED; 0 secret leaks.
+
 
 
 

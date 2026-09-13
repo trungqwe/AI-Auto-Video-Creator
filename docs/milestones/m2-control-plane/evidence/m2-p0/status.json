@@ -4,7 +4,7 @@
   "package": "M2-P0",
   "package_name": "Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules",
   "status": "READY_FOR_REVIEW",
-  "timestamp_utc": "2026-09-13T11:37:00Z",
+  "timestamp_utc": "2026-09-13T12:08:30Z",
   "gates": [
     {
       "gate_id": "GATE-P0-01",
@@ -17,11 +17,12 @@
     },
     {
       "gate_id": "GATE-P0-02",
-      "name": "Production Packaging & Import Strategy Without Syspath Hack",
+      "name": "Production Packaging & Fresh-Env Proof Without Syspath Hack",
       "status": "PASS",
       "evidence_files": [
         "commands.jsonl",
-        "p0-test-report.txt"
+        "p0-test-report.txt",
+        "m2-p0-tests.xml"
       ]
     },
     {
@@ -30,15 +31,17 @@
       "status": "PASS",
       "evidence_files": [
         "p0-test-report.txt",
+        "m2-p0-tests.xml",
         "red-observations.md"
       ]
     },
     {
       "gate_id": "GATE-P0-04",
-      "name": "Evidence Validator & Non-Self-Referential Hash DAG",
+      "name": "Evidence Validator & Semantic Gate Evaluator",
       "status": "PASS",
       "evidence_files": [
         "p0-test-report.txt",
+        "m2-p0-tests.xml",
         "red-observations.md"
       ]
     },
@@ -48,14 +51,24 @@
       "status": "PASS",
       "evidence_files": [
         "m1-regression-report.txt",
+        "m1-regression.xml",
+        "commands.jsonl"
+      ]
+    },
+    {
+      "gate_id": "GATE-P0-06",
+      "name": "Standalone Secret Scan Cleanliness",
+      "status": "PASS",
+      "evidence_files": [
+        "secret-scan.json",
         "commands.jsonl"
       ]
     }
   ],
   "evidence_summary": {
     "m2_p0_tests": {
-      "total": 18,
-      "passed": 18,
+      "total": 25,
+      "passed": 25,
       "failed": 0,
       "skipped": 0
     },

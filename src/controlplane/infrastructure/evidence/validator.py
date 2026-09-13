@@ -4,7 +4,11 @@ Source of Truth Authority:
 - `status.json` with schema `m2_package_status_v1` is the authoritative machine-readable manifest.
 - `status.md` is a human-readable derivative, never used as parser source of truth.
 - `hashes.sha256` forms an acyclic DAG excluding itself. Self-referential hashes are rejected.
-- Fail-closed gate verification: any mismatch, missing file, or unverified gate halts execution.
+- Fail-closed gate verification: any mismatch, missing file, untracked file, or semantic test failure halts execution.
+
+Two-tier verification:
+1. Integrity Tier: Validates JSON schema, file completeness, and SHA-256 DAG hashes.
+2. Semantic Tier: Validates actual test metrics from JUnit XML, secret scan results, and capability reports.
 """
 from __future__ import annotations
 
@@ -13,6 +17,11 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from controlplane.infrastructure.evidence.evaluator import (
+    SemanticEvaluationError,
+    evaluate_package_semantics,
+)
 
 
 EXPECTED_SCHEMA_VERSION = "m2_package_status_v1"
@@ -49,6 +58,7 @@ class PackageEvidenceReport:
     gates: list[GateResult]
     verified_files: list[str]
     is_valid: bool
+    semantic_summary: dict[str, Any] | None = None
 
 
 def sha256_file(path: Path) -> str:
@@ -138,17 +148,8 @@ def validate_status_json(status_path: Path) -> dict[str, Any]:
     return data
 
 
-def validate_package_evidence(package_evidence_dir: Path) -> PackageEvidenceReport:
-    """Validate a package evidence directory fail-closed.
-
-    Checks:
-    1. status.json schema and validity.
-    2. hashes.sha256 exists and contains no self-referential hash.
-    3. Every file listed in hashes.sha256 exists and matches expected SHA-256.
-    4. Every file on disk in package_evidence_dir (except hashes.sha256) is accounted for in hashes.sha256.
-    5. All declared gate evidence files exist and are verified.
-    6. If status is PASS or READY_FOR_REVIEW, all gates must be PASS.
-    """
+def validate_package_integrity(package_evidence_dir: Path) -> tuple[dict[str, Any], list[str]]:
+    """Tier 1: Validate physical integrity, schema validity, and hash DAG completeness."""
     if not package_evidence_dir.is_dir():
         raise EvidenceValidationError(f"Evidence directory does not exist: {package_evidence_dir}")
 
@@ -182,7 +183,6 @@ def validate_package_evidence(package_evidence_dir: Path) -> PackageEvidenceRepo
                 )
 
     # Verify gate declared files
-    gate_results: list[GateResult] = []
     for g in status_data["gates"]:
         gate_files = g.get("evidence_files", [])
         for gf in gate_files:
@@ -190,18 +190,42 @@ def validate_package_evidence(package_evidence_dir: Path) -> PackageEvidenceRepo
                 raise EvidenceValidationError(
                     f"Gate {g['gate_id']} references unverified evidence file: '{gf}'"
                 )
-        gate_results.append(
-            GateResult(
-                gate_id=g["gate_id"],
-                name=g.get("name", g["gate_id"]),
-                status=g["status"],
-                evidence_files=gate_files,
-            )
-        )
 
-    # Fail-closed check: if status claims PASS or READY_FOR_REVIEW, all gates must be PASS
+    return status_data, verified_files
+
+
+def validate_package_evidence(
+    package_evidence_dir: Path,
+    enforce_semantics: bool = True,
+) -> PackageEvidenceReport:
+    """Validate a package evidence directory fail-closed across both Integrity and Semantic tiers.
+
+    1. Integrity Tier: Validates status.json schema, file completeness, and hash DAG.
+    2. Semantic Tier: Extracts actual test metrics from JUnit XML and verifies gates.
+    3. Gate Enforcement: If status is PASS or READY_FOR_REVIEW, all gates must be PASS.
+    """
+    status_data, verified_files = validate_package_integrity(package_evidence_dir)
     overall_status = status_data["status"]
-    if overall_status in ("PASS", "READY_FOR_REVIEW"):
+
+    gate_results = [
+        GateResult(
+            gate_id=g["gate_id"],
+            name=g.get("name", g["gate_id"]),
+            status=g["status"],
+            evidence_files=g.get("evidence_files", []),
+        )
+        for g in status_data["gates"]
+    ]
+
+    semantic_summary: dict[str, Any] | None = None
+    if enforce_semantics and overall_status in ("PASS", "READY_FOR_REVIEW"):
+        # Semantic evaluation will raise SemanticEvaluationError if any test failed, was skipped, or numbers mismatch
+        try:
+            semantic_summary = evaluate_package_semantics(package_evidence_dir, status_data)
+        except SemanticEvaluationError as exc:
+            raise EvidenceValidationError(f"Semantic gate evaluation failed: {exc}") from exc
+
+        # All gates must be PASS
         for gr in gate_results:
             if gr.status != "PASS":
                 raise EvidenceValidationError(
@@ -216,4 +240,5 @@ def validate_package_evidence(package_evidence_dir: Path) -> PackageEvidenceRepo
         gates=gate_results,
         verified_files=verified_files,
         is_valid=True,
+        semantic_summary=semantic_summary,
     )

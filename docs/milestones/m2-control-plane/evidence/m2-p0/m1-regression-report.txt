@@ -1,39 +1,132 @@
 ============================= test session starts =============================
-platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
 rootdir: D:\AI Auto Video Creator
 configfile: pyproject.toml
 plugins: asyncio-1.4.0, cov-7.1.0
 asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
-collected 93 items
+collecting ... collected 93 items
 
-tests\m1\p0\test_environment_capture.py ..                               [  2%]
-tests\m1\p0\test_environment_live_probe.py ...                           [  5%]
-tests\m1\p0\test_environment_manifest.py ..                              [  7%]
-tests\m1\p0\test_environment_validation.py ...                           [ 10%]
-tests\m1\p1\test_activity_receipts_v2.py ..                              [ 12%]
-tests\m1\p1\test_command_semantics.py .....                              [ 18%]
-tests\m1\p1\test_completion_admission.py .                               [ 19%]
-tests\m1\p1\test_completion_uow.py ........                              [ 27%]
-tests\m1\p1\test_epoch_authority.py ..                                   [ 30%]
-tests\m1\p1\test_operation_receipts_v2.py ...                            [ 33%]
-tests\m1\p1\test_outbox_delivery.py .                                    [ 34%]
-tests\m1\p1\test_recovery_semantics.py ......                            [ 40%]
-tests\m1\p1\test_remediation_migration.py .                              [ 41%]
-tests\m1\p1\test_sensitive_boundaries.py ...                             [ 45%]
-tests\m1\p2\test_activity_idempotency.py ..                              [ 47%]
-tests\m1\p2\test_child_isolation.py .                                    [ 48%]
-tests\m1\p2\test_exact_temporal_server_integration.py ...                [ 51%]
-tests\m1\p2\test_reconciliation_routing.py .                             [ 52%]
-tests\m1\p2\test_replay_versioning.py .                                  [ 53%]
-tests\m1\p2\test_temporal_payload_boundaries.py .                        [ 54%]
-tests\m1\p2\test_worker_lifecycle.py .                                   [ 55%]
-tests\m1\p3\test_drive_integrity.py ..                                   [ 58%]
-tests\m1\p3\test_drive_live_probe.py .                                   [ 59%]
-tests\m1\p3\test_drive_resumable_upload.py ..                            [ 61%]
-tests\m1\p3\test_oauth_lifecycle.py ...........                          [ 73%]
-tests\m1\p4\test_journal_crash_recovery.py ...                           [ 76%]
-tests\m1\p4\test_journal_epoch_and_cleanup.py ...                        [ 79%]
-tests\m1\p5\test_compatibility_smoke.py .........                        [ 89%]
-tests\m1\p6\test_evidence_audit.py ..........                            [100%]
+tests/m1/p0/test_environment_capture.py::test_capture_rejects_observed_version_mismatch PASSED [  1%]
+tests/m1/p0/test_environment_capture.py::test_capture_rejects_secret_like_keys PASSED [  2%]
+tests/m1/p0/test_environment_live_probe.py::test_capture_and_validation_probe_live_workspace PASSED [  3%]
+tests/m1/p0/test_environment_live_probe.py::test_validation_detects_live_lockfile_drift PASSED [  4%]
+tests/m1/p0/test_environment_live_probe.py::test_capture_fails_when_postgresql_endpoint_is_not_live PASSED [  5%]
+tests/m1/p0/test_environment_manifest.py::test_environment_manifest_matches_locked_bootstrap PASSED [  6%]
+tests/m1/p0/test_environment_manifest.py::test_environment_manifest_contains_successful_postgresql_preflight PASSED [  7%]
+tests/m1/p0/test_environment_validation.py::test_validator_accepts_untampered_environment_manifest PASSED [  8%]
+tests/m1/p0/test_environment_validation.py::test_validator_rejects_tampered_bootstrap_hash PASSED [  9%]
+tests/m1/p0/test_environment_validation.py::test_validator_rejects_tampered_locked_section PASSED [ 10%]
+tests/m1/p1/test_activity_receipts_v2.py::test_activity_result_is_idempotent_by_operation_and_bound_to_input PASSED [ 11%]
+tests/m1/p1/test_activity_receipts_v2.py::test_grant_cannot_rebind_at_same_generation_and_operation_input_is_stable PASSED [ 12%]
+tests/m1/p1/test_command_semantics.py::test_duplicate_command_returns_same_receipt_and_one_mutation PASSED [ 13%]
+tests/m1/p1/test_command_semantics.py::test_concurrent_duplicate_commands_commit_only_once PASSED [ 15%]
+tests/m1/p1/test_command_semantics.py::test_concurrent_distinct_commands_cannot_both_create_same_revision PASSED [ 16%]
+tests/m1/p1/test_command_semantics.py::test_reused_idempotency_key_with_different_payload_is_rejected PASSED [ 17%]
+tests/m1/p1/test_command_semantics.py::test_mutation_and_outbox_roll_back_together_at_crash_boundary PASSED [ 18%]
+tests/m1/p1/test_completion_admission.py::test_completion_rejects_unverified_admission_without_state_change PASSED [ 19%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_ledger] PASSED [ 20%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_job] PASSED [ 21%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_capacity] PASSED [ 22%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_variant] PASSED [ 23%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_media_usage] PASSED [ 24%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_outbox] PASSED [ 25%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_cleanup_eligibility] PASSED [ 26%]
+tests/m1/p1/test_completion_uow.py::test_lost_ack_and_duplicate_completion_return_one_committed_result PASSED [ 27%]
+tests/m1/p1/test_epoch_authority.py::test_stale_command_and_event_cannot_persist PASSED [ 29%]
+tests/m1/p1/test_epoch_authority.py::test_epoch_and_fence_cannot_move_backwards PASSED [ 30%]
+tests/m1/p1/test_operation_receipts_v2.py::test_operation_key_is_scoped_by_workspace_and_type_is_fingerprinted PASSED [ 31%]
+tests/m1/p1/test_operation_receipts_v2.py::test_external_state_machine_rejects_forbidden_transitions PASSED [ 32%]
+tests/m1/p1/test_operation_receipts_v2.py::test_receipt_from_old_epoch_is_not_reused_as_current PASSED [ 33%]
+tests/m1/p1/test_outbox_delivery.py::test_dispatch_crash_before_checkpoint_is_recovered_by_consumer_dedupe PASSED [ 34%]
+tests/m1/p1/test_recovery_semantics.py::test_duplicate_and_reordered_events_do_not_repeat_projection_side_effect PASSED [ 35%]
+tests/m1/p1/test_recovery_semantics.py::test_lost_ack_after_commit_returns_existing_receipt PASSED [ 36%]
+tests/m1/p1/test_recovery_semantics.py::test_lost_ack_is_recovered_after_real_process_restart PASSED [ 37%]
+tests/m1/p1/test_recovery_semantics.py::test_stale_generation_or_recovery_epoch_cannot_commit_result PASSED [ 38%]
+tests/m1/p1/test_recovery_semantics.py::test_unknown_external_outcome_requires_reconciliation_before_retry PASSED [ 39%]
+tests/m1/p1/test_recovery_semantics.py::test_sensitive_input_is_rejected_without_persistence_or_echo PASSED [ 40%]
+tests/m1/p1/test_remediation_migration.py::test_remediation_migration_moves_forward_and_back PASSED [ 41%]
+tests/m1/p1/test_sensitive_boundaries.py::test_event_payload_rejects_secret_and_unknown_fields PASSED [ 43%]
+tests/m1/p1/test_sensitive_boundaries.py::test_activity_and_external_payload_boundaries_reject_secrets PASSED [ 44%]
+tests/m1/p1/test_sensitive_boundaries.py::test_reconciliation_output_rejects_secret_without_persistence PASSED [ 45%]
+tests/m1/p2/test_activity_idempotency.py::test_tst_m1_p2_002_activity_retry_lost_ack_uses_p1_receipt PASSED [ 46%]
+tests/m1/p2/test_activity_idempotency.py::test_tst_m1_p2_003_stale_worker_generation_rejected PASSED [ 47%]
+tests/m1/p2/test_child_isolation.py::test_tst_m1_p2_004_child_failure_isolation PASSED [ 48%]
+tests/m1/p2/test_exact_temporal_server_integration.py::test_tst_m1_p2_008_exact_server_identity_and_version_observation PASSED [ 49%]
+tests/m1/p2/test_exact_temporal_server_integration.py::test_tst_m1_p2_009_exact_server_workflow_activity_roundtrip PASSED [ 50%]
+tests/m1/p2/test_exact_temporal_server_integration.py::test_tst_m1_p2_010_exact_server_idempotent_retry_boundary PASSED [ 51%]
+tests/m1/p2/test_reconciliation_routing.py::test_tst_m1_p2_006_unknown_outcome_routes_to_reconciliation PASSED [ 52%]
+tests/m1/p2/test_replay_versioning.py::test_tst_m1_p2_005_replay_versioning_and_detection PASSED [ 53%]
+tests/m1/p2/test_temporal_payload_boundaries.py::test_tst_m1_p2_007_payload_boundary_blocks_secrets_and_large_blobs PASSED [ 54%]
+tests/m1/p2/test_worker_lifecycle.py::test_tst_m1_p2_001_desktop_worker_offline_and_resume PASSED [ 55%]
+tests/m1/p3/test_drive_integrity.py::test_tst_m1_p3_003_byte_integrity_and_sha256_hash_verification PASSED [ 56%]
+tests/m1/p3/test_drive_integrity.py::test_tst_m1_p3_004_session_expired_or_conflict_reconciliation PASSED [ 58%]
+tests/m1/p3/test_drive_live_probe.py::test_live_e3_drive_verification PASSED [ 59%]
+tests/m1/p3/test_drive_resumable_upload.py::test_tst_m1_p3_001_pregenerated_id_and_resumable_retry_lost_ack PASSED [ 60%]
+tests/m1/p3/test_drive_resumable_upload.py::test_tst_m1_p3_002_timeout_classification_and_reconciliation PASSED [ 61%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_005_token_lifecycle_and_adr0009_desktop_boundary PASSED [ 62%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_006_rate_limit_http_429_bounded_backoff PASSED [ 63%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_007_secret_boundary_scanning_in_logs_and_receipts PASSED [ 64%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_008_adr0009_token_placement_and_desktop_disk_audit PASSED [ 65%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_009_desktop_refresh_delegation_to_broker PASSED [ 66%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_010_token_revocation_boundary PASSED [ 67%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_011_insufficient_scope_classification PASSED [ 68%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_012_broker_http_process_boundary PASSED [ 69%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_013_broker_subprocess_isolation PASSED [ 70%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_014_dpapi_encrypted_vault PASSED [ 72%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_015_broker_owned_oauth_provisioning PASSED [ 73%]
+tests/m1/p4/test_journal_crash_recovery.py::test_tst_m1_p4_001_crash_after_artifact_complete_resends_operation PASSED [ 74%]
+tests/m1/p4/test_journal_crash_recovery.py::test_tst_m1_p4_002_crash_during_write_or_rename_rejects_partial_byte PASSED [ 75%]
+tests/m1/p4/test_journal_crash_recovery.py::test_tst_m1_p4_003_lost_ack_reconciles_existing_cloud_receipt PASSED [ 76%]
+tests/m1/p4/test_journal_epoch_and_cleanup.py::test_tst_m1_p4_004_stale_epoch_or_generation_quarantined PASSED [ 77%]
+tests/m1/p4/test_journal_epoch_and_cleanup.py::test_tst_m1_p4_005_cache_eviction_protects_unsent_journal_and_active_refs PASSED [ 78%]
+tests/m1/p4/test_journal_epoch_and_cleanup.py::test_tst_m1_p4_006_file_missing_or_hash_mismatch_detected PASSED [ 79%]
+tests/m1/p5/test_compatibility_smoke.py::test_tst_m1_p5_001_exact_python_uv_and_frozen_lock_integrity PASSED [ 80%]
+tests/m1/p5/test_compatibility_smoke.py::test_tst_m1_p5_002_postgresql_connection_rollback_and_vietnamese_utf8 PASSED [ 81%]
+tests/m1/p5/test_compatibility_smoke.py::test_tst_m1_p5_003_temporal_sdk_and_server_handshake_smoke PASSED [ 82%]
+tests/m1/p5/test_compatibility_smoke.py::test_tst_m1_p5_004_google_client_boundaries_and_missing_credential_classification PASSED [ 83%]
+tests/m1/p5/test_compatibility_smoke.py::test_tst_m1_p5_005_ffmpeg_version_buildconf_ffprobe_and_safe_probe PASSED [ 84%]
+tests/m1/p5/test_compatibility_smoke.py::test_tst_m1_p5_006_evidence_hash_mismatch_and_unsupported_version_rejected PASSED [ 86%]
+tests/m1/p5/test_compatibility_smoke.py::test_tst_m1_p5_007_machine_readable_compatibility_matrix PASSED [ 87%]
+tests/m1/p5/test_compatibility_smoke.py::test_tst_m1_p5_008_dynamic_matrix_observation PASSED [ 88%]
+tests/m1/p5/test_compatibility_smoke.py::test_tst_m1_p5_009_fail_closed_compatibility_matrix PASSED [ 89%]
+tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_001_manifest_schema_and_completeness_validation PASSED [ 90%]
+tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_002_artifact_hash_tampering_and_missing_file_detection PASSED [ 91%]
+tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_003_milestone_exit_rule_engine_gate_enforcement PASSED [ 92%]
+tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_004_scoped_gate_boundary_protection PASSED [ 93%]
+tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_005_secret_and_canary_scanner_fail_closed PASSED [ 94%]
+tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_006_fail_closed_package_status_parser PASSED [ 95%]
+tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_007_missing_mandatory_evidence_blocks_ready PASSED [ 96%]
+tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_008_capability_evidence_fail_closed PASSED [ 97%]
+tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_009_semantic_capability_validation PASSED [ 98%]
+tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_010_semantic_capability_negative_fields PASSED [100%]
 
-====================== 93 passed, 58 warnings in 46.56s =======================
+============================== warnings summary ===============================
+tests/m1/p2/test_activity_idempotency.py::test_tst_m1_p2_002_activity_retry_lost_ack_uses_p1_receipt
+tests/m1/p2/test_activity_idempotency.py::test_tst_m1_p2_003_stale_worker_generation_rejected
+tests/m1/p2/test_reconciliation_routing.py::test_tst_m1_p2_006_unknown_outcome_routes_to_reconciliation
+tests/m1/p2/test_replay_versioning.py::test_tst_m1_p2_005_replay_versioning_and_detection
+tests/m1/p2/test_temporal_payload_boundaries.py::test_tst_m1_p2_007_payload_boundary_blocks_secrets_and_large_blobs
+tests/m1/p2/test_worker_lifecycle.py::test_tst_m1_p2_001_desktop_worker_offline_and_resume
+  D:\AI Auto Video Creator\.venv\Lib\site-packages\temporalio\converter\_payload_converter.py:779: UserWarning: If you're using Pydantic v2, use temporalio.contrib.pydantic.pydantic_data_converter. If you're using Pydantic v1 and cannot upgrade, refer to https://github.com/temporalio/samples-python/tree/main/pydantic_converter_v1 for better v1 support.
+    warnings.warn(
+
+tests/m1/p2/test_activity_idempotency.py: 7 warnings
+tests/m1/p2/test_reconciliation_routing.py: 3 warnings
+tests/m1/p2/test_replay_versioning.py: 3 warnings
+tests/m1/p2/test_temporal_payload_boundaries.py: 5 warnings
+tests/m1/p2/test_worker_lifecycle.py: 7 warnings
+  D:\AI Auto Video Creator\.venv\Lib\site-packages\temporalio\converter\_payload_converter.py:686: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    return dict_fn()
+
+tests/m1/p2/test_activity_idempotency.py: 8 warnings
+tests/m1/p2/test_reconciliation_routing.py: 3 warnings
+tests/m1/p2/test_replay_versioning.py: 3 warnings
+tests/m1/p2/test_temporal_payload_boundaries.py: 5 warnings
+tests/m1/p2/test_worker_lifecycle.py: 8 warnings
+  D:\AI Auto Video Creator\.venv\Lib\site-packages\temporalio\converter\_payload_converter.py:1028: PydanticDeprecatedSince20: The `parse_obj` method is deprecated; use `model_validate` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    return getattr(hint, "parse_obj")(value)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m2-control-plane\evidence\m2-p0\m1-regression.xml -
+====================== 93 passed, 58 warnings in 46.54s =======================

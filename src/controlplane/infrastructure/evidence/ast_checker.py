@@ -76,7 +76,12 @@ class ArchitectureBoundaryVisitor(ast.NodeVisitor):
         top_level = module_name.split(".")[0]
 
         # Rule 1: No controlplane code may import M1 prototype
-        if top_level in M1_PROTOTYPE_MODULES or module_name in M1_PROTOTYPE_MODULES:
+        if (
+            top_level in M1_PROTOTYPE_MODULES
+            or module_name in M1_PROTOTYPE_MODULES
+            or module_name.startswith("m1proof.")
+            or module_name.startswith("src.m1proof.")
+        ):
             self.violations.append(
                 BoundaryViolation(
                     file_path=self.file_path,
@@ -89,7 +94,7 @@ class ArchitectureBoundaryVisitor(ast.NodeVisitor):
 
         # Domain-specific purity rules
         if self.is_domain_layer:
-            # Rule 2: Domain must not import external technical frameworks
+            # Rule 2: Domain must not import forbidden technical frameworks/drivers
             if top_level in FORBIDDEN_DOMAIN_EXTERNAL_MODULES:
                 self.violations.append(
                     BoundaryViolation(
@@ -97,7 +102,7 @@ class ArchitectureBoundaryVisitor(ast.NodeVisitor):
                         line_number=lineno,
                         imported_module=module_name,
                         rule_violated="ARCH-RULE-002:DOMAIN_FRAMEWORK_PURITY",
-                        message=f"Domain layer must not import external framework/driver '{module_name}'.",
+                        message=f"Domain layer must not import forbidden technical framework/driver '{module_name}' from managed boundary list.",
                     )
                 )
 

@@ -174,15 +174,18 @@ Sau các đợt re-audit độc lập R4, R5 và R5.1 (HEAD commit `08c857c`), t
 - **Milestone M2**: `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` (bắt đầu chu trình chuẩn bị SPEC và PLAN).
 - **Milestone M3 và Phân hệ A**: Tiếp tục duy trì trạng thái `NOT AUTHORIZED` (khóa chặt cho tới khi M2 hoàn tất exit gate và có User Checkpoint riêng).
 
-## Trạng thái sau Hoàn tất Milestone M2-P0 (13-09-2026)
+## Trạng thái sau Hoàn tất Khắc phục Kiểm toán M2-P0 (13-09-2026)
 
-M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules) đã hoàn tất 100% và sẵn sàng nghiệm thu tại trạng thái `M2-P0_READY_FOR_REVIEW`:
-- **Backend & Frontend Toolchain Lock**: Khóa chính xác 100% dependencies (FastAPI 0.141.1 native SSE >= 0.135.0, Uvicorn 0.52.4, HTTPX 0.28.1, psycopg-pool 3.3.1, Pydantic 2.13.5; Node v22.17.0 LTS, npm 10.9.2, React 18.3.1, AG Grid Community 32.3.9 v32-lts, Vite 6.2.0, Playwright 1.50.1). Duy nhất một frontend package universe tại `src/controlplane/ui/package.json`. Không có floating version (`^`, `~`, `latest`).
-- **Production Packaging Strategy**: Standard package PEP 517/621 tại `src/controlplane/pyproject.toml`, entrypoint `controlplane.entrypoint:main`, workspace connection qua `controlplane.pth`. Kiểm chứng import sạch từ subprocess độc lập, 0 sys.path hacks.
-- **AST Architecture Boundary Validator**: Bộ kiểm tra AST `ast_checker.py` xác nhận 0 vi phạm ranh giới trên toàn bộ `src/controlplane`, bảo vệ nghiêm ngặt Domain Purity và chặn triệt để việc import `m1proof`.
-- **Evidence Validator & Hash DAG**: Thẩm quyền machine authority duy nhất tại `status.json` (schema `m2_package_status_v1`), DAG `hashes.sha256` loại trừ chính nó, cơ chế kiểm tra gate fail-closed đã được chứng minh qua 18 automated tests.
-- **M1 Regression Guard**: 93/93 tests M1 tiếp tục PASS 100% (0 failed, 0 skipped).
-- **Secret Leak Scan**: 0 phát hiện nhạy cảm trên toàn bộ mã nguồn và bằng chứng.
+M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules) đã hoàn tất khắc phục toàn diện 8 điểm của đợt Tái kiểm toán Độc lập và đạt chuẩn tại trạng thái `M2-P0_READY_FOR_REVIEW`:
+- **Tách bạch Hai tầng Evidence (Integrity + Semantic)**: Triển khai `evaluator.py` trích xuất trực tiếp kết quả chạy thực tế từ JUnit XML (`m2-p0-tests.xml`, `m1-regression.xml`) và `secret-scan.json`; tuyệt đối không tin con số tự khai; chặn đứng hoàn toàn hiện tượng false-PASS do rehash file failed.
+- **Reproducible Fresh-Environment Packaging**: Loại bỏ hoàn toàn việc dùng `.pth` làm bằng chứng package gate. Đã chứng minh tự động tạo clean virtual environment bằng `uv venv`, build wheel `controlplane-0.2.0-py3-none-any.whl`, cài đặt vào môi trường cô lập không có `.pth` và thực thi thành công CLI entrypoint.
+- **Đồng bộ Build System**: Khóa thống nhất `setuptools==75.8.0` và `wheel==0.45.1` trên toàn bộ tài liệu, pyproject, lockfile và wheel build.
+- **Khóa Toàn bộ Resolved Backend Dependency Graph**: Tạo `src/controlplane/uv.lock` và `src/controlplane/requirements.lock` cố định toàn bộ 21 packages (bao gồm `psycopg-pool==3.3.1`, `fastapi==0.141.1`, `pydantic-core==2.46.5`).
+- **Machine-Lock Frontend Node/npm**: Khai báo `packageManager: npm@10.9.2`, `engines` (`node >=22.17.0 <23.0.0`, `npm 10.9.2`), `.nvmrc` và `.node-version` (`22.17.0`) trong `src/controlplane/ui/`.
+- **Harden AST Architecture Validator**: Bổ sung bộ lọc và negative tests chặn đứng các tiền tố `m1proof.*` và `src.m1proof.*`.
+- **Secret Scan Evidence Thật**: Quét toàn diện 37 tệp (code, config, log, evidence XML/TXT/JSON/MD), xuất `secret-scan.json` máy đọc được với 0 finding.
+- **Kết quả Kiểm thử**: 25/25 tests M2-P0 PASSED, 93/93 tests hồi quy M1 PASSED (0 failed, 0 skipped), 6/6 Package Gates PASSED.
+
 
 
 
