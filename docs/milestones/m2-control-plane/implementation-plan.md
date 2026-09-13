@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 AUTHORIZED)  
-**Ngày lập:** 13-09-2026 (Hiệu chỉnh cuối theo independent re-audit tại HEAD `747d609cfdf226371e1d5b2f4b73d240cd8210de`; chờ User Approval)
-**Điểm dừng bắt buộc:** `M2-P1_PLAN_READY_FOR_RED_APPROVAL`. Không viết code P1, không viết Behavioral RED, không sửa implementation P0 và không mở P2 cho tới User Approval.
+**Trạng thái:** IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 Plan ACCEPTED, Behavioral RED BLOCKED_EXTERNAL)
+**Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
+**Điểm dừng bắt buộc hiện hành:** `M2-P1_BEHAVIORAL_RED_BLOCKED_EXTERNAL`. Behavioral RED được ủy quyền, nhưng chưa thể chứng kiến 11/11 oracle vì `M2_TEST_PG_DSN` không có trong môi trường. Chỉ structural stub/test/harness RED trong Allowed File Scope; không viết business/DB implementation P1, không sửa P0 implementation và không mở P2 cho tới khi 11 RED hợp lệ được lưu evidence.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)

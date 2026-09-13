@@ -6,6 +6,8 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Added
 
+- Bắt đầu Behavioral RED M2-P1 theo User Approval sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`: tạo đúng 11 oracle khóa và structural stub importable trong Allowed File Scope, không có business/DB implementation. Collection đạt 11/11 không lỗi import/cú pháp. P1-008 RED hợp lệ qua `NotImplementedError` của destructive guard; 10 oracle PostgreSQL dừng `BLOCKED_EXTERNAL` do thiếu `M2_TEST_PG_DSN`, không có fallback credential/mock. Evidence: `docs/milestones/m2-control-plane/evidence/m2-p1/red-p1-stdout.txt` và `red-observations.md`. Không mở P2.
+
 - Nghiệm thu Milestone M2-P0 & Hiệu chỉnh Kế hoạch Kỹ thuật Milestone M2-P1 (13-09-2026):
   - Người dùng chính thức nghiệm thu `M2-P0 = ACCEPTED / CLOSED` tại commit `d84c1d7` với 33/33 tests PASSED, 93/93 tests hồi quy M1 PASSED (0 failed, 0 skipped), 6/6 Package Gates PASS, deterministic provenance 1:1, SHA-256 DAG hợp lệ.
   - Ủy quyền triển khai `M2-P1 = AUTHORIZED TO IMPLEMENT` theo chu trình chuẩn `RED → IMPLEMENT → RUN → TEST → FIX → VERIFY → EVIDENCE → COMMIT`.

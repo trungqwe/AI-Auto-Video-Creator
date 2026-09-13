@@ -1,0 +1,40 @@
+Command:
+& .\.venv\Scripts\python.exe -m pytest tests\m2\test_p1_db_and_workspace.py::test_tst_m2_p1_008_destructive_guard_rejects_non_test_db -vv
+
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_008_destructive_guard_rejects_non_test_db FAILED [100%]
+
+================================== FAILURES ===================================
+__________ test_tst_m2_p1_008_destructive_guard_rejects_non_test_db ___________
+
+    def test_tst_m2_p1_008_destructive_guard_rejects_non_test_db() -> None:
+        \"\"\"ADR-0002, QR-MNT-002: destructive rollback accepts only exact fixture identity.\"\"\"
+        guard = DestructiveRollbackGuard()
+
+        with pytest.raises(DestructiveOperationBlockedError):
+>           guard.assert_allowed(\"controlplane\", is_test_env=True)
+
+tests\m2\test_p1_db_and_workspace.py:309:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.infrastructure.db.safety.DestructiveRollbackGuard object at 0x000001CD5BA80830>
+database_name = 'controlplane', is_test_env = True
+
+    def assert_allowed(self, database_name: str, *, is_test_env: bool) -> None:
+>       raise NotImplementedError(
+            \"M2-P1 RED: DestructiveRollbackGuard.assert_allowed is not implemented.\"
+        )
+E       NotImplementedError: M2-P1 RED: DestructiveRollbackGuard.assert_allowed is not implemented.
+
+src\controlplane\infrastructure\db\safety.py:13: NotImplementedError
+=========================== short test summary info ===========================
+FAILED tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_008_destructive_guard_rejects_non_test_db - NotImplementedError: M2-P1 RED: DestructiveRollbackGuard.assert_allowed is not implemented.
+============================== 1 failed in 0.11s ==============================

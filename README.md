@@ -11,10 +11,10 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G04 Drive/OAuth | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G07 Compatibility | `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` |
-| M2 Control Plane | `IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 AUTHORIZED)` |
+| M2 Control Plane | `IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 Plan ACCEPTED, Behavioral RED BLOCKED_EXTERNAL)` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
-Toàn bộ các work package M1 (`M1-P0 → M1-P6`) đã được Người dùng CHẤP THUẬN chính thức tại User Checkpoint ngày 13-09-2026 sau independent re-audit HEAD `08c857c`: M1 chuyển sang `ACCEPTED / CLOSED` (93 passed, 0 skipped, coverage 83%, Audit R5 + R5.1 ACCEPTED). M2-P0 đã được Người dùng CHẤP THUẬN chính thức (`ACCEPTED / CLOSED`) tại HEAD commit `d84c1d7`. M2-P1 có hiệu chỉnh kế hoạch cuối theo re-audit và chờ User Approval; chưa được bắt đầu Behavioral RED. Toàn bộ Milestone M3 và Phân hệ A tiếp tục bị khóa chặt (`NOT AUTHORIZED`).
+Toàn bộ các work package M1 (`M1-P0 → M1-P6`) đã được Người dùng CHẤP THUẬN chính thức tại User Checkpoint ngày 13-09-2026 sau independent re-audit HEAD `08c857c`: M1 chuyển sang `ACCEPTED / CLOSED` (93 passed, 0 skipped, coverage 83%, Audit R5 + R5.1 ACCEPTED). M2-P0 đã được Người dùng CHẤP THUẬN chính thức (`ACCEPTED / CLOSED`) tại HEAD commit `d84c1d7`. M2-P1 Plan đã được chấp thuận và Behavioral RED được ủy quyền, nhưng phase hiện `BLOCKED_EXTERNAL` vì không có `M2_TEST_PG_DSN`; chưa có implementation P1. Toàn bộ Milestone M3 và Phân hệ A tiếp tục bị khóa chặt (`NOT AUTHORIZED`).
 
 ## Bắt đầu một phiên làm việc
 
@@ -67,11 +67,10 @@ Milestone M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Archite
 - Single-pipeline synthesis (`synthesizer.py`) bảo đảm toàn bộ bằng chứng được sinh ra tuyến tính, tất định và loại bỏ hash cycles.
 - Toàn bộ **33/33 tests M2-P0 PASSED**; **93/93 tests hồi quy M1 PASSED**; 6/6 Package Gates PASSED; 0 secret leaks; xác thực provenance 1:1 tuyệt đối.
 
-## Trạng thái Chuẩn bị M2-P1 (Hiệu chỉnh Kế hoạch Cuối)
+## Trạng thái M2-P1 Behavioral RED
 
-Milestone M2-P1 (PostgreSQL Foundation, Raw SQL Migrations & Workspace/Identity/Session Foundation) có correction cuối sau independent re-audit HEAD `747d609cfdf226371e1d5b2f4b73d240cd8210de`: P1-007 dùng public port read/status/revoke/expire, 11 behavioral oracle có traceability, P0 identity được đóng băng 33/33 testcase, fault migration chỉ chạy trong sandbox, và database teardown dùng admin connection đúng cách.
+Milestone M2-P1 (PostgreSQL Foundation, Raw SQL Migrations & Workspace/Identity/Session Foundation) đã được User chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`. Có đúng 11 behavioral oracle importable; P1-007 chỉ dùng public port read/status/revoke/expire, P0 identity được đóng băng 33/33 testcase, fault migration chỉ chạy trong sandbox, và database teardown dùng admin connection đúng PostgreSQL.
 
-Trạng thái hiện hành: `M2-P1_PLAN_READY_FOR_RED_APPROVAL`. Dừng chờ User Approval; không code P1, không Behavioral RED, không sửa P0 implementation, không mở P2. M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
-
+Trạng thái hiện hành: `M2-P1_BEHAVIORAL_RED_BLOCKED_EXTERNAL`. P1-008 RED đúng `NotImplementedError`; 10 oracle integration không chạy và không được tính RED vì `M2_TEST_PG_DSN` thiếu. Không code business/DB P1, không sửa P0 implementation, không mở P2. M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
 
 
