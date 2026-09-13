@@ -22,6 +22,8 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
     10. Khóa 6 machine-readable gates (`GATE-P1-01` .. `GATE-P1-06`) trước khi viết test RED.
   - Dừng tại `M2-P1_PLAN_READY_FOR_RED_REVIEW`. M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
 
+- Hiệu chỉnh kế hoạch M2-P1 R2 theo independent audit HEAD `7445504d4fac3b2ff03378d1f02fe9f2fc69b548` (docs-only): dùng đúng `PackageSemanticProfile`/process-local registration và P1-aware verifier; thêm evidence P0 regression trong pipeline cùng 11 mandatory behavioral oracle; siết `M2_TEST_PG_DSN`/destructive identity, ranh giới token P7A và lifecycle identity. Điểm dừng chuyển thành `M2-P1_PLAN_READY_FOR_RED_REVIEW_R2`; không code P1, không Behavioral RED, không sửa P0 và không mở P2.
+
 - Hoàn tất khắc phục toàn diện đợt Tái kiểm toán Độc lập R2 Milestone M2-P0 (13-09-2026):
   - Khái quát hóa Semantic Evaluator Profile Registry & Dispatch Pattern: Xây dựng `PackageSemanticProfile` và `SemanticProfileRegistry`; triển khai `M2P0SemanticProfile` quản lý policy P0; fail-closed chặn đứng unknown profile và cross-package spoofing; mở rộng cho P1-P8 qua extension point `register_semantic_profile` mà không sửa core validator.
   - Chứng minh Kép Frozen Backend Graph & Clean Wheel Install: Tạo clean venv với dynamic uv binary resolver (`resolve_uv_executable`); thực hiện Proof A (cài đặt frozen từ `requirements.lock`, kiểm chứng observed package versions khớp 100%) và Proof B (build wheel và cài đặt với `--no-deps`, thực thi import và entrypoint sạch); bổ sung negative test mutate lockfile fail closed.

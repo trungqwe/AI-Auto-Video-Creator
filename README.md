@@ -14,7 +14,7 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | M2 Control Plane | `IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 AUTHORIZED)` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
-Toàn bộ các work package M1 (`M1-P0 → M1-P6`) đã được Người dùng CHẤP THUẬN chính thức tại User Checkpoint ngày 13-09-2026 sau independent re-audit HEAD `08c857c`: M1 chuyển sang `ACCEPTED / CLOSED` (93 passed, 0 skipped, coverage 83%, Audit R5 + R5.1 ACCEPTED). M2-P0 đã được Người dùng CHẤP THUẬN chính thức (`ACCEPTED / CLOSED`) tại HEAD commit `d84c1d7`. M2-P1 được ủy quyền triển khai và đã hoàn tất hiệu chỉnh kế hoạch kỹ thuật (docs-only) trước Behavioral RED. Toàn bộ Milestone M3 và Phân hệ A tiếp tục bị khóa chặt (`NOT AUTHORIZED`).
+Toàn bộ các work package M1 (`M1-P0 → M1-P6`) đã được Người dùng CHẤP THUẬN chính thức tại User Checkpoint ngày 13-09-2026 sau independent re-audit HEAD `08c857c`: M1 chuyển sang `ACCEPTED / CLOSED` (93 passed, 0 skipped, coverage 83%, Audit R5 + R5.1 ACCEPTED). M2-P0 đã được Người dùng CHẤP THUẬN chính thức (`ACCEPTED / CLOSED`) tại HEAD commit `d84c1d7`. M2-P1 có hiệu chỉnh kế hoạch R2 chờ User Review; chưa được bắt đầu Behavioral RED. Toàn bộ Milestone M3 và Phân hệ A tiếp tục bị khóa chặt (`NOT AUTHORIZED`).
 
 ## Bắt đầu một phiên làm việc
 
@@ -67,11 +67,11 @@ Milestone M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Archite
 - Single-pipeline synthesis (`synthesizer.py`) bảo đảm toàn bộ bằng chứng được sinh ra tuyến tính, tất định và loại bỏ hash cycles.
 - Toàn bộ **33/33 tests M2-P0 PASSED**; **93/93 tests hồi quy M1 PASSED**; 6/6 Package Gates PASSED; 0 secret leaks; xác thực provenance 1:1 tuyệt đối.
 
-## Trạng thái Chuẩn bị M2-P1 (Hiệu chỉnh Kế hoạch Kỹ thuật)
-Milestone M2-P1 (PostgreSQL Foundation, Raw SQL Migrations & Workspace/Identity/Session Foundation) đã được ủy quyền triển khai (`AUTHORIZED TO IMPLEMENT`) và hoàn tất 100% việc chuẩn hóa tài liệu đặc tả và kế hoạch thực thi (docs-only correction) trước Behavioral RED:
-- Hoàn thiện 10 điểm kỹ thuật: Dùng disposable test database `m2_p1_test_<uuid>`, không parameterized schema; 8 tiêu chuẩn migration runner với bounded advisory lock timeout 5s; phân biệt AuthSession (`cp_auth_sessions`) với AppSession; composite FK DB-level invariants ngăn cross-workspace; SqlUnitOfWork sở hữu đúng 1 pooled connection và 1 DB transaction; loại bỏ chu trình tự tham chiếu evidence; đăng ký deterministic semantic profile; chốt 6 machine-readable gates trước RED (`GATE-P1-01` .. `GATE-P1-06`).
-- Trạng thái hiện hành: `M2-P1_PLAN_READY_FOR_RED_REVIEW`. Dừng lại chờ Người dùng rà soát kế hoạch trước khi bắt đầu Behavioral RED. M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
+## Trạng thái Chuẩn bị M2-P1 (Hiệu chỉnh Kế hoạch R2)
 
+Milestone M2-P1 (PostgreSQL Foundation, Raw SQL Migrations & Workspace/Identity/Session Foundation) có plan R2 sau independent audit HEAD `7445504d4fac3b2ff03378d1f02fe9f2fc69b548`: semantic profile P1 chạy qua verifier cùng process, P0/M1 regression là evidence pipeline bắt buộc, 11 behavioral oracle được khóa, test DB/destructive guard fail-closed, và P1 không lấn token protocol P7A hoặc hard-delete identity.
+
+Trạng thái hiện hành: `M2-P1_PLAN_READY_FOR_RED_REVIEW_R2`. Dừng chờ User Review; không code P1, không Behavioral RED, không sửa P0 implementation, không mở P2. M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
 
 
 

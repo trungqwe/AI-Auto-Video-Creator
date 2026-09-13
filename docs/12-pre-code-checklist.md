@@ -174,24 +174,13 @@ Sau các đợt re-audit độc lập R4, R5 và R5.1 (HEAD commit `08c857c`), t
 - **Milestone M2**: `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` (bắt đầu chu trình chuẩn bị SPEC và PLAN).
 - **Milestone M3 và Phân hệ A**: Tiếp tục duy trì trạng thái `NOT AUTHORIZED` (khóa chặt cho tới khi M2 hoàn tất exit gate và có User Checkpoint riêng).
 
-## Trạng thái Nghiệm thu M2-P0 & Khởi động Chuẩn bị M2-P1 (13-09-2026)
+## Trạng thái Nghiệm thu M2-P0 & Chuẩn bị M2-P1 R2 (13-09-2026)
 
 Người dùng đã CHẤP THUẬN chính thức kết quả Milestone M2-P0 tại commit `d84c1d7`:
 - **M2-P0**: `ACCEPTED / CLOSED` (33/33 tests PASSED, 93/93 tests hồi quy M1 PASSED, 6/6 Package Gates PASS, deterministic provenance 1:1, SHA-256 DAG hợp lệ).
-- **M2-P1**: `AUTHORIZED TO IMPLEMENT` theo quy trình chuẩn: `RED → IMPLEMENT → RUN → TEST → FIX → VERIFY → EVIDENCE → COMMIT`.
-- **Hiệu chỉnh Kế hoạch Kỹ thuật M2-P1 Trước Behavioral RED**: Hoàn tất 100% việc chuẩn hóa tài liệu đặc tả và kế hoạch thực thi theo 10 điểm kỹ thuật bắt buộc:
-  1. Đồng bộ metadata: M2 = `IMPLEMENTATION IN PROGRESS`, M2-P0 = `ACCEPTED / CLOSED`, M2-P1 = `AUTHORIZED`.
-  2. Khóa Allowed File Scope của P1: bổ sung chính xác `profile_p1.py` và `synthesizer_p1.py`; cấm sửa core evaluator/validator.
-  3. Áp dụng Disposable Test Database (`m2_p1_test_<uuid>`), không parameterized schema; schema cố định `controlplane`; admin test DSN từ environment; destructive guard yêu cầu tên DB hợp lệ test + `is_test_env=True` (cấm generic `allow_destructive=True`).
-  4. Phân biệt rõ `AuthSession` (`cp_auth_sessions`) phục vụ identity/control plane foundation với `AppSession` (`cp_app_sessions` dành cho desktop app data model).
-  5. Đầy đủ `IWorkspaceRepository`, `IActorRepository`, `IAuthSessionRepository`; workspace-scoped methods (zero unscoped get_by_id); composite FK DB-level invariants ngăn cross-workspace.
-  6. Khóa transaction ownership: `SqlUnitOfWork` sở hữu đúng một pooled connection và một DB transaction; repository không tự acquire pool connection, không commit/rollback; `TransactionManager` chỉ là UoW factory/coordinator.
-  7. Siết migration runner oracle: forward regex `^\d{4}_[a-z0-9_]+\.sql$`, rollback regex `^\d{4}_[a-z0-9_]+\.rollback\.sql$`; bounded advisory lock timeout 5s; fail-closed khi gap, missing file, duplicate, tamper; 0001 rollback dọn dẹp và drop schema `controlplane`.
-  8. Loại bỏ vòng tự tham chiếu: không đưa live evidence test vào `m2-p1-tests.xml`; lưu stdout RED thô vào `red-p1-stdout.txt`.
-  9. Đăng ký semantic profile tất định qua extension point `register_semantic_profile(M2P1SemanticProfile())`.
-  10. Khóa 6 machine-readable gates (`GATE-P1-01` .. `GATE-P1-06`) trước khi viết test RED.
-- **Ranh giới Bắt buộc**: Chưa viết code implementation và chưa viết test RED. Dừng tại `M2-P1_PLAN_READY_FOR_RED_REVIEW`. M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
-
+- **M2-P1**: `AUTHORIZED TO IMPLEMENT` theo quy trình chuẩn, nhưng independent audit tại HEAD `7445504d4fac3b2ff03378d1f02fe9f2fc69b548` cấm bắt đầu Behavioral RED trước User Review của hiệu chỉnh kế hoạch R2.
+- **Hiệu chỉnh Kế hoạch Kỹ thuật M2-P1 R2**: `spec.md` và `implementation-plan.md` đã được đồng bộ để: dùng đúng contract process-local của `M2P1SemanticProfile` và P1-aware `--verify-only`; bắt buộc sinh/parse evidence regression P0 và M1 trong chính synthesis pipeline; khóa 11 mandatory behavioral oracles; fail-closed `M2_TEST_PG_DSN` và destructive database identity; giữ P1 ngoài token protocol P7A/hard-delete business identity; và chỉ cho structural stubs để RED không thất bại vì import.
+- **Ranh giới Bắt buộc**: Chưa viết code implementation và chưa viết test RED. Dừng tại `M2-P1_PLAN_READY_FOR_RED_REVIEW_R2`. Không sửa implementation P0, không mở P2; M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
 
 
 

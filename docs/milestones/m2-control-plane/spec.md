@@ -2,7 +2,8 @@
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
 **Trạng thái:** IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 AUTHORIZED)  
-**Ngày lập:** 13-09-2026 (Cập nhật chuẩn hóa trước Behavioral RED M2-P1)  
+**Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
+**Điểm dừng bắt buộc:** `M2-P1_PLAN_READY_FOR_RED_REVIEW_R2`. Không viết code P1, không viết Behavioral RED, không sửa implementation P0 và không mở P2 cho tới User Review.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
@@ -132,10 +133,11 @@ src/controlplane/
    - Migration `0001` rollback đưa cơ sở dữ liệu về trạng thái tiền-0001: dọn dẹp toàn bộ owned objects và xóa schema `controlplane` bằng `DROP SCHEMA IF EXISTS controlplane CASCADE;`.
    - **Disposable Test Database (Không Parameterized Schema)**:
      * Kiểm thử chu trình rollback full down/up và integration tests **bắt buộc chạy trên disposable test database** độc lập được tạo mới cho mỗi run (`m2_p1_test_<uuid>`).
-     * Admin test DSN được nạp từ biến môi trường/cấu hình kiểm thử an toàn (`M2_TEST_PG_DSN` hoặc `TEST_DATABASE_URL`), tuyệt đối không hard-code credentials vào source/docs/evidence.
+     * Admin test DSN chỉ được nạp từ biến môi trường `M2_TEST_PG_DSN`; tuyệt đối không hard-code hay suy đoán credential trong source, docs, stdout hoặc evidence. Không có local/dev-safe fallback.
+     * Thiếu `M2_TEST_PG_DSN`, không kết nối được server, hoặc DSN không có quyền tạo disposable database là prerequisite `FAIL` hoặc `BLOCKED_EXTERNAL` theo evidence policy; không được thay bằng credential mặc định hay một database khác.
      * Chạy migration production thật với schema cố định `controlplane` (tuyệt đối không template hoặc thay thế schema name bên trong production SQL).
      * Dọn dẹp sạch sẽ bằng `DROP DATABASE` trong teardown của test suite.
-     * **Destructive Guard**: Thao tác drop/rollback yêu cầu database name phải hợp lệ cho test (tiền tố `m2_p1_test_` hoặc hậu tố `_test`) KÈM explicit test-mode flag (`is_test_env=True`). Cấm dùng cờ generic `allow_destructive=True` đơn thuần để bypass bảo vệ production.
+     * **Destructive Guard**: Chỉ ủy quyền rollback/drop destructive sau khi fixture chứng minh `current_database()` của session mục tiêu đúng bằng database do chính fixture tạo, tên database khớp chính xác `^m2_p1_test_[0-9a-f]+$`, và marker môi trường kiểm thử hợp lệ (`is_test_env=True`) đã được xác nhận. `DROP DATABASE` chỉ nhắm database fixture đã được xác minh này; cấm mọi nhánh tên tổng quát `*_test` và cấm cờ free-form `allow_destructive=True`.
 8. **Interrupted Migration Recovery**: Nếu tiến trình migration bị ngắt đột ngột (killed), connection bị đóng sẽ tự động giải phóng session-level advisory lock; transaction đang dở dang tự động rollback an toàn.
 
 ---
@@ -149,6 +151,7 @@ src/controlplane/
    - Evidence validator và package gate rule engine được lập trình và kiểm thử ngay tại **M2-P0**.
    - Mỗi package từ P1 đến P8 bắt buộc phải chạy validator ngay sau khi hoàn thành để xác nhận trạng thái `PASS`.
    - Work package P9 chỉ re-run validator, kiểm tra băm và tổng hợp; không đến P9 mới phát minh PASS semantics.
+   - Registry semantic profile là **process-local**. Với M2-P1, không được khởi chạy generic `python -m controlplane.infrastructure.evidence.validator .../m2-p1` trong process mới rồi kỳ vọng profile đã đăng ký còn tồn tại. `synthesizer_p1.py` là P1-aware entry point cho cả synthesis và final read-only verification; mỗi mode phải đăng ký profile P1 trước khi gọi validator core.
 3. **Cấu trúc Hash DAG Không Tự Tham Chiếu**:
    - Các tệp bằng chứng thô (`commands.jsonl`, `status.json`, `red-observations.md`, `red-stdout.txt`, `capability_evidence.json`).
    - Tệp `hashes.sha256`: Chứa mã băm SHA-256 của tất cả các tệp trên trong thư mục package (**loại trừ chính tệp `hashes.sha256`** để tránh self-reference).
@@ -166,10 +169,12 @@ src/controlplane/
 - **Phân biệt `AuthSession` vs `AppSession`**:
   * M2-P1 chỉ thiết lập nền tảng định danh cốt lõi: `Workspace`, `Actor`, và `AuthSession` (phiên xác thực / điều khiển control plane). Bảng dữ liệu tương ứng là `controlplane.cp_auth_sessions`.
   * `AppSession` (bảng `controlplane.cp_app_sessions`) được dự lưu cho phiên mở ứng dụng desktop theo Data Model (`started_at`, `ended_at`, `output_folder`, `completed_count`, `operational_status`) và không nằm trong phạm vi hoàn thiện của M2-P1.
+  * P1 chỉ persistence `AuthSession` với `session_id`, `workspace_id`, `actor_id`, `status`, `created_at`, `expires_at`. Credential, cookie, token hoặc token representation/binding cụ thể thuộc M2-P7A; P1 không thêm `token_hash` khi chưa có quyết định kỹ thuật hiện hành phê duyệt nó.
 - **Repository Interface & Workspace-Scoped Context**:
   * M2-P1 cung cấp đầy đủ: `IWorkspaceRepository`, `IActorRepository`, `IAuthSessionRepository` và các Postgres adapters tương ứng.
   * Mọi aggregate/entity thuộc sở hữu của workspace bắt buộc phải liên kết workspace server-side.
   * Tuyệt đối không cung cấp hàm unscoped `get_by_id(id)` cho actor hay session business access. Mọi truy vấn và thao tác bắt buộc thông qua workspace scope: `get_by_id(workspace_id, entity_id)` hoặc workspace-bound repository instance.
+  * Ports P1 chỉ phản ánh use case nền tảng: tạo, lấy, liệt kê, cập nhật trạng thái; `AuthSession` có revoke/expire. Không expose generic hard-delete method cho `Workspace` hoặc `Actor` chỉ vì tiện cho CRUD.
 - **Ràng buộc Bất biến ở Tầng Cơ sở Dữ liệu (DB-Level Invariants)**:
   * Ngăn chặn cross-workspace ở tầng DB schema, không phụ thuộc duy nhất vào filter mã nguồn Python:
     1. Các trường quan hệ sở hữu workspace (`workspace_id`) bắt buộc `NOT NULL`.
@@ -178,14 +183,20 @@ src/controlplane/
        ```sql
        FOREIGN KEY (workspace_id, actor_id) 
        REFERENCES controlplane.cp_actors(workspace_id, actor_id) 
-       ON DELETE CASCADE
+       ON DELETE RESTRICT
        ```
        Đảm bảo DB tự động từ chối bất kỳ session nào cố tình gắn với actor thuộc workspace khác.
+  * Không mặc định hard-delete business identity: quan hệ `Workspace → Actor` và `Actor → AuthSession` dùng `RESTRICT`/`NO ACTION`; vòng đời dùng status, revoke hoặc expire cho tới khi có contract khác phê duyệt.
 - **Transaction Ownership & Unit of Work**:
   * `SqlUnitOfWork` sở hữu duy nhất **một pooled connection** và **một DB transaction** trong mỗi phiên UoW.
   * Repositories nhận và sử dụng connection từ UoW, không tự lấy connection từ pool, không tự `commit()` hoặc `rollback()`.
   * `TransactionManager` đóng vai trò factory/coordinator tạo UoW, không phải là transaction owner thứ hai.
   * Đảm bảo tính nguyên tử: Tạo Workspace + Actor + AuthSession trong 1 UoW commit đồng thời; xảy ra lỗi thì rollback toàn bộ và connection trả về pool ở trạng thái hoàn toàn sạch sẽ.
+- **Ranh giới contract P1 và evidence profile**:
+  * Traceability P1 chỉ bao gồm nền tảng PostgreSQL/identity của `ARCH-002`, `ADR-0002`, `QR-MNT-002`, `CT-API-001` với qualifier *workspace persistence/binding foundation*, và `CT-API-010` với qualifier *auth-session persistence foundation*. P1 không claim common envelope đầy đủ, semantics command/event duplicate, stale generation commit, hay compliance API/auth/Host/Origin/CSRF đầy đủ; các phần đó thuộc package sau, đặc biệt M2-P7A.
+  * `M2P1SemanticProfile` phải implement đúng `PackageSemanticProfile`: `profile_id -> "m2-p1"`, `target_package -> "M2-P1"`, và `evaluate(package_dir, status_data)`. Không có `package_id` hoặc `target_gate_id` trong extension contract.
+  * `synthesizer_p1.py` cung cấp synthesis mode và `--verify-only`; cả hai explicit gọi `register_semantic_profile(M2P1SemanticProfile())` trước validator core. Final read-only validation bắt buộc đi qua `--verify-only`, không qua validator generic trong process mới.
+  * Evidence P1 bắt buộc chứa và semantic profile trực tiếp kiểm tra `m2-p1-tests.xml`, `m2-p0-regression.xml`, `m2-p0-regression-report.txt`, `m1-regression.xml`, `m1-regression-report.txt`, `secret-scan.json`, cùng provenance/hash DAG. Tập oracle P1 bắt buộc được khóa trong implementation plan trước RED; thiếu, skipped, failed/error, sai metrics, regression không đạt, secret scan dirty hoặc provenance mismatch đều fail-closed.
 
 ### 6.1. Common Envelopes & Idempotency Store (M2-P2)
 - **Durable `CommandReceipt`**: Bảng `controlplane.cp_command_receipts` lưu trữ biên nhận bền vững (`receipt_id`, `command_id`, `disposition`: `ACCEPTED`/`REJECTED`/`DUPLICATE`, `operation_id`, `resource_ref`, `accepted_at`, `current_revision`).
