@@ -1,0 +1,3 @@
+{"command": "py -3.13 -m uv run --frozen pytest tests/m1/p4 -v", "exit_code": 1, "phase": "RED_OBSERVATION", "timestamp_utc": "2026-09-13T06:49:54Z"}
+{"command": "py -3.13 -m uv run --frozen pytest tests/m1/p4 -v", "exit_code": 0, "phase": "GREEN_ACCEPTANCE", "timestamp_utc": "2026-09-13T06:51:01Z"}
+{"command": "py -3.13 -m uv run --frozen pytest tests/m1 --cov=m1proof --cov-report=term -v", "exit_code": 0, "phase": "FULL_SUITE_REGRESSION", "timestamp_utc": "2026-09-13T06:51:19Z"}

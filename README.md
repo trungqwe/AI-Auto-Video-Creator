@@ -7,7 +7,7 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | Hạng mục | Trạng thái |
 |---|---|
 | M0 Design | `APPROVED` |
-| M1 Evidence Prototype | `IN PROGRESS — P0/P1/P2/P3 PASS` |
+| M1 Evidence Prototype | `IN PROGRESS — P0-P4 PASS` |
 | G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G04 Drive/OAuth | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | M2 | `NOT AUTHORIZED` |
@@ -15,7 +15,7 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 
 Phạm vi implementation hiện được phép chỉ là `M1-P0 → M1-P6`. M1 phải đi theo test-first, lưu evidence thật và dừng khi gặp điều kiện STOP. Không được bắt đầu M2, M3 hoặc Phân hệ A trước khi M1 qua exit gate, được audit và người dùng xác nhận checkpoint tiếp theo.
 
-M1-P0, P1, P2 và P3 đã hoàn tất PASS: P0/P1 qua remediation audit R1, P2 Temporal G01 proof đạt 7/7 test, P3 Google Drive & OAuth G04 proof đạt 8/8 test (bao gồm kiểm thử Live E3 probe trên Google Drive thật với token OAuth xác thực). Tổng test suite hiện có 57 test qua; coverage đạt 91%. Cả G01 và G04 đều đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)`; work package kế tiếp là M1-P4 (Local Processing FFmpeg & Whisper).
+M1-P0, P1, P2, P3 và P4 đã hoàn tất PASS: P0/P1 qua remediation audit R1, P2 Temporal G01 proof đạt 7/7 test, P3 Google Drive & OAuth G04 proof đạt 8/8 test (bao gồm kiểm thử Live E3 probe trên Google Drive thật), P4 Local Journal & Recovery proof đạt 6/6 test. Tổng test suite hiện có 63 test qua; coverage đạt 89%. Cả G01 và G04 đều đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)`; work package kế tiếp là M1-P5 (Compatibility Smoke).
 
 ## Bắt đầu một phiên làm việc
 
@@ -55,6 +55,6 @@ Chỉ đọc sâu contracts/ADR được work package hiện tại trích dẫn;
 
 Remote chính: <https://github.com/trungqwe/AI-Auto-Video-Creator>
 
-## Trạng thái sau M1-P3 Google Drive & OAuth Proof
+## Trạng thái sau M1-P4 Local Journal Proof
 
-M1-P0, P1, P2 và P3 đã hoàn tất `PASS`; G01 và G04 đều đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)` với evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p2/` và `docs/milestones/m1-proof/evidence/m1-p3/`. Work package tiếp theo là M1-P4 (Local Processing FFmpeg & Whisper); M2/M3/Module A vẫn `NOT AUTHORIZED`.
+M1-P0, P1, P2, P3 và P4 đã hoàn tất `PASS`; G01 và G04 đều đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)` với evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p2/`, `evidence/m1-p3/` và `evidence/m1-p4/`. Work package tiếp theo là M1-P5 (Compatibility Smoke); M2/M3/Module A vẫn `NOT AUTHORIZED`.

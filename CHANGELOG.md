@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Added
 
+- Hoàn thành M1-P4 Local Journal & Recovery Proof: kiểm chứng SQLite local journal và atomic file writer trên Windows với 6 bài test-first (crash sau artifact complete trước gửi receipt resend operation, crash giữa chừng reject partial byte, lost ACK sau cloud commit reconcile receipt không lặp side effect, stale recovery epoch quarantine, cache eviction phân biệt với unsent journal active, và phát hiện missing/corrupt hash).
 - Hoàn thành M1-P3 Google Drive & OAuth G04 Proof: kiểm chứng Google Drive API v3 và OAuth 2.0 Installed App Flow với 8 bài test-first (pre-generated ID idempotency, resumable upload lost-ACK recovery, timeout classification & reconciliation routing, byte integrity & SHA-256 verification, resumable session reconciliation, OAuth lifecycle & ADR-0009 desktop boundaries, rate limit HTTP 429 bounded backoff và secret scanning trong logs/receipts).
 - Thực hiện kiểm chứng thực tế Live E3 Probe trên Google Drive thật: hoàn tất OAuth authorization flow qua localhost, cấp pre-generated ID từ Drive API, resumable upload payload 64 bytes, tải về đối soát SHA-256 khớp 100% và dọn dẹp xóa file test an toàn.
 - Hoàn thành M1-P2 Temporal G01 Proof: kiểm chứng Temporal Server 1.31.2 và Python SDK 1.32.0 với 7 bài test-first (worker offline/resume, idempotency lost-ACK, stale generation fencing, child failure isolation, replay versioning/patching, unknown outcome reconciliation và payload/history secret boundaries).
@@ -20,9 +21,10 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Changed
 
+- M1-P4 chuyển sang `PASS_M1_SCOPE`.
+- P0/P1/P2/P3/P4 đạt `PASS`, work package tiếp theo là M1-P5 (Compatibility Smoke: FFmpeg, PostgreSQL, Temporal, Google Client).
 - M1-P3 chuyển sang `PASS_M1_SCOPE`; Cổng G04 chuyển sang `PARTIALLY_PROVEN`.
 - ROADMAP-OPEN-003 chuyển sang `CLOSED_FOR_M1_P3`.
-- P0/P1/P2/P3 đạt `PASS`, work package tiếp theo là M1-P4 (Local Processing FFmpeg & Whisper).
 - M1-P2 chuyển sang `PASS_M1_SCOPE`; G01 chuyển sang `PARTIALLY_PROVEN`.
 - Khắc phục toàn bộ 3 BLOCKER và 5 MAJOR của audit M1 R1: aggregate race, recovery epoch, secret boundaries, live environment probe, scoped operation/activity receipts, restart evidence và completion admission.
 - P0/P1 trở lại `PASS` sau remediation review; P2 chuyển `READY`, nhưng M1/G01/G04 chưa PASS.

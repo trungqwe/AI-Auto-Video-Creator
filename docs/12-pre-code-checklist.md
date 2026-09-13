@@ -1,7 +1,7 @@
 # AI Auto Video Creator — Checklist cuối trước code
 
 **Ngày lập:** 12-09-2026  
-**Trạng thái:** M0 APPROVED/CLOSED; M1 đang triển khai, P0/P1/P2/P3 PASS, P4 là bước tiếp theo  
+**Trạng thái:** M0 APPROVED/CLOSED; M1 đang triển khai, P0/P1/P2/P3/P4 PASS, P5 là bước tiếp theo  
 **Cổng áp dụng:** M0 → M1 của [roadmap](./11-roadmap.md)  
 **Căn cứ audit hiện hành:** [M1 audit R1 và hậu kiểm](./milestones/m1-proof/audit-r1.md#hậu-kiểm-sau-khắc-phục)
 
@@ -22,7 +22,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | PCC-026 | ✅ `CLOSED` | User đã đọc và chấp thuận baseline hiện hành |
 | PCC-027 | ✅ `CLOSED — M1 ONLY` | Quyền implementation chỉ áp dụng M1 |
 | ROADMAP-OPEN-002 | ✅ `CLOSED_FOR_M1_R1` | Version set đã chọn; compatibility chưa được chứng minh |
-| M1 | 🟡 `IN PROGRESS — P0/P1/P2/P3 PASS` | M1 chưa hoàn tất toàn bộ; G01 và G04 đều đạt PASS_M1_SCOPE |
+| M1 | 🟡 `IN PROGRESS — P0-P4 PASS` | M1 chưa hoàn tất toàn bộ; P0-P4 đã PASS; G01/G04 đạt PASS_M1_SCOPE |
 | G01 Temporal | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P2 đã PASS trong phạm vi M1; server upgrade thuộc M2-M7 |
 | G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS (bao gồm E3 live probe trên Google Drive thật) |
 | ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất |
@@ -144,7 +144,7 @@ Checklist không phải lệnh cài thư viện, khởi tạo framework, triển
 
 Trạng thái phê duyệt đã được đồng bộ vào roadmap và module plan. Nếu có sửa đổi đáng kể sau phê duyệt, xác định phần ảnh hưởng và kiểm toán lại trước khi dùng bản mới.
 
-**Kết luận:** Baseline thiết kế và version set M1-R1 đã được user chấp thuận; quyền code chỉ giới hạn M1. M1-P0/P1/P2/P3 đã PASS theo test-first và evidence; package tiếp theo là M1-P4 (Local Processing FFmpeg & Whisper). Không tự mở M2/M3/Phân hệ A.
+**Kết luận:** Baseline thiết kế và version set M1-R1 đã được user chấp thuận; quyền code chỉ giới hạn M1. M1-P0/P1/P2/P3/P4 đã PASS theo test-first và evidence; package tiếp theo là M1-P5 (Compatibility Smoke: FFmpeg, PostgreSQL, Temporal, Google Client). Không tự mở M2/M3/Phân hệ A.
 
 ## Trạng thái sau M1-P2 Temporal G01 Proof
 
@@ -152,4 +152,8 @@ M1-P2 đã hoàn thành với 7 bài test đạt GREEN, evidence đầy đủ t�
 
 ## Trạng thái sau M1-P3 Google Drive & OAuth G04 Proof
 
-M1-P3 đã hoàn thành với 8 bài test (7 unit/integration + 1 live E3 verification trên Google Drive thật) đạt GREEN, evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p3/`. P0/P1/P2/P3 `PASS`; G01 và G04 đều đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)`. ROADMAP-OPEN-003 đã được đóng cho M1-P3 (`CLOSED_FOR_M1_P3`). Thư mục `Credentials/` và token cache được bảo vệ tuyệt đối qua `.gitignore`. Package tiếp theo là M1-P4; M2/M3/Module A vẫn `NOT AUTHORIZED`.
+M1-P3 đã hoàn thành với 8 bài test (7 unit/integration + 1 live E3 verification trên Google Drive thật) đạt GREEN, evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p3/`. P0/P1/P2/P3 `PASS`; G01 và G04 đều đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)`. ROADMAP-OPEN-003 đã được đóng cho M1-P3 (`CLOSED_FOR_M1_P3`). Thư mục `Credentials/` và token cache được bảo vệ tuyệt đối qua `.gitignore`.
+
+## Trạng thái sau M1-P4 Local Journal & Recovery Proof
+
+M1-P4 đã hoàn thành với 6 bài test đạt GREEN, evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p4/`. P0/P1/P2/P3/P4 `PASS`. Đã chứng minh: SQLite local journal lưu giữ trạng thái bền vững sau crash, atomic file write trên Windows từ chối partial byte, lost ACK được reconcile theo idempotency qua port receipt P1, recovery epoch cũ bị cách ly (`QUARANTINED`), cache dọn dẹp không xâm phạm journal active, và phát hiện tệp thiếu/sai lệch hash (`CORRUPT_OR_MISSING`). Work package tiếp theo là M1-P5 (Compatibility Smoke); M2/M3/Module A vẫn `NOT AUTHORIZED`.
