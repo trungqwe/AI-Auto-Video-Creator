@@ -1,6 +1,6 @@
 # M1 evidence
 
-Thư mục này chỉ nhận bằng chứng được tạo từ các lần chạy M1 thực tế. M1-P0 đã `PASS`; M1-P1 là package tiếp theo. G01/G04 vẫn `NOT TESTED` và không có gate toàn phần nào PASS.
+Thư mục này chỉ nhận bằng chứng được tạo từ các lần chạy M1 thực tế. M1-P0 và M1-P1 đã `PASS`; M1-P2 là package tiếp theo. G01/G04 vẫn `NOT TESTED` và không có gate toàn phần nào PASS.
 
 ## Quy tắc
 
@@ -23,3 +23,7 @@ Thư mục này chỉ nhận bằng chứng được tạo từ các lần chạ
 RED của P0 phải đến từ `environment.json` chưa tồn tại hoặc sai so với `bootstrap.json`. Thiếu runtime, import, PostgreSQL service hoặc binary là setup failure, không phải RED nghiệp vụ hợp lệ.
 
 Hợp đồng chi tiết nằm tại [M1 implementation plan](../implementation-plan.md). Version có thẩm quyền nằm tại [M1-R1 version lock](../version-lock.md).
+
+## Trạng thái sau audit M1 R1
+
+Audit ngày 13-09-2026 tại `docs/milestones/m1-proof/audit-r1.md` mở 3 BLOCKER và 5 MAJOR. P0/P1 hiện `CORRECTION_REQUIRED`; P2 chưa được bắt đầu vì dependency chưa đạt. Các kết luận PASS trước audit trong tài liệu này chỉ là lịch sử. Giữ nguyên evidence cũ; G01/G04 NOT TESTED và M2/M3/Module A NOT AUTHORIZED. Chưa sửa implementation trong lượt audit.

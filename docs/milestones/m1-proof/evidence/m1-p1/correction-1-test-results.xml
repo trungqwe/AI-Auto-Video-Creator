@@ -1,0 +1,435 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="8" skipped="0" tests="8" time="0.532" timestamp="2026-09-13T11:51:54.840777+07:00" hostname="Admin"><testcase classname="tests.m1.p1.test_completion_uow" name="test_completion_uow_is_atomic_at_every_crash_boundary[after_ledger]" time="0.110"><failure message="psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement">crash_boundary = 'after_ledger'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -&gt; None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+&gt;       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Connection [BAD] at 0x257b7a2f890&gt;
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -&gt; Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError</failure></testcase><testcase classname="tests.m1.p1.test_completion_uow" name="test_completion_uow_is_atomic_at_every_crash_boundary[after_job]" time="0.036"><failure message="psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement">crash_boundary = 'after_job'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -&gt; None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+&gt;       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Connection [BAD] at 0x257b7b8c640&gt;
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -&gt; Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError</failure></testcase><testcase classname="tests.m1.p1.test_completion_uow" name="test_completion_uow_is_atomic_at_every_crash_boundary[after_capacity]" time="0.023"><failure message="psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement">crash_boundary = 'after_capacity'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -&gt; None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+&gt;       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Connection [BAD] at 0x257b7bd4cb0&gt;
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -&gt; Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError</failure></testcase><testcase classname="tests.m1.p1.test_completion_uow" name="test_completion_uow_is_atomic_at_every_crash_boundary[after_variant]" time="0.053"><failure message="psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement">crash_boundary = 'after_variant'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -&gt; None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+&gt;       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Connection [BAD] at 0x257b7bd9e10&gt;
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -&gt; Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError</failure></testcase><testcase classname="tests.m1.p1.test_completion_uow" name="test_completion_uow_is_atomic_at_every_crash_boundary[after_media_usage]" time="0.043"><failure message="psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement">crash_boundary = 'after_media_usage'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -&gt; None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+&gt;       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Connection [BAD] at 0x257b7b73750&gt;
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -&gt; Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError</failure></testcase><testcase classname="tests.m1.p1.test_completion_uow" name="test_completion_uow_is_atomic_at_every_crash_boundary[after_outbox]" time="0.049"><failure message="psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement">crash_boundary = 'after_outbox'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -&gt; None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+&gt;       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Connection [BAD] at 0x257b7c4e300&gt;
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -&gt; Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError</failure></testcase><testcase classname="tests.m1.p1.test_completion_uow" name="test_completion_uow_is_atomic_at_every_crash_boundary[after_cleanup_eligibility]" time="0.033"><failure message="psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement">crash_boundary = 'after_cleanup_eligibility'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -&gt; None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+&gt;       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Connection [BAD] at 0x257b7c4e990&gt;
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -&gt; Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError</failure></testcase><testcase classname="tests.m1.p1.test_completion_uow" name="test_lost_ack_and_duplicate_completion_return_one_committed_result" time="0.040"><failure message="psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement">def test_lost_ack_and_duplicate_completion_return_one_committed_result() -&gt; None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+&gt;       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:194: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Connection [BAD] at 0x257b7c4f020&gt;
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -&gt; Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError</failure></testcase></testsuite></testsuites>

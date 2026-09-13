@@ -1,0 +1,124 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 5 items
+
+tests/m1/p1/test_recovery_semantics.py::test_duplicate_and_reordered_events_do_not_repeat_projection_side_effect FAILED [ 20%]
+tests/m1/p1/test_recovery_semantics.py::test_lost_ack_after_commit_returns_existing_receipt FAILED [ 40%]
+tests/m1/p1/test_recovery_semantics.py::test_stale_generation_or_recovery_epoch_cannot_commit_result FAILED [ 60%]
+tests/m1/p1/test_recovery_semantics.py::test_unknown_external_outcome_requires_reconciliation_before_retry FAILED [ 80%]
+tests/m1/p1/test_recovery_semantics.py::test_sensitive_input_is_rejected_without_persistence_or_echo FAILED [100%]
+
+================================== FAILURES ===================================
+__ test_duplicate_and_reordered_events_do_not_repeat_projection_side_effect ___
+
+    def test_duplicate_and_reordered_events_do_not_repeat_projection_side_effect() -> None:
+        prepare_database()
+        module = load_contract_module()
+>       require_api(module, "DomainEvent", "EventGap")
+
+tests\m1\p1\test_recovery_semantics.py:48: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+module = <module 'm1proof.contracts' from 'D:\\AI Auto Video Creator\\src\\m1proof\\contracts.py'>
+names = ('DomainEvent', 'EventGap')
+
+    def require_api(module, *names: str) -> None:
+        missing = [name for name in names if not hasattr(module, name)]
+>       assert not missing, f"P1 recovery API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 recovery API is not implemented: DomainEvent, EventGap
+E       assert not ['DomainEvent', 'EventGap']
+
+tests\m1\p1\test_recovery_semantics.py:29: AssertionError
+_____________ test_lost_ack_after_commit_returns_existing_receipt _____________
+
+    def test_lost_ack_after_commit_returns_existing_receipt() -> None:
+        prepare_database()
+        module = load_contract_module()
+>       require_api(module, "OutcomeUnknown")
+
+tests\m1\p1\test_recovery_semantics.py:88: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+module = <module 'm1proof.contracts' from 'D:\\AI Auto Video Creator\\src\\m1proof\\contracts.py'>
+names = ('OutcomeUnknown',)
+
+    def require_api(module, *names: str) -> None:
+        missing = [name for name in names if not hasattr(module, name)]
+>       assert not missing, f"P1 recovery API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 recovery API is not implemented: OutcomeUnknown
+E       assert not ['OutcomeUnknown']
+
+tests\m1\p1\test_recovery_semantics.py:29: AssertionError
+________ test_stale_generation_or_recovery_epoch_cannot_commit_result _________
+
+    def test_stale_generation_or_recovery_epoch_cannot_commit_result() -> None:
+        prepare_database()
+        module = load_contract_module()
+>       require_api(module, "ActivityCommit", "StaleExecution")
+
+tests\m1\p1\test_recovery_semantics.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+module = <module 'm1proof.contracts' from 'D:\\AI Auto Video Creator\\src\\m1proof\\contracts.py'>
+names = ('ActivityCommit', 'StaleExecution')
+
+    def require_api(module, *names: str) -> None:
+        missing = [name for name in names if not hasattr(module, name)]
+>       assert not missing, f"P1 recovery API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 recovery API is not implemented: ActivityCommit, StaleExecution
+E       assert not ['ActivityCommit', 'StaleExecution']
+
+tests\m1\p1\test_recovery_semantics.py:29: AssertionError
+_____ test_unknown_external_outcome_requires_reconciliation_before_retry ______
+
+    def test_unknown_external_outcome_requires_reconciliation_before_retry() -> None:
+        prepare_database()
+        module = load_contract_module()
+>       require_api(module, "ExternalOperationRequest", "ReconciliationRequired")
+
+tests\m1\p1\test_recovery_semantics.py:146: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+module = <module 'm1proof.contracts' from 'D:\\AI Auto Video Creator\\src\\m1proof\\contracts.py'>
+names = ('ExternalOperationRequest', 'ReconciliationRequired')
+
+    def require_api(module, *names: str) -> None:
+        missing = [name for name in names if not hasattr(module, name)]
+>       assert not missing, f"P1 recovery API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 recovery API is not implemented: ExternalOperationRequest, ReconciliationRequired
+E       assert not ['ExternalOperationRequest', 'ReconciliationRequired']
+
+tests\m1\p1\test_recovery_semantics.py:29: AssertionError
+________ test_sensitive_input_is_rejected_without_persistence_or_echo _________
+
+    def test_sensitive_input_is_rejected_without_persistence_or_echo() -> None:
+        prepare_database()
+        module = load_contract_module()
+>       require_api(module, "SensitiveDataRejected")
+
+tests\m1\p1\test_recovery_semantics.py:176: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+module = <module 'm1proof.contracts' from 'D:\\AI Auto Video Creator\\src\\m1proof\\contracts.py'>
+names = ('SensitiveDataRejected',)
+
+    def require_api(module, *names: str) -> None:
+        missing = [name for name in names if not hasattr(module, name)]
+>       assert not missing, f"P1 recovery API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 recovery API is not implemented: SensitiveDataRejected
+E       assert not ['SensitiveDataRejected']
+
+tests\m1\p1\test_recovery_semantics.py:29: AssertionError
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m1-proof\evidence\m1-p1\red-2-test-results.xml -
+=========================== short test summary info ===========================
+FAILED tests/m1/p1/test_recovery_semantics.py::test_duplicate_and_reordered_events_do_not_repeat_projection_side_effect
+FAILED tests/m1/p1/test_recovery_semantics.py::test_lost_ack_after_commit_returns_existing_receipt
+FAILED tests/m1/p1/test_recovery_semantics.py::test_stale_generation_or_recovery_epoch_cannot_commit_result
+FAILED tests/m1/p1/test_recovery_semantics.py::test_unknown_external_outcome_requires_reconciliation_before_retry
+FAILED tests/m1/p1/test_recovery_semantics.py::test_sensitive_input_is_rejected_without_persistence_or_echo
+============================== 5 failed in 0.32s ==============================

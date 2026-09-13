@@ -1,0 +1,4 @@
+server_version_num=180006
+server_version=18.6 (Debian 18.6-1.pgdg13+2)
+transaction_isolation=read committed
+synchronous_commit=on

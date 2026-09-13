@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="3" failures="0" skipped="0" tests="3" time="0.100" timestamp="2026-09-13T11:42:37.155431+07:00" hostname="Admin"><testcase classname="tests.m1.p1.test_command_semantics" name="test_duplicate_command_returns_same_receipt_and_one_mutation" time="0.000"><error message="failed on setup with &quot;AssertionError: P1 PostgreSQL schema is not implemented&#10;assert False&#10; +  where False = is_file()&#10; +    where is_file = WindowsPath('D:/AI Auto Video Creator/sql/m1/p1_schema.sql').is_file&quot;">@pytest.fixture(autouse=True)
+    def clean_database() -&gt; None:
+&gt;       assert SCHEMA_PATH.is_file(), "P1 PostgreSQL schema is not implemented"
+E       AssertionError: P1 PostgreSQL schema is not implemented
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/AI Auto Video Creator/sql/m1/p1_schema.sql').is_file
+
+tests\m1\p1\test_command_semantics.py:19: AssertionError</error></testcase><testcase classname="tests.m1.p1.test_command_semantics" name="test_reused_idempotency_key_with_different_payload_is_rejected" time="0.000"><error message="failed on setup with &quot;AssertionError: P1 PostgreSQL schema is not implemented&#10;assert False&#10; +  where False = is_file()&#10; +    where is_file = WindowsPath('D:/AI Auto Video Creator/sql/m1/p1_schema.sql').is_file&quot;">@pytest.fixture(autouse=True)
+    def clean_database() -&gt; None:
+&gt;       assert SCHEMA_PATH.is_file(), "P1 PostgreSQL schema is not implemented"
+E       AssertionError: P1 PostgreSQL schema is not implemented
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/AI Auto Video Creator/sql/m1/p1_schema.sql').is_file
+
+tests\m1\p1\test_command_semantics.py:19: AssertionError</error></testcase><testcase classname="tests.m1.p1.test_command_semantics" name="test_mutation_and_outbox_roll_back_together_at_crash_boundary" time="0.000"><error message="failed on setup with &quot;AssertionError: P1 PostgreSQL schema is not implemented&#10;assert False&#10; +  where False = is_file()&#10; +    where is_file = WindowsPath('D:/AI Auto Video Creator/sql/m1/p1_schema.sql').is_file&quot;">@pytest.fixture(autouse=True)
+    def clean_database() -&gt; None:
+&gt;       assert SCHEMA_PATH.is_file(), "P1 PostgreSQL schema is not implemented"
+E       AssertionError: P1 PostgreSQL schema is not implemented
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/AI Auto Video Creator/sql/m1/p1_schema.sql').is_file
+
+tests\m1\p1\test_command_semantics.py:19: AssertionError</error></testcase></testsuite></testsuites>

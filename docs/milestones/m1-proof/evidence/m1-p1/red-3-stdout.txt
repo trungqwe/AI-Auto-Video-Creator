@@ -1,0 +1,304 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 8 items
+
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_ledger] FAILED [ 12%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_job] FAILED [ 25%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_capacity] FAILED [ 37%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_variant] FAILED [ 50%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_media_usage] FAILED [ 62%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_outbox] FAILED [ 75%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_cleanup_eligibility] FAILED [ 87%]
+tests/m1/p1/test_completion_uow.py::test_lost_ack_and_duplicate_completion_return_one_committed_result FAILED [100%]
+
+================================== FAILURES ===================================
+_____ test_completion_uow_is_atomic_at_every_crash_boundary[after_ledger] _____
+
+crash_boundary = 'after_ledger'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
+        prepare_database()
+>       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:149: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+>       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError
+______ test_completion_uow_is_atomic_at_every_crash_boundary[after_job] _______
+
+crash_boundary = 'after_job'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
+        prepare_database()
+>       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:149: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+>       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError
+____ test_completion_uow_is_atomic_at_every_crash_boundary[after_capacity] ____
+
+crash_boundary = 'after_capacity'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
+        prepare_database()
+>       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:149: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+>       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError
+____ test_completion_uow_is_atomic_at_every_crash_boundary[after_variant] _____
+
+crash_boundary = 'after_variant'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
+        prepare_database()
+>       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:149: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+>       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError
+__ test_completion_uow_is_atomic_at_every_crash_boundary[after_media_usage] ___
+
+crash_boundary = 'after_media_usage'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
+        prepare_database()
+>       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:149: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+>       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError
+_____ test_completion_uow_is_atomic_at_every_crash_boundary[after_outbox] _____
+
+crash_boundary = 'after_outbox'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
+        prepare_database()
+>       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:149: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+>       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError
+_ test_completion_uow_is_atomic_at_every_crash_boundary[after_cleanup_eligibility] _
+
+crash_boundary = 'after_cleanup_eligibility'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
+        prepare_database()
+>       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:149: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+>       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError
+_____ test_lost_ack_and_duplicate_completion_return_one_committed_result ______
+
+    def test_lost_ack_and_duplicate_completion_return_one_committed_result() -> None:
+        prepare_database()
+>       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:193: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+>       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m1-proof\evidence\m1-p1\red-3-test-results.xml -
+=========================== short test summary info ===========================
+FAILED tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_ledger]
+FAILED tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_job]
+FAILED tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_capacity]
+FAILED tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_variant]
+FAILED tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_media_usage]
+FAILED tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_outbox]
+FAILED tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_cleanup_eligibility]
+FAILED tests/m1/p1/test_completion_uow.py::test_lost_ack_and_duplicate_completion_return_one_committed_result
+============================== 8 failed in 0.42s ==============================

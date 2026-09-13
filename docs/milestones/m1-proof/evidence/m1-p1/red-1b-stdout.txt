@@ -1,0 +1,68 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 3 items
+
+tests/m1/p1/test_command_semantics.py::test_duplicate_command_returns_same_receipt_and_one_mutation FAILED [ 33%]
+tests/m1/p1/test_command_semantics.py::test_reused_idempotency_key_with_different_payload_is_rejected FAILED [ 66%]
+tests/m1/p1/test_command_semantics.py::test_mutation_and_outbox_roll_back_together_at_crash_boundary FAILED [100%]
+
+================================== FAILURES ===================================
+________ test_duplicate_command_returns_same_receipt_and_one_mutation _________
+
+    def test_duplicate_command_returns_same_receipt_and_one_mutation() -> None:
+>       prepare_database()
+
+tests\m1\p1\test_command_semantics.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def prepare_database() -> None:
+>       assert SCHEMA_PATH.is_file(), "P1 PostgreSQL schema is not implemented"
+E       AssertionError: P1 PostgreSQL schema is not implemented
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/AI Auto Video Creator/sql/m1/p1_schema.sql').is_file
+
+tests\m1\p1\test_command_semantics.py:18: AssertionError
+_______ test_reused_idempotency_key_with_different_payload_is_rejected ________
+
+    def test_reused_idempotency_key_with_different_payload_is_rejected() -> None:
+>       prepare_database()
+
+tests\m1\p1\test_command_semantics.py:70: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def prepare_database() -> None:
+>       assert SCHEMA_PATH.is_file(), "P1 PostgreSQL schema is not implemented"
+E       AssertionError: P1 PostgreSQL schema is not implemented
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/AI Auto Video Creator/sql/m1/p1_schema.sql').is_file
+
+tests\m1\p1\test_command_semantics.py:18: AssertionError
+________ test_mutation_and_outbox_roll_back_together_at_crash_boundary ________
+
+    def test_mutation_and_outbox_roll_back_together_at_crash_boundary() -> None:
+>       prepare_database()
+
+tests\m1\p1\test_command_semantics.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def prepare_database() -> None:
+>       assert SCHEMA_PATH.is_file(), "P1 PostgreSQL schema is not implemented"
+E       AssertionError: P1 PostgreSQL schema is not implemented
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/AI Auto Video Creator/sql/m1/p1_schema.sql').is_file
+
+tests\m1\p1\test_command_semantics.py:18: AssertionError
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m1-proof\evidence\m1-p1\red-1b-test-results.xml -
+=========================== short test summary info ===========================
+FAILED tests/m1/p1/test_command_semantics.py::test_duplicate_command_returns_same_receipt_and_one_mutation
+FAILED tests/m1/p1/test_command_semantics.py::test_reused_idempotency_key_with_different_payload_is_rejected
+FAILED tests/m1/p1/test_command_semantics.py::test_mutation_and_outbox_roll_back_together_at_crash_boundary
+============================== 3 failed in 0.12s ==============================

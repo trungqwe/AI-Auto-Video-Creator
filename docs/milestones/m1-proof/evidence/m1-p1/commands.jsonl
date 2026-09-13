@@ -1,0 +1,1 @@
+{"command_id":"p1-final-regression","command":"py -3.13 -m uv run pytest tests/m1 -q --junitxml=<evidence>/regression-test-results.xml","started_at_utc":"2026-09-13T04:57:34.1873575Z","ended_at_utc":"2026-09-13T04:57:36.4511547Z","exit_code":0,"environment":"M1-P1","redacted":true}

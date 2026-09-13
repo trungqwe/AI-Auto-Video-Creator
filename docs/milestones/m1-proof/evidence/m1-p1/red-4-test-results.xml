@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="0.165" timestamp="2026-09-13T11:53:18.191086+07:00" hostname="Admin"><testcase classname="tests.m1.p1.test_outbox_delivery" name="test_dispatch_crash_before_checkpoint_is_recovered_by_consumer_dedupe" time="0.072"><failure message="AssertionError: P1 outbox dispatcher with a crash checkpoint is not implemented&#10;assert False&#10; +  where False = hasattr(&lt;module 'm1proof.contracts' from 'D:\\AI Auto Video Creator\\src\\m1proof\\contracts.py'&gt;, 'OutboxDispatcher')">def test_dispatch_crash_before_checkpoint_is_recovered_by_consumer_dedupe() -&gt; None:
+        prepare_database()
+&gt;       module = load_contract_module()
+                 ^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_outbox_delivery.py:33: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_contract_module():
+        module = importlib.import_module("m1proof.contracts")
+&gt;       assert hasattr(module, "OutboxDispatcher"), (
+            "P1 outbox dispatcher with a crash checkpoint is not implemented"
+        )
+E       AssertionError: P1 outbox dispatcher with a crash checkpoint is not implemented
+E       assert False
+E        +  where False = hasattr(&lt;module 'm1proof.contracts' from 'D:\\AI Auto Video Creator\\src\\m1proof\\contracts.py'&gt;, 'OutboxDispatcher')
+
+tests\m1\p1\test_outbox_delivery.py:25: AssertionError</failure></testcase></testsuite></testsuites>

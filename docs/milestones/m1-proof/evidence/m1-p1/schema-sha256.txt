@@ -1,0 +1,9 @@
+
+
+Algorithm : SHA256
+Hash      : 0576850E813753981B08BAC3106EACDE44FCAFCB7EA1BBE19D71BCB14D7256E0
+Path      : D:\AI Auto Video Creator\sql\m1\p1_schema.sql
+
+
+
+

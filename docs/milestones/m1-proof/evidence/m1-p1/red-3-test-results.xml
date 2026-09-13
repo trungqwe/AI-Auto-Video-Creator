@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="8" skipped="0" tests="8" time="0.385" timestamp="2026-09-13T11:49:54.746290+07:00" hostname="Admin"><testcase classname="tests.m1.p1.test_completion_uow" name="test_completion_uow_is_atomic_at_every_crash_boundary[after_ledger]" time="0.084"><failure message="AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort&#10;assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']">crash_boundary = 'after_ledger'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -&gt; None:
+        prepare_database()
+&gt;       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:149: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+&gt;       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError</failure></testcase><testcase classname="tests.m1.p1.test_completion_uow" name="test_completion_uow_is_atomic_at_every_crash_boundary[after_job]" time="0.040"><failure message="AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort&#10;assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']">crash_boundary = 'after_job'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -&gt; None:
+        prepare_database()
+&gt;       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:149: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+&gt;       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError</failure></testcase><testcase classname="tests.m1.p1.test_completion_uow" name="test_completion_uow_is_atomic_at_every_crash_boundary[after_capacity]" time="0.037"><failure message="AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort&#10;assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']">crash_boundary = 'after_capacity'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -&gt; None:
+        prepare_database()
+&gt;       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:149: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+&gt;       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError</failure></testcase><testcase classname="tests.m1.p1.test_completion_uow" name="test_completion_uow_is_atomic_at_every_crash_boundary[after_variant]" time="0.025"><failure message="AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort&#10;assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']">crash_boundary = 'after_variant'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -&gt; None:
+        prepare_database()
+&gt;       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:149: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+&gt;       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError</failure></testcase><testcase classname="tests.m1.p1.test_completion_uow" name="test_completion_uow_is_atomic_at_every_crash_boundary[after_media_usage]" time="0.015"><failure message="AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort&#10;assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']">crash_boundary = 'after_media_usage'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -&gt; None:
+        prepare_database()
+&gt;       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:149: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+&gt;       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError</failure></testcase><testcase classname="tests.m1.p1.test_completion_uow" name="test_completion_uow_is_atomic_at_every_crash_boundary[after_outbox]" time="0.015"><failure message="AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort&#10;assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']">crash_boundary = 'after_outbox'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -&gt; None:
+        prepare_database()
+&gt;       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:149: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+&gt;       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError</failure></testcase><testcase classname="tests.m1.p1.test_completion_uow" name="test_completion_uow_is_atomic_at_every_crash_boundary[after_cleanup_eligibility]" time="0.016"><failure message="AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort&#10;assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']">crash_boundary = 'after_cleanup_eligibility'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -&gt; None:
+        prepare_database()
+&gt;       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:149: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+&gt;       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError</failure></testcase><testcase classname="tests.m1.p1.test_completion_uow" name="test_lost_ack_and_duplicate_completion_return_one_committed_result" time="0.032"><failure message="AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort&#10;assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']">def test_lost_ack_and_duplicate_completion_return_one_committed_result() -&gt; None:
+        prepare_database()
+&gt;       contracts, media_usage = load_completion_api()
+                                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p1\test_completion_uow.py:193: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def load_completion_api():
+        contracts = importlib.import_module("m1proof.contracts")
+        media_spec = importlib.util.find_spec("m1proof.media_usage")
+        required = ["CompletionCommand", "CompletionReceipt"]
+        missing = [name for name in required if not hasattr(contracts, name)]
+        if media_spec is None:
+            missing.append("m1proof.media_usage.PostgresMediaUsageOwnerPort")
+&gt;       assert not missing, f"P1 completion API is not implemented: {', '.join(missing)}"
+E       AssertionError: P1 completion API is not implemented: CompletionCommand, CompletionReceipt, m1proof.media_usage.PostgresMediaUsageOwnerPort
+E       assert not ['CompletionCommand', 'CompletionReceipt', 'm1proof.media_usage.PostgresMediaUsageOwnerPort']
+
+tests\m1\p1\test_completion_uow.py:32: AssertionError</failure></testcase></testsuite></testsuites>

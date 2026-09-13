@@ -1,0 +1,17 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 5 items
+
+tests/m1/p1/test_recovery_semantics.py::test_duplicate_and_reordered_events_do_not_repeat_projection_side_effect PASSED [ 20%]
+tests/m1/p1/test_recovery_semantics.py::test_lost_ack_after_commit_returns_existing_receipt PASSED [ 40%]
+tests/m1/p1/test_recovery_semantics.py::test_stale_generation_or_recovery_epoch_cannot_commit_result PASSED [ 60%]
+tests/m1/p1/test_recovery_semantics.py::test_unknown_external_outcome_requires_reconciliation_before_retry PASSED [ 80%]
+tests/m1/p1/test_recovery_semantics.py::test_sensitive_input_is_rejected_without_persistence_or_echo PASSED [100%]
+
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m1-proof\evidence\m1-p1\green-2-test-results.xml -
+============================== 5 passed in 0.53s ==============================

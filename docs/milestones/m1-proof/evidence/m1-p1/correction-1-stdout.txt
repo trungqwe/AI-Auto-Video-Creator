@@ -1,0 +1,488 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 8 items
+
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_ledger] FAILED [ 12%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_job] FAILED [ 25%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_capacity] FAILED [ 37%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_variant] FAILED [ 50%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_media_usage] FAILED [ 62%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_outbox] FAILED [ 75%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_cleanup_eligibility] FAILED [ 87%]
+tests/m1/p1/test_completion_uow.py::test_lost_ack_and_duplicate_completion_return_one_committed_result FAILED [100%]
+
+================================== FAILURES ===================================
+_____ test_completion_uow_is_atomic_at_every_crash_boundary[after_ledger] _____
+
+crash_boundary = 'after_ledger'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+>       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Connection [BAD] at 0x257b7a2f890>
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -> Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError
+______ test_completion_uow_is_atomic_at_every_crash_boundary[after_job] _______
+
+crash_boundary = 'after_job'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+>       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Connection [BAD] at 0x257b7b8c640>
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -> Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError
+____ test_completion_uow_is_atomic_at_every_crash_boundary[after_capacity] ____
+
+crash_boundary = 'after_capacity'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+>       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Connection [BAD] at 0x257b7bd4cb0>
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -> Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError
+____ test_completion_uow_is_atomic_at_every_crash_boundary[after_variant] _____
+
+crash_boundary = 'after_variant'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+>       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Connection [BAD] at 0x257b7bd9e10>
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -> Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError
+__ test_completion_uow_is_atomic_at_every_crash_boundary[after_media_usage] ___
+
+crash_boundary = 'after_media_usage'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+>       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Connection [BAD] at 0x257b7b73750>
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -> Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError
+_____ test_completion_uow_is_atomic_at_every_crash_boundary[after_outbox] _____
+
+crash_boundary = 'after_outbox'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+>       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Connection [BAD] at 0x257b7c4e300>
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -> Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError
+_ test_completion_uow_is_atomic_at_every_crash_boundary[after_cleanup_eligibility] _
+
+crash_boundary = 'after_cleanup_eligibility'
+
+    @pytest.mark.parametrize(
+        "crash_boundary",
+        [
+            "after_ledger",
+            "after_job",
+            "after_capacity",
+            "after_variant",
+            "after_media_usage",
+            "after_outbox",
+            "after_cleanup_eligibility",
+        ],
+    )
+    def test_completion_uow_is_atomic_at_every_crash_boundary(crash_boundary: str) -> None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+>       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Connection [BAD] at 0x257b7c4e990>
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -> Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError
+_____ test_lost_ack_and_duplicate_completion_return_one_committed_result ______
+
+    def test_lost_ack_and_duplicate_completion_return_one_committed_result() -> None:
+        prepare_database()
+        contracts, media_usage = load_completion_api()
+>       seed_completion_context()
+
+tests\m1\p1\test_completion_uow.py:194: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m1\p1\test_completion_uow.py:42: in seed_completion_context
+    connection.execute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Connection [BAD] at 0x257b7c4f020>
+query = "\n            INSERT INTO proof_batches (workspace_id, batch_id, target_count, completed_count)\n            VALUES (..._epoch, updated_at\n            ) VALUES ('workspace-1', 'grant-completion', 7, 'epoch-current', now());\n            "
+params = ('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',)
+prepare = None, binary = False
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool = False,
+    ) -> Cursor[Row]:
+        """Execute a query and return a cursor to read its results."""
+        try:
+            cur = self.cursor()
+            if binary:
+                cur.format = BINARY
+    
+            if isinstance(query, Template):
+                if params is not None:
+                    raise TypeError(
+                        "'execute()' with string template query doesn't support parameters"
+                    )
+                return cur.execute(query, prepare=prepare)
+            else:
+                return cur.execute(query, params, prepare=prepare)
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.SyntaxError: cannot insert multiple commands into a prepared statement
+
+.venv\Lib\site-packages\psycopg\connection.py:300: SyntaxError
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m1-proof\evidence\m1-p1\green-3-test-results.xml -
+=========================== short test summary info ===========================
+FAILED tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_ledger]
+FAILED tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_job]
+FAILED tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_capacity]
+FAILED tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_variant]
+FAILED tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_media_usage]
+FAILED tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_outbox]
+FAILED tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_cleanup_eligibility]
+FAILED tests/m1/p1/test_completion_uow.py::test_lost_ack_and_duplicate_completion_return_one_committed_result
+============================== 8 failed in 0.60s ==============================

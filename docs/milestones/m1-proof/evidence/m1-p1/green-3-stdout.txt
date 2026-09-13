@@ -1,0 +1,20 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 8 items
+
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_ledger] PASSED [ 12%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_job] PASSED [ 25%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_capacity] PASSED [ 37%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_variant] PASSED [ 50%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_media_usage] PASSED [ 62%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_outbox] PASSED [ 75%]
+tests/m1/p1/test_completion_uow.py::test_completion_uow_is_atomic_at_every_crash_boundary[after_cleanup_eligibility] PASSED [ 87%]
+tests/m1/p1/test_completion_uow.py::test_lost_ack_and_duplicate_completion_return_one_committed_result PASSED [100%]
+
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m1-proof\evidence\m1-p1\green-3-test-results.xml -
+============================== 8 passed in 0.96s ==============================

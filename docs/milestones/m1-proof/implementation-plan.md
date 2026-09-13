@@ -1,7 +1,7 @@
 # M1 — Implementation Plan cho Evidence Prototype
 
 **Milestone:** M1 — `R0 Evidence Prototype`  
-**Trạng thái:** `IN PROGRESS — M1-P0 PASS, M1-P1 NEXT; M1 CHƯA PASS`  
+**Trạng thái:** `IN PROGRESS — P0/P1 CORRECTION_REQUIRED; P2 CHƯA ĐƯỢC BẮT ĐẦU`
 **Quyền implementation:** chỉ M1; M2, M3 và Phân hệ A bị khóa  
 **Version set:** [M1-R1](./version-lock.md)  
 **Evidence root:** [evidence](./evidence/README.md)  
@@ -52,9 +52,10 @@ Trạng thái thực thi hiện hành:
 
 | Work package | Trạng thái |
 |---|---|
-| M1-P0 | `PASS` |
-| M1-P1 | `READY` |
-| M1-P2..P6 | `NOT_STARTED` |
+| M1-P0 | `CORRECTION_REQUIRED` |
+| M1-P1 | `CORRECTION_REQUIRED` |
+| M1-P2 | `NOT_STARTED` — chờ khắc phục P0/P1 |
+| M1-P3..P6 | `NOT_STARTED` |
 
 ```text
 M0 CLOSED
@@ -104,7 +105,7 @@ Trước test Python đầu tiên, P0 tạo thủ công/bằng lệnh bootstrap 
 
 - Không phụ thuộc credential Google.
 - Không phụ thuộc M2 hoặc module A.
-- Phải chờ lệnh bắt đầu triển khai tiếp theo của user dù quyền M1 đã được cấp.
+- Lệnh triển khai M1 đã được nhận ngày 13-09-2026; dependency P0 đã PASS trước khi P1 bắt đầu.
 
 ### Test RED cần có
 
@@ -608,7 +609,7 @@ RED đầu tiên của mỗi smoke phải do capability/validator chưa có ho�
 | Mục | Trạng thái | Ảnh hưởng M1 |
 |---|---|---|
 | PCC-026 | CLOSED | Baseline đã được user chấp thuận |
-| PCC-027 | CLOSED — M1 ONLY | Có quyền code M1; hiện chờ lệnh kích hoạt tiếp theo |
+| PCC-027 | CLOSED — M1 ONLY | Có quyền code M1 và đã kích hoạt; không mở quyền M2/M3/Phân hệ A |
 | PCC-028 / ROADMAP-OPEN-002 | CLOSED_FOR_M1_R1 | P0 phải materialize lock/hash; không đồng nghĩa proof PASS |
 | G01 Temporal | NOT TESTED | P2 chưa chạy; không có trạng thái scoped hoặc gate PASS |
 | G04 Drive/OAuth | NOT TESTED | P3 chưa chạy; không có trạng thái scoped hoặc gate PASS |
@@ -629,12 +630,15 @@ M1 chỉ `PASS` khi:
 
 Nếu P3 BLOCKED_EXTERNAL, kết quả hợp lệ là `M1 BLOCKED_EXTERNAL`, không phải FAIL và không phải PASS. M2/M3/Phân hệ A vẫn khóa.
 
-## 15. Lệnh bắt đầu và giới hạn hiện tại
+## 15. Trạng thái thực thi và giới hạn hiện tại
 
-User đã cấp quyền implementation cho M1 nhưng yêu cầu lượt hiện tại chỉ hoàn tất tài liệu và báo sẵn sàng. Vì vậy:
+User đã cấp và kích hoạt quyền implementation chỉ cho M1. M1-P0 và M1-P1 đã PASS bằng test/evidence thật; trạng thái này không làm M1 PASS và không chứng minh G01/G04/G07.
 
-- chưa tạo project metadata, lockfile, test code hoặc source code trong lượt này;
-- chưa cài runtime, dependency, PostgreSQL, Temporal hoặc FFmpeg;
-- chưa tạo evidence run giả;
-- khi có lệnh bắt đầu tiếp theo, thực hiện đúng `M1-P0 → M1-P1`, báo trạng thái và evidence sau từng package;
-- không tự mở M2/M3/Phân hệ A dù M1 code đã được phép.
+- package tiếp theo theo dependency là M1-P2 Temporal G01;
+- không bắt đầu M1-P3 nếu chưa xử lý ROADMAP-OPEN-003 theo đúng external gate;
+- không tự mở M2/M3/Phân hệ A dù P0/P1 đã PASS;
+- mỗi package tiếp tục phải test-first, lưu RED/GREEN và dừng ngay khi điều kiện STOP xảy ra.
+
+## Trạng thái sau audit M1 R1
+
+Audit ngày 13-09-2026 tại `docs/milestones/m1-proof/audit-r1.md` mở 3 BLOCKER và 5 MAJOR. P0/P1 hiện `CORRECTION_REQUIRED`; P2 chưa được bắt đầu vì dependency chưa đạt. Các kết luận PASS trước audit trong tài liệu này chỉ là lịch sử. Giữ nguyên evidence cũ; G01/G04 NOT TESTED và M2/M3/Module A NOT AUTHORIZED. Chưa sửa implementation trong lượt audit.

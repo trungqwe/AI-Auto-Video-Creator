@@ -89,7 +89,7 @@ G, H và J là năng lực xuyên suốt: được dựng tối thiểu từ M2 
 | Mốc | Kết quả người dùng nhìn thấy | Phân hệ trọng tâm | Gate/checkpoint | Trạng thái |
 |---|---|---|---|---|
 | M0 | Bộ thiết kế nhất quán và quyết định cho phép code | Toàn hệ thống | Audit trước code + user approval | APPROVED / CLOSED |
-| M1 | Proof chứng minh nền workflow/storage khả thi; test harness sẵn sàng | G, I, J | G01 sớm, G04 sớm, compatibility smoke | IN PROGRESS — P0 PASS, P1 NEXT |
+| M1 | Proof chứng minh nền workflow/storage khả thi; test harness sẵn sàng | G, I, J | G01 sớm, G04 sớm, compatibility smoke | IN PROGRESS — P0/P1 CORRECTION_REQUIRED; P2 BLOCKED BY DEPENDENCY |
 | M2 | UI quản trị tối thiểu thấy command, state, log, config và artifact metadata | G, H, I, J | Contract/state/security foundation | NOT AUTHORIZED |
 | M3 | Thêm nguồn, quét, chuẩn hóa, chống trùng và xem bài/sự kiện | A, B, G, H | User duyệt A-B; collection/content tests | NOT AUTHORIZED — MODULE A BỊ KHÓA |
 | M4 | Kho media/hook có provenance; sync cloud/local và xử lý ảnh nền tảng | C, E một phần, I, H | Drive/integrity/cleanup checkpoint | CHƯA BẮT ĐẦU |
@@ -159,7 +159,7 @@ Kết thúc toàn bộ giai đoạn thiết kế, phát hiện mâu thuẫn cu�
 
 **Kế hoạch thực thi có thẩm quyền:** [M1 implementation plan](./milestones/m1-proof/implementation-plan.md)  
 **Khóa phiên bản:** [M1-R1 version lock](./milestones/m1-proof/version-lock.md)  
-**Trạng thái:** `IN PROGRESS`; M1-P0 đã PASS và M1-P1 là package tiếp theo. M1 chưa PASS; G01 Temporal và G04 Drive/OAuth đều `NOT TESTED`.
+**Trạng thái:** `IN PROGRESS`; M1-P0 và M1-P1 đã PASS, M1-P2 là package tiếp theo. M1 chưa PASS; G01 Temporal và G04 Drive/OAuth đều `NOT TESTED`.
 
 ### Mục tiêu
 
@@ -809,4 +809,8 @@ User đã xác nhận ngày 13-09-2026:
 
 Các điều kiện trên đã được chấp thuận cùng baseline 00–12, ADR, contracts, audit và kế hoạch Phân hệ A. M0 chuyển `APPROVED/CLOSED`; quyền code chỉ áp dụng M1 Evidence Prototype. M2, M3 và implementation Phân hệ A tiếp tục bị khóa cho tới khi M1 đạt exit gate, được audit và user xác nhận checkpoint tiếp theo.
 
-Theo yêu cầu cuối của user, sau khi cập nhật hai tài liệu M1 và kiểm tra nhất quán, dự án ở trạng thái **sẵn sàng nhưng chờ lệnh bắt đầu triển khai**. Trạng thái này không thu hồi quyền M1 đã cấp và cũng không được hiểu là M1 đã bắt đầu hay PASS.
+Lệnh triển khai M1 đã được nhận ngày 13-09-2026. M1-P0 và M1-P1 đã PASS theo evidence tương ứng; M1 vẫn `IN PROGRESS`, M2/M3/Phân hệ A tiếp tục bị khóa và không được suy ra là đã có quyền triển khai.
+
+## Trạng thái sau audit M1 R1
+
+Audit ngày 13-09-2026 tại `docs/milestones/m1-proof/audit-r1.md` mở 3 BLOCKER và 5 MAJOR. P0/P1 hiện `CORRECTION_REQUIRED`; P2 chưa được bắt đầu vì dependency chưa đạt. Các kết luận PASS trước audit trong tài liệu này chỉ là lịch sử. Giữ nguyên evidence cũ; G01/G04 NOT TESTED và M2/M3/Module A NOT AUTHORIZED. Chưa sửa implementation trong lượt audit.

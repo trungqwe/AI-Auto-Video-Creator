@@ -1,7 +1,7 @@
 # AI Auto Video Creator — Checklist cuối trước code
 
 **Ngày lập:** 12-09-2026  
-**Trạng thái:** M0 APPROVED/CLOSED; M1 đang triển khai, P0 PASS và P1 là package tiếp theo  
+**Trạng thái:** M0 APPROVED/CLOSED; M1 đang triển khai, P0/P1 PASS và P2 là package tiếp theo
 **Cổng áp dụng:** M0 → M1 của [roadmap](./11-roadmap.md)  
 **Căn cứ audit hiện hành:** [AUDIT.md, mục 11](../AUDIT.md#11-khắc-phục-hậu-kiểm-theo-yêu-cầu-người-dùng)
 
@@ -12,7 +12,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 - `[x]` nghĩa là có bằng chứng hoàn tất **ở cấp tài liệu** trong phạm vi nêu rõ.
 - `[ ]` nghĩa là chưa hoàn tất hoặc chưa có xác nhận; không được tự đánh dấu để mở cổng.
 - “Không còn BLOCKER” chỉ nói đến phát hiện thiết kế đã biết sau khắc phục, không có nghĩa mọi proof, cấu hình production hoặc kiểm thử runtime đã đạt.
-- Phê duyệt baseline và quyền code M1 đã được ghi nhận ngày 13-09-2026. Theo chỉ thị cuối cùng của user, chưa thực thi quyền đó trong lượt cập nhật tài liệu này; chờ lệnh bắt đầu tiếp theo.
+- Phê duyệt baseline và quyền code M1 đã được ghi nhận ngày 13-09-2026. Quyền đó đã được kích hoạt cho M1; P0/P1 đã thực hiện, nhưng không mở quyền cho M2/M3/Phân hệ A.
 
 ### 1.1. Trạng thái cổng hiện hành
 
@@ -22,7 +22,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | PCC-026 | ✅ `CLOSED` | User đã đọc và chấp thuận baseline hiện hành |
 | PCC-027 | ✅ `CLOSED — M1 ONLY` | Quyền implementation chỉ áp dụng M1 |
 | ROADMAP-OPEN-002 | ✅ `CLOSED_FOR_M1_R1` | Version set đã chọn; compatibility chưa được chứng minh |
-| M1 | 🟡 `IN PROGRESS — P0 PASS, P1 NEXT` | M1 chưa PASS; G01/G04 chưa được thử |
+| M1 | 🟡 `IN PROGRESS — P0/P1 CORRECTION_REQUIRED; P2 BLOCKED BY DEPENDENCY` | M1 chưa PASS; G01/G04 chưa được thử |
 | G01 Temporal | ⬜ `NOT TESTED` | P2 chưa chạy; không có kết luận scoped hoặc toàn phần |
 | G04 Drive/OAuth | ⬜ `NOT TESTED` | P3 chưa chạy; không được thay external proof bằng mock |
 | ROADMAP-OPEN-003 | 🟡 `OPEN — BLOCKS M1-P3 ONLY` | Không chặn M1-P0/P1/P2; thiếu credential thật sẽ trả `BLOCKED_EXTERNAL` |
@@ -81,7 +81,7 @@ Nguồn có thẩm quyền: [charter](./00-project-charter.md), [product spec](.
 | PCC-024 | Có bảo vệ dữ liệu, secret và quan sát lỗi | [x] Có cleanup authorization, provenance, secret boundary và logging/monitoring tests. [storage](./09-contracts/10-storage-contracts.md), [security](./09-contracts/11-configuration-security-contracts.md), [10](./10-test-strategy.md). |
 | PCC-025 | Open item và giả định không bị coi là quyết định ngầm | [x] Open item có gate/owner theo tài liệu gốc; checklist không xác nhận thay user. Phân loại tại mục 5. |
 | PCC-026 | Người dùng đã đọc và chấp thuận bộ kế hoạch hiện hành | [x] User đã chấp thuận baseline 00–12, ADR, contracts, audit, roadmap và kế hoạch Phân hệ A sau khắc phục ngày 13-09-2026. |
-| PCC-027 | Người dùng cho phép bước qua ranh giới code | [x] Quyền implementation đã cấp **chỉ cho M1 Evidence Prototype**. Lượt này vẫn dừng trước code theo yêu cầu chờ lệnh tiếp theo; M2/M3/Phân hệ A chưa được phép. |
+| PCC-027 | Người dùng cho phép bước qua ranh giới code | [x] Quyền implementation đã cấp và đang được thực thi **chỉ cho M1 Evidence Prototype**. M2/M3/Phân hệ A chưa được phép. |
 | PCC-028 | Runtime/dependency/test-tool versions đã khóa trước test code đầu tiên | [x] `ROADMAP-OPEN-002=CLOSED_FOR_M1_R1`; version set và quy tắc revision/rollback ghi tại [M1-R1 lock](./milestones/m1-proof/version-lock.md). Không đồng nghĩa compatibility/G01/G04/G07 PASS. |
 
 ## 4. Xác nhận khắc phục audit
@@ -102,10 +102,10 @@ Audit gốc và hậu kiểm không được cộng số issue lịch sử thàn
 | Điều kiện | Trạng thái | Người thực hiện/xác nhận | Bằng chứng cần có |
 |---|---|---|---|
 | Chấp thuận bộ kế hoạch sau audit và M0 | HOÀN TẤT | User | Xác nhận ngày 13-09-2026; M0 APPROVED/CLOSED |
-| Cho phép implementation/proof | HOÀN TẤT CÓ PHẠM VI | User | Chỉ M1; không cho M2/M3/Phân hệ A. Việc thực thi đang chờ lệnh bắt đầu tiếp theo theo chỉ thị cuối |
+| Cho phép implementation/proof | HOÀN TẤT CÓ PHẠM VI | User | Chỉ M1; không cho M2/M3/Phân hệ A. M1-P0/P1 đã thực hiện theo lệnh ngày 13-09-2026 |
 | ROADMAP-OPEN-002: khóa versions cho work package có code đầu tiên | CLOSED_FOR_M1_R1 | User | [Version lock R1](./milestones/m1-proof/version-lock.md); lockfile/hash và binary evidence tạo tại P0/P5, không giả là proof đã đạt |
 
-Không còn câu hỏi blocking cần user trả lời trước M1-P0/P1/P2. Cổng M1 đã được cấp quyền về mặt quyết định; thao tác thực tế chưa bắt đầu vì user yêu cầu báo sẵn sàng và chờ lệnh tiếp theo. ROADMAP-OPEN-003 chỉ chặn trực tiếp M1-P3; do P3 là exit dependency nên thiếu credential thật sẽ làm M1 `BLOCKED_EXTERNAL`, nhưng không được dùng để chặn ngược P0/P1/P2.
+Không còn câu hỏi blocking cần user trả lời trước M1-P2. M1-P0/P1 đã PASS. ROADMAP-OPEN-003 chỉ chặn trực tiếp M1-P3; do P3 là exit dependency nên thiếu credential thật sẽ làm M1 `BLOCKED_EXTERNAL`, nhưng không được dùng để chặn ngược P2.
 
 ### 5.2. Không chặn hoàn tất checklist thiết kế, nhưng chặn milestone liên quan
 
@@ -123,7 +123,7 @@ Danh mục có thẩm quyền: [roadmap, mục 23](./11-roadmap.md), [contract o
 ## 6. Quy tắc mở cổng
 
 1. Ba điều kiện quyết định PCC-026/027/028 đã hoàn tất cho M1-R1.
-2. Chờ lệnh bắt đầu tiếp theo của user; sau đó chỉ được thực hiện M1-P0 → M1-P1 theo [M1 plan](./milestones/m1-proof/implementation-plan.md).
+2. Lệnh bắt đầu M1 đã được nhận; chỉ tiếp tục theo dependency của [M1 plan](./milestones/m1-proof/implementation-plan.md), hiện là M1-P2.
 3. P0 phải tạo lockfile, `bootstrap.json` và PostgreSQL preflight trước dòng test Python đầu tiên; dòng test đầu phải thuộc M1 proof và RED vì `environment.json` chưa được implementation tạo/hoàn thiện, không phải do import/setup lỗi.
 4. Không nhảy sang M2, M3 hoặc A1; implementation Phân hệ A chỉ sau M1 exit/audit/checkpoint và dependency M2 theo roadmap.
 5. Mỗi work package kết thúc phải ghi PASS/FAIL/BLOCKED_EXTERNAL/STOPPED cùng evidence. `RED_CONFIRMED` không phải FAIL; defect implementation dùng `CORRECTION_REQUIRED`. Chỉ mở ADR khi root-cause evidence phủ định quyết định kiến trúc, còn lỗi version cụ thể đi theo revision R2 trước.
@@ -140,8 +140,12 @@ Checklist không phải lệnh cài thư viện, khởi tạo framework, triển
 | Phạm vi work package được phép | M1-P0 → M1-P6 theo dependency; M1-P3 có thể BLOCKED_EXTERNAL. Chưa cho phép M2/M3/Phân hệ A |
 | Version set trước code | M1-R1 đã khóa; ROADMAP-OPEN-002=CLOSED_FOR_M1_R1 |
 | Thời điểm và thông điệp xác nhận | 13-09-2026; xác nhận trong yêu cầu làm rõ open case và lập kế hoạch M1 |
-| Trạng thái cổng hiện hành | M0 APPROVED; M1 READY TO START; G01/G04 NOT TESTED; M2 và M3/Module A NOT AUTHORIZED; chờ lệnh bắt đầu tiếp theo |
+| Trạng thái cổng hiện hành | M0 APPROVED; M1 IN PROGRESS — P0/P1 CORRECTION_REQUIRED; P2 BLOCKED BY DEPENDENCY; G01/G04 NOT TESTED; M2 và M3/Module A NOT AUTHORIZED |
 
 Trạng thái phê duyệt đã được đồng bộ vào roadmap và module plan. Nếu có sửa đổi đáng kể sau phê duyệt, xác định phần ảnh hưởng và kiểm toán lại trước khi dùng bản mới.
 
-**Kết luận:** Baseline thiết kế và version set M1-R1 đã được user chấp thuận; không còn câu hỏi blocking trước M1-P0. Quyền code chỉ giới hạn M1 và chưa được thực thi. Dự án chờ lệnh bắt đầu tiếp theo; khi có lệnh phải đi từ M1-P0 theo test-first, không tự mở milestone khác.
+**Kết luận:** Baseline thiết kế và version set M1-R1 đã được user chấp thuận; quyền code chỉ giới hạn M1. M1-P0/P1 đã PASS theo test-first và evidence; package tiếp theo là M1-P2. Không tự mở M2/M3/Phân hệ A.
+
+## Trạng thái sau audit M1 R1
+
+Audit ngày 13-09-2026 tại `docs/milestones/m1-proof/audit-r1.md` mở 3 BLOCKER và 5 MAJOR. P0/P1 hiện `CORRECTION_REQUIRED`; P2 chưa được bắt đầu vì dependency chưa đạt. Các kết luận PASS trước audit trong tài liệu này chỉ là lịch sử. Giữ nguyên evidence cũ; G01/G04 NOT TESTED và M2/M3/Module A NOT AUTHORIZED. Chưa sửa implementation trong lượt audit.

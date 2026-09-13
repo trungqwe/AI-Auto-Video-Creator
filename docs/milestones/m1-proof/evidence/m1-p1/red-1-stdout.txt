@@ -1,0 +1,53 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 3 items
+
+tests/m1/p1/test_command_semantics.py::test_duplicate_command_returns_same_receipt_and_one_mutation ERROR [ 33%]
+tests/m1/p1/test_command_semantics.py::test_reused_idempotency_key_with_different_payload_is_rejected ERROR [ 66%]
+tests/m1/p1/test_command_semantics.py::test_mutation_and_outbox_roll_back_together_at_crash_boundary ERROR [100%]
+
+=================================== ERRORS ====================================
+_ ERROR at setup of test_duplicate_command_returns_same_receipt_and_one_mutation _
+
+    @pytest.fixture(autouse=True)
+    def clean_database() -> None:
+>       assert SCHEMA_PATH.is_file(), "P1 PostgreSQL schema is not implemented"
+E       AssertionError: P1 PostgreSQL schema is not implemented
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/AI Auto Video Creator/sql/m1/p1_schema.sql').is_file
+
+tests\m1\p1\test_command_semantics.py:19: AssertionError
+_ ERROR at setup of test_reused_idempotency_key_with_different_payload_is_rejected _
+
+    @pytest.fixture(autouse=True)
+    def clean_database() -> None:
+>       assert SCHEMA_PATH.is_file(), "P1 PostgreSQL schema is not implemented"
+E       AssertionError: P1 PostgreSQL schema is not implemented
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/AI Auto Video Creator/sql/m1/p1_schema.sql').is_file
+
+tests\m1\p1\test_command_semantics.py:19: AssertionError
+_ ERROR at setup of test_mutation_and_outbox_roll_back_together_at_crash_boundary _
+
+    @pytest.fixture(autouse=True)
+    def clean_database() -> None:
+>       assert SCHEMA_PATH.is_file(), "P1 PostgreSQL schema is not implemented"
+E       AssertionError: P1 PostgreSQL schema is not implemented
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/AI Auto Video Creator/sql/m1/p1_schema.sql').is_file
+
+tests\m1\p1\test_command_semantics.py:19: AssertionError
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m1-proof\evidence\m1-p1\red-1-test-results.xml -
+=========================== short test summary info ===========================
+ERROR tests/m1/p1/test_command_semantics.py::test_duplicate_command_returns_same_receipt_and_one_mutation
+ERROR tests/m1/p1/test_command_semantics.py::test_reused_idempotency_key_with_different_payload_is_rejected
+ERROR tests/m1/p1/test_command_semantics.py::test_mutation_and_outbox_roll_back_together_at_crash_boundary
+============================== 3 errors in 0.16s ==============================
