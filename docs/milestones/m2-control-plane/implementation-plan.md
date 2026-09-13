@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 Plan ACCEPTED, Behavioral RED CORRECTION REQUIRED)
+**Trạng thái:** IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 Plan ACCEPTED, Behavioral RED CONFIRMED, P1 IMPLEMENT AUTHORIZED)
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** `M2-P1_BEHAVIORAL_RED_CORRECTION_REQUIRED`. Behavioral RED đã chạy trên PostgreSQL thật: exact 11 oracle được collect/chạy trong disposable database function-scoped, nhưng chỉ 5 failure hợp lệ và 6 failure dừng trước capability chuyên biệt tại structural stub chung. Chỉ structural stub/test/harness RED trong Allowed File Scope; không viết business/DB implementation P1, không sửa P0 implementation và không mở P2 cho tới khi independent audit chấp thuận correction và 11 RED hợp lệ được lưu evidence.
+**Điểm dừng bắt buộc hiện hành:** `M2-P1_RED_CONFIRMED`. Independent audit xác nhận exact 11 oracle đã chạy trên PostgreSQL 18.6 thật, 11/11 là Behavioral RED ở cấp package (5 direct-target, 6 upstream-path; 0 setup failure, 0 unexpected pass, 0 orphan database). Implementation P1 được ủy quyền trong Allowed File Scope theo `RED → IMPLEMENT → RUN → TEST → FIX → VERIFY → EVIDENCE → COMMIT`; không sửa P0 implementation và không mở P2. Điểm dừng tiếp theo sau GREEN/evidence hoàn chỉnh là `M2-P1_READY_FOR_REVIEW`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
