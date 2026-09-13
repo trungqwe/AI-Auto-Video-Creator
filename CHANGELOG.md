@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Added
 
+- Hoàn thành M1-P6 Evidence Synthesis & Audit: xây dựng manifest tổng hợp 75 artifacts với kiểm tra băm SHA-256 tự động, thực thi gate boundary engine ngăn chặn công bố PASS non-m1 scope, quét bảo mật fail-closed (0 credential/token rò rỉ), hoàn thiện 5 bài test-first (TST-M1-P6-001..005) và lập Báo cáo Kiểm toán Exit Gate `docs/milestones/m1-proof/audit-r2.md`.
 - Hoàn thành M1-P5 Compatibility Smoke: kiểm chứng tương thích thực tế tập phiên bản M1-R1 với 6 bài test-first (CPython 3.13.15, uv 0.12.13, khóa uv.lock frozen, PostgreSQL 18.6 rollback và lưu trữ UTF-8 tiếng Việt, Temporal SDK 1.32.0 handshake/replay, ranh giới client Google không leak secret khi thiếu credential, và binary FFmpeg thực tế C:\ffmpeg\bin\ffmpeg.exe probe an toàn với argument array).
 - Hoàn thành M1-P4 Local Journal & Recovery Proof: kiểm chứng SQLite local journal và atomic file writer trên Windows với 6 bài test-first (crash sau artifact complete trước gửi receipt resend operation, crash giữa chừng reject partial byte, lost ACK sau cloud commit reconcile receipt không lặp side effect, stale recovery epoch quarantine, cache eviction phân biệt với unsent journal active, và phát hiện missing/corrupt hash).
 - Hoàn thành M1-P3 Google Drive & OAuth G04 Proof: kiểm chứng Google Drive API v3 và OAuth 2.0 Installed App Flow với 8 bài test-first (pre-generated ID idempotency, resumable upload lost-ACK recovery, timeout classification & reconciliation routing, byte integrity & SHA-256 verification, resumable session reconciliation, OAuth lifecycle & ADR-0009 desktop boundaries, rate limit HTTP 429 bounded backoff và secret scanning trong logs/receipts).
@@ -22,8 +23,10 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Changed
 
+- Milestone M1 hoàn tất 100% (P0..P6 PASS, 74/74 automated tests, coverage 88%), chuyển trạng thái sang `READY_FOR_USER_CHECKPOINT`.
+- M1-P6 chuyển sang `PASS_M1_SCOPE`.
+- Cổng G07 chuyển sang `SMOKE_COMPATIBILITY_PASS_M1_SCOPE`.
 - M1-P5 chuyển sang `PASS_M1_SCOPE`.
-- P0/P1/P2/P3/P4/P5 đạt `PASS`, work package tiếp theo là M1-P6 (Evidence synthesis & Audit).
 - M1-P4 chuyển sang `PASS_M1_SCOPE`.
 - M1-P3 chuyển sang `PASS_M1_SCOPE`; Cổng G04 chuyển sang `PARTIALLY_PROVEN`.
 - ROADMAP-OPEN-003 chuyển sang `CLOSED_FOR_M1_P3`.

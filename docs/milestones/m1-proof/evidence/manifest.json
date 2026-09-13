@@ -1,0 +1,430 @@
+{
+  "schema_version": "1.0",
+  "milestone": "M1",
+  "version_lock": {
+    "revision": "M1-R1",
+    "uv_lock_sha256": "31bae731c8ec80e52fbd9a75b3969d0d556e7489f48fc13d151c0c0cfe4e9380"
+  },
+  "packages": {
+    "m1-p0": {
+      "status": "PASS",
+      "evidence_files": [
+        "artifacts.sha256",
+        "bootstrap.json",
+        "commands.jsonl",
+        "dependencies.json",
+        "environment.json",
+        "green-1-stdout.txt",
+        "green-1-test-results.xml",
+        "green-2-stdout.txt",
+        "green-2-test-results.xml",
+        "green-coverage-stdout.txt",
+        "green-final-stdout.txt",
+        "green-final-test-results.xml",
+        "p0-coverage.xml",
+        "red-2-stdout.txt",
+        "red-2-test-results.xml",
+        "red-3-stdout.txt",
+        "red-3-test-results.xml",
+        "red-stdout.txt",
+        "red-test-results.xml",
+        "status.md"
+      ]
+    },
+    "m1-p1": {
+      "status": "PASS",
+      "evidence_files": [
+        "artifacts.sha256",
+        "commands.jsonl",
+        "correction-1-stdout.txt",
+        "correction-1-test-results.xml",
+        "coverage.xml",
+        "environment.json",
+        "fault-timeline.md",
+        "final-test-results.xml",
+        "final-test-stdout.txt",
+        "green-1-stdout.txt",
+        "green-1-test-results.xml",
+        "green-2-stdout.txt",
+        "green-2-test-results.xml",
+        "green-3-stdout.txt",
+        "green-3-test-results.xml",
+        "green-4-stdout.txt",
+        "green-4-test-results.xml",
+        "postgresql-runtime.txt",
+        "red-1-stdout.txt",
+        "red-1-test-results.xml",
+        "red-1b-stdout.txt",
+        "red-1b-test-results.xml",
+        "red-2-stdout.txt",
+        "red-2-test-results.xml",
+        "red-3-stdout.txt",
+        "red-3-test-results.xml",
+        "red-4-stdout.txt",
+        "red-4-test-results.xml",
+        "regression-test-results.xml",
+        "regression-test-stdout.txt",
+        "repeat-test-results.xml",
+        "repeat-test-stdout.txt",
+        "schema-sha256.txt",
+        "secret-scan.md",
+        "source-sha256.txt",
+        "state-after-completion.txt",
+        "state-fixture-test-results.xml",
+        "status.md",
+        "trace-matrix.md"
+      ]
+    },
+    "m1-p2": {
+      "status": "PASS",
+      "evidence_files": [
+        "commands.jsonl",
+        "hashes.sha256",
+        "red-observations.md",
+        "status.md"
+      ]
+    },
+    "m1-p3": {
+      "status": "PASS",
+      "evidence_files": [
+        "commands.jsonl",
+        "hashes.sha256",
+        "red-observations.md",
+        "status.md"
+      ]
+    },
+    "m1-p4": {
+      "status": "PASS",
+      "evidence_files": [
+        "commands.jsonl",
+        "hashes.sha256",
+        "red-observations.md",
+        "status.md"
+      ]
+    },
+    "m1-p5": {
+      "status": "PASS",
+      "evidence_files": [
+        "commands.jsonl",
+        "hashes.sha256",
+        "red-observations.md",
+        "status.md"
+      ]
+    }
+  },
+  "gates": {
+    "G01": "PARTIALLY_PROVEN",
+    "G04": "PARTIALLY_PROVEN",
+    "G07": "SMOKE_COMPATIBILITY_PASS_M1_SCOPE"
+  },
+  "contracts_audited": [
+    "CT-CMN-001..013",
+    "CT-EVT-001..005",
+    "CT-WF-001..009",
+    "CT-STO-001..009",
+    "CT-STATE-001..012",
+    "ADR-0001..0011"
+  ],
+  "artifacts": [
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/artifacts.sha256",
+      "sha256": "5f623d032cbc2451d6b695a828f023cd99399bc4e783ed7f2f3a9d1b37e833f4"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/bootstrap.json",
+      "sha256": "826affa730facda542fb9df059db6c5bdefa14104bf26765792190bdc0773a0b"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/commands.jsonl",
+      "sha256": "ba7580be8ba35cddc8381c53574753b48b7e81e4ffbf77649edd11ee2fb142e4"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/dependencies.json",
+      "sha256": "a377225f3d2e4fb4bfba33d6bb30ccdab41b6b5baabb4f0a295d64317eeb27ba"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/environment.json",
+      "sha256": "7438579f51a3738b051dbd7d0c59acbd27b5454e7019d275be608bd7e5f8f8e5"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/green-1-stdout.txt",
+      "sha256": "fb1ab08d5401f686a262f32c3f289432295dd0c02ae63d962b39ac903ddd8b56"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/green-1-test-results.xml",
+      "sha256": "efe49593f18ce3176bf4d84fea03d5f4e70c8800363f5ba1df3e819b2d26143a"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/green-2-stdout.txt",
+      "sha256": "4df170e6e84b2f9ba79c5a1a1a5aca509f3ad9314c48532db6a8c3aeca83a750"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/green-2-test-results.xml",
+      "sha256": "10831f7ba84b3bc2ef520c1752e0f8d269eb6478c2d311a0b99f62ee856ddffe"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/green-coverage-stdout.txt",
+      "sha256": "ebad043d964f08ef9c9bcb4d164f639b4edf7c47245f08a80694781fb3950104"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/green-final-stdout.txt",
+      "sha256": "1e4d54f0af1a7b268984ada2b57765e97f22dc01d3afbd845244f5a29fc3e894"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/green-final-test-results.xml",
+      "sha256": "687533234850a59b0175009d5b1773569c5500e90e7a7de35a179cdfa3ccfa17"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/p0-coverage.xml",
+      "sha256": "3cb813ae87dac95196a1f41235bb6f8f73e9aa31d4860faf2c6367a661f7a5ce"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/red-2-stdout.txt",
+      "sha256": "325c0c8b7021b5713006e293f0243e8676aefad6d965a8d1e6a151a6190a962e"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/red-2-test-results.xml",
+      "sha256": "cbc066981d767ff6094ad01d193617679c4e93e1d899a9f39123057c69d791a6"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/red-3-stdout.txt",
+      "sha256": "f09d3698cd80a70429dbfdd9388352720b5dfcc7a4a0b564c59ac85e47ad64e8"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/red-3-test-results.xml",
+      "sha256": "b6c74abc44d42b78cc8338eba04ca61db9ca3c1323963b805daf36af7d6d0c57"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/red-stdout.txt",
+      "sha256": "7c036edbbb5964e3f611b85c32f737505e6930e5d02f7d7a527893da57aedb87"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/red-test-results.xml",
+      "sha256": "9f00e10ea0691bc8cc4c11f1fbe57666bae36f164da0b1af49fc6275a5019f2c"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p0/status.md",
+      "sha256": "2cb1bccaee8d324ec1f9a2c4ca5dd8fbfc5fdd54bb59e77ffd75806d86d2aa0a"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/artifacts.sha256",
+      "sha256": "b2f20998123be9f69463b693114e84eadbfb89b9e971d0a41821c337fbcea9e6"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/commands.jsonl",
+      "sha256": "264895a9992cc4fad8f6262fa579cadc3de3e88a9d0eb8d370335ad3a819f9a0"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/correction-1-stdout.txt",
+      "sha256": "5152da4cf07063df2b0162f93817121e5fb4a10519693126b1a57b64c7edfe12"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/correction-1-test-results.xml",
+      "sha256": "f96586625803eacf13b798ca479bb4963012e4d5c0e9e46214eb564484bcb2c2"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/coverage.xml",
+      "sha256": "d2b75f6c02fd1333b652a6ae78e8c3f4c05c06019b8ecc17b29e6a261882c8ac"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/environment.json",
+      "sha256": "8b954c356c4d93bb51104ceb51315e7085be1f9fe3b36ebc0709514c8263c8cf"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/fault-timeline.md",
+      "sha256": "74bd8891bc353bf018cf857e21c8d45ad8a0cc5b7370ff4c631b56324eb6bd67"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/final-test-results.xml",
+      "sha256": "1310fcf074c01538850846151604a5cb65c2fe903c2a09aeac4108e2c55a5d6f"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/final-test-stdout.txt",
+      "sha256": "10311a95e3392c17cc214fb306d91293fe94c4f1f47a193923d2b121328d1461"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/green-1-stdout.txt",
+      "sha256": "fbd8bd94ddea9fa9d603958642a1ab682469d0e1e1fb35fb44a3a4eff9c67367"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/green-1-test-results.xml",
+      "sha256": "837943590cf7108e9a23da0e39c8938e34a1dd69a0661f383297f2c9f6a5d618"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/green-2-stdout.txt",
+      "sha256": "5c82709996c11a3695c0db660b6c0152f6ff9fc61e9c83b80f69a5557d42aec8"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/green-2-test-results.xml",
+      "sha256": "8eb6cc4f53af5e839456bca37f09ac81695884fd460685dca3dc13d550990a5f"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/green-3-stdout.txt",
+      "sha256": "f5a91dcd538c2aadd173201b8a70a2733f8a9830748e012926ed454c02e77e25"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/green-3-test-results.xml",
+      "sha256": "4535f757646c0348ba9e66b7fdd9e766a66703f23388cf809cbeb2bb8cfcaeaf"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/green-4-stdout.txt",
+      "sha256": "1027091e0fcfce216b76fd68334c47a35dbaaa47e9a3331b4274d722fe88a854"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/green-4-test-results.xml",
+      "sha256": "b57f13a6fb8b45cb5f85fa4921b79389ed1965bd540ff18c52fbcaac2f41c732"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/postgresql-runtime.txt",
+      "sha256": "382dd3c0f8cdc21c74078af86ebe5a73d8f41f45a1e4005f77408fae684e1349"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/red-1-stdout.txt",
+      "sha256": "00a99fa89516297fc406384a4e67e9886d54ae2b175ab57a9f95c6d539e67ebf"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/red-1-test-results.xml",
+      "sha256": "cb9a6b3675efdc632fe7e83b33637a8623b6712ac8f1ff3e2a6b383e638c48ea"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/red-1b-stdout.txt",
+      "sha256": "5b10c4d23d8a443eb9610d1d9b1042e27d306a3859f92b3c7143a1399b3cda48"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/red-1b-test-results.xml",
+      "sha256": "f16cdb23ab611ecb5941fa0a08020c10b357df91562a09b955ce283f8f0e212f"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/red-2-stdout.txt",
+      "sha256": "5b65c1ad1ca19159a6bac1333fe4ed11c8844934943a33e4efa8c251d360da72"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/red-2-test-results.xml",
+      "sha256": "e2d5ce6597a40c162d08908f79d646597697cd32f8d8cf8cfed1cb4c5278ffa1"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/red-3-stdout.txt",
+      "sha256": "8aac90e9647e5904b2d4129bdbebf38c5473e65d3c4780babcc9d704e21fac1b"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/red-3-test-results.xml",
+      "sha256": "f0dd24073b3d8ad5dedd9700f328429e2cd3186cab55f94bb510b45711e11812"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/red-4-stdout.txt",
+      "sha256": "85abe10daacafdf613d3b222d2784d73e0793f5eef779eca5c1506d10df6235b"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/red-4-test-results.xml",
+      "sha256": "949dd36508363d4dd721292be494900f9316657dfd218f552f8f14518008ada0"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/regression-test-results.xml",
+      "sha256": "dc301ac4fcb2732839e5b6d14e7f872583226582f7061fa0a68adf0e39350047"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/regression-test-stdout.txt",
+      "sha256": "a1c4a54f22b237541f53926956a717d12b30a405605a15437c922b6c72c2c334"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/repeat-test-results.xml",
+      "sha256": "858aadac2578054df11e2e52629b7cf92f79fac2e1ae25d5219f055d8472c641"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/repeat-test-stdout.txt",
+      "sha256": "cca48d254e4f0c7d6d522b78d1e949ab3d492c7ac57304ecdee91923ed63664a"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/schema-sha256.txt",
+      "sha256": "642033e6cdf8c6d0a0107e4b5191ffab440ab6fb433068e3c26fcaccfefbaaeb"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/secret-scan.md",
+      "sha256": "7bf5d0b38d93e07bf85874bbbd791fb2df998d3227e1fa8f02869c6db5d5d3d4"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/source-sha256.txt",
+      "sha256": "fea75008ce3b6c8c82e46ecf516dbcb6650ed0e2bc7895028b12ffe9ff40a451"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/state-after-completion.txt",
+      "sha256": "4d58cd59e3f4690a96365e3bd0919cf16c886b55fdd1d13e5e54dff62118ee69"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/state-fixture-test-results.xml",
+      "sha256": "9557a02b8242e2efba8eacd0d9da77aa4166088f794d3e9092c81ddd0f3df917"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/status.md",
+      "sha256": "538fc7a415a2b58d761adaf679a7d2a7657611eaecee6c8fec5fb2941e6e8c00"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p1/trace-matrix.md",
+      "sha256": "309abd34068c4d46706bd77c30d8c71a5227cd2bc25b48a404a2e89cf5c5a164"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p2/commands.jsonl",
+      "sha256": "6307e5440347968f8ceaef1c08e3cf43a5c00262b130426d7fd28ceea8a8d996"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p2/hashes.sha256",
+      "sha256": "297f555634498fe1bceae3bd836776cb7f9c4509bd32d9f37694150236e7ee97"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p2/red-observations.md",
+      "sha256": "e18313889a004c51bebb6f56d9e1b5a8d4238663236ba9e2ccf0a3dc20de7b29"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p2/status.md",
+      "sha256": "2db696b26959d05f91ff59ef45dc270179a15255f6aa7afecff985a25ff3f672"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p3/commands.jsonl",
+      "sha256": "bd1a661d5b582832a07d13d8fc1c15096944c628c3bb14bc333e123a6bc2eefd"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p3/hashes.sha256",
+      "sha256": "630d4141ee21289d74a196e6350bd37fc07b87f1a5821acd7ca6b8f3ad1709fd"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p3/red-observations.md",
+      "sha256": "3ee4f65a189081e075ed547c9a1814a83cf20c37af1ce444e2ccb8d4af4126d0"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p3/status.md",
+      "sha256": "2f75674cc14013338177758df19e99fa13ee04dffab1a996510be176f6d60f56"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p4/commands.jsonl",
+      "sha256": "f6b512e97ed886057a9bb54540cd26503c44fc0dc9b3761fa84ad18cb58b76c6"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p4/hashes.sha256",
+      "sha256": "3dfef07d553a62578f68fdff2b310e18d54f2d6caefc3507c6bd390a947299b2"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p4/red-observations.md",
+      "sha256": "4541671cb456332043448ff11520b691269e21f63d516566d515c6ada28d3be6"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p4/status.md",
+      "sha256": "09cf514fa9754dbebfcb98ffd2ae42f1a4c40762e8414e7ff7b7325282ee19ef"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p5/commands.jsonl",
+      "sha256": "c80326547a7eefe5394ef6adc7ccbecdd7b76d94b8badf404a9240426729fa07"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p5/hashes.sha256",
+      "sha256": "8122aec8a38ee175947785540d41230274b662b86654dcf8658974465275a4c0"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p5/red-observations.md",
+      "sha256": "411d3705e262bbe8ef5468271ba84ae7bee0f735310e190601da16bdc685479e"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p5/status.md",
+      "sha256": "a2c1a1a8068491c14df80351933c7dc8e7ed4edb359c54076d149c46cfae658c"
+    }
+  ]
+}
