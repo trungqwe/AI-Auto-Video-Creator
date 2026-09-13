@@ -174,4 +174,15 @@ Sau các đợt re-audit độc lập R4, R5 và R5.1 (HEAD commit `08c857c`), t
 - **Milestone M2**: `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` (bắt đầu chu trình chuẩn bị SPEC và PLAN).
 - **Milestone M3 và Phân hệ A**: Tiếp tục duy trì trạng thái `NOT AUTHORIZED` (khóa chặt cho tới khi M2 hoàn tất exit gate và có User Checkpoint riêng).
 
+## Trạng thái sau Hoàn tất Milestone M2-P0 (13-09-2026)
+
+M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules) đã hoàn tất 100% và sẵn sàng nghiệm thu tại trạng thái `M2-P0_READY_FOR_REVIEW`:
+- **Backend & Frontend Toolchain Lock**: Khóa chính xác 100% dependencies (FastAPI 0.141.1 native SSE >= 0.135.0, Uvicorn 0.52.4, HTTPX 0.28.1, psycopg-pool 3.3.1, Pydantic 2.13.5; Node v22.17.0 LTS, npm 10.9.2, React 18.3.1, AG Grid Community 32.3.9 v32-lts, Vite 6.2.0, Playwright 1.50.1). Duy nhất một frontend package universe tại `src/controlplane/ui/package.json`. Không có floating version (`^`, `~`, `latest`).
+- **Production Packaging Strategy**: Standard package PEP 517/621 tại `src/controlplane/pyproject.toml`, entrypoint `controlplane.entrypoint:main`, workspace connection qua `controlplane.pth`. Kiểm chứng import sạch từ subprocess độc lập, 0 sys.path hacks.
+- **AST Architecture Boundary Validator**: Bộ kiểm tra AST `ast_checker.py` xác nhận 0 vi phạm ranh giới trên toàn bộ `src/controlplane`, bảo vệ nghiêm ngặt Domain Purity và chặn triệt để việc import `m1proof`.
+- **Evidence Validator & Hash DAG**: Thẩm quyền machine authority duy nhất tại `status.json` (schema `m2_package_status_v1`), DAG `hashes.sha256` loại trừ chính nó, cơ chế kiểm tra gate fail-closed đã được chứng minh qua 18 automated tests.
+- **M1 Regression Guard**: 93/93 tests M1 tiếp tục PASS 100% (0 failed, 0 skipped).
+- **Secret Leak Scan**: 0 phát hiện nhạy cảm trên toàn bộ mã nguồn và bằng chứng.
+
+
 

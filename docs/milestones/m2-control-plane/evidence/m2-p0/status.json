@@ -1,0 +1,70 @@
+{
+  "schema_version": "m2_package_status_v1",
+  "milestone": "M2",
+  "package": "M2-P0",
+  "package_name": "Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules",
+  "status": "READY_FOR_REVIEW",
+  "timestamp_utc": "2026-09-13T11:37:00Z",
+  "gates": [
+    {
+      "gate_id": "GATE-P0-01",
+      "name": "Toolchain Exact Lock (Backend & Frontend)",
+      "status": "PASS",
+      "evidence_files": [
+        "capability_toolchain.json",
+        "commands.jsonl"
+      ]
+    },
+    {
+      "gate_id": "GATE-P0-02",
+      "name": "Production Packaging & Import Strategy Without Syspath Hack",
+      "status": "PASS",
+      "evidence_files": [
+        "commands.jsonl",
+        "p0-test-report.txt"
+      ]
+    },
+    {
+      "gate_id": "GATE-P0-03",
+      "name": "AST Architecture Boundaries & Pure Domain Isolation",
+      "status": "PASS",
+      "evidence_files": [
+        "p0-test-report.txt",
+        "red-observations.md"
+      ]
+    },
+    {
+      "gate_id": "GATE-P0-04",
+      "name": "Evidence Validator & Non-Self-Referential Hash DAG",
+      "status": "PASS",
+      "evidence_files": [
+        "p0-test-report.txt",
+        "red-observations.md"
+      ]
+    },
+    {
+      "gate_id": "GATE-P0-05",
+      "name": "Milestone M1 Regression Suite (93/93 Passed)",
+      "status": "PASS",
+      "evidence_files": [
+        "m1-regression-report.txt",
+        "commands.jsonl"
+      ]
+    }
+  ],
+  "evidence_summary": {
+    "m2_p0_tests": {
+      "total": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    "m1_regression_tests": {
+      "total": 93,
+      "passed": 93,
+      "failed": 0,
+      "skipped": 0
+    },
+    "secret_scan_violations": 0
+  }
+}

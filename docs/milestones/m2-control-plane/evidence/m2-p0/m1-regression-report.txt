@@ -1,0 +1,39 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 93 items
+
+tests\m1\p0\test_environment_capture.py ..                               [  2%]
+tests\m1\p0\test_environment_live_probe.py ...                           [  5%]
+tests\m1\p0\test_environment_manifest.py ..                              [  7%]
+tests\m1\p0\test_environment_validation.py ...                           [ 10%]
+tests\m1\p1\test_activity_receipts_v2.py ..                              [ 12%]
+tests\m1\p1\test_command_semantics.py .....                              [ 18%]
+tests\m1\p1\test_completion_admission.py .                               [ 19%]
+tests\m1\p1\test_completion_uow.py ........                              [ 27%]
+tests\m1\p1\test_epoch_authority.py ..                                   [ 30%]
+tests\m1\p1\test_operation_receipts_v2.py ...                            [ 33%]
+tests\m1\p1\test_outbox_delivery.py .                                    [ 34%]
+tests\m1\p1\test_recovery_semantics.py ......                            [ 40%]
+tests\m1\p1\test_remediation_migration.py .                              [ 41%]
+tests\m1\p1\test_sensitive_boundaries.py ...                             [ 45%]
+tests\m1\p2\test_activity_idempotency.py ..                              [ 47%]
+tests\m1\p2\test_child_isolation.py .                                    [ 48%]
+tests\m1\p2\test_exact_temporal_server_integration.py ...                [ 51%]
+tests\m1\p2\test_reconciliation_routing.py .                             [ 52%]
+tests\m1\p2\test_replay_versioning.py .                                  [ 53%]
+tests\m1\p2\test_temporal_payload_boundaries.py .                        [ 54%]
+tests\m1\p2\test_worker_lifecycle.py .                                   [ 55%]
+tests\m1\p3\test_drive_integrity.py ..                                   [ 58%]
+tests\m1\p3\test_drive_live_probe.py .                                   [ 59%]
+tests\m1\p3\test_drive_resumable_upload.py ..                            [ 61%]
+tests\m1\p3\test_oauth_lifecycle.py ...........                          [ 73%]
+tests\m1\p4\test_journal_crash_recovery.py ...                           [ 76%]
+tests\m1\p4\test_journal_epoch_and_cleanup.py ...                        [ 79%]
+tests\m1\p5\test_compatibility_smoke.py .........                        [ 89%]
+tests\m1\p6\test_evidence_audit.py ..........                            [100%]
+
+====================== 93 passed, 58 warnings in 46.56s =======================

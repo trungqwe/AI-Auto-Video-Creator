@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "controlplane"
+version = "0.2.0"
+description = "Control Plane for AI Auto Video Creator (Milestone M2)"
+readme = "README.md"
+requires-python = "==3.13.15"
+dependencies = [
+    "fastapi==0.141.1",
+    "uvicorn==0.52.4",
+    "httpx==0.28.1",
+    "pydantic==2.13.5",
+    "psycopg[binary,pool]==3.3.5",
+]
+
+[project.scripts]
+controlplane = "controlplane.entrypoint:main"
+
+[tool.setuptools.package-dir]
+"controlplane" = "."
+"controlplane.domain" = "domain"
+"controlplane.domain.interfaces" = "domain/interfaces"
+"controlplane.infrastructure" = "infrastructure"
+"controlplane.infrastructure.evidence" = "infrastructure/evidence"
+"controlplane.infrastructure.security" = "infrastructure/security"
+
+[tool.setuptools]
+packages = [
+    "controlplane",
+    "controlplane.domain",
+    "controlplane.domain.interfaces",
+    "controlplane.infrastructure",
+    "controlplane.infrastructure.evidence",
+    "controlplane.infrastructure.security",
+]

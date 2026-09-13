@@ -1,0 +1,82 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 18 items
+
+tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_ast_boundary_rules_clean_codebase PASSED [  5%]
+tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_domain_rejects_fastapi_import PASSED [ 11%]
+tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_domain_rejects_psycopg_import PASSED [ 16%]
+tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_rejects_m1proof_prototype_import PASSED [ 22%]
+tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_domain_rejects_outer_layer_import PASSED [ 27%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_evidence_validator_accepts_valid_package PASSED [ 33%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_evidence_validator_rejects_tampered_hash PASSED [ 38%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_evidence_validator_rejects_self_referential_hash PASSED [ 44%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_evidence_validator_rejects_schema_mismatch PASSED [ 50%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_evidence_validator_rejects_failing_gate_with_pass_status PASSED [ 55%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_evidence_validator_rejects_untracked_extra_file PASSED [ 61%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_live_p0_evidence_is_valid FAILED [ 66%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_003_controlplane_import_without_syspath_hack PASSED [ 72%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_003_no_syspath_hacks_in_controlplane_source PASSED [ 77%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_003_subprocess_clean_import PASSED [ 83%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_003_pyproject_metadata PASSED [ 88%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_004_frontend_toolchain_exact_pins PASSED [ 94%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_005_skeleton_interfaces_raise_not_implemented PASSED [100%]
+
+================================== FAILURES ===================================
+________________ test_tst_m2_p0_002_live_p0_evidence_is_valid _________________
+
+    def test_tst_m2_p0_002_live_p0_evidence_is_valid() -> None:
+        """Positive test: live M2-P0 evidence package is fully verified and authoritative."""
+        repo_root = Path(__file__).parents[2]
+        live_p0_evidence = repo_root / "docs" / "milestones" / "m2-control-plane" / "evidence" / "m2-p0"
+>       report = validate_package_evidence(live_p0_evidence)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p0_evidence_validator.py:165: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+package_evidence_dir = WindowsPath('D:/AI Auto Video Creator/docs/milestones/m2-control-plane/evidence/m2-p0')
+
+    def validate_package_evidence(package_evidence_dir: Path) -> PackageEvidenceReport:
+        """Validate a package evidence directory fail-closed.
+    
+        Checks:
+        1. status.json schema and validity.
+        2. hashes.sha256 exists and contains no self-referential hash.
+        3. Every file listed in hashes.sha256 exists and matches expected SHA-256.
+        4. Every file on disk in package_evidence_dir (except hashes.sha256) is accounted for in hashes.sha256.
+        5. All declared gate evidence files exist and are verified.
+        6. If status is PASS or READY_FOR_REVIEW, all gates must be PASS.
+        """
+        if not package_evidence_dir.is_dir():
+            raise EvidenceValidationError(f"Evidence directory does not exist: {package_evidence_dir}")
+    
+        status_path = package_evidence_dir / STATUS_JSON_FILENAME
+        status_data = validate_status_json(status_path)
+    
+        hash_path = package_evidence_dir / HASH_FILENAME
+        expected_hashes = parse_hashes_sha256(hash_path)
+    
+        # Verify all expected files match on disk
+        verified_files: list[str] = []
+        for rel_filename, expected_digest in expected_hashes.items():
+            file_path = package_evidence_dir / rel_filename
+            if not file_path.is_file():
+                raise EvidenceValidationError(
+                    f"Evidence file declared in {HASH_FILENAME} missing on disk: {rel_filename}"
+                )
+            actual_digest = sha256_file(file_path).lower()
+            if actual_digest != expected_digest:
+>               raise EvidenceValidationError(
+                    f"Hash mismatch for '{rel_filename}': expected {expected_digest}, got {actual_digest}"
+                )
+E               controlplane.infrastructure.evidence.validator.EvidenceValidationError: Hash mismatch for 'p0-test-report.txt': expected e5b62e49ff08f5d73a3942f3902a344dc04dc6f30d515f84e7df8cbaf52ce057, got a32403b70bc6eb3bc32b92efeecf96ddf109d6c753da82441f69148d45f36fe1
+
+src\controlplane\infrastructure\evidence\validator.py:171: EvidenceValidationError
+=========================== short test summary info ===========================
+FAILED tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_live_p0_evidence_is_valid
+======================== 1 failed, 17 passed in 0.14s =========================

@@ -1,0 +1,58 @@
+{
+  "schema_version": "m2_capability_toolchain_v1",
+  "milestone": "M2",
+  "package": "M2-P0",
+  "timestamp_utc": "2026-09-13T11:36:00Z",
+  "runtime_environment": {
+    "python": {
+      "version": "3.13.15",
+      "executable": "D:\\AI Auto Video Creator\\.venv\\Scripts\\python.exe"
+    },
+    "node": {
+      "version": "v22.17.0",
+      "channel": "Maintenance LTS",
+      "selection_rationale": "Verified native on workstation; 100% compatible with Vite 6.2, React 18.3, AG Grid 32.3.9, Playwright 1.50 without v8 drift or deprecations."
+    },
+    "npm": {
+      "version": "10.9.2",
+      "scope": "src/controlplane/ui/package-lock.json"
+    },
+    "uv": {
+      "version": "0.12.13",
+      "executable": "C:\\Users\\Admin\\AppData\\Roaming\\Python\\Python313\\Scripts\\uv.exe"
+    }
+  },
+  "backend_dependencies": {
+    "packaging_strategy": "PEP 517/621 standard package via src/controlplane/pyproject.toml; entrypoint controlplane.entrypoint:main; .pth workspace link; zero sys.path hacks",
+    "exact_locks": {
+      "fastapi": "0.141.1",
+      "uvicorn": "0.52.4",
+      "httpx": "0.28.1",
+      "pydantic": "2.13.5",
+      "psycopg": "3.3.5",
+      "psycopg-binary": "3.3.5",
+      "psycopg-pool": "3.3.1",
+      "temporalio": "1.32.0",
+      "google-api-python-client": "2.200.0",
+      "google-auth-oauthlib": "1.4.1",
+      "pytest": "9.1.1",
+      "pytest-asyncio": "1.4.0",
+      "pytest-cov": "7.1.0"
+    }
+  },
+  "frontend_dependencies": {
+    "package_universe": "src/controlplane/ui/package.json",
+    "exact_locks": {
+      "react": "18.3.1",
+      "react-dom": "18.3.1",
+      "ag-grid-community": "32.3.9",
+      "ag-grid-react": "32.3.9",
+      "typescript": "5.7.3",
+      "vite": "6.2.0",
+      "@vitejs/plugin-react": "4.3.4",
+      "@types/react": "18.3.18",
+      "@types/react-dom": "18.3.5",
+      "@playwright/test": "1.50.1"
+    }
+  }
+}

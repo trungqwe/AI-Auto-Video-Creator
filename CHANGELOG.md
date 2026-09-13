@@ -6,6 +6,17 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Added
 
+- Hoàn tất Milestone M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules) (13-09-2026):
+  - Khóa chính xác 100% Toolchain Backend (FastAPI 0.141.1 hỗ trợ native SSE >= 0.135.0, Uvicorn 0.52.4, HTTPX 0.28.1, psycopg-pool 3.3.1, Pydantic 2.13.5, CPython 3.13.15) và Frontend (Node v22.17.0 LTS, npm 10.9.2, React 18.3.1, AG Grid Community 32.3.9 v32-lts, TypeScript 5.7.3, Vite 6.2.0, Playwright 1.50.1). Duy nhất một frontend package universe tại `src/controlplane/ui/package.json` và `package-lock.json`. Tuyệt đối không floating versions.
+  - Thiết lập Production Packaging Strategy: Chuẩn hóa package PEP 517/621 tại `src/controlplane/pyproject.toml`, CLI entrypoint `controlplane.entrypoint:main`, liên kết workspace qua `controlplane.pth`. Kiểm chứng import thành công từ subprocess độc lập, cam kết 0 sys.path hacks.
+  - Triển khai AST Architecture Boundary Validator (`ast_checker.py`): Kiểm tra tĩnh cây cú pháp trừu tượng, xác nhận 0 vi phạm trên toàn bộ `src/controlplane`, bảo vệ nghiêm ngặt Domain Purity (cấm mọi framework ngoài trong domain layer) và ngăn chặn triệt để import prototype `m1proof`.
+  - Triển khai Evidence Validator (`validator.py`) & Hash DAG: Khóa thẩm quyền machine authority duy nhất tại `status.json` (schema `m2_package_status_v1`), DAG `hashes.sha256` loại trừ chính nó (chống hash tự tham chiếu), cơ chế kiểm tra gate fail-closed được kiểm chứng qua 18 bài automated tests.
+  - Khởi tạo Skeleton Interfaces thuần túy (`IUnitOfWork`, `IRepository`, `IStateMachine`, `IOutboxWriter`, `ISecretVault`) ném `NotImplementedError` phục vụ behavioral RED bắt buộc từ P1 trở đi.
+  - Bảo toàn 100% Milestone M1 regression suite: 93/93 tests M1 PASSED (0 skipped, 0 failed).
+  - Quét an toàn thông tin: 0 phát hiện rò rỉ token, password hay private key.
+  - Tạo trọn vẹn thư mục bằng chứng `docs/milestones/m2-control-plane/evidence/m2-p0/` và đạt trạng thái `READY_FOR_REVIEW`.
+
+
 - Phê duyệt User Checkpoint Milestone M1 và kích hoạt Milestone M2 (13-09-2026):
   - Milestone M1 chính thức chuyển sang `ACCEPTED / CLOSED`: Người dùng phê duyệt toàn bộ kết quả kiểm chứng thực nghiệm P0..P6 (93/93 tests passed, 0 skipped, coverage 83%), Báo cáo Kiểm toán Exit Gate `docs/milestones/m1-proof/audit-r5.md` (kèm R5.1 Addendum); G01 và G04 giữ `PARTIALLY_PROVEN (PASS_M1_SCOPE)`; G07 giữ `SMOKE_COMPATIBILITY_PASS_M1_SCOPE`; ghi nhận limitation DPAPI trên một Windows user; giữ nguyên toàn bộ Audit R1–R5/R5.1 và evidence lịch sử.
   - Milestone M2 chính thức chuyển sang `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION`: Khởi động giai đoạn xây dựng M2 Control Plane và nền tảng có thể quan sát (PostgreSQL business state, transactional outbox/idempotency, state machines, J config/secret, I artifact metadata, G orchestration shell, H admin API & SSE stream) theo quy trình `SPEC → PLAN → RED → IMPLEMENT → RUN → TEST → FIX → VERIFY → EVIDENCE → COMMIT`.
