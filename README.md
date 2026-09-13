@@ -14,7 +14,7 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | M2 | `NOT AUTHORIZED` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
-Toàn bộ các work package M1 (`M1-P0 → M1-P6`) đã hoàn thành và đạt PASS 100% sau khi khắc phục triệt để các phát hiện kiểm toán độc lập R4. Tổng cộng **87 passed, 0 skipped** (coverage 87%), 83 artifacts có hash toàn vẹn trong manifest, 0 secret rò rỉ, và Báo cáo Kiểm toán Exit Gate `docs/milestones/m1-proof/audit-r4.md` đã hoàn tất. Milestone M1 hiện đang ở trạng thái `READY_FOR_USER_CHECKPOINT`. Không được bắt đầu M2, M3 hoặc Phân hệ A trước khi người dùng xác nhận phê duyệt checkpoint M1.
+To toàn bộ các work package M1 (`M1-P0 → M1-P6`) đã hoàn thành và đạt PASS 100% sau khi khắc phục triệt để các phát hiện kiểm toán độc lập R5. Tổng cộng **91 passed, 0 skipped** (coverage 85%), 84 artifacts có hash toàn vẹn trong manifest, 0 secret rò rỉ, và Báo cáo Kiểm toán Exit Gate `docs/milestones/m1-proof/audit-r5.md` đã hoàn tất. Milestone M1 hiện đang ở trạng thái `READY_FOR_USER_CHECKPOINT`. Không được bắt đầu M2, M3 hoặc Phân hệ A trước khi người dùng xác nhận phê duyệt checkpoint M1.
 
 ## Bắt đầu một phiên làm việc
 
@@ -54,6 +54,6 @@ Chỉ đọc sâu contracts/ADR được work package hiện tại trích dẫn;
 
 Remote chính: <https://github.com/trungqwe/AI-Auto-Video-Creator>
 
-## Trạng thái sau M1-P6 & Hoàn thành Khắc phục Kiểm toán Độc lập (Audit R4)
-M1-P0 đến M1-P6 đã hoàn tất `PASS` toàn bộ **87 passed, 0 skipped** tests. G01 và G04 đều đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)` (với bằng chứng tích hợp exact `temporal-server.exe` 1.31.2 binary qua gRPC 7233 và ADR-0009 Cloud Token Broker HTTP process boundary, 0 refresh token trên desktop disk, live E3 verification trên Google Drive thật) và G07 đạt `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` (strict equality + dynamic matrix observation + ffprobe WAV duration) với đầy đủ bằng chứng, nhật ký thực thi, hash SHA-256 và Báo cáo Kiểm toán `docs/milestones/m1-proof/audit-r4.md`. Milestone M1 sẵn sàng cho User Checkpoint (`READY_FOR_USER_CHECKPOINT`); M2/M3/Module A tiếp tục bị khóa (`NOT AUTHORIZED`) theo quy định.
+## Trạng thái sau M1-P6 & Hoàn thành Khắc phục Kiểm toán Độc lập (Audit R5)
+M1-P0 đến M1-P6 đã hoàn tất `PASS` toàn bộ **91 passed, 0 skipped** tests. G01 và G04 đều đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)` (với bằng chứng tích hợp exact `temporal-server.exe` 1.31.2 binary qua gRPC 7233, ADR-0009 Subprocess Broker OS isolation, kho mã hóa Windows DPAPI native, 0 refresh token trên desktop disk, live E3 verification trên Google Drive thật) và G07 đạt `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` (strict equality + fail-closed dynamic matrix observation + ffprobe WAV duration) với đầy đủ bằng chứng, nhật ký thực thi, hash SHA-256 và Báo cáo Kiểm toán `docs/milestones/m1-proof/audit-r5.md`. Milestone M1 sẵn sàng cho User Checkpoint (`READY_FOR_USER_CHECKPOINT`); M2/M3/Module A tiếp tục bị khóa (`NOT AUTHORIZED`) theo quy định.
 

@@ -1,0 +1,145 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 28 items / 21 deselected / 7 selected
+
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_005_token_lifecycle_and_adr0009_desktop_boundary PASSED [ 14%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_008_adr0009_token_placement_and_desktop_disk_audit PASSED [ 28%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_009_desktop_refresh_delegation_to_broker PASSED [ 42%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_013_broker_subprocess_isolation FAILED [ 57%]
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_014_dpapi_encrypted_vault FAILED [ 71%]
+tests/m1/p5/test_compatibility_smoke.py::test_tst_m1_p5_009_fail_closed_compatibility_matrix FAILED [ 85%]
+tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_009_semantic_capability_validation FAILED [100%]
+
+================================== FAILURES ===================================
+_______________ test_tst_m1_p3_013_broker_subprocess_isolation ________________
+
+tmp_path = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-145/test_tst_m1_p3_013_broker_subp0')
+
+    def test_tst_m1_p3_013_broker_subprocess_isolation(tmp_path: Path):
+        """TST-M1-P3-013 (R5-01):
+        Broker ch\u1ea1y d\u01b0\u1edbi d\u1ea1ng ti\u1ebfn tr\xecnh \u0111\u1ed9c l\u1eadp (subprocess) v\u1edbi PID ri\xeang bi\u1ec7t.
+        Desktop client ch\u1ec9 bi\u1ebft URL/API; kh\xf4ng import/truy c\u1eadp \u0111\u1ed1i t\u01b0\u1ee3ng broker.
+        X\xe1c nh\u1eadn broker_pid != desktop_pid.
+        X\xe1c nh\u1eadn kill broker -> Desktop fail-closed (kh\xf4ng th\u1ec3 t\u1ef1 refresh).
+        X\xe1c nh\u1eadn restart broker -> Desktop ho\u1ea1t \u0111\u1ed9ng b\xecnh th\u01b0\u1eddng tr\u1edf l\u1ea1i.
+        """
+        import os
+>       from m1proof.broker_service import start_broker_subprocess, stop_broker_subprocess
+E       ImportError: cannot import name 'start_broker_subprocess' from 'm1proof.broker_service' (D:\AI Auto Video Creator\src\m1proof\broker_service.py)
+
+tests\m1\p3\test_oauth_lifecycle.py:222: ImportError
+__________________ test_tst_m1_p3_014_dpapi_encrypted_vault ___________________
+
+tmp_path = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-145/test_tst_m1_p3_014_dpapi_encry0')
+
+    def test_tst_m1_p3_014_dpapi_encrypted_vault(tmp_path: Path):
+        """TST-M1-P3-014 (R5-02):
+        Broker vault s\u1eed d\u1ee5ng Windows DPAPI native \u0111\u1ec3 m\xe3 h\xf3a refresh token v\xe0 secret.
+        Bytes th\xf4 tr\xean \u0111\u0129a tuy\u1ec7t \u0111\u1ed1i KH\xd4NG ch\u1ee9a chu\u1ed7i refresh_token ho\u1eb7c client_secret plaintext.
+        Broker restart gi\u1ea3i m\xe3 th\xe0nh c\xf4ng qua DPAPI secret-store.
+        """
+>       from m1proof.secure_vault import DPAPISecureVault
+E       ModuleNotFoundError: No module named 'm1proof.secure_vault'
+
+tests\m1\p3\test_oauth_lifecycle.py:272: ModuleNotFoundError
+_____________ test_tst_m1_p5_009_fail_closed_compatibility_matrix _____________
+
+tmp_path = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-145/test_tst_m1_p5_009_fail_closed0')
+
+    def test_tst_m1_p5_009_fail_closed_compatibility_matrix(tmp_path: Path):
+        """TST-M1-P5-009 (R5-03):
+        Compatibility matrix ph\u1ea3i fail-closed ho\xe0n to\xe0n:
+        - X\xf3a b\u1ecf 100% fallback g\xe1n expected version khi observation l\u1ed7i.
+        - DB unreachable -> observed is None/unknown, result == FAIL.
+        - Temporal binary missing -> observed is None, result == FAIL.
+        - FFmpeg missing -> result == FAIL.
+        - C\xf3 b\u1ea5t k\u1ef3 runtime n\xe0o FAIL -> overall_result == FAIL (kh\xf4ng \u0111\u01b0\u1ee3c tuy\xean b\u1ed1 PASS).
+        """
+        out_file = tmp_path / "matrix_fail_closed.json"
+    
+        # Case A: PostgreSQL unreachable (c\u1ed5ng kh\xf4ng t\u1ed3n t\u1ea1i)
+        bad_db_dsn = "postgresql://postgres:postgres@127.0.0.1:59999/non_existent_db"
+>       matrix_bad_db = generate_compatibility_matrix(
+            output_path=out_file,
+            db_url=bad_db_dsn,
+        )
+E       TypeError: generate_compatibility_matrix() got an unexpected keyword argument 'db_url'
+
+tests\m1\p5\test_compatibility_smoke.py:168: TypeError
+______________ test_tst_m1_p6_009_semantic_capability_validation ______________
+
+tmp_path = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-145/test_tst_m1_p6_009_semantic_ca0')
+
+    def test_tst_m1_p6_009_semantic_capability_validation(tmp_path: Path):
+        """TST-M1-P6-009 (R5-04):
+        Validator ph\u1ea3i ki\u1ec3m tra s\xe2u ng\u1eef ngh\u0129a machine-readable c\u1ee7a capability evidence:
+        - P3 kh\xf4ng \u0111\u01b0\u1ee3c c\u1ea5p E3 n\u1ebfu process_isolated != True ho\u1eb7c broker_pid == desktop_pid ho\u1eb7c secure_storage_verified != True.
+        - P5 matrix ph\u1ea3i b\u1ecb t\u1eeb ch\u1ed1i n\u1ebfu c\xf3 b\u1ea5t k\u1ef3 runtime n\xe0o FAIL, UNAVAILABLE ho\u1eb7c null.
+        """
+        import json
+        from m1proof.evidence_manifest import REQUIRED_M1_PACKAGES
+    
+        fake_root = tmp_path / "repo_semantic"
+        evidence_dir = fake_root / "docs" / "milestones" / "m1-proof" / "evidence"
+        for pkg in REQUIRED_M1_PACKAGES:
+            pdir = evidence_dir / pkg
+            pdir.mkdir(parents=True)
+            (pdir / "status.md").write_text("Tr\u1ea1ng th\xe1i: PASS", encoding="utf-8")
+            (pdir / "commands.jsonl").write_text("{}", encoding="utf-8")
+            (pdir / "hashes.sha256").write_text("hash  status.md", encoding="utf-8")
+            (pdir / "red-observations.md").write_text("RED", encoding="utf-8")
+    
+        (fake_root / "uv.lock").write_text("uv_lock_test_content", encoding="utf-8")
+        (evidence_dir / "m1-p0" / "bootstrap.json").write_text("{}", encoding="utf-8")
+        (evidence_dir / "m1-p0" / "environment.json").write_text("{}", encoding="utf-8")
+        (evidence_dir / "m1-p2" / "temporal_server_evidence.json").write_text(
+            json.dumps({"server_version": "1.31.2", "binary_verified": True, "grpc_ready": True}),
+            encoding="utf-8",
+        )
+    
+        # 1. P3 Capability: Vi ph\u1ea1m process isolation (broker_pid == desktop_pid)
+        bad_p3_evidence = {
+            "status": "PASS_E3_LIVE",
+            "sha256_verified": True,
+            "process_isolated": False,  # Vi ph\u1ea1m!
+            "broker_pid": 1234,
+            "desktop_pid": 1234,       # Vi ph\u1ea1m!
+            "secure_storage_verified": True,
+        }
+        (evidence_dir / "m1-p3" / "drive_e3_evidence.json").write_text(
+            json.dumps(bad_p3_evidence), encoding="utf-8"
+        )
+    
+        valid_matrix = {
+            "overall_result": "PASS",
+            "runtimes": {
+                "cpython": {"result": "PASS", "observed": "3.13.15"},
+                "postgresql": {"result": "PASS", "observed": "18.6"},
+            }
+        }
+        (evidence_dir / "m1-p5" / "compatibility_matrix.json").write_text(
+            json.dumps(valid_matrix), encoding="utf-8"
+        )
+    
+        manifest1 = build_m1_evidence_manifest(fake_root)
+        # Ph\u1ea3i t\u1eeb ch\u1ed1i E3 v\xe0 \u0111\xe1nh d\u1ea5u semantic fail
+>       assert "E3" not in manifest1["evidence_classification"]["m1-p3"]
+E       AssertionError: assert 'E3' not in 'E3 (Live Ex...0009 Broker)'
+E         
+E         'E3' is contained here:
+E           E3 (Live External Verification on Google Drive API & ADR-0009 Broker)
+E         ? ++
+
+tests\m1\p6\test_evidence_audit.py:277: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_013_broker_subprocess_isolation
+FAILED tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_014_dpapi_encrypted_vault
+FAILED tests/m1/p5/test_compatibility_smoke.py::test_tst_m1_p5_009_fail_closed_compatibility_matrix
+FAILED tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_009_semantic_capability_validation
+================= 4 failed, 3 passed, 21 deselected in 0.27s ==================
+

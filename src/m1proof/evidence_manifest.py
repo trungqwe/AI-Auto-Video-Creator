@@ -180,8 +180,8 @@ def evaluate_milestone_gates(manifest: Dict[str, Any]) -> Dict[str, Any]:
     if any(s in ("STOPPED", "CORRECTION_REQUIRED") for s in statuses):
         return {"m1_status": "CORRECTION_REQUIRED", "reason": "Package stopped or correction required"}
 
-    if any(s and ("MISSING" in s or "UNPARSEABLE" in s) for s in statuses):
-        return {"m1_status": "EVIDENCE_INCOMPLETE", "reason": "Required evidence files missing or unparseable"}
+    if any(s and ("MISSING" in s or "UNPARSEABLE" in s or "SEMANTIC" in s) for s in statuses):
+        return {"m1_status": "EVIDENCE_INCOMPLETE", "reason": "Required evidence files missing, unparseable, or failed semantic validation"}
 
     if all(s == "PASS" for s in statuses):
         return {"m1_status": "READY_FOR_USER_CHECKPOINT", "reason": "All required M1 packages passed"}
@@ -243,6 +243,44 @@ def build_m1_evidence_manifest(project_root: Path) -> Dict[str, Any]:
         else:
             pkg_status = parse_package_status_from_evidence(pkg_dir)
 
+        # Semantic capability validation (R5-04)
+        if pkg_id == "m1-p3":
+            p3_cap_file = pkg_dir / "drive_e3_evidence.json"
+            if p3_cap_file.is_file():
+                try:
+                    p3_data = json.loads(p3_cap_file.read_text(encoding="utf-8"))
+                    is_p3_semantically_valid = (
+                        p3_data.get("status") == "PASS_E3_LIVE"
+                        and p3_data.get("sha256_verified") is True
+                        and p3_data.get("process_isolated") is True
+                        and p3_data.get("broker_pid") != p3_data.get("desktop_pid")
+                        and isinstance(p3_data.get("broker_pid"), int)
+                        and p3_data.get("broker_pid") > 0
+                        and isinstance(p3_data.get("desktop_pid"), int)
+                        and p3_data.get("desktop_pid") > 0
+                        and p3_data.get("secure_storage_verified") is True
+                    )
+                    if not is_p3_semantically_valid:
+                        pkg_status = "CAPABILITY_EVIDENCE_SEMANTIC_FAIL:p3_process_isolation_or_security_violation"
+                except Exception:
+                    pkg_status = "CAPABILITY_EVIDENCE_SEMANTIC_FAIL:p3_corrupt_json"
+
+        elif pkg_id == "m1-p5":
+            p5_matrix_file = pkg_dir / "compatibility_matrix.json"
+            if p5_matrix_file.is_file():
+                try:
+                    p5_data = json.loads(p5_matrix_file.read_text(encoding="utf-8"))
+                    overall_pass = (p5_data.get("overall_result") == "PASS")
+                    runtimes = p5_data.get("runtimes", {})
+                    all_runtimes_pass = bool(runtimes) and all(
+                        r.get("result") == "PASS" and ("observed" not in r or r.get("observed") not in (None, "unknown", "null", ""))
+                        for r in runtimes.values()
+                    )
+                    if not (overall_pass and all_runtimes_pass):
+                        pkg_status = "CAPABILITY_EVIDENCE_SEMANTIC_FAIL:p5_compatibility_has_failed_runtimes"
+                except Exception:
+                    pkg_status = "CAPABILITY_EVIDENCE_SEMANTIC_FAIL:p5_corrupt_json"
+
         pkg_files = []
         for file in sorted(pkg_dir.iterdir()):
             if file.is_file():
@@ -257,21 +295,16 @@ def build_m1_evidence_manifest(project_root: Path) -> Dict[str, Any]:
         }
 
     # Dynamic classification of evidence based on verified artifacts
-    p3_has_e3 = False
-    p3_cap_file = evidence_dir / "m1-p3" / "drive_e3_evidence.json"
-    if p3_cap_file.is_file():
-        try:
-            p3_data = json.loads(p3_cap_file.read_text(encoding="utf-8"))
-            if p3_data.get("status") == "PASS_E3_LIVE" and p3_data.get("sha256_verified") is True:
-                p3_has_e3 = True
-        except Exception:
-            p3_has_e3 = False
+    p3_has_e3 = (
+        packages_summary.get("m1-p3", {}).get("status") == "PASS"
+        and (evidence_dir / "m1-p3" / "drive_e3_evidence.json").is_file()
+    )
 
     evidence_classification = {
         "m1-p0": "E2-INT (Runtime & Live PostgreSQL 18.6 Preflight)",
         "m1-p1": "E2-INT (Contract Fencing, Advisory CAS & Concurrency)",
         "m1-p2": "E2-INT (Exact Temporal Server 1.31.2 Binary Integration & Replay)",
-        "m1-p3": "E3 (Live External Verification on Google Drive API & ADR-0009 Broker)" if p3_has_e3 else "E2-INT (Unproven External Scope: Missing Drive E3 Verification)",
+        "m1-p3": "E3 (Live External Verification on Google Drive API & ADR-0009 Broker)" if p3_has_e3 else "E2-INT (Unproven External Scope: Drive Live Verification Incomplete or Invalid)",
         "m1-p4": "E2 (SQLite WAL Journal & Windows Atomic File Write)",
         "m1-p5": "E2-INT (Compatibility Matrix, Strict Version & ffprobe Verification)",
         "m1-p6": "AUDIT (Fail-Closed Manifest Builder & Exit Gate Evaluation)",

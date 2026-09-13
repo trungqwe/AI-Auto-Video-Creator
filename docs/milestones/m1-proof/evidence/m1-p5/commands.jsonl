@@ -4,3 +4,6 @@
 {"command": "pytest tests/m1/p5/test_compatibility_smoke.py -k test_tst_m1_p5_008_dynamic_matrix_observation -v", "exit_code": 1, "phase": "RED_OBSERVATION_R4", "timestamp_utc": "2026-09-13T08:14:12Z"}
 {"command": ".venv\\Scripts\\python -c \"import sys; sys.path.insert(0, 'src'); from m1proof.compatibility import generate_compatibility_matrix; generate_compatibility_matrix()\"", "exit_code": 0, "phase": "DYNAMIC_MATRIX_GENERATION", "timestamp_utc": "2026-09-13T15:45:08Z"}
 {"command": ".venv\\Scripts\\pytest tests/m1/p5 -v", "exit_code": 0, "phase": "GREEN_ACCEPTANCE_R4", "timestamp_utc": "2026-09-13T15:45:25Z"}
+{"command": "pytest tests/m1/p5/test_compatibility_smoke.py -k test_tst_m1_p5_009_fail_closed_compatibility_matrix -v", "exit_code": 1, "phase": "RED_OBSERVATION_R5", "timestamp_utc": "2026-09-13T09:16:40Z"}
+{"command": "$env:PYTHONPATH='src'; py -3.13 -m uv run python -c \"from m1proof.compatibility import generate_compatibility_matrix; ...\"", "exit_code": 0, "phase": "DYNAMIC_FAIL_CLOSED_MATRIX_GENERATION_R5", "timestamp_utc": "2026-09-13T09:20:35Z"}
+{"command": "py -3.13 -m uv run --frozen pytest tests/m1/p5 -v", "exit_code": 0, "phase": "GREEN_ACCEPTANCE_R5", "timestamp_utc": "2026-09-13T09:20:20Z"}

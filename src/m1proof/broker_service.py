@@ -2,17 +2,26 @@
 
 Runs as an isolated process/service owning long-term refresh tokens.
 Desktop clients communicate strictly over HTTP IPC and only receive short-lived access tokens.
+Secrets in vault are encrypted at rest using Windows DPAPI native cryptography.
 """
 from __future__ import annotations
+import argparse
 import http.server
 import json
+import os
+import re
 import socketserver
+import subprocess
+import sys
 import threading
+import time
 import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+from m1proof.secure_vault import DPAPISecureVault, DEFAULT_VAULT_FILE
 
 
 class _BrokerTCPServer(socketserver.TCPServer):
@@ -27,7 +36,7 @@ class _BrokerHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     server: _BrokerTCPServer  # type: ignore
 
     def log_message(self, format: str, *args: Any):
-        # Suppress noisy HTTP stdout logging in test runs
+        # Suppress noisy HTTP stdout logging in automated test runs
         pass
 
     def _send_json(self, status_code: int, data: Dict[str, Any]):
@@ -47,11 +56,16 @@ class _BrokerHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path == "/health":
+        if parsed.path in ("/health", "/api/status"):
             self._send_json(200, {
                 "status": "UP",
                 "service": "CloudTokenBroker",
-                "accounts_count": len(self.server.broker.accounts),
+                "pid": os.getpid(),
+                "port": self.server.broker.port,
+                "vault_encrypted": True,
+                "encryption_method": "WINDOWS_DPAPI",
+                "accounts_count": len(self.server.broker.list_accounts()),
+                "accounts": self.server.broker.list_accounts(),
             })
             return
         self._send_json(404, {"error": "Not Found"})
@@ -77,7 +91,7 @@ class _BrokerHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == "/api/token":
             account_id = body.get("account_id")
-            if not account_id or account_id not in self.server.broker.accounts:
+            if not account_id or not self.server.broker.has_account(account_id):
                 self._send_json(404, {"error": f"Account {account_id} not found in broker"})
                 return
             token_data = self.server.broker.mint_or_fetch_token(account_id)
@@ -86,7 +100,7 @@ class _BrokerHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == "/api/refresh":
             account_id = body.get("account_id")
-            if not account_id or account_id not in self.server.broker.accounts:
+            if not account_id or not self.server.broker.has_account(account_id):
                 self._send_json(404, {"error": f"Account {account_id} not found in broker"})
                 return
             token_data = self.server.broker.mint_or_fetch_token(account_id, force_refresh=True)
@@ -102,40 +116,45 @@ class _BrokerHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(200, {"status": "REVOKED" if revoked else "NOT_FOUND"})
             return
 
+        if parsed.path == "/api/shutdown":
+            self._send_json(200, {"status": "SHUTTING_DOWN"})
+            def _shutdown():
+                time.sleep(0.1)
+                self.server.broker.stop()
+            threading.Thread(target=_shutdown, daemon=True).start()
+            return
+
         self._send_json(404, {"error": "Not Found"})
 
 
-BROKER_VAULT_DIR = Path.home() / ".cloud_token_broker"
-BROKER_VAULT_FILE = BROKER_VAULT_DIR / "vault.json"
-
-
 class CloudTokenBrokerServer:
-    """Threaded HTTP Server for the Cloud Token Broker."""
+    """HTTP Server for Cloud Token Broker using DPAPI secure vault."""
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 18088, use_vault: bool = True):
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 18088,
+        use_vault: bool = True,
+        vault_path: Optional[Path] = None,
+    ):
         self.host = host
         self.port = port
         self.use_vault = use_vault
-        self.accounts: Dict[str, Dict[str, Any]] = self._load_vault() if use_vault else {}
+        self.vault_path = Path(vault_path) if vault_path else DEFAULT_VAULT_FILE
+        self._vault = DPAPISecureVault(self.vault_path) if use_vault else None
+        self._in_memory_accounts: Dict[str, Dict[str, Any]] = {}
         self._httpd: Optional[_BrokerTCPServer] = None
         self._thread: Optional[threading.Thread] = None
 
-    def _load_vault(self) -> Dict[str, Dict[str, Any]]:
-        if BROKER_VAULT_FILE.is_file():
-            try:
-                return json.loads(BROKER_VAULT_FILE.read_text(encoding="utf-8"))
-            except Exception:
-                return {}
-        return {}
+    def list_accounts(self) -> List[str]:
+        if self._vault:
+            return self._vault.list_accounts()
+        return list(self._in_memory_accounts.keys())
 
-    def _save_vault(self):
-        if not self.use_vault:
-            return
-        try:
-            BROKER_VAULT_DIR.mkdir(parents=True, exist_ok=True)
-            BROKER_VAULT_FILE.write_text(json.dumps(self.accounts, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+    def has_account(self, account_id: str) -> bool:
+        if self._vault:
+            return self._vault.has_account(account_id)
+        return account_id in self._in_memory_accounts
 
     def register_account(
         self,
@@ -144,33 +163,42 @@ class CloudTokenBrokerServer:
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
     ):
-        """Store long-term refresh token in broker-only isolated context."""
-        self.accounts[account_id] = {
-            "refresh_token": refresh_token,
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "mint_counter": 0,
-        }
-        self._save_vault()
+        """Store long-term refresh token and secrets in DPAPI encrypted vault."""
+        if self._vault:
+            self._vault.store_account(account_id, refresh_token, client_id, client_secret)
+        else:
+            self._in_memory_accounts[account_id] = {
+                "refresh_token": refresh_token,
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "mint_counter": 0,
+            }
 
-    def has_account(self, account_id: str) -> bool:
-        return account_id in self.accounts
+    def get_account_data(self, account_id: str) -> Optional[Dict[str, Any]]:
+        if self._vault:
+            return self._vault.get_account(account_id)
+        return self._in_memory_accounts.get(account_id)
 
     def revoke_account(self, account_id: str) -> bool:
-        if account_id in self.accounts:
-            acct = self.accounts.pop(account_id)
-            self._save_vault()
-            # If genuine refresh token and client_secret, optionally call Google revoke endpoint
-            if acct.get("refresh_token") and acct.get("client_secret"):
-                try:
-                    revoke_url = "https://oauth2.googleapis.com/revoke"
-                    data = urllib.parse.urlencode({"token": acct["refresh_token"]}).encode("utf-8")
-                    req = urllib.request.Request(revoke_url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"})
-                    urllib.request.urlopen(req, timeout=5)
-                except Exception:
-                    pass
-            return True
-        return False
+        acct = self.get_account_data(account_id)
+        if not acct:
+            return False
+
+        if self._vault:
+            self._vault.remove_account(account_id)
+        else:
+            self._in_memory_accounts.pop(account_id, None)
+
+        # Revoke at Google endpoint if real client
+        if acct.get("refresh_token") and acct.get("client_secret"):
+            try:
+                revoke_url = "https://oauth2.googleapis.com/revoke"
+                data = urllib.parse.urlencode({"token": acct["refresh_token"]}).encode("utf-8")
+                req = urllib.request.Request(revoke_url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"})
+                urllib.request.urlopen(req, timeout=5)
+            except Exception:
+                pass
+        return True
 
     def ensure_authorized_account(self, account_id: str, client_secrets_path: Path) -> bool:
         """Ensure the broker possesses a valid refresh token for the account, prompting if needed."""
@@ -211,7 +239,10 @@ class CloudTokenBrokerServer:
 
     def mint_or_fetch_token(self, account_id: str, force_refresh: bool = False) -> Dict[str, Any]:
         """Fetch real access token from Google OAuth endpoint, or mint scoped token in test mode."""
-        acct = self.accounts[account_id]
+        acct = self.get_account_data(account_id)
+        if not acct:
+            raise KeyError(f"Account {account_id} not found in broker")
+
         refresh_token = acct["refresh_token"]
         client_id = acct.get("client_id")
         client_secret = acct.get("client_secret")
@@ -238,8 +269,8 @@ class CloudTokenBrokerServer:
                 }
 
         # Mock / integration mode token issuance
-        acct["mint_counter"] += 1
-        counter = acct["mint_counter"]
+        counter = acct.get("mint_counter", 0) + 1
+        acct["mint_counter"] = counter
         token_id = f"ya29.broker_ipc_token_{account_id}_{uuid.uuid4().hex[:8]}_{counter}"
         return {
             "access_token": token_id,
@@ -249,7 +280,7 @@ class CloudTokenBrokerServer:
         }
 
     def start(self):
-        """Start HTTP server in background thread."""
+        """Start HTTP server in background thread (for unit/in-process tests)."""
         handler = _BrokerHTTPRequestHandler
         self._httpd = _BrokerTCPServer((self.host, self.port), handler, broker=self)
         self.port = self._httpd.server_address[1]
@@ -269,7 +300,182 @@ class CloudTokenBrokerServer:
 
 
 def run_broker_http_server(host: str = "127.0.0.1", port: int = 18088) -> CloudTokenBrokerServer:
-    """Helper to instantiate and start a local broker server."""
+    """Helper to instantiate and start an in-thread broker server."""
     server = CloudTokenBrokerServer(host=host, port=port)
     server.start()
     return server
+
+
+# =========================================================================
+# SUBPROCESS BOUNDARY RUNNER & PROCESS MANAGER (R5-01)
+# =========================================================================
+
+class BrokerProcessHandle:
+    """Handle to a running CloudTokenBroker subprocess."""
+
+    def __init__(self, process: subprocess.Popen, pid: int, host: str, port: int, status_file: Optional[Path] = None):
+        self.process = process
+        self.pid = pid
+        self.host = host
+        self.port = port
+        self.endpoint = f"http://{host}:{port}"
+        self.status_file = status_file
+
+    def is_alive(self) -> bool:
+        return self.process.poll() is None
+
+    def register_account(
+        self,
+        account_id: str,
+        refresh_token: str,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+    ) -> bool:
+        """Register account by invoking the broker HTTP endpoint."""
+        url = f"{self.endpoint}/api/register"
+        payload = {
+            "account_id": account_id,
+            "refresh_token": refresh_token,
+            "client_id": client_id,
+            "client_secret": client_secret,
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            res = json.loads(resp.read().decode("utf-8"))
+            return res.get("status") == "REGISTERED"
+
+
+def start_broker_subprocess(
+    host: str = "127.0.0.1",
+    port: int = 0,
+    vault_path: Optional[Path] = None,
+    timeout: float = 10.0,
+) -> BrokerProcessHandle:
+    """Spawn CloudTokenBroker in an isolated subprocess conforming to R5-01."""
+    cmd = [
+        sys.executable,
+        "-m", "m1proof.broker_service",
+        "--host", host,
+        "--port", str(port),
+    ]
+    if vault_path:
+        cmd.extend(["--vault-path", str(vault_path)])
+
+    repo_root = Path(__file__).resolve().parents[2]
+    src_dir = repo_root / "src"
+    env = dict(os.environ)
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{src_dir}{os.pathsep}{existing_pp}" if existing_pp else str(src_dir)
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+        env=env,
+        cwd=str(repo_root),
+    )
+
+    actual_port = None
+    actual_pid = None
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        if proc.poll() is not None:
+            err = proc.stderr.read() if proc.stderr else "Process terminated"
+            raise RuntimeError(f"Broker subprocess exited prematurely: {err}")
+
+        line = proc.stdout.readline() if proc.stdout else ""
+        if line:
+            m = re.search(r"\[BROKER_READY\]\s+port=(\d+)\s+pid=(\d+)", line)
+            if m:
+                actual_port = int(m.group(1))
+                actual_pid = int(m.group(2))
+                break
+        time.sleep(0.05)
+
+    if actual_port is None or actual_pid is None:
+        proc.terminate()
+        raise TimeoutError("Timed out waiting for [BROKER_READY] from broker subprocess")
+
+    return BrokerProcessHandle(
+        process=proc,
+        pid=actual_pid,
+        host=host,
+        port=actual_port,
+    )
+
+
+def stop_broker_subprocess(handle: BrokerProcessHandle, timeout: float = 3.0):
+    """Gracefully terminate broker subprocess."""
+    if not handle.is_alive():
+        return
+
+    # Try graceful HTTP shutdown first
+    try:
+        url = f"{handle.endpoint}/api/shutdown"
+        req = urllib.request.Request(url, data=b"{}", headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=1.0)
+    except Exception:
+        pass
+
+    try:
+        handle.process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        handle.process.terminate()
+        try:
+            handle.process.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            handle.process.kill()
+
+
+# CLI Entry Point for Subprocess Execution
+def _cli():
+    parser = argparse.ArgumentParser(description="CloudTokenBroker Standalone Daemon")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=0)
+    parser.add_argument("--vault-path", type=str, default=None)
+    parser.add_argument("--status-file", type=str, default=None)
+    args = parser.parse_args()
+
+    v_path = Path(args.vault_path) if args.vault_path else DEFAULT_VAULT_FILE
+    server = CloudTokenBrokerServer(
+        host=args.host,
+        port=args.port,
+        use_vault=True,
+        vault_path=v_path,
+    )
+
+    handler = _BrokerHTTPRequestHandler
+    httpd = _BrokerTCPServer((server.host, server.port), handler, broker=server)
+    actual_port = httpd.server_address[1]
+    actual_pid = os.getpid()
+    server.port = actual_port
+    server._httpd = httpd
+
+    # Print ready handshake to stdout
+    print(f"[BROKER_READY] port={actual_port} pid={actual_pid}", flush=True)
+
+    if args.status_file:
+        try:
+            Path(args.status_file).write_text(json.dumps({
+                "pid": actual_pid,
+                "host": args.host,
+                "port": actual_port,
+                "status": "RUNNING",
+            }), encoding="utf-8")
+        except Exception:
+            pass
+
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.server_close()
+
+
+if __name__ == "__main__":
+    _cli()

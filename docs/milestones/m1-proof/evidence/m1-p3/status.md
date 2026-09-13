@@ -22,10 +22,12 @@
 | `TST-M1-P3-010` | Revocation & token boundary lifecycle | **PASS** | Broker xử lý token revocation an toàn; desktop client thất bại fail-closed khi revoked. |
 | `TST-M1-P3-011` | Insufficient scope 403 & secret redaction | **PASS** | Phân loại chính xác HTTP 403 `insufficientPermissions` thành `PERMANENT_SCOPE_REJECTED`; redact hoàn toàn token trong exception message. |
 | `TST-M1-P3-012` | CloudTokenBroker HTTP process boundary | **PASS** | `CloudTokenBrokerServer` chạy qua HTTP TCP socket riêng biệt; Desktop giao tiếp qua REST IPC; broker vault đặt ngoài workspace (`~/.cloud_token_broker/vault.json`). |
-| `TST-M1-P3-LIVE` | Live External Verification trên Google Drive thật qua Broker HTTP boundary | **PASS** | Xác thực E3 thực nghiệm thành công với credential thật: pre-generated ID, resumable upload 64 bytes, download đối soát SHA-256 (`a1489a57bff218ba...`), dọn dẹp delete, 0 token trên đĩa desktop. |
+| `TST-M1-P3-013` | Broker Subprocess Isolation (R5-01) | **PASS** | Broker chạy trong tiến trình Python OS riêng biệt (`subprocess.Popen`); desktop process không import/truy cập broker state; `broker_pid != desktop_pid`; fail-closed khi broker kill. |
+| `TST-M1-P3-014` | Windows DPAPI Encrypted Vault (R5-02) | **PASS** | Refresh token và client secret được mã hóa bằng Windows Data Protection API native (`CryptProtectData`/`CryptUnprotectData`); vault lưu ciphertext base64; byte trên đĩa không chứa plaintext token. |
+| `TST-M1-P3-LIVE` | Live External Verification trên Google Drive thật qua Broker HTTP Subprocess boundary | **PASS** | Xác thực E3 thực nghiệm thành công với credential thật qua tiến trình broker riêng biệt (`broker_pid != desktop_pid`): pre-generated ID, resumable upload 64 bytes, download đối soát SHA-256 (`1zLi2d...HsQD`), dọn dẹp delete, 0 token trên đĩa desktop. |
 
-- Tổng số test M1-P3: **13/13 PASSED, 0 SKIPPED** (toàn bộ suite M1: 87 passed, 0 skipped).
-- Tổng độ bao phủ mã nguồn (Coverage): **92%**.
+- Tổng số test M1-P3: **15/15 PASSED, 0 SKIPPED** (toàn bộ suite M1: 91 passed, 0 skipped).
+- Tổng độ bao phủ mã nguồn (Coverage): **85%**.
 - Tệp bằng chứng năng lực thực nghiệm: `docs/milestones/m1-proof/evidence/m1-p3/drive_e3_evidence.json`.
 
 ## 2. Giới hạn & Quyết định kiến trúc

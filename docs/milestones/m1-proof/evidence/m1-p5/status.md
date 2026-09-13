@@ -17,9 +17,10 @@
 | `TST-M1-P5-006` | Evidence hash mismatch & unsupported version detector | **PASS** | Detector phát hiện và từ chối fail-closed mọi artifact có mã băm sai lệch hoặc phiên bản không thuộc danh sách M1-R1 được phép. |
 | `TST-M1-P5-007` | Machine-readable compatibility matrix | **PASS** | Kiểm tra cấu trúc json ma trận khả năng tương thích, schema_version 1.0, chứa đầy đủ các runtimes bắt buộc. |
 | `TST-M1-P5-008` | Dynamic matrix observation (R4-05) | **PASS** | Xác thực ma trận đo đạc động runtime thực tế (platform, uv, temporal, ffmpeg) thay vì hard-code giá trị tĩnh. |
+| `TST-M1-P5-009` | Fail-closed dynamic compatibility matrix (R5-03) | **PASS** | Xóa bỏ 100% fallback gán giá trị mặc định khi observation lỗi; thiếu/lỗi thì `observed=None`, `result="FAIL"`, `overall_result="FAIL"`. |
 
-- Tổng số test M1-P5: **8/8 PASSED** (toàn bộ suite M1: 87 passed, 0 skipped).
-- Tổng độ bao phủ mã nguồn (Coverage): **84%**.
+- Tổng số test M1-P5: **9/9 PASSED** (toàn bộ suite M1: 91 passed, 0 skipped).
+- Tổng độ bao phủ mã nguồn (Coverage): **85%**.
 - Tệp bằng chứng ma trận: `docs/milestones/m1-proof/evidence/m1-p5/compatibility_matrix.json`.
 
 ## 2. Giới hạn & Quyết định kiến trúc

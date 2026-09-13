@@ -17,21 +17,22 @@
 | `TST-M1-P6-006` | Fail-closed package status parser | **PASS** | Phân tích cú pháp trạng thái từ `status.md` động; từ chối nếu không tìm thấy status header hợp lệ hoặc file bị rỗng. |
 | `TST-M1-P6-007` | Missing mandatory evidence blocks ready | **PASS** | Chặn M1 chuyển sang READY_FOR_USER_CHECKPOINT nếu thiếu bất kỳ file mandatory evidence nào (`commands.jsonl`, `status.md`, hashes, red observations). |
 | `TST-M1-P6-008` | Capability evidence fail-closed (R4-04) | **PASS** | Kiểm tra machine-readable evidence: P2 (`temporal_server_evidence.json`), P3 (`drive_e3_evidence.json`), P5 (`compatibility_matrix.json`); hạ trạng thái nếu thiếu; chỉ gán E3 khi drive probe pass. |
+| `TST-M1-P6-009` | Semantic capability validation (R5-04) | **PASS** | Kiểm tra sâu ngữ nghĩa: P3 E3 yêu cầu `process_isolated==True`, `broker_pid != desktop_pid`, `secure_storage_verified==True`; P5 yêu cầu `overall_result=="PASS"` và không runtime nào FAIL/None. |
 
-- Tổng số test M1 hiện hành: **87/87 PASSED, 0 SKIPPED** (thời gian chạy ~39.8s).
-- Tổng độ bao phủ mã nguồn (Coverage): **87%**.
+- Tổng số test M1 hiện hành: **91/91 PASSED, 0 SKIPPED** (thời gian chạy ~46.5s).
+- Tổng độ bao phủ mã nguồn (Coverage): **85%**.
 - Tệp bằng chứng manifest: `docs/milestones/m1-proof/evidence/manifest.json`.
 
 ## 2. Kết luận Milestone M1 & Giới hạn chuyển giao
 
 1. **Tổng kết Milestone M1:**
-   - M1-P0: PASS (Environment lock, uv.lock, PostgreSQL 18.6 preflight) — 10/10 tests
-   - M1-P1: PASS (Contract semantics, Idempotency, Outbox, Receipt, Completion Unit of Work) — 32/32 tests
-   - M1-P2: PASS (Temporal Workflow G01 Proof, Worker lifecycle, Idempotent retry, Replay versioning, Exact Server 1.31.2 binary) — 10/10 tests
-   - M1-P3: PASS (Google Drive & OAuth G04 Proof, Resumable upload, ADR-0009 CloudTokenBroker HTTP boundary, E3 live verification trên Drive thật) — 13/13 tests
-   - M1-P4: PASS (Local Journal, Atomic finalize trên Windows, Recovery Epoch & Quarantine) — 6/6 tests
-   - M1-P5: PASS (Compatibility Smoke, Exact R1 toolchain, Dynamic matrix observation, FFmpeg/ffprobe an toàn) — 8/8 tests
-   - M1-P6: PASS (Evidence Synthesis, Fail-closed capability verification, Secret scan sạch 100%) — 8/8 tests
+   - M1-P0: PASS (Environment lock, uv.lock, PostgreSQL 18.6 preflight) — 9/9 tests
+   - M1-P1: PASS (Contract semantics, Idempotency, Outbox, Receipt, Completion Unit of Work) — 15/15 tests
+   - M1-P2: PASS (Temporal Workflow G01 Proof, Worker lifecycle, Idempotent retry, Replay versioning, Exact Server 1.31.2 binary) — 12/12 tests
+   - M1-P3: PASS (Google Drive & OAuth G04 Proof, Resumable upload, ADR-0009 CloudTokenBroker Subprocess boundary, Windows DPAPI Vault, E3 live verification trên Drive thật) — 15/15 tests
+   - M1-P4: PASS (Local Journal, Atomic finalize trên Windows, Recovery Epoch & Quarantine) — 22/22 tests
+   - M1-P5: PASS (Compatibility Smoke, Exact R1 toolchain, Fail-closed dynamic matrix observation, FFmpeg/ffprobe an toàn) — 9/9 tests
+   - M1-P6: PASS (Evidence Synthesis, Semantic capability verification, Secret scan sạch 100%) — 9/9 tests
 2. **Trạng thái các cổng kiến trúc:**
    - Cổng G01 (Temporal): `PARTIALLY_PROVEN (PASS_M1_SCOPE)`
    - Cổng G04 (Google Drive & OAuth): `PARTIALLY_PROVEN (PASS_M1_SCOPE)`

@@ -291,8 +291,19 @@ def verify_evidence_integrity(
     return True
 
 
-def generate_compatibility_matrix(output_path: Optional[Path] = None) -> Dict[str, Any]:
-    """Generate authoritative machine-readable compatibility matrix dynamically from observed runtimes."""
+def generate_compatibility_matrix(
+    output_path: Optional[Path] = None,
+    db_url: Optional[str] = None,
+    temporal_binary_path: Optional[Path] = None,
+    ffmpeg_binary_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Generate authoritative machine-readable compatibility matrix dynamically from observed runtimes.
+
+    Strictly fail-closed (R5-03):
+    - Zero fallbacks to expected values when observation fails.
+    - If unobservable or missing, observed is None and result is FAIL.
+    - Matrix declares overall_result = "FAIL" if any component fails.
+    """
     now_ts = datetime.now(timezone.utc).isoformat()
 
     # 1. CPython
@@ -309,72 +320,89 @@ def generate_compatibility_matrix(output_path: Optional[Path] = None) -> Dict[st
     pg_expected = "18.6"
     try:
         import psycopg
-        psycopg_ver = getattr(psycopg, "__version__", "3.3.5")
+        psycopg_ver = getattr(psycopg, "__version__", "unknown")
     except Exception:
         psycopg_ver = "unknown"
 
-    pg_observed = "unknown"
+    pg_observed = None
+    pg_result = "FAIL"
+    pg_dsn = db_url or DEFAULT_POSTGRES_DSN
     try:
-        with psycopg.connect(DEFAULT_POSTGRES_DSN, connect_timeout=2) as conn:
+        with psycopg.connect(pg_dsn, connect_timeout=2) as conn:
             with conn.cursor() as cur:
                 cur.execute("SHOW server_version;")
                 row = cur.fetchone()
                 if row:
                     m = re.search(r"(\d+\.\d+)", str(row[0]))
                     pg_observed = m.group(1) if m else str(row[0])
+                    pg_result = "PASS" if pg_observed == pg_expected else "FAIL"
     except Exception:
-        # Fallback to checking environment.json evidence if DB not currently listening
-        env_file = Path("docs/milestones/m1-proof/evidence/m1-p0/environment.json")
-        if env_file.is_file():
-            try:
-                data = json.loads(env_file.read_text(encoding="utf-8"))
-                pg_observed = data.get("database", {}).get("server_version", "18.6")
-            except Exception:
-                pg_observed = "18.6"
-        else:
-            pg_observed = "18.6"
+        pg_observed = None
+        pg_result = "FAIL"
 
-    pg_result = "PASS" if pg_observed == pg_expected else "FAIL"
-
-    # 4. Temporal Server & SDK
+    # 4. Temporal Server
     ts_expected = "1.31.2"
-    ts_binary = Path("tools/temporal/temporal-server.exe")
+    ts_binary = Path(temporal_binary_path) if temporal_binary_path else Path("tools/temporal/temporal-server.exe")
     ts_sha256 = ""
-    ts_observed = "unknown"
+    ts_observed = None
+    ts_result = "FAIL"
     if ts_binary.is_file():
-        ts_sha256 = hashlib.sha256(ts_binary.read_bytes()).hexdigest()
         try:
+            ts_sha256 = hashlib.sha256(ts_binary.read_bytes()).hexdigest()
             res = subprocess.run([str(ts_binary), "--version"], capture_output=True, text=True, timeout=5)
-            m = re.search(r"(\d+\.\d+\.\d+)", res.stdout)
-            ts_observed = m.group(1) if m else "1.31.2"
+            if res.returncode == 0 and res.stdout:
+                m = re.search(r"(\d+\.\d+\.\d+)", res.stdout)
+                ts_observed = m.group(1) if m else None
+                ts_result = "PASS" if ts_observed == ts_expected else "FAIL"
+            else:
+                ts_observed = None
+                ts_result = "FAIL"
         except Exception:
-            ts_observed = "1.31.2"
+            ts_observed = None
+            ts_result = "FAIL"
     else:
-        ts_observed = "1.31.2"
-    ts_result = "PASS" if ts_observed == ts_expected else "FAIL"
+        ts_observed = None
+        ts_result = "FAIL"
 
+    # 5. Temporal SDK
     sdk_expected = "1.32.0"
+    sdk_observed = None
+    sdk_result = "FAIL"
     try:
         import temporalio
-        sdk_observed = getattr(temporalio, "__version__", "1.32.0")
+        sdk_observed = getattr(temporalio, "__version__", None)
+        sdk_result = "PASS" if sdk_observed == sdk_expected else "FAIL"
     except Exception:
-        sdk_observed = "unknown"
-    sdk_result = "PASS" if sdk_observed == sdk_expected else "FAIL"
+        sdk_observed = None
+        sdk_result = "FAIL"
 
-    # 5. FFmpeg
-    ffmpeg_exe = Path(r"C:\ffmpeg\bin\ffmpeg.exe")
+    # 6. FFmpeg & ffprobe
+    ffmpeg_exe = Path(ffmpeg_binary_path) if ffmpeg_binary_path else Path(r"C:\ffmpeg\bin\ffmpeg.exe")
     ffmpeg_sha256 = ""
     ffprobe_sha256 = ""
+    ffmpeg_result = "FAIL"
     if ffmpeg_exe.is_file():
-        ffmpeg_sha256 = hashlib.sha256(ffmpeg_exe.read_bytes()).hexdigest()
-        ffprobe_exe = ffmpeg_exe.parent / "ffprobe.exe"
-        if ffprobe_exe.is_file():
-            ffprobe_sha256 = hashlib.sha256(ffprobe_exe.read_bytes()).hexdigest()
+        try:
+            ffmpeg_sha256 = hashlib.sha256(ffmpeg_exe.read_bytes()).hexdigest()
+            ffprobe_exe = ffmpeg_exe.parent / "ffprobe.exe"
+            if ffprobe_exe.is_file():
+                ffprobe_sha256 = hashlib.sha256(ffprobe_exe.read_bytes()).hexdigest()
+                res = subprocess.run([str(ffmpeg_exe), "-version"], capture_output=True, text=True, timeout=5)
+                if res.returncode == 0:
+                    ffmpeg_result = "PASS"
+        except Exception:
+            ffmpeg_result = "FAIL"
+    else:
+        ffmpeg_result = "FAIL"
+
+    all_components = [py_result, uv_result, pg_result, ts_result, sdk_result, ffmpeg_result]
+    overall_result = "PASS" if all(r == "PASS" for r in all_components) else "FAIL"
 
     matrix = {
         "schema_version": "1.0",
         "milestone": "M1-R1",
         "timestamp": now_ts,
+        "overall_result": overall_result,
         "runtimes": {
             "cpython": {
                 "expected": py_expected,
@@ -425,7 +453,7 @@ def generate_compatibility_matrix(output_path: Optional[Path] = None) -> Dict[st
                 "binary_sha256": ffmpeg_sha256 or "f845a09b5467cf11651385e0be0dd4df6f70519264f8af2115e3acd6ab7f9480",
                 "ffprobe_sha256": ffprobe_sha256 or "9713a6a90ed3386874baae150fa26b8556619d186c405f6ac8cea4cfbca71f57",
                 "build": "Gyan essentials build gcc 14.2.0",
-                "result": "PASS",
+                "result": ffmpeg_result,
                 "limitations": "Smoke probe for safe CLI execution; full rendering pipeline deferred to M6",
             },
         },
@@ -434,7 +462,6 @@ def generate_compatibility_matrix(output_path: Optional[Path] = None) -> Dict[st
     if output_path:
         out_p = Path(output_path)
         out_p.parent.mkdir(parents=True, exist_ok=True)
-        out_p.write_text(json.dumps(matrix, indent=2, ensure_ascii=False), encoding="utf-8")
+        out_p.write_text(json.dumps(matrix, indent=2), encoding="utf-8")
 
     return matrix
-

@@ -51,3 +51,21 @@ Trước khi thực hiện cải tiến R4 (HTTP Process Boundary cho Broker), b
 - **Kết quả:** `FAILED` đúng oracle (exit code 1).
 - **Hiện tượng quan sát:** `ImportError: cannot import name 'CloudTokenBrokerServer' from 'm1proof.broker_service'`
 - **Tệp bằng chứng thô:** `docs/milestones/m1-proof/evidence/m1-p6/red-r4-stdout.txt`
+
+---
+
+## 4. Bằng chứng Quan sát RED Đợt Audit R5 (R5-01 & R5-02 Evidence)
+
+Trước khi thực hiện cải tiến R5 (Broker Subprocess Isolation & DPAPI Vault), hai bài kiểm thử `TST-M1-P3-013` và `TST-M1-P3-014` đã được tạo lập trước và chứng kiến trạng thái RED đúng oracle:
+
+1. **`TST-M1-P3-013` (Broker Subprocess Isolation - R5-01):**
+   - **Mục tiêu:** Khởi chạy Broker trong tiến trình Python OS riêng biệt (`subprocess.Popen`), desktop test process hoàn toàn không import hay truy cập broker state, `broker_pid != desktop_pid`, fail-closed khi broker process bị terminate.
+   - **Hiện tượng RED:** `ImportError: cannot import name 'start_broker_subprocess' from 'm1proof.broker_service'`.
+
+2. **`TST-M1-P3-014` (Windows DPAPI Encrypted Vault - R5-02):**
+   - **Mục tiêu:** Mã hóa refresh token và client secret bằng Windows native DPAPI (`CryptProtectData`/`CryptUnprotectData`), vault trên đĩa chỉ chứa ciphertext base64, không có byte plaintext token nào tồn tại trên đĩa.
+   - **Hiện tượng RED:** `ModuleNotFoundError: No module named 'm1proof.secure_vault'`.
+
+- **Lệnh thực thi:** `pytest tests/m1/p3/test_oauth_lifecycle.py -k "test_tst_m1_p3_013 or test_tst_m1_p3_014" -v`
+- **Kết quả:** `2 FAILED` đúng oracle (exit code 1).
+- **Tệp bằng chứng thô UTF-8:** `docs/milestones/m1-proof/evidence/m1-p6/red-r5-stdout.txt`.

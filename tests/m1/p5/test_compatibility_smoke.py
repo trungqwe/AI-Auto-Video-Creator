@@ -150,3 +150,37 @@ def test_tst_m1_p5_008_dynamic_matrix_observation(tmp_path: Path):
     assert cpython_entry["observed"] == platform.python_version()
     expected_result = "PASS" if cpython_entry["observed"] == cpython_entry["expected"] else "FAIL"
     assert cpython_entry["result"] == expected_result
+
+
+def test_tst_m1_p5_009_fail_closed_compatibility_matrix(tmp_path: Path):
+    """TST-M1-P5-009 (R5-03):
+    Compatibility matrix phải fail-closed hoàn toàn:
+    - Xóa bỏ 100% fallback gán expected version khi observation lỗi.
+    - DB unreachable -> observed is None/unknown, result == FAIL.
+    - Temporal binary missing -> observed is None, result == FAIL.
+    - FFmpeg missing -> result == FAIL.
+    - Có bất kỳ runtime nào FAIL -> overall_result == FAIL (không được tuyên bố PASS).
+    """
+    out_file = tmp_path / "matrix_fail_closed.json"
+
+    # Case A: PostgreSQL unreachable (cổng không tồn tại)
+    bad_db_dsn = "postgresql://postgres:postgres@127.0.0.1:59999/non_existent_db"
+    matrix_bad_db = generate_compatibility_matrix(
+        output_path=out_file,
+        db_url=bad_db_dsn,
+    )
+    pg_entry = matrix_bad_db["runtimes"]["postgresql"]
+    assert pg_entry["observed"] != "18.6", "Must NOT fallback to hardcoded 18.6 when DB unreachable!"
+    assert pg_entry["result"] == "FAIL"
+    assert matrix_bad_db.get("overall_result") == "FAIL", "Overall result must be FAIL when PostgreSQL is unreachable!"
+
+    # Case B: Temporal Server binary missing
+    missing_temporal = tmp_path / "non_existent_temporal_server.exe"
+    matrix_bad_ts = generate_compatibility_matrix(
+        output_path=out_file,
+        temporal_binary_path=missing_temporal,
+    )
+    ts_entry = matrix_bad_ts["runtimes"]["temporal_server"]
+    assert ts_entry["observed"] != "1.31.2", "Must NOT fallback to hardcoded 1.31.2 when binary is missing!"
+    assert ts_entry["result"] == "FAIL"
+    assert matrix_bad_ts.get("overall_result") == "FAIL"

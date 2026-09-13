@@ -1,14 +1,19 @@
 {
   "status": "PASS_E3_LIVE",
   "architecture": "ADR-0009_CLOUD_TOKEN_BROKER",
-  "broker_boundary": "HTTP_IPC_SEPARATE_PROCESS_CONTEXT",
-  "broker_port": 53415,
+  "broker_boundary": "HTTP_IPC_SUBPROCESS_BOUNDARY",
+  "process_isolated": true,
+  "broker_pid": 46724,
+  "desktop_pid": 23080,
+  "broker_endpoint": "http://127.0.0.1:55725",
+  "secure_storage_verified": true,
+  "encryption_method": "WINDOWS_DPAPI",
   "desktop_refresh_token_retained": false,
   "desktop_disk_token_violations": 0,
-  "pregenerated_id_redacted": "1I48Jk...Diji",
+  "pregenerated_id_redacted": "1MkRWN...Q7eo",
   "byte_size": 64,
   "sha256_verified": true,
   "sha256_hash": "a1489a57bff218ba7ca6cb599b8085a95fa9c411780b260167e1bc352a63ba73",
   "scope": "https://www.googleapis.com/auth/drive.file",
-  "timestamp_utc": "2026-09-13T08:48:27.430793+00:00"
+  "timestamp_utc": "2026-09-13T09:24:31.667496+00:00"
 }

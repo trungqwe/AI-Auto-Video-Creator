@@ -35,3 +35,15 @@ Trước khi thực hiện cải tiến R4 (Dynamic Matrix Observation từ runt
 - **Kết quả:** `FAILED` đúng oracle (exit code 1).
 - **Hiện tượng quan sát:** `AssertionError: assert 'timestamp' in matrix` (hoặc hardcoded static assertion mismatch khi đo runtime động).
 - **Tệp bằng chứng thô:** `docs/milestones/m1-proof/evidence/m1-p6/red-r4-stdout.txt`
+
+---
+
+## 3. Bằng chứng Quan sát RED Đợt Audit R5 (R5-03 Evidence)
+
+Trước khi thực hiện cải tiến R5 (Fail-closed Dynamic Compatibility Matrix), bài kiểm thử `TST-M1-P5-009` đã được tạo lập trước và chứng kiến trạng thái RED đúng oracle:
+
+- **Lệnh thực thi:** `pytest tests/m1/p5/test_compatibility_smoke.py -k test_tst_m1_p5_009_fail_closed_compatibility_matrix -v`
+- **Mục tiêu:** Kiểm chứng logic ma trận không còn fallback giá trị giả mạo (ví dụ `18.6` khi Postgres lỗi, `1.31.2` khi Temporal binary missing). Khi có lỗi, `observed` phải là `None`, `result` phải là `"FAIL"`, và `overall_result` phải là `"FAIL"`.
+- **Kết quả:** `FAILED` đúng oracle (exit code 1).
+- **Hiện tượng quan sát:** `AssertionError: assert matrix['postgresql']['observed'] is None` (bị gán fallback "18.6" cũ).
+- **Tệp bằng chứng thô UTF-8:** `docs/milestones/m1-proof/evidence/m1-p6/red-r5-stdout.txt`.

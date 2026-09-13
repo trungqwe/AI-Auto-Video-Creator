@@ -208,3 +208,97 @@ def test_tst_m1_p3_012_broker_http_process_boundary():
         assert desktop.has_active_credentials() is False
     finally:
         server.stop()
+
+
+def test_tst_m1_p3_013_broker_subprocess_isolation(tmp_path: Path):
+    """TST-M1-P3-013 (R5-01):
+    Broker chạy dưới dạng tiến trình độc lập (subprocess) với PID riêng biệt.
+    Desktop client chỉ biết URL/API; không import/truy cập đối tượng broker.
+    Xác nhận broker_pid != desktop_pid.
+    Xác nhận kill broker -> Desktop fail-closed (không thể tự refresh).
+    Xác nhận restart broker -> Desktop hoạt động bình thường trở lại.
+    """
+    import os
+    from m1proof.broker_service import start_broker_subprocess, stop_broker_subprocess
+    from m1proof.oauth_broker import DesktopOAuthClient
+
+    desktop_pid = os.getpid()
+    vault_file = tmp_path / "broker_vault.json"
+
+    # 1. Khởi động broker trong subprocess riêng biệt
+    handle = start_broker_subprocess(vault_path=vault_file, port=0)
+    try:
+        assert handle.pid != desktop_pid, f"Broker PID {handle.pid} must be different from Desktop PID {desktop_pid}"
+        assert handle.pid > 0
+
+        # Đăng ký tài khoản trên broker qua API/CLI hoặc vault
+        handle.register_account("acc-proc-test", refresh_token="1//MOCK_SUBPROC_TOKEN")
+
+        # 2. Desktop kết nối qua HTTP IPC thuần túy
+        desktop = DesktopOAuthClient(broker_url=handle.endpoint, account_id="acc-proc-test")
+        creds = desktop.acquire_short_lived_credentials()
+        assert creds.token is not None
+        assert creds.refresh_token is None
+
+        # 3. Giết (kill) broker process
+        stop_broker_subprocess(handle)
+
+        # 4. Desktop thử refresh token -> Phải thất bại fail-closed
+        with pytest.raises(Exception):
+            desktop.refresh_via_broker()
+
+        # 5. Khởi động lại broker subprocess
+        handle2 = start_broker_subprocess(vault_path=vault_file, port=handle.port)
+        try:
+            assert handle2.pid != desktop_pid
+            assert handle2.pid != handle.pid
+
+            # Desktop thử lại -> Thành công
+            new_creds = desktop.refresh_via_broker()
+            assert new_creds.token is not None
+            assert new_creds.refresh_token is None
+        finally:
+            stop_broker_subprocess(handle2)
+    finally:
+        stop_broker_subprocess(handle)
+
+
+def test_tst_m1_p3_014_dpapi_encrypted_vault(tmp_path: Path):
+    """TST-M1-P3-014 (R5-02):
+    Broker vault sử dụng Windows DPAPI native để mã hóa refresh token và secret.
+    Bytes thô trên đĩa tuyệt đối KHÔNG chứa chuỗi refresh_token hoặc client_secret plaintext.
+    Broker restart giải mã thành công qua DPAPI secret-store.
+    """
+    from m1proof.secure_vault import DPAPISecureVault
+
+    vault_path = tmp_path / "vault.json"
+    vault = DPAPISecureVault(vault_path)
+
+    secret_refresh = "1//GENUINE_LOOKING_REFRESH_TOKEN_SECRET_9876543210"
+    secret_client = "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45"
+
+    vault.store_account(
+        account_id="acc-dpapi-test",
+        refresh_token=secret_refresh,
+        client_id="test_client_id_123.apps.googleusercontent.com",
+        client_secret=secret_client,
+    )
+
+    # 1. Đọc bytes thô của tệp vault trên đĩa
+    raw_bytes = vault_path.read_bytes()
+    assert secret_refresh.encode() not in raw_bytes, "Plaintext refresh token MUST NOT appear in vault bytes on disk!"
+    assert secret_client.encode() not in raw_bytes, "Plaintext client secret MUST NOT appear in vault bytes on disk!"
+
+    # 2. Kiểm tra cấu trúc metadata của vault
+    import json
+    vault_json = json.loads(raw_bytes.decode("utf-8"))
+    assert vault_json.get("encrypted") is True
+    assert vault_json.get("encryption") == "WINDOWS_DPAPI"
+    assert "ciphertext" in vault_json
+
+    # 3. Khởi tạo instance vault mới và tải lại (restart simulation)
+    vault2 = DPAPISecureVault(vault_path)
+    loaded = vault2.get_account("acc-dpapi-test")
+    assert loaded is not None
+    assert loaded["refresh_token"] == secret_refresh
+    assert loaded["client_secret"] == secret_client

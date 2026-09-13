@@ -219,3 +219,77 @@ def test_tst_m1_p6_008_capability_evidence_fail_closed(tmp_path: Path):
 
     # evidence_classification không được claim E3 nếu thiếu drive_e3_evidence.json
     assert manifest["evidence_classification"]["m1-p3"] != "E3"
+
+
+def test_tst_m1_p6_009_semantic_capability_validation(tmp_path: Path):
+    """TST-M1-P6-009 (R5-04):
+    Validator phải kiểm tra sâu ngữ nghĩa machine-readable của capability evidence:
+    - P3 không được cấp E3 nếu process_isolated != True hoặc broker_pid == desktop_pid hoặc secure_storage_verified != True.
+    - P5 matrix phải bị từ chối nếu có bất kỳ runtime nào FAIL, UNAVAILABLE hoặc null.
+    """
+    import json
+    from m1proof.evidence_manifest import REQUIRED_M1_PACKAGES
+
+    fake_root = tmp_path / "repo_semantic"
+    evidence_dir = fake_root / "docs" / "milestones" / "m1-proof" / "evidence"
+    for pkg in REQUIRED_M1_PACKAGES:
+        pdir = evidence_dir / pkg
+        pdir.mkdir(parents=True)
+        (pdir / "status.md").write_text("Trạng thái: PASS", encoding="utf-8")
+        (pdir / "commands.jsonl").write_text("{}", encoding="utf-8")
+        (pdir / "hashes.sha256").write_text("hash  status.md", encoding="utf-8")
+        (pdir / "red-observations.md").write_text("RED", encoding="utf-8")
+
+    (fake_root / "uv.lock").write_text("uv_lock_test_content", encoding="utf-8")
+    (evidence_dir / "m1-p0" / "bootstrap.json").write_text("{}", encoding="utf-8")
+    (evidence_dir / "m1-p0" / "environment.json").write_text("{}", encoding="utf-8")
+    (evidence_dir / "m1-p2" / "temporal_server_evidence.json").write_text(
+        json.dumps({"server_version": "1.31.2", "binary_verified": True, "grpc_ready": True}),
+        encoding="utf-8",
+    )
+
+    # 1. P3 Capability: Vi phạm process isolation (broker_pid == desktop_pid)
+    bad_p3_evidence = {
+        "status": "PASS_E3_LIVE",
+        "sha256_verified": True,
+        "process_isolated": False,  # Vi phạm!
+        "broker_pid": 1234,
+        "desktop_pid": 1234,       # Vi phạm!
+        "secure_storage_verified": True,
+    }
+    (evidence_dir / "m1-p3" / "drive_e3_evidence.json").write_text(
+        json.dumps(bad_p3_evidence), encoding="utf-8"
+    )
+
+    valid_matrix = {
+        "overall_result": "PASS",
+        "runtimes": {
+            "cpython": {"result": "PASS", "observed": "3.13.15"},
+            "postgresql": {"result": "PASS", "observed": "18.6"},
+        }
+    }
+    (evidence_dir / "m1-p5" / "compatibility_matrix.json").write_text(
+        json.dumps(valid_matrix), encoding="utf-8"
+    )
+
+    manifest1 = build_m1_evidence_manifest(fake_root)
+    # Phải từ chối E3 và đánh dấu semantic fail
+    assert "E3" not in manifest1["evidence_classification"]["m1-p3"]
+    assert "SEMANTIC" in manifest1["packages"]["m1-p3"]["status"]
+
+    # 2. P5 Capability: Ma trận có runtime bị FAIL
+    bad_matrix = {
+        "overall_result": "FAIL",
+        "runtimes": {
+            "cpython": {"result": "PASS", "observed": "3.13.15"},
+            "postgresql": {"result": "FAIL", "observed": None},  # DB unreachable
+        }
+    }
+    (evidence_dir / "m1-p5" / "compatibility_matrix.json").write_text(
+        json.dumps(bad_matrix), encoding="utf-8"
+    )
+
+    manifest2 = build_m1_evidence_manifest(fake_root)
+    assert "SEMANTIC" in manifest2["packages"]["m1-p5"]["status"]
+    outcome = evaluate_milestone_gates(manifest2)
+    assert outcome["m1_status"] != "READY_FOR_USER_CHECKPOINT"

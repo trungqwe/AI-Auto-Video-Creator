@@ -34,3 +34,15 @@ Trước khi thực hiện cải tiến R4 (Capability Evidence Fail-Closed & Pa
 - **Kết quả:** `FAILED` đúng oracle (exit code 1).
 - **Hiện tượng quan sát:** `AssertionError: assert 'm1-p6' in REQUIRED_M1_PACKAGES` (m1-p6 chưa được đưa vào mandatory packages hoặc thiếu capability check cho p2/p3/p5).
 - **Tệp bằng chứng thô:** `docs/milestones/m1-proof/evidence/m1-p6/red-r4-stdout.txt`
+
+---
+
+## 3. Bằng chứng Quan sát RED Đợt Audit R5 (R5-04 Evidence)
+
+Trước khi thực hiện cải tiến R5 (Semantic Capability Validation trong Evidence Manifest), bài kiểm thử `TST-M1-P6-009` đã được tạo lập trước và chứng kiến trạng thái RED đúng oracle:
+
+- **Lệnh thực thi:** `pytest tests/m1/p6/test_evidence_audit.py -k test_tst_m1_p6_009_semantic_capability_validation -v`
+- **Mục tiêu:** Kiểm chứng validator phân tích sâu cấu trúc machine-readable: từ chối cấp E3 và đánh dấu semantic fail nếu P3 `process_isolated` không phải True, hoặc `broker_pid == desktop_pid`, hoặc `secure_storage_verified` không phải True; từ chối manifest nếu P5 compatibility matrix có bất kỳ runtime nào bị FAIL, UNAVAILABLE hoặc null.
+- **Kết quả:** `FAILED` đúng oracle (exit code 1).
+- **Hiện tượng quan sát:** `AssertionError: assert 'E3' not in manifest1['evidence_classification']['m1-p3']` (trước remediation manifest vẫn cấp E3 hoặc fallback chuỗi chứa E3).
+- **Tệp bằng chứng thô UTF-8:** `docs/milestones/m1-proof/evidence/m1-p6/red-r5-stdout.txt`.
