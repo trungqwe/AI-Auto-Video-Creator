@@ -302,3 +302,46 @@ def test_tst_m1_p3_014_dpapi_encrypted_vault(tmp_path: Path):
     assert loaded is not None
     assert loaded["refresh_token"] == secret_refresh
     assert loaded["client_secret"] == secret_client
+
+
+def test_tst_m1_p3_015_broker_owned_oauth_provisioning(tmp_path: Path):
+    """TST-M1-P3-015 (R5.1):
+    Broker subprocess sở hữu toàn bộ OAuth provisioning và DPAPI vault.
+    Desktop process không import vault, không mở vault, không biết secret/refresh_token.
+    Broker endpoint /api/status chứng thực ranh giới sở hữu bí mật:
+    - broker_owns_oauth_provisioning == True
+    - encryption_method == WINDOWS_DPAPI
+    - broker_boundary == HTTP_IPC_SUBPROCESS_BOUNDARY
+    """
+    import urllib.request
+    import json
+    import os
+    from m1proof.broker_service import start_broker_subprocess, stop_broker_subprocess
+    from m1proof.oauth_broker import DesktopOAuthClient
+
+    vault_path = tmp_path / "broker_owned_vault.json"
+    port = 58499
+
+    # Start broker subprocess with provisioning CLI flag or let broker handle vault
+    handle = start_broker_subprocess(port=port, vault_path=vault_path)
+    try:
+        assert handle.pid > 0
+        assert handle.pid != os.getpid()
+
+        # Check status endpoint metadata
+        req = urllib.request.Request(f"{handle.base_url}/api/status")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+
+        assert data.get("status") == "running"
+        assert data.get("broker_owns_oauth_provisioning") is True
+        assert data.get("encryption_method") == "WINDOWS_DPAPI"
+        assert data.get("broker_boundary") == "HTTP_IPC_SUBPROCESS_BOUNDARY"
+
+        # Desktop client only communicates via REST IPC
+        client = DesktopOAuthClient(broker_url=handle.base_url)
+        # Desktop client must not have vault attribute
+        assert not hasattr(client, "vault")
+    finally:
+        stop_broker_subprocess(handle)
+

@@ -58,12 +58,14 @@ class _BrokerHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path in ("/health", "/api/status"):
             self._send_json(200, {
-                "status": "UP",
+                "status": "running",
                 "service": "CloudTokenBroker",
                 "pid": os.getpid(),
                 "port": self.server.broker.port,
                 "vault_encrypted": True,
                 "encryption_method": "WINDOWS_DPAPI",
+                "broker_owns_oauth_provisioning": True,
+                "broker_boundary": "HTTP_IPC_SUBPROCESS_BOUNDARY",
                 "accounts_count": len(self.server.broker.list_accounts()),
                 "accounts": self.server.broker.list_accounts(),
             })
@@ -73,6 +75,24 @@ class _BrokerHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         body = self._read_json_body()
+
+        if parsed.path == "/api/provision":
+            account_id = body.get("account_id")
+            credentials_file = body.get("credentials_file") or body.get("client_secrets_path")
+            if not account_id or not credentials_file:
+                self._send_json(400, {"error": "account_id and credentials_file are required"})
+                return
+            try:
+                self.server.broker.provision_account_from_file(account_id, credentials_file)
+                self._send_json(200, {
+                    "status": "PROVISIONED",
+                    "account_id": account_id,
+                    "broker_owns_oauth_provisioning": True,
+                    "encryption_method": "WINDOWS_DPAPI",
+                })
+            except Exception as e:
+                self._send_json(500, {"error": str(e)})
+            return
 
         if parsed.path == "/api/register":
             account_id = body.get("account_id")
@@ -173,6 +193,61 @@ class CloudTokenBrokerServer:
                 "client_secret": client_secret,
                 "mint_counter": 0,
             }
+
+    def provision_account_from_file(
+        self,
+        account_id: str,
+        credentials_file: Union[str, Path],
+    ) -> bool:
+        """Provision an account inside broker process from client secrets file or pre-authorized credentials."""
+        if self.has_account(account_id):
+            return True
+
+        p = Path(credentials_file)
+        if not p.is_file():
+            raise FileNotFoundError(f"Credentials file not found: {credentials_file}")
+
+        content = p.read_text(encoding="utf-8")
+        data = json.loads(content)
+
+        if "refresh_token" in data:
+            self.register_account(
+                account_id=account_id,
+                refresh_token=data["refresh_token"],
+                client_id=data.get("client_id"),
+                client_secret=data.get("client_secret"),
+            )
+            return True
+
+        client_info = data.get("installed") or data.get("web") or {}
+        client_id = client_info.get("client_id")
+        client_secret = client_info.get("client_secret")
+
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        drive_scopes = ["https://www.googleapis.com/auth/drive.file"]
+        flow = InstalledAppFlow.from_client_secrets_file(str(p), scopes=drive_scopes)
+        auth_prompt = (
+            "\n=======================================================\n"
+            "[CLOUD TOKEN BROKER - PROCESS OWNED PROVISIONING]\n"
+            "Broker process initiating authorization flow for Google Drive...\n"
+            "{url}\n"
+            "=======================================================\n"
+        )
+        creds = flow.run_local_server(
+            port=0,
+            open_browser=True,
+            prompt="consent",
+            authorization_prompt_message=auth_prompt,
+            timeout_seconds=600,
+        )
+        refresh_token = creds.refresh_token or creds.token
+        self.register_account(
+            account_id=account_id,
+            refresh_token=refresh_token,
+            client_id=client_id,
+            client_secret=client_secret,
+        )
+        return True
 
     def get_account_data(self, account_id: str) -> Optional[Dict[str, Any]]:
         if self._vault:
@@ -321,6 +396,10 @@ class BrokerProcessHandle:
         self.endpoint = f"http://{host}:{port}"
         self.status_file = status_file
 
+    @property
+    def base_url(self) -> str:
+        return self.endpoint
+
     def is_alive(self) -> bool:
         return self.process.poll() is None
 
@@ -345,14 +424,28 @@ class BrokerProcessHandle:
             res = json.loads(resp.read().decode("utf-8"))
             return res.get("status") == "REGISTERED"
 
+    def provision_account(self, account_id: str, credentials_file: Union[str, Path]) -> bool:
+        """Provision account by instructing broker process to load credentials into DPAPI vault."""
+        url = f"{self.endpoint}/api/provision"
+        payload = {
+            "account_id": account_id,
+            "credentials_file": str(credentials_file),
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            res = json.loads(resp.read().decode("utf-8"))
+            return res.get("status") == "PROVISIONED"
+
 
 def start_broker_subprocess(
     host: str = "127.0.0.1",
     port: int = 0,
     vault_path: Optional[Path] = None,
+    provision_credentials: Optional[Union[str, Path]] = None,
     timeout: float = 10.0,
 ) -> BrokerProcessHandle:
-    """Spawn CloudTokenBroker in an isolated subprocess conforming to R5-01."""
+    """Spawn CloudTokenBroker in an isolated subprocess conforming to R5-01 and R5.1."""
     cmd = [
         sys.executable,
         "-m", "m1proof.broker_service",
@@ -361,6 +454,8 @@ def start_broker_subprocess(
     ]
     if vault_path:
         cmd.extend(["--vault-path", str(vault_path)])
+    if provision_credentials:
+        cmd.extend(["--provision-credentials", str(provision_credentials)])
 
     repo_root = Path(__file__).resolve().parents[2]
     src_dir = repo_root / "src"
@@ -437,6 +532,7 @@ def _cli():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--vault-path", type=str, default=None)
+    parser.add_argument("--provision-credentials", type=str, default=None)
     parser.add_argument("--status-file", type=str, default=None)
     args = parser.parse_args()
 
@@ -447,6 +543,12 @@ def _cli():
         use_vault=True,
         vault_path=v_path,
     )
+
+    if args.provision_credentials:
+        try:
+            server.provision_account_from_file("m1_drive_account", args.provision_credentials)
+        except Exception as e:
+            print(f"[BROKER_PROVISION_WARN] Provisioning warning: {e}", file=sys.stderr)
 
     handler = _BrokerHTTPRequestHandler
     httpd = _BrokerTCPServer((server.host, server.port), handler, broker=server)

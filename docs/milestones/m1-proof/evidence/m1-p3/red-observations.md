@@ -69,3 +69,15 @@ Trước khi thực hiện cải tiến R5 (Broker Subprocess Isolation & DPAPI 
 - **Lệnh thực thi:** `pytest tests/m1/p3/test_oauth_lifecycle.py -k "test_tst_m1_p3_013 or test_tst_m1_p3_014" -v`
 - **Kết quả:** `2 FAILED` đúng oracle (exit code 1).
 - **Tệp bằng chứng thô UTF-8:** `docs/milestones/m1-proof/evidence/m1-p6/red-r5-stdout.txt`.
+
+---
+
+## 5. Bằng chứng Quan sát RED Đợt Audit R5.1 (Broker-Owned Provisioning Evidence)
+
+Trước khi thực hiện cải tiến R5.1 (Broker-Owned OAuth Provisioning), bài kiểm thử `TST-M1-P3-015` đã được tạo lập trước và chứng kiến trạng thái RED đúng oracle:
+
+- **Lệnh thực thi:** `pytest tests/m1/p3/test_oauth_lifecycle.py -k test_tst_m1_p3_015_broker_owned_oauth_provisioning -v`
+- **Mục tiêu:** Chứng minh broker subprocess là tiến trình duy nhất mở vault và sở hữu OAuth provisioning; desktop orchestrator không import hay truy cập vault; endpoint `/api/status` trả về `broker_owns_oauth_provisioning: True`, `encryption_method: WINDOWS_DPAPI`, `broker_boundary: HTTP_IPC_SUBPROCESS_BOUNDARY`.
+- **Kết quả:** `FAILED` đúng oracle (exit code 1).
+- **Hiện tượng RED quan sát:** `AttributeError: 'BrokerProcessHandle' object has no attribute 'base_url'` (hoặc thiếu trường `broker_owns_oauth_provisioning` trong metadata status).
+- **Tệp bằng chứng thô UTF-8:** `docs/milestones/m1-proof/evidence/m1-p6/red-r5-1-stdout.txt`.

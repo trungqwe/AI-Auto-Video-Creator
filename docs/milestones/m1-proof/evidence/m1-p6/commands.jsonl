@@ -7,3 +7,6 @@
 {"command": "pytest tests/m1/p6/test_evidence_audit.py -k test_tst_m1_p6_009_semantic_capability_validation -v", "exit_code": 1, "phase": "RED_OBSERVATION_R5", "timestamp_utc": "2026-09-13T09:16:45Z"}
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1/p6 -v", "exit_code": 0, "phase": "GREEN_ACCEPTANCE_R5", "timestamp_utc": "2026-09-13T09:21:18Z"}
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1 --cov=m1proof --cov-report=term -v", "exit_code": 0, "phase": "FULL_SUITE_REGRESSION_R5", "timestamp_utc": "2026-09-13T09:22:13Z"}
+{"command": "pytest tests/m1/p6/test_evidence_audit.py -k test_tst_m1_p6_010_semantic_capability_negative_fields -v", "exit_code": 1, "phase": "RED_OBSERVATION_R5_1", "timestamp_utc": "2026-09-13T09:33:29Z"}
+{"command": "py -3.13 -m uv run --frozen pytest tests/m1/p6 -v", "exit_code": 0, "phase": "GREEN_ACCEPTANCE_R5_1", "timestamp_utc": "2026-09-13T09:35:15Z"}
+{"command": "py -3.13 -m uv run --frozen pytest tests/m1 --cov=m1proof --cov-report=term -v", "exit_code": 0, "phase": "FULL_SUITE_REGRESSION_R5_1", "timestamp_utc": "2026-09-13T09:37:18Z"}

@@ -24,10 +24,11 @@
 | `TST-M1-P3-012` | CloudTokenBroker HTTP process boundary | **PASS** | `CloudTokenBrokerServer` chạy qua HTTP TCP socket riêng biệt; Desktop giao tiếp qua REST IPC; broker vault đặt ngoài workspace (`~/.cloud_token_broker/vault.json`). |
 | `TST-M1-P3-013` | Broker Subprocess Isolation (R5-01) | **PASS** | Broker chạy trong tiến trình Python OS riêng biệt (`subprocess.Popen`); desktop process không import/truy cập broker state; `broker_pid != desktop_pid`; fail-closed khi broker kill. |
 | `TST-M1-P3-014` | Windows DPAPI Encrypted Vault (R5-02) | **PASS** | Refresh token và client secret được mã hóa bằng Windows Data Protection API native (`CryptProtectData`/`CryptUnprotectData`); vault lưu ciphertext base64; byte trên đĩa không chứa plaintext token. |
-| `TST-M1-P3-LIVE` | Live External Verification trên Google Drive thật qua Broker HTTP Subprocess boundary | **PASS** | Xác thực E3 thực nghiệm thành công với credential thật qua tiến trình broker riêng biệt (`broker_pid != desktop_pid`): pre-generated ID, resumable upload 64 bytes, download đối soát SHA-256 (`1zLi2d...HsQD`), dọn dẹp delete, 0 token trên đĩa desktop. |
+| `TST-M1-P3-015` | Broker-Owned OAuth Provisioning (R5.1) | **PASS** | Broker subprocess sở hữu toàn bộ OAuth provisioning và DPAPI vault; Desktop process không import DPAPISecureVault, không mở vault file, không nhận refresh token hoặc client_secret. |
+| `TST-M1-P3-LIVE` | Live External Verification trên Google Drive thật qua Broker HTTP Subprocess boundary | **PASS** | Xác thực E3 thực nghiệm thành công với credential thật qua tiến trình broker riêng biệt (`broker_pid != desktop_pid`): pre-generated ID, resumable upload 64 bytes, download đối soát SHA-256 (`a1489a57...`), dọn dẹp delete, 0 token trên đĩa desktop, `broker_owns_oauth_provisioning=true`, `desktop_vault_access=false`. |
 
-- Tổng số test M1-P3: **15/15 PASSED, 0 SKIPPED** (toàn bộ suite M1: 91 passed, 0 skipped).
-- Tổng độ bao phủ mã nguồn (Coverage): **85%**.
+- Tổng số test M1-P3: **16/16 PASSED, 0 SKIPPED** (toàn bộ suite M1: 93 passed, 0 skipped).
+- Tổng độ bao phủ mã nguồn (Coverage): **83%**.
 - Tệp bằng chứng năng lực thực nghiệm: `docs/milestones/m1-proof/evidence/m1-p3/drive_e3_evidence.json`.
 
 ## 2. Giới hạn & Quyết định kiến trúc
@@ -36,7 +37,8 @@
    - Đã chứng minh triệt để kiến trúc ADR-0009: Refresh token dài hạn thuộc Broker process/vault ngoài workspace; Desktop client kết nối qua HTTP IPC và nhận access token ngắn hạn (`refresh_token is None`); quét đĩa desktop cam kết 0 token vi phạm.
    - Thư mục `Credentials/` nằm trong `.gitignore`; các token tạm trên đĩa đã bị loại bỏ vĩnh viễn; không coi `.gitignore` là cơ chế mã hóa.
    - External Proof E3 đã được thực thi và xác nhận trên Google Drive API v3 thật với đầy đủ chữ ký SHA-256 và pre-generated ID.
-2. **Giới hạn chuyển giao:**
+2. **Giới hạn chuyển giao & Limitation:**
    - Cổng G04 toàn phần giữ mức `PARTIALLY_PROVEN (PASS_M1_SCOPE)` (chứng minh đầy đủ trong phạm vi proof M1).
+   - **Bảo mật DPAPI:** `DPAPI proof runs under one Windows user; OS-account isolation between cloud host and desktop belongs to later deployment validation.` DPAPI không tự tạo process ACL mà mã hóa gắn với Windows user session.
    - Multi-tenant cloud broker phân tán và quản lý quota hàng triệu người dùng thuộc phạm vi M3+.
    - Không tự ý mở quyền sang M2, M3 hoặc Phân hệ A (`NOT AUTHORIZED`).

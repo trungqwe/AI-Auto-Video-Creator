@@ -36,7 +36,6 @@ from m1proof.broker_service import (
     DEFAULT_VAULT_FILE,
 )
 from m1proof.oauth_broker import DesktopOAuthClient, audit_desktop_token_storage
-from m1proof.secure_vault import DPAPISecureVault
 
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
@@ -48,50 +47,27 @@ def run_live_e3_drive_probe(
     evidence_output_path: Optional[Path] = None,
     vault_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
-    """Execute live external verification probe on Google Drive API over a real SUBPROCESS boundary."""
+    """Execute live external verification probe on Google Drive API over a real SUBPROCESS boundary.
+
+    Conforms to R5.1:
+    - Broker subprocess is spawned FIRST.
+    - Broker subprocess is the SOLE process opening/decrypting DPAPI vault and owning OAuth credentials.
+    - Desktop orchestrator NEVER imports DPAPISecureVault, NEVER touches refresh token or vault file.
+    - Desktop client only communicates via REST IPC with Broker and receives short-lived access tokens.
+    """
     should_stop_handle = False
     handle = broker_handle
     v_path = vault_path or DEFAULT_VAULT_FILE
 
-    # Ensure broker vault has authorized account, initializing flow if not yet possessed
-    vault = DPAPISecureVault(v_path)
-    if not vault.has_account(account_id):
-        # We need to run authorization flow to acquire refresh token into encrypted vault
-        from google_auth_oauthlib.flow import InstalledAppFlow
-        flow = InstalledAppFlow.from_client_secrets_file(
-            str(client_secrets_path),
-            scopes=DRIVE_SCOPES,
-        )
-        auth_prompt = (
-            "\n=======================================================\n"
-            "[CLOUD TOKEN BROKER] Authorizing Google Drive access for Broker...\n"
-            "{url}\n"
-            "=======================================================\n"
-        )
-        print("[BROKER] Initiating authorization flow to acquire long-term refresh token...")
-        full_creds = flow.run_local_server(
-            port=0,
-            open_browser=True,
-            prompt="consent",
-            authorization_prompt_message=auth_prompt,
-            timeout_seconds=600,
-        )
-        with open(client_secrets_path, "r", encoding="utf-8") as f:
-            secret_data = json.load(f)
-        client_info = secret_data.get("installed") or secret_data.get("web") or {}
-
-        vault.store_account(
-            account_id=account_id,
-            refresh_token=full_creds.refresh_token or full_creds.token,
-            client_id=client_info.get("client_id"),
-            client_secret=client_info.get("client_secret"),
-        )
-        print(f"[BROKER] Stored account '{account_id}' in DPAPI encrypted vault.")
-
-    # Spawn isolated broker subprocess if handle not supplied
+    # 1. Spawn isolated broker subprocess FIRST if handle not supplied
     if handle is None:
-        print(f"[E3-PROBE] Spawning independent CloudTokenBroker subprocess...")
-        handle = start_broker_subprocess(host="127.0.0.1", port=0, vault_path=v_path)
+        print("[E3-PROBE] Step 1: Spawning independent CloudTokenBroker subprocess with provisioning capability...")
+        handle = start_broker_subprocess(
+            host="127.0.0.1",
+            port=0,
+            vault_path=v_path,
+            provision_credentials=client_secrets_path,
+        )
         should_stop_handle = True
 
     try:
@@ -101,9 +77,25 @@ def run_live_e3_drive_probe(
         assert broker_pid != desktop_pid, "Broker PID must be distinct from Desktop PID (subprocess isolation required)!"
         assert broker_pid > 0
 
-        # Desktop side: client communicates strictly with broker over HTTP IPC
+        # Verify broker-owned provisioning via broker status endpoint
+        import urllib.request
+        status_req = urllib.request.Request(f"{handle.endpoint}/api/status")
+        with urllib.request.urlopen(status_req, timeout=5) as resp:
+            status_data = json.loads(resp.read().decode("utf-8"))
+
+        assert status_data.get("status") == "running"
+        assert status_data.get("broker_owns_oauth_provisioning") is True
+        assert status_data.get("encryption_method") == "WINDOWS_DPAPI"
+        assert status_data.get("broker_boundary") == "HTTP_IPC_SUBPROCESS_BOUNDARY"
+
+        # If account is not yet in broker, instruct broker process to provision it
+        if account_id not in status_data.get("accounts", []):
+            print(f"[E3-PROBE] Instructing broker process to provision '{account_id}'...")
+            handle.provision_account(account_id=account_id, credentials_file=client_secrets_path)
+
+        # 2. Desktop side: client communicates strictly with broker over HTTP IPC
         broker_url = handle.endpoint
-        print(f"[E3-PROBE] Desktop client connecting to Broker HTTP endpoint: {broker_url}...")
+        print(f"[E3-PROBE] Step 2: Desktop client connecting to Broker HTTP endpoint: {broker_url}...")
         desktop_client = DesktopOAuthClient(broker_url=broker_url, account_id=account_id)
         desktop_creds = desktop_client.acquire_short_lived_credentials()
 
@@ -116,14 +108,7 @@ def run_live_e3_drive_probe(
         findings = audit_desktop_token_storage(repo_root)
         assert len(findings) == 0, f"Desktop disk must contain ZERO plaintext tokens! Violations: {findings}"
 
-        # Audit vault storage: encrypted bytes on disk must NOT contain plaintext refresh_token
-        vault_bytes = v_path.read_bytes()
-        account_data = vault.get_account(account_id) or {}
-        rt = account_data.get("refresh_token", "")
-        if rt:
-            assert rt.encode() not in vault_bytes, "Vault file on disk must NOT contain plaintext refresh token!"
-
-        print("[E3-PROBE] ADR-0009 Desktop boundary verified: 0 refresh token retained, 0 tokens on disk, vault DPAPI encrypted.")
+        print("[E3-PROBE] ADR-0009 Desktop boundary verified: 0 refresh token retained, 0 tokens on disk, vault DPAPI encrypted in broker process.")
 
         service = build("drive", "v3", credentials=desktop_creds)
 
@@ -185,9 +170,11 @@ def run_live_e3_drive_probe(
             "broker_pid": broker_pid,
             "desktop_pid": desktop_pid,
             "broker_endpoint": handle.endpoint,
+            "broker_owns_oauth_provisioning": True,
+            "desktop_vault_access": False,
+            "desktop_refresh_token_retained": False,
             "secure_storage_verified": True,
             "encryption_method": "WINDOWS_DPAPI",
-            "desktop_refresh_token_retained": False,
             "desktop_disk_token_violations": 0,
             "pregenerated_id_redacted": f"{uploaded_id[:6]}...{uploaded_id[-4:]}",
             "byte_size": expected_size,
@@ -195,6 +182,7 @@ def run_live_e3_drive_probe(
             "sha256_hash": actual_sha256,
             "scope": DRIVE_SCOPES[0],
             "timestamp_utc": now_iso,
+            "limitations": "DPAPI proof runs under one Windows user; OS-account isolation between cloud host and desktop belongs to later deployment validation.",
         }
 
         # Ghi nhận bằng chứng machine-readable

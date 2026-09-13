@@ -1,7 +1,7 @@
 # AI Auto Video Creator - Lộ trình xây dựng toàn dự án
 
 **Tệp:** `docs/11-roadmap.md`  
-**Trạng thái:** Đã được người dùng phê duyệt làm baseline; M0 CLOSED, M1 READY_FOR_USER_CHECKPOINT (Hoàn tất Audit R5, 91 tests PASSED)  
+**Trạng thái:** Đã được người dùng phê duyệt làm baseline; M0 CLOSED, M1 READY_FOR_USER_CHECKPOINT (Hoàn tất Audit R5.1, 93 tests PASSED)  
 **Ngày lập:** 12-09-2026  
 **Ngày phê duyệt M0 và khóa M1-R1:** 13-09-2026  
 **Phạm vi:** từ kết thúc thiết kế trước code đến baseline vận hành đầu tiên  

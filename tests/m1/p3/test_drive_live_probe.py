@@ -18,6 +18,9 @@ def test_live_e3_drive_verification(credentials_path: Path):
     assert result["broker_pid"] != os.getpid()
     assert result["broker_pid"] > 0
     assert result["desktop_pid"] == os.getpid()
+    assert result["broker_owns_oauth_provisioning"] is True
+    assert result["desktop_vault_access"] is False
+    assert result["broker_boundary"] == "HTTP_IPC_SUBPROCESS_BOUNDARY"
     assert result["secure_storage_verified"] is True
     assert result["encryption_method"] == "WINDOWS_DPAPI"
     assert result["desktop_refresh_token_retained"] is False

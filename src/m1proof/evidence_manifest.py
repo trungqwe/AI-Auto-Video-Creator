@@ -258,7 +258,12 @@ def build_m1_evidence_manifest(project_root: Path) -> Dict[str, Any]:
                         and p3_data.get("broker_pid") > 0
                         and isinstance(p3_data.get("desktop_pid"), int)
                         and p3_data.get("desktop_pid") > 0
+                        and p3_data.get("broker_owns_oauth_provisioning") is True
+                        and p3_data.get("desktop_vault_access") is False
+                        and p3_data.get("desktop_refresh_token_retained") is False
                         and p3_data.get("secure_storage_verified") is True
+                        and p3_data.get("encryption_method") == "WINDOWS_DPAPI"
+                        and p3_data.get("broker_boundary") == "HTTP_IPC_SUBPROCESS_BOUNDARY"
                     )
                     if not is_p3_semantically_valid:
                         pkg_status = "CAPABILITY_EVIDENCE_SEMANTIC_FAIL:p3_process_isolation_or_security_violation"

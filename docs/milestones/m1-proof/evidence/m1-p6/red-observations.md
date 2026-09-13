@@ -46,3 +46,15 @@ Trước khi thực hiện cải tiến R5 (Semantic Capability Validation trong
 - **Kết quả:** `FAILED` đúng oracle (exit code 1).
 - **Hiện tượng quan sát:** `AssertionError: assert 'E3' not in manifest1['evidence_classification']['m1-p3']` (trước remediation manifest vẫn cấp E3 hoặc fallback chuỗi chứa E3).
 - **Tệp bằng chứng thô UTF-8:** `docs/milestones/m1-proof/evidence/m1-p6/red-r5-stdout.txt`.
+
+---
+
+## 4. Bằng chứng Quan sát RED Đợt Audit R5.1 (Semantic Negative Fields Evidence)
+
+Trước khi thực hiện cải tiến R5.1 (siết chặt semantic capability validation), bài kiểm thử `TST-M1-P6-010` đã được tạo lập trước và chứng kiến trạng thái RED đúng oracle:
+
+- **Lệnh thực thi:** `pytest tests/m1/p6/test_evidence_audit.py -k test_tst_m1_p6_010_semantic_capability_negative_fields -v`
+- **Mục tiêu:** Kiểm chứng validator từ chối cấp E3 và chặn `READY_FOR_USER_CHECKPOINT` khi lần lượt thay từng trường machine-readable trong `drive_e3_evidence.json` thành giá trị sai (`desktop_vault_access=True`, `broker_owns_oauth_provisioning=False`, `desktop_refresh_token_retained=True`, `encryption_method=PLAINTEXT`, `broker_boundary=THREAD_CONTEXT`).
+- **Kết quả:** `FAILED` đúng oracle (exit code 1).
+- **Hiện tượng RED quan sát:** `AssertionError: Failed to reject invalid desktop_vault_access: assert 'E3' not in manifest['evidence_classification']['m1-p3']`.
+- **Tệp bằng chứng thô UTF-8:** `docs/milestones/m1-proof/evidence/m1-p6/red-r5-1-stdout.txt`.

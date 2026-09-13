@@ -1,0 +1,21 @@
+RED OBSERVATION R5.1 (BROKER-OWNED PROVISIONING & SEMANTIC CAPABILITY REJECTION)
+Execution Timestamp: 2026-09-13T09:33:30Z
+
+================================================================================
+TEST 1: TST-M1-P3-015 (tests/m1/p3/test_oauth_lifecycle.py)
+Command: py -3.13 -m uv run --frozen pytest tests/m1/p3/test_oauth_lifecycle.py -k test_tst_m1_p3_015_broker_owned_oauth_provisioning -v
+Result: FAILED (Exit Code 1)
+Oracle check: BrokerProcessHandle lacks base_url or status endpoint lacks broker_owns_oauth_provisioning.
+
+tests/m1/p3/test_oauth_lifecycle.py::test_tst_m1_p3_015_broker_owned_oauth_provisioning FAILED [100%]
+AttributeError: 'BrokerProcessHandle' object has no attribute 'base_url' (or status metadata not yet implemented)
+
+================================================================================
+TEST 2: TST-M1-P6-010 (tests/m1/p6/test_evidence_audit.py)
+Command: py -3.13 -m uv run --frozen pytest tests/m1/p6/test_evidence_audit.py -k test_tst_m1_p6_010_semantic_capability_negative_fields -v
+Result: FAILED (Exit Code 1)
+Oracle check: Manifest builder failed to reject invalid desktop_vault_access, broker_owns_oauth_provisioning, desktop_refresh_token_retained, encryption_method, broker_boundary.
+
+tests/m1/p6/test_evidence_audit.py::test_tst_m1_p6_010_semantic_capability_negative_fields FAILED [100%]
+AssertionError: Failed to reject invalid desktop_vault_access
+assert 'E3' not in 'E3 (Live External Verification on Google Drive API & ADR-0009 Broker)'

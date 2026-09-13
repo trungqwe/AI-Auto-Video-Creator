@@ -121,6 +121,7 @@
         "hashes.sha256",
         "red-observations.md",
         "red-r4-stdout.txt",
+        "red-r5-1-stdout.txt",
         "red-r5-stdout.txt",
         "status.md"
       ]
@@ -407,23 +408,23 @@
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p3/commands.jsonl",
-      "sha256": "9cdf5aede587f212ae154d306431a29b348dfd530de2db4a44b1dada5b3081fb"
+      "sha256": "fb07231ba267255614fb80c45440e17ddb8d8b04d5100d1e820bc4cb0dafe550"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p3/drive_e3_evidence.json",
-      "sha256": "a82cc80a90386db692b929ae97f89fb7ea1e947f7688ced4681c3791f1a120ad"
+      "sha256": "f911a94a8264cde883e5307454633befdec90ed1733ab60e547487702e21b75e"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p3/hashes.sha256",
-      "sha256": "d9ddf9baf17696b9a46c14eb411f38ff56e6ecfb20df8a48b6914a8b8fc72312"
+      "sha256": "0614960c04a079180d150664fdace63d88967adaaedc382a862562a97fb1d8d2"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p3/red-observations.md",
-      "sha256": "25f29a72c21b71a4ce41fb7a36e6bdb6938ffa95bc5e751be3632b9401c5ed0f"
+      "sha256": "dcf53dd91578e1c348352543bf2fe6251c068fc6ce8abc0e732c7f7e9aeb8f16"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p3/status.md",
-      "sha256": "4db4773cdbd32dfab7dc7173802120c5c8a740e98f8b76cabe1545bded6787e3"
+      "sha256": "ca854684798108baac40e67955a1c6d9f482caab98cc33bdf13f8cb6a8932c31"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p4/commands.jsonl",
@@ -463,19 +464,23 @@
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p6/commands.jsonl",
-      "sha256": "1dc5e03dd3cf6c8563869a0db4c719f62182e4fd0c17ef8e63335a5bb10b70b6"
+      "sha256": "f0146f8512c256eeec746d9d84259a2d1a8a0300359ec98acf04ed0d2fc1a1bb"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p6/hashes.sha256",
-      "sha256": "acc54033ca60fbbe4d3d7742d34adf1d62b80807deea7366547d4d34f1d51378"
+      "sha256": "91578e8dee37bb5aed4551bd507b3c9d4bc9bc930e5564d4d7e7cdab67b53cf1"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p6/red-observations.md",
-      "sha256": "639edc13ca0b0492555330ec918e4195b4862dd4e0e7c2d22f6381c659446bfc"
+      "sha256": "306881eac468fe67ee12201cdc77413543115aa553cf163d1617cb73a8f8ac36"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p6/red-r4-stdout.txt",
       "sha256": "3d0a90f110ec7c8c955559415e5a7ba15685d3bf8693ee123279da309cea412f"
+    },
+    {
+      "path": "docs/milestones/m1-proof/evidence/m1-p6/red-r5-1-stdout.txt",
+      "sha256": "bb14e54f972e3caf47bb5ca1c740aa5ff8d81a547d6ddd570f1d7cfcbd72cb11"
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p6/red-r5-stdout.txt",
@@ -483,7 +488,7 @@
     },
     {
       "path": "docs/milestones/m1-proof/evidence/m1-p6/status.md",
-      "sha256": "e68e3826bfb837a6a1ab0fd94fb37bb2173ce89804fef808066f9fb4f3c9f114"
+      "sha256": "a625ef5cec5f5a96eb2a54db5baab929d786227d40781db54c555805f10310e3"
     }
   ]
 }

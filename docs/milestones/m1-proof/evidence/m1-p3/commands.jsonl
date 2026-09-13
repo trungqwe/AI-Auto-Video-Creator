@@ -9,3 +9,6 @@
 {"command": "pytest tests/m1/p3/test_oauth_lifecycle.py -k test_tst_m1_p3_014_dpapi_encrypted_vault -v", "exit_code": 1, "phase": "RED_OBSERVATION_R5_02", "timestamp_utc": "2026-09-13T09:16:35Z"}
 {"command": "py -3.13 -m uv run python src/m1proof/drive_live_probe.py", "exit_code": 0, "phase": "LIVE_E3_PROBE_SUBPROCESS_BOUNDARY_R5", "timestamp_utc": "2026-09-13T09:18:20Z"}
 {"command": "py -3.13 -m uv run --frozen pytest tests/m1/p3 -v", "exit_code": 0, "phase": "GREEN_ACCEPTANCE_R5", "timestamp_utc": "2026-09-13T09:18:35Z"}
+{"command": "pytest tests/m1/p3/test_oauth_lifecycle.py -k test_tst_m1_p3_015_broker_owned_oauth_provisioning -v", "exit_code": 1, "phase": "RED_OBSERVATION_R5_1", "timestamp_utc": "2026-09-13T09:33:32Z"}
+{"command": "py -3.13 -m uv run --frozen pytest tests/m1/p3/test_drive_live_probe.py -v", "exit_code": 0, "phase": "LIVE_E3_PROBE_BROKER_OWNED_R5_1", "timestamp_utc": "2026-09-13T09:36:04Z"}
+{"command": "py -3.13 -m uv run --frozen pytest tests/m1/p3 -v", "exit_code": 0, "phase": "GREEN_ACCEPTANCE_R5_1", "timestamp_utc": "2026-09-13T09:36:25Z"}

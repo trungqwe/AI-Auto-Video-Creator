@@ -293,3 +293,82 @@ def test_tst_m1_p6_009_semantic_capability_validation(tmp_path: Path):
     assert "SEMANTIC" in manifest2["packages"]["m1-p5"]["status"]
     outcome = evaluate_milestone_gates(manifest2)
     assert outcome["m1_status"] != "READY_FOR_USER_CHECKPOINT"
+
+
+def test_tst_m1_p6_010_semantic_capability_negative_fields(tmp_path: Path):
+    """TST-M1-P6-010 (R5.1):
+    Kiểm tra negative validation từng trường machine-readable trong drive_e3_evidence.json:
+    - desktop_vault_access != False
+    - broker_owns_oauth_provisioning != True
+    - desktop_refresh_token_retained != False
+    - encryption_method != 'WINDOWS_DPAPI'
+    - broker_boundary != 'HTTP_IPC_SUBPROCESS_BOUNDARY'
+    Mỗi trường vi phạm đều phải khiến M1 không thể READY_FOR_USER_CHECKPOINT.
+    """
+    import json
+    from m1proof.evidence_manifest import REQUIRED_M1_PACKAGES
+
+    fake_root = tmp_path / "repo_neg_fields"
+    evidence_dir = fake_root / "docs" / "milestones" / "m1-proof" / "evidence"
+    for pkg in REQUIRED_M1_PACKAGES:
+        pdir = evidence_dir / pkg
+        pdir.mkdir(parents=True)
+        (pdir / "status.md").write_text("Trạng thái: PASS", encoding="utf-8")
+        (pdir / "commands.jsonl").write_text("{}", encoding="utf-8")
+        (pdir / "hashes.sha256").write_text("hash  status.md", encoding="utf-8")
+        (pdir / "red-observations.md").write_text("RED", encoding="utf-8")
+
+    (fake_root / "uv.lock").write_text("uv_lock_test_content", encoding="utf-8")
+    (evidence_dir / "m1-p0" / "bootstrap.json").write_text("{}", encoding="utf-8")
+    (evidence_dir / "m1-p0" / "environment.json").write_text("{}", encoding="utf-8")
+    (evidence_dir / "m1-p2" / "temporal_server_evidence.json").write_text(
+        json.dumps({"server_version": "1.31.2", "binary_verified": True, "grpc_ready": True}),
+        encoding="utf-8",
+    )
+    (evidence_dir / "m1-p5" / "compatibility_matrix.json").write_text(
+        json.dumps({
+            "overall_result": "PASS",
+            "runtimes": {
+                "cpython": {"result": "PASS", "observed": "3.13.15"},
+                "postgresql": {"result": "PASS", "observed": "18.6"},
+            }
+        }),
+        encoding="utf-8",
+    )
+
+    valid_base = {
+        "status": "PASS_E3_LIVE",
+        "sha256_verified": True,
+        "process_isolated": True,
+        "broker_pid": 49000,
+        "desktop_pid": 20000,
+        "broker_owns_oauth_provisioning": True,
+        "desktop_vault_access": False,
+        "desktop_refresh_token_retained": False,
+        "secure_storage_verified": True,
+        "encryption_method": "WINDOWS_DPAPI",
+        "broker_boundary": "HTTP_IPC_SUBPROCESS_BOUNDARY",
+    }
+
+    # Negative test mutations
+    mutations = [
+        {"desktop_vault_access": True},
+        {"broker_owns_oauth_provisioning": False},
+        {"desktop_refresh_token_retained": True},
+        {"encryption_method": "PLAINTEXT"},
+        {"broker_boundary": "THREAD_CONTEXT"},
+    ]
+
+    for mut in mutations:
+        bad_evidence = dict(valid_base)
+        bad_evidence.update(mut)
+        (evidence_dir / "m1-p3" / "drive_e3_evidence.json").write_text(
+            json.dumps(bad_evidence), encoding="utf-8"
+        )
+        manifest = build_m1_evidence_manifest(fake_root)
+        field_name = list(mut.keys())[0]
+        assert "E3" not in manifest["evidence_classification"]["m1-p3"], f"Failed to reject invalid {field_name}"
+        assert "SEMANTIC" in manifest["packages"]["m1-p3"]["status"], f"Status not SEMANTIC for invalid {field_name}"
+        outcome = evaluate_milestone_gates(manifest)
+        assert outcome["m1_status"] != "READY_FOR_USER_CHECKPOINT", f"Gate did not reject invalid {field_name}"
+
