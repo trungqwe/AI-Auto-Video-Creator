@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Added
 
+- Hoàn thành M1-P5 Compatibility Smoke: kiểm chứng tương thích thực tế tập phiên bản M1-R1 với 6 bài test-first (CPython 3.13.15, uv 0.12.13, khóa uv.lock frozen, PostgreSQL 18.6 rollback và lưu trữ UTF-8 tiếng Việt, Temporal SDK 1.32.0 handshake/replay, ranh giới client Google không leak secret khi thiếu credential, và binary FFmpeg thực tế C:\ffmpeg\bin\ffmpeg.exe probe an toàn với argument array).
 - Hoàn thành M1-P4 Local Journal & Recovery Proof: kiểm chứng SQLite local journal và atomic file writer trên Windows với 6 bài test-first (crash sau artifact complete trước gửi receipt resend operation, crash giữa chừng reject partial byte, lost ACK sau cloud commit reconcile receipt không lặp side effect, stale recovery epoch quarantine, cache eviction phân biệt với unsent journal active, và phát hiện missing/corrupt hash).
 - Hoàn thành M1-P3 Google Drive & OAuth G04 Proof: kiểm chứng Google Drive API v3 và OAuth 2.0 Installed App Flow với 8 bài test-first (pre-generated ID idempotency, resumable upload lost-ACK recovery, timeout classification & reconciliation routing, byte integrity & SHA-256 verification, resumable session reconciliation, OAuth lifecycle & ADR-0009 desktop boundaries, rate limit HTTP 429 bounded backoff và secret scanning trong logs/receipts).
 - Thực hiện kiểm chứng thực tế Live E3 Probe trên Google Drive thật: hoàn tất OAuth authorization flow qua localhost, cấp pre-generated ID từ Drive API, resumable upload payload 64 bytes, tải về đối soát SHA-256 khớp 100% và dọn dẹp xóa file test an toàn.
@@ -21,8 +22,9 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Changed
 
+- M1-P5 chuyển sang `PASS_M1_SCOPE`.
+- P0/P1/P2/P3/P4/P5 đạt `PASS`, work package tiếp theo là M1-P6 (Evidence synthesis & Audit).
 - M1-P4 chuyển sang `PASS_M1_SCOPE`.
-- P0/P1/P2/P3/P4 đạt `PASS`, work package tiếp theo là M1-P5 (Compatibility Smoke: FFmpeg, PostgreSQL, Temporal, Google Client).
 - M1-P3 chuyển sang `PASS_M1_SCOPE`; Cổng G04 chuyển sang `PARTIALLY_PROVEN`.
 - ROADMAP-OPEN-003 chuyển sang `CLOSED_FOR_M1_P3`.
 - M1-P2 chuyển sang `PASS_M1_SCOPE`; G01 chuyển sang `PARTIALLY_PROVEN`.
