@@ -130,7 +130,7 @@ tests/m1/p2/test_worker_lifecycle.py: 8 warnings
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 - generated xml file: D:\AI Auto Video Creator\docs\milestones\m2-control-plane\evidence\m2-p0\m1-regression.xml -
-====================== 93 passed, 58 warnings in 46.88s =======================
+====================== 93 passed, 58 warnings in 45.96s =======================
 
 STDERR:
 

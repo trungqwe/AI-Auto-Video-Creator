@@ -96,8 +96,9 @@ def generate_secret_scan_report(
     target_dirs: Sequence[Path],
     output_file: Path | None = None,
     exclude_patterns: tuple[str, ...] = (".git", ".venv", "__pycache__", "node_modules"),
+    run_id: str | None = None,
 ) -> dict[str, Any]:
-    """Generate machine-readable secret scan report."""
+    """Generate machine-readable secret scan report with optional provenance run_id."""
     scanned_files_count = 0
     all_matches: list[SecretMatch] = []
 
@@ -111,7 +112,7 @@ def generate_secret_scan_report(
                 scanned_files_count += 1
                 all_matches.extend(scan_file(f))
 
-    report = {
+    report: dict[str, Any] = {
         "schema_version": "m2_secret_scan_v1",
         "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "scan_scope": {
@@ -124,9 +125,12 @@ def generate_secret_scan_report(
         "verdict": "CLEAN" if len(all_matches) == 0 else "VIOLATIONS_DETECTED",
         "findings": [asdict(m) for m in all_matches],
     }
+    if run_id is not None:
+        report["run_id"] = run_id
 
     if output_file is not None:
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
     return report
+

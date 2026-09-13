@@ -184,8 +184,8 @@ M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rule
   - Dynamic `uv` resolver (`resolve_uv_executable`), fail-closed không silent skip nếu binary thiếu.
   - Negative test: mutate lockfile với version không tương thích -> fail closed.
 - **Làm rõ Build-System Version Pins Claim**: Xác nhận `setuptools==75.8.0` và `wheel==0.45.1` là exact build-system version pins khai báo trong `pyproject.toml` `[build-system] requires`, không overclaim là nằm trong runtime lockfile.
-- **Single-Pipeline Deterministic Evidence Synthesis**: Triển khai `synthesizer.py` thực thi tuần tự tuyến tính theo một `run_id` duy nhất: M1 suite -> M2-P0 suite -> Secret Scan -> observed metrics extraction -> status.json -> status.md -> commands.jsonl (với execution metadata chuẩn xác) -> hashes.sha256 acyclic DAG -> read-only verification.
-- **Kết quả Kiểm thử Hiện hành**: 30/30 tests M2-P0 PASSED, 93/93 tests hồi quy M1 PASSED (0 failed, 0 skipped), 6/6 Package Gates PASSED.
+- **Single-Pipeline Deterministic Evidence Synthesis & Provenance Tracking**: Triển khai `synthesizer.py` thực thi tuần tự tuyến tính theo một `run_id` duy nhất (`run-m2-p0-...`): M1 suite -> M2-P0 suite -> Final Secret Scan (lần scan duy nhất tạo artifact cuối) -> observed metrics extraction -> status.json -> status.md -> commands.jsonl (với execution metadata khớp 100% timestamp và tệp) -> hashes.sha256 acyclic DAG -> read-only integrity, semantic và provenance verification.
+- **Kết quả Kiểm thử Hiện hành**: 33/33 tests M2-P0 PASSED, 93/93 tests hồi quy M1 PASSED (0 failed, 0 skipped), 6/6 Package Gates PASSED.
 - **Ranh giới Bắt buộc**: Dừng lại tại `M2-P0_READY_FOR_REVIEW`. Tuyệt đối không bắt đầu M2-P1. M3 và Phân hệ A tiếp tục bị khóa chặt (`NOT AUTHORIZED`).
 
 

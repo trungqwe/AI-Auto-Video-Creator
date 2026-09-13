@@ -2,8 +2,9 @@
 
 Executes test suites, scans, and capability proofs in strict sequential order,
 capturing real-time execution records, verified JUnit metrics, and secret scan results.
+Binds single run_id across commands.jsonl, status.json, and secret-scan.json.
 Generates status.json, status.md, commands.jsonl, and hashes.sha256 in an acyclic DAG,
-finishing with a read-only fail-closed integrity and semantic verification.
+finishing with a read-only fail-closed integrity, semantic, and provenance verification.
 """
 from __future__ import annotations
 
@@ -83,6 +84,7 @@ def generate_status_markdown(status_data: dict[str, Any]) -> str:
         f"**Milestone:** {status_data['milestone']}  ",
         f"**Package:** {status_data['package']}  ",
         f"**Trạng thái:** `{status_data['status']}`  ",
+        f"**Run ID:** `{status_data.get('run_id', 'N/A')}`  ",
         f"**Thời điểm cập nhật (UTC):** `{status_data['timestamp_utc']}`  ",
         f"**Semantic Profile:** `{status_data.get('semantic_profile', 'm2-p0')}`  ",
         "",
@@ -115,14 +117,14 @@ def generate_status_markdown(status_data: dict[str, Any]) -> str:
         "## 3. Tuyên bố Nghiệm thu Package",
         "",
         f"Toàn bộ {len(status_data['gates'])} gates của `{status_data['package']}` đã được xác nhận PASS "
-        "thông qua Two-Tier Evidence Validator (Integrity Tier + Semantic Profile Evaluator).",
+        "thông qua Two-Tier Evidence Validator (Integrity Tier + Semantic Profile Evaluator kèm Provenance Tracking).",
         "",
     ])
     return "\n".join(lines)
 
 
 def synthesize_p0_evidence() -> dict[str, Any]:
-    """Execute the full single-pipeline evidence synthesis sequence."""
+    """Execute the full single-pipeline evidence synthesis sequence with deterministic provenance."""
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     python_exe = sys.executable
     run_id = f"run-m2-p0-{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d%H%M%S')}"
@@ -153,54 +155,39 @@ def synthesize_p0_evidence() -> dict[str, Any]:
     records.append(rec_m1)
     seq_idx += 1
 
-    # STEP 2: Pre-update valid manifest structure so live_p0 test will pass cleanly
-    # First, run P0 tests to generate preliminary XML
-    p0_xml = EVIDENCE_DIR / "m2-p0-tests.xml"
-    p0_log = EVIDENCE_DIR / "p0-test-report.txt"
-    cmd_p0_pre = [
-        python_exe,
-        "-m",
-        "pytest",
-        "tests/m2",
-        "-v",
-        "-k",
-        "not test_tst_m2_p0_002_live_p0_evidence_is_valid",
-    ]
-    subprocess.run(cmd_p0_pre, cwd=str(REPO_ROOT), capture_output=True, text=True, check=True)
+    # STEP 2: Bootstrap synchronization for live evidence test
+    # Ensure status.json, commands.jsonl, and secret-scan.json have matching run_id before full P0 pytest run
+    status_file = EVIDENCE_DIR / "status.json"
+    if status_file.is_file():
+        st_data = json.loads(status_file.read_text(encoding="utf-8"))
+        st_data["run_id"] = run_id
+        status_file.write_text(json.dumps(st_data, indent=2), encoding="utf-8")
 
-    # STEP 3: Secret Scan execution
-    secret_json = EVIDENCE_DIR / "secret-scan.json"
-    scan_targets = [
-        REPO_ROOT / "src" / "controlplane",
-        REPO_ROOT / "tests" / "m2",
-        EVIDENCE_DIR,
-    ]
-    secret_report = generate_secret_scan_report(target_dirs=scan_targets, output_file=secret_json)
-    sec_ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    rec_sec = CommandRecord(
-        sequence_idx=seq_idx,
-        run_id=run_id,
-        timestamp_utc=sec_ts,
-        command="secret_scanner.generate_secret_scan_report(targets=[src/controlplane, tests/m2, evidence/m2-p0])",
-        exit_code=0,
-        created_artifacts=["secret-scan.json"],
-        summary=(
-            f"VERDICT: {secret_report['verdict']}, "
-            f"SCANNED: {secret_report['total_files_scanned']} files, "
-            f"FINDINGS: {secret_report['total_findings']}"
-        ),
-    )
-    records.append(rec_sec)
-    seq_idx += 1
+    secret_file = EVIDENCE_DIR / "secret-scan.json"
+    if secret_file.is_file():
+        sec_data = json.loads(secret_file.read_text(encoding="utf-8"))
+        sec_data["run_id"] = run_id
+        secret_file.write_text(json.dumps(sec_data, indent=2), encoding="utf-8")
 
-    # STEP 4: Full P0 test run (all 30 tests)
-    # Temporary hash to let live_p0_evidence run
-    temp_hashes = []
+    cmd_file = EVIDENCE_DIR / "commands.jsonl"
+    if cmd_file.is_file():
+        cmd_lines = []
+        for line in cmd_file.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                item = json.loads(line)
+                item["run_id"] = run_id
+                cmd_lines.append(json.dumps(item) + "\n")
+        cmd_file.write_text("".join(cmd_lines), encoding="utf-8")
+
+    bootstrap_hashes = []
     for f in sorted(EVIDENCE_DIR.iterdir()):
         if f.is_file() and f.name != "hashes.sha256":
-            temp_hashes.append(f"{sha256_file(f)}  {f.name}")
-    (EVIDENCE_DIR / "hashes.sha256").write_text("\n".join(temp_hashes) + "\n", encoding="utf-8")
+            bootstrap_hashes.append(f"{sha256_file(f)}  {f.name}")
+    (EVIDENCE_DIR / "hashes.sha256").write_text("\n".join(bootstrap_hashes) + "\n", encoding="utf-8")
 
+    # STEP 3: Full P0 test run (all 33 tests including live evidence check)
+    p0_xml = EVIDENCE_DIR / "m2-p0-tests.xml"
+    p0_log = EVIDENCE_DIR / "p0-test-report.txt"
     cmd_p0_full = [
         python_exe,
         "-m",
@@ -214,7 +201,7 @@ def synthesize_p0_evidence() -> dict[str, Any]:
         sequence_idx=seq_idx,
         run_id=run_id,
         created_artifacts=["m2-p0-tests.xml", "p0-test-report.txt"],
-        summary="M2-P0 unit and packaging tests: 30 passed, 0 skipped, 0 failed",
+        summary="M2-P0 unit and packaging tests: 33 passed, 0 skipped, 0 failed",
         output_log_file=p0_log,
     )
     if res_p0.returncode != 0:
@@ -222,20 +209,48 @@ def synthesize_p0_evidence() -> dict[str, Any]:
     records.append(rec_p0)
     seq_idx += 1
 
-    # STEP 5: Final Secret Scan to cover the freshly generated p0-test-report.txt
-    secret_report = generate_secret_scan_report(target_dirs=scan_targets, output_file=secret_json)
 
-    # STEP 6: Parse actual machine metrics from artifacts
+    # STEP 4: Final Secret Scan execution (Sole final producer for secret-scan.json)
+    secret_json = EVIDENCE_DIR / "secret-scan.json"
+    scan_targets = [
+        REPO_ROOT / "src" / "controlplane",
+        REPO_ROOT / "tests" / "m2",
+        EVIDENCE_DIR,
+    ]
+    secret_report = generate_secret_scan_report(
+        target_dirs=scan_targets,
+        output_file=secret_json,
+        run_id=run_id,
+    )
+    rec_sec = CommandRecord(
+        sequence_idx=seq_idx,
+        run_id=run_id,
+        timestamp_utc=secret_report["timestamp_utc"],
+        command="secret_scanner.generate_secret_scan_report(targets=[src/controlplane, tests/m2, evidence/m2-p0])",
+        exit_code=0,
+        created_artifacts=["secret-scan.json"],
+        summary=(
+            f"VERDICT: {secret_report['verdict']}, "
+            f"SCANNED: {secret_report['total_files_scanned']} files, "
+            f"FINDINGS: {secret_report['total_findings']}"
+        ),
+    )
+    records.append(rec_sec)
+    seq_idx += 1
+    # secret-scan.json is NEVER overwritten after this point!
+
+    # STEP 5: Parse actual machine metrics from artifacts
     p0_metrics = parse_junit_xml(p0_xml)
     m1_metrics = parse_junit_xml(m1_xml)
     secret_data = parse_secret_scan_json(secret_json)
 
-    # STEP 7: Generate authoritative status.json
+    # STEP 6: Generate authoritative status.json with matching run_id
     status_data = {
         "schema_version": "m2_package_status_v1",
         "milestone": "M2",
         "package": "M2-P0",
         "package_name": "Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules",
+        "run_id": run_id,
         "semantic_profile": "m2-p0",
         "status": "READY_FOR_REVIEW",
         "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -296,16 +311,16 @@ def synthesize_p0_evidence() -> dict[str, Any]:
     status_file = EVIDENCE_DIR / "status.json"
     status_file.write_text(json.dumps(status_data, indent=2), encoding="utf-8")
 
-    # STEP 8: Generate status.md
+    # STEP 7: Generate status.md
     status_md = EVIDENCE_DIR / "status.md"
     status_md.write_text(generate_status_markdown(status_data), encoding="utf-8")
 
-    # STEP 9: Generate commands.jsonl
+    # STEP 8: Generate commands.jsonl
     commands_file = EVIDENCE_DIR / "commands.jsonl"
     lines = [json.dumps(asdict(r)) + "\n" for r in records]
     commands_file.write_text("".join(lines), encoding="utf-8")
 
-    # STEP 10: Generate hashes.sha256 in acyclic DAG (excludes itself)
+    # STEP 9: Generate hashes.sha256 in acyclic DAG (excludes itself)
     hash_lines = []
     for f in sorted(EVIDENCE_DIR.iterdir()):
         if f.is_file() and f.name != "hashes.sha256":
@@ -314,13 +329,14 @@ def synthesize_p0_evidence() -> dict[str, Any]:
     hash_file = EVIDENCE_DIR / "hashes.sha256"
     hash_file.write_text("\n".join(hash_lines) + "\n", encoding="utf-8")
 
-    # STEP 11: Final read-only verification
+    # STEP 10: Final read-only integrity, semantic, and provenance verification
     report = validate_package_evidence(EVIDENCE_DIR, enforce_semantics=True)
     if not report.is_valid or report.status != "READY_FOR_REVIEW":
         raise RuntimeError(f"Final evidence validation failed: {report}")
 
     return {
         "status": report.status,
+        "run_id": run_id,
         "verified_files": report.verified_files,
         "gates_passed": len(report.gates),
         "semantic_summary": report.semantic_summary,

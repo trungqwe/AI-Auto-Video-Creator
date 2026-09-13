@@ -35,14 +35,18 @@ from controlplane.infrastructure.evidence.validator import (
 )
 
 
-def create_valid_evidence_fixture(target_dir: Path, package_id: str = "M2-P0") -> None:
+def create_valid_evidence_fixture(target_dir: Path, package_id: str = "M2-P0", run_id: str = "run-m2-p0-fixture-001") -> None:
     """Helper to generate a valid evidence package directory with both integrity and semantic artifacts."""
+    import datetime
+
     target_dir.mkdir(parents=True, exist_ok=True)
+    now_ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     status_data = {
         "schema_version": "m2_package_status_v1",
         "milestone": "M2",
         "package": package_id,
+        "run_id": run_id,
         "status": "PASS",
         "gates": [
             {
@@ -71,8 +75,17 @@ def create_valid_evidence_fixture(target_dir: Path, package_id: str = "M2-P0") -
     status_file = target_dir / "status.json"
     status_file.write_text(json.dumps(status_data, indent=2), encoding="utf-8")
 
+    cmd_record = {
+        "sequence_idx": 1,
+        "run_id": run_id,
+        "timestamp_utc": now_ts,
+        "command": "secret_scanner.generate_secret_scan_report()",
+        "exit_code": 0,
+        "created_artifacts": ["secret-scan.json"],
+        "summary": "VERDICT: CLEAN, SCANNED: 25 files, FINDINGS: 0",
+    }
     commands_file = target_dir / "commands.jsonl"
-    commands_file.write_text('{"command": "pytest", "exit_code": 0}\n', encoding="utf-8")
+    commands_file.write_text(json.dumps(cmd_record) + "\n", encoding="utf-8")
 
     # M2-P0 JUnit XML
     p0_xml = target_dir / "m2-p0-tests.xml"
@@ -92,10 +105,12 @@ def create_valid_evidence_fixture(target_dir: Path, package_id: str = "M2-P0") -
         encoding="utf-8",
     )
 
-    # Secret Scan JSON
+    # Secret Scan JSON with matching run_id and timestamp
     secret_file = target_dir / "secret-scan.json"
     secret_data = {
         "schema_version": "m2_secret_scan_v1",
+        "run_id": run_id,
+        "timestamp_utc": now_ts,
         "verdict": "CLEAN",
         "total_files_scanned": 25,
         "total_findings": 0,
@@ -111,6 +126,7 @@ def create_valid_evidence_fixture(target_dir: Path, package_id: str = "M2-P0") -
 
     hash_file = target_dir / "hashes.sha256"
     hash_file.write_text("\n".join(hashes_content) + "\n", encoding="utf-8")
+
 
 
 def rehash_fixture(target_dir: Path) -> None:
@@ -406,5 +422,53 @@ def test_tst_m2_p0_002_semantic_evaluator_blocks_cross_package_profile_spoofing(
 
     with pytest.raises(EvidenceValidationError, match="Cross-package profile spoofing blocked"):
         validate_package_evidence(pkg_dir)
+
+
+def test_tst_m2_p0_002_semantic_evaluator_rejects_provenance_run_id_mismatch(tmp_path: Path) -> None:
+    """Negative test: command record for scan A but secret-scan.json has run_id B must fail provenance."""
+    pkg_dir = tmp_path / "provenance-mismatch"
+    create_valid_evidence_fixture(pkg_dir, run_id="run-A")
+
+    # Overwrite secret-scan.json with scan B having different run_id
+    secret_file = pkg_dir / "secret-scan.json"
+    data = json.loads(secret_file.read_text(encoding="utf-8"))
+    data["run_id"] = "run-B"
+    secret_file.write_text(json.dumps(data), encoding="utf-8")
+    rehash_fixture(pkg_dir)
+
+    with pytest.raises(EvidenceValidationError, match="secret-scan.json run_id mismatch"):
+        validate_package_evidence(pkg_dir)
+
+
+def test_tst_m2_p0_002_semantic_evaluator_rejects_provenance_timestamp_drift(tmp_path: Path) -> None:
+    """Negative test: secret-scan.json timestamp drifting > 5s from producer command record fails provenance."""
+    pkg_dir = tmp_path / "timestamp-drift"
+    create_valid_evidence_fixture(pkg_dir, run_id="run-A")
+
+    # Overwrite secret-scan.json with timestamp drifting by 2 hours
+    secret_file = pkg_dir / "secret-scan.json"
+    data = json.loads(secret_file.read_text(encoding="utf-8"))
+    data["timestamp_utc"] = "2026-09-13T14:30:00+00:00"
+    secret_file.write_text(json.dumps(data), encoding="utf-8")
+    rehash_fixture(pkg_dir)
+
+    with pytest.raises(EvidenceValidationError, match="Provenance timestamp drift"):
+        validate_package_evidence(pkg_dir)
+
+
+def test_tst_m2_p0_002_semantic_evaluator_rejects_missing_run_id_in_status(tmp_path: Path) -> None:
+    """Negative test: status.json missing mandatory run_id fails provenance verification."""
+    pkg_dir = tmp_path / "missing-run-id"
+    create_valid_evidence_fixture(pkg_dir)
+
+    status_file = pkg_dir / "status.json"
+    data = json.loads(status_file.read_text(encoding="utf-8"))
+    del data["run_id"]
+    status_file.write_text(json.dumps(data), encoding="utf-8")
+    rehash_fixture(pkg_dir)
+
+    with pytest.raises(EvidenceValidationError, match="status.json missing mandatory 'run_id'"):
+        validate_package_evidence(pkg_dir)
+
 
 

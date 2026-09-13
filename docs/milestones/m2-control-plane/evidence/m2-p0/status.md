@@ -3,7 +3,8 @@
 **Milestone:** M2  
 **Package:** M2-P0  
 **Trạng thái:** `READY_FOR_REVIEW`  
-**Thời điểm cập nhật (UTC):** `2026-09-13T12:25:02.999139+00:00`  
+**Run ID:** `run-m2-p0-20260913123316`  
+**Thời điểm cập nhật (UTC):** `2026-09-13T12:34:06.796622+00:00`  
 **Semantic Profile:** `m2-p0`  
 
 ---
@@ -23,7 +24,7 @@
 
 ## 2. Tóm tắt Kiểm thử & Quét Bảo mật Thực tế
 
-- **M2-P0 Unit & Packaging Tests:** 30/30 PASSED (0 failed, 0 skipped)
+- **M2-P0 Unit & Packaging Tests:** 33/33 PASSED (0 failed, 0 skipped)
 - **M1 Regression Suite (Frozen):** 93/93 PASSED (0 failed, 0 skipped)
 - **Secret & Credential Scan:** `0 vi phạm` (Trạng thái: CLEAN)
 
@@ -31,4 +32,4 @@
 
 ## 3. Tuyên bố Nghiệm thu Package
 
-Toàn bộ 6 gates của `M2-P0` đã được xác nhận PASS thông qua Two-Tier Evidence Validator (Integrity Tier + Semantic Profile Evaluator).
+Toàn bộ 6 gates của `M2-P0` đã được xác nhận PASS thông qua Two-Tier Evidence Validator (Integrity Tier + Semantic Profile Evaluator kèm Provenance Tracking).

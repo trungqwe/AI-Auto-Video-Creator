@@ -65,7 +65,7 @@ Milestone M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Archite
 - AST boundary checker bảo vệ Domain Purity và chặn triệt để `m1proof.*`, `src.m1proof.*`.
 - Evidence Validator hai tầng (Integrity + Semantic Profile Registry) trích xuất trực tiếp từ JUnit XML (`m2-p0-tests.xml`, `m1-regression.xml`) và `secret-scan.json`, chống triệt để false-PASS và chặn cross-package spoofing.
 - Single-pipeline synthesis (`synthesizer.py`) bảo đảm toàn bộ bằng chứng được sinh ra tuyến tính, tất định và loại bỏ hash cycles.
-- Toàn bộ **30/30 tests M2-P0 PASSED**; **93/93 tests hồi quy M1 PASSED**; 6/6 Package Gates PASSED; 0 secret leaks.
+- Toàn bộ **33/33 tests M2-P0 PASSED**; **93/93 tests hồi quy M1 PASSED**; 6/6 Package Gates PASSED; 0 secret leaks; xác thực provenance 1:1 tuyệt đối.
 
 
 

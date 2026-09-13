@@ -212,13 +212,93 @@ class M2P0SemanticProfile(PackageSemanticProfile):
                     f"Failed test summary detected inside {report_file.name}. Failed reports cannot be used as PASS evidence."
                 )
 
+        # 5. Verify Provenance Integrity across run_id, commands, and artifacts
+        provenance = verify_package_provenance(package_dir, status_data)
+
         return {
             "profile": self.profile_id,
             "p0_tests": p0_metrics,
             "m1_tests": m1_metrics,
             "secret_scan": secret_data.get("verdict"),
+            "provenance": provenance,
             "semantic_verdict": "PASS",
         }
+
+
+def verify_package_provenance(package_dir: Path, status_data: dict[str, Any]) -> dict[str, Any]:
+    """Verify deterministic provenance: run_id consistency, artifact producers, and timestamps."""
+    import datetime
+
+    status_run_id = status_data.get("run_id")
+    if not status_run_id or not isinstance(status_run_id, str):
+        raise SemanticEvaluationError("status.json missing mandatory 'run_id' for provenance tracking")
+
+    cmd_file = package_dir / "commands.jsonl"
+    if not cmd_file.is_file():
+        raise SemanticEvaluationError("commands.jsonl missing for provenance verification")
+
+    records: list[dict[str, Any]] = []
+    for line_idx, line in enumerate(cmd_file.read_text(encoding="utf-8").splitlines(), 1):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            raise SemanticEvaluationError(f"Malformed JSON in commands.jsonl line {line_idx}: {exc}") from exc
+
+    if not records:
+        raise SemanticEvaluationError("commands.jsonl contains no command records")
+
+    # 1. All records must share the exact same run_id as status.json
+    for idx, rec in enumerate(records):
+        rec_run_id = rec.get("run_id")
+        if rec_run_id != status_run_id:
+            raise SemanticEvaluationError(
+                f"Command record sequence {rec.get('sequence_idx', idx + 1)} run_id mismatch: "
+                f"expected '{status_run_id}', got '{rec_run_id}'"
+            )
+
+    # 2. secret-scan.json must share status.run_id
+    secret_file = package_dir / "secret-scan.json"
+    secret_data = parse_secret_scan_json(secret_file)
+    secret_run_id = secret_data.get("run_id")
+    if secret_run_id != status_run_id:
+        raise SemanticEvaluationError(
+            f"secret-scan.json run_id mismatch: expected '{status_run_id}', got '{secret_run_id}'"
+        )
+
+    # 3. Producer record for secret-scan.json must exist and match timestamps
+    secret_records = [r for r in records if "secret-scan.json" in r.get("created_artifacts", [])]
+    if not secret_records:
+        raise SemanticEvaluationError("No command record found declaring 'secret-scan.json' in created_artifacts")
+
+    final_secret_rec = secret_records[-1]
+    rec_ts = final_secret_rec.get("timestamp_utc", "")
+    art_ts = secret_data.get("timestamp_utc", "")
+
+    if rec_ts and art_ts:
+        try:
+            t_rec = datetime.datetime.fromisoformat(rec_ts)
+            t_art = datetime.datetime.fromisoformat(art_ts)
+            diff = abs((t_rec - t_art).total_seconds())
+            if diff > 5.0:
+                raise SemanticEvaluationError(
+                    f"Provenance timestamp drift: secret-scan.json ({art_ts}) differs from command record ({rec_ts}) "
+                    f"by {diff:.2f}s > 5.0s. Artifact was likely modified or generated outside of recorded execution."
+                )
+        except ValueError:
+            if rec_ts != art_ts:
+                raise SemanticEvaluationError(
+                    f"Provenance timestamp mismatch: secret-scan.json ({art_ts}) vs command record ({rec_ts})"
+                )
+
+    return {
+        "run_id": status_run_id,
+        "total_command_records": len(records),
+        "provenance_verdict": "VERIFIED",
+    }
+
 
 
 class SemanticProfileRegistry:
