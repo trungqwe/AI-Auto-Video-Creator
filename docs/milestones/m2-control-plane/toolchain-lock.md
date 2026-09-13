@@ -32,21 +32,27 @@ Theo yêu cầu guardrail P0, Node.js không được coi là đã chọn sẵn 
 
 ## 2. Backend Packaging Strategy & Exact Dependency Lock (Audit Item 2, 3, 4)
 
-### 2.1. Kiến trúc Đóng gói & Build System Lock
+### 2.1. Kiến trúc Đóng gói & Build System Version Pins
 
 - **Mô hình**: Đóng gói standard Python package theo chuẩn PEP 517/518/621 tại `src/controlplane/pyproject.toml`.
 - **Build Backend Được Chọn**: `setuptools` (thay thế hoàn toàn bản nháp Hatchling cũ nhằm thống nhất một sự thật duy nhất giữa docs, pyproject, lockfile và wheel build).
-- **Exact Build System Lock**:
+- **Exact Build-System Version Pins**:
   ```toml
   [build-system]
   requires = ["setuptools==75.8.0", "wheel==0.45.1"]
   build-backend = "setuptools.build_meta"
   ```
+- **Phạm vi & Phân định Claim (Không Overclaim)**:
+  - `setuptools==75.8.0` và `wheel==0.45.1` là **exact build-system version pins** được khai báo tại `src/controlplane/pyproject.toml` theo PEP 518.
+  - Các build dependencies này không nằm trong runtime lockfile (`requirements.lock` và `uv.lock` giải quyết 21 runtime transitive packages). Khi build package, build environment tuân thủ exact pins này.
 - **Tên package**: `controlplane`, version `0.2.0`.
 - **CLI Entrypoint**: `controlplane = "controlplane.entrypoint:main"`.
 - **Reproducible Fresh-Environment Proof**:
   - Không dựa vào `.pth` làm bằng chứng package gate.
-  - Kiểm chứng tự động tạo clean virtual environment bằng `uv venv`, build wheel `controlplane-0.2.0-py3-none-any.whl`, cài đặt vào môi trường cô lập không có `.pth` và thực thi thành công CLI entrypoint.
+  - Kiểm chứng tự động tạo clean virtual environment bằng `uv venv` (dynamic binary resolver qua `resolve_uv_executable()`, không hardcode đường dẫn, fail-closed không silent skip).
+  - Cài đặt dependency graph đóng băng từ `src/controlplane/requirements.lock`, xác nhận các gói cốt lõi khớp exact lock (`psycopg-pool==3.3.1`, `fastapi==0.141.1`, `pydantic-core==2.46.5`).
+  - Build wheel và cài đặt với cờ `--no-deps` vào clean venv để chứng minh tính độc lập và khớp với locked dependencies.
+  - Thực thi thành công CLI entrypoint trong môi trường cô lập.
 
 ### 2.2. Toàn bộ Resolved Dependency Graph của Control Plane (src/controlplane/requirements.lock & uv.lock)
 
@@ -80,6 +86,27 @@ Toàn bộ 21 packages trong transitive graph đã được resolve và khóa c�
 - Root `pyproject.toml` và root `uv.lock` tiếp tục đóng băng cho `ai-auto-video-creator-m1-proof` (SHA-256 hash giữ nguyên `31bae731c8ec80e52fbd9a75b3969d0d556e7489f48fc13d151c0c0cfe4e9380`).
 - Không cài đặt đè các package mới vào workspace `.venv` làm trôi `uv sync --frozen --check`.
 - Kết nối phát triển cục bộ cho phép import `controlplane` qua `.venv/Lib/site-packages/controlplane.pth` nhằm phục vụ developer convenience mà không làm hỏng M1 suite.
+
+### 2.4. Single-Pipeline Deterministic Evidence Synthesis & Profile Registry Pattern
+
+- **Profile Registry Pattern**:
+  - `PackageSemanticProfile` và `SemanticProfileRegistry` quản lý việc đánh giá ngữ nghĩa cho từng package.
+  - `M2P0SemanticProfile` quản lý policy cho `M2-P0` (30 unit tests PASS, M1 93 passed, secret scan CLEAN).
+  - Khóa chặt fail-closed: Profile không xác định hoặc profile giả mạo giữa các package (`Cross-package profile spoofing`) sẽ bị BLOCK.
+  - Các package P1-P8 mở rộng qua extension point `register_semantic_profile` mà không sửa đổi core validator logic.
+- **Single-Pipeline Evidence Synthesis**:
+  - Toàn bộ bằng chứng của package được sinh ra qua script tuần tự duy nhất `src/controlplane/infrastructure/evidence/synthesizer.py`.
+  - Chuỗi thực thi tuyến tính theo một `run_id` duy nhất:
+    1. Chạy M1 regression suite -> trích xuất `m1-regression.xml` và `m1-regression-report.txt`.
+    2. Chạy M2-P0 test suite -> trích xuất `m2-p0-tests.xml` và `p0-test-report.txt`.
+    3. Thực hiện Secret Scan trên toàn bộ source code, tests và evidence -> `secret-scan.json`.
+    4. Trích xuất verified metrics từ machine-readable artifacts.
+    5. Sinh `status.json` từ observed metrics (tuyệt đối không nhập số liệu thủ công).
+    6. Sinh `status.md` từ `status.json`.
+    7. Ghi `commands.jsonl` với schema chuẩn (`run_id`, `created_artifacts`, `summary` khớp từng file đã quét).
+    8. Sinh `hashes.sha256` tạo acyclic DAG loại trừ chính nó.
+    9. Chạy kiểm chứng cuối cùng qua Two-Tier Evidence Validator ở chế độ read-only.
+
 
 ---
 

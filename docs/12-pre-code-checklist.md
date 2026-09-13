@@ -174,17 +174,20 @@ Sau các đợt re-audit độc lập R4, R5 và R5.1 (HEAD commit `08c857c`), t
 - **Milestone M2**: `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` (bắt đầu chu trình chuẩn bị SPEC và PLAN).
 - **Milestone M3 và Phân hệ A**: Tiếp tục duy trì trạng thái `NOT AUTHORIZED` (khóa chặt cho tới khi M2 hoàn tất exit gate và có User Checkpoint riêng).
 
-## Trạng thái sau Hoàn tất Khắc phục Kiểm toán M2-P0 (13-09-2026)
+## Trạng thái sau Hoàn tất Khắc phục Kiểm toán M2-P0 (Cập nhật sau Re-Audit R2: 13-09-2026)
 
-M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules) đã hoàn tất khắc phục toàn diện 8 điểm của đợt Tái kiểm toán Độc lập và đạt chuẩn tại trạng thái `M2-P0_READY_FOR_REVIEW`:
-- **Tách bạch Hai tầng Evidence (Integrity + Semantic)**: Triển khai `evaluator.py` trích xuất trực tiếp kết quả chạy thực tế từ JUnit XML (`m2-p0-tests.xml`, `m1-regression.xml`) và `secret-scan.json`; tuyệt đối không tin con số tự khai; chặn đứng hoàn toàn hiện tượng false-PASS do rehash file failed.
-- **Reproducible Fresh-Environment Packaging**: Loại bỏ hoàn toàn việc dùng `.pth` làm bằng chứng package gate. Đã chứng minh tự động tạo clean virtual environment bằng `uv venv`, build wheel `controlplane-0.2.0-py3-none-any.whl`, cài đặt vào môi trường cô lập không có `.pth` và thực thi thành công CLI entrypoint.
-- **Đồng bộ Build System**: Khóa thống nhất `setuptools==75.8.0` và `wheel==0.45.1` trên toàn bộ tài liệu, pyproject, lockfile và wheel build.
-- **Khóa Toàn bộ Resolved Backend Dependency Graph**: Tạo `src/controlplane/uv.lock` và `src/controlplane/requirements.lock` cố định toàn bộ 21 packages (bao gồm `psycopg-pool==3.3.1`, `fastapi==0.141.1`, `pydantic-core==2.46.5`).
-- **Machine-Lock Frontend Node/npm**: Khai báo `packageManager: npm@10.9.2`, `engines` (`node >=22.17.0 <23.0.0`, `npm 10.9.2`), `.nvmrc` và `.node-version` (`22.17.0`) trong `src/controlplane/ui/`.
-- **Harden AST Architecture Validator**: Bổ sung bộ lọc và negative tests chặn đứng các tiền tố `m1proof.*` và `src.m1proof.*`.
-- **Secret Scan Evidence Thật**: Quét toàn diện 37 tệp (code, config, log, evidence XML/TXT/JSON/MD), xuất `secret-scan.json` máy đọc được với 0 finding.
-- **Kết quả Kiểm thử**: 25/25 tests M2-P0 PASSED, 93/93 tests hồi quy M1 PASSED (0 failed, 0 skipped), 6/6 Package Gates PASSED.
+M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules) đã hoàn tất khắc phục toàn diện 3 BLOCKER cuối từ Independent Re-Audit R2 và sẵn sàng nghiệm thu tại trạng thái `M2-P0_READY_FOR_REVIEW`:
+- **Semantic Evaluator Profile Registry & Dispatch Pattern**: Khái quát hóa `PackageSemanticProfile` và `SemanticProfileRegistry`. Triển khai `M2P0SemanticProfile` riêng cho M2-P0. Đảm bảo fail-closed tuyệt đối (unknown package/profile bị BLOCK; cross-package spoofing bị chặn). Mở extension point `register_semantic_profile` cho P1-P8 mà không sửa đổi core validator.
+- **Chứng minh Kép Frozen Backend Graph & Clean Wheel Install**:
+  - *Proof A (Frozen Project Environment)*: Tạo clean isolated virtualenv, cài đặt dependencies đóng băng từ `src/controlplane/requirements.lock`, xác nhận observed installed versions khớp 100% lockfile (`psycopg-pool==3.3.1`, `fastapi==0.141.1`, `pydantic-core==2.46.5`, v.v.).
+  - *Proof B (Wheel Clean Install)*: Build wheel theo PEP 517 và cài đặt với `--no-deps` vào clean venv; thực thi import và CLI entrypoint `controlplane.entrypoint:main` thành công 100% không dùng `.pth`.
+  - Dynamic `uv` resolver (`resolve_uv_executable`), fail-closed không silent skip nếu binary thiếu.
+  - Negative test: mutate lockfile với version không tương thích -> fail closed.
+- **Làm rõ Build-System Version Pins Claim**: Xác nhận `setuptools==75.8.0` và `wheel==0.45.1` là exact build-system version pins khai báo trong `pyproject.toml` `[build-system] requires`, không overclaim là nằm trong runtime lockfile.
+- **Single-Pipeline Deterministic Evidence Synthesis**: Triển khai `synthesizer.py` thực thi tuần tự tuyến tính theo một `run_id` duy nhất: M1 suite -> M2-P0 suite -> Secret Scan -> observed metrics extraction -> status.json -> status.md -> commands.jsonl (với execution metadata chuẩn xác) -> hashes.sha256 acyclic DAG -> read-only verification.
+- **Kết quả Kiểm thử Hiện hành**: 30/30 tests M2-P0 PASSED, 93/93 tests hồi quy M1 PASSED (0 failed, 0 skipped), 6/6 Package Gates PASSED.
+- **Ranh giới Bắt buộc**: Dừng lại tại `M2-P0_READY_FOR_REVIEW`. Tuyệt đối không bắt đầu M2-P1. M3 và Phân hệ A tiếp tục bị khóa chặt (`NOT AUTHORIZED`).
+
 
 
 

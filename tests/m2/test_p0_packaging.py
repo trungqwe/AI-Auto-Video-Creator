@@ -13,6 +13,7 @@ Verifies:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -24,7 +25,30 @@ import pytest
 REPO_ROOT = Path(__file__).parents[2]
 CONTROLPLANE_DIR = REPO_ROOT / "src" / "controlplane"
 CONTROLPLANE_SRC = REPO_ROOT / "src"
-UV_EXECUTABLE = Path(r"C:\Users\Admin\AppData\Roaming\Python\Python313\Scripts\uv.exe")
+
+
+def resolve_uv_executable() -> Path:
+    """Resolve uv binary path from environment, PATH, or standard discovery locations.
+
+    Fails closed: raises RuntimeError if not found. Skipping mandatory packaging gate is forbidden.
+    """
+    candidates = [
+        os.environ.get("UV_BIN"),
+        shutil.which("uv"),
+        str(Path(sys.prefix) / "Scripts" / "uv.exe"),
+        str(Path(sys.prefix) / "bin" / "uv"),
+        os.path.join(os.environ.get("APPDATA", ""), "Python", "Python313", "Scripts", "uv.exe"),
+        os.path.join(os.environ.get("USERPROFILE", ""), ".cargo", "bin", "uv.exe"),
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "uv", "uv.exe"),
+    ]
+    for cand in candidates:
+        if cand and Path(cand).is_file():
+            return Path(cand).resolve()
+
+    raise RuntimeError(
+        "Mandatory toolchain binary 'uv' not found in PATH or standard installation locations. "
+        "Per fail-closed packaging policy, mandatory packaging gate cannot be skipped."
+    )
 
 
 def test_tst_m2_p0_003_controlplane_import_without_syspath_hack() -> None:
@@ -75,23 +99,24 @@ def test_tst_m2_p0_003_backend_dependency_graph_and_build_lock() -> None:
     assert "pydantic==2.13.5" in req_content
 
 
-def test_tst_m2_p0_003_fresh_environment_wheel_build_and_install(tmp_path: Path) -> None:
-    """Positive test: build wheel and install into isolated fresh virtualenv without workspace .pth."""
-    if not UV_EXECUTABLE.is_file():
-        pytest.skip("uv executable not found for isolated venv test")
+def test_tst_m2_p0_003_frozen_project_environment_install(tmp_path: Path) -> None:
+    """Positive proof A: clean isolated environment installs strictly from committed requirements.lock.
 
-    clean_venv = tmp_path / "clean_env"
-    wheel_dir = tmp_path / "dist"
-    wheel_dir.mkdir()
+    Verifies:
+    1. Fresh venv contains no workspace .pth.
+    2. Exact frozen graph installs from src/controlplane/requirements.lock.
+    3. Observed installed versions match lockfile 100% (e.g. psycopg-pool==3.3.1, fastapi==0.141.1).
+    """
+    uv_path = resolve_uv_executable()
+    clean_venv = tmp_path / "frozen_env"
 
     # 1. Create clean virtual environment
-    res_venv = subprocess.run(
-        [str(UV_EXECUTABLE), "venv", str(clean_venv), "--python", "3.13"],
+    subprocess.run(
+        [str(uv_path), "venv", str(clean_venv), "--python", "3.13"],
         capture_output=True,
         text=True,
         check=True,
     )
-
     clean_python = clean_venv / "Scripts" / "python.exe"
     assert clean_python.is_file(), "Clean environment python executable must exist"
 
@@ -99,9 +124,79 @@ def test_tst_m2_p0_003_fresh_environment_wheel_build_and_install(tmp_path: Path)
     site_packages = clean_venv / "Lib" / "site-packages"
     assert not (site_packages / "controlplane.pth").exists(), "Fresh environment must not have controlplane.pth"
 
-    # 2. Build wheel
-    res_build = subprocess.run(
-        [str(UV_EXECUTABLE), "build", "--wheel", str(CONTROLPLANE_DIR), "--out-dir", str(wheel_dir)],
+    # 2. Frozen install strictly from committed requirements.lock
+    req_lock = CONTROLPLANE_DIR / "requirements.lock"
+    assert req_lock.is_file(), "src/controlplane/requirements.lock must exist"
+
+    subprocess.run(
+        [str(uv_path), "pip", "install", "-r", str(req_lock), "--python", str(clean_python)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    # 3. Query observed installed versions via clean python
+    query_code = (
+        "import importlib.metadata as md, json\n"
+        "pkgs = ['psycopg-pool', 'psycopg', 'fastapi', 'uvicorn', 'httpx', 'pydantic', 'pydantic-core']\n"
+        "print(json.dumps({p: md.version(p) for p in pkgs}))\n"
+    )
+    res_query = subprocess.run(
+        [str(clean_python), "-c", query_code],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    observed = json.loads(res_query.stdout)
+    assert observed["psycopg-pool"] == "3.3.1", f"psycopg-pool mismatch: {observed}"
+    assert observed["psycopg"] == "3.3.5", f"psycopg mismatch: {observed}"
+    assert observed["fastapi"] == "0.141.1", f"fastapi mismatch: {observed}"
+    assert observed["uvicorn"] == "0.52.4", f"uvicorn mismatch: {observed}"
+    assert observed["httpx"] == "0.28.1", f"httpx mismatch: {observed}"
+    assert observed["pydantic"] == "2.13.5", f"pydantic mismatch: {observed}"
+    assert observed["pydantic-core"] == "2.46.5", f"pydantic-core mismatch: {observed}"
+
+
+def test_tst_m2_p0_003_fresh_environment_wheel_build_and_install(tmp_path: Path) -> None:
+    """Positive proof B: build wheel and install into isolated fresh virtualenv with frozen dependencies.
+
+    Verifies:
+    1. Dependencies installed from exact committed requirements.lock.
+    2. Wheel built cleanly via PEP 517 build backend.
+    3. Wheel installed with --no-deps to prove self-containment against frozen graph.
+    4. controlplane package import and CLI entrypoint execute successfully without .pth hacks.
+    """
+    uv_path = resolve_uv_executable()
+    clean_venv = tmp_path / "wheel_env"
+    wheel_dir = tmp_path / "dist"
+    wheel_dir.mkdir()
+
+    # 1. Create clean virtual environment
+    subprocess.run(
+        [str(uv_path), "venv", str(clean_venv), "--python", "3.13"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    clean_python = clean_venv / "Scripts" / "python.exe"
+    assert clean_python.is_file(), "Clean environment python executable must exist"
+
+    # Verify NO controlplane.pth exists in clean environment
+    site_packages = clean_venv / "Lib" / "site-packages"
+    assert not (site_packages / "controlplane.pth").exists(), "Fresh environment must not have controlplane.pth"
+
+    # 2. Install frozen dependency set first from committed lockfile
+    req_lock = CONTROLPLANE_DIR / "requirements.lock"
+    subprocess.run(
+        [str(uv_path), "pip", "install", "-r", str(req_lock), "--python", str(clean_python)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    # 3. Build wheel
+    subprocess.run(
+        [str(uv_path), "build", "--wheel", str(CONTROLPLANE_DIR), "--out-dir", str(wheel_dir)],
         capture_output=True,
         text=True,
         check=True,
@@ -115,24 +210,50 @@ def test_tst_m2_p0_003_fresh_environment_wheel_build_and_install(tmp_path: Path)
     assert len(wheel_files) == 1, f"Expected 1 wheel file, got {wheel_files}"
     whl_path = wheel_files[0]
 
-    # 3. Install wheel into clean virtualenv
-    res_install = subprocess.run(
-        [str(UV_EXECUTABLE), "pip", "install", str(whl_path), "--python", str(clean_python)],
+    # 4. Install wheel with --no-deps into clean virtualenv
+    subprocess.run(
+        [str(uv_path), "pip", "install", str(whl_path), "--no-deps", "--python", str(clean_python)],
         capture_output=True,
         text=True,
         check=True,
     )
 
-    # 4. Execute import and entrypoint in fresh environment
-    code = "import controlplane; import controlplane.entrypoint as ep; assert ep.main() == 0; print('FRESH_PASS')"
+    # 5. Execute import and entrypoint in fresh environment
+    code = "import controlplane; import controlplane.entrypoint as ep; assert ep.main() == 0; print('FRESH_WHEEL_PASS')"
     res_run = subprocess.run(
         [str(clean_python), "-c", code],
         capture_output=True,
         text=True,
         check=True,
     )
-    assert "FRESH_PASS" in res_run.stdout
+    assert "FRESH_WHEEL_PASS" in res_run.stdout
     assert "AI Auto Video Creator - Control Plane" in res_run.stdout
+
+
+def test_tst_m2_p0_003_frozen_install_rejects_mutated_lock_mismatch(tmp_path: Path) -> None:
+    """Negative test: mutating lockfile to an unsatisfiable/incompatible version fails closed."""
+    uv_path = resolve_uv_executable()
+    clean_venv = tmp_path / "bad_env"
+
+    subprocess.run(
+        [str(uv_path), "venv", str(clean_venv), "--python", "3.13"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    clean_python = clean_venv / "Scripts" / "python.exe"
+
+    # Create mutated requirements.lock with nonexistent/conflicting version
+    bad_lock = tmp_path / "bad_requirements.lock"
+    bad_lock.write_text("psycopg-pool==999.999.999\nfastapi==0.141.1\n", encoding="utf-8")
+
+    res = subprocess.run(
+        [str(uv_path), "pip", "install", "-r", str(bad_lock), "--python", str(clean_python)],
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode != 0, "Mutated lockfile with invalid package version must fail closed"
+
 
 
 def test_tst_m2_p0_004_frontend_toolchain_exact_pins_and_runtime_manifest() -> None:

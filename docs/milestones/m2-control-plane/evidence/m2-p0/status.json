@@ -3,8 +3,9 @@
   "milestone": "M2",
   "package": "M2-P0",
   "package_name": "Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules",
+  "semantic_profile": "m2-p0",
   "status": "READY_FOR_REVIEW",
-  "timestamp_utc": "2026-09-13T12:08:30Z",
+  "timestamp_utc": "2026-09-13T12:25:02.999139+00:00",
   "gates": [
     {
       "gate_id": "GATE-P0-01",
@@ -67,8 +68,8 @@
   ],
   "evidence_summary": {
     "m2_p0_tests": {
-      "total": 25,
-      "passed": 25,
+      "total": 30,
+      "passed": 30,
       "failed": 0,
       "skipped": 0
     },

@@ -6,15 +6,13 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Added
 
-- Hoàn tất khắc phục toàn diện đợt Tái kiểm toán Độc lập Milestone M2-P0 (13-09-2026):
-  - Tách bạch Hai tầng Evidence Verification: Triển khai `evaluator.py` và cập nhật `validator.py` phân tách tầng Toàn vẹn (Integrity: JSON schema, băm SHA-256 DAG loại trừ chính nó, chống tệp mồ côi) và tầng Ngữ nghĩa (Semantic: đọc trực tiếp JUnit XML `m2-p0-tests.xml`, `m1-regression.xml` và `secret-scan.json`; không tin con số tự khai; chặn đứng hoàn toàn hiện tượng false-PASS do rehash tệp FAILED).
-  - Reproducible Production Packaging: Chuẩn hóa package PEP 517/621 tại `src/controlplane/pyproject.toml`, loại bỏ hoàn toàn việc dùng `.pth` làm bằng chứng package gate; kiểm chứng tự động tạo clean virtualenv, build wheel `controlplane-0.2.0-py3-none-any.whl`, cài đặt vào môi trường cô lập không có `.pth` và thực thi thành công CLI entrypoint.
-  - Đồng bộ Build Backend & Exact Build Lock: Khóa thống nhất `setuptools==75.8.0` và `wheel==0.45.1` trên toàn bộ tài liệu, pyproject, lockfiles và build tests.
-  - Khóa Toàn bộ Resolved Backend Dependency Graph: Tạo `src/controlplane/requirements.lock` và `src/controlplane/uv.lock` giải quyết chính xác 21 packages (bao gồm `psycopg-pool==3.3.1`, `fastapi==0.141.1`, `pydantic-core==2.46.5`).
-  - Machine-Lock Frontend Node/npm: Khai báo `packageManager: npm@10.9.2`, `engines` (`node >=22.17.0 <23.0.0`, `npm 10.9.2`), `.nvmrc` và `.node-version` (`22.17.0`) trong `src/controlplane/ui/`.
-  - Harden AST Architecture Boundary Validator: Bổ sung bộ lọc và negative tests chặn đứng các tiền tố `m1proof.*` và `src.m1proof.*`.
-  - Secret Scan Evidence Thật: Quét toàn diện 37 tệp (code, config, log, evidence XML/TXT/JSON/MD), xuất `secret-scan.json` máy đọc được với 0 finding.
-  - Bộ kiểm thử M2-P0 nâng lên **25/25 tests PASSED**; hồi quy M1 tiếp tục **93/93 tests PASSED**; 6/6 Package Gates đạt `PASS`; tạo trọn vẹn thư mục bằng chứng `docs/milestones/m2-control-plane/evidence/m2-p0/` và đạt trạng thái `READY_FOR_REVIEW`.
+- Hoàn tất khắc phục toàn diện đợt Tái kiểm toán Độc lập R2 Milestone M2-P0 (13-09-2026):
+  - Khái quát hóa Semantic Evaluator Profile Registry & Dispatch Pattern: Xây dựng `PackageSemanticProfile` và `SemanticProfileRegistry`; triển khai `M2P0SemanticProfile` quản lý policy P0; fail-closed chặn đứng unknown profile và cross-package spoofing; mở rộng cho P1-P8 qua extension point `register_semantic_profile` mà không sửa core validator.
+  - Chứng minh Kép Frozen Backend Graph & Clean Wheel Install: Tạo clean venv với dynamic uv binary resolver (`resolve_uv_executable`); thực hiện Proof A (cài đặt frozen từ `requirements.lock`, kiểm chứng observed package versions khớp 100%) và Proof B (build wheel và cài đặt với `--no-deps`, thực thi import và entrypoint sạch); bổ sung negative test mutate lockfile fail closed.
+  - Làm rõ Build-System Version Pins Claim: Xác định `setuptools==75.8.0` và `wheel==0.45.1` là exact build-system version pins trong `pyproject.toml`, làm rõ phạm vi không overclaim là nằm trong runtime lockfile.
+  - Single-Pipeline Deterministic Evidence Synthesis: Triển khai `synthesizer.py` thực thi tuần tự tuyến tính theo một `run_id` duy nhất: M1 suite -> M2-P0 suite -> Secret Scan -> observed metrics parsing -> status.json -> status.md -> commands.jsonl (với execution metadata khớp từng tệp đã quét) -> hashes.sha256 acyclic DAG -> read-only verification.
+  - Nâng cấp bộ kiểm thử M2-P0 lên **30/30 tests PASSED**; hồi quy M1 duy trì **93/93 tests PASSED** (0 failed, 0 skipped); 6/6 Package Gates đạt `PASS`; cập nhật thư mục bằng chứng `docs/milestones/m2-control-plane/evidence/m2-p0/` và đạt trạng thái `READY_FOR_REVIEW`.
+
 
 
 - Phê duyệt User Checkpoint Milestone M1 và kích hoạt Milestone M2 (13-09-2026):

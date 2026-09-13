@@ -307,3 +307,104 @@ def test_tst_m2_p0_002_live_p0_evidence_is_valid() -> None:
     assert report.semantic_summary["m1_tests"].total == 93
     assert report.semantic_summary["m1_tests"].passed == 93
 
+
+def test_tst_m2_p0_002_semantic_evaluator_rejects_unknown_package_or_profile(tmp_path: Path) -> None:
+    """Negative test: unknown package or unregistered semantic profile fails closed (BLOCK)."""
+    pkg_dir = tmp_path / "unknown-pkg"
+    create_valid_evidence_fixture(pkg_dir, package_id="M2-P99")
+
+    # Update status.json with unknown profile
+    status_file = pkg_dir / "status.json"
+    data = json.loads(status_file.read_text(encoding="utf-8"))
+    data["package"] = "M2-P99"
+    data["semantic_profile"] = "unregistered-profile-v99"
+    status_file.write_text(json.dumps(data), encoding="utf-8")
+    rehash_fixture(pkg_dir)
+
+    with pytest.raises(EvidenceValidationError, match="Unknown or unregistered semantic profile"):
+        validate_package_evidence(pkg_dir)
+
+
+def test_tst_m2_p0_002_semantic_evaluator_dispatches_registered_p1_sample_profile(tmp_path: Path) -> None:
+    """Positive test: P1 extension point can register custom semantic profile without modifying validator core."""
+    from controlplane.infrastructure.evidence.evaluator import (
+        PackageSemanticProfile,
+        register_semantic_profile,
+    )
+
+    class SampleM2P1Profile(PackageSemanticProfile):
+        @property
+        def profile_id(self) -> str:
+            return "m2-p1"
+
+        @property
+        def target_package(self) -> str:
+            return "M2-P1"
+
+        def evaluate(self, package_dir: Path, status_data: dict[str, Any]) -> dict[str, Any]:
+            p1_xml = package_dir / "m2-p1-tests.xml"
+            if not p1_xml.is_file():
+                raise SemanticEvaluationError(f"Missing P1 tests XML: {p1_xml.name}")
+            summary = parse_junit_xml(p1_xml)
+            if summary.failures > 0 or summary.errors > 0 or summary.skipped > 0:
+                raise SemanticEvaluationError("P1 tests failed")
+            return {
+                "profile": "m2-p1",
+                "p1_tests": summary,
+                "semantic_verdict": "PASS",
+            }
+
+    # Register P1 sample profile via extension point
+    register_semantic_profile(SampleM2P1Profile(), allow_override=True)
+
+    # Create P1 evidence fixture
+    pkg_dir = tmp_path / "m2-p1"
+    pkg_dir.mkdir(parents=True, exist_ok=True)
+    status_data = {
+        "schema_version": "m2_package_status_v1",
+        "milestone": "M2",
+        "package": "M2-P1",
+        "semantic_profile": "m2-p1",
+        "status": "PASS",
+        "gates": [
+            {
+                "gate_id": "GATE-P1-01",
+                "name": "Database Migrations",
+                "status": "PASS",
+                "evidence_files": ["m2-p1-tests.xml"],
+            }
+        ],
+        "evidence_summary": {},
+    }
+    (pkg_dir / "status.json").write_text(json.dumps(status_data, indent=2), encoding="utf-8")
+    (pkg_dir / "m2-p1-tests.xml").write_text(
+        '<?xml version="1.0" encoding="utf-8"?><testsuite name="m2-p1" tests="5" failures="0" errors="0" skipped="0"></testsuite>',
+        encoding="utf-8",
+    )
+    rehash_fixture(pkg_dir)
+
+    report = validate_package_evidence(pkg_dir, enforce_semantics=True)
+    assert report.is_valid is True
+    assert report.package == "M2-P1"
+    assert report.semantic_summary is not None
+    assert report.semantic_summary["profile"] == "m2-p1"
+    assert report.semantic_summary["semantic_verdict"] == "PASS"
+
+
+def test_tst_m2_p0_002_semantic_evaluator_blocks_cross_package_profile_spoofing(tmp_path: Path) -> None:
+    """Negative test: P1 package attempting to declare m2-p0 profile is strictly blocked."""
+    pkg_dir = tmp_path / "m2-p1-spoof"
+    create_valid_evidence_fixture(pkg_dir, package_id="M2-P1")
+
+    # Tamper status.json to declare package M2-P1 but semantic_profile m2-p0
+    status_file = pkg_dir / "status.json"
+    data = json.loads(status_file.read_text(encoding="utf-8"))
+    data["package"] = "M2-P1"
+    data["semantic_profile"] = "m2-p0"
+    status_file.write_text(json.dumps(data), encoding="utf-8")
+    rehash_fixture(pkg_dir)
+
+    with pytest.raises(EvidenceValidationError, match="Cross-package profile spoofing blocked"):
+        validate_package_evidence(pkg_dir)
+
+
