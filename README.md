@@ -69,7 +69,6 @@ Milestone M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Archite
 
 ## Trạng thái M2-P1 Behavioral RED
 
-Milestone M2-P1 (PostgreSQL Foundation, Raw SQL Migrations & Workspace/Identity/Session Foundation) đã được User chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`. Có đúng 11 behavioral oracle importable. Correction sau audit `65af9f84f881e03e7be95d1dda44243030aca1f6` khóa fixture DB function-scoped, P1-005 commit/rollback non-vacuous, P1-007 seed/verify isolation thật, P1-011 cùng pool/PID và raw RED evidence; application ports chỉ nhận injected UoW factory.
+Milestone M2-P1 (PostgreSQL Foundation, Raw SQL Migrations & Workspace/Identity/Session Foundation) đã được User chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`. Có đúng 11 behavioral oracle importable. Correction sau audit `42e1859b19460f8254d8d5be500f910a1c262570` thêm bootstrap schema test-only cho P1-005/006/007/011 để chúng chạm capability riêng, không bị `MigrationRunner` stub che khuất; production behavior vẫn không đổi.
 
 Trạng thái hiện hành: `M2-P1_BEHAVIORAL_RED_BLOCKED_EXTERNAL`. P1-008 RED lịch sử vẫn được lưu, nhưng toàn bộ 11 oracle phải rerun sau correction trên PostgreSQL function-scoped; hiện không oracle nào được tính vào confirmation vì `M2_TEST_PG_DSN` thiếu. Không code business/DB P1, không sửa P0 implementation, không mở P2. M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
-

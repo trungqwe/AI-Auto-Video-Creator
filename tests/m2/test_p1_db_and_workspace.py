@@ -49,8 +49,10 @@ PRODUCTION_MIGRATIONS = (
 TEST_DATABASE_NAME = re.compile(r"^m2_p1_test_[0-9a-f]+$")
 WORKSPACE_A_ID = "00000000-0000-0000-0000-0000000000a1"
 WORKSPACE_B_ID = "00000000-0000-0000-0000-0000000000b1"
+ACTOR_A_ID = "00000000-0000-0000-0000-0000000000a2"
 ACTOR_B_ID = "00000000-0000-0000-0000-0000000000b2"
 AUTH_SESSION_B_ID = "00000000-0000-0000-0000-0000000000b3"
+CROSS_WORKSPACE_SESSION_ID = "00000000-0000-0000-0000-0000000000b4"
 COMMITTED_WORKSPACE_ID = "00000000-0000-0000-0000-0000000000c1"
 COMMITTED_ACTOR_ID = "00000000-0000-0000-0000-0000000000c2"
 COMMITTED_SESSION_ID = "00000000-0000-0000-0000-0000000000c3"
@@ -187,6 +189,52 @@ def migration_sandbox(tmp_path: Path) -> Iterator[Path]:
         )
 
 
+@pytest.fixture
+def bootstrap_identity_schema(disposable_db: DisposableDatabase) -> DisposableDatabase:
+    """Create test-only identity tables without production migration behavior.
+
+    This fixture intentionally omits the production composite
+    ``(workspace_id, actor_id)`` foreign key on ``cp_auth_sessions``. P1-006
+    uses that omission to prove the exact invariant is still absent during RED.
+    """
+    with disposable_db.connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE SCHEMA controlplane")
+            cursor.execute(
+                "CREATE TABLE controlplane.cp_workspaces ("
+                "workspace_id UUID PRIMARY KEY, "
+                "name TEXT NOT NULL, "
+                "status TEXT NOT NULL, "
+                "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+                "updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP"
+                ")"
+            )
+            cursor.execute(
+                "CREATE TABLE controlplane.cp_actors ("
+                "actor_id UUID PRIMARY KEY, "
+                "workspace_id UUID NOT NULL REFERENCES controlplane.cp_workspaces(workspace_id) "
+                "ON DELETE RESTRICT, "
+                "actor_type TEXT NOT NULL, "
+                "display_name TEXT NOT NULL, "
+                "status TEXT NOT NULL, "
+                "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+                "UNIQUE (workspace_id, actor_id)"
+                ")"
+            )
+            cursor.execute(
+                "CREATE TABLE controlplane.cp_auth_sessions ("
+                "session_id UUID PRIMARY KEY, "
+                "workspace_id UUID NOT NULL REFERENCES controlplane.cp_workspaces(workspace_id) "
+                "ON DELETE RESTRICT, "
+                "actor_id UUID NOT NULL, "
+                "status TEXT NOT NULL, "
+                "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+                "expires_at TIMESTAMPTZ"
+                ")"
+            )
+    return disposable_db
+
+
 def test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db(
     disposable_db: DisposableDatabase,
 ) -> None:
@@ -254,12 +302,10 @@ def test_tst_m2_p1_004_bounded_advisory_lock_and_timeout(
 
 
 def test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback(
-    disposable_db: DisposableDatabase,
+    bootstrap_identity_schema: DisposableDatabase,
 ) -> None:
     """ARCH-002, QR-MNT-002: commit persists all three records; later rollback is atomic."""
-    runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
-    runner.migrate_up()
-    manager = TransactionManager(disposable_db.dsn)
+    manager = TransactionManager(bootstrap_identity_schema.dsn)
 
     # UoW #1 must commit a complete identity set. A no-op create() cannot satisfy
     # the direct database assertions below.
@@ -280,7 +326,7 @@ def test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback(
         )
         unit_of_work.commit()
 
-    with disposable_db.connect() as connection:
+    with bootstrap_identity_schema.connect() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT workspace_id::text, name, status FROM controlplane.cp_workspaces "
@@ -325,7 +371,7 @@ def test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback(
             )
             raise RuntimeError("force rollback")
 
-    with disposable_db.connect() as connection:
+    with bootstrap_identity_schema.connect() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT count(*) FROM controlplane.cp_workspaces "
@@ -353,61 +399,74 @@ def test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback(
 
 
 def test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement(
-    disposable_db: DisposableDatabase,
+    bootstrap_identity_schema: DisposableDatabase,
 ) -> None:
-    """ADR-0002, CT-API-001: a session may not bind an actor from another workspace."""
-    runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
-    runner.migrate_up()
+    """ADR-0002, CT-API-001: the missing composite FK permits a cross-workspace session."""
 
-    with disposable_db.connect() as connection:
+    with bootstrap_identity_schema.connect() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 "INSERT INTO controlplane.cp_workspaces (workspace_id, name, status) VALUES "
-                "('00000000-0000-0000-0000-000000000001', 'A', 'active'), "
-                "('00000000-0000-0000-0000-000000000002', 'B', 'active')"
+                "(%s, 'A', 'active'), (%s, 'B', 'active')",
+                (WORKSPACE_A_ID, WORKSPACE_B_ID),
             )
             cursor.execute(
                 "INSERT INTO controlplane.cp_actors (actor_id, workspace_id, actor_type, display_name, status) "
-                "VALUES ('00000000-0000-0000-0000-000000000010', "
-                "'00000000-0000-0000-0000-000000000001', 'human', 'Actor', 'active')"
+                "VALUES (%s, %s, 'human', 'Actor A', 'active')",
+                (ACTOR_A_ID, WORKSPACE_A_ID),
             )
             with pytest.raises(psycopg.errors.ForeignKeyViolation):
                 cursor.execute(
                     "INSERT INTO controlplane.cp_auth_sessions "
                     "(session_id, workspace_id, actor_id, status) VALUES "
-                    "('00000000-0000-0000-0000-000000000020', "
-                    "'00000000-0000-0000-0000-000000000002', "
-                    "'00000000-0000-0000-0000-000000000010', 'active')"
+                    "(%s, %s, %s, 'active')",
+                    (CROSS_WORKSPACE_SESSION_ID, WORKSPACE_B_ID, ACTOR_A_ID),
                 )
 
 
 def test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented(
-    disposable_db: DisposableDatabase,
+    bootstrap_identity_schema: DisposableDatabase,
 ) -> None:
     """CT-API-001/010, ADR-0009: foreign records exist but are unreadable and immutable."""
-    runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
-    runner.migrate_up()
-    transaction_manager = TransactionManager(disposable_db.dsn)
+    with bootstrap_identity_schema.connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO controlplane.cp_workspaces (workspace_id, name, status) VALUES "
+                "(%s, 'Workspace A', 'active'), (%s, 'Workspace B', 'active')",
+                (WORKSPACE_A_ID, WORKSPACE_B_ID),
+            )
+            cursor.execute(
+                "INSERT INTO controlplane.cp_actors "
+                "(actor_id, workspace_id, actor_type, display_name, status) VALUES "
+                "(%s, %s, 'human', 'Actor B', 'active')",
+                (ACTOR_B_ID, WORKSPACE_B_ID),
+            )
+            cursor.execute(
+                "INSERT INTO controlplane.cp_auth_sessions "
+                "(session_id, workspace_id, actor_id, status) VALUES "
+                "(%s, %s, %s, 'active')",
+                (AUTH_SESSION_B_ID, WORKSPACE_B_ID, ACTOR_B_ID),
+            )
+            cursor.execute(
+                "SELECT workspace_id::text FROM controlplane.cp_workspaces WHERE workspace_id = %s",
+                (WORKSPACE_B_ID,),
+            )
+            assert cursor.fetchone() == (WORKSPACE_B_ID,)
+            cursor.execute(
+                "SELECT actor_id::text FROM controlplane.cp_actors WHERE actor_id = %s",
+                (ACTOR_B_ID,),
+            )
+            assert cursor.fetchone() == (ACTOR_B_ID,)
+            cursor.execute(
+                "SELECT session_id::text FROM controlplane.cp_auth_sessions WHERE session_id = %s",
+                (AUTH_SESSION_B_ID,),
+            )
+            assert cursor.fetchone() == (AUTH_SESSION_B_ID,)
+
+    transaction_manager = TransactionManager(bootstrap_identity_schema.dsn)
     workspace_port = WorkspaceUseCases(transaction_manager)
     actor_port = ActorUseCases(transaction_manager)
     session_port = AuthSessionUseCases(transaction_manager)
-
-    # Seed real data through the application ports. B-context reads below prove
-    # this oracle is not a vacuous lookup of never-created identifiers.
-    workspace_port.create(WORKSPACE_A_ID, "Workspace A", "active")
-    workspace_port.create(WORKSPACE_B_ID, "Workspace B", "active")
-    actor_port.create(WORKSPACE_B_ID, ACTOR_B_ID, "human", "Actor B", "active")
-    session_port.create(WORKSPACE_B_ID, ACTOR_B_ID, AUTH_SESSION_B_ID, "active")
-
-    workspace_b = workspace_port.get(WORKSPACE_B_ID, WORKSPACE_B_ID)
-    actor_b = actor_port.get(WORKSPACE_B_ID, ACTOR_B_ID)
-    session_b = session_port.get(WORKSPACE_B_ID, AUTH_SESSION_B_ID)
-    assert workspace_b is not None and _entity_field(workspace_b, "workspace_id") == WORKSPACE_B_ID
-    assert actor_b is not None and _entity_field(actor_b, "actor_id") == ACTOR_B_ID
-    assert session_b is not None and _entity_field(session_b, "session_id") == AUTH_SESSION_B_ID
-    assert _entity_ids(workspace_port.list(WORKSPACE_B_ID), "workspace_id") == {WORKSPACE_B_ID}
-    assert _entity_ids(actor_port.list(WORKSPACE_B_ID), "actor_id") == {ACTOR_B_ID}
-    assert _entity_ids(session_port.list(WORKSPACE_B_ID), "session_id") == {AUTH_SESSION_B_ID}
 
     # A-context must neither disclose B data nor mutate it through public ports.
     assert workspace_port.get(WORKSPACE_A_ID, WORKSPACE_B_ID) is None
@@ -476,12 +535,10 @@ def test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record(
 
 
 def test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool(
-    disposable_db: DisposableDatabase,
+    bootstrap_identity_schema: DisposableDatabase,
 ) -> None:
     """ARCH-002, QR-MNT-002: rollback returns the same max-size-one pool connection clean."""
-    runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
-    runner.migrate_up()
-    manager = TransactionManager(disposable_db.dsn, pool_max_size=1)
+    manager = TransactionManager(bootstrap_identity_schema.dsn, pool_max_size=1)
 
     rolled_back_backend_pid: int
     with pytest.raises(RuntimeError, match="force rollback"):

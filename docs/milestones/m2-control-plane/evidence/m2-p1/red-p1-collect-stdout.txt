@@ -13,4 +13,4 @@ tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_009_applied_migration_file_
 tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record
 tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool
 
-11 tests collected in 0.08s
+11 tests collected in 0.07s

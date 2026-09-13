@@ -35,7 +35,7 @@ Observed: ERROR at setup — Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is require
 
 ```text
 Command: .venv\\Scripts\\python.exe -m pytest tests\\m2\\test_p1_db_and_workspace.py --collect-only -q
-Result: 11 tests collected in 0.08s; raw output: `red-p1-collect-stdout.txt`.
+Result: 11 tests collected in 0.07s; raw output: `red-p1-collect-stdout.txt`.
 ```
 
 Collection hoàn tất không có `ModuleNotFoundError`, syntax error, hay test bị skip. Các stub chỉ tồn tại để import thành công; mọi public method chưa hiện thực đều ném `NotImplementedError`.
@@ -48,17 +48,21 @@ Collection hoàn tất không có `ModuleNotFoundError`, syntax error, hay test 
 | `test_tst_m2_p1_002_migration_checksum_tamper_rejected` | Không có SHA-256 tamper verification trên migration sandbox. | Chưa chạy: `BLOCKED_EXTERNAL` trước fixture. | Không tính RED. |
 | `test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected` | Không có strict gap/duplicate validation trên migration sandbox. | Chưa chạy: `BLOCKED_EXTERNAL` trước fixture. | Không tính RED. |
 | `test_tst_m2_p1_004_bounded_advisory_lock_and_timeout` | Không có bounded advisory-lock timeout. | Chưa chạy: `BLOCKED_EXTERNAL` trước fixture. | Không tính RED. |
-| `test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback` | Không có UoW transaction boundary/rollback. | Chưa chạy: `BLOCKED_EXTERNAL` trước fixture. | Không tính RED. |
-| `test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement` | Không có migration composite FK workspace/actor/session. | Chưa chạy: `BLOCKED_EXTERNAL` trước fixture. | Không tính RED. |
-| `test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented` | Không có scoped get/list/status/revoke/expire enforcement. | Chưa chạy: `BLOCKED_EXTERNAL` trước fixture. | Không tính RED. |
+| `test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback` | Bootstrap test-only rồi chạm UoW/repository transaction boundary. | Chưa chạy: `BLOCKED_EXTERNAL` trước fixture. | Không tính RED. |
+| `test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement` | Thiếu composite FK phải tạo RED `DID NOT RAISE ForeignKeyViolation`. | Chưa chạy: `BLOCKED_EXTERNAL` trước fixture. | Không tính RED. |
+| `test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented` | Direct-SQL seed thật, rồi chạm scoped get/list/status/revoke/expire. | Chưa chạy: `BLOCKED_EXTERNAL` trước fixture. | Không tính RED. |
 | `test_tst_m2_p1_008_destructive_guard_rejects_non_test_db` | Guard chưa reject non-fixture name hoặc `is_test_env=False`. | RED lịch sử hợp lệ ở `red-p1-stdout.txt`; bản function-scoped hiện tại chưa rerun vì thiếu DSN. | Không tính vào confirmation sau correction. |
 | `test_tst_m2_p1_009_applied_migration_file_missing_rejected` | Không có applied-file-missing fail-closed trong sandbox. | Chưa chạy: `BLOCKED_EXTERNAL` trước fixture. | Không tính RED. |
 | `test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record` | Không có rollback toàn bộ side effect/applied row với broken sandbox SQL. | Chưa chạy: `BLOCKED_EXTERNAL` trước fixture. | Không tính RED. |
-| `test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool` | Không có rollback và pool-connection cleanliness. | Chưa chạy: `BLOCKED_EXTERNAL` trước fixture. | Không tính RED. |
+| `test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool` | Bootstrap test-only rồi chạm TransactionManager/UoW/pool cleanliness. | Chưa chạy: `BLOCKED_EXTERNAL` trước fixture. | Không tính RED. |
 
 ## Migration fault sandbox
 
 Các oracle P1-002, P1-003, P1-009 và P1-010 chỉ copy `src/controlplane/infrastructure/db/migrations/` sang `tmp_path/migration-sandbox`. Mọi add/tamper/delete, gồm SQL lỗi có chủ đích, đều ở bản sao temporary. Fixture xóa sandbox trong `finally` và so sánh SHA-256 tree trước/sau để bảo đảm production migration source không đổi.
+
+## Test-only downstream bootstrap
+
+P1-005, P1-006, P1-007 và P1-011 dùng `bootstrap_identity_schema` chỉ trong `tests/m2/test_p1_db_and_workspace.py`. Fixture tạo object prerequisite trực tiếp trong exact function-scoped disposable DB và bị drop cùng DB. Nó không gọi hay thay đổi `MigrationRunner`, không có SQL migration production, và P1-006 cố ý thiếu composite FK để quan sát `DID NOT RAISE ForeignKeyViolation` đúng oracle invariant.
 
 ## Điểm tiếp tục
 
