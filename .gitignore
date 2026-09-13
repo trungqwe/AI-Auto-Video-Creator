@@ -1,0 +1,41 @@
+# Python and uv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local runtime data
+*.sqlite
+*.sqlite3
+*.db
+postgres-data/
+temporal-data/
+runtime/
+tmp/
+temp/
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+credentials*.json
+client_secret*.json
+token*.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs must be added deliberately after redaction
+*.log
+
