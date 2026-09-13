@@ -35,10 +35,18 @@ _ADVISORY_LOCK_KEY = 0x4D325031
 class MigrationRunner:
     """Apply raw SQL files under one session-level advisory lock."""
 
-    def __init__(self, dsn: str, migration_dir: Path, *, is_test_env: bool) -> None:
+    def __init__(
+        self,
+        dsn: str,
+        migration_dir: Path,
+        *,
+        is_test_env: bool,
+        expected_database_name: str | None = None,
+    ) -> None:
         self.dsn = dsn
         self.migration_dir = Path(migration_dir)
         self.is_test_env = is_test_env
+        self.expected_database_name = expected_database_name
         self._lock_connection: psycopg.Connection | None = None
         self._lock_held = False
 
@@ -190,14 +198,17 @@ class MigrationRunner:
             self.release_advisory_lock()
 
     def migrate_down(self) -> None:
-        with psycopg.connect(self.dsn, autocommit=True) as connection:
-            database_name = connection.execute("SELECT current_database()").fetchone()[0]
-        DestructiveRollbackGuard().assert_allowed(database_name, is_test_env=self.is_test_env)
         self._discover()
         rollbacks = self._discover_rollbacks()
         self.acquire_advisory_lock(timeout_seconds=5.0)
         try:
             connection = self._require_lock_connection()
+            database_name = connection.execute("SELECT current_database()").fetchone()[0]
+            DestructiveRollbackGuard().assert_allowed(
+                database_name,
+                is_test_env=self.is_test_env,
+                expected_database_name=self.expected_database_name,
+            )
             applied = self._applied(connection)
             for version in sorted(applied, reverse=True):
                 rollback = rollbacks.get(version)

@@ -43,7 +43,7 @@ tests/m2/test_p0_packaging.py::test_tst_m2_p0_004_frontend_toolchain_exact_pins_
 tests/m2/test_p0_packaging.py::test_tst_m2_p0_005_skeleton_interfaces_raise_not_implemented PASSED [100%]
 
 - generated xml file: D:\AI Auto Video Creator\docs\milestones\m2-control-plane\evidence\m2-p1\m2-p0-regression.xml -
-============================= 33 passed in 3.05s ==============================
+============================= 33 passed in 2.60s ==============================
 
 STDERR:
 

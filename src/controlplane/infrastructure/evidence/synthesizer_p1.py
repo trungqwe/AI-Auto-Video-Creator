@@ -8,12 +8,18 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import importlib.metadata
 import json
+import os
+import platform
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+
+import psycopg
+from psycopg_pool import ConnectionPool
 
 from controlplane.infrastructure.evidence.evaluator import parse_junit_xml, register_semantic_profile
 from controlplane.infrastructure.evidence.profile_p1 import M2P1SemanticProfile
@@ -59,6 +65,70 @@ def _run_and_record(
     return record, result
 
 
+def _root_python_executable() -> str:
+    """Return the frozen root M1 interpreter for P0/M1 regressions."""
+    configured = os.environ.get("M2_ROOT_PYTHON")
+    if configured:
+        return configured
+    candidate = REPO_ROOT / ".venv" / ("Scripts" if os.name == "nt" else "bin") / "python"
+    if not candidate.is_file():
+        raise RuntimeError("Frozen root M1 Python interpreter is unavailable")
+    return str(candidate)
+
+
+def _runtime_capability_snapshot(*, require_zero_orphans: bool) -> dict[str, Any]:
+    """Inspect locked dependencies and PostgreSQL without exposing DSN data."""
+    admin_dsn = os.environ.get("M2_TEST_PG_DSN")
+    if not admin_dsn:
+        raise RuntimeError("M2_TEST_PG_DSN is required for the P1 runtime capability proof")
+    try:
+        with psycopg.connect(admin_dsn, autocommit=True) as connection:
+            server_version = str(connection.execute("SHOW server_version").fetchone()[0]).split()[0]
+            createdb = bool(
+                connection.execute(
+                    "SELECT rolcreatedb FROM pg_roles WHERE rolname = current_user"
+                ).fetchone()[0]
+            )
+            orphan_count = int(
+                connection.execute(
+                    "SELECT count(*) FROM pg_database "
+                    "WHERE datname ~ '^m2_p1_test_[0-9a-f]+$'"
+                ).fetchone()[0]
+            )
+    except Exception as exc:
+        raise RuntimeError(
+            f"P1 runtime capability PostgreSQL prerequisite failed ({type(exc).__name__}); DSN redacted"
+        ) from exc
+
+    capability = {
+        "python": platform.python_version(),
+        "psycopg": psycopg.__version__,
+        "psycopg-pool": importlib.metadata.version("psycopg-pool"),
+        # Public import surface is the locked implementation identity; psycopg
+        # internally stores the class in ``psycopg_pool.pool``.
+        "actual_pool_implementation": f"psycopg_pool.{ConnectionPool.__name__}",
+        "postgresql_server": server_version,
+        "createdb_prerequisite": createdb,
+        "disposable_db_orphan_count": orphan_count,
+    }
+    if capability["python"] != "3.13.15":
+        raise RuntimeError(f"P1 runtime Python lock mismatch: {capability['python']}")
+    if capability["psycopg"] != "3.3.5" or capability["psycopg-pool"] != "3.3.1":
+        raise RuntimeError("P1 runtime psycopg dependency lock mismatch")
+    if capability["actual_pool_implementation"] != "psycopg_pool.ConnectionPool":
+        raise RuntimeError("P1 runtime is not using psycopg_pool.ConnectionPool")
+    if capability["postgresql_server"] != "18.6":
+        raise RuntimeError(f"P1 PostgreSQL server lock mismatch: {capability['postgresql_server']}")
+    if not capability["createdb_prerequisite"]:
+        raise RuntimeError("P1 PostgreSQL principal lacks CREATEDB")
+    if require_zero_orphans and capability["disposable_db_orphan_count"] != 0:
+        raise RuntimeError(
+            "P1 disposable database teardown left orphan databases: "
+            f"{capability['disposable_db_orphan_count']}"
+        )
+    return capability
+
+
 def _metrics(summary: Any) -> dict[str, int]:
     return {
         "total": summary.total,
@@ -85,6 +155,7 @@ def _status_markdown(status: dict[str, Any]) -> str:
         f"- Frozen P0 regression: {summary['m2_p0_regression_tests']['passed']}/{summary['m2_p0_regression_tests']['total']} passed.",
         f"- M1 regression: {summary['m1_regression_tests']['passed']}/{summary['m1_regression_tests']['total']} passed.",
         f"- Secret scan: {summary['secret_scan_violations']} findings (CLEAN).",
+        "- Runtime capability: Python 3.13.15, psycopg 3.3.5, psycopg-pool 3.3.1, PostgreSQL 18.6, orphan DB 0.",
         "",
         "Semantic profile P1 chỉ chấp nhận trạng thái này khi identity testcase, metrics, provenance và hash DAG đều hợp lệ.",
     ]
@@ -105,8 +176,26 @@ def synthesize_p1_evidence() -> dict[str, Any]:
     register_semantic_profile(M2P1SemanticProfile(), allow_override=True)
     run_id = f"run-m2-p1-{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d%H%M%S')}"
     python_exe = sys.executable
+    root_python_exe = _root_python_executable()
     records: list[CommandRecord] = []
     sequence = 1
+
+    preflight = _runtime_capability_snapshot(require_zero_orphans=True)
+    records.append(
+        CommandRecord(
+            sequence_idx=sequence,
+            run_id=run_id,
+            timestamp_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            command="runtime_capability.preflight(M2_TEST_PG_DSN=redacted)",
+            exit_code=0,
+            created_artifacts=[],
+            summary=(
+                "Locked P1 runtime preflight: Python 3.13.15, psycopg 3.3.5, "
+                "psycopg-pool 3.3.1, PostgreSQL 18.6, CREATEDB=true"
+            ),
+        )
+    )
+    sequence += 1
 
     p1_xml = EVIDENCE_DIR / "m2-p1-tests.xml"
     p1_report = EVIDENCE_DIR / "m2-p1-tests-report.txt"
@@ -116,7 +205,7 @@ def synthesize_p1_evidence() -> dict[str, Any]:
         sequence,
         run_id,
         ["m2-p1-tests.xml", "m2-p1-tests-report.txt"],
-        "M2-P1 mandatory behavioral suite: 11 passed, 0 skipped, 0 failed",
+        "M2-P1 mandatory behavioral suite in locked src/controlplane/requirements.lock+uv.lock environment: 11 passed, 0 skipped, 0 failed",
         p1_report,
     )
     if p1_result.returncode != 0:
@@ -124,10 +213,29 @@ def synthesize_p1_evidence() -> dict[str, Any]:
     records.append(p1_record)
     sequence += 1
 
+    postflight = _runtime_capability_snapshot(require_zero_orphans=True)
+    if postflight != preflight | {"disposable_db_orphan_count": 0}:
+        raise RuntimeError("P1 runtime capability changed between preflight and final suite inspection")
+    runtime_file = EVIDENCE_DIR / "runtime-capability.json"
+    runtime_payload = {"run_id": run_id, **postflight}
+    runtime_file.write_text(json.dumps(runtime_payload, indent=2) + "\n", encoding="utf-8")
+    records.append(
+        CommandRecord(
+            sequence_idx=sequence,
+            run_id=run_id,
+            timestamp_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            command="runtime_capability.collect_and_write(runtime-capability.json)",
+            exit_code=0,
+            created_artifacts=["runtime-capability.json"],
+            summary="Same-run locked P1 runtime capability and PostgreSQL teardown proof",
+        )
+    )
+    sequence += 1
+
     p0_xml = EVIDENCE_DIR / "m2-p0-regression.xml"
     p0_report = EVIDENCE_DIR / "m2-p0-regression-report.txt"
     p0_command = [
-        python_exe,
+        root_python_exe,
         "-m",
         "pytest",
         "tests/m2/test_p0_architecture_rules.py",
@@ -141,7 +249,7 @@ def synthesize_p1_evidence() -> dict[str, Any]:
         sequence,
         run_id,
         ["m2-p0-regression.xml", "m2-p0-regression-report.txt"],
-        "Frozen M2-P0 regression: exact 33 passed, 0 skipped, 0 failed",
+        "Frozen M2-P0 regression in root M1 frozen environment: exact 33 passed, 0 skipped, 0 failed",
         p0_report,
     )
     if p0_result.returncode != 0:
@@ -151,13 +259,13 @@ def synthesize_p1_evidence() -> dict[str, Any]:
 
     m1_xml = EVIDENCE_DIR / "m1-regression.xml"
     m1_report = EVIDENCE_DIR / "m1-regression-report.txt"
-    m1_command = [python_exe, "-m", "pytest", "tests/m1", "-v", f"--junitxml={m1_xml}"]
+    m1_command = [root_python_exe, "-m", "pytest", "tests/m1", "-v", f"--junitxml={m1_xml}"]
     m1_record, m1_result = _run_and_record(
         m1_command,
         sequence,
         run_id,
         ["m1-regression.xml", "m1-regression-report.txt"],
-        "M1 regression suite: exact 93 passed, 0 skipped, 0 failed",
+        "M1 regression suite in root M1 frozen environment: exact 93 passed, 0 skipped, 0 failed",
         m1_report,
     )
     if m1_result.returncode != 0:
@@ -195,10 +303,10 @@ def synthesize_p1_evidence() -> dict[str, Any]:
         "gates": [
             {"gate_id": "GATE-P1-01", "name": "Migration Safety & Strict Ordering", "status": "PASS", "evidence_files": ["m2-p1-tests.xml", "m2-p1-tests-report.txt"]},
             {"gate_id": "GATE-P1-02", "name": "Bounded Advisory Lock & Checksum Verification", "status": "PASS", "evidence_files": ["m2-p1-tests.xml", "m2-p1-tests-report.txt"]},
-            {"gate_id": "GATE-P1-03", "name": "UnitOfWork Atomic Transaction & Connection Cleanliness", "status": "PASS", "evidence_files": ["m2-p1-tests.xml", "m2-p1-tests-report.txt"]},
-            {"gate_id": "GATE-P1-04", "name": "Workspace/Actor/AuthSession DB-Level Isolation & Invariants", "status": "PASS", "evidence_files": ["m2-p1-tests.xml", "m2-p1-tests-report.txt"]},
+            {"gate_id": "GATE-P1-03", "name": "UnitOfWork Atomic Transaction & Connection Cleanliness", "status": "PASS", "evidence_files": ["m2-p1-tests.xml", "m2-p1-tests-report.txt", "runtime-capability.json"]},
+            {"gate_id": "GATE-P1-04", "name": "Workspace/Actor/AuthSession DB-Level Isolation & Invariants", "status": "PASS", "evidence_files": ["m2-p1-tests.xml", "m2-p1-tests-report.txt", "runtime-capability.json"]},
             {"gate_id": "GATE-P1-05", "name": "Frozen M2-P0 and M1 Regression", "status": "PASS", "evidence_files": ["m2-p0-regression.xml", "m2-p0-regression-report.txt", "m1-regression.xml", "m1-regression-report.txt", "commands.jsonl"]},
-            {"gate_id": "GATE-P1-06", "name": "Security Scan & Deterministic Evidence Provenance", "status": "PASS", "evidence_files": ["secret-scan.json", "commands.jsonl"]},
+            {"gate_id": "GATE-P1-06", "name": "Security Scan & Deterministic Evidence Provenance", "status": "PASS", "evidence_files": ["secret-scan.json", "commands.jsonl", "runtime-capability.json"]},
         ],
         "evidence_summary": {
             "p1_tests": _metrics(p1_summary),
@@ -206,6 +314,7 @@ def synthesize_p1_evidence() -> dict[str, Any]:
             "m1_regression_tests": _metrics(m1_summary),
             "secret_scan_violations": secret["total_findings"],
         },
+        "runtime_capability": runtime_payload,
     }
     (EVIDENCE_DIR / "status.json").write_text(json.dumps(status, indent=2) + "\n", encoding="utf-8")
     (EVIDENCE_DIR / "status.md").write_text(_status_markdown(status), encoding="utf-8")

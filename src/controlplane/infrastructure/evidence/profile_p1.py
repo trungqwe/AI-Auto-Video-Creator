@@ -220,6 +220,31 @@ class M2P1SemanticProfile(PackageSemanticProfile):
         _assert_status_metrics(status_data, "p1_tests", p1_metrics)
         _assert_report_clean(package_dir / "m2-p1-tests-report.txt")
 
+        runtime_path = package_dir / "runtime-capability.json"
+        if not runtime_path.is_file():
+            raise SemanticEvaluationError("runtime-capability.json is missing")
+        try:
+            runtime_data = json.loads(runtime_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise SemanticEvaluationError(f"Malformed runtime capability artifact: {exc}") from exc
+        expected_runtime = {
+            "python": "3.13.15",
+            "psycopg": "3.3.5",
+            "psycopg-pool": "3.3.1",
+            "actual_pool_implementation": "psycopg_pool.ConnectionPool",
+            "postgresql_server": "18.6",
+            "createdb_prerequisite": True,
+            "disposable_db_orphan_count": 0,
+        }
+        if runtime_data.get("run_id") != status_data.get("run_id"):
+            raise SemanticEvaluationError("runtime-capability.json run_id does not match status.json")
+        if {key: runtime_data.get(key) for key in expected_runtime} != expected_runtime:
+            raise SemanticEvaluationError(
+                "runtime capability does not match the locked Python/driver/pool/PostgreSQL prerequisites"
+            )
+        if status_data.get("runtime_capability") != runtime_data:
+            raise SemanticEvaluationError("status.json runtime_capability does not match runtime-capability.json")
+
         p0_xml = package_dir / "m2-p0-regression.xml"
         p0_metrics = parse_junit_xml(p0_xml)
         p0_identities, p0_counts = _junit_test_identities(p0_xml)
@@ -265,10 +290,14 @@ class M2P1SemanticProfile(PackageSemanticProfile):
             "m1-regression.xml",
             "m1-regression-report.txt",
             "secret-scan.json",
+            "runtime-capability.json",
         }
         produced = {artifact for record in records for artifact in record.get("created_artifacts", [])}
         if not required_artifacts.issubset(produced):
             raise SemanticEvaluationError(f"Missing command provenance for artifacts: {sorted(required_artifacts - produced)}")
+        runtime_records = [r for r in records if "runtime-capability.json" in r.get("created_artifacts", [])]
+        if not runtime_records:
+            raise SemanticEvaluationError("No command record produced runtime-capability.json")
         p0_records = [record for record in records if "m2-p0-regression.xml" in record.get("created_artifacts", [])]
         if not p0_records:
             raise SemanticEvaluationError("No command record produced m2-p0-regression.xml")
@@ -294,4 +323,3 @@ class M2P1SemanticProfile(PackageSemanticProfile):
             "traceability": P1_TRACEABILITY,
             "semantic_verdict": "PASS",
         }
-

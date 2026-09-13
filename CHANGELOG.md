@@ -6,6 +6,8 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Added
 
+- Hoàn tất correction R2 M2-P1 theo independent audit `2541c58a85c301c9499d7179f54b4f6607b2c524`: P1-006 xác minh composite FK từ production migration, P1-010 xác minh rollback side-effect/probe và applied tracking, P1-004 bổ sung crash-release proof, destructive guard khóa exact fixture identity, production dùng bắt buộc `psycopg_pool.ConnectionPool` và P1 synthesis chạy trong locked Controlplane environment. Artifact `runtime-capability.json` cùng run xác nhận Python 3.13.15, psycopg 3.3.5, psycopg-pool 3.3.1, PostgreSQL 18.6, CREATEDB=true, orphan DB=0; P1 11/11, frozen P0 33/33, M1 93/93, 6/6 gate PASS, secret scan CLEAN, `--verify-only` PASS. Điểm dừng: `M2-P1_READY_FOR_REVIEW_R2`; không mở P2.
+
 - Hoàn tất M2-P1 implementation và evidence: raw SQL migration runner với strict ordering/checksum/bounded advisory lock, disposable rollback guard, UnitOfWork/pool cleanliness, Workspace/Actor/AuthSession repositories và composite workspace FK. P1 synthesis xác nhận 11/11 mandatory oracle GREEN, frozen M2-P0 exact 33/33, M1 93/93, secret scan CLEAN, provenance/hash DAG hợp lệ; `synthesizer_p1.py --verify-only` đạt `VALIDATION: PASS`. Trạng thái dừng: `M2-P1_READY_FOR_REVIEW`; không mở P2.
 
 - Independent audit xác nhận `M2-P1_RED_CONFIRMED` tại checkpoint `e42bd90e8cd8ff0e688a2db78407ef9e32d660b9`: PostgreSQL 18.6 thật đã collect/chạy exact 11 oracle function-scoped, 11/11 là Behavioral RED cấp package (5 direct-target, 6 upstream-path), 0 setup failure, 0 unexpected pass và 0 orphan database. M2-P1 implementation được ủy quyền; P0 không đổi và P2 vẫn khóa.

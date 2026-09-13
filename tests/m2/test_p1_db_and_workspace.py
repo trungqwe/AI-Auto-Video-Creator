@@ -1,10 +1,9 @@
 """Mandatory Behavioral RED oracles for M2-P1 PostgreSQL foundation.
 
-Each oracle intentionally describes its required GREEN behavior.  During the
-authorized RED phase, the corresponding structural port is expected to raise
-``NotImplementedError`` until a later, separately authorized implementation
-phase.  The fixtures are real PostgreSQL fixtures: they never fall back to a
-local credential or a mock database.
+Each oracle intentionally describes its required GREEN behavior. The fixtures
+are real PostgreSQL fixtures: they never fall back to a local credential or a
+mock database. Migration fault injection is confined to a temporary sandbox;
+production migration files are never mutated by these tests.
 """
 from __future__ import annotations
 
@@ -12,6 +11,8 @@ import hashlib
 import os
 import re
 import shutil
+import subprocess
+import sys
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -247,7 +248,12 @@ def test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db(
     disposable_db: DisposableDatabase,
 ) -> None:
     """ARCH-002, ADR-0002: up/down/up must use the fixture-created database only."""
-    runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
+    runner = MigrationRunner(
+        disposable_db.dsn,
+        PRODUCTION_MIGRATIONS,
+        is_test_env=True,
+        expected_database_name=disposable_db.name,
+    )
 
     runner.migrate_up()
     with disposable_db.connect() as connection:
@@ -299,7 +305,7 @@ def test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected(
 def test_tst_m2_p1_004_bounded_advisory_lock_and_timeout(
     disposable_db: DisposableDatabase,
 ) -> None:
-    """ADR-0002, QR-MNT-002: a second runner must time out under a held lock."""
+    """ADR-0002, QR-MNT-002: lock timeout and crash-release are bounded."""
     first_runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
     second_runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
 
@@ -307,6 +313,40 @@ def test_tst_m2_p1_004_bounded_advisory_lock_and_timeout(
     with pytest.raises(MigrationLockTimeoutError):
         second_runner.acquire_advisory_lock(timeout_seconds=0.1)
     first_runner.release_advisory_lock()
+
+    child_code = (
+        "import os, time, psycopg; "
+        "connection = psycopg.connect(os.environ['M2_LOCK_TEST_DSN']); "
+        "connection.execute(\"CREATE TABLE public.cp_crash_probe (id INTEGER)\"); "
+        "connection.execute(\"SELECT pg_advisory_lock(%s)\", (0x4D325031,)); "
+        "print('READY', flush=True); time.sleep(60)"
+    )
+    child_environment = os.environ.copy()
+    child_environment["M2_LOCK_TEST_DSN"] = disposable_db.dsn
+    child = subprocess.Popen(
+        [sys.executable, "-c", child_code],
+        env=child_environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert child.stdout is not None
+        assert child.stdout.readline().strip() == "READY"
+        child.terminate()
+        child.wait(timeout=5)
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=5)
+
+    with disposable_db.connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT to_regclass('public.cp_crash_probe')")
+            assert cursor.fetchone()[0] is None
+    crash_recovery_runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
+    crash_recovery_runner.acquire_advisory_lock(timeout_seconds=1.0)
+    crash_recovery_runner.release_advisory_lock()
 
 
 def test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback(
@@ -404,14 +444,18 @@ def test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback(
             )
             assert cursor.fetchone() == (COMMITTED_WORKSPACE_ID, "Committed Workspace", "active")
             assert connection.info.transaction_status.name == "IDLE"
+    manager.close()
 
 
 def test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement(
-    bootstrap_identity_schema: DisposableDatabase,
+    disposable_db: DisposableDatabase,
 ) -> None:
-    """ADR-0002, CT-API-001: the composite FK rejects a cross-workspace session."""
+    """ADR-0002, CT-API-001: production migration enforces the composite FK."""
 
-    with bootstrap_identity_schema.connect() as connection:
+    runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
+    runner.migrate_up()
+
+    with disposable_db.connect() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 "INSERT INTO controlplane.cp_workspaces (workspace_id, name, status) VALUES "
@@ -492,6 +536,7 @@ def test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented(
     assert _entity_field(workspace_port.get(WORKSPACE_B_ID, WORKSPACE_B_ID), "status") == "active"
     assert _entity_field(actor_port.get(WORKSPACE_B_ID, ACTOR_B_ID), "status") == "active"
     assert _entity_field(session_port.get(WORKSPACE_B_ID, AUTH_SESSION_B_ID), "status") == "active"
+    transaction_manager.close()
 
 
 def test_tst_m2_p1_008_destructive_guard_rejects_non_test_db(
@@ -502,9 +547,30 @@ def test_tst_m2_p1_008_destructive_guard_rejects_non_test_db(
     guard = DestructiveRollbackGuard()
 
     with pytest.raises(DestructiveOperationBlockedError):
-        guard.assert_allowed("controlplane", is_test_env=True)
+        guard.assert_allowed(
+            "controlplane",
+            is_test_env=True,
+            expected_database_name=disposable_db.name,
+        )
     with pytest.raises(DestructiveOperationBlockedError):
-        guard.assert_allowed("m2_p1_test_deadbeef", is_test_env=False)
+        guard.assert_allowed(
+            "m2_p1_test_deadbeef",
+            is_test_env=False,
+            expected_database_name=disposable_db.name,
+        )
+    with pytest.raises(DestructiveOperationBlockedError):
+        guard.assert_allowed(
+            "m2_p1_test_deadbeef",
+            is_test_env=True,
+            expected_database_name=disposable_db.name,
+        )
+    with pytest.raises(DestructiveOperationBlockedError):
+        guard.assert_allowed(disposable_db.name, is_test_env=True, expected_database_name=None)
+    guard.assert_allowed(
+        disposable_db.name,
+        is_test_env=True,
+        expected_database_name=disposable_db.name,
+    )
 
 
 def test_tst_m2_p1_009_applied_migration_file_missing_rejected(
@@ -529,7 +595,8 @@ def test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record(
     _write_sandbox_migration(
         migration_sandbox,
         "0002_broken.sql",
-        "CREATE SCHEMA controlplane;\nTHIS IS INTENTIONALLY BROKEN SQL;\n",
+        "CREATE TABLE controlplane.cp_rollback_probe (id INTEGER);\n"
+        "THIS IS INTENTIONALLY BROKEN SQL;\n",
     )
     runner = MigrationRunner(disposable_db.dsn, migration_sandbox, is_test_env=True)
 
@@ -538,8 +605,8 @@ def test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record(
 
     with disposable_db.connect() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT to_regnamespace('controlplane')")
-            assert cursor.fetchone()[0] == "controlplane"
+            cursor.execute("SELECT to_regclass('controlplane.cp_rollback_probe')")
+            assert cursor.fetchone()[0] is None
             cursor.execute(
                 "SELECT version, name FROM controlplane.cp_schema_migrations ORDER BY version"
             )
@@ -567,3 +634,4 @@ def test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool(
                 cursor.execute("SELECT 1")
                 assert cursor.fetchone()[0] == 1
         assert borrower.info.transaction_status.name == "IDLE"
+    manager.close()

@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1_READY_FOR_REVIEW` (M2-P0 ACCEPTED / CLOSED; P1 implementation/evidence hoàn tất, chờ independent audit)
+**Trạng thái:** `M2-P1_READY_FOR_REVIEW_R2` (M2-P0 ACCEPTED / CLOSED; P1 correction/evidence R2 hoàn tất, chờ independent audit)
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** `M2-P1_READY_FOR_REVIEW`. Không mở M2-P2, M3 hoặc Phân hệ A trước independent audit và User Checkpoint riêng.
+**Điểm dừng bắt buộc:** `M2-P1_READY_FOR_REVIEW_R2`. Không mở M2-P2, M3 hoặc Phân hệ A trước independent audit và User Checkpoint riêng.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
@@ -137,7 +137,7 @@ src/controlplane/
      * Thiếu `M2_TEST_PG_DSN`, không kết nối được server, hoặc DSN không có quyền tạo disposable database là prerequisite `FAIL` hoặc `BLOCKED_EXTERNAL` theo evidence policy; không được thay bằng credential mặc định hay một database khác.
      * Chạy migration production thật với schema cố định `controlplane` (tuyệt đối không template hoặc thay thế schema name bên trong production SQL).
      * Dọn dẹp sạch sẽ bằng `DROP DATABASE` trong teardown của test suite.
-     * **Destructive Guard**: Chỉ ủy quyền rollback/drop destructive sau khi fixture chứng minh `current_database()` của session mục tiêu đúng bằng database do chính fixture tạo, tên database khớp chính xác `^m2_p1_test_[0-9a-f]+$`, và marker môi trường kiểm thử hợp lệ (`is_test_env=True`) đã được xác nhận. `DROP DATABASE` chỉ nhắm database fixture đã được xác minh này; cấm mọi nhánh tên tổng quát `*_test` và cấm cờ free-form `allow_destructive=True`.
+     * **Destructive Guard**: Chỉ ủy quyền rollback/drop destructive sau khi dedicated migration connection đang giữ advisory lock chứng minh `current_database()` đúng bằng expected database do chính fixture tạo, tên database khớp chính xác `^m2_p1_test_[0-9a-f]+$`, và marker môi trường kiểm thử hợp lệ (`is_test_env=True`) đã được xác nhận. Thiếu hoặc mismatch expected identity đều bị chặn. `DROP DATABASE` chỉ nhắm database fixture đã được xác minh này; cấm mọi nhánh tên tổng quát `*_test` và cấm cờ free-form `allow_destructive=True`.
 8. **Interrupted Migration Recovery**: Nếu tiến trình migration bị ngắt đột ngột (killed), connection bị đóng sẽ tự động giải phóng session-level advisory lock; transaction đang dở dang tự động rollback an toàn.
 
 ---
@@ -196,7 +196,7 @@ src/controlplane/
   * Traceability P1 chỉ bao gồm nền tảng PostgreSQL/identity của `ARCH-002`, `ADR-0002`, `QR-MNT-002`, `CT-API-001` với qualifier *workspace persistence/binding foundation*, và `CT-API-010` với qualifier *auth-session persistence foundation*. P1 không claim common envelope đầy đủ, semantics command/event duplicate, stale generation commit, hay compliance API/auth/Host/Origin/CSRF đầy đủ; các phần đó thuộc package sau, đặc biệt M2-P7A.
   * `M2P1SemanticProfile` phải implement đúng `PackageSemanticProfile`: `profile_id -> "m2-p1"`, `target_package -> "M2-P1"`, và `evaluate(package_dir, status_data)`. Không có `package_id` hoặc `target_gate_id` trong extension contract.
   * `synthesizer_p1.py` cung cấp synthesis mode và `--verify-only`; cả hai explicit gọi `register_semantic_profile(M2P1SemanticProfile())` trước validator core. Final read-only validation bắt buộc đi qua `--verify-only`, không qua validator generic trong process mới.
-  * Evidence P1 bắt buộc chứa và semantic profile trực tiếp kiểm tra `m2-p1-tests.xml`, `m2-p0-regression.xml`, `m2-p0-regression-report.txt`, `m1-regression.xml`, `m1-regression-report.txt`, `secret-scan.json`, cùng provenance/hash DAG. Tập oracle P1 bắt buộc được khóa trong implementation plan trước RED; thiếu, skipped, failed/error, sai metrics, regression không đạt, secret scan dirty hoặc provenance mismatch đều fail-closed.
+  * Evidence P1 bắt buộc chứa và semantic profile trực tiếp kiểm tra `m2-p1-tests.xml`, `m2-p0-regression.xml`, `m2-p0-regression-report.txt`, `m1-regression.xml`, `m1-regression-report.txt`, `runtime-capability.json`, `secret-scan.json`, cùng provenance/hash DAG. Runtime phải khóa Python 3.13.15, psycopg 3.3.5, psycopg-pool 3.3.1 (`psycopg_pool.ConnectionPool`), PostgreSQL 18.6, CREATEDB=true và orphan DB=0 trong cùng `run_id`; thiếu, skipped, failed/error, sai metrics, regression không đạt, runtime mismatch, secret scan dirty hoặc provenance mismatch đều fail-closed.
 
 ### 6.1. Common Envelopes & Idempotency Store (M2-P2)
 - **Durable `CommandReceipt`**: Bảng `controlplane.cp_command_receipts` lưu trữ biên nhận bền vững (`receipt_id`, `command_id`, `disposition`: `ACCEPTED`/`REJECTED`/`DUPLICATE`, `operation_id`, `resource_ref`, `accepted_at`, `current_revision`).

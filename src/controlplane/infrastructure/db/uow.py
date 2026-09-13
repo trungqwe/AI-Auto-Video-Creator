@@ -1,17 +1,11 @@
 """Pooled PostgreSQL transaction boundaries for M2-P1."""
 from __future__ import annotations
 
-from contextlib import contextmanager
-from threading import Condition
 from types import TracebackType
-from typing import Any, Iterator, Self
+from typing import Any, Self
 
 from psycopg import Connection
-
-try:  # The control-plane package provides psycopg_pool; the root M1 lock does not.
-    from psycopg_pool import ConnectionPool as _PsycopgConnectionPool
-except ModuleNotFoundError:  # pragma: no cover - exercised in the frozen root env.
-    _PsycopgConnectionPool = None
+from psycopg_pool import ConnectionPool
 
 from .repositories import ActorRepository, AuthSessionRepository, WorkspaceRepository
 
@@ -89,15 +83,12 @@ class TransactionManager:
     def __init__(self, dsn: str, *, pool_max_size: int | None = None) -> None:
         self.dsn = dsn
         self.pool_max_size = pool_max_size or 4
-        if _PsycopgConnectionPool is not None:
-            self._pool: Any = _PsycopgConnectionPool(
-                conninfo=dsn,
-                min_size=0,
-                max_size=self.pool_max_size,
-                open=True,
-            )
-        else:
-            self._pool = _FallbackConnectionPool(dsn, self.pool_max_size)
+        self._pool: Any = ConnectionPool(
+            conninfo=dsn,
+            min_size=0,
+            max_size=self.pool_max_size,
+            open=True,
+        )
 
     def unit_of_work(self) -> SqlUnitOfWork:
         return SqlUnitOfWork(self._pool)
@@ -107,63 +98,3 @@ class TransactionManager:
 
     def close(self) -> None:
         self._pool.close()
-
-
-class _FallbackConnectionPool:
-    """Small bounded pool used when the root frozen environment omits psycopg_pool.
-
-    It intentionally exposes only the context-manager operation used by the UoW,
-    while preserving max-size and connection-reuse semantics required by P1.
-    """
-
-    def __init__(self, dsn: str, max_size: int) -> None:
-        if max_size < 1:
-            raise ValueError("pool max_size must be positive")
-        self._dsn = dsn
-        self._max_size = max_size
-        self._idle: list[Connection[Any]] = []
-        self._in_use = 0
-        self._closed = False
-        self._condition = Condition()
-
-    @contextmanager
-    def connection(self) -> Iterator[Connection[Any]]:
-        connection = self._acquire()
-        try:
-            yield connection
-        finally:
-            self._release(connection)
-
-    def _acquire(self) -> Connection[Any]:
-        with self._condition:
-            while True:
-                if self._closed:
-                    raise RuntimeError("Connection pool is closed")
-                if self._idle:
-                    connection = self._idle.pop()
-                    self._in_use += 1
-                    return connection
-                if self._in_use < self._max_size:
-                    connection = Connection.connect(self._dsn)
-                    self._in_use += 1
-                    return connection
-                self._condition.wait()
-
-    def _release(self, connection: Connection[Any]) -> None:
-        with self._condition:
-            self._in_use -= 1
-            if self._closed or connection.closed:
-                if not connection.closed:
-                    connection.close()
-            else:
-                self._idle.append(connection)
-            self._condition.notify()
-
-    def close(self) -> None:
-        with self._condition:
-            self._closed = True
-            while self._idle:
-                connection = self._idle.pop()
-                if not connection.closed:
-                    connection.close()
-            self._condition.notify_all()
