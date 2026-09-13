@@ -2,8 +2,8 @@
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
 **Trạng thái:** IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 AUTHORIZED)  
-**Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** `M2-P1_PLAN_READY_FOR_RED_REVIEW_R2`. Không viết code P1, không viết Behavioral RED, không sửa implementation P0 và không mở P2 cho tới User Review.
+**Ngày lập:** 13-09-2026 (Hiệu chỉnh cuối theo independent re-audit tại HEAD `747d609cfdf226371e1d5b2f4b73d240cd8210de`; chờ User Approval)
+**Điểm dừng bắt buộc:** `M2-P1_PLAN_READY_FOR_RED_APPROVAL`. Không viết code P1, không viết Behavioral RED, không sửa implementation P0 và không mở P2 cho tới User Approval.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -120,7 +120,7 @@ graph TD
   - `GATE-P1-02`: Bounded Advisory Lock & Checksum Verification (`pg_try_advisory_lock` with monotonic deadline timeout, SHA-256 tamper rejection).
   - `GATE-P1-03`: UnitOfWork Atomic Transaction & Connection Cleanliness (single connection per UoW, atomicity across Workspace/Actor/AuthSession, clean rollback on exception, pool connection cleanliness).
   - `GATE-P1-04`: Workspace/Actor/AuthSession DB-Level Isolation & Invariants (server-side workspace binding, `UNIQUE (workspace_id, actor_id)`, composite foreign key on `cp_auth_sessions`, workspace-scoped repository methods, zero unscoped get_by_id).
-  - `GATE-P1-05`: Milestone M1 Regression (đúng 93/93) & M2-P0 Regression (frozen P0 suite, architecture AST rules và P0 evidence validator), do chính P1 synthesis pipeline tạo artifact và semantic profile P1 kiểm tra.
+  - `GATE-P1-05`: Milestone M1 Regression (đúng 93/93) & M2-P0 Regression (exact frozen accepted P0 testcase-name set gồm 33 case, architecture AST rules và P0 evidence validator), do chính P1 synthesis pipeline tạo artifact và semantic profile P1 kiểm tra.
   - `GATE-P1-06`: Security Scan Cleanliness & Deterministic Evidence Provenance (0 secret canary findings, 1:1 execution command records, SHA-256 DAG validity).
 - **Dependencies**: M2-P0 (`ACCEPTED / CLOSED`).
 - **Mục tiêu**:
@@ -137,8 +137,9 @@ graph TD
        * Admin test DSN chỉ nạp từ `M2_TEST_PG_DSN`; tuyệt đối không hard-code, log, hay suy đoán credential trong source/docs/stdout/evidence. Không được có fallback local/dev-safe hoặc credential mặc định.
        * Thiếu DSN, không kết nối được server, hoặc không có quyền tạo database disposable là prerequisite `FAIL` hoặc `BLOCKED_EXTERNAL` theo evidence policy. Không được chuyển sang database khác hoặc tự đoán credential để tiếp tục.
        * Chạy migration production thật với schema cố định `controlplane` (không template hoặc thay thế schema name bên trong production SQL).
-       * Dọn dẹp sạch sẽ bằng `DROP DATABASE` trong teardown test suite.
-       * **Destructive Guard**: Chỉ cho rollback/drop destructive khi fixture xác nhận `current_database()` của session mục tiêu đúng bằng database do fixture tạo, tên khớp `^m2_p1_test_[0-9a-f]+$`, và marker môi trường kiểm thử hợp lệ (`is_test_env=True`). `DROP DATABASE` chỉ nhắm database fixture đã xác minh; xóa nhánh cho phép generic name `*_test`, cấm mọi `allow_destructive=True` free-form.
+       * **Migration rollback guard**: Rollback destructive chỉ chạy khi connection đang ở database do fixture tạo; `current_database()` phải đúng fixture identity và tên khớp `^m2_p1_test_[0-9a-f]+$`, đồng thời marker môi trường kiểm thử hợp lệ (`is_test_env=True`) đã được xác nhận. Cấm mọi nhánh tên tổng quát `*_test` và mọi `allow_destructive=True` free-form.
+       * **Database teardown**: Đóng toàn bộ target pool/connections trước. Sau đó admin connection thực hiện `DROP DATABASE` chỉ với exact database name do fixture đã tạo, đã verify regex và identity. Admin connection không bắt buộc — và không được — có `current_database()` bằng target database, vì PostgreSQL không cho một session drop chính database nó đang sử dụng.
+       * **Migration fault sandbox**: Fixture copy toàn bộ `src/controlplane/infrastructure/db/migrations/` vào temporary directory và cấu hình runner test trỏ tới bản copy. Mọi tamper/delete/add broken migration chỉ diễn ra trong sandbox; `finally` phải cleanup sandbox và kiểm tra source migration production giữ nguyên trước/sau test.
   2. Tạo migration `0001_initial_controlplane.sql` khởi tạo schema `controlplane`, bảng `cp_workspaces`, `cp_actors`, `cp_auth_sessions`.
      - Phân biệt rõ `AuthSession` (`cp_auth_sessions`) với `AppSession` (`cp_app_sessions` dành cho phiên mở desktop app data model: started_at, ended_at, output_folder, v.v. ở phase sau).
      - Ràng buộc DB-level invariants:
@@ -160,7 +161,8 @@ graph TD
      - `M2P1SemanticProfile` implement đúng extension contract `PackageSemanticProfile`: `profile_id -> "m2-p1"`, `target_package -> "M2-P1"`, `evaluate(package_dir, status_data)`. Không định nghĩa hoặc dùng `package_id` hay `target_gate_id = "GATE-P1-ALL"`.
      - Semantic registry là process-local. `synthesizer_p1.py` phải hỗ trợ synthesis mode và `--verify-only`; **cả hai mode** explicit gọi `register_semantic_profile(M2P1SemanticProfile())` trước khi gọi validator core. Final read-only verification bắt buộc chạy P1-aware verifier `synthesizer_p1.py --verify-only`, không chạy generic `python -m controlplane.infrastructure.evidence.validator .../m2-p1` trong process mới.
      - Không đưa live evidence test vào `m2-p1-tests.xml` để tránh chu trình tự tham chiếu.
-     - P1 synthesis phải tạo và profile P1 trực tiếp parse `m2-p1-tests.xml`, `m2-p0-regression.xml`, `m2-p0-regression-report.txt`, `m1-regression.xml`, `m1-regression-report.txt`, `secret-scan.json`, `commands.jsonl`, `status.json` và `hashes.sha256`. Không được chạy P0 regression bên ngoài pipeline rồi tự ghi `GATE-P1-05: PASS`.
+      - P1 synthesis phải tạo và profile P1 trực tiếp parse `m2-p1-tests.xml`, `m2-p0-regression.xml`, `m2-p0-regression-report.txt`, `m1-regression.xml`, `m1-regression-report.txt`, `secret-scan.json`, `commands.jsonl`, `status.json` và `hashes.sha256`. Không được chạy P0 regression bên ngoài pipeline rồi tự ghi `GATE-P1-05: PASS`.
+      - `m2-p0-regression.xml` phải được sinh từ đúng ba source suite frozen `tests/m2/test_p0_architecture_rules.py`, `tests/m2/test_p0_evidence_validator.py`, `tests/m2/test_p0_packaging.py`. Profile P1 normalize JUnit testcase identity theo `test-file::testcase-name`, đòi tập identity bằng **đúng** accepted set 33 case dưới đây và 0 failed/error/skipped; thiếu, thay tên, chạy subset hoặc có case ngoài set đều làm `GATE-P1-05` FAIL.
 - **Allowed File Scope**:
   - `src/controlplane/infrastructure/db/**`
   - `src/controlplane/domain/identity/**`
@@ -176,21 +178,42 @@ graph TD
   - `src/controlplane/api/**`, `src/controlplane/ui/**`, `src/m1proof/**`, `tests/m1/**`.
 - **RED Oracle**:
   - `test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db`: Chạy chu trình up/down/up trên disposable test database `m2_p1_test_<uuid>` -> FAILED vì migration runner chưa có logic.
-  - `test_tst_m2_p1_002_migration_checksum_tamper_rejected`: Sửa đổi 1 byte file migration cũ -> FAILED vì chưa có logic verify SHA-256 checksum.
+  - `test_tst_m2_p1_002_migration_checksum_tamper_rejected`: Sửa đổi 1 byte migration trong migration sandbox -> FAILED vì chưa có logic verify SHA-256 checksum.
   - `test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected`: Runner gặp version gap hoặc trùng lặp version -> FAILED vì chưa có gap/duplicate validation.
   - `test_tst_m2_p1_004_bounded_advisory_lock_and_timeout`: Runner 2 cố chạy khi Runner 1 giữ advisory lock -> FAILED vì chưa có bounded monotonic timeout acquisition.
   - `test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback`: Exception trước commit rollback cả Workspace, Actor và AuthSession; connection trả về pool ở trạng thái sạch -> FAILED vì UoW chưa implement transaction boundary.
   - `test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement`: Thử tạo auth session liên kết actor của workspace khác ở DB layer -> FAILED vì composite FK chưa được thiết lập.
-  - `test_tst_m2_p1_007_cross_workspace_read_update_delete_prevented`: Thử đọc/sửa/xóa entity của workspace khác qua repository -> FAILED vì repo chưa enforce workspace-scoped context.
+  - `test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented`: Thử get/list và update status của Workspace/Actor thuộc workspace khác, cùng revoke/expire AuthSession khác workspace -> FAILED vì repository chưa enforce workspace-scoped context.
   - `test_tst_m2_p1_008_destructive_guard_rejects_non_test_db`: Chạy destructive rollback khi tên DB không hợp lệ hoặc thiếu flag `is_test_env` -> FAILED vì guard chưa hoạt động.
-   - `test_tst_m2_p1_009_applied_migration_file_missing_rejected`: Apply migration rồi xóa chính forward file khỏi disk -> FAILED vì runner chưa fail-closed với `MigrationMissingFileError`.
-   - `test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record`: Tạo migration SQL lỗi giữa chừng -> FAILED vì runner chưa rollback toàn bộ side effect hoặc vẫn tạo applied record.
+   - `test_tst_m2_p1_009_applied_migration_file_missing_rejected`: Apply migration trong sandbox rồi xóa chính forward file của sandbox -> FAILED vì runner chưa fail-closed với `MigrationMissingFileError`.
+   - `test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record`: Thêm migration SQL lỗi có chủ đích trong sandbox -> FAILED vì runner chưa rollback toàn bộ side effect hoặc vẫn tạo applied record.
    - `test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool`: Ép UoW rollback, mượn lại connection từ pool và thực hiện query/transaction mới -> FAILED vì connection còn transaction open/aborted hoặc borrower sau không dùng được.
 - **Tập Mandatory Behavioral Oracle (khóa trước RED)**:
-  - `tests/m2/test_p1_db_and_workspace.py` phải định nghĩa đúng đủ 11 testcase: `test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db`, `test_tst_m2_p1_002_migration_checksum_tamper_rejected`, `test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected`, `test_tst_m2_p1_004_bounded_advisory_lock_and_timeout`, `test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback`, `test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement`, `test_tst_m2_p1_007_cross_workspace_read_update_delete_prevented`, `test_tst_m2_p1_008_destructive_guard_rejects_non_test_db`, `test_tst_m2_p1_009_applied_migration_file_missing_rejected`, `test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record`, `test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool`.
+  - `tests/m2/test_p1_db_and_workspace.py` phải định nghĩa đúng đủ 11 testcase: `test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db`, `test_tst_m2_p1_002_migration_checksum_tamper_rejected`, `test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected`, `test_tst_m2_p1_004_bounded_advisory_lock_and_timeout`, `test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback`, `test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement`, `test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented`, `test_tst_m2_p1_008_destructive_guard_rejects_non_test_db`, `test_tst_m2_p1_009_applied_migration_file_missing_rejected`, `test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record`, `test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool`.
   - `M2P1SemanticProfile.evaluate(package_dir, status_data)` phải parse trực tiếp JUnit và report artifacts, xác minh từng mandatory testcase xuất hiện đúng một lần trong `m2-p1-tests.xml`, không skipped, không failed/error. Profile phải fail-closed khi thiếu bất kỳ testcase nào; một subset test xanh không thể chứng minh toàn bộ sáu gate.
   - Chuẩn metric trong `status.json` phải khớp JUnit thực tế cho P1, P0 regression và M1 regression (total/passed/failed/errors/skipped). Profile phải fail-closed khi P0 regression không PASS, M1 không đúng 93/93, secret scan không CLEAN/0 findings, hoặc provenance của run/commands/artifacts/hash DAG không khớp.
   - Trước khi chạy Behavioral RED, được phép chỉ tạo structural stub importable tối thiểu trong Allowed File Scope để import không ném `ModuleNotFoundError`; mọi constructor/method chưa hiện thực phải ném `NotImplementedError`. RED chỉ hợp lệ khi fail do oracle nghiệp vụ đã xác định, không phải setup/import thiếu.
+- **Bảng Traceability cho 11 Mandatory Behavioral Oracles**:
+
+  | Testcase | Technical source ID tối thiểu | Phạm vi traceability |
+  |---|---|---|
+  | `test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db` | `ARCH-002`, `ADR-0002`, `QR-MNT-002` | PostgreSQL foundation, migration up/down và disposable database. |
+  | `test_tst_m2_p1_002_migration_checksum_tamper_rejected` | `ADR-0002`, `QR-MNT-002` | Checksum/tamper fail-closed trong migration sandbox. |
+  | `test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected` | `ADR-0002`, `QR-MNT-002` | Discovery strict ordering và fail-closed. |
+  | `test_tst_m2_p1_004_bounded_advisory_lock_and_timeout` | `ADR-0002`, `QR-MNT-002` | Bounded advisory lock cho migration runner. |
+  | `test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback` | `ARCH-002`, `QR-MNT-002` | Transaction boundary/UoW atomicity. |
+  | `test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement` | `ADR-0002`, `CT-API-001` (workspace persistence/binding foundation only) | DB-level workspace binding. |
+  | `test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented` | `CT-API-001` (workspace persistence/binding foundation only), `CT-API-010` (AuthSession persistence foundation only), `ADR-0009` | Scoped get/list/status mutation và AuthSession revoke/expire. |
+  | `test_tst_m2_p1_008_destructive_guard_rejects_non_test_db` | `ADR-0002`, `QR-MNT-002` | Destructive migration rollback chỉ trên fixture identity hợp lệ. |
+  | `test_tst_m2_p1_009_applied_migration_file_missing_rejected` | `ADR-0002`, `QR-MNT-002` | Applied-file-missing fail-closed trong migration sandbox. |
+  | `test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record` | `ADR-0002`, `QR-MNT-002` | SQL failure rollback và không có applied record trong migration sandbox. |
+  | `test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool` | `ARCH-002`, `QR-MNT-002` | Pool connection clean sau UoW rollback. |
+
+- **Frozen Accepted M2-P0 Testcase Identity (33; exact set)**:
+
+  - `tests/m2/test_p0_architecture_rules.py`: `test_tst_m2_p0_001_ast_boundary_rules_clean_codebase`, `test_tst_m2_p0_001_domain_rejects_fastapi_import`, `test_tst_m2_p0_001_domain_rejects_psycopg_import`, `test_tst_m2_p0_001_rejects_m1proof_prototype_import`, `test_tst_m2_p0_001_rejects_src_m1proof_prefix_import`, `test_tst_m2_p0_001_domain_rejects_outer_layer_import`.
+  - `tests/m2/test_p0_evidence_validator.py`: `test_tst_m2_p0_002_evidence_validator_accepts_valid_package`, `test_tst_m2_p0_002_evidence_validator_rejects_tampered_hash`, `test_tst_m2_p0_002_evidence_validator_rejects_self_referential_hash`, `test_tst_m2_p0_002_evidence_validator_rejects_schema_mismatch`, `test_tst_m2_p0_002_evidence_validator_rejects_failing_gate_with_pass_status`, `test_tst_m2_p0_002_evidence_validator_rejects_untracked_extra_file`, `test_tst_m2_p0_002_semantic_evaluator_rejects_junit_failures`, `test_tst_m2_p0_002_semantic_evaluator_rejects_skipped_tests`, `test_tst_m2_p0_002_semantic_evaluator_rejects_m1_count_mismatch`, `test_tst_m2_p0_002_semantic_evaluator_rejects_dirty_secret_scan`, `test_tst_m2_p0_002_semantic_evaluator_rejects_failed_txt_reports`, `test_tst_m2_p0_002_live_p0_evidence_is_valid`, `test_tst_m2_p0_002_semantic_evaluator_rejects_unknown_package_or_profile`, `test_tst_m2_p0_002_semantic_evaluator_dispatches_registered_p1_sample_profile`, `test_tst_m2_p0_002_semantic_evaluator_blocks_cross_package_profile_spoofing`, `test_tst_m2_p0_002_semantic_evaluator_rejects_provenance_run_id_mismatch`, `test_tst_m2_p0_002_semantic_evaluator_rejects_provenance_timestamp_drift`, `test_tst_m2_p0_002_semantic_evaluator_rejects_missing_run_id_in_status`.
+  - `tests/m2/test_p0_packaging.py`: `test_tst_m2_p0_003_controlplane_import_without_syspath_hack`, `test_tst_m2_p0_003_no_syspath_hacks_in_controlplane_source`, `test_tst_m2_p0_003_pyproject_and_build_lock_metadata`, `test_tst_m2_p0_003_backend_dependency_graph_and_build_lock`, `test_tst_m2_p0_003_frozen_project_environment_install`, `test_tst_m2_p0_003_fresh_environment_wheel_build_and_install`, `test_tst_m2_p0_003_frozen_install_rejects_mutated_lock_mismatch`, `test_tst_m2_p0_004_frontend_toolchain_exact_pins_and_runtime_manifest`, `test_tst_m2_p0_005_skeleton_interfaces_raise_not_implemented`.
 - **Positive Tests**:
   - Migration chạy tiến thành công trên PostgreSQL container qua disposable test database.
   - Connection pool cấp phát kết nối ổn định.
@@ -204,7 +227,7 @@ graph TD
   - Lỗi SQL giữa chừng -> Transaction rollback sạch sẽ toàn bộ side effect, không ghi nhận bản ghi vào `cp_schema_migrations`.
   - Cố tình chạy destructive rollback trên non-test DB hoặc thiếu cờ `is_test_env=True` -> Ném `DestructiveOperationBlockedError`.
   - Tạo auth session với actor_id thuộc workspace khác -> Bị PostgreSQL composite FK chặn ngay lập tức (`ForeignKeyViolation`).
-  - Truy vấn, update, delete thực thể khác workspace qua scoped repository -> Trả về `None` hoặc raise `EntityNotFoundError`, không lộ dữ liệu cross-workspace.
+  - Get/list hoặc update status thực thể khác workspace, hay revoke/expire AuthSession khác workspace qua scoped repository -> Trả về `None` hoặc raise `EntityNotFoundError`, không lộ dữ liệu cross-workspace. P1 không thêm delete port chỉ để phục vụ kiểm thử.
 - **Concurrency / Fault / Security Tests**:
   - Concurrent migration runner: Runner 2 chờ runner 1, timeout sau bounded deadline (5s) và ném `MigrationLockTimeoutError`.
   - Tiến trình bị ngắt đột ngột: Connection đóng tự động giải phóng session-level advisory lock và rollback transaction.
@@ -218,11 +241,11 @@ graph TD
   - Không đưa test live package evidence vào `m2-p1-tests.xml` để tránh chu trình tự tham chiếu.
   - Flow: behavioral RED hợp lệ → implementation → P1 GREEN suite (`m2-p1-tests.xml`, `m2-p1-tests-report.txt`) → frozen M2-P0 regression (`m2-p0-regression.xml`, `m2-p0-regression-report.txt`) → M1 regression (`m1-regression.xml`, `m1-regression-report.txt`) → final secret scan (`secret-scan.json`) → synthesize P1 evidence (`synthesizer_p1.py`) → final read-only P1-aware verification (`synthesizer_p1.py --verify-only`).
   - File RED log `red-p1-stdout.txt` được hash và lưu làm historical expected-RED evidence, không bị semantic profile hiểu nhầm là failed test hiện tại.
-  - `profile_p1.py` định nghĩa `M2P1SemanticProfile` theo exact extension contract, kiểm tra mandatory P1 oracles, P0 regression evidence, M1 93/93, secret scan 0 findings, status/JUnit consistency và provenance/hash DAG. Registry registration chỉ có hiệu lực trong process hiện tại.
+  - `profile_p1.py` định nghĩa `M2P1SemanticProfile` theo exact extension contract, kiểm tra mandatory P1 oracles, exact frozen accepted P0 testcase-name set (33), M1 93/93, secret scan 0 findings, status/JUnit consistency và provenance/hash DAG. Registry registration chỉ có hiệu lực trong process hiện tại.
 - **PASS Criteria**:
   - P1-aware final read-only verifier (`synthesizer_p1.py --verify-only`) đăng ký profile P1 rồi gọi validator core và đạt `VALIDATION: PASS`.
   - M1 regression: 93 passed, 0 skipped, 0 failed.
-  - Frozen M2-P0 regression: 100% passed, artifact XML/report được sinh trong cùng P1 synthesis pipeline.
+  - Frozen M2-P0 regression: exact accepted testcase-name set 33/33, 0 failed/error/skipped; artifact XML/report được sinh trong cùng P1 synthesis pipeline.
   - P1 tests: đủ 11 mandatory behavioral oracles, 100% passed (tất cả các bài test positive, negative, concurrency, UoW, DB invariants đều GREEN).
   - Secret scan: 0 findings.
   - 1:1 execution command records trong `commands.jsonl` khớp hoàn toàn SHA-256 và timestamp.

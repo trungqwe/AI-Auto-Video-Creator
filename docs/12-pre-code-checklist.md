@@ -27,7 +27,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS E3 (ADR-0009 Subprocess Broker OS isolation, Windows DPAPI Vault, Broker-owned provisioning, live E3 probe xác thực Drive thật) |
 | G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS strict version (Python, uv, PG, Temporal, ffprobe WAV duration > 0, fail-closed dynamic matrix observation) |
 | ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất qua Broker Subprocess boundary |
-| M2 | 🟢 `IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 AUTHORIZED)` | M2-P0 đã được nghiệm thu ACCEPTED/CLOSED; M2-P1 đã hoàn tất chuẩn hóa kế hoạch kỹ thuật theo 10 điểm hẹp trước Behavioral RED |
+| M2 | 🟢 `IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 AUTHORIZED)` | M2-P0 đã được nghiệm thu ACCEPTED/CLOSED; M2-P1 đã hoàn tất hiệu chỉnh cuối theo re-audit và chờ RED approval |
 | M3 / Module A | ⛔ `NOT AUTHORIZED` | Tiếp tục bị khóa chặt; không được bắt đầu trước khi M2 đạt exit gate và có User Checkpoint riêng |
 
 Đây là bảng trạng thái có thẩm quyền trước lệnh code đầu tiên. Kết quả P2/P3 đã đạt được ghi `PASS_M1_SCOPE`; G01/G04 toàn phần vẫn `PARTIALLY_PROVEN` cho tới khi đủ evidence các milestone tiếp theo.
@@ -174,14 +174,13 @@ Sau các đợt re-audit độc lập R4, R5 và R5.1 (HEAD commit `08c857c`), t
 - **Milestone M2**: `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` (bắt đầu chu trình chuẩn bị SPEC và PLAN).
 - **Milestone M3 và Phân hệ A**: Tiếp tục duy trì trạng thái `NOT AUTHORIZED` (khóa chặt cho tới khi M2 hoàn tất exit gate và có User Checkpoint riêng).
 
-## Trạng thái Nghiệm thu M2-P0 & Chuẩn bị M2-P1 R2 (13-09-2026)
+## Trạng thái Nghiệm thu M2-P0 & Chuẩn bị M2-P1 Final Re-audit (13-09-2026)
 
 Người dùng đã CHẤP THUẬN chính thức kết quả Milestone M2-P0 tại commit `d84c1d7`:
 - **M2-P0**: `ACCEPTED / CLOSED` (33/33 tests PASSED, 93/93 tests hồi quy M1 PASSED, 6/6 Package Gates PASS, deterministic provenance 1:1, SHA-256 DAG hợp lệ).
-- **M2-P1**: `AUTHORIZED TO IMPLEMENT` theo quy trình chuẩn, nhưng independent audit tại HEAD `7445504d4fac3b2ff03378d1f02fe9f2fc69b548` cấm bắt đầu Behavioral RED trước User Review của hiệu chỉnh kế hoạch R2.
-- **Hiệu chỉnh Kế hoạch Kỹ thuật M2-P1 R2**: `spec.md` và `implementation-plan.md` đã được đồng bộ để: dùng đúng contract process-local của `M2P1SemanticProfile` và P1-aware `--verify-only`; bắt buộc sinh/parse evidence regression P0 và M1 trong chính synthesis pipeline; khóa 11 mandatory behavioral oracles; fail-closed `M2_TEST_PG_DSN` và destructive database identity; giữ P1 ngoài token protocol P7A/hard-delete business identity; và chỉ cho structural stubs để RED không thất bại vì import.
-- **Ranh giới Bắt buộc**: Chưa viết code implementation và chưa viết test RED. Dừng tại `M2-P1_PLAN_READY_FOR_RED_REVIEW_R2`. Không sửa implementation P0, không mở P2; M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
-
+- **M2-P1**: `AUTHORIZED TO IMPLEMENT` theo quy trình chuẩn, nhưng independent re-audit tại HEAD `747d609cfdf226371e1d5b2f4b73d240cd8210de` cấm bắt đầu Behavioral RED trước User Approval.
+- **Hiệu chỉnh Kế hoạch Kỹ thuật Cuối**: `implementation-plan.md` đã thay P1-007 bằng public port read/status/revoke/expire thật, có traceability cho cả 11 oracle, khóa exact accepted P0 testcase-name set 33/33, bắt buộc migration fault sandbox, và tách migration rollback guard khỏi admin database teardown.
+- **Ranh giới Bắt buộc**: Chưa viết code implementation và chưa viết test RED. Dừng tại `M2-P1_PLAN_READY_FOR_RED_APPROVAL`. Không sửa implementation P0, không mở P2; M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
 
 
 
