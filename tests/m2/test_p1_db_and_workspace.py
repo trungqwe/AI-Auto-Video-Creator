@@ -67,7 +67,7 @@ class DisposableDatabase:
     """Test-owned target database; connections are closed before admin teardown."""
 
     name: str
-    dsn: str
+    dsn: str = field(repr=False)
     _target_connections: list[psycopg.Connection] = field(default_factory=list)
 
     def connect(self, *, autocommit: bool = True) -> psycopg.Connection:

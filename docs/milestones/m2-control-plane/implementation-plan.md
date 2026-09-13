@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 Plan ACCEPTED, Behavioral RED BLOCKED_EXTERNAL)
+**Trạng thái:** IMPLEMENTATION IN PROGRESS (M2-P0 ACCEPTED / CLOSED, M2-P1 Plan ACCEPTED, Behavioral RED CORRECTION REQUIRED)
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** `M2-P1_BEHAVIORAL_RED_BLOCKED_EXTERNAL`. Behavioral RED được ủy quyền, nhưng chưa thể chứng kiến 11/11 oracle vì `M2_TEST_PG_DSN` không có trong môi trường. Chỉ structural stub/test/harness RED trong Allowed File Scope; không viết business/DB implementation P1, không sửa P0 implementation và không mở P2 cho tới khi 11 RED hợp lệ được lưu evidence.
+**Điểm dừng bắt buộc hiện hành:** `M2-P1_BEHAVIORAL_RED_CORRECTION_REQUIRED`. Behavioral RED đã chạy trên PostgreSQL thật: exact 11 oracle được collect/chạy trong disposable database function-scoped, nhưng chỉ 5 failure hợp lệ và 6 failure dừng trước capability chuyên biệt tại structural stub chung. Chỉ structural stub/test/harness RED trong Allowed File Scope; không viết business/DB implementation P1, không sửa P0 implementation và không mở P2 cho tới khi independent audit chấp thuận correction và 11 RED hợp lệ được lưu evidence.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -239,10 +239,10 @@ graph TD
   - `0001_initial_controlplane.sql` (tạo schema `controlplane`, bảng `cp_schema_migrations`, `cp_workspaces`, `cp_actors`, `cp_auth_sessions`).
   - `0001_initial_controlplane.rollback.sql` (drop toàn bộ bảng, drop schema `controlplane` CASCADE để đưa disposable DB về trạng thái tiền-0001).
 - **Evidence Protocol**:
-  - Thư mục bằng chứng: `docs/milestones/m2-control-plane/evidence/m2-p1/` (`commands.jsonl`, `status.json`, `status.md`, `red-observations.md`, `red-p1-collect-stdout.txt`, `red-p1-prerequisite-stdout.txt`, `red-p1-stdout.txt`, `red-p1-<run-id>-stdout.txt`, `hashes.sha256`, `m2-p1-tests.xml`, `m2-p1-tests-report.txt`, `m2-p0-regression.xml`, `m2-p0-regression-report.txt`, `m1-regression.xml`, `m1-regression-report.txt`, `secret-scan.json`).
+  - Thư mục bằng chứng: `docs/milestones/m2-control-plane/evidence/m2-p1/` (`commands.jsonl`, `status.json`, `status.md`, `red-observations.md`, `red-p1-collect-stdout.txt`, `red-p1-prerequisite-stdout.txt`, `red-p1-stdout.txt`, `red-p1-runtime-<run-id>-prerequisite-stdout.txt`, `red-p1-runtime-<run-id>-collect-stdout.txt`, `red-p1-runtime-<run-id>-stdout.txt`, `hashes.sha256`, `m2-p1-tests.xml`, `m2-p1-tests-report.txt`, `m2-p0-regression.xml`, `m2-p0-regression-report.txt`, `m1-regression.xml`, `m1-regression-report.txt`, `secret-scan.json`).
   - Không đưa test live package evidence vào `m2-p1-tests.xml` để tránh chu trình tự tham chiếu.
   - Flow: behavioral RED hợp lệ → implementation → P1 GREEN suite (`m2-p1-tests.xml`, `m2-p1-tests-report.txt`) → frozen M2-P0 regression (`m2-p0-regression.xml`, `m2-p0-regression-report.txt`) → M1 regression (`m1-regression.xml`, `m1-regression-report.txt`) → final secret scan (`secret-scan.json`) → synthesize P1 evidence (`synthesizer_p1.py`) → final read-only P1-aware verification (`synthesizer_p1.py --verify-only`).
-  - `red-p1-collect-stdout.txt` là raw output chứng minh exact set 11 test; `red-p1-prerequisite-stdout.txt` là raw prerequisite/`BLOCKED_EXTERNAL` output. Mỗi RED run sau khi PostgreSQL sẵn sàng phải có raw output riêng `red-p1-<run-id>-stdout.txt`. Các file RED raw được hash và lưu historical evidence, không bị semantic profile hiểu nhầm là failed test hiện tại.
+  - `red-p1-collect-stdout.txt` là raw output chứng minh exact set 11 test; `red-p1-prerequisite-stdout.txt` là raw prerequisite/`BLOCKED_EXTERNAL` output. Mỗi RED run trên PostgreSQL phải lưu raw prerequisite, collection và full run riêng theo `red-p1-runtime-<run-id>-{prerequisite,collect,stdout}.txt` trước mọi human interpretation. Các file RED raw được hash và lưu historical evidence, không bị semantic profile hiểu nhầm là failed test hiện tại.
   - `profile_p1.py` định nghĩa `M2P1SemanticProfile` theo exact extension contract, kiểm tra mandatory P1 oracles, exact frozen accepted P0 testcase-name set (33), M1 93/93, secret scan 0 findings, status/JUnit consistency và provenance/hash DAG. Registry registration chỉ có hiệu lực trong process hiện tại.
 - **PASS Criteria**:
   - P1-aware final read-only verifier (`synthesizer_p1.py --verify-only`) đăng ký profile P1 rồi gọi validator core và đạt `VALIDATION: PASS`.

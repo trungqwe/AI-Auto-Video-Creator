@@ -1,0 +1,358 @@
+Command:
+& .\.venv\Scripts\python.exe -m pytest tests\m2\test_p1_db_and_workspace.py -vv
+
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 11 items
+
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db FAILED [  9%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_002_migration_checksum_tamper_rejected FAILED [ 18%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected FAILED [ 27%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_004_bounded_advisory_lock_and_timeout FAILED [ 36%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback FAILED [ 45%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement FAILED [ 54%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented FAILED [ 63%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_008_destructive_guard_rejects_non_test_db FAILED [ 72%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_009_applied_migration_file_missing_rejected FAILED [ 81%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record FAILED [ 90%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool FAILED [100%]
+
+================================== FAILURES ===================================
+_____ test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db ______
+
+disposable_db = DisposableDatabase(name='m2_p1_test_4110f747619141b5a8afb64a27afd738', _target_connections=[<psycopg.Connection [BAD] at 0x2136f218b90>])
+
+    def test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db(
+        disposable_db: DisposableDatabase,
+    ) -> None:
+        """ARCH-002, ADR-0002: up/down/up must use the fixture-created database only."""
+        runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
+    
+>       runner.migrate_up()
+
+tests\m2\test_p1_db_and_workspace.py:244: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.infrastructure.db.migration_runner.MigrationRunner object at 0x000002136F244980>
+
+    def migrate_up(self) -> None:
+>       raise NotImplementedError("M2-P1 RED: MigrationRunner.migrate_up is not implemented.")
+E       NotImplementedError: M2-P1 RED: MigrationRunner.migrate_up is not implemented.
+
+src\controlplane\infrastructure\db\migration_runner.py:32: NotImplementedError
+____________ test_tst_m2_p1_002_migration_checksum_tamper_rejected ____________
+
+disposable_db = DisposableDatabase(name='m2_p1_test_d4047c181cae4078a1ec3049b6d4e7d9', _target_connections=[<psycopg.Connection [BAD] at 0x2136f1bf360>])
+migration_sandbox = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-206/test_tst_m2_p1_002_migration_c0/migration-sandbox')
+
+    def test_tst_m2_p1_002_migration_checksum_tamper_rejected(
+        disposable_db: DisposableDatabase, migration_sandbox: Path
+    ) -> None:
+        """ADR-0002, QR-MNT-002: byte-level migration tampering must fail closed."""
+        forward_file = _write_sandbox_migration(
+            migration_sandbox, "0001_initial_controlplane.sql", "SELECT 1;\n"
+        )
+        runner = MigrationRunner(disposable_db.dsn, migration_sandbox, is_test_env=True)
+    
+>       runner.migrate_up()
+
+tests\m2\test_p1_db_and_workspace.py:268: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.infrastructure.db.migration_runner.MigrationRunner object at 0x000002136F219090>
+
+    def migrate_up(self) -> None:
+>       raise NotImplementedError("M2-P1 RED: MigrationRunner.migrate_up is not implemented.")
+E       NotImplementedError: M2-P1 RED: MigrationRunner.migrate_up is not implemented.
+
+src\controlplane\infrastructure\db\migration_runner.py:32: NotImplementedError
+_______ test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected _______
+
+disposable_db = DisposableDatabase(name='m2_p1_test_ce713618167d440fb4e0929f52d00682', _target_connections=[<psycopg.Connection [BAD] at 0x2136f2a8f30>])
+migration_sandbox = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-206/test_tst_m2_p1_003_migration_v0/migration-sandbox')
+
+    def test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected(
+        disposable_db: DisposableDatabase, migration_sandbox: Path
+    ) -> None:
+        """ADR-0002, QR-MNT-002: discovery rejects both version gaps and duplicates."""
+        _write_sandbox_migration(migration_sandbox, "0001_initial_controlplane.sql", "SELECT 1;\n")
+        _write_sandbox_migration(migration_sandbox, "0003_gap.sql", "SELECT 1;\n")
+        runner = MigrationRunner(disposable_db.dsn, migration_sandbox, is_test_env=True)
+    
+        with pytest.raises(MigrationDiscoveryError):
+>           runner.migrate_up()
+
+tests\m2\test_p1_db_and_workspace.py:283: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.infrastructure.db.migration_runner.MigrationRunner object at 0x000002136F218550>
+
+    def migrate_up(self) -> None:
+>       raise NotImplementedError("M2-P1 RED: MigrationRunner.migrate_up is not implemented.")
+E       NotImplementedError: M2-P1 RED: MigrationRunner.migrate_up is not implemented.
+
+src\controlplane\infrastructure\db\migration_runner.py:32: NotImplementedError
+____________ test_tst_m2_p1_004_bounded_advisory_lock_and_timeout _____________
+
+disposable_db = DisposableDatabase(name='m2_p1_test_679784e6d50248bdaa987e52399dcf33', _target_connections=[<psycopg.Connection [BAD] at 0x2136f1bb7a0>])
+
+    def test_tst_m2_p1_004_bounded_advisory_lock_and_timeout(
+        disposable_db: DisposableDatabase,
+    ) -> None:
+        """ADR-0002, QR-MNT-002: a second runner must time out under a held lock."""
+        first_runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
+        second_runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
+    
+>       first_runner.acquire_advisory_lock(timeout_seconds=5.0)
+
+tests\m2\test_p1_db_and_workspace.py:298: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.infrastructure.db.migration_runner.MigrationRunner object at 0x000002136F1BFBB0>
+timeout_seconds = 5.0
+
+    def acquire_advisory_lock(self, *, timeout_seconds: float) -> None:
+>       raise NotImplementedError(
+            "M2-P1 RED: MigrationRunner.acquire_advisory_lock is not implemented."
+        )
+E       NotImplementedError: M2-P1 RED: MigrationRunner.acquire_advisory_lock is not implemented.
+
+src\controlplane\infrastructure\db\migration_runner.py:38: NotImplementedError
+__________ test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback __________
+
+bootstrap_identity_schema = DisposableDatabase(name='m2_p1_test_6d63cfa6082c46c99680d3d6ce137281', _target_connections=[<psycopg.Connection [BAD] at 0x2136f37c230>, <psycopg.Connection [BAD] at 0x2136f37c500>])
+
+    def test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback(
+        bootstrap_identity_schema: DisposableDatabase,
+    ) -> None:
+        """ARCH-002, QR-MNT-002: commit persists all three records; later rollback is atomic."""
+        manager = TransactionManager(bootstrap_identity_schema.dsn)
+    
+        # UoW #1 must commit a complete identity set. A no-op create() cannot satisfy
+        # the direct database assertions below.
+>       with manager.unit_of_work() as unit_of_work:
+             ^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p1_db_and_workspace.py:312: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.infrastructure.db.uow.TransactionManager object at 0x000002136F244D70>
+
+    def unit_of_work(self) -> SqlUnitOfWork:
+>       raise NotImplementedError("M2-P1 RED: TransactionManager.unit_of_work is not implemented.")
+E       NotImplementedError: M2-P1 RED: TransactionManager.unit_of_work is not implemented.
+
+src\controlplane\infrastructure\db\uow.py:44: NotImplementedError
+_____ test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement _____
+
+bootstrap_identity_schema = DisposableDatabase(name='m2_p1_test_c569cf7156b3478e927d493327fb8c0f', _target_connections=[<psycopg.Connection [BAD] at 0x2136f37cd70>, <psycopg.Connection [BAD] at 0x2136f37c8c0>, <psycopg.Connection [BAD] at 0x2136f37c9b0>])
+
+    def test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement(
+        bootstrap_identity_schema: DisposableDatabase,
+    ) -> None:
+        """ADR-0002, CT-API-001: the missing composite FK permits a cross-workspace session."""
+    
+        with bootstrap_identity_schema.connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO controlplane.cp_workspaces (workspace_id, name, status) VALUES "
+                    "(%s, 'A', 'active'), (%s, 'B', 'active')",
+                    (WORKSPACE_A_ID, WORKSPACE_B_ID),
+                )
+                cursor.execute(
+                    "INSERT INTO controlplane.cp_actors (actor_id, workspace_id, actor_type, display_name, status) "
+                    "VALUES (%s, %s, 'human', 'Actor A', 'active')",
+                    (ACTOR_A_ID, WORKSPACE_A_ID),
+                )
+>               with pytest.raises(psycopg.errors.ForeignKeyViolation):
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               Failed: DID NOT RAISE ForeignKeyViolation
+
+tests\m2\test_p1_db_and_workspace.py:418: Failed
+____ test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented ____
+
+bootstrap_identity_schema = DisposableDatabase(name='m2_p1_test_e144c6a6ed82433ea0532bcd848dc8ee', _target_connections=[<psycopg.Connection [BAD] at 0x2136f37d8b0>, <psycopg.Connection [BAD] at 0x2136f37db80>, <psycopg.Connection [BAD] at 0x2136f37d6d0>])
+
+    def test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented(
+        bootstrap_identity_schema: DisposableDatabase,
+    ) -> None:
+        """CT-API-001/010, ADR-0009: foreign records exist but are unreadable and immutable."""
+        with bootstrap_identity_schema.connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO controlplane.cp_workspaces (workspace_id, name, status) VALUES "
+                    "(%s, 'Workspace A', 'active'), (%s, 'Workspace B', 'active')",
+                    (WORKSPACE_A_ID, WORKSPACE_B_ID),
+                )
+                cursor.execute(
+                    "INSERT INTO controlplane.cp_actors "
+                    "(actor_id, workspace_id, actor_type, display_name, status) VALUES "
+                    "(%s, %s, 'human', 'Actor B', 'active')",
+                    (ACTOR_B_ID, WORKSPACE_B_ID),
+                )
+                cursor.execute(
+                    "INSERT INTO controlplane.cp_auth_sessions "
+                    "(session_id, workspace_id, actor_id, status) VALUES "
+                    "(%s, %s, %s, 'active')",
+                    (AUTH_SESSION_B_ID, WORKSPACE_B_ID, ACTOR_B_ID),
+                )
+                cursor.execute(
+                    "SELECT workspace_id::text FROM controlplane.cp_workspaces WHERE workspace_id = %s",
+                    (WORKSPACE_B_ID,),
+                )
+                assert cursor.fetchone() == (WORKSPACE_B_ID,)
+                cursor.execute(
+                    "SELECT actor_id::text FROM controlplane.cp_actors WHERE actor_id = %s",
+                    (ACTOR_B_ID,),
+                )
+                assert cursor.fetchone() == (ACTOR_B_ID,)
+                cursor.execute(
+                    "SELECT session_id::text FROM controlplane.cp_auth_sessions WHERE session_id = %s",
+                    (AUTH_SESSION_B_ID,),
+                )
+                assert cursor.fetchone() == (AUTH_SESSION_B_ID,)
+    
+        transaction_manager = TransactionManager(bootstrap_identity_schema.dsn)
+        workspace_port = WorkspaceUseCases(transaction_manager)
+        actor_port = ActorUseCases(transaction_manager)
+        session_port = AuthSessionUseCases(transaction_manager)
+    
+        # A-context must neither disclose B data nor mutate it through public ports.
+>       assert workspace_port.get(WORKSPACE_A_ID, WORKSPACE_B_ID) is None
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p1_db_and_workspace.py:472: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.identity.ports.WorkspaceUseCases object at 0x000002136F245A90>
+workspace_id = '00000000-0000-0000-0000-0000000000a1'
+target_workspace_id = '00000000-0000-0000-0000-0000000000b1'
+
+    def get(self, workspace_id: str, target_workspace_id: str) -> Any:
+>       raise NotImplementedError("M2-P1 RED: WorkspaceUseCases.get is not implemented.")
+E       NotImplementedError: M2-P1 RED: WorkspaceUseCases.get is not implemented.
+
+src\controlplane\application\identity\ports.py:30: NotImplementedError
+__________ test_tst_m2_p1_008_destructive_guard_rejects_non_test_db ___________
+
+disposable_db = DisposableDatabase(name='m2_p1_test_097c30c6640c43429e47f2c834537803', _target_connections=[<psycopg.Connection [BAD] at 0x2136f37e6c0>])
+
+    def test_tst_m2_p1_008_destructive_guard_rejects_non_test_db(
+        disposable_db: DisposableDatabase,
+    ) -> None:
+        """ADR-0002, QR-MNT-002: destructive rollback accepts only exact fixture identity."""
+        assert TEST_DATABASE_NAME.fullmatch(disposable_db.name)
+        guard = DestructiveRollbackGuard()
+    
+        with pytest.raises(DestructiveOperationBlockedError):
+>           guard.assert_allowed("controlplane", is_test_env=True)
+
+tests\m2\test_p1_db_and_workspace.py:497: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.infrastructure.db.safety.DestructiveRollbackGuard object at 0x000002136F245E80>
+database_name = 'controlplane', is_test_env = True
+
+    def assert_allowed(self, database_name: str, *, is_test_env: bool) -> None:
+>       raise NotImplementedError(
+            "M2-P1 RED: DestructiveRollbackGuard.assert_allowed is not implemented."
+        )
+E       NotImplementedError: M2-P1 RED: DestructiveRollbackGuard.assert_allowed is not implemented.
+
+src\controlplane\infrastructure\db\safety.py:13: NotImplementedError
+_________ test_tst_m2_p1_009_applied_migration_file_missing_rejected __________
+
+disposable_db = DisposableDatabase(name='m2_p1_test_498823a99c7240388cb0ede85b810501', _target_connections=[<psycopg.Connection [BAD] at 0x2136f1bbe30>])
+migration_sandbox = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-206/test_tst_m2_p1_009_applied_mig0/migration-sandbox')
+
+    def test_tst_m2_p1_009_applied_migration_file_missing_rejected(
+        disposable_db: DisposableDatabase, migration_sandbox: Path
+    ) -> None:
+        """ADR-0002, QR-MNT-002: deletion of an applied sandbox file must fail closed."""
+        forward_file = _write_sandbox_migration(
+            migration_sandbox, "0001_initial_controlplane.sql", "SELECT 1;\n"
+        )
+        runner = MigrationRunner(disposable_db.dsn, migration_sandbox, is_test_env=True)
+    
+>       runner.migrate_up()
+
+tests\m2\test_p1_db_and_workspace.py:511: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.infrastructure.db.migration_runner.MigrationRunner object at 0x000002136F2A6C30>
+
+    def migrate_up(self) -> None:
+>       raise NotImplementedError("M2-P1 RED: MigrationRunner.migrate_up is not implemented.")
+E       NotImplementedError: M2-P1 RED: MigrationRunner.migrate_up is not implemented.
+
+src\controlplane\infrastructure\db\migration_runner.py:32: NotImplementedError
+_ test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record __
+
+disposable_db = DisposableDatabase(name='m2_p1_test_5514ec5fb60040c9ad3febebecc9ebf7', _target_connections=[<psycopg.Connection [BAD] at 0x2136f1baf30>])
+migration_sandbox = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-206/test_tst_m2_p1_010_sql_migrati0/migration-sandbox')
+
+    def test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record(
+        disposable_db: DisposableDatabase, migration_sandbox: Path
+    ) -> None:
+        """ADR-0002, QR-MNT-002: broken sandbox SQL leaves no side effect or applied row."""
+        _write_sandbox_migration(
+            migration_sandbox,
+            "0001_broken.sql",
+            "CREATE SCHEMA controlplane;\nTHIS IS INTENTIONALLY BROKEN SQL;\n",
+        )
+        runner = MigrationRunner(disposable_db.dsn, migration_sandbox, is_test_env=True)
+    
+        with pytest.raises(psycopg.Error):
+>           runner.migrate_up()
+
+tests\m2\test_p1_db_and_workspace.py:529: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.infrastructure.db.migration_runner.MigrationRunner object at 0x000002136F2AA580>
+
+    def migrate_up(self) -> None:
+>       raise NotImplementedError("M2-P1 RED: MigrationRunner.migrate_up is not implemented.")
+E       NotImplementedError: M2-P1 RED: MigrationRunner.migrate_up is not implemented.
+
+src\controlplane\infrastructure\db\migration_runner.py:32: NotImplementedError
+______ test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool _______
+
+bootstrap_identity_schema = DisposableDatabase(name='m2_p1_test_3434d9a512794ae38fb290dcf180be1e', _target_connections=[<psycopg.Connection [BAD] at 0x2136f1ba990>, <psycopg.Connection [BAD] at 0x2136f1ba300>])
+
+    def test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool(
+        bootstrap_identity_schema: DisposableDatabase,
+    ) -> None:
+        """ARCH-002, QR-MNT-002: rollback returns the same max-size-one pool connection clean."""
+        manager = TransactionManager(bootstrap_identity_schema.dsn, pool_max_size=1)
+    
+        rolled_back_backend_pid: int
+>       with pytest.raises(RuntimeError, match="force rollback"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'force rollback'
+E         Actual message: 'M2-P1 RED: TransactionManager.unit_of_work is not implemented.'
+
+tests\m2\test_p1_db_and_workspace.py:544: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db - NotImplementedError: M2-P1 RED: MigrationRunner.migrate_up is not implemented.
+FAILED tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_002_migration_checksum_tamper_rejected - NotImplementedError: M2-P1 RED: MigrationRunner.migrate_up is not implemented.
+FAILED tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected - NotImplementedError: M2-P1 RED: MigrationRunner.migrate_up is not implemented.
+FAILED tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_004_bounded_advisory_lock_and_timeout - NotImplementedError: M2-P1 RED: MigrationRunner.acquire_advisory_lock is not implemented.
+FAILED tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback - NotImplementedError: M2-P1 RED: TransactionManager.unit_of_work is not implemented.
+FAILED tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement - Failed: DID NOT RAISE ForeignKeyViolation
+FAILED tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented - NotImplementedError: M2-P1 RED: WorkspaceUseCases.get is not implemented.
+FAILED tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_008_destructive_guard_rejects_non_test_db - NotImplementedError: M2-P1 RED: DestructiveRollbackGuard.assert_allowed is not implemented.
+FAILED tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_009_applied_migration_file_missing_rejected - NotImplementedError: M2-P1 RED: MigrationRunner.migrate_up is not implemented.
+FAILED tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record - NotImplementedError: M2-P1 RED: MigrationRunner.migrate_up is not implemented.
+FAILED tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool - AssertionError: Regex pattern did not match.
+  Expected regex: 'force rollback'
+  Actual message: 'M2-P1 RED: TransactionManager.unit_of_work is not implemented.'
+============================= 11 failed in 2.20s =============================
+FULL_BEHAVIORAL_RED_EXIT_CODE=1
+DISPOSABLE_DB_ORPHANS=0
+POSTGRES_CONTAINER_CLEANUP_EXIT_CODE=0

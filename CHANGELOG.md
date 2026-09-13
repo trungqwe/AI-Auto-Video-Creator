@@ -6,6 +6,8 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Added
 
+- Chạy Behavioral RED M2-P1 trên PostgreSQL 18.6 riêng biệt với exact 11 oracle function-scoped (run `ba8100a55e714332a3ebe41ca9d18944`): cleanup không để lại disposable database; 5 failure là `VALID_BEHAVIORAL_RED` và 6 là `ORACLE_MISMATCH`, nên phase chuyển `M2-P1_BEHAVIORAL_RED_CORRECTION_REQUIRED`. Bổ sung raw prerequisite/collection/full output và che `repr` DSN của fixture chỉ trong test harness. Không có production behavior, không sửa P0 và không mở P2.
+
 - Hiệu chỉnh RED harness M2-P1 sau audit `42e1859b19460f8254d8d5be500f910a1c262570`: thêm bootstrap schema test-only trong disposable DB cho P1-005/006/007/011 để các oracle này không bị migration stub che khuất. P1-006 cố ý quan sát `DID NOT RAISE ForeignKeyViolation`; P1-007 seed direct SQL rồi chạm scoped ports. Không có production migration/database behavior; trạng thái giữ `M2-P1_BEHAVIORAL_RED_BLOCKED_EXTERNAL`.
 
 - Hiệu chỉnh test/evidence M2-P1 theo independent audit commit `65af9f84f881e03e7be95d1dda44243030aca1f6`: fixture disposable DB function-scoped cho từng oracle; P1-005 chứng minh commit + rollback; P1-007 seed và tái xác nhận isolation không-vacuous; P1-011 khóa `pool_max_size=1` và PostgreSQL backend PID; application ports chỉ nhận injected UoW factory. Bổ sung raw collection/prerequisite evidence. Không có production behavior; phase giữ `M2-P1_BEHAVIORAL_RED_BLOCKED_EXTERNAL`.
