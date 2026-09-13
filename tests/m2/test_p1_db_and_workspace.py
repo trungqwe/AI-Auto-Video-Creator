@@ -13,9 +13,10 @@ import os
 import re
 import shutil
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 import psycopg
 import pytest
@@ -46,6 +47,17 @@ PRODUCTION_MIGRATIONS = (
     REPO_ROOT / "src" / "controlplane" / "infrastructure" / "db" / "migrations"
 )
 TEST_DATABASE_NAME = re.compile(r"^m2_p1_test_[0-9a-f]+$")
+WORKSPACE_A_ID = "00000000-0000-0000-0000-0000000000a1"
+WORKSPACE_B_ID = "00000000-0000-0000-0000-0000000000b1"
+ACTOR_B_ID = "00000000-0000-0000-0000-0000000000b2"
+AUTH_SESSION_B_ID = "00000000-0000-0000-0000-0000000000b3"
+COMMITTED_WORKSPACE_ID = "00000000-0000-0000-0000-0000000000c1"
+COMMITTED_ACTOR_ID = "00000000-0000-0000-0000-0000000000c2"
+COMMITTED_SESSION_ID = "00000000-0000-0000-0000-0000000000c3"
+ROLLED_BACK_WORKSPACE_ID = "00000000-0000-0000-0000-0000000000d1"
+ROLLED_BACK_ACTOR_ID = "00000000-0000-0000-0000-0000000000d2"
+ROLLED_BACK_SESSION_ID = "00000000-0000-0000-0000-0000000000d3"
+POOL_WORKSPACE_ID = "00000000-0000-0000-0000-0000000000e1"
 
 
 @dataclass
@@ -56,8 +68,8 @@ class DisposableDatabase:
     dsn: str
     _target_connections: list[psycopg.Connection] = field(default_factory=list)
 
-    def connect(self) -> psycopg.Connection:
-        connection = psycopg.connect(self.dsn)
+    def connect(self, *, autocommit: bool = True) -> psycopg.Connection:
+        connection = psycopg.connect(self.dsn, autocommit=autocommit)
         self._target_connections.append(connection)
         return connection
 
@@ -86,9 +98,20 @@ def _write_sandbox_migration(sandbox: Path, name: str, content: str) -> Path:
     return path
 
 
-@pytest.fixture(scope="session")
+def _entity_field(entity: Any, field_name: str) -> Any:
+    """Read an identity field without coupling the oracle to one model container type."""
+    if isinstance(entity, Mapping):
+        return entity[field_name]
+    return getattr(entity, field_name)
+
+
+def _entity_ids(entities: list[Any], field_name: str) -> set[str]:
+    return {str(_entity_field(entity, field_name)) for entity in entities}
+
+
+@pytest.fixture
 def disposable_db() -> Iterator[DisposableDatabase]:
-    """Create one exact-name PostgreSQL database per test run using only M2_TEST_PG_DSN."""
+    """Create one exact-name PostgreSQL database per mandatory oracle invocation."""
     admin_dsn = os.environ.get("M2_TEST_PG_DSN")
     if not admin_dsn:
         pytest.fail(
@@ -233,22 +256,99 @@ def test_tst_m2_p1_004_bounded_advisory_lock_and_timeout(
 def test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback(
     disposable_db: DisposableDatabase,
 ) -> None:
-    """ARCH-002, QR-MNT-002: one failed UoW leaves no partial identity records."""
+    """ARCH-002, QR-MNT-002: commit persists all three records; later rollback is atomic."""
     runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
     runner.migrate_up()
     manager = TransactionManager(disposable_db.dsn)
 
+    # UoW #1 must commit a complete identity set. A no-op create() cannot satisfy
+    # the direct database assertions below.
+    with manager.unit_of_work() as unit_of_work:
+        unit_of_work.workspaces.create(COMMITTED_WORKSPACE_ID, "Committed Workspace", "active")
+        unit_of_work.actors.create(
+            COMMITTED_WORKSPACE_ID,
+            COMMITTED_ACTOR_ID,
+            "human",
+            "Committed Actor",
+            "active",
+        )
+        unit_of_work.auth_sessions.create(
+            COMMITTED_WORKSPACE_ID,
+            COMMITTED_ACTOR_ID,
+            COMMITTED_SESSION_ID,
+            "active",
+        )
+        unit_of_work.commit()
+
+    with disposable_db.connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT workspace_id::text, name, status FROM controlplane.cp_workspaces "
+                "WHERE workspace_id = %s",
+                (COMMITTED_WORKSPACE_ID,),
+            )
+            assert cursor.fetchone() == (COMMITTED_WORKSPACE_ID, "Committed Workspace", "active")
+            cursor.execute(
+                "SELECT workspace_id::text, actor_id::text, status FROM controlplane.cp_actors "
+                "WHERE actor_id = %s",
+                (COMMITTED_ACTOR_ID,),
+            )
+            assert cursor.fetchone() == (COMMITTED_WORKSPACE_ID, COMMITTED_ACTOR_ID, "active")
+            cursor.execute(
+                "SELECT workspace_id::text, actor_id::text, session_id::text, status "
+                "FROM controlplane.cp_auth_sessions WHERE session_id = %s",
+                (COMMITTED_SESSION_ID,),
+            )
+            assert cursor.fetchone() == (
+                COMMITTED_WORKSPACE_ID,
+                COMMITTED_ACTOR_ID,
+                COMMITTED_SESSION_ID,
+                "active",
+            )
+
+    # UoW #2 must lose its complete identity set without disturbing the first.
     with pytest.raises(RuntimeError, match="force rollback"):
         with manager.unit_of_work() as unit_of_work:
-            unit_of_work.workspaces.create("workspace-a", "Workspace A", "active")
-            unit_of_work.actors.create("workspace-a", "actor-a", "human", "Actor A", "active")
-            unit_of_work.auth_sessions.create("workspace-a", "actor-a", "session-a", "active")
+            unit_of_work.workspaces.create(ROLLED_BACK_WORKSPACE_ID, "Rolled Back Workspace", "active")
+            unit_of_work.actors.create(
+                ROLLED_BACK_WORKSPACE_ID,
+                ROLLED_BACK_ACTOR_ID,
+                "human",
+                "Rolled Back Actor",
+                "active",
+            )
+            unit_of_work.auth_sessions.create(
+                ROLLED_BACK_WORKSPACE_ID,
+                ROLLED_BACK_ACTOR_ID,
+                ROLLED_BACK_SESSION_ID,
+                "active",
+            )
             raise RuntimeError("force rollback")
 
     with disposable_db.connect() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT count(*) FROM controlplane.cp_workspaces")
+            cursor.execute(
+                "SELECT count(*) FROM controlplane.cp_workspaces "
+                "WHERE workspace_id = %s",
+                (ROLLED_BACK_WORKSPACE_ID,),
+            )
             assert cursor.fetchone()[0] == 0
+            cursor.execute(
+                "SELECT count(*) FROM controlplane.cp_actors WHERE actor_id = %s",
+                (ROLLED_BACK_ACTOR_ID,),
+            )
+            assert cursor.fetchone()[0] == 0
+            cursor.execute(
+                "SELECT count(*) FROM controlplane.cp_auth_sessions WHERE session_id = %s",
+                (ROLLED_BACK_SESSION_ID,),
+            )
+            assert cursor.fetchone()[0] == 0
+            cursor.execute(
+                "SELECT workspace_id::text, name, status FROM controlplane.cp_workspaces "
+                "WHERE workspace_id = %s",
+                (COMMITTED_WORKSPACE_ID,),
+            )
+            assert cursor.fetchone() == (COMMITTED_WORKSPACE_ID, "Committed Workspace", "active")
             assert connection.info.transaction_status.name == "IDLE"
 
 
@@ -284,25 +384,54 @@ def test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement(
 def test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented(
     disposable_db: DisposableDatabase,
 ) -> None:
-    """CT-API-001/010, ADR-0009: scoped reads/status/revoke/expire reveal no foreign data."""
+    """CT-API-001/010, ADR-0009: foreign records exist but are unreadable and immutable."""
     runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
     runner.migrate_up()
-    workspace_port = WorkspaceUseCases(disposable_db.dsn)
-    actor_port = ActorUseCases(disposable_db.dsn)
-    session_port = AuthSessionUseCases(disposable_db.dsn)
+    transaction_manager = TransactionManager(disposable_db.dsn)
+    workspace_port = WorkspaceUseCases(transaction_manager)
+    actor_port = ActorUseCases(transaction_manager)
+    session_port = AuthSessionUseCases(transaction_manager)
 
-    assert workspace_port.get("workspace-a", "workspace-b") is None
-    assert workspace_port.list("workspace-a") == []
-    assert workspace_port.update_status("workspace-a", "workspace-b", "suspended") is None
-    assert actor_port.get("workspace-a", "actor-b") is None
-    assert actor_port.list("workspace-a") == []
-    assert actor_port.update_status("workspace-a", "actor-b", "suspended") is None
-    assert session_port.revoke("workspace-a", "session-b") is None
-    assert session_port.expire("workspace-a", "session-b") is None
+    # Seed real data through the application ports. B-context reads below prove
+    # this oracle is not a vacuous lookup of never-created identifiers.
+    workspace_port.create(WORKSPACE_A_ID, "Workspace A", "active")
+    workspace_port.create(WORKSPACE_B_ID, "Workspace B", "active")
+    actor_port.create(WORKSPACE_B_ID, ACTOR_B_ID, "human", "Actor B", "active")
+    session_port.create(WORKSPACE_B_ID, ACTOR_B_ID, AUTH_SESSION_B_ID, "active")
+
+    workspace_b = workspace_port.get(WORKSPACE_B_ID, WORKSPACE_B_ID)
+    actor_b = actor_port.get(WORKSPACE_B_ID, ACTOR_B_ID)
+    session_b = session_port.get(WORKSPACE_B_ID, AUTH_SESSION_B_ID)
+    assert workspace_b is not None and _entity_field(workspace_b, "workspace_id") == WORKSPACE_B_ID
+    assert actor_b is not None and _entity_field(actor_b, "actor_id") == ACTOR_B_ID
+    assert session_b is not None and _entity_field(session_b, "session_id") == AUTH_SESSION_B_ID
+    assert _entity_ids(workspace_port.list(WORKSPACE_B_ID), "workspace_id") == {WORKSPACE_B_ID}
+    assert _entity_ids(actor_port.list(WORKSPACE_B_ID), "actor_id") == {ACTOR_B_ID}
+    assert _entity_ids(session_port.list(WORKSPACE_B_ID), "session_id") == {AUTH_SESSION_B_ID}
+
+    # A-context must neither disclose B data nor mutate it through public ports.
+    assert workspace_port.get(WORKSPACE_A_ID, WORKSPACE_B_ID) is None
+    assert WORKSPACE_B_ID not in _entity_ids(workspace_port.list(WORKSPACE_A_ID), "workspace_id")
+    assert workspace_port.update_status(WORKSPACE_A_ID, WORKSPACE_B_ID, "suspended") is None
+    assert actor_port.get(WORKSPACE_A_ID, ACTOR_B_ID) is None
+    assert ACTOR_B_ID not in _entity_ids(actor_port.list(WORKSPACE_A_ID), "actor_id")
+    assert actor_port.update_status(WORKSPACE_A_ID, ACTOR_B_ID, "suspended") is None
+    assert session_port.get(WORKSPACE_A_ID, AUTH_SESSION_B_ID) is None
+    assert AUTH_SESSION_B_ID not in _entity_ids(session_port.list(WORKSPACE_A_ID), "session_id")
+    assert session_port.revoke(WORKSPACE_A_ID, AUTH_SESSION_B_ID) is None
+    assert session_port.expire(WORKSPACE_A_ID, AUTH_SESSION_B_ID) is None
+
+    # B-context sees the original data and lifecycle state after A's attempts.
+    assert _entity_field(workspace_port.get(WORKSPACE_B_ID, WORKSPACE_B_ID), "status") == "active"
+    assert _entity_field(actor_port.get(WORKSPACE_B_ID, ACTOR_B_ID), "status") == "active"
+    assert _entity_field(session_port.get(WORKSPACE_B_ID, AUTH_SESSION_B_ID), "status") == "active"
 
 
-def test_tst_m2_p1_008_destructive_guard_rejects_non_test_db() -> None:
+def test_tst_m2_p1_008_destructive_guard_rejects_non_test_db(
+    disposable_db: DisposableDatabase,
+) -> None:
     """ADR-0002, QR-MNT-002: destructive rollback accepts only exact fixture identity."""
+    assert TEST_DATABASE_NAME.fullmatch(disposable_db.name)
     guard = DestructiveRollbackGuard()
 
     with pytest.raises(DestructiveOperationBlockedError):
@@ -349,18 +478,23 @@ def test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record(
 def test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool(
     disposable_db: DisposableDatabase,
 ) -> None:
-    """ARCH-002, QR-MNT-002: a borrower after rollback receives a clean connection."""
+    """ARCH-002, QR-MNT-002: rollback returns the same max-size-one pool connection clean."""
     runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
     runner.migrate_up()
-    manager = TransactionManager(disposable_db.dsn)
+    manager = TransactionManager(disposable_db.dsn, pool_max_size=1)
 
+    rolled_back_backend_pid: int
     with pytest.raises(RuntimeError, match="force rollback"):
         with manager.unit_of_work() as unit_of_work:
-            unit_of_work.workspaces.create("workspace-a", "Workspace A", "active")
+            rolled_back_backend_pid = unit_of_work.connection.info.backend_pid
+            unit_of_work.workspaces.create(POOL_WORKSPACE_ID, "Pool Workspace", "active")
             raise RuntimeError("force rollback")
 
     with manager.borrow_connection() as borrower:
-        with borrower.cursor() as cursor:
-            cursor.execute("SELECT 1")
-            assert cursor.fetchone()[0] == 1
+        assert borrower.info.backend_pid == rolled_back_backend_pid
+        assert borrower.info.transaction_status.name == "IDLE"
+        with borrower.transaction():
+            with borrower.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                assert cursor.fetchone()[0] == 1
         assert borrower.info.transaction_status.name == "IDLE"

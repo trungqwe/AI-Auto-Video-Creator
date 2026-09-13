@@ -1,0 +1,32 @@
+Command:
+& .\.venv\Scripts\python.exe -m pytest tests\m2\test_p1_db_and_workspace.py::test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db -vv
+
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db ERROR [100%]
+
+=================================== ERRORS ====================================
+_ ERROR at setup of test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db _
+
+    @pytest.fixture
+    def disposable_db() -> Iterator[DisposableDatabase]:
+        """Create one exact-name PostgreSQL database per mandatory oracle invocation."""
+        admin_dsn = os.environ.get("M2_TEST_PG_DSN")
+        if not admin_dsn:
+>           pytest.fail(
+                "BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; "
+                "no fallback credential or mock database is permitted."
+            )
+E           Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+
+tests\m2\test_p1_db_and_workspace.py:117: Failed
+=========================== short test summary info ===========================
+ERROR tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db - Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required for M2-P1 integration RED; no fallback credential or mock database is permitted.
+============================== 1 error in 0.10s ===============================

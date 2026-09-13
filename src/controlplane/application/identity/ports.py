@@ -6,14 +6,25 @@ expire when the implementation phase is separately authorized.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
+
+
+class UnitOfWorkFactory(Protocol):
+    """Application-facing factory boundary; it owns no raw DSN or connection."""
+
+    def unit_of_work(self) -> Any:
+        """Create a Unit of Work whose repositories share its owned connection."""
+        ...
 
 
 class WorkspaceUseCases:
     """Importable workspace use-case port; behavior is intentionally absent in RED."""
 
-    def __init__(self, dsn: str) -> None:
-        self.dsn = dsn
+    def __init__(self, unit_of_work_factory: UnitOfWorkFactory) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+
+    def create(self, workspace_id: str, name: str, status: str) -> Any:
+        raise NotImplementedError("M2-P1 RED: WorkspaceUseCases.create is not implemented.")
 
     def get(self, workspace_id: str, target_workspace_id: str) -> Any:
         raise NotImplementedError("M2-P1 RED: WorkspaceUseCases.get is not implemented.")
@@ -28,8 +39,18 @@ class WorkspaceUseCases:
 class ActorUseCases:
     """Importable actor use-case port; behavior is intentionally absent in RED."""
 
-    def __init__(self, dsn: str) -> None:
-        self.dsn = dsn
+    def __init__(self, unit_of_work_factory: UnitOfWorkFactory) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+
+    def create(
+        self,
+        workspace_id: str,
+        actor_id: str,
+        actor_type: str,
+        display_name: str,
+        status: str,
+    ) -> Any:
+        raise NotImplementedError("M2-P1 RED: ActorUseCases.create is not implemented.")
 
     def get(self, workspace_id: str, actor_id: str) -> Any:
         raise NotImplementedError("M2-P1 RED: ActorUseCases.get is not implemented.")
@@ -44,8 +65,17 @@ class ActorUseCases:
 class AuthSessionUseCases:
     """Importable session use-case port; behavior is intentionally absent in RED."""
 
-    def __init__(self, dsn: str) -> None:
-        self.dsn = dsn
+    def __init__(self, unit_of_work_factory: UnitOfWorkFactory) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+
+    def create(self, workspace_id: str, actor_id: str, session_id: str, status: str) -> Any:
+        raise NotImplementedError("M2-P1 RED: AuthSessionUseCases.create is not implemented.")
+
+    def get(self, workspace_id: str, session_id: str) -> Any:
+        raise NotImplementedError("M2-P1 RED: AuthSessionUseCases.get is not implemented.")
+
+    def list(self, workspace_id: str) -> list[Any]:
+        raise NotImplementedError("M2-P1 RED: AuthSessionUseCases.list is not implemented.")
 
     def revoke(self, workspace_id: str, session_id: str) -> Any:
         raise NotImplementedError("M2-P1 RED: AuthSessionUseCases.revoke is not implemented.")
