@@ -34,6 +34,8 @@ Python 3.14, PostgreSQL 19 beta và floating tag `latest` không thuộc baselin
 
 Metadata chính thức đã được kiểm tra ngày 13-09-2026: các package Python trực tiếp trên đều hỗ trợ Python 3.13 theo `requires-python`; pytest-asyncio 1.4.0 yêu cầu pytest `>=8.4,<10`, tương thích pytest 9.1.1; temporalio 1.32.0 yêu cầu Python `>=3.10`. Đây chỉ là kiểm tra constraint tĩnh. `uv lock` và smoke thật tại P0/P5 mới xác nhận tập dependency chuyển tiếp trên máy mục tiêu.
 
+Trên Windows M1-R1 dùng extra `psycopg[binary]==3.3.5`. Package backend `psycopg-binary` cùng version là dependency được resolver kéo bởi extra và phải được khóa trong `uv.lock`; đây không phải thay API/client version đã duyệt. Nếu binary backend không đạt compatibility/security check, phải ghi deviation và xử lý theo R2, không chuyển ngầm sang backend khác.
+
 ## 3. Lý do khóa
 
 | Quyết định | Lý do | Điều chưa được suy ra |
@@ -157,6 +159,6 @@ Rollback môi trường nghĩa là dựng lại đúng R1 từ manifest/hash ho�
 
 ## 12. Dấu vết phê duyệt
 
-User đã phê duyệt version set M1-R1 và cho phép code chỉ trong M1 ngày 13-09-2026. Theo chỉ thị cuối của cùng lần xác nhận, implementation chưa bắt đầu trong lượt tài liệu này và chờ lệnh tiếp theo.
+User đã phê duyệt version set M1-R1 và cho phép code chỉ trong M1 ngày 13-09-2026. M1-P0 đã materialize `uv.lock`, môi trường CPython/uv và PostgreSQL preflight theo đúng R1; P1 là package tiếp theo.
 
-Khi P0 bắt đầu, evidence phải được lưu tại [evidence](./evidence/README.md); việc có file evidence không tự tạo trạng thái PASS. Mỗi kết luận phải trỏ test run, môi trường và artifact hash cụ thể. P2/P3 nếu đạt chỉ tạo `PASS_M1_SCOPE`; gate G01/G04 toàn phần tiếp tục `PARTIALLY_PROVEN` cho tới khi đủ các lớp bằng chứng ở roadmap.
+Evidence P0 được lưu tại [evidence](./evidence/README.md); việc có file evidence không tự tạo trạng thái PASS. Mỗi kết luận phải trỏ test run, môi trường và artifact hash cụ thể. P2/P3 nếu đạt chỉ tạo `PASS_M1_SCOPE`; gate G01/G04 toàn phần tiếp tục `PARTIALLY_PROVEN` cho tới khi đủ các lớp bằng chứng ở roadmap.

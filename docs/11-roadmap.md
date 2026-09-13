@@ -1,7 +1,7 @@
 # AI Auto Video Creator - Lộ trình xây dựng toàn dự án
 
 **Tệp:** `docs/11-roadmap.md`  
-**Trạng thái:** Đã được người dùng phê duyệt làm baseline; M0 CLOSED, M1 READY  
+**Trạng thái:** Đã được người dùng phê duyệt làm baseline; M0 CLOSED, M1 IN PROGRESS  
 **Ngày lập:** 12-09-2026  
 **Ngày phê duyệt M0 và khóa M1-R1:** 13-09-2026  
 **Phạm vi:** từ kết thúc thiết kế trước code đến baseline vận hành đầu tiên  
@@ -89,7 +89,7 @@ G, H và J là năng lực xuyên suốt: được dựng tối thiểu từ M2 
 | Mốc | Kết quả người dùng nhìn thấy | Phân hệ trọng tâm | Gate/checkpoint | Trạng thái |
 |---|---|---|---|---|
 | M0 | Bộ thiết kế nhất quán và quyết định cho phép code | Toàn hệ thống | Audit trước code + user approval | APPROVED / CLOSED |
-| M1 | Proof chứng minh nền workflow/storage khả thi; test harness sẵn sàng | G, I, J | G01 sớm, G04 sớm, compatibility smoke | READY TO START — CHƯA PASS |
+| M1 | Proof chứng minh nền workflow/storage khả thi; test harness sẵn sàng | G, I, J | G01 sớm, G04 sớm, compatibility smoke | IN PROGRESS — P0 PASS, P1 NEXT |
 | M2 | UI quản trị tối thiểu thấy command, state, log, config và artifact metadata | G, H, I, J | Contract/state/security foundation | NOT AUTHORIZED |
 | M3 | Thêm nguồn, quét, chuẩn hóa, chống trùng và xem bài/sự kiện | A, B, G, H | User duyệt A-B; collection/content tests | NOT AUTHORIZED — MODULE A BỊ KHÓA |
 | M4 | Kho media/hook có provenance; sync cloud/local và xử lý ảnh nền tảng | C, E một phần, I, H | Drive/integrity/cleanup checkpoint | CHƯA BẮT ĐẦU |
@@ -159,7 +159,7 @@ Kết thúc toàn bộ giai đoạn thiết kế, phát hiện mâu thuẫn cu�
 
 **Kế hoạch thực thi có thẩm quyền:** [M1 implementation plan](./milestones/m1-proof/implementation-plan.md)  
 **Khóa phiên bản:** [M1-R1 version lock](./milestones/m1-proof/version-lock.md)  
-**Trạng thái:** `READY TO START`; đã được phép code trong phạm vi M1 nhưng đang chờ lệnh bắt đầu tiếp theo của user. Chưa work package nào PASS; G01 Temporal và G04 Drive/OAuth đều `NOT TESTED`.
+**Trạng thái:** `IN PROGRESS`; M1-P0 đã PASS và M1-P1 là package tiếp theo. M1 chưa PASS; G01 Temporal và G04 Drive/OAuth đều `NOT TESTED`.
 
 ### Mục tiêu
 

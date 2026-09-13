@@ -1,0 +1,28 @@
+[project]
+name = "ai-auto-video-creator-m1-proof"
+version = "0.0.0"
+description = "M1 evidence prototype for architecture proof"
+requires-python = "==3.13.15"
+dependencies = [
+    "google-api-python-client==2.200.0",
+    "google-auth-oauthlib==1.4.1",
+    "psycopg[binary]==3.3.5",
+    "pydantic==2.13.5",
+    "temporalio==1.32.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers"
+asyncio_mode = "strict"
+testpaths = ["tests"]
+

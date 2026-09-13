@@ -1,7 +1,7 @@
 # AI Auto Video Creator — Checklist cuối trước code
 
 **Ngày lập:** 12-09-2026  
-**Trạng thái:** M0 APPROVED/CLOSED; quyền code M1 đã được cấp, đang chờ lệnh bắt đầu triển khai  
+**Trạng thái:** M0 APPROVED/CLOSED; M1 đang triển khai, P0 PASS và P1 là package tiếp theo  
 **Cổng áp dụng:** M0 → M1 của [roadmap](./11-roadmap.md)  
 **Căn cứ audit hiện hành:** [AUDIT.md, mục 11](../AUDIT.md#11-khắc-phục-hậu-kiểm-theo-yêu-cầu-người-dùng)
 
@@ -22,7 +22,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | PCC-026 | ✅ `CLOSED` | User đã đọc và chấp thuận baseline hiện hành |
 | PCC-027 | ✅ `CLOSED — M1 ONLY` | Quyền implementation chỉ áp dụng M1 |
 | ROADMAP-OPEN-002 | ✅ `CLOSED_FOR_M1_R1` | Version set đã chọn; compatibility chưa được chứng minh |
-| M1 | 🟡 `READY TO START` | Chưa bắt đầu, chưa package nào PASS |
+| M1 | 🟡 `IN PROGRESS — P0 PASS, P1 NEXT` | M1 chưa PASS; G01/G04 chưa được thử |
 | G01 Temporal | ⬜ `NOT TESTED` | P2 chưa chạy; không có kết luận scoped hoặc toàn phần |
 | G04 Drive/OAuth | ⬜ `NOT TESTED` | P3 chưa chạy; không được thay external proof bằng mock |
 | ROADMAP-OPEN-003 | 🟡 `OPEN — BLOCKS M1-P3 ONLY` | Không chặn M1-P0/P1/P2; thiếu credential thật sẽ trả `BLOCKED_EXTERNAL` |

@@ -1,7 +1,7 @@
 # M1 — Implementation Plan cho Evidence Prototype
 
 **Milestone:** M1 — `R0 Evidence Prototype`  
-**Trạng thái:** `READY TO START — CHƯA BẮT ĐẦU, CHƯA PASS`  
+**Trạng thái:** `IN PROGRESS — M1-P0 PASS, M1-P1 NEXT; M1 CHƯA PASS`  
 **Quyền implementation:** chỉ M1; M2, M3 và Phân hệ A bị khóa  
 **Version set:** [M1-R1](./version-lock.md)  
 **Evidence root:** [evidence](./evidence/README.md)  
@@ -47,6 +47,14 @@ Quy tắc chung:
 - Không tự mở ADR chỉ vì có RED hoặc defect. Chỉ mở ADR khi phân tích nguyên nhân có evidence cho thấy quyết định kiến trúc không còn giữ được; nếu chỉ sai version artifact thì đề xuất R2 trước.
 
 ## 3. Dependency và thứ tự
+
+Trạng thái thực thi hiện hành:
+
+| Work package | Trạng thái |
+|---|---|
+| M1-P0 | `PASS` |
+| M1-P1 | `READY` |
+| M1-P2..P6 | `NOT_STARTED` |
 
 ```text
 M0 CLOSED

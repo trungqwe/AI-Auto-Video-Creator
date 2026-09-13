@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="3" time="0.052" timestamp="2026-09-13T11:35:26.175330+07:00" hostname="Admin"><testcase classname="tests.m1.p0.test_environment_validation" name="test_validator_accepts_untampered_environment_manifest" time="0.001"><failure message="AssertionError: environment manifest validator is not implemented&#10;assert False&#10; +  where False = callable(None)">def test_validator_accepts_untampered_environment_manifest() -&gt; None:
+&gt;       validator = require_validator()
+                    ^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p0\test_environment_validation.py:37: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def require_validator():
+        validator = getattr(environment, "validate_environment_manifest", None)
+&gt;       assert callable(validator), "environment manifest validator is not implemented"
+E       AssertionError: environment manifest validator is not implemented
+E       assert False
+E        +  where False = callable(None)
+
+tests\m1\p0\test_environment_validation.py:28: AssertionError</failure></testcase><testcase classname="tests.m1.p0.test_environment_validation" name="test_validator_rejects_tampered_bootstrap_hash" time="0.003"><failure message="AssertionError: environment manifest validator is not implemented&#10;assert False&#10; +  where False = callable(None)">tmp_path = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-81/test_validator_rejects_tampere0')
+
+    def test_validator_rejects_tampered_bootstrap_hash(tmp_path: Path) -&gt; None:
+&gt;       validator = require_validator()
+                    ^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p0\test_environment_validation.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def require_validator():
+        validator = getattr(environment, "validate_environment_manifest", None)
+&gt;       assert callable(validator), "environment manifest validator is not implemented"
+E       AssertionError: environment manifest validator is not implemented
+E       assert False
+E        +  where False = callable(None)
+
+tests\m1\p0\test_environment_validation.py:28: AssertionError</failure></testcase><testcase classname="tests.m1.p0.test_environment_validation" name="test_validator_rejects_tampered_locked_section" time="0.001"><failure message="AssertionError: environment manifest validator is not implemented&#10;assert False&#10; +  where False = callable(None)">tmp_path = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-81/test_validator_rejects_tampere1')
+
+    def test_validator_rejects_tampered_locked_section(tmp_path: Path) -&gt; None:
+&gt;       validator = require_validator()
+                    ^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p0\test_environment_validation.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def require_validator():
+        validator = getattr(environment, "validate_environment_manifest", None)
+&gt;       assert callable(validator), "environment manifest validator is not implemented"
+E       AssertionError: environment manifest validator is not implemented
+E       assert False
+E        +  where False = callable(None)
+
+tests\m1\p0\test_environment_validation.py:28: AssertionError</failure></testcase></testsuite></testsuites>

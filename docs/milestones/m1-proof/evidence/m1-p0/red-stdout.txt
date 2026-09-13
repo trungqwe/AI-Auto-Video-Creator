@@ -1,0 +1,58 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 2 items
+
+tests/m1/p0/test_environment_manifest.py::test_environment_manifest_matches_locked_bootstrap FAILED [ 50%]
+tests/m1/p0/test_environment_manifest.py::test_environment_manifest_contains_successful_postgresql_preflight FAILED [100%]
+
+================================== FAILURES ===================================
+_____________ test_environment_manifest_matches_locked_bootstrap ______________
+
+    def test_environment_manifest_matches_locked_bootstrap() -> None:
+        bootstrap = load_json(BOOTSTRAP_PATH)
+>       environment = load_json(ENVIRONMENT_PATH)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p0\test_environment_manifest.py:20: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+path = WindowsPath('D:/AI Auto Video Creator/docs/milestones/m1-proof/evidence/m1-p0/environment.json')
+
+    def load_json(path: Path) -> dict[str, object]:
+>       assert path.is_file(), f"required evidence is missing: {path.relative_to(REPOSITORY_ROOT)}"
+E       AssertionError: required evidence is missing: docs\milestones\m1-proof\evidence\m1-p0\environment.json
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/AI Auto Video Creator/docs/milestones/m1-proof/evidence/m1-p0/environment.json').is_file
+
+tests\m1\p0\test_environment_manifest.py:14: AssertionError
+_____ test_environment_manifest_contains_successful_postgresql_preflight ______
+
+    def test_environment_manifest_contains_successful_postgresql_preflight() -> None:
+        bootstrap = load_json(BOOTSTRAP_PATH)
+>       environment = load_json(ENVIRONMENT_PATH)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m1\p0\test_environment_manifest.py:32: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+path = WindowsPath('D:/AI Auto Video Creator/docs/milestones/m1-proof/evidence/m1-p0/environment.json')
+
+    def load_json(path: Path) -> dict[str, object]:
+>       assert path.is_file(), f"required evidence is missing: {path.relative_to(REPOSITORY_ROOT)}"
+E       AssertionError: required evidence is missing: docs\milestones\m1-proof\evidence\m1-p0\environment.json
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/AI Auto Video Creator/docs/milestones/m1-proof/evidence/m1-p0/environment.json').is_file
+
+tests\m1\p0\test_environment_manifest.py:14: AssertionError
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m1-proof\evidence\m1-p0\red-test-results.xml -
+=========================== short test summary info ===========================
+FAILED tests/m1/p0/test_environment_manifest.py::test_environment_manifest_matches_locked_bootstrap
+FAILED tests/m1/p0/test_environment_manifest.py::test_environment_manifest_contains_successful_postgresql_preflight
+============================== 2 failed in 0.07s ==============================

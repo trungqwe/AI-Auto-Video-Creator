@@ -1,0 +1,26 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 7 items
+
+tests/m1/p0/test_environment_capture.py::test_capture_rejects_observed_version_mismatch PASSED [ 14%]
+tests/m1/p0/test_environment_capture.py::test_capture_rejects_secret_like_keys PASSED [ 28%]
+tests/m1/p0/test_environment_manifest.py::test_environment_manifest_matches_locked_bootstrap PASSED [ 42%]
+tests/m1/p0/test_environment_manifest.py::test_environment_manifest_contains_successful_postgresql_preflight PASSED [ 57%]
+tests/m1/p0/test_environment_validation.py::test_validator_accepts_untampered_environment_manifest PASSED [ 71%]
+tests/m1/p0/test_environment_validation.py::test_validator_rejects_tampered_bootstrap_hash PASSED [ 85%]
+tests/m1/p0/test_environment_validation.py::test_validator_rejects_tampered_locked_section PASSED [100%]
+
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m1-proof\evidence\m1-p0\green-final-test-results.xml -
+============================== 7 passed in 0.08s ==============================
+Name                         Stmts   Miss  Cover   Missing
+----------------------------------------------------------
+src\m1proof\__init__.py          0      0   100%
+src\m1proof\environment.py      82      7    91%   43, 55, 57, 63, 99, 103, 105
+----------------------------------------------------------
+TOTAL                           82      7    91%
+Wrote XML report to docs/milestones/m1-proof/evidence/m1-p0/p0-coverage.xml

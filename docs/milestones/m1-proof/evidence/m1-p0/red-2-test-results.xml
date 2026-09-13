@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="0.056" timestamp="2026-09-13T11:32:52.498835+07:00" hostname="Admin"><testcase classname="tests.m1.p0.test_environment_capture" name="test_capture_rejects_observed_version_mismatch" time="0.008"><failure message="Failed: DID NOT RAISE ValueError">tmp_path = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-79/test_capture_rejects_observed_0')
+
+    def test_capture_rejects_observed_version_mismatch(tmp_path: Path) -&gt; None:
+        payload = copy.deepcopy(load_bootstrap())
+        payload["python"]["observed"] = "3.13.14"
+        fixture_path = tmp_path / "bootstrap.json"
+        output_path = tmp_path / "environment.json"
+        write_fixture(fixture_path, payload)
+    
+&gt;       with pytest.raises(ValueError, match="python.*version"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\m1\p0\test_environment_capture.py:37: Failed</failure></testcase><testcase classname="tests.m1.p0.test_environment_capture" name="test_capture_rejects_secret_like_keys" time="0.002"><failure message="Failed: DID NOT RAISE ValueError">tmp_path = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-79/test_capture_rejects_secret_li0')
+
+    def test_capture_rejects_secret_like_keys(tmp_path: Path) -&gt; None:
+        payload = copy.deepcopy(load_bootstrap())
+        secret_key = "refresh" + "_token"
+        payload["postgresql"][secret_key] = "M1_CANARY_VALUE"
+        fixture_path = tmp_path / "bootstrap.json"
+        output_path = tmp_path / "environment.json"
+        write_fixture(fixture_path, payload)
+    
+&gt;       with pytest.raises(ValueError, match="forbidden sensitive key"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\m1\p0\test_environment_capture.py:51: Failed</failure></testcase></testsuite></testsuites>

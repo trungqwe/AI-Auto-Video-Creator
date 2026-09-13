@@ -3,7 +3,8 @@
 ## Đã quyết định
 
 - M0 đã `APPROVED`; M1 là phạm vi implementation duy nhất được phép.
-- M1-R1 đã khóa version; bắt đầu theo `M1-P0 → M1-P1`, test-first và evidence-first.
+- M1-R1 đã khóa version; M1-P0 đã `PASS` với 7 test và coverage 91%.
+- PostgreSQL 18.6 proof đang chạy cô lập trên loopback; P1 là package tiếp theo.
 - Repository GitHub chính: `trungqwe/AI-Auto-Video-Creator`.
 
 ## Chưa quyết định
@@ -18,5 +19,4 @@
 2. `docs/milestones/m1-proof/version-lock.md`
 3. `docs/12-pre-code-checklist.md`
 
-**Điểm tiếp tục:** khởi tạo Git/push baseline, sau đó thực hiện M1-P0.
-
+**Điểm tiếp tục:** thực hiện test-first M1-P1 theo mục 6 của implementation plan; chưa dựng Temporal hoặc Drive.

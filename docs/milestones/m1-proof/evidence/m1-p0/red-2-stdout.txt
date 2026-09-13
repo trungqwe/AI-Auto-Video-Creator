@@ -1,0 +1,51 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 2 items
+
+tests/m1/p0/test_environment_capture.py::test_capture_rejects_observed_version_mismatch FAILED [ 50%]
+tests/m1/p0/test_environment_capture.py::test_capture_rejects_secret_like_keys FAILED [100%]
+
+================================== FAILURES ===================================
+_______________ test_capture_rejects_observed_version_mismatch ________________
+
+tmp_path = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-79/test_capture_rejects_observed_0')
+
+    def test_capture_rejects_observed_version_mismatch(tmp_path: Path) -> None:
+        payload = copy.deepcopy(load_bootstrap())
+        payload["python"]["observed"] = "3.13.14"
+        fixture_path = tmp_path / "bootstrap.json"
+        output_path = tmp_path / "environment.json"
+        write_fixture(fixture_path, payload)
+    
+>       with pytest.raises(ValueError, match="python.*version"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\m1\p0\test_environment_capture.py:37: Failed
+____________________ test_capture_rejects_secret_like_keys ____________________
+
+tmp_path = WindowsPath('C:/Users/Admin/AppData/Local/Temp/pytest-of-Admin/pytest-79/test_capture_rejects_secret_li0')
+
+    def test_capture_rejects_secret_like_keys(tmp_path: Path) -> None:
+        payload = copy.deepcopy(load_bootstrap())
+        secret_key = "refresh" + "_token"
+        payload["postgresql"][secret_key] = "M1_CANARY_VALUE"
+        fixture_path = tmp_path / "bootstrap.json"
+        output_path = tmp_path / "environment.json"
+        write_fixture(fixture_path, payload)
+    
+>       with pytest.raises(ValueError, match="forbidden sensitive key"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\m1\p0\test_environment_capture.py:51: Failed
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m1-proof\evidence\m1-p0\red-2-test-results.xml -
+=========================== short test summary info ===========================
+FAILED tests/m1/p0/test_environment_capture.py::test_capture_rejects_observed_version_mismatch
+FAILED tests/m1/p0/test_environment_capture.py::test_capture_rejects_secret_like_keys
+============================== 2 failed in 0.09s ==============================

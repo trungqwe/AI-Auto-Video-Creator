@@ -7,13 +7,15 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | Hạng mục | Trạng thái |
 |---|---|
 | M0 Design | `APPROVED` |
-| M1 Evidence Prototype | `READY TO START` |
+| M1 Evidence Prototype | `IN PROGRESS — P0 PASS, P1 NEXT` |
 | G01 Temporal | `NOT TESTED` |
 | G04 Drive/OAuth | `NOT TESTED` |
 | M2 | `NOT AUTHORIZED` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
 Phạm vi implementation hiện được phép chỉ là `M1-P0 → M1-P6`. M1 phải đi theo test-first, lưu evidence thật và dừng khi gặp điều kiện STOP. Không được bắt đầu M2, M3 hoặc Phân hệ A trước khi M1 qua exit gate, được audit và người dùng xác nhận checkpoint tiếp theo.
+
+M1-P0 đã tạo môi trường CPython 3.13.15/uv 0.12.13, frozen `uv.lock`, PostgreSQL 18.6 preflight và test harness có evidence. Kết quả P0 không thay đổi trạng thái `NOT TESTED` của G01/G04.
 
 ## Bắt đầu một phiên làm việc
 
@@ -52,4 +54,3 @@ Chỉ đọc sâu contracts/ADR được work package hiện tại trích dẫn;
 ## Repository
 
 Remote chính: <https://github.com/trungqwe/AI-Auto-Video-Creator>
-

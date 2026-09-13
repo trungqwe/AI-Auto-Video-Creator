@@ -1,6 +1,6 @@
 # M1 evidence
 
-Thư mục này chỉ nhận bằng chứng được tạo từ các lần chạy M1 thực tế. Hiện chưa có proof nào chạy và không có gate nào PASS.
+Thư mục này chỉ nhận bằng chứng được tạo từ các lần chạy M1 thực tế. M1-P0 đã `PASS`; M1-P1 là package tiếp theo. G01/G04 vẫn `NOT TESTED` và không có gate toàn phần nào PASS.
 
 ## Quy tắc
 

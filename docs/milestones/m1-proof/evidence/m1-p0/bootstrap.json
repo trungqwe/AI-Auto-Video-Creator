@@ -1,0 +1,62 @@
+{
+    "schema_version":  "1.0",
+    "milestone":  "M1",
+    "package":  "M1-P0",
+    "record_kind":  "bootstrap_input",
+    "created_at_utc":  "2026-09-13T04:31:12.8011017Z",
+    "pass_claim":  false,
+    "platform":  {
+                     "os_description":  "Microsoft Windows 10.0.19045 ",
+                     "os_architecture":  "X64",
+                     "process_architecture":  "X64"
+                 },
+    "python":  {
+                   "requested":  "3.13.15",
+                   "observed":  "3.13.15",
+                   "implementation":  "CPython",
+                   "gil":  "standard",
+                   "base_executable":  "C:\\Users\\Admin\\AppData\\Roaming\\uv\\python\\cpython-3.13.15-windows-x86_64-none\\python.exe",
+                   "base_executable_sha256":  "d7d8f0813d9d4002839b775ed13fc7eb57a756bdcb102e85ab61537003ef8616",
+                   "venv_executable":  "D:\\AI Auto Video Creator\\.venv\\Scripts\\python.exe",
+                   "venv_executable_sha256":  "6975311631e93d9e28c5c209b4869b66d9283853211fea5acc4eef2b8b018eb9"
+               },
+    "uv":  {
+               "requested":  "0.12.13",
+               "observed":  "0.12.13",
+               "executable":  "C:\\Users\\Admin\\AppData\\Roaming\\Python\\Python313\\Scripts\\uv.exe",
+               "executable_sha256":  "e43cc6ca110540ad845ad6aa1e468e224813eb1da76e145413a262d7073d05e7"
+           },
+    "project":  {
+                    "pyproject_sha256":  "ef9b8d65e9e4346f2687796b3b43d0bb2f2f1db5b8b18243ec69d1ae1b80346f",
+                    "uv_lock_sha256":  "31bae731c8ec80e52fbd9a75b3969d0d556e7489f48fc13d151c0c0cfe4e9380",
+                    "frozen_sync":  true,
+                    "resolved_package_count":  44
+                },
+    "postgresql":  {
+                       "requested":  "18.6",
+                       "observed":  "18.6",
+                       "server_version_num":  180006,
+                       "client":  "psycopg",
+                       "client_version":  "3.3.5",
+                       "backend":  "psycopg-binary",
+                       "backend_version":  "3.3.5",
+                       "image":  "postgres:18.6",
+                       "image_digest":  "postgres@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280",
+                       "endpoint":  "127.0.0.1:55432/aiavc_m1",
+                       "select_one":  true,
+                       "rollback_absent":  true,
+                       "utf8_round_trip":  true
+                   },
+    "setup_observations":  [
+                               {
+                                   "code":  "SETUP-P0-001",
+                                   "outcome":  "RESOLVED",
+                                   "summary":  "Docker daemon was not running before the first image pull."
+                               },
+                               {
+                                   "code":  "SETUP-P0-002",
+                                   "outcome":  "RESOLVED",
+                                   "summary":  "The first inline PostgreSQL probe had PowerShell quoting/encoding errors; the corrected ASCII-source probe compared Unicode values successfully."
+                               }
+                           ]
+}
