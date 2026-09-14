@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Changed
 
+- Hoàn tất correction replay receipt M2-P2: accepted receipt materialize toàn bộ persisted logical-result shape; same-key/same-hash replay giữ receipt/command ID và trả lại operation/resource/revision/timestamp bền vững với `duplicate` chỉ là disposition transient. Closure evidence xác nhận P2 11/11, P1 11/11, P0 33/33, M1 93/93, PostgreSQL 18.6, secret scan CLEAN và hash DAG PASS.
 - Hoàn tất correction RFC 8785 Number serialization M2-P2: JCS fixed-decimal không còn xóa trailing zeroes có nghĩa; P2-004 bao phủ vector Appendix B/IEEE-754 và closure evidence mới xác nhận P2 11/11, P1 11/11, P0 33/33, M1 93/93, runtime PostgreSQL 18.6, secret scan CLEAN và provenance/hash DAG PASS. Dừng tại `M2-P2_IMPLEMENTATION_READY_FOR_REVIEW` để independent audit.
 - Hoàn tất implementation candidate M2-P2: contract envelope/ProblemDetail, RFC 8785 JCS request hash, durable PostgreSQL idempotency, CAS revision, migration `0002`/rollback và evidence profile fail-closed. Closure evidence xác nhận P2 11/11, P1 11/11, P0 33/33, M1 93/93, architecture 6/6, runtime PostgreSQL 18.6, secret scan CLEAN, provenance/hash DAG PASS; dừng tại `M2-P2_IMPLEMENTATION_READY_FOR_REVIEW` để independent audit.
 - Cô lập fixture migration fault-injection P1 vào production baseline `0001`/rollback, để migration P2 về sau không đổi prerequisite của P1-002/003/009/010. Không đổi P1 testcase identity, assertion, production behavior hay `MigrationRunner` semantics.

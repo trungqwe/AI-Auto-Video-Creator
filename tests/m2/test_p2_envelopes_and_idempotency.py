@@ -1,7 +1,8 @@
-"""The fixed 11 M2-P2 behavioral RED oracles; production P2 behavior is absent."""
+"""The fixed 11 M2-P2 behavioral oracles for the accepted implementation scope."""
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import re
@@ -183,10 +184,21 @@ def test_tst_m2_p2_003_durable_command_receipt_persistence(p2_bootstrap_schema: 
     coordinator, manager = _coordinator(p2_bootstrap_schema)
     try:
         receipt = coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", command_id="cmd-003", idempotency_key="k-003", payload={"v": 1})
+        assert _field(receipt, "receipt_id") is not None
+        assert _field(receipt, "command_id") == "cmd-003"
+        assert _field(receipt, "disposition") == "accepted"
+        assert _field(receipt, "operation_id") is None
+        assert _field(receipt, "resource_ref") is None
+        assert _field(receipt, "current_revision") is None
+        assert _field(receipt, "accepted_at") is not None
         with p2_bootstrap_schema.connect() as connection:
             with connection.cursor() as cursor:
-                cursor.execute("SELECT workspace_id::text, command_id, disposition FROM controlplane.cp_command_receipts")
-                assert cursor.fetchall() == [(WORKSPACE_A, "cmd-003", "accepted")]
+                cursor.execute("SELECT receipt_id::text, workspace_id::text, command_id, disposition, operation_id, resource_ref, accepted_at, current_revision FROM controlplane.cp_command_receipts")
+                persisted = cursor.fetchall()
+                assert persisted == [(
+                    str(_field(receipt, "receipt_id")), WORKSPACE_A, "cmd-003", "accepted", None, None,
+                    _field(receipt, "accepted_at"), None,
+                )]
                 cursor.execute("SELECT receipt_id::text FROM controlplane.cp_idempotency_records")
                 assert cursor.fetchall() == [(str(_field(receipt, "receipt_id")),)]
     finally:
@@ -244,8 +256,30 @@ def test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt(p2_b
     coordinator, manager = _coordinator(p2_bootstrap_schema)
     try:
         first = coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", command_id="cmd-004", idempotency_key="k-004", payload=input_a)
+        operation_id = uuid.UUID("00000000-0000-0000-0000-000000000404")
+        resource_ref = {"kind": "persisted-resource", "id": "resource-004"}
+        with p2_bootstrap_schema.connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE controlplane.cp_command_receipts SET operation_id=%s, resource_ref=%s::jsonb, current_revision=9 WHERE receipt_id=%s",
+                    (operation_id, json.dumps(resource_ref), _field(first, "receipt_id")),
+                )
+                cursor.execute("SELECT accepted_at FROM controlplane.cp_command_receipts WHERE receipt_id=%s", (_field(first, "receipt_id"),))
+                accepted_at = cursor.fetchone()[0]
         replay = coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", command_id="retry-metadata", idempotency_key="k-004", payload=input_b)
-        assert _field(replay, "receipt_id") == _field(first, "receipt_id") and _field(replay, "command_id") == "cmd-004" and _field(replay, "disposition") == "duplicate"
+        assert _field(replay, "receipt_id") == _field(first, "receipt_id")
+        assert _field(replay, "command_id") == "cmd-004"
+        assert _field(replay, "disposition") == "duplicate"
+        assert _field(replay, "operation_id") == operation_id
+        assert _field(replay, "resource_ref") == resource_ref
+        assert _field(replay, "current_revision") == 9
+        assert _field(replay, "accepted_at") == accepted_at
+        with p2_bootstrap_schema.connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT disposition FROM controlplane.cp_command_receipts WHERE receipt_id=%s", (_field(first, "receipt_id"),))
+                assert cursor.fetchone()[0] == "accepted"
+                cursor.execute("SELECT count(*) FROM controlplane.cp_command_receipts")
+                assert cursor.fetchone()[0] == 1
     finally:
         manager.close()
 

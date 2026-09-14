@@ -140,6 +140,7 @@ def synthesize_p2_evidence() -> dict[str, Any]:
         "m1-regression.xml", "m1-regression-report.txt",
         "runtime-capability.json", "secret-scan.json", "status.json", "status.md", "commands.jsonl",
         "correction-red-jcs-numbers-stdout.txt", "correction-red-jcs-numbers-observations.md",
+        "correction-red-replay-receipt-stdout.txt", "correction-red-replay-receipt-observations.md",
     ):
         path = EVIDENCE_DIR / filename
         _normalize_evidence_text(path)
