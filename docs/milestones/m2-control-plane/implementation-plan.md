@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_BEHAVIORAL_RED_BLOCKED_EXTERNAL` (P2 RED harness đã được chấp nhận; PostgreSQL prerequisite external chưa đạt.)
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_RED_READY_FOR_REVIEW` (P2 full Behavioral RED đã có evidence; chờ independent audit.)
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** `M2-P2_BEHAVIORAL_RED_BLOCKED_EXTERNAL`. Plan P2 và harness đã được chấp nhận; P2-001/002 có RED hợp lệ, nhưng run prerequisite hiện hành xác nhận `M2_TEST_PG_DSN` absent nên P2-003..011 cùng PostgreSQL/CREATEDB/orphan không thể chạy. Không implementation P2. Sau đủ RED hợp lệ, raw evidence và independent audit mới được xét quyền implementation. Không sửa P0; M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** `M2-P2_RED_READY_FOR_REVIEW`. Run `run-m2-p2-20260914131500` đã chứng kiến full exact 11 Behavioral RED trên PostgreSQL 18.6/`CREATEDB=true`, với orphan=0 và không setup/oracle mismatch/unexpected pass. Không implementation P2; independent audit RED evidence phải hoàn tất trước khi xét quyền implementation. Không sửa P0; M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -266,7 +266,7 @@ graph TD
 
 ### M2-P2: Envelopes, RFC 9457 ProblemDetail, Optimistic Concurrency & Durable Idempotency
 
-- **Authorization / checkpoint hiện hành:** User đã ủy quyền Behavioral RED P2; checkpoint đang dừng tại `M2-P2_BEHAVIORAL_RED_BLOCKED_EXTERNAL` vì PostgreSQL prerequisite thiếu. **Cấm** implementation P2; implementation chỉ được xét sau RED hợp lệ, stdout/evidence thô và independent audit.
+- **Authorization / checkpoint hiện hành:** User đã ủy quyền Behavioral RED P2; checkpoint đang dừng tại `M2-P2_RED_READY_FOR_REVIEW` để independent audit. **Cấm** implementation P2; implementation chỉ được xét sau audit RED evidence và checkpoint riêng.
 - **Requirement / contract IDs**: `CT-CMN-001` (MessageEnvelope), `CT-CMN-002` (CommandEnvelope), `CT-CMN-003` (CommandReceipt), `CT-CMN-005` (RevisionedResource), `CT-CMN-006` (TimestampPolicy), `CT-CMN-010` (ProblemDetail), `CT-CMN-011` (IdempotencyPolicy), `CT-API-001` **chỉ** cho nền tảng idempotency/`expected_revision`/conflict semantics trước HTTP boundary, và `ADR-0004` cho durable receipt/idempotency/commit semantics. Không thuộc P2: `CT-CMN-004` (QueryPage), FastAPI/API mapping, `ADR-0005`, `ADR-0010`, outbox hoặc state machine.
 - **Dependencies**: M2-P1.
 - **Mục tiêu**:

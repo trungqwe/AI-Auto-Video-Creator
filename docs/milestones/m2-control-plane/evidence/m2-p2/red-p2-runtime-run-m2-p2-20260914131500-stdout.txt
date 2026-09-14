@@ -1,0 +1,339 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- C:\Temp\controlplane-p1-venv-20260914\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 11 items
+
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_001_envelope_required_fields_and_rfc3339_utc FAILED [  9%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_002_problem_detail_transport_neutral_safe_contract FAILED [ 18%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_003_durable_command_receipt_persistence FAILED [ 27%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt FAILED [ 36%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_005_same_key_different_payload_rejected FAILED [ 45%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_006_concurrent_same_key_same_payload_one_logical_receipt FAILED [ 54%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_007_concurrent_same_key_different_payload_rejects_loser FAILED [ 63%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_008_workspace_scoped_idempotency_isolation_and_restart FAILED [ 72%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_009_successful_revision_update_increments_exactly_once FAILED [ 81%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_010_stale_revision_conflict_zero_mutation_and_current_revision FAILED [ 90%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_011_production_0002_forward_rollback_and_constraints FAILED [100%]
+
+================================== FAILURES ===================================
+_________ test_tst_m2_p2_001_envelope_required_fields_and_rfc3339_utc _________
+
+    def test_tst_m2_p2_001_envelope_required_fields_and_rfc3339_utc() -> None:
+>       envelope = MessageEnvelope.create(**_complete_envelope())
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p2_envelopes_and_idempotency.py:124: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+cls = <class 'controlplane.domain.common.contracts.MessageEnvelope'>
+_ = {'contract_name': 'controlplane.command', 'contract_version': 1, 'message_id': 'message-1', 'workspace_id': '00000000-0000-0000-0000-000000000201', ...}
+
+    @classmethod
+    def create(cls, **_: object) -> "MessageEnvelope":
+>       raise NotImplementedError("P2 MessageEnvelope behavior is not implemented during RED.")
+E       NotImplementedError: P2 MessageEnvelope behavior is not implemented during RED.
+
+src\controlplane\domain\common\contracts.py:7: NotImplementedError
+______ test_tst_m2_p2_002_problem_detail_transport_neutral_safe_contract ______
+
+    def test_tst_m2_p2_002_problem_detail_transport_neutral_safe_contract() -> None:
+        complete = {"type": "urn:problem:validation", "title": "Validation", "detail": "D\u1eef li\u1ec7u kh\xf4ng h\u1ee3p l\u1ec7", "instance": "urn:instance:1", "code": "VALIDATION_ERROR", "category": "validation", "retryable": False, "correlation_id": "correlation-1", "status": None, "retry_after": None, "field_errors": None, "technical_detail_ref": "opaque:detail:1"}
+>       detail = ProblemDetail.create(**complete)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p2_envelopes_and_idempotency.py:147: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+cls = <class 'controlplane.domain.common.contracts.ProblemDetail'>
+_ = {'type': 'urn:problem:validation', 'title': 'Validation', 'detail': 'D\u1eef li\u1ec7u kh\xf4ng h\u1ee3p l\u1ec7', 'instance': 'urn:instance:1', ...}
+
+    @classmethod
+    def create(cls, **_: object) -> "ProblemDetail":
+>       raise NotImplementedError("P2 ProblemDetail behavior is not implemented during RED.")
+E       NotImplementedError: P2 ProblemDetail behavior is not implemented during RED.
+
+src\controlplane\domain\common\contracts.py:13: NotImplementedError
+___________ test_tst_m2_p2_003_durable_command_receipt_persistence ____________
+
+p2_bootstrap_schema = DisposableDatabase(name='m2_p2_test_8e77c101b67443cebcb8967ed57f6505', connections=[<psycopg.Connection [BAD] at 0x1d6c0deb610>])
+
+    def test_tst_m2_p2_003_durable_command_receipt_persistence(p2_bootstrap_schema: DisposableDatabase) -> None:
+        coordinator, manager = _coordinator(p2_bootstrap_schema)
+        try:
+>           receipt = coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", idempotency_key="k-003", payload={"v": 1})
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p2_envelopes_and_idempotency.py:166: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.idempotency.ports.IdempotencyCoordinator object at 0x000001D6C0E927B0>
+_ = {'workspace_id': '00000000-0000-0000-0000-000000000201', 'command_name': 'create', 'idempotency_key': 'k-003', 'payload': {'v': 1}}
+
+    def submit(self, **_: object) -> object:
+>       raise NotImplementedError("P2 idempotency behavior is not implemented during RED.")
+E       NotImplementedError: P2 idempotency behavior is not implemented during RED.
+
+src\controlplane\application\idempotency\ports.py:10: NotImplementedError
+___ test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt ___
+
+p2_bootstrap_schema = DisposableDatabase(name='m2_p2_test_75ae6971f93b451a8d5b6076cd3717c3', connections=[<psycopg.Connection [BAD] at 0x1d6c0eb7360>])
+
+    def test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt(p2_bootstrap_schema: DisposableDatabase) -> None:
+        input_a = {"\ue000": "bmp", "\U00010000": "nonbmp", "z": {"\ue000": 0, "\U00010000": 1}, "array": [{"\ue000": "x", "\U00010000": "y"}]}
+        input_b = {"array": [{"\ue000": "x", "\U00010000": "y"}], "z": {"\ue000": 0, "\U00010000": 1}, "\ue000": "bmp", "\U00010000": "nonbmp"}
+        request_a = _logical_request(workspace_id=WORKSPACE_A, command_name="create", payload=input_a, expected_revision=7, policy_revision_id="policy-1")
+        request_b = _logical_request(workspace_id=WORKSPACE_A, command_name="create", payload=input_b, expected_revision=7, policy_revision_id="policy-1")
+>       assert canonicalize_json(input_a) == JCS_BYTES == JCS_TEXT.encode("utf-8")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p2_envelopes_and_idempotency.py:182: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+_ = {'\\ue000': 'bmp', '\U00010000': 'nonbmp', 'z': {'\\ue000': 0, '\U00010000': 1}, 'array': [{'\\ue000': 'x', '\U00010000': 'y'}]}
+
+    def canonicalize_json(_: object) -> bytes:
+>       raise NotImplementedError("P2 RFC 8785 JCS behavior is not implemented during RED.")
+E       NotImplementedError: P2 RFC 8785 JCS behavior is not implemented during RED.
+
+src\controlplane\application\idempotency\canonicalization.py:5: NotImplementedError
+___________ test_tst_m2_p2_005_same_key_different_payload_rejected ____________
+
+p2_bootstrap_schema = DisposableDatabase(name='m2_p2_test_035d567faee242479365154474a6532c', connections=[<psycopg.Connection [BAD] at 0x1d6c0e03f00>])
+
+    def test_tst_m2_p2_005_same_key_different_payload_rejected(p2_bootstrap_schema: DisposableDatabase) -> None:
+        coordinator, manager = _coordinator(p2_bootstrap_schema)
+        try:
+>           first = coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", idempotency_key="k-005", payload={"v": 1})
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p2_envelopes_and_idempotency.py:215: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.idempotency.ports.IdempotencyCoordinator object at 0x000001D6C0DEB9D0>
+_ = {'workspace_id': '00000000-0000-0000-0000-000000000201', 'command_name': 'create', 'idempotency_key': 'k-005', 'payload': {'v': 1}}
+
+    def submit(self, **_: object) -> object:
+>       raise NotImplementedError("P2 idempotency behavior is not implemented during RED.")
+E       NotImplementedError: P2 idempotency behavior is not implemented during RED.
+
+src\controlplane\application\idempotency\ports.py:10: NotImplementedError
+___ test_tst_m2_p2_006_concurrent_same_key_same_payload_one_logical_receipt ___
+
+p2_bootstrap_schema = DisposableDatabase(name='m2_p2_test_193ba9393ec94aa0b3460fb54df1345f', connections=[<psycopg.Connection [BAD] at 0x1d6c0ec8f50>])
+
+    def test_tst_m2_p2_006_concurrent_same_key_same_payload_one_logical_receipt(p2_bootstrap_schema: DisposableDatabase) -> None:
+        barrier = threading.Barrier(2)
+        def submit() -> object:
+            coordinator, manager = _coordinator(p2_bootstrap_schema)
+            try:
+                barrier.wait(timeout=5)
+                return coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", idempotency_key="k-006", payload={"v": 1})
+            finally:
+                manager.close()
+        with ThreadPoolExecutor(max_workers=2) as executor:
+>           first, second = list(executor.map(lambda _: submit(), range(2)))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p2_envelopes_and_idempotency.py:242: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:625: in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:318: in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:460: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:402: in __get_result
+    raise self._exception
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\m2\test_p2_envelopes_and_idempotency.py:242: in <lambda>
+    first, second = list(executor.map(lambda _: submit(), range(2)))
+                                                ^^^^^^^^
+tests\m2\test_p2_envelopes_and_idempotency.py:238: in submit
+    return coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", idempotency_key="k-006", payload={"v": 1})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.idempotency.ports.IdempotencyCoordinator object at 0x000001D6C10182D0>
+_ = {'workspace_id': '00000000-0000-0000-0000-000000000201', 'command_name': 'create', 'idempotency_key': 'k-006', 'payload': {'v': 1}}
+
+    def submit(self, **_: object) -> object:
+>       raise NotImplementedError("P2 idempotency behavior is not implemented during RED.")
+E       NotImplementedError: P2 idempotency behavior is not implemented during RED.
+
+src\controlplane\application\idempotency\ports.py:10: NotImplementedError
+___ test_tst_m2_p2_007_concurrent_same_key_different_payload_rejects_loser ____
+
+p2_bootstrap_schema = DisposableDatabase(name='m2_p2_test_3e8aa55b5d6a4ea887550241612316a8', connections=[<psycopg.Connection [BAD] at 0x1d6c0f40230>])
+
+    def test_tst_m2_p2_007_concurrent_same_key_different_payload_rejects_loser(p2_bootstrap_schema: DisposableDatabase) -> None:
+        barrier = threading.Barrier(2)
+        def submit(payload: dict[str, int]) -> tuple[dict[str, int], object]:
+            coordinator, manager = _coordinator(p2_bootstrap_schema)
+            try:
+                barrier.wait(timeout=5)
+                return payload, coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", idempotency_key="k-007", payload=payload)
+            except ValueError as error:
+                return payload, error
+            finally:
+                manager.close()
+        with ThreadPoolExecutor(max_workers=2) as executor:
+>           outcomes = list(executor.map(submit, ({"v": 1}, {"v": 2})))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p2_envelopes_and_idempotency.py:265: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:625: in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:318: in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:460: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:402: in __get_result
+    raise self._exception
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\m2\test_p2_envelopes_and_idempotency.py:259: in submit
+    return payload, coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", idempotency_key="k-007", payload=payload)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.idempotency.ports.IdempotencyCoordinator object at 0x000001D6C0FC02B0>
+_ = {'workspace_id': '00000000-0000-0000-0000-000000000201', 'command_name': 'create', 'idempotency_key': 'k-007', 'payload': {'v': 1}}
+
+    def submit(self, **_: object) -> object:
+>       raise NotImplementedError("P2 idempotency behavior is not implemented during RED.")
+E       NotImplementedError: P2 idempotency behavior is not implemented during RED.
+
+src\controlplane\application\idempotency\ports.py:10: NotImplementedError
+____ test_tst_m2_p2_008_workspace_scoped_idempotency_isolation_and_restart ____
+
+p2_bootstrap_schema = DisposableDatabase(name='m2_p2_test_ee8be5786ca04ff180c247c5a8b44383', connections=[<psycopg.Connection [BAD] at 0x1d6c0f425d0>])
+
+    def test_tst_m2_p2_008_workspace_scoped_idempotency_isolation_and_restart(p2_bootstrap_schema: DisposableDatabase) -> None:
+        first, manager_a = _coordinator(p2_bootstrap_schema)
+        try:
+>           receipt_a = first.submit(workspace_id=WORKSPACE_A, command_name="create", idempotency_key="shared", payload={"v": 1})
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p2_envelopes_and_idempotency.py:287: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.idempotency.ports.IdempotencyCoordinator object at 0x000001D6C0F38C00>
+_ = {'workspace_id': '00000000-0000-0000-0000-000000000201', 'command_name': 'create', 'idempotency_key': 'shared', 'payload': {'v': 1}}
+
+    def submit(self, **_: object) -> object:
+>       raise NotImplementedError("P2 idempotency behavior is not implemented during RED.")
+E       NotImplementedError: P2 idempotency behavior is not implemented during RED.
+
+src\controlplane\application\idempotency\ports.py:10: NotImplementedError
+____ test_tst_m2_p2_009_successful_revision_update_increments_exactly_once ____
+
+p2_bootstrap_schema = DisposableDatabase(name='m2_p2_test_2c7c05c91a8f45f8b4af510e7bc1ac97', connections=[<psycopg.Connection [BAD] at 0x1d6c0f42f30>, <psycopg.Connection [BAD] at 0x1d6c0f42300>])
+
+    def test_tst_m2_p2_009_successful_revision_update_increments_exactly_once(p2_bootstrap_schema: DisposableDatabase) -> None:
+        with p2_bootstrap_schema.connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("INSERT INTO controlplane.cp_revision_probe VALUES ('probe', 1, 'before')")
+        manager = TransactionManager(p2_bootstrap_schema.dsn)
+        try:
+            with manager.unit_of_work() as uow:
+                adapter = PostgresRevisionedMutationAdapter(uow.connection)
+>               assert _field(adapter.mutate(resource_id="probe", expected_revision=1, payload="one"), "revision") == 2
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p2_envelopes_and_idempotency.py:314: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.infrastructure.db.concurrency.postgres_cas.PostgresRevisionedMutationAdapter object at 0x000001D6C0E91BE0>
+_ = {'resource_id': 'probe', 'expected_revision': 1, 'payload': 'one'}
+
+    def mutate(self, **_: object) -> object:
+>       raise NotImplementedError("P2 PostgreSQL CAS behavior is not implemented during RED.")
+E       NotImplementedError: P2 PostgreSQL CAS behavior is not implemented during RED.
+
+src\controlplane\infrastructure\db\concurrency\postgres_cas.py:9: NotImplementedError
+_ test_tst_m2_p2_010_stale_revision_conflict_zero_mutation_and_current_revision _
+
+p2_bootstrap_schema = DisposableDatabase(name='m2_p2_test_c44f9d53f4654ea79ea23a7ebae2815f', connections=[<psycopg.Connection [BAD] at 0x1d6c0f64410>, <psycopg.Connection [BAD] at 0x1d6c0f42210>])
+
+    def test_tst_m2_p2_010_stale_revision_conflict_zero_mutation_and_current_revision(p2_bootstrap_schema: DisposableDatabase) -> None:
+        with p2_bootstrap_schema.connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("INSERT INTO controlplane.cp_revision_probe VALUES ('probe', 3, 'before')")
+        manager = TransactionManager(p2_bootstrap_schema.dsn)
+        try:
+            with manager.unit_of_work() as uow:
+                with pytest.raises(RevisionConflictError) as error:
+>                   PostgresRevisionedMutationAdapter(uow.connection).mutate(resource_id="probe", expected_revision=2, payload="after")
+
+tests\m2\test_p2_envelopes_and_idempotency.py:350: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.infrastructure.db.concurrency.postgres_cas.PostgresRevisionedMutationAdapter object at 0x000001D6C1019310>
+_ = {'resource_id': 'probe', 'expected_revision': 2, 'payload': 'after'}
+
+    def mutate(self, **_: object) -> object:
+>       raise NotImplementedError("P2 PostgreSQL CAS behavior is not implemented during RED.")
+E       NotImplementedError: P2 PostgreSQL CAS behavior is not implemented during RED.
+
+src\controlplane\infrastructure\db\concurrency\postgres_cas.py:9: NotImplementedError
+_____ test_tst_m2_p2_011_production_0002_forward_rollback_and_constraints _____
+
+disposable_db = DisposableDatabase(name='m2_p2_test_ef986815461b4a878b24093315b0567c', connections=[<psycopg.Connection [BAD] at 0x1d6c0f658b0>])
+
+    def test_tst_m2_p2_011_production_0002_forward_rollback_and_constraints(disposable_db: DisposableDatabase) -> None:
+        runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
+        runner.migrate_up()
+        with disposable_db.connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT to_regclass('controlplane.cp_command_receipts'), to_regclass('controlplane.cp_idempotency_records')")
+>               assert cursor.fetchone() == ("controlplane.cp_command_receipts", "controlplane.cp_idempotency_records")
+E               AssertionError: assert (None, None) == ('controlplane.cp_command_receipts', 'controlplane.cp_idempotency_records')
+E                 
+E                 At index 0 diff: None != 'controlplane.cp_command_receipts'
+E                 
+E                 Full diff:
+E                   (
+E                 -     'controlplane.cp_command_receipts',
+E                 -     'controlplane.cp_idempotency_records',
+E                 +     None,
+E                 +     None,
+E                   )
+
+tests\m2\test_p2_envelopes_and_idempotency.py:366: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_001_envelope_required_fields_and_rfc3339_utc - NotImplementedError: P2 MessageEnvelope behavior is not implemented during RED.
+FAILED tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_002_problem_detail_transport_neutral_safe_contract - NotImplementedError: P2 ProblemDetail behavior is not implemented during RED.
+FAILED tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_003_durable_command_receipt_persistence - NotImplementedError: P2 idempotency behavior is not implemented during RED.
+FAILED tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt - NotImplementedError: P2 RFC 8785 JCS behavior is not implemented during RED.
+FAILED tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_005_same_key_different_payload_rejected - NotImplementedError: P2 idempotency behavior is not implemented during RED.
+FAILED tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_006_concurrent_same_key_same_payload_one_logical_receipt - NotImplementedError: P2 idempotency behavior is not implemented during RED.
+FAILED tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_007_concurrent_same_key_different_payload_rejects_loser - NotImplementedError: P2 idempotency behavior is not implemented during RED.
+FAILED tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_008_workspace_scoped_idempotency_isolation_and_restart - NotImplementedError: P2 idempotency behavior is not implemented during RED.
+FAILED tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_009_successful_revision_update_increments_exactly_once - NotImplementedError: P2 PostgreSQL CAS behavior is not implemented during RED.
+FAILED tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_010_stale_revision_conflict_zero_mutation_and_current_revision - NotImplementedError: P2 PostgreSQL CAS behavior is not implemented during RED.
+FAILED tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_011_production_0002_forward_rollback_and_constraints - AssertionError: assert (None, None) == ('controlplane.cp_command_receipts', 'controlplane.cp_idempotency_records')
+  
+  At index 0 diff: None != 'controlplane.cp_command_receipts'
+  
+  Full diff:
+    (
+  -     'controlplane.cp_command_receipts',
+  -     'controlplane.cp_idempotency_records',
+  +     None,
+  +     None,
+    )
+============================= 11 failed in 2.02s ==============================
