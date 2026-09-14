@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_PLAN_READY_FOR_REVIEW`.
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_BEHAVIORAL_RED_BLOCKED_EXTERNAL`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** `M2-P3_PLAN_READY_FOR_REVIEW`. M2-P2 đã `ACCEPTED / CLOSED`; P3 chỉ được planning và chuẩn bị Behavioral RED, chưa được tạo RED harness, implementation hoặc migration `0003`. M2-P4..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** `M2-P3_BEHAVIORAL_RED_BLOCKED_EXTERNAL`. M2-P2 đã `ACCEPTED / CLOSED`; P3 đã có structural RED harness nhưng runtime prerequisite `psycopg_pool==3.3.1` chưa sẵn sàng, nên chưa được collect/full RED. Production implementation và migration `0003` vẫn bị cấm. M2-P4..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -320,7 +320,7 @@ graph TD
 
 - **Requirement / CT / ADR IDs**: `CT-CMN-001/003/006/011/012/013`, `CT-EVT-001..005`, `CT-API-008` (durable OperationStream facts only; no HTTP/SSE), `ADR-0004`.
 - **Dependencies**: M2-P1 và M2-P2 đều `ACCEPTED / CLOSED`; P3 kế thừa UoW, migration, envelope, receipt và idempotency hiện hữu, không redesign.
-- **P3 status / authorization**: `M2-P3_PLAN_READY_FOR_REVIEW`. Chỉ sau independent approval mới được viết Behavioral RED; implementation chỉ được xét sau evidence RED hợp lệ. M2-P4..P7, M3 và Module A không thuộc scope.
+- **P3 status / authorization**: `M2-P3_BEHAVIORAL_RED_BLOCKED_EXTERNAL`. Independent audit đã cho phép structural RED harness và real RED execution, nhưng runtime prerequisite hiện fail trước collection. Chỉ evidence RED hợp lệ mới cho phép xét implementation. M2-P4..P7, M3 và Module A không thuộc scope.
 
 #### Schema contract khóa trước implementation
 
@@ -376,7 +376,7 @@ Không đổi tên, thêm, bỏ hoặc gộp 11 identities này trong phase RED/
 - **Allowed only after appropriate future authorization**: `src/controlplane/domain/events/**`; `src/controlplane/application/outbox/**`; `src/controlplane/application/projections/**`; `src/controlplane/infrastructure/db/outbox/**`; `src/controlplane/infrastructure/db/projections/**`; `src/controlplane/infrastructure/db/migrations/0003_outbox_and_projections.sql`; rollback paired file; `src/controlplane/infrastructure/evidence/profile_p3.py`; `synthesizer_p3.py`; `tests/m2/test_p3_outbox_and_projections.py`; `docs/milestones/m2-control-plane/evidence/m2-p3/**`; P3 planning/status docs.
 - **Forbidden**: `src/controlplane/api/**`, actual SSE/HTTP routes, `src/controlplane/ui/**`, state machines P4, P5/P6/P7 work, Temporal integration, `src/m1proof/**`, M1 files, P1/P2 source/tests/migrations/evidence except frozen read-only regression, `MigrationRunner` changes, M3 and Module A.
 
-**Planning STOP condition:** không viết P3 migration/source/stub/test harness hoặc chạy/fabricate RED/GREEN evidence trong phase này. Sau commit docs-only dừng tại `M2-P3_PLAN_READY_FOR_REVIEW`.
+**RED STOP condition:** không viết P3 migration, functional source hoặc fabricate RED/GREEN evidence. Khi runtime prerequisite chưa đạt, lưu prerequisite evidence và dừng tại `M2-P3_BEHAVIORAL_RED_BLOCKED_EXTERNAL`.
 
 ---
 
