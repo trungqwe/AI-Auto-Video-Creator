@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Changed
 
+- Hiệu chỉnh contract planning M2-P3: OperationStream trace tới `CT-API-008`; outbox giữ đủ MessageEnvelope/DomainEvent; aggregate ordering không unique; quarantine scope theo consumer; và ordering/reconcile facts durable được khóa rõ. P3 vẫn chỉ ở plan review.
 - Khóa kế hoạch M2-P3 sau khi M2-P2 được `ACCEPTED / CLOSED`: xác định schema `0003`, adapter PostgreSQL/UoW boundary, quarantine/watermark durable, exact 11 Behavioral RED oracle, runtime/evidence profile và frozen regressions. Dừng tại `M2-P3_PLAN_READY_FOR_REVIEW`; không có P3 source, test harness, migration hoặc RED runtime.
 - Hoàn tất correction replay receipt M2-P2: accepted receipt materialize toàn bộ persisted logical-result shape; same-key/same-hash replay giữ receipt/command ID và trả lại operation/resource/revision/timestamp bền vững với `duplicate` chỉ là disposition transient. Closure evidence xác nhận P2 11/11, P1 11/11, P0 33/33, M1 93/93, PostgreSQL 18.6, secret scan CLEAN và hash DAG PASS.
 - Hoàn tất correction RFC 8785 Number serialization M2-P2: JCS fixed-decimal không còn xóa trailing zeroes có nghĩa; P2-004 bao phủ vector Appendix B/IEEE-754 và closure evidence mới xác nhận P2 11/11, P1 11/11, P0 33/33, M1 93/93, runtime PostgreSQL 18.6, secret scan CLEAN và provenance/hash DAG PASS. Dừng tại `M2-P2_IMPLEMENTATION_READY_FOR_REVIEW` để independent audit.
