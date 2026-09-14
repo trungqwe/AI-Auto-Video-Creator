@@ -1,14 +1,20 @@
-"""Structural P3 outbox seams; no P3 behavior is authorized yet."""
+"""Application seams for P3 outbox orchestration."""
 
 
 class OutboxWriter:
-    def enqueue(self, **_: object) -> object:
-        raise NotImplementedError("P3 outbox writer is not implemented during Behavioral RED")
+    def __init__(self, repository: object) -> None:
+        self._repository = repository
+
+    def enqueue(self, *, event: object) -> object:
+        return self._repository.enqueue(event)
 
 
 class OutboxPublisher:
-    def dispatch(self, **_: object) -> object:
-        raise NotImplementedError("P3 outbox publisher is not implemented during Behavioral RED")
+    def __init__(self, repository: object) -> None:
+        self._repository = repository
+
+    def dispatch(self, **kwargs: object) -> object:
+        return self._repository.dispatch(**kwargs)
 
 
 __all__ = ["OutboxPublisher", "OutboxWriter"]

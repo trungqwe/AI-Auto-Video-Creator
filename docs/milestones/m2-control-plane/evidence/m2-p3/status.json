@@ -1,0 +1,82 @@
+{
+  "schema_version": "m2_package_status_v1",
+  "milestone": "M2",
+  "package": "M2-P3",
+  "run_id": "run-m2-p3-20260914103656",
+  "semantic_profile": "m2-p3",
+  "status": "READY_FOR_REVIEW",
+  "evidence_summary": {
+    "p3_tests": {
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "p2_regression_tests": {
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "p1_regression_tests": {
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "m2_p0_regression_tests": {
+      "total": 33,
+      "passed": 33,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "m1_regression_tests": {
+      "total": 93,
+      "passed": 93,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "secret_scan_violations": 0
+  },
+  "runtime_capability": {
+    "run_id": "run-m2-p3-20260914103656",
+    "python": "3.13.15",
+    "psycopg": "3.3.5",
+    "psycopg-pool": "3.3.1",
+    "actual_pool_implementation": "psycopg_pool.ConnectionPool",
+    "postgresql_server": "18.6",
+    "createdb_prerequisite": true,
+    "disposable_db_orphan_count": 0
+  },
+  "gates": [
+    {
+      "gate_id": "GATE-P3-01",
+      "status": "PASS"
+    },
+    {
+      "gate_id": "GATE-P3-02",
+      "status": "PASS"
+    },
+    {
+      "gate_id": "GATE-P3-03",
+      "status": "PASS"
+    },
+    {
+      "gate_id": "GATE-P3-04",
+      "status": "PASS"
+    },
+    {
+      "gate_id": "GATE-P3-05",
+      "status": "PASS"
+    },
+    {
+      "gate_id": "GATE-P3-06",
+      "status": "PASS"
+    }
+  ]
+}

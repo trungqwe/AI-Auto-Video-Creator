@@ -1,14 +1,20 @@
-"""Structural P3 projection seams; no P3 behavior is authorized yet."""
+"""Application seams for P3 projection orchestration."""
 
 
 class EventConsumer:
-    def process(self, **_: object) -> object:
-        raise NotImplementedError("P3 event consumer is not implemented during Behavioral RED")
+    def __init__(self, processor: object) -> None:
+        self._processor = processor
+
+    def process(self, **kwargs: object) -> object:
+        return self._processor.process(**kwargs)
 
 
 class OperationStreamProjector:
-    def append(self, **_: object) -> object:
-        raise NotImplementedError("P3 operation stream projector is not implemented during Behavioral RED")
+    def __init__(self, repository: object) -> None:
+        self._repository = repository
+
+    def append(self, **kwargs: object) -> object:
+        return self._repository.append(**kwargs)
 
 
 __all__ = ["EventConsumer", "OperationStreamProjector"]
