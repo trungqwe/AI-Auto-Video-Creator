@@ -1,15 +1,15 @@
 # M2-P2 Behavioral RED — Quan sát
 
-**Run ID:** `run-m2-p2-20260914122615`
+**Run ID:** `run-m2-p2-20260914123753`
 **Trạng thái phase:** `M2-P2_BEHAVIORAL_RED_BLOCKED_EXTERNAL`
 
 ## Raw evidence trước diễn giải
 
-- `red-p2-runtime-run-m2-p2-20260914122615-prerequisite-stdout.txt`: Python 3.13.15, psycopg 3.3.5 và psycopg-pool 3.3.1 đạt; DSN absent nên PostgreSQL/`CREATEDB`/orphan không thể kiểm tra.
-- Không có collection hay full pytest stdout cho run `122615`: prerequisite external fail buộc STOP trước các bước đó, không tạo raw artifact giả.
+- `red-p2-runtime-run-m2-p2-20260914123753-prerequisite-stdout.txt`: Python 3.13.15, psycopg 3.3.5 và psycopg-pool 3.3.1 đạt; DSN absent nên PostgreSQL/`CREATEDB`/orphan không thể kiểm tra.
+- Không có collection hay full pytest stdout cho run `123753`: prerequisite external fail buộc STOP trước các bước đó, không tạo raw artifact giả.
 - Không có full-run stdout: PostgreSQL thật/`CREATEDB` chưa sẵn sàng, nên full run không được khởi động và không tạo evidence giả.
 
-Toàn bộ raw run trước, gồm `011501`, `011618`, `012516`, `115219`, `115450` và `120642`, giữ immutable như historical/superseded. Run `122615` là prerequisite evidence hiện hành.
+Toàn bộ raw run trước, gồm `011501`, `011618`, `012516`, `115219`, `115450`, `120642` và `122615`, giữ immutable như historical/superseded. Run `123753` là prerequisite evidence hiện hành.
 
 ## Expected versus observed
 
