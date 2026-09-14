@@ -107,7 +107,9 @@ def _assert_future_production_p3_schema(connection: psycopg.Connection) -> None:
     assert any(item.startswith("PRIMARY KEY (event_id)") for item in constraints)
     assert not any("UNIQUE (workspace_id, aggregate_type, aggregate_id, aggregate_revision)" in item for item in constraints)
     indexdefs = [row[0] for row in connection.execute("SELECT indexdef FROM pg_indexes WHERE schemaname='controlplane' AND tablename='cp_outbox_events'").fetchall()]
-    assert any("aggregate_revision" in item and "UNIQUE" not in item for item in indexdefs) and any("published" in item for item in indexdefs)
+    assert any("aggregate_revision" in item and "UNIQUE" not in item for item in indexdefs)
+    dispatch_indexes = connection.execute("SELECT i.indisunique, array_agg(a.attname ORDER BY k.ordinality) FILTER (WHERE k.ordinality <= i.indnkeyatts), pg_get_expr(i.indpred, i.indrelid) FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_class t ON t.oid=i.indrelid CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY k(attnum, ordinality) LEFT JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=k.attnum WHERE t.oid='controlplane.cp_outbox_events'::regclass GROUP BY i.indexrelid, i.indisunique, i.indnkeyatts, i.indpred, i.indrelid").fetchall()
+    assert any(not unique and keys[:2] == ["recorded_at", "event_id"] and predicate and re.sub(r"[()\s]", "", predicate).lower() in {"(published=false)", "notpublished", "published=false"} for unique, keys, predicate in dispatch_indexes)
     quarantine = connection.execute("SELECT array_agg(att.attname ORDER BY ordinality) FROM pg_constraint con CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY key(attnum, ordinality) JOIN pg_attribute att ON att.attrelid=con.conrelid AND att.attnum=key.attnum WHERE con.conrelid='controlplane.cp_event_quarantine'::regclass AND con.contype IN ('p','u') GROUP BY con.oid").fetchall()
     assert ["consumer_id", "event_id"] in [row[0] for row in quarantine]
     for table, fields in {"cp_event_checkpoints": {"consumer_id", "event_id", "workspace_id", "aggregate_type", "aggregate_id", "aggregate_revision", "status", "checkpointed_at"}, "cp_operation_stream": {"stream_event_id", "workspace_id", "operation_id", "resource_type", "resource_id", "resource_revision", "event_kind", "occurred_at", "recorded_at", "summary", "correlation_id"}, "cp_operation_stream_retention_watermarks": {"workspace_id", "minimum_available_cursor", "minimum_available_at"}}.items():
@@ -122,6 +124,8 @@ def _assert_future_production_p3_schema(connection: psycopg.Connection) -> None:
     assert any("stream_event_id" in item and (item.startswith("PRIMARY KEY") or item.startswith("UNIQUE")) for item in stream_constraints) and stream_default is not None
     watermarks = dict(connection.execute("SELECT column_name, is_nullable FROM information_schema.columns WHERE table_schema='controlplane' AND table_name='cp_operation_stream_retention_watermarks'").fetchall())
     assert all(watermarks[name] == "NO" for name in {"workspace_id", "minimum_available_cursor", "minimum_available_at"})
+    watermark_keys = connection.execute("SELECT array_agg(a.attname ORDER BY k.ordinality) FROM pg_constraint con CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY k(attnum, ordinality) JOIN pg_attribute a ON a.attrelid=con.conrelid AND a.attnum=k.attnum WHERE con.conrelid='controlplane.cp_operation_stream_retention_watermarks'::regclass AND con.contype IN ('p','u') GROUP BY con.oid").fetchall()
+    assert ["workspace_id"] in [row[0] for row in watermark_keys]
 
 
 def test_tst_m2_p3_001_production_0003_forward_rollback_and_schema_constraints(disposable_db: DisposableDatabase) -> None:
@@ -130,13 +134,15 @@ def test_tst_m2_p3_001_production_0003_forward_rollback_and_schema_constraints(d
     with disposable_db.connect() as connection:
         _assert_future_production_p3_schema(connection)
         # Future production rows prove CHECK behavior through savepoints, not constraint text alone.
+        statement = "INSERT INTO controlplane.cp_outbox_events (event_id, workspace_id, contract_name, contract_version, message_id, correlation_id, occurred_at, actor, payload, event_name, aggregate_type, aggregate_id, aggregate_revision, producer, schema_version, sensitivity, recorded_at, published, published_at) VALUES (%s, %s, 'event', 1, %s, 'c', CURRENT_TIMESTAMP, 'system', '{}'::jsonb, 'event', 'aggregate', 'a', 1, 'owner', 1, 'internal', CURRENT_TIMESTAMP, %s, %s)"
         for published, published_at, accepted in ((False, None, True), (True, "2026-09-14T00:00:00Z", True), (False, "2026-09-14T00:00:00Z", False), (True, None, False)):
-            with connection.transaction():
-                with connection.transaction():
-                    if accepted:
-                        connection.execute("INSERT INTO controlplane.cp_outbox_events (event_id, workspace_id, contract_name, contract_version, message_id, correlation_id, occurred_at, actor, payload, event_name, aggregate_type, aggregate_id, aggregate_revision, producer, schema_version, sensitivity, recorded_at, published, published_at) VALUES (%s, %s, 'event', 1, %s, 'c', CURRENT_TIMESTAMP, 'system', '{}'::jsonb, 'event', 'aggregate', 'a', 1, 'owner', 1, 'internal', CURRENT_TIMESTAMP, %s, %s)", (uuid.uuid4(), WORKSPACE_ID, str(uuid.uuid4()), published, published_at))
-                    else:
-                        with pytest.raises(psycopg.errors.CheckViolation): connection.execute("INSERT INTO controlplane.cp_outbox_events (event_id, workspace_id, contract_name, contract_version, message_id, correlation_id, occurred_at, actor, payload, event_name, aggregate_type, aggregate_id, aggregate_revision, producer, schema_version, sensitivity, recorded_at, published, published_at) VALUES (%s, %s, 'event', 1, %s, 'c', CURRENT_TIMESTAMP, 'system', '{}'::jsonb, 'event', 'aggregate', 'a', 1, 'owner', 1, 'internal', CURRENT_TIMESTAMP, %s, %s)", (uuid.uuid4(), WORKSPACE_ID, str(uuid.uuid4()), published, published_at))
+            params = (uuid.uuid4(), WORKSPACE_ID, str(uuid.uuid4()), published, published_at)
+            if accepted:
+                with connection.transaction(): connection.execute(statement, params)
+            else:
+                with pytest.raises(psycopg.errors.CheckViolation):
+                    with connection.transaction(): connection.execute(statement, params)
+                assert connection.execute("SELECT 1").fetchone() == (1,)
         event_id = uuid.uuid4()
         connection.execute("INSERT INTO controlplane.cp_event_quarantine (consumer_id, event_id, workspace_id, reason_code) VALUES ('consumer-A', %s, %s, 'x'), ('consumer-B', %s, %s, 'x')", (event_id, WORKSPACE_ID, event_id, WORKSPACE_ID))
         with pytest.raises(psycopg.errors.UniqueViolation): connection.execute("INSERT INTO controlplane.cp_event_quarantine (consumer_id, event_id, workspace_id, reason_code) VALUES ('consumer-A', %s, %s, 'x')", (event_id, WORKSPACE_ID))
