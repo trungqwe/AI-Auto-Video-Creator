@@ -3,10 +3,10 @@
   "milestone": "M2",
   "package": "M2-P2",
   "package_name": "Contracts, Idempotency and Revision Concurrency",
-  "run_id": "run-m2-p2-20260914065027",
+  "run_id": "run-m2-p2-20260914070457",
   "semantic_profile": "m2-p2",
   "status": "READY_FOR_REVIEW",
-  "timestamp_utc": "2026-09-14T06:51:22.984193+00:00",
+  "timestamp_utc": "2026-09-14T07:05:54.244910+00:00",
   "gates": [
     {
       "gate_id": "GATE-P2-01",
@@ -93,7 +93,7 @@
     "secret_scan_violations": 0
   },
   "runtime_capability": {
-    "run_id": "run-m2-p2-20260914065027",
+    "run_id": "run-m2-p2-20260914070457",
     "python": "3.13.15",
     "psycopg": "3.3.5",
     "psycopg-pool": "3.3.1",

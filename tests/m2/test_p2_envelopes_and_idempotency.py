@@ -133,6 +133,12 @@ def test_tst_m2_p2_001_envelope_required_fields_and_rfc3339_utc() -> None:
         for field in ("occurred_at", "requested_at"):
             with pytest.raises(ValueError, match="ENVELOPE_VALIDATION_ERROR"):
                 MessageEnvelope.create(**(_complete_envelope() | {field: timestamp}))
+    for timestamp in ("2026-13-01T00:00:00Z", "2026-02-30T00:00:00Z", "2026-01-01T24:00:00Z", "2026-01-01T00:60:00Z", "2026-01-01T00:00:60Z"):
+        with pytest.raises(ValueError, match="ENVELOPE_VALIDATION_ERROR"):
+            MessageEnvelope.create(**(_complete_envelope() | {"occurred_at": timestamp}))
+    for version in (True, "1"):
+        with pytest.raises(ValueError, match="ENVELOPE_VALIDATION_ERROR"):
+            MessageEnvelope.create(**(_complete_envelope() | {"contract_version": version}))
     conditional = _complete_envelope() | {"derived": True, "process_boundary": True, "internal_mutation": True, "external_boundary": True, "revisioned_update": True, "policy_dependent": True, "causation_id": "cause", "trace_context": "trace", "recovery_epoch": 1, "idempotency_key": "key", "expected_revision": 1, "policy_revision_id": "policy"}
     assert MessageEnvelope.create(**conditional)
     for missing in ("causation_id", "trace_context", "recovery_epoch", "idempotency_key", "expected_revision", "policy_revision_id"):
@@ -158,16 +164,29 @@ def test_tst_m2_p2_002_problem_detail_transport_neutral_safe_contract() -> None:
             ProblemDetail.create(**(complete | {"detail": unsafe}))
         with pytest.raises(ValueError, match="PROBLEM_DETAIL_VALIDATION_ERROR"):
             ProblemDetail.create(**(complete | {"technical_detail_ref": unsafe}))
+    for invalid in ("not a uri", "relative/path"):
+        with pytest.raises(ValueError, match="PROBLEM_DETAIL_VALIDATION_ERROR"):
+            ProblemDetail.create(**(complete | {"type": invalid}))
+    for invalid in ("other", None):
+        with pytest.raises(ValueError, match="PROBLEM_DETAIL_VALIDATION_ERROR"):
+            ProblemDetail.create(**(complete | {"category": invalid}))
+    for invalid in (0, "false"):
+        with pytest.raises(ValueError, match="PROBLEM_DETAIL_VALIDATION_ERROR"):
+            ProblemDetail.create(**(complete | {"retryable": invalid}))
+    with pytest.raises(ValueError, match="PROBLEM_DETAIL_VALIDATION_ERROR"):
+        ProblemDetail.create(**(complete | {"status": "400"}))
+    with pytest.raises(ValueError, match="PROBLEM_DETAIL_VALIDATION_ERROR"):
+        ProblemDetail.create(**(complete | {"field_errors": [{"value": "password=secret"}]}))
 
 
 def test_tst_m2_p2_003_durable_command_receipt_persistence(p2_bootstrap_schema: DisposableDatabase) -> None:
     coordinator, manager = _coordinator(p2_bootstrap_schema)
     try:
-        receipt = coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", idempotency_key="k-003", payload={"v": 1})
+        receipt = coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", command_id="cmd-003", idempotency_key="k-003", payload={"v": 1})
         with p2_bootstrap_schema.connect() as connection:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT workspace_id::text, command_id, disposition FROM controlplane.cp_command_receipts")
-                assert cursor.fetchall() == [(WORKSPACE_A, _field(receipt, "command_id"), "accepted")]
+                assert cursor.fetchall() == [(WORKSPACE_A, "cmd-003", "accepted")]
                 cursor.execute("SELECT receipt_id::text FROM controlplane.cp_idempotency_records")
                 assert cursor.fetchall() == [(str(_field(receipt, "receipt_id")),)]
     finally:
@@ -191,6 +210,15 @@ def test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt(p2_b
     assert canonicalize_json({"text": "e\u0301"}) != canonicalize_json({"text": "é"})
     assert canonicalize_json({"array": [2, 1]}) != canonicalize_json({"array": [1, 2]})
     assert canonicalize_json({"number": -0.0}) == b'{"number":0}'
+    assert canonicalize_json(1.0) == b"1"
+    assert canonicalize_json(1e-7) == b"1e-7"
+    assert canonicalize_json(333333333.33333329) == b"333333333.3333333"
+    assert canonicalize_json(1e30) == b"1e+30"
+    assert canonicalize_json(4.50) == b"4.5"
+    assert canonicalize_json(2e-3) == b"0.002"
+    assert canonicalize_json(1e-27) == b"1e-27"
+    with pytest.raises(ValueError):
+        canonicalize_json(2**53)
     for invalid in (math.nan,):
         with pytest.raises(ValueError):
             canonicalize_json({"number": invalid})
@@ -202,9 +230,9 @@ def test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt(p2_b
             canonicalize_json({"number": invalid})
     coordinator, manager = _coordinator(p2_bootstrap_schema)
     try:
-        first = coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", idempotency_key="k-004", payload=input_a)
-        replay = coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", idempotency_key="k-004", payload=input_b)
-        assert _field(replay, "receipt_id") == _field(first, "receipt_id") and _field(replay, "disposition") == "duplicate"
+        first = coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", command_id="cmd-004", idempotency_key="k-004", payload=input_a)
+        replay = coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", command_id="retry-metadata", idempotency_key="k-004", payload=input_b)
+        assert _field(replay, "receipt_id") == _field(first, "receipt_id") and _field(replay, "command_id") == "cmd-004" and _field(replay, "disposition") == "duplicate"
     finally:
         manager.close()
 
