@@ -21,6 +21,6 @@ tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_010_sql_migration_failure_r
 tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool PASSED [100%]
 
 - generated xml file: D:\AI Auto Video Creator\docs\milestones\m2-control-plane\evidence\m2-p3\m2-p1-regression.xml -
-============================= 11 passed in 2.35s ==============================
+============================= 11 passed in 2.88s ==============================
 
 STDERR:

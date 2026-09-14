@@ -21,6 +21,6 @@ tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_010_operation_stream_
 tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_011_operation_stream_safe_projection_and_payload_policy PASSED [100%]
 
 - generated xml file: D:\AI Auto Video Creator\docs\milestones\m2-control-plane\evidence\m2-p3\m2-p3-tests.xml -
-============================= 11 passed in 2.69s ==============================
+============================= 11 passed in 2.84s ==============================
 
 STDERR:
