@@ -2,11 +2,7 @@
 
 from typing import Protocol
 
-
-class RevisionConflictError(Exception):
-    def __init__(self, current_revision: int) -> None:
-        super().__init__(f"Revision conflict; current revision is {current_revision}.")
-        self.current_revision = current_revision
+from controlplane.domain.concurrency import RevisionConflictError
 
 
 class RevisionedMutationPort(Protocol):

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from controlplane.application.concurrency import RevisionConflictError
+from controlplane.domain.concurrency import RevisionConflictError
 
 
 class OperationState(StrEnum):
