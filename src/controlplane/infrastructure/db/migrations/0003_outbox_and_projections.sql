@@ -43,7 +43,8 @@ CREATE TABLE controlplane.cp_event_quarantine (
     event_id UUID NOT NULL,
     workspace_id UUID NOT NULL REFERENCES controlplane.cp_workspaces(workspace_id),
     reason_code TEXT NOT NULL,
-    event_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    event_envelope JSONB NOT NULL,
+    quarantine_status TEXT NOT NULL DEFAULT 'OPEN',
     quarantined_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (consumer_id, event_id)
 );

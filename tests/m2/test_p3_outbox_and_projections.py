@@ -1,4 +1,4 @@
-"""The fixed 11 M2-P3 behavioral RED oracles; production behavior is prohibited."""
+"""The fixed 11 M2-P3 behavioral oracles for the production implementation."""
 from __future__ import annotations
 
 import os
@@ -86,7 +86,7 @@ def p3_bootstrap_schema(disposable_db: DisposableDatabase) -> DisposableDatabase
             cursor.execute("""CREATE TABLE controlplane.cp_outbox_events (event_id UUID PRIMARY KEY, workspace_id UUID NOT NULL REFERENCES controlplane.cp_workspaces, contract_name TEXT NOT NULL DEFAULT 'event', contract_version INTEGER NOT NULL DEFAULT 1, message_id TEXT NOT NULL DEFAULT 'message', correlation_id TEXT NOT NULL DEFAULT 'correlation', causation_id TEXT NULL, trace_context TEXT NULL, occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, actor TEXT NOT NULL DEFAULT 'system', recovery_epoch BIGINT NULL, payload JSONB NOT NULL, event_name TEXT NOT NULL DEFAULT 'event', aggregate_type TEXT NOT NULL DEFAULT 'aggregate', aggregate_id TEXT NOT NULL DEFAULT 'id', aggregate_revision BIGINT NOT NULL DEFAULT 1, producer TEXT NOT NULL DEFAULT 'owner', schema_version INTEGER NOT NULL DEFAULT 1, sensitivity TEXT NOT NULL DEFAULT 'internal', recorded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, published BOOLEAN NOT NULL DEFAULT false, published_at TIMESTAMPTZ NULL)""")
             cursor.execute("CREATE TABLE controlplane.p3_projection_effects (consumer_id TEXT NOT NULL, aggregate_id TEXT NOT NULL, revision BIGINT NOT NULL, PRIMARY KEY (consumer_id, aggregate_id))")
             cursor.execute("CREATE TABLE controlplane.cp_event_checkpoints (consumer_id TEXT NOT NULL, event_id UUID NOT NULL, workspace_id UUID NOT NULL, aggregate_type TEXT NOT NULL, aggregate_id TEXT NOT NULL, aggregate_revision BIGINT NOT NULL, current_applied_revision BIGINT NULL, status TEXT NOT NULL, checkpointed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (consumer_id, event_id))")
-            cursor.execute("CREATE TABLE controlplane.cp_event_quarantine (consumer_id TEXT NOT NULL, event_id UUID NOT NULL, workspace_id UUID NOT NULL REFERENCES controlplane.cp_workspaces, reason_code TEXT NOT NULL, event_payload JSONB NOT NULL DEFAULT '{}'::jsonb, quarantined_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (consumer_id, event_id))")
+            cursor.execute("CREATE TABLE controlplane.cp_event_quarantine (consumer_id TEXT NOT NULL, event_id UUID NOT NULL, workspace_id UUID NOT NULL REFERENCES controlplane.cp_workspaces, reason_code TEXT NOT NULL, event_envelope JSONB NOT NULL, quarantine_status TEXT NOT NULL DEFAULT 'OPEN', quarantined_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (consumer_id, event_id))")
             cursor.execute("CREATE TABLE controlplane.cp_operation_stream (stream_event_id BIGSERIAL PRIMARY KEY, workspace_id UUID NOT NULL REFERENCES controlplane.cp_workspaces, operation_id UUID NULL, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL, resource_revision BIGINT NOT NULL, event_kind TEXT NOT NULL, occurred_at TIMESTAMPTZ NOT NULL, recorded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, summary TEXT NOT NULL, correlation_id TEXT NOT NULL)")
             cursor.execute("CREATE TABLE controlplane.cp_operation_stream_retention_watermarks (workspace_id UUID PRIMARY KEY REFERENCES controlplane.cp_workspaces, minimum_available_cursor BIGINT NOT NULL, minimum_available_at TIMESTAMPTZ NOT NULL)")
     return disposable_db
@@ -141,6 +141,8 @@ def _assert_future_production_p3_schema(connection: psycopg.Connection) -> None:
     assert any(not unique and keys[:2] == ["recorded_at", "event_id"] and predicate and re.sub(r"[()\s]", "", predicate).lower() in {"(published=false)", "notpublished", "published=false"} for unique, keys, predicate in dispatch_indexes)
     quarantine = connection.execute("SELECT array_agg(att.attname ORDER BY ordinality) FROM pg_constraint con CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY key(attnum, ordinality) JOIN pg_attribute att ON att.attrelid=con.conrelid AND att.attnum=key.attnum WHERE con.conrelid='controlplane.cp_event_quarantine'::regclass AND con.contype IN ('p','u') GROUP BY con.oid").fetchall()
     assert ["consumer_id", "event_id"] in [row[0] for row in quarantine]
+    quarantine_columns = dict(connection.execute("SELECT column_name, is_nullable FROM information_schema.columns WHERE table_schema='controlplane' AND table_name='cp_event_quarantine'").fetchall())
+    assert quarantine_columns["event_envelope"] == "NO" and quarantine_columns["quarantine_status"] == "NO"
     for table, fields in {"cp_event_checkpoints": {"consumer_id", "event_id", "workspace_id", "aggregate_type", "aggregate_id", "aggregate_revision", "status", "checkpointed_at"}, "cp_operation_stream": {"stream_event_id", "workspace_id", "operation_id", "resource_type", "resource_id", "resource_revision", "event_kind", "occurred_at", "recorded_at", "summary", "correlation_id"}, "cp_operation_stream_retention_watermarks": {"workspace_id", "minimum_available_cursor", "minimum_available_at"}}.items():
         actual = {row[0] for row in connection.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='controlplane' AND table_name=%s", (table,)).fetchall()}
         assert fields <= actual
@@ -174,8 +176,8 @@ def test_tst_m2_p3_001_production_0003_forward_rollback_and_schema_constraints(d
                     with connection.transaction(): connection.execute(statement, params)
                 assert connection.execute("SELECT 1").fetchone() == (1,)
         event_id = uuid.uuid4()
-        connection.execute("INSERT INTO controlplane.cp_event_quarantine (consumer_id, event_id, workspace_id, reason_code) VALUES ('consumer-A', %s, %s, 'x'), ('consumer-B', %s, %s, 'x')", (event_id, WORKSPACE_ID, event_id, WORKSPACE_ID))
-        with pytest.raises(psycopg.errors.UniqueViolation): connection.execute("INSERT INTO controlplane.cp_event_quarantine (consumer_id, event_id, workspace_id, reason_code) VALUES ('consumer-A', %s, %s, 'x')", (event_id, WORKSPACE_ID))
+        connection.execute("INSERT INTO controlplane.cp_event_quarantine (consumer_id, event_id, workspace_id, reason_code, event_envelope) VALUES ('consumer-A', %s, %s, 'x', '{}'::jsonb), ('consumer-B', %s, %s, 'x', '{}'::jsonb)", (event_id, WORKSPACE_ID, event_id, WORKSPACE_ID))
+        with pytest.raises(psycopg.errors.UniqueViolation): connection.execute("INSERT INTO controlplane.cp_event_quarantine (consumer_id, event_id, workspace_id, reason_code, event_envelope) VALUES ('consumer-A', %s, %s, 'x', '{}'::jsonb)", (event_id, WORKSPACE_ID))
         assert connection.execute("SELECT count(*) FROM controlplane.cp_event_quarantine WHERE event_id=%s", (event_id,)).fetchone()[0] == 2
         rollback = (PRODUCTION_MIGRATIONS / "0003_outbox_and_projections.rollback.sql").read_text(encoding="utf-8")
         with connection.transaction():
@@ -278,7 +280,10 @@ def test_tst_m2_p3_007_unsupported_schema_durably_quarantined(p3_bootstrap_schem
     event = _event(event_id="00000000-0000-0000-0000-000000000307", schema_version=999)
     with p3_bootstrap_schema.connect() as connection: _consumer(connection).process(event=event, consumer_id="projection")
     with p3_bootstrap_schema.connect() as connection:
-        assert connection.execute("SELECT event_id::text, workspace_id::text, reason_code FROM controlplane.cp_event_quarantine WHERE consumer_id='projection'").fetchall() == [(event.event_id, WORKSPACE_ID, "QUARANTINED_UNSUPPORTED_SCHEMA")]
+        row = connection.execute("SELECT event_id::text, workspace_id::text, reason_code, event_envelope, quarantine_status FROM controlplane.cp_event_quarantine WHERE consumer_id='projection'").fetchone()
+        assert row is not None and row[:3] == (event.event_id, WORKSPACE_ID, "QUARANTINED_UNSUPPORTED_SCHEMA") and row[4] == "OPEN"
+        envelope = row[3]
+        assert envelope["event_id"] == event.event_id and envelope["workspace_id"] == WORKSPACE_ID and envelope["aggregate_type"] == event.aggregate_type and envelope["aggregate_id"] == event.aggregate_id and envelope["aggregate_revision"] == event.aggregate_revision and envelope["schema_version"] == 999 and envelope["recovery_epoch"] == event.recovery_epoch and envelope["correlation_id"] == event.correlation_id and envelope["payload"] == event.payload
         assert connection.execute("SELECT count(*) FROM controlplane.cp_event_checkpoints WHERE status='APPLIED'").fetchone()[0] == 0
         assert connection.execute("SELECT count(*) FROM controlplane.p3_projection_effects").fetchone()[0] == 0
         assert connection.execute("SELECT count(*) FROM controlplane.cp_operation_stream").fetchone()[0] == 0
@@ -290,9 +295,9 @@ def test_tst_m2_p3_008_aggregate_revision_gap_and_out_of_order_blocked(p3_bootst
     gap_event = _event(event_id="00000000-0000-0000-0000-000000000384", revision=4)
     with p3_bootstrap_schema.connect() as connection: connection.execute("INSERT INTO controlplane.p3_projection_effects VALUES ('projection', 'operation-303', 1)")
     with p3_bootstrap_schema.connect() as connection:
-        _consumer(connection).process(event=next_event, consumer_id="projection", expected_current_revision=1)
-        _consumer(connection).process(event=old_event, consumer_id="projection", expected_current_revision=2)
-        _consumer(connection).process(event=gap_event, consumer_id="projection", expected_current_revision=2)
+        _consumer(connection).process(event=next_event, consumer_id="projection")
+        _consumer(connection).process(event=old_event, consumer_id="projection")
+        _consumer(connection).process(event=gap_event, consumer_id="projection")
     with p3_bootstrap_schema.connect() as connection:
         assert connection.execute("SELECT revision FROM controlplane.p3_projection_effects WHERE consumer_id='projection' AND aggregate_id='operation-303'").fetchone()[0] == 2
         statuses = dict(connection.execute("SELECT event_id::text, status FROM controlplane.cp_event_checkpoints").fetchall())
@@ -304,7 +309,9 @@ def test_tst_m2_p3_009_stale_recovery_epoch_quarantined(p3_bootstrap_schema: Dis
     with p3_bootstrap_schema.connect() as connection: _consumer(connection).process(event=event, consumer_id="projection", current_recovery_epoch=7)
     assert event.recovery_epoch == 6
     with p3_bootstrap_schema.connect() as connection:
-        assert connection.execute("SELECT event_id::text, reason_code FROM controlplane.cp_event_quarantine WHERE consumer_id='projection'").fetchall() == [(event.event_id, "STALE_RECOVERY_EPOCH")]
+        row = connection.execute("SELECT event_id::text, reason_code, event_envelope, quarantine_status FROM controlplane.cp_event_quarantine WHERE consumer_id='projection'").fetchone()
+        assert row is not None and row[:2] == (event.event_id, "STALE_RECOVERY_EPOCH") and row[3] == "OPEN"
+        assert row[2]["event_id"] == event.event_id and row[2]["workspace_id"] == WORKSPACE_ID and row[2]["recovery_epoch"] == 6 and row[2]["aggregate_revision"] == event.aggregate_revision and row[2]["correlation_id"] == event.correlation_id
         assert connection.execute("SELECT count(*) FROM controlplane.cp_event_checkpoints WHERE status='APPLIED'").fetchone()[0] == 0
         assert connection.execute("SELECT count(*) FROM controlplane.p3_projection_effects").fetchone()[0] == 0
         assert connection.execute("SELECT count(*) FROM controlplane.cp_operation_stream").fetchone()[0] == 0
@@ -337,11 +344,16 @@ def test_tst_m2_p3_011_operation_stream_safe_projection_and_payload_policy(p3_bo
         assert row[5] == datetime(2026, 9, 14, tzinfo=UTC) and row[6] is not None and row[6].tzinfo is not None
         assert connection.execute("SELECT count(*) FROM controlplane.cp_event_quarantine").fetchone()[0] == 0
         baseline = tuple(connection.execute("SELECT (SELECT count(*) FROM controlplane.cp_operation_stream), (SELECT count(*) FROM controlplane.cp_event_quarantine), (SELECT count(*) FROM controlplane.p3_projection_effects), (SELECT count(*) FROM controlplane.cp_outbox_events)").fetchone())
-    for unsafe_payload, unsafe_summary in (({"password": "redacted"}, "safe"), ({"blob": b"bytes"}, "safe"), ({"safe": "value"}, "Traceback (most recent call last)")):
+    for unsafe_payload, unsafe_summary in (({"password": "redacted"}, "safe"), ({"blob": b"bytes"}, "safe"), ({"safe": "Traceback (most recent call last)"}, "safe"), ({"safe": "value"}, "Traceback (most recent call last)")):
         with pytest.raises(ValueError):
             with p3_bootstrap_schema.connect() as connection: _stream(connection).append(event=_event(payload=unsafe_payload), safe_summary=unsafe_summary)
         with p3_bootstrap_schema.connect() as connection:
             assert tuple(connection.execute("SELECT (SELECT count(*) FROM controlplane.cp_operation_stream), (SELECT count(*) FROM controlplane.cp_event_quarantine), (SELECT count(*) FROM controlplane.p3_projection_effects), (SELECT count(*) FROM controlplane.cp_outbox_events)").fetchone()) == baseline
+        if unsafe_summary == "safe":
+            with pytest.raises(ValueError):
+                with p3_bootstrap_schema.connect() as connection: _writer(connection).enqueue(event=_event(payload=unsafe_payload))
+            with p3_bootstrap_schema.connect() as connection:
+                assert tuple(connection.execute("SELECT (SELECT count(*) FROM controlplane.cp_operation_stream), (SELECT count(*) FROM controlplane.cp_event_quarantine), (SELECT count(*) FROM controlplane.p3_projection_effects), (SELECT count(*) FROM controlplane.cp_outbox_events)").fetchone()) == baseline
     with p3_bootstrap_schema.connect() as connection:
         row = connection.execute("SELECT stream_event_id, resource_type, resource_id, resource_revision, event_kind, occurred_at, recorded_at, summary, correlation_id FROM controlplane.cp_operation_stream").fetchone()
         assert row is not None and row[0] > 0

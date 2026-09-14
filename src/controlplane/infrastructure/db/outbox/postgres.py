@@ -3,12 +3,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from controlplane.domain.events import ensure_safe_event_payload
+
 
 class PostgresOutboxRepository:
     def __init__(self, connection: Any) -> None:
         self._connection = connection
 
     def enqueue(self, event: Any) -> str:
+        ensure_safe_event_payload(event.payload)
         self._connection.execute(
             """INSERT INTO controlplane.cp_outbox_events
             (event_id, workspace_id, contract_name, contract_version, message_id,
