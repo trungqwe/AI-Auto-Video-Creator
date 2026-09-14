@@ -1,5 +1,5 @@
 """Structural P2 concurrency stubs."""
 
-from .ports import RevisionedMutationPort
+from .ports import RevisionConflictError, RevisionedMutationPort
 
-__all__ = ["RevisionedMutationPort"]
+__all__ = ["RevisionConflictError", "RevisionedMutationPort"]

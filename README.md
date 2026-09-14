@@ -11,7 +11,7 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G04 Drive/OAuth | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G07 Compatibility | `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` |
-| M2 Control Plane | `M2-P1_ACCEPTED_CLOSED; M2-P2_BEHAVIORAL_RED_BLOCKED_EXTERNAL` (P2 plan ACCEPTED; chờ `M2_TEST_PG_DSN` để chạy RED trên PostgreSQL thật) |
+| M2 Control Plane | `M2-P1_ACCEPTED_CLOSED; M2-P2_RED_HARNESS_READY_BLOCKED_EXTERNAL` (P2 behavioral harness đã khóa; chờ `M2_TEST_PG_DSN`) |
 | M3 / Module A | `NOT AUTHORIZED` |
 
 Toàn bộ các work package M1 (`M1-P0 → M1-P6`) đã được Người dùng CHẤP THUẬN chính thức tại User Checkpoint ngày 13-09-2026 sau independent re-audit HEAD `08c857c`: M1 chuyển sang `ACCEPTED / CLOSED` (93 passed, 0 skipped, coverage 83%, Audit R5 + R5.1 ACCEPTED). M2-P0 và M2-P1 đã được CHẤP THUẬN / ĐÓNG; independent audit tại `90f4195e928ecbf5622d9760465a5d09d8b4f867` xác nhận P1 11/11, frozen P0 33/33, M1 93/93, 6/6 gate PASS và evidence provenance/hash DAG PASS. M2-P2 được ủy quyền cho SPEC, PLAN và Behavioral RED, nhưng implementation vẫn bị cấm trước RED hợp lệ có evidence và independent audit. Toàn bộ Milestone M3 và Phân hệ A tiếp tục bị khóa chặt (`NOT AUTHORIZED`).
@@ -71,4 +71,4 @@ Milestone M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Archite
 
 Milestone M2-P1 (PostgreSQL Foundation, Raw SQL Migrations & Workspace/Identity/Session Foundation) đã được User chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`. Có đúng 11 behavioral oracle importable. Correction R2 sau audit `2541c58a85c301c9499d7179f54b4f6607b2c524` dùng production migration để xác minh composite FK P1-006, chứng minh rollback side-effect P1-010, bổ sung crash-release P1-004, khóa `psycopg_pool.ConnectionPool` và exact fixture identity.
 
-Trạng thái hiện hành: `M2-P1_ACCEPTED_CLOSED; M2-P2_BEHAVIORAL_RED_BLOCKED_EXTERNAL`. P2 plan đã được independent audit chấp thuận; harness collect đúng 11 mandatory oracle nhưng `M2_TEST_PG_DSN` chưa được cung cấp nên PostgreSQL/CREATEDB/orphan prerequisite không thể xác minh. Không full-run giả lập và không oracle nào được tính Behavioral RED; implementation P2 vẫn khóa. M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
+Trạng thái hiện hành: `M2-P1_ACCEPTED_CLOSED; M2-P2_RED_HARNESS_READY_BLOCKED_EXTERNAL`. P2 plan đã được independent audit chấp thuận; harness behavioral collect đúng 11 mandatory oracle nhưng `M2_TEST_PG_DSN` chưa được cung cấp nên PostgreSQL/CREATEDB/orphan prerequisite không thể xác minh. Không full-run giả lập và không oracle nào được tính Behavioral RED; implementation P2 vẫn khóa. M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).

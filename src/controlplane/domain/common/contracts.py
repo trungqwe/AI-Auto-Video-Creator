@@ -2,10 +2,12 @@
 
 
 class MessageEnvelope:
-    def __init__(self, **_: object) -> None:
+    @classmethod
+    def create(cls, **_: object) -> "MessageEnvelope":
         raise NotImplementedError("P2 MessageEnvelope behavior is not implemented during RED.")
 
 
 class ProblemDetail:
-    def __init__(self, **_: object) -> None:
+    @classmethod
+    def create(cls, **_: object) -> "ProblemDetail":
         raise NotImplementedError("P2 ProblemDetail behavior is not implemented during RED.")

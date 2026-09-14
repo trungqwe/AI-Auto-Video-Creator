@@ -1,13 +1,15 @@
 # M2-P2 Behavioral RED — Quan sát
 
-**Run ID:** `run-m2-p2-20260914011618`  
-**Trạng thái phase:** `M2-P2_BEHAVIORAL_RED_BLOCKED_EXTERNAL`
+**Run ID:** `run-m2-p2-20260914012516`
+**Trạng thái phase:** `M2-P2_RED_HARNESS_READY_BLOCKED_EXTERNAL`
 
 ## Raw evidence trước diễn giải
 
-- `red-p2-runtime-run-m2-p2-20260914011618-collect-stdout.txt`: exact 11 testcase identities collected sau correction scope của harness.
-- `red-p2-runtime-run-m2-p2-20260914011618-prerequisite-stdout.txt`: Python/driver đạt nhưng `M2_TEST_PG_DSN=UNSET`.
-- Không có `red-p2-runtime-run-m2-p2-20260914011618-stdout.txt`: full run không được khởi động vì prerequisite PostgreSQL thật chưa có; không được tạo raw output giả.
+- `red-p2-runtime-run-m2-p2-20260914012516-collect-stdout.txt`: exact 11 testcase identities collected sau correction behavioral-oracle harness.
+- `red-p2-runtime-run-m2-p2-20260914012516-prerequisite-stdout.txt`: Python/driver đạt nhưng `M2_TEST_PG_DSN=UNSET`.
+- Không có `red-p2-runtime-run-m2-p2-20260914012516-stdout.txt`: full run không được khởi động vì prerequisite PostgreSQL thật chưa có; không được tạo raw output giả.
+
+Raw run `run-m2-p2-20260914011501` được giữ immutable như diagnostic historical/superseded (trước correction scope migration stub). Run `run-m2-p2-20260914011618` cũng được giữ immutable historical; run `12516` là collection/prerequisite authoritative hiện hành.
 
 ## Expected versus observed
 
