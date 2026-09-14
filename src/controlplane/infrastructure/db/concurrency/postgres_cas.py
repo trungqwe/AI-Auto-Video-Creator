@@ -2,8 +2,8 @@
 
 
 class PostgresRevisionedMutationAdapter:
-    def __init__(self, uow_factory: object) -> None:
-        self._uow_factory = uow_factory
+    def __init__(self, connection: object) -> None:
+        self._connection = connection
 
     def mutate(self, **_: object) -> object:
         raise NotImplementedError("P2 PostgreSQL CAS behavior is not implemented during RED.")
