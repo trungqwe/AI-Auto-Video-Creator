@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_RED_READY_FOR_REVIEW`.
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_ACCEPTED_CLOSED; M2-P4_PLAN_READY_FOR_REVIEW`.
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** `M2-P3_RED_READY_FOR_REVIEW`. P2 đã `ACCEPTED / CLOSED`; P3 exact 11 Behavioral RED đã được chứng kiến, nhưng chưa có quyền production implementation trước independent audit evidence. M2-P4..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc:** `M2-P4_PLAN_READY_FOR_REVIEW`. P3 đã `ACCEPTED / CLOSED`. P4 chỉ được lập kế hoạch; Behavioral RED và implementation P4 chưa được ủy quyền. M2-P5..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
@@ -213,6 +213,22 @@ src/controlplane/
 - **Boundary**: application/domain không chứa SQL, tên bảng, psycopg hoặc transaction ownership. PostgreSQL adapter chỉ dùng connection active của P1 UoW, không tự acquire pool, commit, rollback hoặc mở transaction ẩn. Không sửa `MigrationRunner`.
 
 ### 6.3. Operation Semantics Mapping (M2-P4)
+**Trạng thái P4:** chỉ là đặc tả/kế hoạch chờ independent audit. Không có source, test harness, RED, evidence runtime, persistence hay transport P4 trong checkpoint này.
+
+**Traceability bắt buộc:** `CT-STATE-008` (Stage Run), `CT-STATE-009` (Video Job), `CT-STATE-010` (Production Batch), `CT-STATE-011` (Operation), `CT-STATE-012` (Artifact Location), `CT-API-007` (`OperationView`), `CT-CMN-005` (revision) và danh mục lỗi `FORBIDDEN_TRANSITION`/`REVISION_CONFLICT` của `CT-CMN-010`. `ADR-0004` chỉ là căn cứ fencing/reconcile; P4 không triển khai CAS PostgreSQL hay owner persistence.
+
+P4 sẽ cung cấp logic domain thuần, xác định bởi input, dưới `src/controlplane/domain/statemachine/**`; mapper application thuần tại `src/controlplane/application/projections/operation_view_mapper.py`. Các hàm không đọc clock, sinh ID, gọi mạng, thực hiện SQL, acquire UoW hay import psycopg/FastAPI/Temporal/infrastructure/UI.
+
+| Máy trạng thái | Các transition hợp đồng duy nhất được P4 cho phép | Terminal tại chỗ |
+|---|---|---|
+| Stage Run — `CT-STATE-008` | `PENDING → WAITING_DEPENDENCY | WAITING_CAPABILITY | RUNNING`; `RUNNING → SUCCEEDED | FAILED_RETRYABLE | FAILED_FINAL | OUTCOME_UNKNOWN | STALE`; `OUTCOME_UNKNOWN → SUCCEEDED | FAILED_RETRYABLE | FAILED_FINAL` qua reconcile | `SUCCEEDED`, `FAILED_FINAL`, `STALE`; `OUTCOME_UNKNOWN` không retry side effect trực tiếp. Hợp đồng không định nghĩa lối ra từ `WAITING_*` hoặc `FAILED_RETRYABLE`; P4 phải reject chúng thay vì tự suy diễn retry/recovery. |
+| Job — `CT-STATE-009` | `CREATED → SNAPSHOTTED → ACTIVE`; `ACTIVE ↔ WAITING`; `ACTIVE | WAITING → READY_FOR_COMPLETION`; `READY_FOR_COMPLETION → COMPLETED`; `ACTIVE | WAITING | READY_FOR_COMPLETION → FAILED_FINAL` | `COMPLETED`, `FAILED_FINAL` |
+| Batch — `CT-STATE-010` | `CREATED → RUNNING`; `RUNNING ↔ WAITING_CAPABILITY`; `RUNNING | WAITING_CAPABILITY → COMPLETED_TARGET | COMPLETED_EXHAUSTED | FAILED_SYSTEM` | `COMPLETED_TARGET`, `COMPLETED_EXHAUSTED`, `FAILED_SYSTEM` |
+| Operation — `CT-STATE-011` | `PREPARED → STARTED`; `STARTED → SUCCEEDED | FAILED | OUTCOME_UNKNOWN`; `OUTCOME_UNKNOWN` chỉ có thể rời bằng reconcile, với target phải được xác nhận tại phase implementation/audit vì contract không liệt kê target cụ thể | Chỉ `SUCCEEDED` được contract gọi rõ là terminal cho cùng operation key/input fingerprint. Terminality của `FAILED` không được nêu rõ, là open item; không được tự coi là edge reopen. |
+| Artifact Location — `CT-STATE-012` | `DECLARED → MATERIALIZING → AVAILABLE_UNVERIFIED → VERIFYING → VERIFIED | CORRUPT | MISSING | OUTCOME_UNKNOWN`; `VERIFIED → MISSING` ở lần verify sau; cleanup chỉ `VERIFIED → CLEANUP_ELIGIBLE → CLEANUP_AUTHORIZED → DELETED` | `CORRUPT`, `MISSING`, `OUTCOME_UNKNOWN`, `DELETED`; cạnh `VERIFIED → MISSING` không phải cleanup shortcut. |
+
+Mọi transition không nằm trong bảng trên, bao gồm terminal regression và cleanup shortcut, ném `ForbiddenTransitionError` với `code="FORBIDDEN_TRANSITION"`, `aggregate_type`, `current_state`, `requested_next_state` và `current_revision` khi có; không có side effect. P4 tái sử dụng `RevisionConflictError(current_revision=...)` đã được chấp thuận ở P2. Hàm transition nhận `(current_state, current_revision, expected_revision, requested_next_state, reconciliation_evidence/explicit condition khi hợp đồng yêu cầu)`; revision stale trả conflict và không đổi state/revision, transition thành công tăng đúng một lần. CAS durable vẫn thuộc adapter P2/persistence sau này.
+
 Phân biệt rõ ràng giữa execution state và projection view:
 | CT-STATE-011 Execution State | API CT-API-007 `OperationView` | Diễn giải |
 | :--- | :--- | :--- |
@@ -223,8 +239,11 @@ Phân biệt rõ ràng giữa execution state và projection view:
 | `FAILED` | `failed` | Thất bại terminal kèm error detail |
 | `OUTCOME_UNKNOWN` | `outcome_unknown` | Side effect chưa rõ kết quả, chờ reconciliation |
 
+- Mapper nhận `wait_reason` có cấu trúc của `CT-API-007` làm input thẩm quyền: `STARTED` với `wait_reason` vắng mặt là `running`; `STARTED` với `wait_reason` hiện diện là `waiting`. Không được suy waiting từ timestamp, progress hoặc presentation state. Các execution state khác không được map thành `waiting` chỉ vì caller truyền `wait_reason`.
 - **Artifact Cleanup Lifecycle**:
   Tuân thủ nghiêm ngặt CT-STATE-012: `VERIFIED → CLEANUP_ELIGIBLE → CLEANUP_AUTHORIZED → DELETED`. Không có chuyển trạng thái tắt.
+
+**Catalogue RED P4 đề xuất, cố định để audit plan:** `test_tst_m2_p4_001_valid_lifecycle_transitions`, `test_tst_m2_p4_002_forbidden_transition_completed_to_running_rejected`, `test_tst_m2_p4_003_operation_execution_to_projection_mapping`, `test_tst_m2_p4_004_artifact_cleanup_strict_transition_order`, `test_tst_m2_p4_005_batch_waiting_resume_and_terminal_transitions`, `test_tst_m2_p4_006_job_waiting_resume_and_completion_admission`, `test_tst_m2_p4_007_stage_run_reconcile_and_terminal_transitions`, `test_tst_m2_p4_008_operation_forbidden_transition_classes_rejected`, `test_tst_m2_p4_009_stale_expected_revision_rejected_without_mutation`. Identity `P4-002` diễn đạt acceptance rule tổng quát “completed không về running”; implementation oracle phải kiểm `Job COMPLETED → ACTIVE` (trạng thái chạy tương đương) và không được bịa enum `RUNNING` cho Job.
 
 ### 6.4. Orchestration Shell, Variant & Capacity Reservations (M2-P6)
 Theo đúng `CT-ORC-002` và `CT-ORC-012` (AUD2-B01):

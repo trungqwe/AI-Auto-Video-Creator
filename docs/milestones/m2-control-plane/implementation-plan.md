@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_RED_READY_FOR_REVIEW`.
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_ACCEPTED_CLOSED; M2-P4_PLAN_READY_FOR_REVIEW`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** `M2-P3_RED_READY_FOR_REVIEW`. M2-P2 đã `ACCEPTED / CLOSED`; P3 exact 11 RED đã hợp lệ trên PostgreSQL 18.6, chờ independent audit evidence. Production implementation và migration `0003` vẫn bị cấm. M2-P4..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** `M2-P4_PLAN_READY_FOR_REVIEW`. M2-P3 đã `ACCEPTED / CLOSED`; P4 chỉ được planning và phải qua independent audit trước Behavioral RED. M2-P5..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -382,44 +382,31 @@ Không đổi tên, thêm, bỏ hoặc gộp 11 identities này trong phase RED/
 
 ### M2-P4: Foundational State Machines & Operation Semantics Mapping
 
-- **Requirement / CT / INV IDs**: `CT-STATE-008..012`, `CT-API-007`, `12-state-machines.md`.
-- **Dependencies**: M2-P3.
-- **Mục tiêu**:
-  1. Hiện thực hóa các máy trạng thái cốt lõi bằng code domain thuần túy:
-     - **Operation State Machine** (`CT-STATE-011`): `PREPARED → STARTED → SUCCEEDED | FAILED | OUTCOME_UNKNOWN`.
-     - **Batch State Machine** (`CT-STATE-010`): `CREATED → RUNNING ↔ WAITING_CAPABILITY → COMPLETED_TARGET | COMPLETED_EXHAUSTED | FAILED_SYSTEM`.
-     - **Job State Machine** (`CT-STATE-009`): `CREATED → SNAPSHOTTED → ACTIVE ↔ WAITING → READY_FOR_COMPLETION → COMPLETED | FAILED_FINAL`.
-     - **Stage Run State Machine** (`CT-STATE-008`): `PENDING → WAITING_DEPENDENCY | WAITING_CAPABILITY | RUNNING → SUCCEEDED | FAILED_RETRYABLE | FAILED_FINAL | OUTCOME_UNKNOWN | STALE`.
-     - **Artifact Location State Machine** (`CT-STATE-012`): `DECLARED → MATERIALIZING → AVAILABLE_UNVERIFIED → VERIFYING → VERIFIED | CORRUPT | MISSING`. Cleanup transition chỉ được phép: `VERIFIED → CLEANUP_ELIGIBLE → CLEANUP_AUTHORIZED → DELETED`.
-  2. Định nghĩa và kiểm thử tường minh mapping giữa execution state và API projection:
-     - `PREPARED` → `accepted`
-     - `STARTED` → `running`
-     - `STARTED` (chờ capability/grant) → `waiting`
-     - `SUCCEEDED` → `succeeded`
-     - `FAILED` → `failed`
-     - `OUTCOME_UNKNOWN` → `outcome_unknown`
-  3. Cấm mọi transition không hợp lệ với `ForbiddenTransitionError` (`FORBIDDEN_TRANSITION`).
-- **Allowed File Scope**:
-  - `src/controlplane/domain/statemachine/**`
-  - `src/controlplane/application/projections/operation_view_mapper.py`
-  - `tests/m2/test_p4_statemachines.py`
-  - `docs/milestones/m2-control-plane/evidence/m2-p4/**`
-- **Forbidden File Scope**:
-  - `src/controlplane/api/**`, `src/controlplane/ui/**`, `src/m1proof/**`.
-- **RED Oracle**:
-  - `test_tst_m2_p4_001_valid_lifecycle_transitions`: Thử chuyển trạng thái hợp lệ của Operation và Job -> FAILED vì state machine chưa cài đặt.
-  - `test_tst_m2_p4_002_forbidden_transition_completed_to_running_rejected`: Chuyển từ COMPLETED về RUNNING -> FAILED vì chưa có rule chặn transition cấm.
-  - `test_tst_m2_p4_003_operation_execution_to_projection_mapping`: Kiểm tra mapping giữa PREPARED/STARTED và accepted/running -> FAILED vì mapper chưa cài đặt.
-  - `test_tst_m2_p4_004_artifact_cleanup_strict_transition_order`: Cố tình chuyển từ AVAILABLE_UNVERIFIED sang CLEANUP_ELIGIBLE -> FAILED vì chưa tuân thủ VERIFIED requirement.
-- **Positive Tests**: Toàn bộ chuyển trạng thái hợp lệ theo sơ đồ hợp đồng được chấp thuận; mapping sang `OperationView` đúng 100%.
-- **Negative Tests**: Mọi transition cấm đều trả về `FORBIDDEN_TRANSITION` và không có side effect.
-- **Concurrency / Fault / Security Tests**: Hai transition đồng thời trên cùng một aggregate aggregate -> Chặn bởi revision conflict.
-- **Migration / Rollback**: N/A (Domain logic thuần túy).
-- **Evidence**: `docs/milestones/m2-control-plane/evidence/m2-p4/` (`commands.jsonl`, `status.json`, `status.md`, `red-observations.md`, `red-p4-stdout.txt`, `hashes.sha256`).
-- **PASS Criteria**: Evidence validator P0 đạt PASS; 93 tests M1 tiếp tục PASS; 100% tests P4 đạt GREEN.
-- **STOP Condition**: Tồn tại kịch bản cho phép aggregate đã `COMPLETED` hoặc `DELETED` quay trở lại trạng thái hoạt động.
-- **Claim Allowed**: "M2-P4 hoàn tất: 5 máy trạng thái cốt lõi và mapping OperationView đã được kiểm chứng."
-- **Claim Forbidden**: "Phân hệ J hoặc G đã hoàn tất."
+- **Authorization / checkpoint:** `M2-P4_PLAN_READY_FOR_REVIEW`. Không tạo test, structural stub, implementation hay evidence runtime trong phase này. Chỉ independent approval của plan mới mở Behavioral RED; chỉ Behavioral RED được independent accept mới mở implementation.
+- **Requirement traceability:** `CT-STATE-008` (Stage Run), `CT-STATE-009` (Job), `CT-STATE-010` (Batch), `CT-STATE-011` (Operation), `CT-STATE-012` (Artifact Location), `CT-API-007` (`OperationView`), `CT-CMN-005` (revision) và `CT-CMN-010` (mã `FORBIDDEN_TRANSITION`/`REVISION_CONFLICT`). `ADR-0004` chỉ định hướng fencing/reconcile, không mở persistence/CAS mới.
+- **Canonical state graph:** source of truth là `12-state-machines.md`, với các cạnh đúng như matrix ở spec M2 §6.3, gồm cạnh `VERIFIED → MISSING` khi verify sau phát hiện location mất. Không có self-transition idempotent trong contract; P4 phải reject nó trừ khi hợp đồng được sửa và re-audit. Terminal không mở lại tại chỗ; retry/regenerate tạo attempt/revision phù hợp ngoài P4. Đặc biệt, `CT-STATE-008` không cấp cạnh từ `WAITING_DEPENDENCY`, `WAITING_CAPABILITY` hay `FAILED_RETRYABLE`; P4 không tự phát minh recovery edge. `OUTCOME_UNKNOWN` Stage Run chỉ đi qua reconcile; `OUTCOME_UNKNOWN` Operation chỉ rời qua reconcile nhưng target chưa được contract liệt kê. `CT-STATE-011` chỉ gọi rõ `SUCCEEDED` terminal, không chốt terminality của `FAILED`. Hai điểm Operation này là open contract items cần independent audit đóng trước RED oracle có target/terminal assertion tương ứng.
+- **Domain contract và lỗi:** mỗi hàm pure nhận state hiện hành, expected/current revision, requested next state và evidence/condition explicit nếu cạnh yêu cầu reconcile. Thành công trả state + resulting revision (`current + 1`) đúng một lần; expected revision stale ném `RevisionConflictError(current_revision=...)` và không mutation. Cạnh cấm ném `ForbiddenTransitionError` code `FORBIDDEN_TRANSITION`, các field an toàn `aggregate_type`, `current_state`, `requested_next_state`, `current_revision` khi có; không stack/HTTP/side effect. P4 tái dùng error revision P2, không triển khai PostgreSQL CAS.
+- **Operation projection:** `PREPARED→accepted`, `STARTED→running`, `STARTED` có `wait_reason` cấu trúc theo `CT-API-007` → `waiting`, `SUCCEEDED→succeeded`, `FAILED→failed`, `OUTCOME_UNKNOWN→outcome_unknown`. `wait_reason` là input authority duy nhất; mapper không suy từ timestamp/progress/UI và không map trạng thái khác thành waiting.
+- **Planned source boundary (chỉ sau authorization tương ứng):** `src/controlplane/domain/statemachine/**`; `src/controlplane/application/projections/operation_view_mapper.py`; adjacent pure-domain error module chỉ nếu cần cho `ForbiddenTransitionError`; `tests/m2/test_p4_statemachines.py`; `src/controlplane/infrastructure/evidence/profile_p4.py`; `src/controlplane/infrastructure/evidence/synthesizer_p4.py`; `docs/milestones/m2-control-plane/evidence/m2-p4/**`.
+- **Forbidden:** `src/controlplane/api/**`, `src/controlplane/ui/**`, FastAPI route/HTTP mapper/SSE, Temporal, PostgreSQL migration `0004`, repository/persistence state, P5..P7, M3, Module A, `src/m1proof/**`, P1/P2/P3 implementation/migration/evidence, và `MigrationRunner`.
+
+| Future mandatory oracle (fixed proposed identity) | Requirement traceability | Behavioral purpose / class | Direct expected RED |
+|---|---|---|---|
+| `test_tst_m2_p4_001_valid_lifecycle_transitions` | `CT-STATE-011`, `CT-CMN-005` | positive; mọi cạnh Operation hợp lệ được contract liệt kê, revision tăng đúng một | state-machine port/transition chưa tồn tại hoặc không materialize state/revision |
+| `test_tst_m2_p4_002_forbidden_transition_completed_to_running_rejected` | `CT-STATE-009/010`, acceptance §16, `CT-CMN-010` | negative; quy tắc completed-to-running: `Job COMPLETED → ACTIVE` (running-equivalent) và Batch terminal → `RUNNING` đều bị reject | thiếu `ForbiddenTransitionError`/sai code hoặc có mutation |
+| `test_tst_m2_p4_003_operation_execution_to_projection_mapping` | `CT-STATE-011`, `CT-API-007` | positive/negative; đủ sáu status, `STARTED` running/waiting do `wait_reason` explicit | mapper thiếu hoặc suy waiting sai |
+| `test_tst_m2_p4_004_artifact_cleanup_strict_transition_order` | `CT-STATE-012`, `CT-CMN-010` | positive/negative; verification path và chỉ cleanup chain từ VERIFIED; corrupt/missing/unverified không authorize cleanup | cạnh cleanup thiếu hoặc shortcut được nhận |
+| `test_tst_m2_p4_005_batch_waiting_resume_and_terminal_transitions` | `CT-STATE-010`, `CT-CMN-010` | positive/negative; `RUNNING↔WAITING_CAPABILITY`, ba terminal và terminal immutability | batch graph thiếu/sai hoặc terminal regress |
+| `test_tst_m2_p4_006_job_waiting_resume_and_completion_admission` | `CT-STATE-009`, `CT-CMN-010` | positive/negative; snapshot path, `ACTIVE↔WAITING`, completion path và failed-final branches | job graph/completion admission sai |
+| `test_tst_m2_p4_007_stage_run_reconcile_and_terminal_transitions` | `CT-STATE-008`, `CT-CMN-010`, `ADR-0004` | positive/negative; PENDING edges, RUNNING outcomes, unknown chỉ reconcile, stale/final immutability, không invented wait/retry recovery | stage graph thiếu, retry unknown trực tiếp hoặc invented edge được nhận |
+| `test_tst_m2_p4_008_operation_forbidden_transition_classes_rejected` | `CT-STATE-011`, `CT-CMN-010` | negative; skip, regression, terminal/self transition và non-reconcile exit unknown trả safe exact error | invalid edge pass hoặc error contract không đúng |
+| `test_tst_m2_p4_009_stale_expected_revision_rejected_without_mutation` | `CT-CMN-005`, `CT-CMN-010` | concurrency/domain-level; hai caller cùng expected revision chỉ một valid domain transition, stale result conflict/no mutation | stale expected revision đổi state/revision hoặc không nêu current revision |
+
+Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Không dùng PostgreSQL/mock vì các oracle là pure domain/application mapping. Future RED phân loại riêng từng test là `VALID_BEHAVIORAL_RED`, `UPSTREAM_PATH_RED`, `INVALID_SETUP_FAILURE`, `ORACLE_MISMATCH` hoặc `UNEXPECTED_PASS`; import/setup failure không phải RED hợp lệ.
+
+- **Evidence future (không tạo trong phase này):** `docs/milestones/m2-control-plane/evidence/m2-p4/**` phải có raw collect/full RED và GREEN stdout, `commands.jsonl`, `status.json`, `status.md`, `red-observations.md`, `hashes.sha256` DAG và trường provenance `source_commit_sha`. Synthesizer P4 fail-closed khi exact identity/count, raw report/hash/provenance, failure/error/skip, secret scan hoặc regression không đúng.
+- **Closure regressions future:** P4 exact 9/9; frozen P3 11/11; P2 11/11; P1 11/11; P0 exact 33/33 gồm architecture 6/6; M1 exact 93/93, 0 skipped. Runtime evidence chỉ áp dụng capability thực sự được P4 dùng; không bịa PostgreSQL prerequisite cho suite pure Python.
+- **STOP:** nếu plan chưa được independent accept, không RED. Nếu RED chưa được independent accept, không implementation. Không claim P4/P5/P6/P7/M3/Module A complete.
 
 ---
 

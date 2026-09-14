@@ -6,6 +6,8 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Changed
 
+- Hoàn tất kế hoạch M2-P4 cho máy trạng thái thuần và mapping `OperationView`: khóa traceability `CT-STATE-008..012`, `CT-API-007`, revision/error semantics, catalogue RED đề xuất đúng 9 oracle, provenance/evidence và regression frozen. Không có P4 test, source, migration hoặc RED runtime; dừng tại `M2-P4_PLAN_READY_FOR_REVIEW` chờ independent audit.
+- Ghi nhận M2-P3 `ACCEPTED / CLOSED` theo independent audit closure đã xác nhận.
 - Hoàn tất candidate implementation M2-P3: transactional outbox, consumer checkpoint/quarantine, operation stream và migration `0003`/rollback. Closure evidence xác nhận P3 11/11, P2 11/11, P1 11/11, P0 33/33, M1 93/93, PostgreSQL 18.6, orphan=0, secret scan CLEAN và verifier PASS; dừng tại `M2-P3_IMPLEMENTATION_READY_FOR_REVIEW` để independent audit.
 - Hardened và thực thi Behavioral RED M2-P3: exact 11 oracle chạy trên PostgreSQL 18.6, đều fail tại migration absence hoặc structural P3 seam dự kiến, orphan=0 và architecture 6/6. Dừng tại `M2-P3_RED_READY_FOR_REVIEW`; chưa có implementation hoặc migration `0003`.
 - Khởi tạo structural Behavioral RED harness M2-P3 với đúng 11 oracle và stub importable không có behavior. Dừng `M2-P3_BEHAVIORAL_RED_BLOCKED_EXTERNAL` vì virtualenv thiếu `psycopg_pool==3.3.1`; không có collection/full RED, migration `0003` hoặc implementation P3.
