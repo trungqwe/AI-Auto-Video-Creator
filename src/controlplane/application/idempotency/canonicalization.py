@@ -11,7 +11,9 @@ def _number(v:int|float)->str:
     if not math.isfinite(v): raise ValueError("JCS_NON_FINITE_NUMBER")
     if v == 0: return "0"
     text=repr(v); absolute=abs(v)
-    if 1e-6 <= absolute < 1e21: return format(Decimal(text), "f").rstrip("0").rstrip(".")
+    if 1e-6 <= absolute < 1e21:
+        fixed = format(Decimal(text), "f")
+        return fixed.rstrip("0").rstrip(".") if "." in fixed else fixed
     mantissa, exponent = text.lower().split("e") if "e" in text.lower() else (text, "0")
     return f"{mantissa.rstrip('0').rstrip('.') if '.' in mantissa else mantissa}e{int(exponent):+d}"
 def _canon(v:Any)->str:

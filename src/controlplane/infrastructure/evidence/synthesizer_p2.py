@@ -30,6 +30,16 @@ def _write(path: Path, content: str) -> None:
     path.write_bytes(content.encode("utf-8"))
 
 
+def _normalize_evidence_text(path: Path) -> None:
+    """Normalize captured Windows output to the package's UTF-8/LF evidence form."""
+    raw = path.read_bytes()
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        content = raw.decode("utf-16")
+    _write(path, content.replace("\r\n", "\n"))
+
+
 @dataclass(frozen=True)
 class CommandRecord:
     sequence_idx: int
@@ -129,9 +139,10 @@ def synthesize_p2_evidence() -> dict[str, Any]:
         "m2-p0-regression.xml", "m2-p0-regression-report.txt",
         "m1-regression.xml", "m1-regression-report.txt",
         "runtime-capability.json", "secret-scan.json", "status.json", "status.md", "commands.jsonl",
+        "correction-red-jcs-numbers-stdout.txt", "correction-red-jcs-numbers-observations.md",
     ):
         path = EVIDENCE_DIR / filename
-        _write(path, path.read_bytes().replace(b"\r\n", b"\n").decode("utf-8"))
+        _normalize_evidence_text(path)
     _hashes()
     report = validate_package_evidence(EVIDENCE_DIR, enforce_semantics=True)
     return {"status": report.status, "run_id": run_id, "verified_files": report.verified_files, "semantic_summary": report.semantic_summary}

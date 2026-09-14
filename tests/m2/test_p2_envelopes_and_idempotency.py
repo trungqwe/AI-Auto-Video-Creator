@@ -217,8 +217,21 @@ def test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt(p2_b
     assert canonicalize_json(4.50) == b"4.5"
     assert canonicalize_json(2e-3) == b"0.002"
     assert canonicalize_json(1e-27) == b"1e-27"
-    with pytest.raises(ValueError):
-        canonicalize_json(2**53)
+    assert canonicalize_json(float(2**53)) == b"9007199254740992"
+    for value, expected in (
+        (0.0, b"0"), (-0.0, b"0"), (5e-324, b"5e-324"),
+        (1.7976931348623157e308, b"1.7976931348623157e+308"),
+        # Exact binary64 value from the RFC 8785 Appendix B 2^68 neighbourhood.
+        (float.fromhex("0x1.0p+68"), b"295147905179352830000"),
+        (9.999999999999997e22, b"9.999999999999997e+22"),
+        (1e23, b"1e+23"), (1.0000000000000001e23, b"1.0000000000000001e+23"),
+        (999999999999999700000.0, b"999999999999999700000"),
+        (999999999999999900000.0, b"999999999999999900000"),
+        (1e21, b"1e+21"), (9.999999999999997e-7, b"9.999999999999997e-7"),
+        (0.000001, b"0.000001"), (-0.0000033333333333333333, b"-0.0000033333333333333333"),
+        (1424953923781206.2, b"1424953923781206.2"), (1e20, b"100000000000000000000"),
+    ):
+        assert canonicalize_json(value) == expected
     for invalid in (math.nan,):
         with pytest.raises(ValueError):
             canonicalize_json({"number": invalid})

@@ -1,0 +1,70 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- C:\Temp\controlplane-p1-venv-20260914\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt FAILED [100%]
+
+================================== FAILURES ===================================
+___ test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt ___
+
+p2_bootstrap_schema = DisposableDatabase(name='m2_p2_test_65c933c8c92b406e86db8e66757b8e77', connections=[<psycopg.Connection [BAD] at 0x21259fdad50>])
+
+    def test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt(p2_bootstrap_schema: DisposableDatabase) -> None:
+        input_a = {"\ue000": "bmp", "\U00010000": "nonbmp", "z": {"\ue000": 0, "\U00010000": 1}, "array": [{"\ue000": "x", "\U00010000": "y"}]}
+        input_b = {"array": [{"\ue000": "x", "\U00010000": "y"}], "z": {"\ue000": 0, "\U00010000": 1}, "\ue000": "bmp", "\U00010000": "nonbmp"}
+        request_a = _logical_request(workspace_id=WORKSPACE_A, command_name="create", payload=input_a, expected_revision=7, policy_revision_id="policy-1")
+        request_b = _logical_request(workspace_id=WORKSPACE_A, command_name="create", payload=input_b, expected_revision=7, policy_revision_id="policy-1")
+        assert canonicalize_json(input_a) == JCS_BYTES == JCS_TEXT.encode("utf-8")
+        assert canonicalize_json(input_b) == JCS_BYTES
+        assert hashlib.sha256(JCS_BYTES).hexdigest() == JCS_SHA256
+        assert canonicalize_json({"string": "�", "number": -0.0, "null": None, "boolean": True}) == PRIMITIVE_JCS_BYTES
+        assert request_hash(request_a) == request_hash(request_b)
+        assert request_hash(request_a) != request_hash(_logical_request(workspace_id=WORKSPACE_B, command_name="create", payload=input_a, expected_revision=7, policy_revision_id="policy-1"))
+        assert request_hash(request_a) != request_hash(_logical_request(workspace_id=WORKSPACE_A, command_name="other", payload=input_a, expected_revision=7, policy_revision_id="policy-1"))
+        assert request_hash(request_a) != request_hash(_logical_request(workspace_id=WORKSPACE_A, command_name="create", payload=input_a, expected_revision=8, policy_revision_id="policy-1"))
+        assert request_hash(request_a) != request_hash(_logical_request(workspace_id=WORKSPACE_A, command_name="create", payload=input_a, expected_revision=7, policy_revision_id="policy-2"))
+        assert canonicalize_json({"text": "e\u0301"}) != canonicalize_json({"text": "�"})
+        assert canonicalize_json({"array": [2, 1]}) != canonicalize_json({"array": [1, 2]})
+        assert canonicalize_json({"number": -0.0}) == b'{"number":0}'
+        assert canonicalize_json(1.0) == b"1"
+        assert canonicalize_json(1e-7) == b"1e-7"
+        assert canonicalize_json(333333333.33333329) == b"333333333.3333333"
+        assert canonicalize_json(1e30) == b"1e+30"
+        assert canonicalize_json(4.50) == b"4.5"
+        assert canonicalize_json(2e-3) == b"0.002"
+        assert canonicalize_json(1e-27) == b"1e-27"
+        assert canonicalize_json(float(2**53)) == b"9007199254740992"
+        for value, expected in (
+            (0.0, b"0"), (-0.0, b"0"), (5e-324, b"5e-324"),
+            (1.7976931348623157e308, b"1.7976931348623157e+308"),
+            (float.fromhex("0x1.fffffffffffffp+67"), b"295147905179352830000"),
+            (9.999999999999997e22, b"9.999999999999997e+22"),
+            (1e23, b"1e+23"), (1.0000000000000001e23, b"1.0000000000000001e+23"),
+            (999999999999999700000.0, b"999999999999999700000"),
+            (999999999999999900000.0, b"999999999999999900000"),
+            (1e21, b"1e+21"), (9.999999999999997e-7, b"9.999999999999997e-7"),
+            (0.000001, b"0.000001"), (-0.0000033333333333333333, b"-0.0000033333333333333"),
+            (1424953923781206.2, b"1424953923781206.2"), (1e20, b"100000000000000000000"),
+        ):
+>           assert canonicalize_json(value) == expected
+E           AssertionError: assert b'2951479051793528' == b'295147905179352830000'
+E             
+E             Full diff:
+E             - (b'295147905179352830000')
+E             ?                    -----
+E             + (b'2951479051793528')
+
+tests\m2\test_p2_envelopes_and_idempotency.py:233: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt - AssertionError: assert b'2951479051793528' == b'295147905179352830000'
+  
+  Full diff:
+  - (b'295147905179352830000')
+  ?                    -----
+  + (b'2951479051793528')
+============================== 1 failed in 0.34s ==============================
