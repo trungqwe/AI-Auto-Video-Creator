@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+import shutil
 import threading
 import uuid
 from collections.abc import Iterator
@@ -432,8 +433,21 @@ def test_tst_m2_p2_010_stale_revision_conflict_zero_mutation_and_current_revisio
         manager.close()
 
 
-def test_tst_m2_p2_011_production_0002_forward_rollback_and_constraints(disposable_db: DisposableDatabase) -> None:
-    runner = MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True)
+def test_tst_m2_p2_011_production_0002_forward_rollback_and_constraints(disposable_db: DisposableDatabase, tmp_path: Path) -> None:
+    p2_migration_sandbox = tmp_path / "production-p1-p2-migrations"
+    p2_migration_sandbox.mkdir()
+    filenames = (
+        "0001_initial_controlplane.sql",
+        "0001_initial_controlplane.rollback.sql",
+        "0002_idempotency_and_receipts.sql",
+        "0002_idempotency_and_receipts.rollback.sql",
+    )
+    for filename in filenames:
+        production = PRODUCTION_MIGRATIONS / filename
+        copied = p2_migration_sandbox / filename
+        shutil.copy2(production, copied)
+        assert copied.read_bytes() == production.read_bytes()
+    runner = MigrationRunner(disposable_db.dsn, p2_migration_sandbox, is_test_env=True)
     runner.migrate_up()
     with disposable_db.connect() as connection:
         with connection.cursor() as cursor:
@@ -463,7 +477,7 @@ def test_tst_m2_p2_011_production_0002_forward_rollback_and_constraints(disposab
                 cursor.execute("INSERT INTO controlplane.cp_command_receipts (receipt_id, workspace_id, command_id, disposition, accepted_at) VALUES (%s, %s, 'command-duplicate', 'duplicate', CURRENT_TIMESTAMP)", (uuid.uuid4(), WORKSPACE_A))
             with pytest.raises(psycopg.errors.ForeignKeyViolation):
                 cursor.execute("INSERT INTO controlplane.cp_idempotency_records (workspace_id, command_name, idempotency_key, request_hash, receipt_id, created_at) VALUES (%s, 'create', 'cross-workspace', 'hash', %s, CURRENT_TIMESTAMP)", (WORKSPACE_B, receipt_id))
-    rollback = PRODUCTION_MIGRATIONS / "0002_idempotency_and_receipts.rollback.sql"
+    rollback = p2_migration_sandbox / "0002_idempotency_and_receipts.rollback.sql"
     with disposable_db.connect() as connection:
         with connection.transaction():
             with connection.cursor() as cursor:
