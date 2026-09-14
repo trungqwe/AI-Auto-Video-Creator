@@ -27,7 +27,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS E3 (ADR-0009 Subprocess Broker OS isolation, Windows DPAPI Vault, Broker-owned provisioning, live E3 probe xác thực Drive thật) |
 | G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS strict version (Python, uv, PG, Temporal, ffprobe WAV duration > 0, fail-closed dynamic matrix observation) |
 | ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất qua Broker Subprocess boundary |
-| M2 | 🟡 `M2-P4_PLAN_READY_FOR_REVIEW` | P1..P3 `ACCEPTED / CLOSED`; P4 planning đã hoàn tất, nhưng Behavioral RED và implementation P4 chưa được ủy quyền. P5..P7 vẫn khóa. |
+| M2 | 🟡 `M2-P4_RED_READY_FOR_REVIEW` | P1..P3 `ACCEPTED / CLOSED`; P4 exact 9 Behavioral RED đã được chứng kiến, nhưng implementation P4 chưa được ủy quyền và chờ independent audit. P5..P7 vẫn khóa. |
 | M3 / Module A | ⛔ `NOT AUTHORIZED` | Tiếp tục bị khóa chặt; không được bắt đầu trước khi M2 đạt exit gate và có User Checkpoint riêng |
 
 Đây là bảng trạng thái có thẩm quyền trước lệnh code đầu tiên. Kết quả P2/P3 đã đạt được ghi `PASS_M1_SCOPE`; G01/G04 toàn phần vẫn `PARTIALLY_PROVEN` cho tới khi đủ evidence các milestone tiếp theo.

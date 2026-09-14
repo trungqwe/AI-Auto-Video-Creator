@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_ACCEPTED_CLOSED; M2-P4_PLAN_READY_FOR_REVIEW`.
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_ACCEPTED_CLOSED; M2-P4_RED_READY_FOR_REVIEW`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** `M2-P4_PLAN_READY_FOR_REVIEW`. M2-P3 đã `ACCEPTED / CLOSED`; P4 chỉ được planning và phải qua independent audit trước Behavioral RED. M2-P5..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** `M2-P4_RED_READY_FOR_REVIEW`. M2-P3 đã `ACCEPTED / CLOSED`; P4 exact 9 Behavioral RED đã được chứng kiến và chờ independent audit trước implementation. M2-P5..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -382,7 +382,7 @@ Không đổi tên, thêm, bỏ hoặc gộp 11 identities này trong phase RED/
 
 ### M2-P4: Foundational State Machines & Operation Semantics Mapping
 
-- **Authorization / checkpoint:** `M2-P4_PLAN_READY_FOR_REVIEW`. Không tạo test, structural stub, implementation hay evidence runtime trong phase này. Chỉ independent approval của plan mới mở Behavioral RED; chỉ Behavioral RED được independent accept mới mở implementation.
+- **Authorization / checkpoint:** `M2-P4_RED_READY_FOR_REVIEW`. Structural harness đã collect exact 9 và full RED `9 failed` tại `NotImplementedError` seam; raw evidence authoritative run `run-m2-p4-20260915001007` đã lưu. Không có functional implementation. Chỉ independent acceptance của Behavioral RED mới mở implementation.
 - **Requirement traceability:** `CT-STATE-008` (Stage Run), `CT-STATE-009` (Job), `CT-STATE-010` (Batch), `CT-STATE-011` (Operation), `CT-STATE-012` (Artifact Location), `CT-API-007` (`OperationView`), `CT-CMN-005` (revision) và `CT-CMN-010` (mã `FORBIDDEN_TRANSITION`/`REVISION_CONFLICT`). `ADR-0004` chỉ định hướng fencing/reconcile, không mở persistence/CAS mới.
 - **Canonical state graph:** source of truth là `12-state-machines.md`, với các cạnh đúng như matrix ở spec M2 §6.3, gồm cạnh `VERIFIED → MISSING` khi verify sau phát hiện location mất. Không có self-transition idempotent trong contract; P4 phải reject nó trừ khi hợp đồng được sửa và re-audit. Terminal không mở lại tại chỗ; retry/regenerate tạo attempt/revision phù hợp ngoài P4. `CT-STATE-011` khóa `OUTCOME_UNKNOWN → SUCCEEDED | FAILED` chỉ khi có reconciliation evidence; reconcile inconclusive giữ unknown, `SUCCEEDED` và `FAILED` đều terminal. `CT-STATE-009` khóa `ACTIVE | WAITING → READY_FOR_COMPLETION`; `CT-STATE-010` khóa direct terminal từ cả `RUNNING` và `WAITING_CAPABILITY`. Đặc biệt, `CT-STATE-008` không cấp cạnh từ `WAITING_DEPENDENCY`, `WAITING_CAPABILITY` hay `FAILED_RETRYABLE`; P4 không tự phát minh recovery edge.
 - **Domain contract và lỗi:** mỗi hàm pure nhận state hiện hành, expected/current revision, requested next state và evidence/condition explicit nếu cạnh yêu cầu reconcile. Thành công trả state + resulting revision (`current + 1`) đúng một lần; expected revision stale ném `RevisionConflictError(current_revision=...)` và không mutation. Cạnh cấm ném `ForbiddenTransitionError` code `FORBIDDEN_TRANSITION`, các field an toàn `aggregate_type`, `current_state`, `requested_next_state`, `current_revision` khi có; không stack/HTTP/side effect. P4 tái dùng error revision P2, không triển khai PostgreSQL CAS.

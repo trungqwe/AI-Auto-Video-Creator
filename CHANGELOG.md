@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Changed
 
+- Thiết lập exact Behavioral RED harness M2-P4: 9 oracle pure Python collect thành công và đều RED đúng structural seam `NotImplementedError`; architecture 6/6, secret scan CLEAN/0. Không có P4 functional implementation, DB/Docker/DSN, API/UI/Temporal hoặc work package kế tiếp; dừng `M2-P4_RED_READY_FOR_REVIEW` để independent audit.
 - Làm rõ hợp đồng có thẩm quyền M2-P4: Operation reconciliation chỉ đi `OUTCOME_UNKNOWN → SUCCEEDED|FAILED` khi có evidence, `FAILED` terminal; Job/Batch có cạnh direct completion được liệt kê tường minh. Kế hoạch RED vẫn giữ nguyên 9 identity và chưa có test/source/RED runtime.
 - Hoàn tất kế hoạch M2-P4 cho máy trạng thái thuần và mapping `OperationView`: khóa traceability `CT-STATE-008..012`, `CT-API-007`, revision/error semantics, catalogue RED đề xuất đúng 9 oracle, provenance/evidence và regression frozen. Không có P4 test, source, migration hoặc RED runtime; dừng tại `M2-P4_PLAN_READY_FOR_REVIEW` chờ independent audit.
 - Ghi nhận M2-P3 `ACCEPTED / CLOSED` theo independent audit closure đã xác nhận.
