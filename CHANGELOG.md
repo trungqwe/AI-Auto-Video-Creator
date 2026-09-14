@@ -11,6 +11,7 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 - Khép correction false-green hẹp của RED harness M2-P2: bổ sung SQL non-orphan/race assertions, tách JCS invariants, mô tả semantic migration/rollback `0002` cho GREEN tương lai và chạy RED độc lập P2-001/002. Không có implementation hay migration `0002`; P2-003..011 vẫn chờ `M2_TEST_PG_DSN`.
 - Ghi nhận prerequisite run M2-P2 an toàn: Python 3.13.15, psycopg 3.3.5 và psycopg-pool 3.3.1 khớp lock, nhưng `M2_TEST_PG_DSN` absent. Dừng trước collection/full PostgreSQL run; không tạo evidence giả hoặc implementation P2.
 - Tái xác minh checkpoint prerequisite M2-P2: `M2_TEST_PG_DSN` vẫn absent; giữ dừng external trước collection/full run, không sửa harness hoặc production source.
+- Kiểm tra Docker provisioning M2-P2 theo checkpoint: Docker CLI 29.7.2 có mặt nhưng daemon unavailable, đồng thời không có DSN external. Dừng fail-closed, không cài Docker hay thay đổi cấu hình máy.
 
 - Bắt đầu Behavioral RED M2-P2 sau audit plan `8bbc61ff22f5ef5009e8ba3cf75f08b1291573c3`: tạo đúng 11 oracle khóa và structural stubs chỉ ném `NotImplementedError`; collect đạt 11/11. `M2_TEST_PG_DSN` không có, nên PostgreSQL/CREATEDB/orphan prerequisite được ghi `BLOCKED_EXTERNAL`, không có full-run/evidence RED giả và implementation vẫn khóa.
 
