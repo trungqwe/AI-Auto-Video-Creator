@@ -1,0 +1,32 @@
+FF                                                                       [100%]
+================================== FAILURES ===================================
+_________ test_tst_m2_p2_001_envelope_required_fields_and_rfc3339_utc _________
+
+    def test_tst_m2_p2_001_envelope_required_fields_and_rfc3339_utc() -> None:
+>       envelope = MessageEnvelope.create(**_complete_envelope())
+
+tests\m2\test_p2_envelopes_and_idempotency.py:124:
+
+    @classmethod
+    def create(cls, **_: object) -> "MessageEnvelope":
+>       raise NotImplementedError("P2 MessageEnvelope behavior is not implemented during RED.")
+E       NotImplementedError: P2 MessageEnvelope behavior is not implemented during RED.
+
+src\controlplane\domain\common\contracts.py:7: NotImplementedError
+______ test_tst_m2_p2_002_problem_detail_transport_neutral_safe_contract ______
+
+    def test_tst_m2_p2_002_problem_detail_transport_neutral_safe_contract() -> None:
+>       detail = ProblemDetail.create(**complete)
+
+tests\m2\test_p2_envelopes_and_idempotency.py:147:
+
+    @classmethod
+    def create(cls, **_: object) -> "ProblemDetail":
+>       raise NotImplementedError("P2 ProblemDetail behavior is not implemented during RED.")
+E       NotImplementedError: P2 ProblemDetail behavior is not implemented during RED.
+
+src\controlplane\domain\common\contracts.py:13: NotImplementedError
+=========================== short test summary info ===========================
+FAILED tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_001_envelope_required_fields_and_rfc3339_utc
+FAILED tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_002_problem_detail_transport_neutral_safe_contract
+2 failed in 0.15s

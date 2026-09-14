@@ -8,6 +8,7 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 - Hiệu chỉnh RED harness M2-P2 theo audit `962b5928eaf7190a19d745d4b8e746a766e147a2`: 11 oracle nay encode envelope/ProblemDetail matrix, JCS vector+replay, SQL receipt assertions, concurrent race, workspace/restart, PostgreSQL CAS probe và P1 MigrationRunner `0002` absence. Không có production behavior/`0002`; điểm dừng `M2-P2_RED_HARNESS_READY_BLOCKED_EXTERNAL` do DSN chưa có.
 - Hoàn tất final correction của RED harness M2-P2 theo audit `443648b427bae7985ebc35a8445be7782102e235`: siết matrix contract, JCS logical-hash vector, UoW-bound repository/CAS, race/restart/rollback oracle và orphan teardown guard. Không có implementation hay migration `0002`; điểm dừng `M2-P2_RED_HARNESS_FINAL_READY_BLOCKED_EXTERNAL` do `M2_TEST_PG_DSN` chưa có.
+- Khép correction false-green hẹp của RED harness M2-P2: bổ sung SQL non-orphan/race assertions, tách JCS invariants, mô tả semantic migration/rollback `0002` cho GREEN tương lai và chạy RED độc lập P2-001/002. Không có implementation hay migration `0002`; P2-003..011 vẫn chờ `M2_TEST_PG_DSN`.
 
 - Bắt đầu Behavioral RED M2-P2 sau audit plan `8bbc61ff22f5ef5009e8ba3cf75f08b1291573c3`: tạo đúng 11 oracle khóa và structural stubs chỉ ném `NotImplementedError`; collect đạt 11/11. `M2_TEST_PG_DSN` không có, nên PostgreSQL/CREATEDB/orphan prerequisite được ghi `BLOCKED_EXTERNAL`, không có full-run/evidence RED giả và implementation vẫn khóa.
 

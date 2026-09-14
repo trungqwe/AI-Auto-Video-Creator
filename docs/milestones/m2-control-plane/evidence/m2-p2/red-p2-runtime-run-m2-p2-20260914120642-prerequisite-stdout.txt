@@ -1,0 +1,2 @@
+M2_TEST_PG_DSN=UNSET
+BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required; no fallback is permitted.

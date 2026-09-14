@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_RED_HARNESS_FINAL_READY_BLOCKED_EXTERNAL` (P2 final RED harness đã khóa; PostgreSQL prerequisite chưa có.)
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_RED_HARNESS_ACCEPTED_BLOCKED_EXTERNAL` (P2 RED harness đã được chấp nhận; PostgreSQL prerequisite chưa có.)
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** `M2-P2_RED_HARNESS_FINAL_READY_BLOCKED_EXTERNAL`. Plan P2 đã ACCEPTED và final behavioral harness collect exact 11, nhưng `M2_TEST_PG_DSN` chưa có nên PostgreSQL/CREATEDB/orphan prerequisite không thể xác minh. Không có RED hợp lệ; không implementation P2. Sau RED hợp lệ, raw evidence và independent audit mới được xét quyền implementation. Không sửa P0; M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** `M2-P2_RED_HARNESS_ACCEPTED_BLOCKED_EXTERNAL`. Plan P2 và harness đã được chấp nhận; collect exact 11 và P2-001/002 có RED hợp lệ, nhưng `M2_TEST_PG_DSN` chưa có nên P2-003..011 cùng PostgreSQL/CREATEDB/orphan prerequisite không thể xác minh. Không implementation P2. Sau đủ RED hợp lệ, raw evidence và independent audit mới được xét quyền implementation. Không sửa P0; M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -266,7 +266,7 @@ graph TD
 
 ### M2-P2: Envelopes, RFC 9457 ProblemDetail, Optimistic Concurrency & Durable Idempotency
 
-- **Authorization / checkpoint hiện hành:** User đã ủy quyền Behavioral RED P2; checkpoint đang dừng tại `M2-P2_RED_HARNESS_FINAL_READY_BLOCKED_EXTERNAL` vì PostgreSQL prerequisite thiếu. **Cấm** implementation P2; implementation chỉ được xét sau RED hợp lệ, stdout/evidence thô và independent audit.
+- **Authorization / checkpoint hiện hành:** User đã ủy quyền Behavioral RED P2; checkpoint đang dừng tại `M2-P2_RED_HARNESS_ACCEPTED_BLOCKED_EXTERNAL` vì PostgreSQL prerequisite thiếu. **Cấm** implementation P2; implementation chỉ được xét sau RED hợp lệ, stdout/evidence thô và independent audit.
 - **Requirement / contract IDs**: `CT-CMN-001` (MessageEnvelope), `CT-CMN-002` (CommandEnvelope), `CT-CMN-003` (CommandReceipt), `CT-CMN-005` (RevisionedResource), `CT-CMN-006` (TimestampPolicy), `CT-CMN-010` (ProblemDetail), `CT-CMN-011` (IdempotencyPolicy), `CT-API-001` **chỉ** cho nền tảng idempotency/`expected_revision`/conflict semantics trước HTTP boundary, và `ADR-0004` cho durable receipt/idempotency/commit semantics. Không thuộc P2: `CT-CMN-004` (QueryPage), FastAPI/API mapping, `ADR-0005`, `ADR-0010`, outbox hoặc state machine.
 - **Dependencies**: M2-P1.
 - **Mục tiêu**:

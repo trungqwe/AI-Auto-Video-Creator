@@ -120,7 +120,7 @@ def _coordinator(database: DisposableDatabase) -> tuple[IdempotencyCoordinator, 
     return IdempotencyCoordinator(uow_factory=manager.unit_of_work, repository_factory=PostgresIdempotencyRepository), manager
 
 
-def test_tst_m2_p2_001_envelope_required_fields_and_rfc3339_utc(disposable_db: DisposableDatabase) -> None:
+def test_tst_m2_p2_001_envelope_required_fields_and_rfc3339_utc() -> None:
     envelope = MessageEnvelope.create(**_complete_envelope())
     assert _field(envelope, "occurred_at") == "2026-09-14T00:00:00Z"
     assert _field(envelope, "requested_at") == "2026-09-14T00:00:00Z"
@@ -142,7 +142,7 @@ def test_tst_m2_p2_001_envelope_required_fields_and_rfc3339_utc(disposable_db: D
             MessageEnvelope.create(**invalid)
 
 
-def test_tst_m2_p2_002_problem_detail_transport_neutral_safe_contract(disposable_db: DisposableDatabase) -> None:
+def test_tst_m2_p2_002_problem_detail_transport_neutral_safe_contract() -> None:
     complete = {"type": "urn:problem:validation", "title": "Validation", "detail": "Dữ liệu không hợp lệ", "instance": "urn:instance:1", "code": "VALIDATION_ERROR", "category": "validation", "retryable": False, "correlation_id": "correlation-1", "status": None, "retry_after": None, "field_errors": None, "technical_detail_ref": "opaque:detail:1"}
     detail = ProblemDetail.create(**complete)
     for field in ("type", "title", "detail", "instance", "code", "category", "retryable", "correlation_id"):
@@ -188,8 +188,16 @@ def test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt(p2_b
     assert request_hash(request_a) != request_hash(_logical_request(workspace_id=WORKSPACE_A, command_name="other", payload=input_a, expected_revision=7, policy_revision_id="policy-1"))
     assert request_hash(request_a) != request_hash(_logical_request(workspace_id=WORKSPACE_A, command_name="create", payload=input_a, expected_revision=8, policy_revision_id="policy-1"))
     assert request_hash(request_a) != request_hash(_logical_request(workspace_id=WORKSPACE_A, command_name="create", payload=input_a, expected_revision=7, policy_revision_id="policy-2"))
-    assert canonicalize_json({"array": [2, 1], "text": "e\u0301", "number": -0.0}) != canonicalize_json({"array": [1, 2], "text": "é", "number": 0})
-    for invalid in (math.nan, math.inf, -math.inf):
+    assert canonicalize_json({"text": "e\u0301"}) != canonicalize_json({"text": "é"})
+    assert canonicalize_json({"array": [2, 1]}) != canonicalize_json({"array": [1, 2]})
+    assert canonicalize_json({"number": -0.0}) == b'{"number":0}'
+    for invalid in (math.nan,):
+        with pytest.raises(ValueError):
+            canonicalize_json({"number": invalid})
+    for invalid in (math.inf,):
+        with pytest.raises(ValueError):
+            canonicalize_json({"number": invalid})
+    for invalid in (-math.inf,):
         with pytest.raises(ValueError):
             canonicalize_json({"number": invalid})
     coordinator, manager = _coordinator(p2_bootstrap_schema)
@@ -204,9 +212,19 @@ def test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt(p2_b
 def test_tst_m2_p2_005_same_key_different_payload_rejected(p2_bootstrap_schema: DisposableDatabase) -> None:
     coordinator, manager = _coordinator(p2_bootstrap_schema)
     try:
-        coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", idempotency_key="k-005", payload={"v": 1})
+        first = coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", idempotency_key="k-005", payload={"v": 1})
         with pytest.raises(ValueError, match="IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD"):
             coordinator.submit(workspace_id=WORKSPACE_A, command_name="create", idempotency_key="k-005", payload={"v": 2})
+        with p2_bootstrap_schema.connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT count(*) FROM controlplane.cp_command_receipts")
+                assert cursor.fetchone()[0] == 1
+                cursor.execute("SELECT count(*) FROM controlplane.cp_idempotency_records")
+                assert cursor.fetchone()[0] == 1
+                cursor.execute("SELECT request_hash, receipt_id::text FROM controlplane.cp_idempotency_records")
+                request_hash_value, receipt_id = cursor.fetchone()
+                assert request_hash_value == request_hash(_logical_request(workspace_id=WORKSPACE_A, command_name="create", payload={"v": 1}))
+                assert receipt_id == str(_field(first, "receipt_id"))
     finally:
         manager.close()
 
@@ -245,12 +263,18 @@ def test_tst_m2_p2_007_concurrent_same_key_different_payload_rejects_loser(p2_bo
             manager.close()
     with ThreadPoolExecutor(max_workers=2) as executor:
         outcomes = list(executor.map(submit, ({"v": 1}, {"v": 2})))
+    assert sum(not isinstance(pair[1], ValueError) for pair in outcomes) == 1
+    assert sum(isinstance(pair[1], ValueError) and "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD" in str(pair[1]) for pair in outcomes) == 1
     winning_payload, winner = next(pair for pair in outcomes if not isinstance(pair[1], ValueError))
     _, loser = next(pair for pair in outcomes if isinstance(pair[1], ValueError))
     assert _field(winner, "disposition") == "accepted"
     assert "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD" in str(loser)
     with p2_bootstrap_schema.connect() as connection:
         with connection.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM controlplane.cp_command_receipts")
+            assert cursor.fetchone()[0] == 1
+            cursor.execute("SELECT count(*) FROM controlplane.cp_idempotency_records")
+            assert cursor.fetchone()[0] == 1
             cursor.execute("SELECT request_hash, receipt_id::text FROM controlplane.cp_idempotency_records")
             stored_hash, receipt_id = cursor.fetchone()
             assert receipt_id == str(_field(winner, "receipt_id"))
@@ -338,20 +362,41 @@ def test_tst_m2_p2_011_production_0002_forward_rollback_and_constraints(disposab
     runner.migrate_up()
     with disposable_db.connect() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT to_regclass('controlplane.cp_command_receipts')")
-            assert cursor.fetchone()[0] == "controlplane.cp_command_receipts"
-            cursor.execute("SELECT to_regclass('controlplane.cp_idempotency_records')")
-            assert cursor.fetchone()[0] == "controlplane.cp_idempotency_records"
-            cursor.execute("SELECT constraint_name FROM information_schema.table_constraints WHERE table_schema = 'controlplane' AND table_name = 'cp_command_receipts'")
-            assert {"cp_command_receipts_pkey", "cp_command_receipts_workspace_id_command_id_key", "cp_command_receipts_workspace_id_receipt_id_key"} <= {row[0] for row in cursor.fetchall()}
-            cursor.execute("SELECT constraint_name FROM information_schema.table_constraints WHERE table_schema = 'controlplane' AND table_name = 'cp_idempotency_records'")
-            assert {"cp_idempotency_records_pkey"} <= {row[0] for row in cursor.fetchall()}
+            cursor.execute("SELECT to_regclass('controlplane.cp_command_receipts'), to_regclass('controlplane.cp_idempotency_records')")
+            assert cursor.fetchone() == ("controlplane.cp_command_receipts", "controlplane.cp_idempotency_records")
+            cursor.execute("SELECT column_name, is_nullable FROM information_schema.columns WHERE table_schema = 'controlplane' AND table_name = 'cp_command_receipts'")
+            receipt_columns = dict(cursor.fetchall())
+            assert receipt_columns["receipt_id"] == "NO" and receipt_columns["workspace_id"] == "NO"
+            cursor.execute("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'controlplane.cp_command_receipts'::regclass")
+            receipt_constraints = {row[0] for row in cursor.fetchall()}
+            assert any(definition.startswith("PRIMARY KEY (receipt_id)") for definition in receipt_constraints)
+            assert any(definition.startswith("FOREIGN KEY (workspace_id) REFERENCES controlplane.cp_workspaces(workspace_id)") for definition in receipt_constraints)
+            assert any(definition.startswith("UNIQUE (workspace_id, command_id)") for definition in receipt_constraints)
+            assert any(definition.startswith("UNIQUE (workspace_id, receipt_id)") for definition in receipt_constraints)
+            assert any("disposition" in definition and "accepted" in definition and "rejected" in definition for definition in receipt_constraints)
+            cursor.execute("SELECT column_name, is_nullable FROM information_schema.columns WHERE table_schema = 'controlplane' AND table_name = 'cp_idempotency_records'")
+            record_columns = dict(cursor.fetchall())
+            assert all(record_columns[column] == "NO" for column in ("workspace_id", "command_name", "idempotency_key", "request_hash", "receipt_id", "created_at"))
+            cursor.execute("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'controlplane.cp_idempotency_records'::regclass")
+            record_constraints = {row[0] for row in cursor.fetchall()}
+            assert any(definition.startswith("PRIMARY KEY (workspace_id, command_name, idempotency_key)") for definition in record_constraints)
+            assert any("FOREIGN KEY (workspace_id, receipt_id) REFERENCES controlplane.cp_command_receipts(workspace_id, receipt_id)" in definition for definition in record_constraints)
+            receipt_id = uuid.uuid4()
+            cursor.execute("INSERT INTO controlplane.cp_workspaces (workspace_id, name, status) VALUES (%s, 'A', 'ACTIVE'), (%s, 'B', 'ACTIVE')", (WORKSPACE_A, WORKSPACE_B))
+            cursor.execute("INSERT INTO controlplane.cp_command_receipts (receipt_id, workspace_id, command_id, disposition, accepted_at) VALUES (%s, %s, 'command-a', 'accepted', CURRENT_TIMESTAMP)", (receipt_id, WORKSPACE_A))
+            with pytest.raises(psycopg.errors.CheckViolation):
+                cursor.execute("INSERT INTO controlplane.cp_command_receipts (receipt_id, workspace_id, command_id, disposition, accepted_at) VALUES (%s, %s, 'command-duplicate', 'duplicate', CURRENT_TIMESTAMP)", (uuid.uuid4(), WORKSPACE_A))
+            with pytest.raises(psycopg.errors.ForeignKeyViolation):
+                cursor.execute("INSERT INTO controlplane.cp_idempotency_records (workspace_id, command_name, idempotency_key, request_hash, receipt_id, created_at) VALUES (%s, 'create', 'cross-workspace', 'hash', %s, CURRENT_TIMESTAMP)", (WORKSPACE_B, receipt_id))
     rollback = PRODUCTION_MIGRATIONS / "0002_idempotency_and_receipts.rollback.sql"
     with disposable_db.connect() as connection:
         with connection.transaction():
             with connection.cursor() as cursor:
                 cursor.execute(rollback.read_text(encoding="utf-8"))
+                cursor.execute("DELETE FROM controlplane.cp_schema_migrations WHERE version = 2")
                 cursor.execute("SELECT to_regclass('controlplane.cp_command_receipts'), to_regclass('controlplane.cp_idempotency_records')")
                 assert cursor.fetchone() == (None, None)
-                cursor.execute("SELECT to_regclass('controlplane.cp_workspaces')")
-                assert cursor.fetchone()[0] == "controlplane.cp_workspaces"
+                cursor.execute("SELECT to_regclass('controlplane.cp_workspaces'), to_regclass('controlplane.cp_actors'), to_regclass('controlplane.cp_auth_sessions'), to_regclass('controlplane.cp_schema_migrations')")
+                assert cursor.fetchone() == ("controlplane.cp_workspaces", "controlplane.cp_actors", "controlplane.cp_auth_sessions", "controlplane.cp_schema_migrations")
+                cursor.execute("SELECT version FROM controlplane.cp_schema_migrations ORDER BY version")
+                assert cursor.fetchall() == [(1,)]
