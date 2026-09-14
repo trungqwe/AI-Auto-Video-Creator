@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_RED_HARNESS_ACCEPTED_BLOCKED_EXTERNAL` (P2 RED harness đã được chấp nhận; PostgreSQL prerequisite chưa có.)
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_BEHAVIORAL_RED_BLOCKED_EXTERNAL` (P2 RED harness đã được chấp nhận; PostgreSQL prerequisite external chưa đạt.)
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** `M2-P2_RED_HARNESS_ACCEPTED_BLOCKED_EXTERNAL`. P2 plan/harness đã ACCEPTED; P2-001/002 đã RED hợp lệ, nhưng `M2_TEST_PG_DSN` chưa có nên không thể chạy RED PostgreSQL thật P2-003..011 hoặc kiểm orphan. Implementation chỉ có thể được xét sau đủ RED hợp lệ, evidence và independent audit. M3 hoặc Phân hệ A vẫn `NOT AUTHORIZED` cho tới khi M2 đạt exit gate và có User Checkpoint riêng.
+**Điểm dừng bắt buộc:** `M2-P2_BEHAVIORAL_RED_BLOCKED_EXTERNAL`. P2 plan/harness đã ACCEPTED; P2-001/002 đã RED hợp lệ, nhưng run prerequisite xác nhận `M2_TEST_PG_DSN` absent nên không thể chạy RED PostgreSQL thật P2-003..011 hoặc kiểm orphan. Implementation chỉ có thể được xét sau đủ RED hợp lệ, evidence và independent audit. M3 hoặc Phân hệ A vẫn `NOT AUTHORIZED` cho tới khi M2 đạt exit gate và có User Checkpoint riêng.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
