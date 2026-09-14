@@ -113,12 +113,41 @@ def _assert_future_production_p3_schema(connection: psycopg.Connection) -> None:
     for table, fields in {"cp_event_checkpoints": {"consumer_id", "event_id", "workspace_id", "aggregate_type", "aggregate_id", "aggregate_revision", "status", "checkpointed_at"}, "cp_operation_stream": {"stream_event_id", "workspace_id", "operation_id", "resource_type", "resource_id", "resource_revision", "event_kind", "occurred_at", "recorded_at", "summary", "correlation_id"}, "cp_operation_stream_retention_watermarks": {"workspace_id", "minimum_available_cursor", "minimum_available_at"}}.items():
         actual = {row[0] for row in connection.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='controlplane' AND table_name=%s", (table,)).fetchall()}
         assert fields <= actual
+    checkpoint_columns = {row[0] for row in connection.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='controlplane' AND table_name='cp_event_checkpoints'").fetchall()}
+    assert checkpoint_columns & {"current_applied_revision", "expected_revision", "applied_revision", "last_applied_revision"}
+    stream_columns = dict(connection.execute("SELECT column_name, is_nullable FROM information_schema.columns WHERE table_schema='controlplane' AND table_name='cp_operation_stream'").fetchall())
+    assert stream_columns["operation_id"] == "YES" and all(stream_columns[name] == "NO" for name in {"stream_event_id", "workspace_id", "resource_type", "resource_id", "resource_revision", "event_kind", "occurred_at", "recorded_at", "summary", "correlation_id"})
+    stream_constraints = [row[0] for row in connection.execute("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='controlplane.cp_operation_stream'::regclass").fetchall()]
+    stream_default = connection.execute("SELECT column_default FROM information_schema.columns WHERE table_schema='controlplane' AND table_name='cp_operation_stream' AND column_name='stream_event_id'").fetchone()[0]
+    assert any("stream_event_id" in item and (item.startswith("PRIMARY KEY") or item.startswith("UNIQUE")) for item in stream_constraints) and stream_default is not None
+    watermarks = dict(connection.execute("SELECT column_name, is_nullable FROM information_schema.columns WHERE table_schema='controlplane' AND table_name='cp_operation_stream_retention_watermarks'").fetchall())
+    assert all(watermarks[name] == "NO" for name in {"workspace_id", "minimum_available_cursor", "minimum_available_at"})
 
 
 def test_tst_m2_p3_001_production_0003_forward_rollback_and_schema_constraints(disposable_db: DisposableDatabase) -> None:
     MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True).migrate_up()
     assert (PRODUCTION_MIGRATIONS / "0003_outbox_and_projections.sql").is_file(), "P3-001 requires production 0003"
-    with disposable_db.connect() as connection: _assert_future_production_p3_schema(connection)
+    with disposable_db.connect() as connection:
+        _assert_future_production_p3_schema(connection)
+        # Future production rows prove CHECK behavior through savepoints, not constraint text alone.
+        for published, published_at, accepted in ((False, None, True), (True, "2026-09-14T00:00:00Z", True), (False, "2026-09-14T00:00:00Z", False), (True, None, False)):
+            with connection.transaction():
+                with connection.transaction():
+                    if accepted:
+                        connection.execute("INSERT INTO controlplane.cp_outbox_events (event_id, workspace_id, contract_name, contract_version, message_id, correlation_id, occurred_at, actor, payload, event_name, aggregate_type, aggregate_id, aggregate_revision, producer, schema_version, sensitivity, recorded_at, published, published_at) VALUES (%s, %s, 'event', 1, %s, 'c', CURRENT_TIMESTAMP, 'system', '{}'::jsonb, 'event', 'aggregate', 'a', 1, 'owner', 1, 'internal', CURRENT_TIMESTAMP, %s, %s)", (uuid.uuid4(), WORKSPACE_ID, str(uuid.uuid4()), published, published_at))
+                    else:
+                        with pytest.raises(psycopg.errors.CheckViolation): connection.execute("INSERT INTO controlplane.cp_outbox_events (event_id, workspace_id, contract_name, contract_version, message_id, correlation_id, occurred_at, actor, payload, event_name, aggregate_type, aggregate_id, aggregate_revision, producer, schema_version, sensitivity, recorded_at, published, published_at) VALUES (%s, %s, 'event', 1, %s, 'c', CURRENT_TIMESTAMP, 'system', '{}'::jsonb, 'event', 'aggregate', 'a', 1, 'owner', 1, 'internal', CURRENT_TIMESTAMP, %s, %s)", (uuid.uuid4(), WORKSPACE_ID, str(uuid.uuid4()), published, published_at))
+        event_id = uuid.uuid4()
+        connection.execute("INSERT INTO controlplane.cp_event_quarantine (consumer_id, event_id, workspace_id, reason_code) VALUES ('consumer-A', %s, %s, 'x'), ('consumer-B', %s, %s, 'x')", (event_id, WORKSPACE_ID, event_id, WORKSPACE_ID))
+        with pytest.raises(psycopg.errors.UniqueViolation): connection.execute("INSERT INTO controlplane.cp_event_quarantine (consumer_id, event_id, workspace_id, reason_code) VALUES ('consumer-A', %s, %s, 'x')", (event_id, WORKSPACE_ID))
+        assert connection.execute("SELECT count(*) FROM controlplane.cp_event_quarantine WHERE event_id=%s", (event_id,)).fetchone()[0] == 2
+        rollback = (PRODUCTION_MIGRATIONS / "0003_outbox_and_projections.rollback.sql").read_text(encoding="utf-8")
+        with connection.transaction():
+            connection.execute(rollback)
+            connection.execute("DELETE FROM controlplane.cp_schema_migrations WHERE version=3")
+        assert [connection.execute("SELECT to_regclass(%s)", (f"controlplane.{table}",)).fetchone()[0] for table in ("cp_outbox_events", "cp_event_checkpoints", "cp_event_quarantine", "cp_operation_stream", "cp_operation_stream_retention_watermarks")] == [None] * 5
+        assert [connection.execute("SELECT to_regclass(%s)", (f"controlplane.{table}",)).fetchone()[0] for table in ("cp_workspaces", "cp_command_receipts", "cp_idempotency_records", "cp_schema_migrations")] == [f"controlplane.{table}" for table in ("cp_workspaces", "cp_command_receipts", "cp_idempotency_records", "cp_schema_migrations")]
+        assert connection.execute("SELECT version FROM controlplane.cp_schema_migrations ORDER BY version").fetchall() == [(1,), (2,)]
 
 
 def test_tst_m2_p3_002_business_mutation_and_outbox_atomic_commit_rollback(p3_bootstrap_schema: DisposableDatabase) -> None:
