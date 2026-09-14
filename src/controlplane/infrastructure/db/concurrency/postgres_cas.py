@@ -6,4 +6,10 @@ class PostgresRevisionedMutationAdapter:
         self._connection = connection
 
     def mutate(self, **_: object) -> object:
-        raise NotImplementedError("P2 PostgreSQL CAS behavior is not implemented during RED.")
+        resource_id=_["resource_id"]; expected=_["expected_revision"]; payload=_["payload"]
+        row=self._connection.execute("UPDATE controlplane.cp_revision_probe SET revision=revision+1,payload=%s WHERE resource_id=%s AND revision=%s RETURNING revision",(payload,resource_id,expected)).fetchone()
+        if row is None:
+            from controlplane.application.concurrency import RevisionConflictError
+            current=self._connection.execute("SELECT revision FROM controlplane.cp_revision_probe WHERE resource_id=%s",(resource_id,)).fetchone()[0]
+            raise RevisionConflictError(current)
+        return {"revision":row[0]}

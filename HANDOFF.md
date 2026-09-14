@@ -1,7 +1,8 @@
 # HANDOFF
 
-- Đã quyết định: M1, M2-P0, M2-P1 là `ACCEPTED / CLOSED`; P2 plan được audit chấp thuận. Exact 11 P2 Behavioral RED oracle và structural P2 stubs đã được tạo; stubs chỉ ném `NotImplementedError`, không có production behavior/migration/JCS/CAS/persistence.
-- Trạng thái: `M2-P2_RED_READY_FOR_REVIEW`. Run `run-m2-p2-20260914131500` dùng PostgreSQL 18.6 Docker/`CREATEDB=true`, collect/full exact 11 và orphan=0. 6 `VALID_BEHAVIORAL_RED`, 5 `UPSTREAM_PATH_RED`, không setup/oracle mismatch/unexpected pass. Không implementation khi chưa independent audit.
-- Evidence: `docs/milestones/m2-control-plane/evidence/m2-p2/red-p2-runtime-run-m2-p2-20260914131500-{prerequisite,collect,stdout,postrun}-stdout.txt`, `red-observations.md`; mọi raw run trước giữ historical immutable.
-- Tệp cần đọc tiếp: `docs/12-pre-code-checklist.md`, `docs/milestones/m2-control-plane/implementation-plan.md`, `tests/m2/test_p2_envelopes_and_idempotency.py`, P2 evidence.
-- Điểm tiếp tục: independent audit RED evidence P2. Không implementation P2/P3/M3/Module A cho tới checkpoint riêng.
+- Đã quyết định: M1, M2-P0 và M2-P1 là `ACCEPTED / CLOSED`. M2-P2 implementation candidate đã hoàn tất closure gates và ở `M2-P2_IMPLEMENTATION_READY_FOR_REVIEW`; chưa được ACCEPTED/CLOSED. M2-P3, M3 và Module A vẫn khóa.
+- P2 production: `MessageEnvelope`/`ProblemDetail`, RFC 8785 JCS request hash, UoW-bound PostgreSQL idempotency coordinator/repository, PostgreSQL CAS adapter, production migration `0002` và rollback; P2 evidence profile/synthesizer fail-closed.
+- Fixture compatibility correction được ủy quyền: `migration_sandbox` P1 chỉ copy production P1 baseline `0001` và rollback từ production directory. Digest guard vẫn chứng minh không mutation. Không đổi P1 identity, assertion, production behavior hay `MigrationRunner` semantics.
+- Final evidence run `run-m2-p2-20260914065027`: P2 11/11, P1 11/11, P0 33/33, M1 93/93 (0 skipped), architecture 6/6; Python 3.13.15, psycopg 3.3.5, psycopg-pool 3.3.1, PostgreSQL 18.6, `CREATEDB=true`, actual pool `psycopg_pool.ConnectionPool`, orphan=0, secret scan CLEAN. P2-aware `synthesizer_p2.py --verify-only` PASS, provenance và SHA-256 DAG hợp lệ.
+- Tệp cần đọc tiếp: `docs/milestones/m2-control-plane/evidence/m2-p2/status.json`, `status.md`, `commands.jsonl`, `hashes.sha256`, `docs/milestones/m2-control-plane/implementation-plan.md`.
+- Điểm tiếp tục: review diff, commit/push P2 candidate, rồi dừng để independent audit. Không mở P3/M3/Module A.

@@ -4,6 +4,11 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ## [Unreleased]
 
+### Changed
+
+- Hoàn tất implementation candidate M2-P2: contract envelope/ProblemDetail, RFC 8785 JCS request hash, durable PostgreSQL idempotency, CAS revision, migration `0002`/rollback và evidence profile fail-closed. Closure evidence xác nhận P2 11/11, P1 11/11, P0 33/33, M1 93/93, architecture 6/6, runtime PostgreSQL 18.6, secret scan CLEAN, provenance/hash DAG PASS; dừng tại `M2-P2_IMPLEMENTATION_READY_FOR_REVIEW` để independent audit.
+- Cô lập fixture migration fault-injection P1 vào production baseline `0001`/rollback, để migration P2 về sau không đổi prerequisite của P1-002/003/009/010. Không đổi P1 testcase identity, assertion, production behavior hay `MigrationRunner` semantics.
+
 ### Added
 
 - Hiệu chỉnh RED harness M2-P2 theo audit `962b5928eaf7190a19d745d4b8e746a766e147a2`: 11 oracle nay encode envelope/ProblemDetail matrix, JCS vector+replay, SQL receipt assertions, concurrent race, workspace/restart, PostgreSQL CAS probe và P1 MigrationRunner `0002` absence. Không có production behavior/`0002`; điểm dừng `M2-P2_RED_HARNESS_READY_BLOCKED_EXTERNAL` do DSN chưa có.

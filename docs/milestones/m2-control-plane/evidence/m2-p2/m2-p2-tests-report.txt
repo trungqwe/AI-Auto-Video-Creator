@@ -1,0 +1,25 @@
+STDOUT:
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- C:\Temp\controlplane-p1-venv-20260914\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 11 items
+
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_001_envelope_required_fields_and_rfc3339_utc PASSED [  9%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_002_problem_detail_transport_neutral_safe_contract PASSED [ 18%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_003_durable_command_receipt_persistence PASSED [ 27%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt PASSED [ 36%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_005_same_key_different_payload_rejected PASSED [ 45%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_006_concurrent_same_key_same_payload_one_logical_receipt PASSED [ 54%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_007_concurrent_same_key_different_payload_rejects_loser PASSED [ 63%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_008_workspace_scoped_idempotency_isolation_and_restart PASSED [ 72%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_009_successful_revision_update_increments_exactly_once PASSED [ 81%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_010_stale_revision_conflict_zero_mutation_and_current_revision PASSED [ 90%]
+tests/m2/test_p2_envelopes_and_idempotency.py::test_tst_m2_p2_011_production_0002_forward_rollback_and_constraints PASSED [100%]
+
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m2-control-plane\evidence\m2-p2\m2-p2-tests.xml -
+============================= 11 passed in 2.23s ==============================
+STDERR:

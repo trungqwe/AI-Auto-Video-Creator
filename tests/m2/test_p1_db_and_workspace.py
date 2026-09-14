@@ -47,6 +47,10 @@ REPO_ROOT = Path(__file__).parents[2]
 PRODUCTION_MIGRATIONS = (
     REPO_ROOT / "src" / "controlplane" / "infrastructure" / "db" / "migrations"
 )
+P1_SANDBOX_MIGRATION_NAMES = (
+    "0001_initial_controlplane.sql",
+    "0001_initial_controlplane.rollback.sql",
+)
 TEST_DATABASE_NAME = re.compile(r"^m2_p1_test_[0-9a-f]+$")
 WORKSPACE_A_ID = "00000000-0000-0000-0000-0000000000a1"
 WORKSPACE_B_ID = "00000000-0000-0000-0000-0000000000b1"
@@ -176,11 +180,21 @@ def disposable_db() -> Iterator[DisposableDatabase]:
 
 @pytest.fixture
 def migration_sandbox(tmp_path: Path) -> Iterator[Path]:
-    """Copy migrations before fault injection and prove the production tree is unchanged."""
+    """Copy the P1 production baseline before sandbox-only fault injection."""
     assert PRODUCTION_MIGRATIONS.is_dir(), "Structural migration source must exist before RED."
     before = _production_tree_digest(PRODUCTION_MIGRATIONS)
     sandbox = tmp_path / "migration-sandbox"
-    shutil.copytree(PRODUCTION_MIGRATIONS, sandbox)
+    sandbox.mkdir()
+    for migration_name in P1_SANDBOX_MIGRATION_NAMES:
+        source = PRODUCTION_MIGRATIONS / migration_name
+        assert source.is_file(), f"Required production P1 migration is missing: {migration_name}"
+        shutil.copy2(source, sandbox / migration_name)
+    assert (sandbox / "0001_initial_controlplane.sql").is_file()
+    assert (sandbox / "0001_initial_controlplane.rollback.sql").is_file()
+    assert not any(
+        path.name.endswith(".sql") and path.name[:4].isdigit() and int(path.name[:4]) > 1
+        for path in sandbox.iterdir()
+    )
     try:
         yield sandbox
     finally:

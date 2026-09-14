@@ -1,5 +1,7 @@
 # AI Auto Video Creator
 
+> Cập nhật hiện hành: M2-P2 là `M2-P2_IMPLEMENTATION_READY_FOR_REVIEW`; implementation/evidence candidate đã qua closure gates và đang chờ independent audit. M3 và Module A vẫn `NOT AUTHORIZED`.
+
 Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều góc kể tiếng Anh, dựng video ngắn 61–70 giây và đồng bộ đầu ra lên cloud. Dự án được phát triển theo từng milestone có evidence gate; không coi việc chương trình chạy một lần là bằng chứng kiến trúc đã đạt.
 
 ## Trạng thái hiện hành
