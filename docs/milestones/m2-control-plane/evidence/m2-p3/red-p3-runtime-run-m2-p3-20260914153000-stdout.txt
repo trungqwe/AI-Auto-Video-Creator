@@ -1,0 +1,11 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Admin\AppData\Local\Temp\controlplane-p3-runtime-58edbfaa27cf4f53b243bce3f00a4162\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+ERROR: Unknown config option: asyncio_mode
+System.Management.Automation.RemoteException
+System.Management.Automation.RemoteException
+collecting ... collected 11 items
+
+============================ no tests ran in 0.09s ============================

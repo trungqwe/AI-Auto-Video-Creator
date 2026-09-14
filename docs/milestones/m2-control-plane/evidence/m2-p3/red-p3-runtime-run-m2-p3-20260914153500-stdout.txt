@@ -1,0 +1,315 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Admin\AppData\Local\Temp\controlplane-p3-runtime-58edbfaa27cf4f53b243bce3f00a4162\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 11 items
+
+tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_001_production_0003_forward_rollback_and_schema_constraints FAILED [  9%]
+tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_002_business_mutation_and_outbox_atomic_commit_rollback FAILED [ 18%]
+tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_003_at_least_once_dispatch_crash_before_published_ack_redispatch FAILED [ 27%]
+tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_004_consumer_deduplicates_same_event_id FAILED [ 36%]
+tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_005_concurrent_consumers_same_event_exactly_one_logical_effect FAILED [ 45%]
+tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_006_checkpoint_projection_atomic_rollback FAILED [ 54%]
+tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_007_unsupported_schema_durably_quarantined FAILED [ 63%]
+tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_008_aggregate_revision_gap_and_out_of_order_blocked FAILED [ 72%]
+tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_009_stale_recovery_epoch_quarantined FAILED [ 81%]
+tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_010_operation_stream_monotonic_cursor_under_concurrency FAILED [ 90%]
+tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_011_operation_stream_safe_projection_and_payload_policy FAILED [100%]
+
+================================== FAILURES ===================================
+_ test_tst_m2_p3_001_production_0003_forward_rollback_and_schema_constraints __
+
+disposable_db = DisposableDatabase(name='m2_p3_test_2e12a3655b504831b333216f9cfd5e9e', connections=[])
+
+    def test_tst_m2_p3_001_production_0003_forward_rollback_and_schema_constraints(disposable_db: DisposableDatabase) -> None:
+        MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True).migrate_up()
+>       assert (PRODUCTION_MIGRATIONS / "0003_outbox_and_projections.sql").is_file(), "P3-001 requires production 0003"
+E       AssertionError: P3-001 requires production 0003
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = (WindowsPath('D:/AI Auto Video Creator/src/controlplane/infrastructure/db/migrations') / '0003_outbox_and_projections.sql').is_file
+
+tests\m2\test_p3_outbox_and_projections.py:100: AssertionError
+___ test_tst_m2_p3_002_business_mutation_and_outbox_atomic_commit_rollback ____
+
+p3_bootstrap_schema = DisposableDatabase(name='m2_p3_test_ea44b51a95664bb8931535cdbe7a6895', connections=[<psycopg.Connection [BAD] at 0x1c351d0ac40>])
+
+    def test_tst_m2_p3_002_business_mutation_and_outbox_atomic_commit_rollback(p3_bootstrap_schema: DisposableDatabase) -> None:
+        from controlplane.infrastructure.db.uow import TransactionManager
+
+        manager = TransactionManager(p3_bootstrap_schema.dsn)
+        try:
+            commit_event = _event(event_id="00000000-0000-0000-0000-000000000302")
+            rollback_event = _event(event_id="00000000-0000-0000-0000-000000000303")
+            with manager.unit_of_work() as uow:
+>               OutboxWriter().enqueue(connection=uow.connection, event=commit_event)
+
+tests\m2\test_p3_outbox_and_projections.py:114:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.outbox.OutboxWriter object at 0x000001C351D66F90>
+_ = {'connection': <psycopg.Connection [BAD] at 0x1c351dcb9b0>, 'event': DomainEvent(contract_name='controlplane.event.con...gregate_id='operation-303', aggregate_revision=1, producer='workflow-owner', schema_version=1, sensitivity='internal')}
+
+    def enqueue(self, **_: object) -> object:
+>       raise NotImplementedError("P3 outbox writer is not implemented during Behavioral RED")
+E       NotImplementedError: P3 outbox writer is not implemented during Behavioral RED
+
+src\controlplane\application\outbox\__init__.py:6: NotImplementedError
+_ test_tst_m2_p3_003_at_least_once_dispatch_crash_before_published_ack_redispatch _
+
+p3_bootstrap_schema = DisposableDatabase(name='m2_p3_test_effc26d396bd436c94cc808c0abb4bc7', connections=[<psycopg.Connection [BAD] at 0x1c351de68b0>, <psycopg.Connection [BAD] at 0x1c351de6cf0>])
+
+    def test_tst_m2_p3_003_at_least_once_dispatch_crash_before_published_ack_redispatch(p3_bootstrap_schema: DisposableDatabase) -> None:
+        event = _event()
+        with p3_bootstrap_schema.connect() as connection:
+            connection.execute("INSERT INTO controlplane.cp_outbox_events (event_id, workspace_id, payload) VALUES (%s, %s, '{}'::jsonb)", (event.event_id, WORKSPACE_ID))
+        attempts: list[str] = []
+>       OutboxPublisher().dispatch(event_id=event.event_id, crash_before_ack=True, delivery_observer=attempts)
+
+tests\m2\test_p3_outbox_and_projections.py:136:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.outbox.OutboxPublisher object at 0x000001C351D663C0>
+_ = {'event_id': 'f92ebd98-2607-4161-92d3-6b617f96961c', 'crash_before_ack': True, 'delivery_observer': []}
+
+    def dispatch(self, **_: object) -> object:
+>       raise NotImplementedError("P3 outbox publisher is not implemented during Behavioral RED")
+E       NotImplementedError: P3 outbox publisher is not implemented during Behavioral RED
+
+src\controlplane\application\outbox\__init__.py:11: NotImplementedError
+___________ test_tst_m2_p3_004_consumer_deduplicates_same_event_id ____________
+
+p3_bootstrap_schema = DisposableDatabase(name='m2_p3_test_0d1f9bfa368048d8ad91c5e8d72c5e2c', connections=[<psycopg.Connection [BAD] at 0x1c351de69c0>])
+
+    def test_tst_m2_p3_004_consumer_deduplicates_same_event_id(p3_bootstrap_schema: DisposableDatabase) -> None:
+        event = _event(event_id="00000000-0000-0000-0000-000000000304")
+>       first = EventConsumer().process(event=event, consumer_id="projection")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p3_outbox_and_projections.py:149:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.projections.EventConsumer object at 0x000001C351D670E0>
+_ = {'event': DomainEvent(contract_name='controlplane.event.contract', contract_version=11, message_id='message-303', work...ggregate_revision=1, producer='workflow-owner', schema_version=1, sensitivity='internal'), 'consumer_id': 'projection'}
+
+    def process(self, **_: object) -> object:
+>       raise NotImplementedError("P3 event consumer is not implemented during Behavioral RED")
+E       NotImplementedError: P3 event consumer is not implemented during Behavioral RED
+
+src\controlplane\application\projections\__init__.py:6: NotImplementedError
+_ test_tst_m2_p3_005_concurrent_consumers_same_event_exactly_one_logical_effect _
+
+p3_bootstrap_schema = DisposableDatabase(name='m2_p3_test_d110d5868e0c4d9488b81ca62c922dc2', connections=[<psycopg.Connection [BAD] at 0x1c351de7ac0>])
+
+    def test_tst_m2_p3_005_concurrent_consumers_same_event_exactly_one_logical_effect(p3_bootstrap_schema: DisposableDatabase) -> None:
+        from controlplane.infrastructure.db.uow import TransactionManager
+        event, barrier = _event(event_id="00000000-0000-0000-0000-000000000305"), threading.Barrier(2)
+        def worker() -> object:
+            manager = TransactionManager(p3_bootstrap_schema.dsn)
+            try:
+                with manager.unit_of_work() as uow:
+                    barrier.wait(timeout=5)
+                    return EventConsumer().process(event=event, consumer_id="projection", connection=uow.connection)
+            finally: manager.close()
+>       with ThreadPoolExecutor(max_workers=2) as executor: outcomes = list(executor.map(lambda _: worker(), range(2)))
+                                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p3_outbox_and_projections.py:168:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:625: in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:318: in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:460: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:402: in __get_result
+    raise self._exception
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\m2\test_p3_outbox_and_projections.py:168: in <lambda>
+    with ThreadPoolExecutor(max_workers=2) as executor: outcomes = list(executor.map(lambda _: worker(), range(2)))
+                                                                                               ^^^^^^^^
+tests\m2\test_p3_outbox_and_projections.py:166: in worker
+    return EventConsumer().process(event=event, consumer_id="projection", connection=uow.connection)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.projections.EventConsumer object at 0x000001C351E64A50>
+_ = {'event': DomainEvent(contract_name='controlplane.event.contract', contract_version=11, message_id='message-303', work...ion=1, sensitivity='internal'), 'consumer_id': 'projection', 'connection': <psycopg.Connection [BAD] at 0x1c351de7df0>}
+
+    def process(self, **_: object) -> object:
+>       raise NotImplementedError("P3 event consumer is not implemented during Behavioral RED")
+E       NotImplementedError: P3 event consumer is not implemented during Behavioral RED
+
+src\controlplane\application\projections\__init__.py:6: NotImplementedError
+__________ test_tst_m2_p3_006_checkpoint_projection_atomic_rollback ___________
+
+p3_bootstrap_schema = DisposableDatabase(name='m2_p3_test_f31be0f62ed94ecca15468dd28807f9b', connections=[<psycopg.Connection [BAD] at 0x1c351e90490>, <psycopg.Connection [BAD] at 0x1c351e908d0>])
+
+    def test_tst_m2_p3_006_checkpoint_projection_atomic_rollback(p3_bootstrap_schema: DisposableDatabase) -> None:
+        from controlplane.infrastructure.db.uow import TransactionManager
+        event, manager = _event(event_id="00000000-0000-0000-0000-000000000306"), TransactionManager(p3_bootstrap_schema.dsn)
+        try:
+            with pytest.raises(RuntimeError):
+                with manager.unit_of_work() as uow: EventConsumer().process(event=event, consumer_id="projection", connection=uow.connection, inject_before_commit=RuntimeError("rollback"))
+            with p3_bootstrap_schema.connect() as connection:
+                assert connection.execute("SELECT count(*) FROM controlplane.cp_event_checkpoints").fetchone()[0] == 0
+                assert connection.execute("SELECT count(*) FROM controlplane.p3_projection_effects").fetchone()[0] == 0
+                assert connection.execute("SELECT count(*) FROM controlplane.cp_operation_stream").fetchone()[0] == 0
+>           with manager.unit_of_work() as uow: EventConsumer().process(event=event, consumer_id="projection", connection=uow.connection)
+                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p3_outbox_and_projections.py:186:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.projections.EventConsumer object at 0x000001C351E5AC40>
+_ = {'event': DomainEvent(contract_name='controlplane.event.contract', contract_version=11, message_id='message-303', work...ion=1, sensitivity='internal'), 'consumer_id': 'projection', 'connection': <psycopg.Connection [BAD] at 0x1c351e907c0>}
+
+    def process(self, **_: object) -> object:
+>       raise NotImplementedError("P3 event consumer is not implemented during Behavioral RED")
+E       NotImplementedError: P3 event consumer is not implemented during Behavioral RED
+
+src\controlplane\application\projections\__init__.py:6: NotImplementedError
+__________ test_tst_m2_p3_007_unsupported_schema_durably_quarantined __________
+
+p3_bootstrap_schema = DisposableDatabase(name='m2_p3_test_8040dc2468604f32aae2614778090337', connections=[<psycopg.Connection [BAD] at 0x1c351de7bd0>])
+
+    def test_tst_m2_p3_007_unsupported_schema_durably_quarantined(p3_bootstrap_schema: DisposableDatabase) -> None:
+        event = _event(event_id="00000000-0000-0000-0000-000000000307", schema_version=999)
+>       EventConsumer().process(event=event, consumer_id="projection")
+
+tests\m2\test_p3_outbox_and_projections.py:195:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.projections.EventConsumer object at 0x000001C351DCB530>
+_ = {'event': DomainEvent(contract_name='controlplane.event.contract', contract_version=11, message_id='message-303', work...regate_revision=1, producer='workflow-owner', schema_version=999, sensitivity='internal'), 'consumer_id': 'projection'}
+
+    def process(self, **_: object) -> object:
+>       raise NotImplementedError("P3 event consumer is not implemented during Behavioral RED")
+E       NotImplementedError: P3 event consumer is not implemented during Behavioral RED
+
+src\controlplane\application\projections\__init__.py:6: NotImplementedError
+_____ test_tst_m2_p3_008_aggregate_revision_gap_and_out_of_order_blocked ______
+
+p3_bootstrap_schema = DisposableDatabase(name='m2_p3_test_6358304763f140d9b02969f958023756', connections=[<psycopg.Connection [BAD] at 0x1c351de67a0>])
+
+    def test_tst_m2_p3_008_aggregate_revision_gap_and_out_of_order_blocked(p3_bootstrap_schema: DisposableDatabase) -> None:
+>       EventConsumer().process(event=_event(revision=2), consumer_id="projection", expected_current_revision=1)
+
+tests\m2\test_p3_outbox_and_projections.py:204:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.projections.EventConsumer object at 0x000001C351DE6F10>
+_ = {'event': DomainEvent(contract_name='controlplane.event.contract', contract_version=11, message_id='message-303', work...orkflow-owner', schema_version=1, sensitivity='internal'), 'consumer_id': 'projection', 'expected_current_revision': 1}
+
+    def process(self, **_: object) -> object:
+>       raise NotImplementedError("P3 event consumer is not implemented during Behavioral RED")
+E       NotImplementedError: P3 event consumer is not implemented during Behavioral RED
+
+src\controlplane\application\projections\__init__.py:6: NotImplementedError
+_____________ test_tst_m2_p3_009_stale_recovery_epoch_quarantined _____________
+
+p3_bootstrap_schema = DisposableDatabase(name='m2_p3_test_af6755e19f2b401d8ff11e5f7331c854', connections=[<psycopg.Connection [BAD] at 0x1c351de7570>])
+
+    def test_tst_m2_p3_009_stale_recovery_epoch_quarantined(p3_bootstrap_schema: DisposableDatabase) -> None:
+        event = _event(event_id="00000000-0000-0000-0000-000000000309", recovery_epoch=6)
+>       EventConsumer().process(event=event, consumer_id="projection", current_recovery_epoch=7)
+
+tests\m2\test_p3_outbox_and_projections.py:215:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.projections.EventConsumer object at 0x000001C351DE4490>
+_ = {'event': DomainEvent(contract_name='controlplane.event.contract', contract_version=11, message_id='message-303', work...='workflow-owner', schema_version=1, sensitivity='internal'), 'consumer_id': 'projection', 'current_recovery_epoch': 7}
+
+    def process(self, **_: object) -> object:
+>       raise NotImplementedError("P3 event consumer is not implemented during Behavioral RED")
+E       NotImplementedError: P3 event consumer is not implemented during Behavioral RED
+
+src\controlplane\application\projections\__init__.py:6: NotImplementedError
+___ test_tst_m2_p3_010_operation_stream_monotonic_cursor_under_concurrency ____
+
+p3_bootstrap_schema = DisposableDatabase(name='m2_p3_test_2ce2256d74164cd6a76ea4f585debbda', connections=[<psycopg.Connection [BAD] at 0x1c351de49e0>])
+
+    def test_tst_m2_p3_010_operation_stream_monotonic_cursor_under_concurrency(p3_bootstrap_schema: DisposableDatabase) -> None:
+        from controlplane.infrastructure.db.uow import TransactionManager
+        barrier, events = threading.Barrier(8), [_event(event_id=str(uuid.UUID(int=310 + index))) for index in range(8)]
+        def worker(event: DomainEvent) -> object:
+            manager = TransactionManager(p3_bootstrap_schema.dsn)
+            try:
+                with manager.unit_of_work() as uow:
+                    barrier.wait(timeout=5)
+                    return OperationStreamProjector().append(event=event, connection=uow.connection)
+            finally: manager.close()
+>       with ThreadPoolExecutor(max_workers=8) as executor: results = list(executor.map(worker, events))
+                                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p3_outbox_and_projections.py:234:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:625: in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:318: in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:460: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:402: in __get_result
+    raise self._exception
+C:\Users\Admin\AppData\Roaming\uv\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\m2\test_p3_outbox_and_projections.py:232: in worker
+    return OperationStreamProjector().append(event=event, connection=uow.connection)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.projections.OperationStreamProjector object at 0x000001C351DE2D50>
+_ = {'event': DomainEvent(contract_name='controlplane.event.contract', contract_version=11, message_id='message-303', work...'workflow-owner', schema_version=1, sensitivity='internal'), 'connection': <psycopg.Connection [BAD] at 0x1c351e91d00>}
+
+    def append(self, **_: object) -> object:
+>       raise NotImplementedError("P3 operation stream projector is not implemented during Behavioral RED")
+E       NotImplementedError: P3 operation stream projector is not implemented during Behavioral RED
+
+src\controlplane\application\projections\__init__.py:11: NotImplementedError
+___ test_tst_m2_p3_011_operation_stream_safe_projection_and_payload_policy ____
+
+p3_bootstrap_schema = DisposableDatabase(name='m2_p3_test_846c7351e30144ada66b4ed1321c90b5', connections=[<psycopg.Connection [BAD] at 0x1c351e92cf0>])
+
+    def test_tst_m2_p3_011_operation_stream_safe_projection_and_payload_policy(p3_bootstrap_schema: DisposableDatabase) -> None:
+>       OperationStreamProjector().append(event=_event(payload={"unknown_optional": "ok", "open_enum": "FUTURE"}), safe_summary="safe")
+
+tests\m2\test_p3_outbox_and_projections.py:242:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.projections.OperationStreamProjector object at 0x000001C351E8E150>
+_ = {'event': DomainEvent(contract_name='controlplane.event.contract', contract_version=11, message_id='message-303', work...3', aggregate_revision=1, producer='workflow-owner', schema_version=1, sensitivity='internal'), 'safe_summary': 'safe'}
+
+    def append(self, **_: object) -> object:
+>       raise NotImplementedError("P3 operation stream projector is not implemented during Behavioral RED")
+E       NotImplementedError: P3 operation stream projector is not implemented during Behavioral RED
+
+src\controlplane\application\projections\__init__.py:11: NotImplementedError
+=========================== short test summary info ===========================
+FAILED tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_001_production_0003_forward_rollback_and_schema_constraints - AssertionError: P3-001 requires production 0003
+assert False
+ +  where False = is_file()
+ +    where is_file = (WindowsPath('D:/AI Auto Video Creator/src/controlplane/infrastructure/db/migrations') / '0003_outbox_and_projections.sql').is_file
+FAILED tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_002_business_mutation_and_outbox_atomic_commit_rollback - NotImplementedError: P3 outbox writer is not implemented during Behavioral RED
+FAILED tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_003_at_least_once_dispatch_crash_before_published_ack_redispatch - NotImplementedError: P3 outbox publisher is not implemented during Behavioral RED
+FAILED tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_004_consumer_deduplicates_same_event_id - NotImplementedError: P3 event consumer is not implemented during Behavioral RED
+FAILED tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_005_concurrent_consumers_same_event_exactly_one_logical_effect - NotImplementedError: P3 event consumer is not implemented during Behavioral RED
+FAILED tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_006_checkpoint_projection_atomic_rollback - NotImplementedError: P3 event consumer is not implemented during Behavioral RED
+FAILED tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_007_unsupported_schema_durably_quarantined - NotImplementedError: P3 event consumer is not implemented during Behavioral RED
+FAILED tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_008_aggregate_revision_gap_and_out_of_order_blocked - NotImplementedError: P3 event consumer is not implemented during Behavioral RED
+FAILED tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_009_stale_recovery_epoch_quarantined - NotImplementedError: P3 event consumer is not implemented during Behavioral RED
+FAILED tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_010_operation_stream_monotonic_cursor_under_concurrency - NotImplementedError: P3 operation stream projector is not implemented during Behavioral RED
+FAILED tests/m2/test_p3_outbox_and_projections.py::test_tst_m2_p3_011_operation_stream_safe_projection_and_payload_policy - NotImplementedError: P3 operation stream projector is not implemented during Behavioral RED
+============================= 11 failed in 2.54s ==============================

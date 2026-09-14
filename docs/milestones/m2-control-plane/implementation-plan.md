@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_BEHAVIORAL_RED_BLOCKED_EXTERNAL`.
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_RED_READY_FOR_REVIEW`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** `M2-P3_BEHAVIORAL_RED_BLOCKED_EXTERNAL`. M2-P2 đã `ACCEPTED / CLOSED`; P3 đã có structural RED harness nhưng runtime prerequisite `psycopg_pool==3.3.1` chưa sẵn sàng, nên chưa được collect/full RED. Production implementation và migration `0003` vẫn bị cấm. M2-P4..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** `M2-P3_RED_READY_FOR_REVIEW`. M2-P2 đã `ACCEPTED / CLOSED`; P3 exact 11 RED đã hợp lệ trên PostgreSQL 18.6, chờ independent audit evidence. Production implementation và migration `0003` vẫn bị cấm. M2-P4..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)

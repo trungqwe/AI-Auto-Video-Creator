@@ -6,6 +6,7 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 
 ### Changed
 
+- Hardened và thực thi Behavioral RED M2-P3: exact 11 oracle chạy trên PostgreSQL 18.6, đều fail tại migration absence hoặc structural P3 seam dự kiến, orphan=0 và architecture 6/6. Dừng tại `M2-P3_RED_READY_FOR_REVIEW`; chưa có implementation hoặc migration `0003`.
 - Khởi tạo structural Behavioral RED harness M2-P3 với đúng 11 oracle và stub importable không có behavior. Dừng `M2-P3_BEHAVIORAL_RED_BLOCKED_EXTERNAL` vì virtualenv thiếu `psycopg_pool==3.3.1`; không có collection/full RED, migration `0003` hoặc implementation P3.
 - Hiệu chỉnh contract planning M2-P3: OperationStream trace tới `CT-API-008`; outbox giữ đủ MessageEnvelope/DomainEvent; aggregate ordering không unique; quarantine scope theo consumer; và ordering/reconcile facts durable được khóa rõ. P3 vẫn chỉ ở plan review.
 - Khóa kế hoạch M2-P3 sau khi M2-P2 được `ACCEPTED / CLOSED`: xác định schema `0003`, adapter PostgreSQL/UoW boundary, quarantine/watermark durable, exact 11 Behavioral RED oracle, runtime/evidence profile và frozen regressions. Dừng tại `M2-P3_PLAN_READY_FOR_REVIEW`; không có P3 source, test harness, migration hoặc RED runtime.

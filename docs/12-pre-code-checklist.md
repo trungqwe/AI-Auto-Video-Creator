@@ -27,7 +27,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS E3 (ADR-0009 Subprocess Broker OS isolation, Windows DPAPI Vault, Broker-owned provisioning, live E3 probe xác thực Drive thật) |
 | G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS strict version (Python, uv, PG, Temporal, ffprobe WAV duration > 0, fail-closed dynamic matrix observation) |
 | ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất qua Broker Subprocess boundary |
-| M2 | 🟡 `M2-P3_BEHAVIORAL_RED_BLOCKED_EXTERNAL` | M2-P2 đã `ACCEPTED / CLOSED`. P3 structural RED harness đã được tạo nhưng prerequisite runtime `psycopg_pool==3.3.1` chưa sẵn sàng; chưa được collect/full RED, implementation hay migration `0003`. |
+| M2 | 🟡 `M2-P3_RED_READY_FOR_REVIEW` | P3 exact 11 Behavioral RED đã chạy trên PostgreSQL 18.6 với runtime khóa, orphan=0 và architecture 6/6. Chờ independent audit; chưa có quyền implementation hay migration `0003`. |
 | M3 / Module A | ⛔ `NOT AUTHORIZED` | Tiếp tục bị khóa chặt; không được bắt đầu trước khi M2 đạt exit gate và có User Checkpoint riêng |
 
 Đây là bảng trạng thái có thẩm quyền trước lệnh code đầu tiên. Kết quả P2/P3 đã đạt được ghi `PASS_M1_SCOPE`; G01/G04 toàn phần vẫn `PARTIALLY_PROVEN` cho tới khi đủ evidence các milestone tiếp theo.
