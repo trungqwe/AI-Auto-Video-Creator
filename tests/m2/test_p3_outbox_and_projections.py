@@ -5,6 +5,7 @@ import os
 import re
 import threading
 import uuid
+from datetime import UTC, datetime
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -97,17 +98,18 @@ def _event(*, event_id: str | None = None, revision: int = 1, schema_version: in
 
 def _assert_future_production_p3_schema(connection: psycopg.Connection) -> None:
     tables = ("cp_outbox_events", "cp_event_checkpoints", "cp_event_quarantine", "cp_operation_stream", "cp_operation_stream_retention_watermarks")
-    assert connection.execute("SELECT to_regclass('controlplane.' || unnest(%s::text[]))", (list(tables),)).fetchall() == [(f"controlplane.{table}",) for table in tables]
+    assert [connection.execute("SELECT to_regclass(%s)", (f"controlplane.{table}",)).fetchone()[0] for table in tables] == [f"controlplane.{table}" for table in tables]
     columns = dict(connection.execute("SELECT column_name, is_nullable FROM information_schema.columns WHERE table_schema='controlplane' AND table_name='cp_outbox_events'").fetchall())
-    required = {"contract_name", "contract_version", "message_id", "workspace_id", "correlation_id", "causation_id", "trace_context", "occurred_at", "actor", "recovery_epoch", "payload", "event_id", "event_name", "aggregate_type", "aggregate_id", "aggregate_revision", "producer", "schema_version", "sensitivity", "recorded_at", "published", "published_at"}
-    assert required <= set(columns) and columns["event_id"] == "NO" and columns["contract_version"] == columns["schema_version"] == "NO"
+    required = {"contract_name", "contract_version", "message_id", "workspace_id", "correlation_id", "occurred_at", "actor", "payload", "event_id", "event_name", "aggregate_type", "aggregate_id", "aggregate_revision", "producer", "schema_version", "sensitivity", "recorded_at", "published"}
+    nullable = {"causation_id", "trace_context", "recovery_epoch", "published_at"}
+    assert all(columns[name] == "NO" for name in required) and all(columns[name] == "YES" for name in nullable)
     constraints = [row[0] for row in connection.execute("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='controlplane.cp_outbox_events'::regclass").fetchall()]
     assert any(item.startswith("PRIMARY KEY (event_id)") for item in constraints)
     assert not any("UNIQUE (workspace_id, aggregate_type, aggregate_id, aggregate_revision)" in item for item in constraints)
     indexdefs = [row[0] for row in connection.execute("SELECT indexdef FROM pg_indexes WHERE schemaname='controlplane' AND tablename='cp_outbox_events'").fetchall()]
     assert any("aggregate_revision" in item and "UNIQUE" not in item for item in indexdefs) and any("published" in item for item in indexdefs)
-    quarantine = connection.execute("SELECT conkey FROM pg_constraint WHERE conrelid='controlplane.cp_event_quarantine'::regclass AND contype IN ('p','u')").fetchall()
-    assert quarantine
+    quarantine = connection.execute("SELECT array_agg(att.attname ORDER BY ordinality) FROM pg_constraint con CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY key(attnum, ordinality) JOIN pg_attribute att ON att.attrelid=con.conrelid AND att.attnum=key.attnum WHERE con.conrelid='controlplane.cp_event_quarantine'::regclass AND con.contype IN ('p','u') GROUP BY con.oid").fetchall()
+    assert ["consumer_id", "event_id"] in [row[0] for row in quarantine]
     for table, fields in {"cp_event_checkpoints": {"consumer_id", "event_id", "workspace_id", "aggregate_type", "aggregate_id", "aggregate_revision", "status", "checkpointed_at"}, "cp_operation_stream": {"stream_event_id", "workspace_id", "operation_id", "resource_type", "resource_id", "resource_revision", "event_kind", "occurred_at", "recorded_at", "summary", "correlation_id"}, "cp_operation_stream_retention_watermarks": {"workspace_id", "minimum_available_cursor", "minimum_available_at"}}.items():
         actual = {row[0] for row in connection.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='controlplane' AND table_name=%s", (table,)).fetchall()}
         assert fields <= actual
@@ -263,7 +265,9 @@ def test_tst_m2_p3_011_operation_stream_safe_projection_and_payload_policy(p3_bo
     OperationStreamProjector().append(event=safe_event, safe_summary="safe")
     with p3_bootstrap_schema.connect() as connection:
         row = connection.execute("SELECT stream_event_id, resource_type, resource_id, resource_revision, event_kind, occurred_at, recorded_at, summary, correlation_id FROM controlplane.cp_operation_stream").fetchone()
-        assert row is not None and row[0] > 0 and row[1:] == ("operation", "operation-303", 1, "operation.changed", row[4], row[5], "safe", "correlation-303")
+        assert row is not None and row[0] > 0
+        assert row[1:5] == ("operation", "operation-303", 1, "operation.changed") and row[7:] == ("safe", "correlation-303")
+        assert row[5] == datetime(2026, 9, 14, tzinfo=UTC) and row[6] is not None and row[6].tzinfo is not None
         assert connection.execute("SELECT count(*) FROM controlplane.cp_event_quarantine").fetchone()[0] == 0
         baseline = tuple(connection.execute("SELECT (SELECT count(*) FROM controlplane.cp_operation_stream), (SELECT count(*) FROM controlplane.cp_event_quarantine), (SELECT count(*) FROM controlplane.p3_projection_effects), (SELECT count(*) FROM controlplane.cp_outbox_events)").fetchone())
     for unsafe_payload, unsafe_summary in (({"password": "redacted"}, "safe"), ({"blob": b"bytes"}, "safe"), ({"safe": "value"}, "Traceback (most recent call last)")):
