@@ -48,7 +48,14 @@ def _assert_valid(
     assert current_state is original_state
 
 
-def _assert_forbidden(transition: Transition, current_state: object, requested_state: object) -> None:
+def _assert_forbidden(
+    transition: Transition,
+    current_state: object,
+    requested_state: object,
+    *,
+    aggregate_type: str,
+    reconciliation_evidence: ReconciliationEvidence | None = None,
+) -> None:
     original_state = current_state
     original_revision = REVISION
     with pytest.raises(ForbiddenTransitionError) as raised:
@@ -57,14 +64,21 @@ def _assert_forbidden(transition: Transition, current_state: object, requested_s
             current_revision=REVISION,
             expected_revision=REVISION,
             requested_state=requested_state,
+            reconciliation_evidence=reconciliation_evidence,
         )
     error = raised.value
     assert error.code == "FORBIDDEN_TRANSITION"
+    assert error.aggregate_type == aggregate_type
     assert error.current_state == current_state
     assert error.requested_next_state == requested_state
     assert error.current_revision == original_revision
     assert current_state is original_state
     assert REVISION == original_revision
+
+
+def _assert_no_outgoing_edges(transition: Transition, current_state: object, *, aggregate_type: str) -> None:
+    for requested_state in type(current_state):
+        _assert_forbidden(transition, current_state, requested_state, aggregate_type=aggregate_type)
 
 
 def test_tst_m2_p4_001_valid_lifecycle_transitions() -> None:
@@ -82,13 +96,13 @@ def test_tst_m2_p4_001_valid_lifecycle_transitions() -> None:
 
 def test_tst_m2_p4_002_forbidden_transition_completed_to_running_rejected() -> None:
     """Completed Job and terminal Batch states cannot regress to active/running work."""
-    _assert_forbidden(transition_job, JobState.COMPLETED, JobState.ACTIVE)
+    _assert_forbidden(transition_job, JobState.COMPLETED, JobState.ACTIVE, aggregate_type="job")
     for terminal_state in (
         BatchState.COMPLETED_TARGET,
         BatchState.COMPLETED_EXHAUSTED,
         BatchState.FAILED_SYSTEM,
     ):
-        _assert_forbidden(transition_batch, terminal_state, BatchState.RUNNING)
+        _assert_forbidden(transition_batch, terminal_state, BatchState.RUNNING, aggregate_type="batch")
 
 
 def test_tst_m2_p4_003_operation_execution_to_projection_mapping() -> None:
@@ -129,10 +143,19 @@ def test_tst_m2_p4_004_artifact_cleanup_strict_transition_order() -> None:
         ArtifactLocationState.MISSING,
         ArtifactLocationState.OUTCOME_UNKNOWN,
     ):
-        _assert_forbidden(transition_artifact_location, source_state, ArtifactLocationState.CLEANUP_AUTHORIZED)
-        _assert_forbidden(transition_artifact_location, source_state, ArtifactLocationState.DELETED)
+        for cleanup_target in (
+            ArtifactLocationState.CLEANUP_ELIGIBLE,
+            ArtifactLocationState.CLEANUP_AUTHORIZED,
+            ArtifactLocationState.DELETED,
+        ):
+            _assert_forbidden(
+                transition_artifact_location,
+                source_state,
+                cleanup_target,
+                aggregate_type="artifact_location",
+            )
     for source_state in (ArtifactLocationState.CORRUPT, ArtifactLocationState.MISSING, ArtifactLocationState.OUTCOME_UNKNOWN):
-        _assert_forbidden(transition_artifact_location, source_state, ArtifactLocationState.MATERIALIZING)
+        _assert_no_outgoing_edges(transition_artifact_location, source_state, aggregate_type="artifact_location")
 
 
 def test_tst_m2_p4_005_batch_waiting_resume_and_terminal_transitions() -> None:
@@ -145,8 +168,7 @@ def test_tst_m2_p4_005_batch_waiting_resume_and_terminal_transitions() -> None:
         for terminal_state in terminals:
             _assert_valid(transition_batch, source_state, terminal_state)
     for terminal_state in terminals:
-        for reopened_state in (BatchState.RUNNING, BatchState.WAITING_CAPABILITY, terminal_state):
-            _assert_forbidden(transition_batch, terminal_state, reopened_state)
+        _assert_no_outgoing_edges(transition_batch, terminal_state, aggregate_type="batch")
 
 
 def test_tst_m2_p4_006_job_waiting_resume_and_completion_admission() -> None:
@@ -165,8 +187,7 @@ def test_tst_m2_p4_006_job_waiting_resume_and_completion_admission() -> None:
     ):
         _assert_valid(transition_job, current_state, requested_state)
     for terminal_state in (JobState.COMPLETED, JobState.FAILED_FINAL):
-        for reopened_state in (JobState.ACTIVE, JobState.WAITING, terminal_state):
-            _assert_forbidden(transition_job, terminal_state, reopened_state)
+        _assert_no_outgoing_edges(transition_job, terminal_state, aggregate_type="job")
 
 
 def test_tst_m2_p4_007_stage_run_reconcile_and_terminal_transitions() -> None:
@@ -183,11 +204,23 @@ def test_tst_m2_p4_007_stage_run_reconcile_and_terminal_transitions() -> None:
         _assert_valid(transition_stage_run, StageRunState.RUNNING, requested_state)
     for requested_state in (StageRunState.SUCCEEDED, StageRunState.FAILED_RETRYABLE, StageRunState.FAILED_FINAL):
         _assert_valid(transition_stage_run, StageRunState.OUTCOME_UNKNOWN, requested_state, reconciliation_evidence=RECONCILIATION)
+        _assert_forbidden(
+            transition_stage_run,
+            StageRunState.OUTCOME_UNKNOWN,
+            requested_state,
+            aggregate_type="stage_run",
+        )
     for source_state in (StageRunState.WAITING_DEPENDENCY, StageRunState.WAITING_CAPABILITY, StageRunState.FAILED_RETRYABLE):
-        _assert_forbidden(transition_stage_run, source_state, StageRunState.RUNNING)
-    _assert_forbidden(transition_stage_run, StageRunState.OUTCOME_UNKNOWN, StageRunState.RUNNING)
+        _assert_no_outgoing_edges(transition_stage_run, source_state, aggregate_type="stage_run")
+    _assert_forbidden(
+        transition_stage_run,
+        StageRunState.OUTCOME_UNKNOWN,
+        StageRunState.RUNNING,
+        aggregate_type="stage_run",
+        reconciliation_evidence=RECONCILIATION,
+    )
     for terminal_state in (StageRunState.SUCCEEDED, StageRunState.FAILED_FINAL, StageRunState.STALE):
-        _assert_forbidden(transition_stage_run, terminal_state, StageRunState.RUNNING)
+        _assert_no_outgoing_edges(transition_stage_run, terminal_state, aggregate_type="stage_run")
 
 
 def test_tst_m2_p4_008_operation_forbidden_transition_classes_rejected() -> None:
@@ -205,7 +238,16 @@ def test_tst_m2_p4_008_operation_forbidden_transition_classes_rejected() -> None
         (OperationState.SUCCEEDED, OperationState.SUCCEEDED),
         (OperationState.FAILED, OperationState.FAILED),
     ):
-        _assert_forbidden(transition_operation, current_state, requested_state)
+        _assert_forbidden(transition_operation, current_state, requested_state, aggregate_type="operation")
+    _assert_forbidden(
+        transition_operation,
+        OperationState.OUTCOME_UNKNOWN,
+        OperationState.STARTED,
+        aggregate_type="operation",
+        reconciliation_evidence=RECONCILIATION,
+    )
+    for terminal_state in (OperationState.SUCCEEDED, OperationState.FAILED):
+        _assert_no_outgoing_edges(transition_operation, terminal_state, aggregate_type="operation")
 
 
 def test_tst_m2_p4_009_stale_expected_revision_rejected_without_mutation() -> None:

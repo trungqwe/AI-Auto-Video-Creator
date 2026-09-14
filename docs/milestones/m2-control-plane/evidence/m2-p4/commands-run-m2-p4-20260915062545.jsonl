@@ -1,0 +1,5 @@
+{"run_id":"run-m2-p4-20260915062545","command":".venv\\Scripts\\python.exe --version","result":"Python 3.13.15","artifact":"red-p4-run-m2-p4-20260915062545-prerequisite-stdout.txt"}
+{"run_id":"run-m2-p4-20260915062545","command":".venv\\Scripts\\python.exe -m pytest --collect-only -q tests/m2/test_p4_statemachines.py","result":"9 tests collected","artifact":"red-p4-run-m2-p4-20260915062545-collect-stdout.txt"}
+{"run_id":"run-m2-p4-20260915062545","command":".venv\\Scripts\\python.exe -m pytest -vv tests/m2/test_p4_statemachines.py","result":"9 failed; all NotImplementedError at P4 structural seams","artifact":"red-p4-run-m2-p4-20260915062545-stdout.txt"}
+{"run_id":"run-m2-p4-20260915062545","command":".venv\\Scripts\\python.exe -m pytest -q tests/m2/test_p0_architecture_rules.py","result":"6 passed","artifact":"red-p4-run-m2-p4-20260915062545-architecture-stdout.txt"}
+{"run_id":"run-m2-p4-20260915062545","command":"controlplane.infrastructure.security.secret_scanner.generate_secret_scan_report(P4 changed paths)","result":"CLEAN; 0 findings","artifact":"secret-scan-run-m2-p4-20260915062545.json"}
