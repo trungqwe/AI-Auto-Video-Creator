@@ -129,27 +129,40 @@ Từ `RUNNING`:
 
 `OUTCOME_UNKNOWN` → `SUCCEEDED` | `FAILED_RETRYABLE` | `FAILED_FINAL` sau reconcile. Không retry side effect trực tiếp từ `OUTCOME_UNKNOWN`.
 
+Không có cạnh contract từ `WAITING_DEPENDENCY`, `WAITING_CAPABILITY` hoặc `FAILED_RETRYABLE` trong state machine này. Không tự suy diễn recovery/retry edge từ các trạng thái đó.
+
 ## 10. Video job
 
 ### CT-STATE-009
 
-`CREATED` → `SNAPSHOTTED` → `ACTIVE` ↔ `WAITING` → `READY_FOR_COMPLETION` → `COMPLETED`
+Các cạnh hợp lệ duy nhất:
 
-Nhánh lỗi: `ACTIVE` | `WAITING` | `READY_FOR_COMPLETION` → `FAILED_FINAL`.
+- `CREATED` → `SNAPSHOTTED`;
+- `SNAPSHOTTED` → `ACTIVE`;
+- `ACTIVE` → `WAITING`;
+- `WAITING` → `ACTIVE`;
+- `ACTIVE` → `READY_FOR_COMPLETION`;
+- `WAITING` → `READY_FOR_COMPLETION`;
+- `READY_FOR_COMPLETION` → `COMPLETED`;
+- `ACTIVE` | `WAITING` | `READY_FOR_COMPLETION` → `FAILED_FINAL`.
 
 - Job retry kỹ thuật không rời identity hiện tại.
-- Job đã `COMPLETED` không mở lại; biến thể mới là job mới.
+- `COMPLETED` và `FAILED_FINAL` là terminal. Không terminal nào mở lại; biến thể mới là job mới.
 - `READY_FOR_COMPLETION` yêu cầu render/QC đạt nhưng chưa chắc đã sync/commit.
 
 ## 11. Production batch
 
 ### CT-STATE-010
 
-`CREATED` → `RUNNING` ↔ `WAITING_CAPABILITY` → một trong:
+Các cạnh hợp lệ duy nhất:
 
-- `COMPLETED_TARGET`;
-- `COMPLETED_EXHAUSTED`;
-- `FAILED_SYSTEM`.
+- `CREATED` → `RUNNING`;
+- `RUNNING` → `WAITING_CAPABILITY`;
+- `WAITING_CAPABILITY` → `RUNNING`;
+- `RUNNING` → `COMPLETED_TARGET` | `COMPLETED_EXHAUSTED` | `FAILED_SYSTEM`;
+- `WAITING_CAPABILITY` → `COMPLETED_TARGET` | `COMPLETED_EXHAUSTED` | `FAILED_SYSTEM`.
+
+`COMPLETED_TARGET`, `COMPLETED_EXHAUSTED` và `FAILED_SYSTEM` là terminal; không có cạnh khác.
 
 Job riêng lẻ `FAILED_FINAL` không buộc batch `FAILED_SYSTEM`.
 
@@ -157,9 +170,13 @@ Job riêng lẻ `FAILED_FINAL` không buộc batch `FAILED_SYSTEM`.
 
 ### CT-STATE-011
 
-`PREPARED` → `STARTED` → `SUCCEEDED` | `FAILED` | `OUTCOME_UNKNOWN`
+Các cạnh hợp lệ duy nhất:
 
-`OUTCOME_UNKNOWN` chỉ rời trạng thái bằng reconcile. `SUCCEEDED` là terminal cho cùng operation key và input fingerprint.
+- `PREPARED` → `STARTED`;
+- `STARTED` → `SUCCEEDED` | `FAILED` | `OUTCOME_UNKNOWN`;
+- `OUTCOME_UNKNOWN` → `SUCCEEDED` | `FAILED` chỉ sau reconciliation evidence.
+
+Nếu reconcile vẫn chưa xác định được kết quả, operation giữ `OUTCOME_UNKNOWN`; không bịa transition. Không có retry/re-execution trực tiếp từ `OUTCOME_UNKNOWN`. `SUCCEEDED` và `FAILED` đều terminal cho cùng operation key/input fingerprint; không state terminal nào mở lại `STARTED`, và không có self-transition. Retry/re-attempt được phép dùng attempt/revision mới phù hợp, không mở lại terminal.
 
 ## 13. Artifact location
 
@@ -167,9 +184,9 @@ Job riêng lẻ `FAILED_FINAL` không buộc batch `FAILED_SYSTEM`.
 
 `DECLARED` → `MATERIALIZING` → `AVAILABLE_UNVERIFIED` → `VERIFYING` → `VERIFIED` | `CORRUPT` | `MISSING` | `OUTCOME_UNKNOWN`
 
-Từ `VERIFIED`: → `CLEANUP_ELIGIBLE` → `CLEANUP_AUTHORIZED` → `DELETED`.
+Từ `VERIFIED`: → `CLEANUP_ELIGIBLE` → `CLEANUP_AUTHORIZED` → `DELETED`. `VERIFIED` cũng có thể → `MISSING` khi lần verify sau phát hiện location mất.
 
-Location có thể bị đánh `MISSING` sau lần verify trước; artifact version vẫn tồn tại logic và có thể có location khác.
+Location có thể bị đánh `MISSING` sau lần verify trước; artifact version vẫn tồn tại logic và có thể có location khác. Không có recovery edge P4 từ `MISSING`, `CORRUPT` hoặc `OUTCOME_UNKNOWN`, và không có cleanup shortcut.
 
 ## 14. Configuration và external account
 
