@@ -1,7 +1,9 @@
-"""Structural P4 state-machine seams; behavioral rules begin only after RED review."""
+"""Pure, revision-aware state transitions for the foundational P4 aggregates."""
 
 from dataclasses import dataclass
 from enum import StrEnum
+
+from controlplane.application.concurrency import RevisionConflictError
 
 
 class OperationState(StrEnum):
@@ -69,7 +71,150 @@ class ReconciliationEvidence:
 
 
 class ForbiddenTransitionError(Exception):
-    """Structural error type; safe error semantics are not implemented during RED."""
+    """A safe domain error for a transition that is not admitted by its state graph."""
+
+    code = "FORBIDDEN_TRANSITION"
+
+    def __init__(
+        self,
+        *,
+        aggregate_type: str,
+        current_state: StrEnum,
+        requested_next_state: StrEnum,
+        current_revision: int,
+    ) -> None:
+        super().__init__(f"Forbidden transition for {aggregate_type}.")
+        self.aggregate_type = aggregate_type
+        self.current_state = current_state
+        self.requested_next_state = requested_next_state
+        self.current_revision = current_revision
+
+
+def _transition(
+    *,
+    aggregate_type: str,
+    current_state: StrEnum,
+    current_revision: int,
+    expected_revision: int,
+    requested_state: StrEnum,
+    allowed_edges: frozenset[tuple[StrEnum, StrEnum]],
+    evidence_required_edges: frozenset[tuple[StrEnum, StrEnum]],
+    reconciliation_evidence: ReconciliationEvidence | None,
+) -> TransitionResult:
+    """Validate one pure transition without mutating aggregate or persistence state."""
+    if expected_revision != current_revision:
+        raise RevisionConflictError(current_revision)
+
+    edge = (current_state, requested_state)
+    if edge not in allowed_edges or (
+        edge in evidence_required_edges and reconciliation_evidence is None
+    ):
+        raise ForbiddenTransitionError(
+            aggregate_type=aggregate_type,
+            current_state=current_state,
+            requested_next_state=requested_state,
+            current_revision=current_revision,
+        )
+    return TransitionResult(state=requested_state, revision=current_revision + 1)
+
+
+_OPERATION_EDGES = frozenset(
+    {
+        (OperationState.PREPARED, OperationState.STARTED),
+        (OperationState.STARTED, OperationState.SUCCEEDED),
+        (OperationState.STARTED, OperationState.FAILED),
+        (OperationState.STARTED, OperationState.OUTCOME_UNKNOWN),
+        (OperationState.OUTCOME_UNKNOWN, OperationState.SUCCEEDED),
+        (OperationState.OUTCOME_UNKNOWN, OperationState.FAILED),
+    }
+)
+_OPERATION_EVIDENCE_EDGES = frozenset(
+    {
+        (OperationState.OUTCOME_UNKNOWN, OperationState.SUCCEEDED),
+        (OperationState.OUTCOME_UNKNOWN, OperationState.FAILED),
+    }
+)
+
+_BATCH_EDGES = frozenset(
+    {
+        (BatchState.CREATED, BatchState.RUNNING),
+        (BatchState.RUNNING, BatchState.WAITING_CAPABILITY),
+        (BatchState.WAITING_CAPABILITY, BatchState.RUNNING),
+        *(
+            (state, terminal)
+            for state in (BatchState.RUNNING, BatchState.WAITING_CAPABILITY)
+            for terminal in (
+                BatchState.COMPLETED_TARGET,
+                BatchState.COMPLETED_EXHAUSTED,
+                BatchState.FAILED_SYSTEM,
+            )
+        ),
+    }
+)
+
+_JOB_EDGES = frozenset(
+    {
+        (JobState.CREATED, JobState.SNAPSHOTTED),
+        (JobState.SNAPSHOTTED, JobState.ACTIVE),
+        (JobState.ACTIVE, JobState.WAITING),
+        (JobState.WAITING, JobState.ACTIVE),
+        (JobState.ACTIVE, JobState.READY_FOR_COMPLETION),
+        (JobState.WAITING, JobState.READY_FOR_COMPLETION),
+        (JobState.READY_FOR_COMPLETION, JobState.COMPLETED),
+        (JobState.ACTIVE, JobState.FAILED_FINAL),
+        (JobState.WAITING, JobState.FAILED_FINAL),
+        (JobState.READY_FOR_COMPLETION, JobState.FAILED_FINAL),
+    }
+)
+
+_STAGE_RUN_EDGES = frozenset(
+    {
+        (StageRunState.PENDING, StageRunState.WAITING_DEPENDENCY),
+        (StageRunState.PENDING, StageRunState.WAITING_CAPABILITY),
+        (StageRunState.PENDING, StageRunState.RUNNING),
+        *(
+            (StageRunState.RUNNING, state)
+            for state in (
+                StageRunState.SUCCEEDED,
+                StageRunState.FAILED_RETRYABLE,
+                StageRunState.FAILED_FINAL,
+                StageRunState.OUTCOME_UNKNOWN,
+                StageRunState.STALE,
+            )
+        ),
+        *(
+            (StageRunState.OUTCOME_UNKNOWN, state)
+            for state in (
+                StageRunState.SUCCEEDED,
+                StageRunState.FAILED_RETRYABLE,
+                StageRunState.FAILED_FINAL,
+            )
+        ),
+    }
+)
+_STAGE_RUN_EVIDENCE_EDGES = frozenset(
+    {
+        (StageRunState.OUTCOME_UNKNOWN, StageRunState.SUCCEEDED),
+        (StageRunState.OUTCOME_UNKNOWN, StageRunState.FAILED_RETRYABLE),
+        (StageRunState.OUTCOME_UNKNOWN, StageRunState.FAILED_FINAL),
+    }
+)
+
+_ARTIFACT_LOCATION_EDGES = frozenset(
+    {
+        (ArtifactLocationState.DECLARED, ArtifactLocationState.MATERIALIZING),
+        (ArtifactLocationState.MATERIALIZING, ArtifactLocationState.AVAILABLE_UNVERIFIED),
+        (ArtifactLocationState.AVAILABLE_UNVERIFIED, ArtifactLocationState.VERIFYING),
+        (ArtifactLocationState.VERIFYING, ArtifactLocationState.VERIFIED),
+        (ArtifactLocationState.VERIFYING, ArtifactLocationState.CORRUPT),
+        (ArtifactLocationState.VERIFYING, ArtifactLocationState.MISSING),
+        (ArtifactLocationState.VERIFYING, ArtifactLocationState.OUTCOME_UNKNOWN),
+        (ArtifactLocationState.VERIFIED, ArtifactLocationState.CLEANUP_ELIGIBLE),
+        (ArtifactLocationState.VERIFIED, ArtifactLocationState.MISSING),
+        (ArtifactLocationState.CLEANUP_ELIGIBLE, ArtifactLocationState.CLEANUP_AUTHORIZED),
+        (ArtifactLocationState.CLEANUP_AUTHORIZED, ArtifactLocationState.DELETED),
+    }
+)
 
 
 def transition_operation(
@@ -80,7 +225,16 @@ def transition_operation(
     requested_state: OperationState,
     reconciliation_evidence: ReconciliationEvidence | None = None,
 ) -> TransitionResult:
-    raise NotImplementedError
+    return _transition(
+        aggregate_type="operation",
+        current_state=current_state,
+        current_revision=current_revision,
+        expected_revision=expected_revision,
+        requested_state=requested_state,
+        allowed_edges=_OPERATION_EDGES,
+        evidence_required_edges=_OPERATION_EVIDENCE_EDGES,
+        reconciliation_evidence=reconciliation_evidence,
+    )
 
 
 def transition_batch(
@@ -91,7 +245,16 @@ def transition_batch(
     requested_state: BatchState,
     reconciliation_evidence: ReconciliationEvidence | None = None,
 ) -> TransitionResult:
-    raise NotImplementedError
+    return _transition(
+        aggregate_type="batch",
+        current_state=current_state,
+        current_revision=current_revision,
+        expected_revision=expected_revision,
+        requested_state=requested_state,
+        allowed_edges=_BATCH_EDGES,
+        evidence_required_edges=frozenset(),
+        reconciliation_evidence=reconciliation_evidence,
+    )
 
 
 def transition_job(
@@ -102,7 +265,16 @@ def transition_job(
     requested_state: JobState,
     reconciliation_evidence: ReconciliationEvidence | None = None,
 ) -> TransitionResult:
-    raise NotImplementedError
+    return _transition(
+        aggregate_type="job",
+        current_state=current_state,
+        current_revision=current_revision,
+        expected_revision=expected_revision,
+        requested_state=requested_state,
+        allowed_edges=_JOB_EDGES,
+        evidence_required_edges=frozenset(),
+        reconciliation_evidence=reconciliation_evidence,
+    )
 
 
 def transition_stage_run(
@@ -113,7 +285,16 @@ def transition_stage_run(
     requested_state: StageRunState,
     reconciliation_evidence: ReconciliationEvidence | None = None,
 ) -> TransitionResult:
-    raise NotImplementedError
+    return _transition(
+        aggregate_type="stage_run",
+        current_state=current_state,
+        current_revision=current_revision,
+        expected_revision=expected_revision,
+        requested_state=requested_state,
+        allowed_edges=_STAGE_RUN_EDGES,
+        evidence_required_edges=_STAGE_RUN_EVIDENCE_EDGES,
+        reconciliation_evidence=reconciliation_evidence,
+    )
 
 
 def transition_artifact_location(
@@ -124,7 +305,16 @@ def transition_artifact_location(
     requested_state: ArtifactLocationState,
     reconciliation_evidence: ReconciliationEvidence | None = None,
 ) -> TransitionResult:
-    raise NotImplementedError
+    return _transition(
+        aggregate_type="artifact_location",
+        current_state=current_state,
+        current_revision=current_revision,
+        expected_revision=expected_revision,
+        requested_state=requested_state,
+        allowed_edges=_ARTIFACT_LOCATION_EDGES,
+        evidence_required_edges=frozenset(),
+        reconciliation_evidence=reconciliation_evidence,
+    )
 
 
 __all__ = [
