@@ -1,6 +1,6 @@
 # AI Auto Video Creator
 
-> Cập nhật hiện hành: M2-P2 là `M2-P2_IMPLEMENTATION_READY_FOR_REVIEW`; implementation/evidence candidate đã qua closure gates và đang chờ independent audit. M3 và Module A vẫn `NOT AUTHORIZED`.
+> Cập nhật hiện hành: M2-P2 là `ACCEPTED / CLOSED`; M2-P3 ở `M2-P3_PLAN_READY_FOR_REVIEW`, chỉ được planning và chuẩn bị Behavioral RED. M2-P4..P7, M3 và Module A vẫn `NOT AUTHORIZED`.
 
 Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều góc kể tiếng Anh, dựng video ngắn 61–70 giây và đồng bộ đầu ra lên cloud. Dự án được phát triển theo từng milestone có evidence gate; không coi việc chương trình chạy một lần là bằng chứng kiến trúc đã đạt.
 
@@ -13,7 +13,7 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G04 Drive/OAuth | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G07 Compatibility | `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` |
-| M2 Control Plane | `M2-P1_ACCEPTED_CLOSED; M2-P2_RED_READY_FOR_REVIEW` (P2 full Behavioral RED đã có evidence; chờ independent audit) |
+| M2 Control Plane | `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_PLAN_READY_FOR_REVIEW` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
 Toàn bộ các work package M1 (`M1-P0 → M1-P6`) đã được Người dùng CHẤP THUẬN chính thức tại User Checkpoint ngày 13-09-2026 sau independent re-audit HEAD `08c857c`: M1 chuyển sang `ACCEPTED / CLOSED` (93 passed, 0 skipped, coverage 83%, Audit R5 + R5.1 ACCEPTED). M2-P0 và M2-P1 đã được CHẤP THUẬN / ĐÓNG; independent audit tại `90f4195e928ecbf5622d9760465a5d09d8b4f867` xác nhận P1 11/11, frozen P0 33/33, M1 93/93, 6/6 gate PASS và evidence provenance/hash DAG PASS. M2-P2 được ủy quyền cho SPEC, PLAN và Behavioral RED, nhưng implementation vẫn bị cấm trước RED hợp lệ có evidence và independent audit. Toàn bộ Milestone M3 và Phân hệ A tiếp tục bị khóa chặt (`NOT AUTHORIZED`).

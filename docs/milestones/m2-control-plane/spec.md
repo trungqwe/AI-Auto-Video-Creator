@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_IMPLEMENTATION_READY_FOR_REVIEW` (P2 correction closure có evidence; chờ independent audit.)
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_PLAN_READY_FOR_REVIEW`.
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** `M2-P2_IMPLEMENTATION_READY_FOR_REVIEW`. P2 correction closure đã đạt exact P2 11/11, P1 11/11, P0 33/33 và M1 93/93 trên PostgreSQL 18.6/`CREATEDB=true`, orphan=0; evidence chờ independent audit. M3 hoặc Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc:** `M2-P3_PLAN_READY_FOR_REVIEW`. P2 đã `ACCEPTED / CLOSED`; P3 chỉ được lập kế hoạch và chuẩn bị Behavioral RED. Chưa có quyền P3 RED harness hoặc production implementation. M2-P4..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
@@ -206,17 +206,11 @@ src/controlplane/
 - **Optimistic revision**: `RevisionedMutationPort` dùng PostgreSQL CAS adapter trên connection P1 UoW và disposable aggregate probe relation: create revision 1; matching update atomically tăng một; stale zero-row trả `RevisionConflictError(current_revision=...)`; rollback không tăng revision; hai writer cùng revision có đúng một commit. Không thêm aggregate nghiệp vụ và không gọi Python-only helper là production proof.
 
 ### 6.2. Transactional Outbox & Operation Stream Projection (M2-P3)
-- **Outbox Event Schema (CT-EVT-001..005)**:
-  Bảng `controlplane.cp_outbox_events` lưu: `event_id`, `event_name`, `aggregate_type`, `aggregate_id`, `aggregate_revision`, `producer`, `workspace_id`, `correlation_id`, `causation_id`, `contract_version`, `recovery_epoch`, `sensitivity`, `occurred_at`, `recorded_at`, `payload` (JSONB), `published`, `published_at`.
-- **Atomic Commit**: Transaction nghiệp vụ và bản ghi outbox event bắt buộc commit cùng transaction.
-- **Consumer Deduplication & Atomic Side Effect**:
-  Bảng `controlplane.cp_event_checkpoints` lưu checkpoint consumer; khi consumer xử lý event để cập nhật projection/read model, checkpoint và projection phải commit trong cùng một transaction.
-- **Xử lý Bất thường**:
-  - Phát hiện và cách ly event có schema không hỗ trợ (`QUARANTINED_UNSUPPORTED_SCHEMA`).
-  - Kiểm tra `recovery_epoch`: event mang epoch cũ bị từ chối (`STALE_RECOVERY_EPOCH`).
-  - Xử lý aggregate revision gap / out-of-order event.
-- **Durable Operation-Stream Projection**:
-  Bảng `controlplane.cp_operation_stream` lưu stream events với monotonic `BIGINT cursor` (`stream_event_id`), `operation_id`, `event_kind`, `summary`, `correlation_id`, `created_at`. Đây là nguồn sự thật duy nhất cho endpoint SSE phục vụ reconnect và resync.
+- **Outbox schema (`0003_outbox_and_projections`)**: `cp_outbox_events` có `event_id` PK bất biến; `workspace_id` NOT NULL/FK P1; `event_name`, `aggregate_type`, `aggregate_id`, `aggregate_revision`, `producer`, `correlation_id`, `causation_id`, `recovery_epoch`, `sensitivity`, `occurred_at`, `recorded_at`, `payload JSONB`, `published BOOLEAN`, `published_at`. `contract_version` là version `MessageEnvelope` P2 và `schema_version` là version payload `DomainEvent` CT-EVT-002; cả hai NOT NULL và không được đồng nhất. Unique `(workspace_id, aggregate_type, aggregate_id, aggregate_revision)` bảo vệ ordering theo aggregate; index unpublished dispatch tối thiểu `(published, recorded_at)` có điều kiện `published = false`. Check bắt buộc `published=false AND published_at IS NULL` hoặc `published=true AND published_at IS NOT NULL`.
+- **Atomicity và publisher**: mutation nghiệp vụ + outbox insert dùng đúng active P1 `SqlUnitOfWork` transaction: commit có cả hai, rollback không có cái nào. Publisher là at-least-once: claim/read unpublished → dispatch attempt → durable `published=true` ACK. Crash sau dispatch nhưng trước ACK phải redispatch; không claim exactly-once publisher.
+- **Consumer/ordering/quarantine**: `cp_event_checkpoints` có PK `(consumer_id, event_id)`, workspace/aggregate identity, applied revision và timestamp để durable dedupe. Checkpoint + projection mutation cùng một transaction; concurrent consumer cùng event chỉ một logical effect. Older/out-of-order không overwrite; forward gap dừng aggregate và ghi durable reconcile/snapshot-required state. `cp_event_quarantine` là representation durable, giữ event identity/original payload/reason/timestamp; unsupported schema dùng `QUARANTINED_UNSUPPORTED_SCHEMA`, stale epoch dùng `STALE_RECOVERY_EPOCH`, không silent drop hay mutate historical event.
+- **Operation stream và retention**: `cp_operation_stream` có `stream_event_id BIGINT` monotonic, `workspace_id`, `operation_id`, `event_kind`, safe/redacted `summary`, `correlation_id`, `recorded_at`; cursor là nguồn thứ tự, không dùng wall-clock. `cp_operation_stream_retention_watermarks` giữ watermark bền vững theo workspace. P3 chỉ tạo projection foundation của `CT-API-007`; không tạo HTTP/SSE route, reconnect hoặc `resync_required` mapper.
+- **Boundary**: application/domain không chứa SQL, tên bảng, psycopg hoặc transaction ownership. PostgreSQL adapter chỉ dùng connection active của P1 UoW, không tự acquire pool, commit, rollback hoặc mở transaction ẩn. Không sửa `MigrationRunner`.
 
 ### 6.3. Operation Semantics Mapping (M2-P4)
 Phân biệt rõ ràng giữa execution state và projection view:

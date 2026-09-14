@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_IMPLEMENTATION_READY_FOR_REVIEW` (P2 correction closure có evidence; chờ independent audit.)
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_PLAN_READY_FOR_REVIEW`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** `M2-P2_IMPLEMENTATION_READY_FOR_REVIEW`. Correction closure đã xác nhận P2 11/11, P1 11/11, P0 33/33 và M1 93/93 trên runtime khóa; independent audit phải hoàn tất trước khi ACCEPTED/CLOSED. Không mở P3; M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** `M2-P3_PLAN_READY_FOR_REVIEW`. M2-P2 đã `ACCEPTED / CLOSED`; P3 chỉ được planning và chuẩn bị Behavioral RED, chưa được tạo RED harness, implementation hoặc migration `0003`. M2-P4..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -318,41 +318,65 @@ graph TD
 
 ### M2-P3: Transactional Outbox, Event Deduplication & Durable Operation-Stream Projections
 
-- **Requirement / CT / INV IDs**: `CT-CMN-001`, `CT-EVT-001..005`, `CT-API-007`, `09-contracts/02-domain-events.md`, `ADR-0004`.
-- **Dependencies**: M2-P2.
-- **Mục tiêu**:
-  1. Migration tạo bảng `controlplane.cp_outbox_events` bao phủ đầy đủ schema CT-EVT-001..005: `event_id`, `event_name`, `aggregate_type`, `aggregate_id`, `aggregate_revision`, `producer`, `workspace_id`, `correlation_id`, `causation_id`, `contract_version`, `recovery_epoch`, `sensitivity`, `occurred_at`, `recorded_at`, `payload` (JSONB), `published`, `published_at`.
-  2. Transactional Outbox: Đảm bảo mutation nghiệp vụ và outbox event commit trong cùng 1 transaction PostgreSQL.
-  3. Consumer Deduplication & Atomic Side Effect: Bảng `controlplane.cp_event_checkpoints`; khi consumer cập nhật projection/read model, checkpoint và projection phải commit trong cùng một transaction.
-  4. Fault Handling:
-     - Dispatch thành công → crash trước published ACK → dispatch lại → consumer dedupe → logical side effect chỉ một lần.
-     - Phát hiện aggregate revision gap và out-of-order events.
-     - Cách ly event có schema không hỗ trợ (`QUARANTINED_UNSUPPORTED_SCHEMA`).
-     - Từ chối event mang epoch cũ (`STALE_RECOVERY_EPOCH`).
-  5. Durable Operation-Stream Projection: Bảng `controlplane.cp_operation_stream` với monotonic `BIGINT cursor` (`stream_event_id`), `operation_id`, `event_kind`, `summary`, `correlation_id`, `created_at` và retention watermark làm nguồn sự thật duy nhất cho endpoint SSE.
-- **Allowed File Scope**:
-  - `src/controlplane/infrastructure/db/migrations/0003_outbox_and_projections.*`
-  - `src/controlplane/domain/events/**`
-  - `src/controlplane/application/outbox/**`
-  - `src/controlplane/application/projections/**`
-  - `tests/m2/test_p3_outbox_and_projections.py`
-  - `docs/milestones/m2-control-plane/evidence/m2-p3/**`
-- **Forbidden File Scope**:
-  - `src/controlplane/api/**`, `src/controlplane/ui/**`, `src/m1proof/**`.
-- **RED Oracle**:
-  - `test_tst_m2_p3_001_outbox_atomic_commit_with_business_mutation`: Rollback transaction nghiệp vụ nhưng outbox event vẫn ghi -> FAILED vì chưa đảm bảo atomicity.
-  - `test_tst_m2_p3_002_consumer_dedupe_and_fault_recovery`: Giả lập crash sau dispatch trước published ACK, dispatch lại -> FAILED vì projection bị nhân đôi.
-  - `test_tst_m2_p3_003_unsupported_schema_quarantined`: Gửi event sai schema version -> FAILED vì chưa có logic quarantine.
-  - `test_tst_m2_p3_004_operation_stream_monotonic_cursor`: Kiểm tra cursor trong cp_operation_stream -> FAILED vì cursor chưa tăng đơn điệu.
-- **Positive Tests**: Outbox commit nguyên tử; consumer dedupe ngăn chặn duplicate side effect; cursor tăng đơn điệu; stream projection phản ánh chính xác event.
-- **Negative Tests**: Event mang stale recovery epoch bị từ chối; event sai schema version bị chuyển vào quarantine.
-- **Concurrency / Fault / Security Tests**: Fault injection crash trước khi update published; concurrent consumers xử lý cùng một event_id.
-- **Migration / Rollback**: `0003_outbox_and_projections.sql` và rollback tương ứng trên isolated test DB.
-- **Evidence**: `docs/milestones/m2-control-plane/evidence/m2-p3/` (`commands.jsonl`, `status.json`, `status.md`, `red-observations.md`, `red-p3-stdout.txt`, `hashes.sha256`).
-- **PASS Criteria**: Evidence validator P0 đạt PASS; 93 tests M1 tiếp tục PASS; 100% tests P3 đạt GREEN.
-- **STOP Condition**: Outbox event tồn tại khi transaction nghiệp vụ bị rollback hoặc consumer dedupe để lặp side effect.
-- **Claim Allowed**: "M2-P3 hoàn tất: Transactional Outbox, Event Deduplication và Durable Operation Stream Projection đã hoạt động."
-- **Claim Forbidden**: "State machines đã hoàn tất."
+- **Requirement / CT / ADR IDs**: `CT-CMN-001/003/006/011/012/013`, `CT-EVT-001..005`, `CT-API-007` (projection foundation only; no HTTP/SSE), `ADR-0004`.
+- **Dependencies**: M2-P1 và M2-P2 đều `ACCEPTED / CLOSED`; P3 kế thừa UoW, migration, envelope, receipt và idempotency hiện hữu, không redesign.
+- **P3 status / authorization**: `M2-P3_PLAN_READY_FOR_REVIEW`. Chỉ sau independent approval mới được viết Behavioral RED; implementation chỉ được xét sau evidence RED hợp lệ. M2-P4..P7, M3 và Module A không thuộc scope.
+
+#### Schema contract khóa trước implementation
+
+`0003_outbox_and_projections.sql` và `0003_outbox_and_projections.rollback.sql` sẽ là migration/rollback production duy nhất của P3. Không tạo các tệp này trong phase planning.
+
+| Object | Schema semantics bắt buộc |
+|---|---|
+| `cp_outbox_events` | `event_id` UUID PK bất biến; `workspace_id` NOT NULL FK P1; `event_name`, `aggregate_type`, `aggregate_id`, `aggregate_revision BIGINT`, `producer`, `correlation_id`, `causation_id`, `recovery_epoch`, `sensitivity`, `occurred_at`, `recorded_at`, `payload JSONB`, `published BOOLEAN NOT NULL DEFAULT false`, `published_at`; `contract_version` NOT NULL là MessageEnvelope version và `schema_version` NOT NULL là DomainEvent payload schema version, không được collapse. Unique `(workspace_id, aggregate_type, aggregate_id, aggregate_revision)`; index unpublished `(recorded_at, event_id) WHERE published=false`; check published/published_at nhất quán. |
+| `cp_event_checkpoints` | PK `(consumer_id, event_id)` chống duplicate side effect; workspace/event/aggregate identity, `aggregate_revision`, `checkpointed_at`, trạng thái/reconcile data cần thiết để dedupe và phát hiện ordering. Checkpoint chỉ commit cùng projection mutation. |
+| `cp_event_quarantine` | Durable quarantine/dead-letter, giữ event identity, workspace, original envelope/payload, `reason_code`, `quarantined_at`, reconcile metadata; unique event/quarantine identity. Dùng đúng `QUARANTINED_UNSUPPORTED_SCHEMA` hoặc `STALE_RECOVERY_EPOCH`; không in-memory/log-only, không silent drop. |
+| `cp_operation_stream` | `stream_event_id BIGINT` monotonic/unique, `workspace_id`, `operation_id`, `event_kind`, safe/redacted summary, `correlation_id`, `recorded_at`. Persisted ordering chỉ dựa cursor, không wall-clock; concurrent insert không trùng cursor. |
+| `cp_operation_stream_retention_watermarks` | Watermark bền vững per workspace, minimum available cursor và timestamp. Chỉ là foundation để P7/API quyết định reconnect/resync sau này; P3 không có SSE/HTTP mapper. |
+
+Rollback chỉ drop P3 objects theo dependency order, giữ `cp_workspaces`, `cp_actors`, `cp_auth_sessions`, P2 receipt/idempotency tables và `cp_schema_migrations` tracking P1/P2 đúng semantics runner.
+
+#### Transaction, publisher và consumer boundary
+
+- Một test-only `p3_business_probe` relation có thể được fixture tạo trực tiếp trong disposable DB để chứng minh `business mutation + outbox insert` dùng cùng active P1 UoW; nó không phải aggregate production và không nằm trong migration `0003`.
+- Commit phải có cả probe mutation và outbox event; rollback phải không có cả hai. Repository/adapters dùng active `SqlUnitOfWork.connection`, không acquire pool, commit, rollback hay mở transaction độc lập/ẩn.
+- Publisher at-least-once phân tách claim/read unpublished → dispatch attempt → durable published ACK. Crash sau dispatch trước ACK phải dẫn tới redispatch; P3 không claim exactly-once publisher hoặc cần external broker thật.
+- Consumer xử lý checkpoint/dedupe + projection trong cùng PostgreSQL transaction. Cùng `event_id` lần hai hoặc consumer cạnh tranh chỉ tạo một logical effect/operation-stream item. Old/out-of-order không overwrite; forward gap dừng aggregate và ghi durable reconcile/snapshot-required state, không skip gap để apply.
+- Unsupported schema không apply projection và quarantine durable; optional unknown field/open enum của schema hỗ trợ đi nhánh unknown an toàn, không crash/đoán dangerous behavior. Stale epoch không mutate projection, quarantine/reconcile với `STALE_RECOVERY_EPOCH`; chỉ owner reissue/reconcile dưới epoch mới mới được áp dụng lại.
+- Payload/event summary không chứa secret/token/password, raw OAuth response, blob/bytes hoặc stack trace; đây là proof hẹp CT-EVT-002/003/CT-CMN-013, không phải generic DLP engine.
+
+#### Exact mandatory Behavioral RED catalogue — 11 tests
+
+| ID / exact identity | Traceability | Expected direct RED trước implementation | Loại oracle |
+|---|---|---|---|
+| P3-001 `test_tst_m2_p3_001_production_0003_forward_rollback_and_schema_constraints` | `CT-EVT-001/002/005`, `ADR-0004` | `0003`/P3 schema, constraints hoặc P3-only rollback chưa tồn tại | migration/negative |
+| P3-002 `test_tst_m2_p3_002_business_mutation_and_outbox_atomic_commit_rollback` | `CT-EVT-001`, `ADR-0004` | UoW-bound business+outbox commit/rollback invariant chưa có | positive/rollback |
+| P3-003 `test_tst_m2_p3_003_at_least_once_dispatch_crash_before_published_ack_redispatch` | `CT-EVT-001/005`, `ADR-0004` | crash-before-ACK không redispatch đúng hoặc thiếu durable ACK path | fault |
+| P3-004 `test_tst_m2_p3_004_consumer_deduplicates_same_event_id` | `CT-EVT-001/005`, `CT-CMN-011` | same event tạo logical side effect/stream item lần hai | positive/negative |
+| P3-005 `test_tst_m2_p3_005_concurrent_consumers_same_event_exactly_one_logical_effect` | `CT-EVT-001/005`, `ADR-0004` | concurrent same-event chưa có one-winner dedupe | concurrency |
+| P3-006 `test_tst_m2_p3_006_checkpoint_projection_atomic_rollback` | `CT-EVT-001`, `ADR-0004` | checkpoint/projection không atomic khi raise/rollback | rollback |
+| P3-007 `test_tst_m2_p3_007_unsupported_schema_durably_quarantined` | `CT-EVT-002/003/005`, `CT-CMN-012/013` | unsupported schema bị apply/drop hoặc thiếu quarantine reason | negative/security |
+| P3-008 `test_tst_m2_p3_008_aggregate_revision_gap_and_out_of_order_blocked` | `CT-EVT-001/005`, `CT-CMN-005` | old event overwrite hoặc forward gap bị skip/apply | ordering/negative |
+| P3-009 `test_tst_m2_p3_009_stale_recovery_epoch_quarantined` | `CT-EVT-005`, `CT-CMN-013`, `ADR-0004` | stale epoch mutate projection hoặc bị drop im lặng | negative/fault |
+| P3-010 `test_tst_m2_p3_010_operation_stream_monotonic_cursor_under_concurrency` | `CT-API-007`, `CT-EVT-001` | cursor không monotonic/unique khi concurrent insert | concurrency |
+| P3-011 `test_tst_m2_p3_011_operation_stream_safe_projection_and_payload_policy` | `CT-API-007`, `CT-EVT-002/003`, `CT-CMN-013` | unsafe payload/summary persist hoặc correlation/safe projection thiếu | security/positive |
+
+Không đổi tên, thêm, bỏ hoặc gộp 11 identities này trong phase RED/implementation mà không có audit plan correction. Mỗi test function-scoped disposable DB `^m2_p3_test_[0-9a-f]+$`; fixture dùng duy nhất `M2_TEST_PG_DSN`, create/drop exact identity qua admin connection, đóng target connections trước drop, final orphan query = 0. Không SQLite/mock persistence.
+
+#### RED, evidence và gates
+
+- Raw prerequisite → collect-only exact 11 → full raw RED stdout → `red-observations.md` theo thứ tự đó. Per-test classification chỉ là `VALID_BEHAVIORAL_RED`, `UPSTREAM_PATH_RED`, `INVALID_SETUP_FAILURE`, `ORACLE_MISMATCH`, `UNEXPECTED_PASS`; `BLOCKED_EXTERNAL` chỉ là phase/status. Credential/import/fixture/create/drop failure không phải RED.
+- Runtime khóa: Python `3.13.15`, psycopg `3.3.5`, psycopg-pool `3.3.1`, PostgreSQL `18.6`, `CREATEDB=true`, pool thật `psycopg_pool.ConnectionPool`.
+- Future evidence package `docs/milestones/m2-control-plane/evidence/m2-p3/`: raw RED artifacts, final P3 JUnit/report, P2/P1/P0/M1 regressions, runtime, secret scan, commands, status, hashes, `profile_p3.py`, `synthesizer_p3.py --verify-only`. Profile fail-closed khi identity/count sai, skip/fail/error, runtime/orphan/secret/provenance/hash mismatch hoặc frozen regression sai. Historical P2 evidence immutable.
+- Gates: `GATE-P3-01` 0003/schema/rollback; `GATE-P3-02` UoW outbox/publisher; `GATE-P3-03` consumer dedupe/order/quarantine; `GATE-P3-04` operation stream/retention foundation; `GATE-P3-05` frozen regressions; `GATE-P3-06` runtime/security/evidence integrity.
+- Frozen closure bắt buộc: P3 exact 11/11; P2 exact 11/11; P1 exact 11/11; P0 exact 33/33 bao gồm architecture 6/6; M1 exact 93/93, 0 skipped.
+
+#### Future allowed / forbidden scope
+
+- **Allowed only after appropriate future authorization**: `src/controlplane/domain/events/**`; `src/controlplane/application/outbox/**`; `src/controlplane/application/projections/**`; `src/controlplane/infrastructure/db/outbox/**`; `src/controlplane/infrastructure/db/projections/**`; `src/controlplane/infrastructure/db/migrations/0003_outbox_and_projections.sql`; rollback paired file; `src/controlplane/infrastructure/evidence/profile_p3.py`; `synthesizer_p3.py`; `tests/m2/test_p3_outbox_and_projections.py`; `docs/milestones/m2-control-plane/evidence/m2-p3/**`; P3 planning/status docs.
+- **Forbidden**: `src/controlplane/api/**`, actual SSE/HTTP routes, `src/controlplane/ui/**`, state machines P4, P5/P6/P7 work, Temporal integration, `src/m1proof/**`, M1 files, P1/P2 source/tests/migrations/evidence except frozen read-only regression, `MigrationRunner` changes, M3 and Module A.
+
+**Planning STOP condition:** không viết P3 migration/source/stub/test harness hoặc chạy/fabricate RED/GREEN evidence trong phase này. Sau commit docs-only dừng tại `M2-P3_PLAN_READY_FOR_REVIEW`.
 
 ---
 
