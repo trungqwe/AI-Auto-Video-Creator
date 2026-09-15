@@ -33,6 +33,7 @@ from controlplane.domain.concurrency import RevisionConflictError
 from controlplane.domain.events import ensure_safe_event_payload
 from controlplane.domain.statemachine import ForbiddenTransitionError
 from controlplane.infrastructure.db.migration_runner import MigrationRunner
+from controlplane.infrastructure.db.config_security import PostgresConfigEventSink, PostgresConfigSecurityRepository
 from controlplane.infrastructure.db.uow import TransactionManager
 
 
@@ -41,6 +42,18 @@ PRODUCTION_MIGRATIONS = REPO_ROOT / "src" / "controlplane" / "infrastructure" / 
 TEST_DATABASE_NAME = re.compile(r"^m2_p5a_test_[0-9a-f]+$")
 WORKSPACE_A = "00000000-0000-0000-0000-0000000005a1"
 WORKSPACE_B = "00000000-0000-0000-0000-0000000005a2"
+
+
+def _config_revision_service() -> ConfigRevisionService:
+    return ConfigRevisionService(PostgresConfigSecurityRepository, PostgresConfigEventSink)
+
+
+def _config_revision_repository() -> ConfigRevisionRepository:
+    return ConfigRevisionRepository(PostgresConfigSecurityRepository, PostgresConfigEventSink)
+
+
+def _secret_handle_store() -> SecretHandleStore:
+    return SecretHandleStore(PostgresConfigSecurityRepository)
 
 
 @dataclass
@@ -293,7 +306,7 @@ def test_tst_m2_p5a_001_config_revision_immutability_and_hash(p5a_database: Disp
     first_persisted_hash = request_hash(first_payload)
     with _p5a_transaction_manager(p5a_database) as manager:
         with manager.unit_of_work() as uow:
-            service = ConfigRevisionService()
+            service = _config_revision_service()
 
             def create(scope_key: str, payload: object = first_payload) -> object:
                 return service.create_revision(
@@ -393,7 +406,7 @@ def test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext(p5a_database: Dis
     metadata = {"workspace_id": WORKSPACE_A, "provider_ref": "vault", "account_ref": "account", "alias_ref": "alias", "redacted_fingerprint_or_version": "version-redacted", "validation_status": "VALID", "expires_at": "2027-01-01T00:00:00Z", "audit_ref": "audit-5a"}
     with _p5a_transaction_manager(p5a_database) as manager:
         with manager.unit_of_work() as uow:
-            store = SecretHandleStore()
+            store = _secret_handle_store()
             registered = store.register(**metadata, connection=uow.connection)
     assert registered.workspace_id == WORKSPACE_A
     assert registered.provider_ref == metadata["provider_ref"]
@@ -403,7 +416,7 @@ def test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext(p5a_database: Dis
     try:
         with _p5a_transaction_manager(p5a_database) as manager:
             with manager.unit_of_work() as uow:
-                SecretHandleStore().register(
+                _secret_handle_store().register(
                     workspace_id=WORKSPACE_A,
                     provider_ref="provider",
                     account_ref="account",
@@ -525,7 +538,7 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
         _seed_workspaces(connection)
     with _p5a_transaction_manager(p5a_database) as manager:
         with manager.unit_of_work() as uow:
-            seed = ConfigRevisionService().create_revision(
+            seed = _config_revision_service().create_revision(
                 workspace_id=WORKSPACE_A,
                 scope_kind="prompt",
                 scope_key="primary",
@@ -536,7 +549,7 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
                 connection=uow.connection,
             )
         with manager.unit_of_work() as uow:
-            rollback_seed = ConfigRevisionService().create_revision(
+            rollback_seed = _config_revision_service().create_revision(
                 workspace_id=WORKSPACE_A,
                 scope_kind="prompt",
                 scope_key="rollback-probe",
@@ -547,7 +560,7 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
                 connection=uow.connection,
             )
         with manager.unit_of_work() as uow:
-            rollback_repository = ConfigRevisionRepository()
+            rollback_repository = _config_revision_repository()
             rollback_before_revision = rollback_repository.get_scoped(
                 workspace_id=WORKSPACE_A,
                 config_revision_id=rollback_seed.config_revision_id,
@@ -562,7 +575,7 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
 
         with pytest.raises(_RollbackProbe):
             with manager.unit_of_work() as uow:
-                published = ConfigRevisionRepository().publish(
+                published = _config_revision_repository().publish(
                     workspace_id=WORKSPACE_A,
                     config_revision_id=rollback_seed.config_revision_id,
                     expected_revision=rollback_before_revision.revision,
@@ -572,7 +585,7 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
                 assert _p5a_outbox_count(uow.connection, rollback_seed.config_revision_id) == rollback_outbox_before + 1
                 raise _RollbackProbe()
         with manager.unit_of_work() as uow:
-            rollback_persisted = ConfigRevisionRepository().get_scoped(
+            rollback_persisted = _config_revision_repository().get_scoped(
                 workspace_id=WORKSPACE_A,
                 config_revision_id=rollback_seed.config_revision_id,
                 connection=uow.connection,
@@ -581,7 +594,7 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
             assert _revision_snapshot(rollback_persisted) == rollback_before_snapshot
             assert _p5a_outbox_count(uow.connection, rollback_seed.config_revision_id) == rollback_outbox_before
         with manager.unit_of_work() as uow:
-            repository = ConfigRevisionRepository()
+            repository = _config_revision_repository()
             revision = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, connection=uow.connection)
             assert not hasattr(repository, "get_by_id")
             assert revision is not None
@@ -589,11 +602,11 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
             before_immutable = _config_revision_immutable_snapshot(revision)
             outbox_before = _p5a_outbox_count(uow.connection, seed.config_revision_id)
         with manager.unit_of_work() as uow:
-            assert ConfigRevisionRepository().get_scoped(workspace_id=WORKSPACE_B, config_revision_id=seed.config_revision_id, connection=uow.connection) is None
+            assert _config_revision_repository().get_scoped(workspace_id=WORKSPACE_B, config_revision_id=seed.config_revision_id, connection=uow.connection) is None
 
         def publish_foreign() -> object:
             with manager.unit_of_work() as uow:
-                return ConfigRevisionRepository().publish(
+                return _config_revision_repository().publish(
                     workspace_id=WORKSPACE_B,
                     config_revision_id=seed.config_revision_id,
                     expected_revision=1,
@@ -603,7 +616,7 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
         with pytest.raises(PermissionError):
             publish_foreign()
         with manager.unit_of_work() as uow:
-            repository = ConfigRevisionRepository()
+            repository = _config_revision_repository()
             persisted = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, connection=uow.connection)
             assert persisted is not None and _revision_snapshot(persisted) == before_foreign
             assert _p5a_outbox_count(uow.connection, seed.config_revision_id) == outbox_before
@@ -611,7 +624,7 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
         def publish_once() -> object:
             try:
                 with manager.unit_of_work() as uow:
-                    return ConfigRevisionRepository().publish(
+                    return _config_revision_repository().publish(
                         workspace_id=WORKSPACE_A,
                         config_revision_id=seed.config_revision_id,
                         expected_revision=1,
@@ -628,7 +641,7 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
     assert len(losers) == 1 and losers[0].current_revision == 2
     with _p5a_transaction_manager(p5a_database) as manager:
         with manager.unit_of_work() as uow:
-            repository = ConfigRevisionRepository()
+            repository = _config_revision_repository()
             persisted = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, connection=uow.connection)
             assert persisted is not None
             assert persisted.revision == 2
@@ -637,7 +650,7 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
             assert _p5a_outbox_count(uow.connection, seed.config_revision_id) == outbox_before + 1
         def publish_stale() -> object:
             with manager.unit_of_work() as uow:
-                return ConfigRevisionRepository().publish(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, expected_revision=1, connection=uow.connection)
+                return _config_revision_repository().publish(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, expected_revision=1, connection=uow.connection)
         with pytest.raises(RevisionConflictError):
             publish_stale()
         with manager.unit_of_work() as uow:
