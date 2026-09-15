@@ -31,24 +31,3 @@ CREATE TABLE controlplane.cp_secret_handles (
     issued_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
--- Keep the migration ledger monotonic when an older migration is explicitly
--- rolled back while a later migration is still recorded.  MigrationRunner
--- normally rolls back in reverse order; this guard also covers the direct
--- rollback probes used by the milestone tests.
-CREATE OR REPLACE FUNCTION controlplane.cp_prune_future_schema_migrations()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    IF OLD.version < (SELECT COALESCE(MAX(version), OLD.version) FROM controlplane.cp_schema_migrations) THEN
-        DELETE FROM controlplane.cp_schema_migrations WHERE version > OLD.version;
-    END IF;
-    RETURN OLD;
-END;
-$$;
-
-CREATE TRIGGER cp_schema_migrations_prune_future
-BEFORE DELETE ON controlplane.cp_schema_migrations
-FOR EACH ROW
-EXECUTE FUNCTION controlplane.cp_prune_future_schema_migrations();
