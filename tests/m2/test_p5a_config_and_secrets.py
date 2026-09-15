@@ -12,12 +12,14 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field, fields
+from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg
 import pytest
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
+from psycopg.types.json import Jsonb
 
 from controlplane.application.config_security import (
     ConfigEventFactory,
@@ -31,6 +33,7 @@ from controlplane.domain.concurrency import RevisionConflictError
 from controlplane.domain.events import ensure_safe_event_payload
 from controlplane.domain.statemachine import ForbiddenTransitionError
 from controlplane.infrastructure.db.migration_runner import MigrationRunner
+from controlplane.infrastructure.db.uow import TransactionManager
 
 
 REPO_ROOT = Path(__file__).parents[2]
@@ -134,7 +137,21 @@ def _assert_successful_transition(before: object, after: object, status: ConfigR
 
 
 def _revision_snapshot(revision: object) -> tuple[object, ...]:
-    return tuple(getattr(revision, name) for name in ("config_revision_id", "config_revision_number", "revision", "status", "content_hash", "payload"))
+    """Capture every dataclass field with payload frozen as canonical bytes."""
+    return tuple(
+        (item.name, canonicalize_json(getattr(revision, item.name)) if item.name == "payload" else getattr(revision, item.name))
+        for item in fields(revision)
+    )
+
+
+@contextmanager
+def _p5a_transaction_manager(database: DisposableDatabase) -> Iterator[TransactionManager]:
+    """Provide P1's pool/UoW boundary; callers own each active UoW explicitly."""
+    manager = TransactionManager(database.dsn, pool_max_size=4)
+    try:
+        yield manager
+    finally:
+        manager.close()
 
 
 def _p5a_outbox_count(connection: psycopg.Connection, config_revision_id: str) -> int:
@@ -161,6 +178,78 @@ def _clone_duplicate_config_revision(connection: psycopg.Connection, config_revi
     connection.execute(statement, (str(uuid.uuid4()), config_revision_id))
 
 
+def _required_columns(connection: psycopg.Connection, table_name: str) -> list[tuple[str, str, str | None, str, str]]:
+    return connection.execute(
+        "SELECT column_name, is_nullable, column_default, data_type, udt_name "
+        "FROM information_schema.columns WHERE table_schema='controlplane' AND table_name=%s "
+        "ORDER BY ordinal_position",
+        (table_name,),
+    ).fetchall()
+
+
+def _test_value(column_name: str, data_type: str, udt_name: str, overrides: dict[str, object]) -> object:
+    if column_name in overrides:
+        return overrides[column_name]
+    if column_name == "workspace_id":
+        return WORKSPACE_A
+    if column_name.endswith("_id"):
+        return str(uuid.uuid4())
+    if column_name in {"scope_kind", "scope_key"}:
+        return "prompt"
+    if column_name == "config_revision_number":
+        return 1
+    if column_name == "revision":
+        return 1
+    if column_name == "content_hash":
+        return "a" * 64
+    if column_name == "payload":
+        return Jsonb({"enabled": True})
+    if column_name == "status":
+        return "DRAFT"
+    if data_type == "boolean":
+        return False
+    if data_type in {"smallint", "integer", "bigint", "numeric", "double precision", "real"}:
+        return 1
+    if "timestamp" in data_type:
+        return datetime.now(timezone.utc)
+    if udt_name == "jsonb":
+        return Jsonb({})
+    return "test"
+
+
+def _insert_required_row(connection: psycopg.Connection, table_name: str, overrides: dict[str, object]) -> str:
+    columns = _required_columns(connection, table_name)
+    names: list[str] = []
+    values: list[object] = []
+    for name, nullable, default, data_type, udt_name in columns:
+        if name in overrides:
+            names.append(name)
+            values.append(overrides[name])
+        elif nullable == "NO" and default is None:
+            names.append(name)
+            values.append(_test_value(name, data_type, udt_name, overrides))
+    statement = sql.SQL("INSERT INTO controlplane.{table} ({columns}) VALUES ({values}) RETURNING {id}").format(
+        table=sql.Identifier(table_name),
+        columns=sql.SQL(", ").join(sql.Identifier(name) for name in names),
+        values=sql.SQL(", ").join(sql.Placeholder() for _ in values),
+        id=sql.Identifier("config_revision_id" if table_name == "cp_config_revisions" else "secret_handle_id"),
+    )
+    return str(connection.execute(statement, values).fetchone()[0])
+
+
+def _constraint_columns(connection: psycopg.Connection, table_name: str, constraint_type: str) -> list[tuple[str, list[str], str | None, list[str]]]:
+    return connection.execute(
+        "SELECT c.conname, "
+        "COALESCE((SELECT array_agg(a.attname ORDER BY u.ordinality) FROM unnest(c.conkey) WITH ORDINALITY AS u(attnum, ordinality) "
+        "JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=u.attnum), ARRAY[]::text[]), "
+        "NULLIF(c.confrelid::regclass::text, '-'), "
+        "COALESCE((SELECT array_agg(a.attname ORDER BY u.ordinality) FROM unnest(c.confkey) WITH ORDINALITY AS u(attnum, ordinality) "
+        "JOIN pg_attribute a ON a.attrelid=c.confrelid AND a.attnum=u.attnum), ARRAY[]::text[]) "
+        "FROM pg_constraint c WHERE c.conrelid=%s::regclass AND c.contype=%s",
+        (f"controlplane.{table_name}", constraint_type),
+    ).fetchall()
+
+
 def test_tst_m2_p5a_001_config_revision_immutability_and_hash(p5a_database: DisposableDatabase) -> None:
     _assert_p1_to_p3_prerequisites(p5a_database)
     with p5a_database.connect() as connection:
@@ -173,41 +262,66 @@ def test_tst_m2_p5a_001_config_revision_immutability_and_hash(p5a_database: Disp
     assert request_hash(first_payload) == hashlib.sha256(canonicalize_json(first_payload)).hexdigest()
     assert request_hash(first_payload) != request_hash(changed_payload)
 
-    service = ConfigRevisionService()
-    def create(scope_key: str) -> object:
-        return service.create_revision(workspace_id=WORKSPACE_A, scope_kind="prompt", scope_key=scope_key, config_revision_number=1, payload=first_payload, actor_ref="actor-a", change_reason="initial")
+    with _p5a_transaction_manager(p5a_database) as manager:
+        with manager.unit_of_work() as uow:
+            service = ConfigRevisionService()
 
-    draft = create("draft-published")
-    assert draft.config_revision_number == 1 and draft.revision == 1 and draft.status is ConfigRevisionStatus.DRAFT
-    assert draft.content_hash == request_hash(first_payload)
-    published = service.transition(revision=draft, expected_revision=1, requested_status=ConfigRevisionStatus.PUBLISHED, actor_ref="actor-a")
-    _assert_successful_transition(draft, published, ConfigRevisionStatus.PUBLISHED)
-    superseded = service.transition(revision=published, expected_revision=2, requested_status=ConfigRevisionStatus.SUPERSEDED, actor_ref="actor-a")
-    _assert_successful_transition(published, superseded, ConfigRevisionStatus.SUPERSEDED)
-    draft_for_invalidation = create("draft-invalidated")
-    invalidated_draft = service.transition(revision=draft_for_invalidation, expected_revision=1, requested_status=ConfigRevisionStatus.INVALIDATED, actor_ref="security-owner")
-    _assert_successful_transition(draft_for_invalidation, invalidated_draft, ConfigRevisionStatus.INVALIDATED)
-    published_for_invalidation = service.transition(revision=create("published-invalidated"), expected_revision=1, requested_status=ConfigRevisionStatus.PUBLISHED, actor_ref="actor-a")
-    invalidated_published = service.transition(revision=published_for_invalidation, expected_revision=2, requested_status=ConfigRevisionStatus.INVALIDATED, actor_ref="security-owner")
-    _assert_successful_transition(published_for_invalidation, invalidated_published, ConfigRevisionStatus.INVALIDATED)
-    invalidated_superseded = service.transition(revision=superseded, expected_revision=3, requested_status=ConfigRevisionStatus.INVALIDATED, actor_ref="security-owner")
-    _assert_successful_transition(superseded, invalidated_superseded, ConfigRevisionStatus.INVALIDATED)
-    for current, target in ((draft, ConfigRevisionStatus.SUPERSEDED), (published, ConfigRevisionStatus.DRAFT), (superseded, ConfigRevisionStatus.PUBLISHED), (draft, ConfigRevisionStatus.DRAFT), (published, ConfigRevisionStatus.PUBLISHED), (superseded, ConfigRevisionStatus.SUPERSEDED)):
-        before = _revision_snapshot(current)
-        with pytest.raises(ForbiddenTransitionError) as forbidden:
-            service.transition(revision=current, expected_revision=current.revision, requested_status=target, actor_ref="actor-a")
-        assert forbidden.value.code == "FORBIDDEN_TRANSITION"
-        assert _revision_snapshot(current) == before
-    for target in ConfigRevisionStatus:
-        before = _revision_snapshot(invalidated_draft)
-        with pytest.raises(ForbiddenTransitionError):
-            service.transition(revision=invalidated_draft, expected_revision=invalidated_draft.revision, requested_status=target, actor_ref="actor-a")
-        assert _revision_snapshot(invalidated_draft) == before
-    stale_before = _revision_snapshot(published)
-    with pytest.raises(RevisionConflictError) as stale:
-        service.transition(revision=published, expected_revision=1, requested_status=ConfigRevisionStatus.SUPERSEDED, actor_ref="actor-a")
-    assert stale.value.current_revision == 2
-    assert _revision_snapshot(published) == stale_before
+            def create(scope_key: str) -> object:
+                return service.create_revision(
+                    workspace_id=WORKSPACE_A,
+                    scope_kind="prompt",
+                    scope_key=scope_key,
+                    config_revision_number=1,
+                    payload=first_payload,
+                    actor_ref="actor-a",
+                    change_reason="initial",
+                    connection=uow.connection,
+                )
+
+            def transition(revision: object, expected_revision: int, requested_status: ConfigRevisionStatus, actor_ref: str) -> object:
+                return service.transition(
+                    revision=revision,
+                    expected_revision=expected_revision,
+                    requested_status=requested_status,
+                    actor_ref=actor_ref,
+                    connection=uow.connection,
+                )
+
+            draft = create("draft-published")
+            assert draft.config_revision_number == 1 and draft.revision == 1 and draft.status is ConfigRevisionStatus.DRAFT
+            assert draft.content_hash == request_hash(first_payload)
+            assert uow.connection.execute(
+                "SELECT content_hash FROM controlplane.cp_config_revisions WHERE config_revision_id=%s",
+                (draft.config_revision_id,),
+            ).fetchone() == (request_hash(first_payload),)
+            published = transition(draft, 1, ConfigRevisionStatus.PUBLISHED, "actor-a")
+            _assert_successful_transition(draft, published, ConfigRevisionStatus.PUBLISHED)
+            superseded = transition(published, 2, ConfigRevisionStatus.SUPERSEDED, "actor-a")
+            _assert_successful_transition(published, superseded, ConfigRevisionStatus.SUPERSEDED)
+            draft_for_invalidation = create("draft-invalidated")
+            invalidated_draft = transition(draft_for_invalidation, 1, ConfigRevisionStatus.INVALIDATED, "security-owner")
+            _assert_successful_transition(draft_for_invalidation, invalidated_draft, ConfigRevisionStatus.INVALIDATED)
+            published_for_invalidation = transition(create("published-invalidated"), 1, ConfigRevisionStatus.PUBLISHED, "actor-a")
+            invalidated_published = transition(published_for_invalidation, 2, ConfigRevisionStatus.INVALIDATED, "security-owner")
+            _assert_successful_transition(published_for_invalidation, invalidated_published, ConfigRevisionStatus.INVALIDATED)
+            invalidated_superseded = transition(superseded, 3, ConfigRevisionStatus.INVALIDATED, "security-owner")
+            _assert_successful_transition(superseded, invalidated_superseded, ConfigRevisionStatus.INVALIDATED)
+            for current, target in ((draft, ConfigRevisionStatus.SUPERSEDED), (published, ConfigRevisionStatus.DRAFT), (superseded, ConfigRevisionStatus.PUBLISHED), (draft, ConfigRevisionStatus.DRAFT), (published, ConfigRevisionStatus.PUBLISHED), (superseded, ConfigRevisionStatus.SUPERSEDED)):
+                before = _revision_snapshot(current)
+                with pytest.raises(ForbiddenTransitionError) as forbidden:
+                    transition(current, current.revision, target, "actor-a")
+                assert forbidden.value.code == "FORBIDDEN_TRANSITION"
+                assert _revision_snapshot(current) == before
+            for target in ConfigRevisionStatus:
+                before = _revision_snapshot(invalidated_draft)
+                with pytest.raises(ForbiddenTransitionError):
+                    transition(invalidated_draft, invalidated_draft.revision, target, "actor-a")
+                assert _revision_snapshot(invalidated_draft) == before
+            stale_before = _revision_snapshot(published)
+            with pytest.raises(RevisionConflictError) as stale:
+                transition(published, 1, ConfigRevisionStatus.SUPERSEDED, "actor-a")
+            assert stale.value.current_revision == 2
+            assert _revision_snapshot(published) == stale_before
 
 
 def test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext(p5a_database: DisposableDatabase) -> None:
@@ -218,22 +332,27 @@ def test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext(p5a_database: Dis
     prohibited = {"plaintext", "secret_value", "token", "password", "private_key", "blob", "raw_credential", "value"}
     assert not (metadata_fields & prohibited)
     assert not hasattr(SecretHandleStore, "read_secret_value")
-    store = SecretHandleStore()
     metadata = {"workspace_id": WORKSPACE_A, "provider_ref": "vault", "account_ref": "account", "alias_ref": "alias", "redacted_fingerprint_or_version": "version-redacted", "validation_status": "VALID", "expires_at": "2027-01-01T00:00:00Z", "audit_ref": "audit-5a"}
-    registered = store.register(**metadata)
+    with _p5a_transaction_manager(p5a_database) as manager:
+        with manager.unit_of_work() as uow:
+            store = SecretHandleStore()
+            registered = store.register(**metadata, connection=uow.connection)
     assert registered.workspace_id == WORKSPACE_A
     assert registered.provider_ref == metadata["provider_ref"]
     assert not hasattr(registered, "secret_value") and not hasattr(registered, "plaintext")
     with p5a_database.connect() as connection:
         assert connection.execute("SELECT workspace_id::text FROM controlplane.cp_secret_handles WHERE secret_handle_id=%s", (registered.secret_handle_id,)).fetchone() == (WORKSPACE_A,)
     try:
-        store.register(
-            workspace_id=WORKSPACE_A,
-            provider_ref="provider",
-            account_ref="account",
-            alias_ref="alias",
-            **{"plaintext_secret": "p5a-canary"},
-        )
+        with _p5a_transaction_manager(p5a_database) as manager:
+            with manager.unit_of_work() as uow:
+                SecretHandleStore().register(
+                    workspace_id=WORKSPACE_A,
+                    provider_ref="provider",
+                    account_ref="account",
+                    alias_ref="alias",
+                    connection=uow.connection,
+                    **{"plaintext_secret": "p5a-canary"},
+                )
     except NotImplementedError:
         raise
     except ValueError:
@@ -275,11 +394,56 @@ def test_tst_m2_p5a_004_production_0004_forward_rollback_and_constraints(p5a_mig
         _seed_workspaces(connection)
         config_columns = dict(connection.execute("SELECT column_name, is_nullable FROM information_schema.columns WHERE table_schema='controlplane' AND table_name='cp_config_revisions'").fetchall())
         assert all(config_columns[name] == "NO" for name in {"config_revision_id", "workspace_id", "scope_kind", "scope_key", "config_revision_number", "revision", "content_hash", "payload", "status"})
-        constraints = [row[0] for row in connection.execute("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='controlplane.cp_config_revisions'::regclass").fetchall()]
-        assert any("UNIQUE (workspace_id, scope_kind, scope_key, config_revision_number)" in item for item in constraints)
-        assert any("config_revision_number" in item and "> 0" in item for item in constraints)
-        assert any("revision" in item and ">= 1" in item for item in constraints)
-        assert any("content_hash" in item and "[0-9a-f]" in item for item in constraints)
+        config_fks = _constraint_columns(connection, "cp_config_revisions", "f")
+        secret_fks = _constraint_columns(connection, "cp_secret_handles", "f")
+        assert any(columns == ["workspace_id"] and referenced == "controlplane.cp_workspaces" and referenced_columns == ["workspace_id"] for _, columns, referenced, referenced_columns in config_fks)
+        assert any(columns == ["workspace_id"] and referenced == "controlplane.cp_workspaces" and referenced_columns == ["workspace_id"] for _, columns, referenced, referenced_columns in secret_fks)
+        config_uniques = _constraint_columns(connection, "cp_config_revisions", "u")
+        assert any(columns == ["workspace_id", "scope_kind", "scope_key", "config_revision_number"] for _, columns, _, _ in config_uniques)
+        check_constraints = connection.execute(
+            "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+            "WHERE conrelid='controlplane.cp_config_revisions'::regclass AND contype='c'"
+        ).fetchall()
+        assert any("config_revision_number" in definition and "> 0" in definition for _, definition in check_constraints)
+        assert any("revision" in definition and ">= 1" in definition for _, definition in check_constraints)
+        assert any("content_hash" in definition for _, definition in check_constraints)
+        _insert_required_row(connection, "cp_config_revisions", {"workspace_id": WORKSPACE_A, "scope_key": "valid", "content_hash": "a" * 64})
+        for index, invalid_hash in enumerate(("A" * 64, "a" * 63, "a" * 65, "g" * 64)):
+            try:
+                with connection.transaction():
+                    _insert_required_row(connection, "cp_config_revisions", {"workspace_id": WORKSPACE_A, "scope_key": f"invalid-hash-{index}", "content_hash": invalid_hash})
+            except psycopg.errors.CheckViolation:
+                pass
+            else:
+                pytest.fail(f"invalid content hash was accepted: {invalid_hash!r}")
+        try:
+            with connection.transaction():
+                _insert_required_row(connection, "cp_config_revisions", {"workspace_id": WORKSPACE_A, "scope_key": "invalid-number", "config_revision_number": 0})
+        except psycopg.errors.CheckViolation:
+            pass
+        else:
+            pytest.fail("non-positive config_revision_number was accepted")
+        try:
+            with connection.transaction():
+                _insert_required_row(connection, "cp_config_revisions", {"workspace_id": WORKSPACE_A, "scope_key": "invalid-revision", "revision": 0})
+        except psycopg.errors.CheckViolation:
+            pass
+        else:
+            pytest.fail("revision=0 was accepted")
+        try:
+            with connection.transaction():
+                _insert_required_row(connection, "cp_config_revisions", {"workspace_id": "00000000-0000-0000-0000-0000000005af", "scope_key": "invalid-config-fk"})
+        except psycopg.errors.ForeignKeyViolation:
+            pass
+        else:
+            pytest.fail("invalid config workspace FK was accepted")
+        try:
+            with connection.transaction():
+                _insert_required_row(connection, "cp_secret_handles", {"workspace_id": "00000000-0000-0000-0000-0000000005af"})
+        except psycopg.errors.ForeignKeyViolation:
+            pass
+        else:
+            pytest.fail("invalid secret workspace FK was accepted")
         secret_columns = {row[0].lower() for row in connection.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='controlplane' AND table_name='cp_secret_handles'").fetchall()}
         plaintext_columns = {"value", "secret_value", "plaintext", "plaintext_secret", "token", "access_token", "refresh_token", "password", "private_key", "credential", "raw_credential", "blob", "secret_blob"}
         assert not (secret_columns & plaintext_columns)
@@ -296,52 +460,81 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
     _assert_p1_to_p3_prerequisites(p5a_database)
     with p5a_database.connect() as connection:
         _seed_workspaces(connection)
-    seed = ConfigRevisionService().create_revision(workspace_id=WORKSPACE_A, scope_kind="prompt", scope_key="primary", config_revision_number=1, payload={"enabled": True}, actor_ref="actor-a", change_reason="fixture seed")
-    with p5a_database.connect() as connection:
-        repository = ConfigRevisionRepository(connection)
-        revision = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id)
-        assert not hasattr(repository, "get_by_id")
-        assert revision is not None
-        before_foreign = _revision_snapshot(revision)
-        outbox_before = _p5a_outbox_count(connection, seed.config_revision_id)
-    with p5a_database.connect() as connection:
-        assert ConfigRevisionRepository(connection).get_scoped(workspace_id=WORKSPACE_B, config_revision_id=seed.config_revision_id) is None
-    with p5a_database.connect() as connection:
-        repository = ConfigRevisionRepository(connection)
-        with pytest.raises(PermissionError):
-            repository.publish(workspace_id=WORKSPACE_B, config_revision_id=seed.config_revision_id, expected_revision=1)
-    with p5a_database.connect() as connection:
-        repository = ConfigRevisionRepository(connection)
-        persisted = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id)
-        assert persisted is not None and _revision_snapshot(persisted) == before_foreign
-        assert _p5a_outbox_count(connection, seed.config_revision_id) == outbox_before
+    with _p5a_transaction_manager(p5a_database) as manager:
+        with manager.unit_of_work() as uow:
+            seed = ConfigRevisionService().create_revision(
+                workspace_id=WORKSPACE_A,
+                scope_kind="prompt",
+                scope_key="primary",
+                config_revision_number=1,
+                payload={"enabled": True},
+                actor_ref="actor-a",
+                change_reason="fixture seed",
+                connection=uow.connection,
+            )
+        with manager.unit_of_work() as uow:
+            repository = ConfigRevisionRepository()
+            revision = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, connection=uow.connection)
+            assert not hasattr(repository, "get_by_id")
+            assert revision is not None
+            before_foreign = _revision_snapshot(revision)
+            outbox_before = _p5a_outbox_count(uow.connection, seed.config_revision_id)
+        with manager.unit_of_work() as uow:
+            assert ConfigRevisionRepository().get_scoped(workspace_id=WORKSPACE_B, config_revision_id=seed.config_revision_id, connection=uow.connection) is None
 
-    def publish_once() -> object:
-        with p5a_database.connect() as connection:
+        def publish_foreign() -> object:
+            with manager.unit_of_work() as uow:
+                return ConfigRevisionRepository().publish(
+                    workspace_id=WORKSPACE_B,
+                    config_revision_id=seed.config_revision_id,
+                    expected_revision=1,
+                    connection=uow.connection,
+                )
+
+        with pytest.raises(PermissionError):
+            publish_foreign()
+        with manager.unit_of_work() as uow:
+            repository = ConfigRevisionRepository()
+            persisted = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, connection=uow.connection)
+            assert persisted is not None and _revision_snapshot(persisted) == before_foreign
+            assert _p5a_outbox_count(uow.connection, seed.config_revision_id) == outbox_before
+
+        def publish_once() -> object:
             try:
-                return ConfigRevisionRepository(connection).publish(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, expected_revision=1)
+                with manager.unit_of_work() as uow:
+                    return ConfigRevisionRepository().publish(
+                        workspace_id=WORKSPACE_A,
+                        config_revision_id=seed.config_revision_id,
+                        expected_revision=1,
+                        connection=uow.connection,
+                    )
             except RevisionConflictError as conflict:
                 return conflict
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        outcomes = list(executor.map(lambda _: publish_once(), range(2)))
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = list(executor.map(lambda _: publish_once(), range(2)))
     winners = [outcome for outcome in outcomes if not isinstance(outcome, Exception)]
     losers = [outcome for outcome in outcomes if isinstance(outcome, RevisionConflictError)]
     assert len(winners) == 1 and winners[0].revision == 2
     assert len(losers) == 1 and losers[0].current_revision == 2
-    with p5a_database.connect() as connection:
-        repository = ConfigRevisionRepository(connection)
-        persisted = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id)
-        assert persisted is not None and persisted.revision == 2
-        assert _revision_snapshot(persisted)[:2] + _revision_snapshot(persisted)[4:] == before_foreign[:2] + before_foreign[4:]
-        assert _p5a_outbox_count(connection, seed.config_revision_id) == outbox_before + 1
+    with _p5a_transaction_manager(p5a_database) as manager:
+        with manager.unit_of_work() as uow:
+            repository = ConfigRevisionRepository()
+            persisted = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, connection=uow.connection)
+            assert persisted is not None and persisted.revision == 2
+            assert _revision_snapshot(persisted)[:2] + _revision_snapshot(persisted)[4:] == before_foreign[:2] + before_foreign[4:]
+            assert _p5a_outbox_count(uow.connection, seed.config_revision_id) == outbox_before + 1
+        def publish_stale() -> object:
+            with manager.unit_of_work() as uow:
+                return ConfigRevisionRepository().publish(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, expected_revision=1, connection=uow.connection)
         with pytest.raises(RevisionConflictError):
-            repository.publish(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, expected_revision=1)
-        assert _p5a_outbox_count(connection, seed.config_revision_id) == outbox_before + 1
-        with pytest.raises(psycopg.errors.UniqueViolation) as duplicate:
-            _clone_duplicate_config_revision(connection, seed.config_revision_id)
-        expected_constraints = connection.execute(
-            "SELECT conname FROM pg_constraint WHERE conrelid='controlplane.cp_config_revisions'::regclass "
-            "AND contype='u' AND pg_get_constraintdef(oid) LIKE '%workspace_id, scope_kind, scope_key, config_revision_number%'"
-        ).fetchall()
-        assert duplicate.value.diag.constraint_name in {row[0] for row in expected_constraints}
+            publish_stale()
+        with manager.unit_of_work() as uow:
+            assert _p5a_outbox_count(uow.connection, seed.config_revision_id) == outbox_before + 1
+            with pytest.raises(psycopg.errors.UniqueViolation) as duplicate:
+                _clone_duplicate_config_revision(uow.connection, seed.config_revision_id)
+            expected_constraints = uow.connection.execute(
+                "SELECT conname FROM pg_constraint WHERE conrelid='controlplane.cp_config_revisions'::regclass "
+                "AND contype='u' AND pg_get_constraintdef(oid) LIKE '%workspace_id, scope_kind, scope_key, config_revision_number%'"
+            ).fetchall()
+            assert duplicate.value.diag.constraint_name in {row[0] for row in expected_constraints}
