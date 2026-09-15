@@ -192,7 +192,9 @@ Location có thể bị đánh `MISSING` sau lần verify trước; artifact ver
 
 ### CT-STATE-013
 
-Config revision: `DRAFT` → `PUBLISHED` → `SUPERSEDED`. Revision có thể bị `INVALIDATED` vì lỗi bảo mật; job phụ thuộc phải chờ/đánh giá lại theo policy.
+ConfigRevision có đúng các cạnh sau: `DRAFT → PUBLISHED`; `PUBLISHED → SUPERSEDED`; và `DRAFT | PUBLISHED | SUPERSEDED → INVALIDATED` khi owner J xác nhận security defect. `INVALIDATED` là terminal. `SUPERSEDED` không terminal tuyệt đối: không có cạnh nghiệp vụ thường nào đi ra, nhưng vẫn có cạnh security-invalidation tường minh đến `INVALIDATED` để lưu sự kiện security của revision lịch sử. Mọi cạnh không được liệt kê đều bị cấm, gồm `DRAFT → SUPERSEDED`, `SUPERSEDED → PUBLISHED`, `INVALIDATED → *`, mọi self-transition và mọi cạnh từ `DRAFT`/`PUBLISHED` khác các cạnh nêu trên. Cạnh cấm trả `FORBIDDEN_TRANSITION` và không có side effect.
+
+Security invalidation không sửa payload, content hash, identity hay revision của ConfigRevision bất biến; nó chỉ commit state/audit/evidence security theo owner J. Job phụ thuộc phải chờ hoặc đánh giá lại theo policy. ExternalAccount tiếp tục là aggregate riêng; graph dưới đây không cấp quyền mở rộng lifecycle account.
 
 External account: `DISABLED` ↔ `ENABLED` → `DEGRADED` | `INVALID` | `REVOKED`.
 

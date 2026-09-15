@@ -1,5 +1,7 @@
 # Changelog
 
+- Làm rõ contract/plan P5 trước RED: CT-STATE-013 khóa đầy đủ ConfigRevision graph và security invalidation bất biến; P5A tái dùng RFC 8785/JCS P2 cho `content_hash`; P5B chỉ thực thi cleanup đến `CLEANUP_AUTHORIZED`, `CleanupAuthorization` là immutable fact không status mutable. Giữ đúng 5+5 oracle, migration `0004 → 0005` và trạng thái review; không có source/test/SQL/runtime evidence.
+
 - M2-P4 đã được independent audit `ACCEPTED / CLOSED`. Hoàn tất kế hoạch/traceability riêng cho P5A Config & Secret Boundary và P5B Artifact Metadata: catalogue chính xác 5+5 oracle, protocol PostgreSQL/evidence fail-closed, UoW/migration guard và frozen regressions. `INVALIDATED` của ConfigRevision là contract clarification bắt buộc trước RED; P5B RED/implementation chờ P5A migration `0004` được accept. Không có source, test, SQL hay runtime evidence mới.
 
 - M2-P4: triển khai state machine thuần và mapper OperationView đã GREEN exact 9; closure evidence bind source/runtime, P3/P2/P1/P0/M1 frozen regressions, PostgreSQL disposable DB, secret scan và verifier fail-closed. Trạng thái là `M2-P4_IMPLEMENTATION_READY_FOR_REVIEW`, chưa `ACCEPTED / CLOSED`; P5..P7/M3/Module A không mở.
