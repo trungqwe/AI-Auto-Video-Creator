@@ -29,15 +29,15 @@ p5a_database = DisposableDatabase(name='m2_p5a_test_972c778092af49feab0eff0ba869
         assert request_hash(first_payload) == request_hash(equivalent_payload)
         assert request_hash(first_payload) == hashlib.sha256(canonicalize_json(first_payload)).hexdigest()
         assert request_hash(first_payload) != request_hash(changed_payload)
-    
+
         service = ConfigRevisionService()
         def create(scope_key: str) -> object:
             return service.create_revision(workspace_id=WORKSPACE_A, scope_kind="prompt", scope_key=scope_key, config_revision_number=1, payload=first_payload, actor_ref="actor-a", change_reason="initial")
-    
+
 >       draft = create("draft-published")
                 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests\m2\test_p5a_config_and_secrets.py:180: 
+tests\m2\test_p5a_config_and_secrets.py:180:
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 tests\m2\test_p5a_config_and_secrets.py:178: in create
     return service.create_revision(workspace_id=WORKSPACE_A, scope_kind="prompt", scope_key=scope_key, config_revision_number=1, payload=first_payload, actor_ref="actor-a", change_reason="initial")
@@ -69,7 +69,7 @@ p5a_database = DisposableDatabase(name='m2_p5a_test_522f95cad59249779d43bfc77a89
 >       registered = store.register(**metadata)
                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests\m2\test_p5a_config_and_secrets.py:223: 
+tests\m2\test_p5a_config_and_secrets.py:223:
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 self = <controlplane.application.config_security.SecretHandleStore object at 0x0000028D7BD71160>
@@ -92,7 +92,7 @@ p5a_database = DisposableDatabase(name='m2_p5a_test_cae53d026922445f97992649ec10
 >       event = factory.publish_event(payload=safe_payload, workspace_id=WORKSPACE_A)
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests\m2\test_p5a_config_and_secrets.py:253: 
+tests\m2\test_p5a_config_and_secrets.py:253:
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 self = <controlplane.application.config_security.ConfigEventFactory object at 0x0000028D7BD712B0>
@@ -129,7 +129,7 @@ p5a_database = DisposableDatabase(name='m2_p5a_test_affb5aa9ff644cb5a0043647a0a2
 >       seed = ConfigRevisionService().create_revision(workspace_id=WORKSPACE_A, scope_kind="prompt", scope_key="primary", config_revision_number=1, payload={"enabled": True}, actor_ref="actor-a", change_reason="fixture seed")
                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests\m2\test_p5a_config_and_secrets.py:299: 
+tests\m2\test_p5a_config_and_secrets.py:299:
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 self = <controlplane.application.config_security.ConfigRevisionService object at 0x0000028D7BDEE0D0>
