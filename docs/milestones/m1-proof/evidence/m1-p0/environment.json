@@ -3,8 +3,8 @@
   "milestone": "M1",
   "package": "M1-P0",
   "record_kind": "captured_environment",
-  "captured_at_utc": "2026-09-13T04:32:18.845006+00:00",
-  "source_bootstrap_sha256": "826affa730facda542fb9df059db6c5bdefa14104bf26765792190bdc0773a0b",
+  "captured_at_utc": "2026-09-15T00:16:32.895491+00:00",
+  "source_bootstrap_sha256": "98625fe34c8f3214dc5c16e6b3a6332e723e6697870f43ef9c45ef206db123c8",
   "python": {
     "requested": "3.13.15",
     "observed": "3.13.15",
@@ -22,10 +22,10 @@
     "executable_sha256": "e43cc6ca110540ad845ad6aa1e468e224813eb1da76e145413a262d7073d05e7"
   },
   "project": {
-    "pyproject_sha256": "ef9b8d65e9e4346f2687796b3b43d0bb2f2f1db5b8b18243ec69d1ae1b80346f",
-    "uv_lock_sha256": "31bae731c8ec80e52fbd9a75b3969d0d556e7489f48fc13d151c0c0cfe4e9380",
+    "pyproject_sha256": "74b39eb4be5078632690af1e0eb6897a436167b9373010383ee3590d19ae3477",
+    "uv_lock_sha256": "57512d0e58d0b113a2526ce7fa6cc95e4683fced2ea29888297b098bc9618da8",
     "frozen_sync": true,
-    "resolved_package_count": 44
+    "resolved_package_count": 45
   },
   "postgresql": {
     "requested": "18.6",
