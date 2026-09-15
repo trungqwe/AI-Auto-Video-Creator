@@ -1,0 +1,33 @@
+{
+  "schema_version": "m2_package_status_v1",
+  "milestone": "M2",
+  "package": "M2-P5A",
+  "run_id": "run-m2-p5a-20260915090417",
+  "source_commit_sha": "a0b724548c22996e827bdbf712e395f3e7b40523",
+  "status": "M2-P5A_RED_READY_FOR_REVIEW",
+  "exact_testcase_count": 5,
+  "exact_testcase_ids": [
+    "test_tst_m2_p5a_001_config_revision_immutability_and_hash",
+    "test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext",
+    "test_tst_m2_p5a_003_secret_redaction_in_domain_events",
+    "test_tst_m2_p5a_004_production_0004_forward_rollback_and_constraints",
+    "test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish"
+  ],
+  "pytest": { "collected": 5, "failed": 5, "errors": 0, "skipped": 0 },
+  "classifications": {
+    "VALID_BEHAVIORAL_RED": 5,
+    "INVALID": 0
+  },
+  "runtime": {
+    "python": "3.13.15",
+    "psycopg": "3.3.5",
+    "psycopg_pool": "3.3.1",
+    "pool": "psycopg_pool.ConnectionPool",
+    "postgresql": "18.6",
+    "createdb": true,
+    "disposable_db_orphans": 0
+  },
+  "regressions": { "p4": { "passed": 9 }, "architecture": { "passed": 6 } },
+  "secret_scan": { "verdict": "CLEAN", "findings": 0 },
+  "production_migration_0004_present": false
+}
