@@ -263,6 +263,21 @@ def _constraint_columns(connection: psycopg.Connection, table_name: str, constra
     ).fetchall()
 
 
+def _migration_ledger_ddl_snapshot(connection: psycopg.Connection) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Capture every user trigger and controlplane function before 0004 runs."""
+    triggers = connection.execute(
+        "SELECT trigger_name, action_statement FROM information_schema.triggers "
+        "WHERE event_object_schema='controlplane' AND event_object_table='cp_schema_migrations' "
+        "ORDER BY trigger_name, action_statement"
+    ).fetchall()
+    functions = connection.execute(
+        "SELECT p.proname, pg_get_functiondef(p.oid) "
+        "FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace "
+        "WHERE n.nspname='controlplane' ORDER BY p.proname, p.oid"
+    ).fetchall()
+    return triggers, functions
+
+
 def test_tst_m2_p5a_001_config_revision_immutability_and_hash(p5a_database: DisposableDatabase) -> None:
     _assert_p1_to_p3_prerequisites(p5a_database)
     with p5a_database.connect() as connection:
@@ -346,11 +361,14 @@ def test_tst_m2_p5a_001_config_revision_immutability_and_hash(p5a_database: Disp
                 with pytest.raises(ForbiddenTransitionError):
                     transition(invalidated_draft, invalidated_draft.revision, target, "actor-a")
                 assert _revision_snapshot(invalidated_draft) == before
-            stale_before = _revision_snapshot(published)
+            stale_seed = create("persisted-current-cas")
+            stale_before = _revision_snapshot(stale_seed)
+            advanced = transition(stale_seed, 1, ConfigRevisionStatus.PUBLISHED, "actor-a")
+            assert advanced.revision == 2
             with pytest.raises(RevisionConflictError) as stale:
-                transition(published, 1, ConfigRevisionStatus.SUPERSEDED, "actor-a")
+                transition(stale_seed, 1, ConfigRevisionStatus.PUBLISHED, "actor-a")
             assert stale.value.current_revision == 2
-            assert _revision_snapshot(published) == stale_before
+            assert _revision_snapshot(stale_seed) == stale_before
     with p5a_database.connect() as connection:
         durable_hashes = connection.execute(
             "SELECT config_revision_id::text, content_hash FROM controlplane.cp_config_revisions "
@@ -429,8 +447,11 @@ def test_tst_m2_p5a_004_production_0004_forward_rollback_and_constraints(p5a_mig
     assert forward.is_file() and rollback.is_file(), "P5A-004 requires production migration 0004 and its exact rollback"
     shutil.copy2(forward, baseline_migrations / forward.name)
     shutil.copy2(rollback, baseline_migrations / rollback.name)
+    with p5a_database.connect() as connection:
+        ledger_ddl_before = _migration_ledger_ddl_snapshot(connection)
     MigrationRunner(p5a_database.dsn, baseline_migrations, is_test_env=True).migrate_up()
     with p5a_database.connect() as connection:
+        assert _migration_ledger_ddl_snapshot(connection) == ledger_ddl_before
         _seed_workspaces(connection)
         config_columns = dict(connection.execute("SELECT column_name, is_nullable FROM information_schema.columns WHERE table_schema='controlplane' AND table_name='cp_config_revisions'").fetchall())
         assert all(config_columns[name] == "NO" for name in {"config_revision_id", "workspace_id", "scope_kind", "scope_key", "config_revision_number", "revision", "content_hash", "payload", "status"})
@@ -498,6 +519,8 @@ def test_tst_m2_p5a_004_production_0004_forward_rollback_and_constraints(p5a_mig
 
 def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database: DisposableDatabase) -> None:
     _assert_p1_to_p3_prerequisites(p5a_database)
+    assert not hasattr(psycopg.Connection, "_p5a_original_execute")
+    assert psycopg.Connection.execute.__module__ == "psycopg.connection"
     with p5a_database.connect() as connection:
         _seed_workspaces(connection)
     with _p5a_transaction_manager(p5a_database) as manager:
@@ -618,9 +641,12 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
         with pytest.raises(RevisionConflictError):
             publish_stale()
         with manager.unit_of_work() as uow:
+            assert type(uow.connection) is psycopg.Connection
+            assert type(uow.connection).execute is psycopg.Connection.execute
             assert _p5a_outbox_count(uow.connection, seed.config_revision_id) == outbox_before + 1
             with pytest.raises(psycopg.errors.UniqueViolation) as duplicate:
-                _clone_duplicate_config_revision(uow.connection, seed.config_revision_id)
+                with uow.connection.transaction():
+                    _clone_duplicate_config_revision(uow.connection, seed.config_revision_id)
             expected_constraints = uow.connection.execute(
                 "SELECT conname FROM pg_constraint WHERE conrelid='controlplane.cp_config_revisions'::regclass "
                 "AND contype='u' AND pg_get_constraintdef(oid) LIKE '%workspace_id, scope_kind, scope_key, config_revision_number%'"
