@@ -1,0 +1,24 @@
+STDOUT:
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 9 items
+
+tests/m2/test_p4_statemachines.py::test_tst_m2_p4_001_valid_lifecycle_transitions PASSED [ 11%]
+tests/m2/test_p4_statemachines.py::test_tst_m2_p4_002_forbidden_transition_completed_to_running_rejected PASSED [ 22%]
+tests/m2/test_p4_statemachines.py::test_tst_m2_p4_003_operation_execution_to_projection_mapping PASSED [ 33%]
+tests/m2/test_p4_statemachines.py::test_tst_m2_p4_004_artifact_cleanup_strict_transition_order PASSED [ 44%]
+tests/m2/test_p4_statemachines.py::test_tst_m2_p4_005_batch_waiting_resume_and_terminal_transitions PASSED [ 55%]
+tests/m2/test_p4_statemachines.py::test_tst_m2_p4_006_job_waiting_resume_and_completion_admission PASSED [ 66%]
+tests/m2/test_p4_statemachines.py::test_tst_m2_p4_007_stage_run_reconcile_and_terminal_transitions PASSED [ 77%]
+tests/m2/test_p4_statemachines.py::test_tst_m2_p4_008_operation_forbidden_transition_classes_rejected PASSED [ 88%]
+tests/m2/test_p4_statemachines.py::test_tst_m2_p4_009_stale_expected_revision_rejected_without_mutation PASSED [100%]
+
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m2-control-plane\evidence\m2-p4\m2-p4-tests.xml -
+============================== 9 passed in 0.07s ==============================
+
+STDERR:

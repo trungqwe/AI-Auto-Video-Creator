@@ -1,0 +1,26 @@
+STDOUT:
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 11 items
+
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db PASSED [  9%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_002_migration_checksum_tamper_rejected PASSED [ 18%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected PASSED [ 27%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_004_bounded_advisory_lock_and_timeout PASSED [ 36%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback PASSED [ 45%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement PASSED [ 54%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented PASSED [ 63%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_008_destructive_guard_rejects_non_test_db PASSED [ 72%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_009_applied_migration_file_missing_rejected PASSED [ 81%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record PASSED [ 90%]
+tests/m2/test_p1_db_and_workspace.py::test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool PASSED [100%]
+
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m2-control-plane\evidence\m2-p4\m2-p1-regression.xml -
+============================= 11 passed in 3.12s ==============================
+
+STDERR:

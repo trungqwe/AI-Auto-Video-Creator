@@ -1,5 +1,7 @@
 # Changelog
 
+- M2-P4: triển khai state machine thuần và mapper OperationView đã GREEN exact 9; closure evidence bind source/runtime, P3/P2/P1/P0/M1 frozen regressions, PostgreSQL disposable DB, secret scan và verifier fail-closed. Trạng thái là `M2-P4_IMPLEMENTATION_READY_FOR_REVIEW`, chưa `ACCEPTED / CLOSED`; P5..P7/M3/Module A không mở.
+
 Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này theo cấu trúc [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Dự án chưa phát hành phiên bản sản phẩm.
 
 ## [Unreleased]

@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_ACCEPTED_CLOSED; M2-P4_RED_READY_FOR_REVIEW`.
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_ACCEPTED_CLOSED; M2-P4_IMPLEMENTATION_READY_FOR_REVIEW`.
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** `M2-P4_RED_READY_FOR_REVIEW`. P3 đã `ACCEPTED / CLOSED`; exact 9 P4 Behavioral RED đã được chứng kiến và lưu raw evidence, chờ independent audit. P4 implementation chưa được ủy quyền. M2-P5..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc:** `M2-P4_IMPLEMENTATION_READY_FOR_REVIEW`. P3 đã `ACCEPTED / CLOSED`; P4 exact 9 GREEN, frozen regressions và closure evidence đã được verifier xác nhận, chờ independent audit. M2-P5..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
@@ -213,7 +213,7 @@ src/controlplane/
 - **Boundary**: application/domain không chứa SQL, tên bảng, psycopg hoặc transaction ownership. PostgreSQL adapter chỉ dùng connection active của P1 UoW, không tự acquire pool, commit, rollback hoặc mở transaction ẩn. Không sửa `MigrationRunner`.
 
 ### 6.3. Operation Semantics Mapping (M2-P4)
-**Trạng thái P4:** chỉ là đặc tả/kế hoạch chờ independent audit. Không có source, test harness, RED, evidence runtime, persistence hay transport P4 trong checkpoint này.
+**Trạng thái P4:** implementation pure-domain và mapper đã được chứng kiến GREEN; closure evidence vẫn chờ independent audit. Không có persistence, transport hay work package kế tiếp trong checkpoint này.
 
 **Traceability bắt buộc:** `CT-STATE-008` (Stage Run), `CT-STATE-009` (Video Job), `CT-STATE-010` (Production Batch), `CT-STATE-011` (Operation), `CT-STATE-012` (Artifact Location), `CT-API-007` (`OperationView`), `CT-CMN-005` (revision) và danh mục lỗi `FORBIDDEN_TRANSITION`/`REVISION_CONFLICT` của `CT-CMN-010`. `ADR-0004` chỉ là căn cứ fencing/reconcile; P4 không triển khai CAS PostgreSQL hay owner persistence.
 
