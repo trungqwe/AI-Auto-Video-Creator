@@ -133,6 +133,14 @@ def _assert_successful_transition(before: object, after: object, status: ConfigR
     assert after.revision == before.revision + 1
 
 
+def _revision_snapshot(revision: object) -> tuple[object, ...]:
+    return tuple(getattr(revision, name) for name in ("config_revision_id", "config_revision_number", "revision", "status", "content_hash", "payload"))
+
+
+def _p5a_outbox_count(connection: psycopg.Connection, config_revision_id: str) -> int:
+    return connection.execute("SELECT count(*) FROM controlplane.cp_outbox_events WHERE workspace_id=%s AND aggregate_type='config_revision' AND aggregate_id=%s", (WORKSPACE_A, config_revision_id)).fetchone()[0]
+
+
 def _clone_duplicate_config_revision(connection: psycopg.Connection, config_revision_id: str) -> None:
     """Clone all final-schema values, changing only identity, to target UNIQUE precisely."""
     columns = [row[0] for row in connection.execute(
@@ -184,25 +192,40 @@ def test_tst_m2_p5a_001_config_revision_immutability_and_hash(p5a_database: Disp
     _assert_successful_transition(published_for_invalidation, invalidated_published, ConfigRevisionStatus.INVALIDATED)
     invalidated_superseded = service.transition(revision=superseded, expected_revision=3, requested_status=ConfigRevisionStatus.INVALIDATED, actor_ref="security-owner")
     _assert_successful_transition(superseded, invalidated_superseded, ConfigRevisionStatus.INVALIDATED)
-    for current, target in ((draft, ConfigRevisionStatus.SUPERSEDED), (published, ConfigRevisionStatus.DRAFT), (superseded, ConfigRevisionStatus.PUBLISHED), (invalidated_draft, ConfigRevisionStatus.PUBLISHED), (draft, ConfigRevisionStatus.DRAFT)):
-        before = current
+    for current, target in ((draft, ConfigRevisionStatus.SUPERSEDED), (published, ConfigRevisionStatus.DRAFT), (superseded, ConfigRevisionStatus.PUBLISHED), (draft, ConfigRevisionStatus.DRAFT), (published, ConfigRevisionStatus.PUBLISHED), (superseded, ConfigRevisionStatus.SUPERSEDED)):
+        before = _revision_snapshot(current)
         with pytest.raises(ForbiddenTransitionError) as forbidden:
             service.transition(revision=current, expected_revision=current.revision, requested_status=target, actor_ref="actor-a")
         assert forbidden.value.code == "FORBIDDEN_TRANSITION"
-        assert current == before
+        assert _revision_snapshot(current) == before
+    for target in ConfigRevisionStatus:
+        before = _revision_snapshot(invalidated_draft)
+        with pytest.raises(ForbiddenTransitionError):
+            service.transition(revision=invalidated_draft, expected_revision=invalidated_draft.revision, requested_status=target, actor_ref="actor-a")
+        assert _revision_snapshot(invalidated_draft) == before
+    stale_before = _revision_snapshot(published)
     with pytest.raises(RevisionConflictError) as stale:
         service.transition(revision=published, expected_revision=1, requested_status=ConfigRevisionStatus.SUPERSEDED, actor_ref="actor-a")
     assert stale.value.current_revision == 2
-    assert published.status is ConfigRevisionStatus.PUBLISHED and published.revision == 2
+    assert _revision_snapshot(published) == stale_before
 
 
 def test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext(p5a_database: DisposableDatabase) -> None:
     _assert_p1_to_p3_prerequisites(p5a_database)
+    with p5a_database.connect() as connection:
+        _seed_workspaces(connection)
     metadata_fields = {item.name for item in fields(SecretHandle)}
     prohibited = {"plaintext", "secret_value", "token", "password", "private_key", "blob", "raw_credential", "value"}
     assert not (metadata_fields & prohibited)
     assert not hasattr(SecretHandleStore, "read_secret_value")
     store = SecretHandleStore()
+    metadata = {"workspace_id": WORKSPACE_A, "provider_ref": "vault", "account_ref": "account", "alias_ref": "alias", "redacted_fingerprint_or_version": "version-redacted", "validation_status": "VALID", "expires_at": "2027-01-01T00:00:00Z", "audit_ref": "audit-5a"}
+    registered = store.register(**metadata)
+    assert registered.workspace_id == WORKSPACE_A
+    assert registered.provider_ref == metadata["provider_ref"]
+    assert not hasattr(registered, "secret_value") and not hasattr(registered, "plaintext")
+    with p5a_database.connect() as connection:
+        assert connection.execute("SELECT workspace_id::text FROM controlplane.cp_secret_handles WHERE secret_handle_id=%s", (registered.secret_handle_id,)).fetchone() == (WORKSPACE_A,)
     try:
         store.register(
             workspace_id=WORKSPACE_A,
@@ -228,10 +251,15 @@ def test_tst_m2_p5a_003_secret_redaction_in_domain_events(p5a_database: Disposab
     ensure_safe_event_payload(safe_payload)
     factory = ConfigEventFactory()
     event = factory.publish_event(payload=safe_payload, workspace_id=WORKSPACE_A)
+    invalidation_payload = {**safe_payload, "status": "INVALIDATED", "reason": "security defect"}
+    invalidation_event = factory.invalidation_event(payload=invalidation_payload, workspace_id=WORKSPACE_A)
     assert event.payload == safe_payload
+    assert invalidation_event.payload == invalidation_payload
     for canary in (b"secret-bytes", "password=secret", "token=abcdef", "api_key=abcdef", "refresh token=abcdef", "credential=abcdef", "https://example.test/signed?signature=abcdef", "Traceback (most recent call last)", {"secret": "value"}):
         with pytest.raises(ValueError):
             factory.publish_event(payload={"safe": canary}, workspace_id=WORKSPACE_A)
+        with pytest.raises(ValueError):
+            factory.invalidation_event(payload={"safe": canary}, workspace_id=WORKSPACE_A)
     assert event.payload == safe_payload
 
 
@@ -272,11 +300,21 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
     with p5a_database.connect() as connection:
         repository = ConfigRevisionRepository(connection)
         revision = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id)
-    assert not hasattr(repository, "get_by_id")
-    assert revision is not None
-    assert repository.get_scoped(workspace_id=WORKSPACE_B, config_revision_id=seed.config_revision_id) is None
-    with pytest.raises(PermissionError):
-        repository.publish(workspace_id=WORKSPACE_B, config_revision_id=seed.config_revision_id, expected_revision=1)
+        assert not hasattr(repository, "get_by_id")
+        assert revision is not None
+        before_foreign = _revision_snapshot(revision)
+        outbox_before = _p5a_outbox_count(connection, seed.config_revision_id)
+    with p5a_database.connect() as connection:
+        assert ConfigRevisionRepository(connection).get_scoped(workspace_id=WORKSPACE_B, config_revision_id=seed.config_revision_id) is None
+    with p5a_database.connect() as connection:
+        repository = ConfigRevisionRepository(connection)
+        with pytest.raises(PermissionError):
+            repository.publish(workspace_id=WORKSPACE_B, config_revision_id=seed.config_revision_id, expected_revision=1)
+    with p5a_database.connect() as connection:
+        repository = ConfigRevisionRepository(connection)
+        persisted = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id)
+        assert persisted is not None and _revision_snapshot(persisted) == before_foreign
+        assert _p5a_outbox_count(connection, seed.config_revision_id) == outbox_before
 
     def publish_once() -> object:
         with p5a_database.connect() as connection:
@@ -292,6 +330,14 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
     assert len(winners) == 1 and winners[0].revision == 2
     assert len(losers) == 1 and losers[0].current_revision == 2
     with p5a_database.connect() as connection:
+        repository = ConfigRevisionRepository(connection)
+        persisted = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id)
+        assert persisted is not None and persisted.revision == 2
+        assert _revision_snapshot(persisted)[:2] + _revision_snapshot(persisted)[4:] == before_foreign[:2] + before_foreign[4:]
+        assert _p5a_outbox_count(connection, seed.config_revision_id) == outbox_before + 1
+        with pytest.raises(RevisionConflictError):
+            repository.publish(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, expected_revision=1)
+        assert _p5a_outbox_count(connection, seed.config_revision_id) == outbox_before + 1
         with pytest.raises(psycopg.errors.UniqueViolation) as duplicate:
             _clone_duplicate_config_revision(connection, seed.config_revision_id)
         expected_constraints = connection.execute(
