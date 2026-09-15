@@ -1,0 +1,5 @@
+F..FF                                                                    [100%]
+FAILED P5A-001: expected RevisionConflictError.current_revision == 2; observed 1.
+FAILED P5A-004: controlplane.cp_schema_migrations trigger/function snapshot changed from empty.
+FAILED P5A-005: psycopg.Connection has _p5a_original_execute after P5A import.
+2 passed, 3 failed in 1.21s

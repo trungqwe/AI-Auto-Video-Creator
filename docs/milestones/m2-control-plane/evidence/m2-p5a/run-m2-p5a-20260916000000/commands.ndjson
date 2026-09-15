@@ -1,0 +1,3 @@
+{"kind":"collect","command":"PYTHONPATH=src .venv\\Scripts\\python.exe -m pytest --collect-only -q tests/m2/test_p5a_config_and_secrets.py","result":"5 collected, 0 errors"}
+{"kind":"correction_red","command":"PYTHONPATH=src M2_TEST_PG_DSN=<redacted dynamic Docker PostgreSQL DSN> .venv\\Scripts\\python.exe -m pytest -q tests/m2/test_p5a_config_and_secrets.py","result":"3 failed, 2 passed, 0 errors, 0 skipped"}
+{"kind":"scope_probe","command":"rg -n '_install_p5a|_p5a_original_execute|psycopg.Connection.execute|cp_prune_future|cp_schema_migrations_prune_future' src tests","result":"correction defects are present before source correction"}

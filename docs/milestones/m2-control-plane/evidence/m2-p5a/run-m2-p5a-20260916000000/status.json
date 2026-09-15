@@ -1,0 +1,13 @@
+{
+  "run_id": "run-m2-p5a-20260916000000",
+  "lifecycle": "M2-P5A_CORRECTION_RED_RECORDED",
+  "oracle_commit_sha": "4990eb5",
+  "oracle_sha256": "6D316013B62219CEBD2CCFFA9BF994947559705864B84A1D95E6EE5EFE07104A",
+  "source_commit_sha": null,
+  "collected": 5,
+  "passed": 2,
+  "failed": 3,
+  "errors": 0,
+  "skipped": 0,
+  "red_defects": ["stale-current-cas", "shared-migration-ledger-side-effect", "global-psycopg-execute-patch"]
+}
