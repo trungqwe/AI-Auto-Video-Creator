@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import tempfile
 import threading
 import uuid
 from datetime import UTC, datetime
@@ -72,6 +74,21 @@ def disposable_db() -> Iterator[DisposableDatabase]:
                 cursor.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(name)))
                 cursor.execute("SELECT count(*) FROM pg_database WHERE datname = %s", (name,))
                 assert cursor.fetchone()[0] == 0, "disposable database orphaned"
+
+
+@pytest.fixture
+def p3_migration_baseline() -> Iterator[Path]:
+    """Byte-exact production 0001--0003 migration universe for P3-001."""
+    with tempfile.TemporaryDirectory(prefix="m2_p3_migration_baseline_") as temporary:
+        sandbox = Path(temporary)
+        for version in range(1, 4):
+            forward = next(path for path in PRODUCTION_MIGRATIONS.glob(f"{version:04d}_*.sql") if not path.name.endswith(".rollback.sql"))
+            rollback = next(PRODUCTION_MIGRATIONS.glob(f"{version:04d}_*.rollback.sql"))
+            assert forward.read_bytes() == (PRODUCTION_MIGRATIONS / forward.name).read_bytes()
+            assert rollback.read_bytes() == (PRODUCTION_MIGRATIONS / rollback.name).read_bytes()
+            shutil.copy2(forward, sandbox / forward.name)
+            shutil.copy2(rollback, sandbox / rollback.name)
+        yield sandbox
 
 
 @pytest.fixture
@@ -159,10 +176,11 @@ def _assert_future_production_p3_schema(connection: psycopg.Connection) -> None:
     assert ["workspace_id"] in [row[0] for row in watermark_keys]
 
 
-def test_tst_m2_p3_001_production_0003_forward_rollback_and_schema_constraints(disposable_db: DisposableDatabase) -> None:
-    MigrationRunner(disposable_db.dsn, PRODUCTION_MIGRATIONS, is_test_env=True).migrate_up()
-    assert (PRODUCTION_MIGRATIONS / "0003_outbox_and_projections.sql").is_file(), "P3-001 requires production 0003"
+def test_tst_m2_p3_001_production_0003_forward_rollback_and_schema_constraints(disposable_db: DisposableDatabase, p3_migration_baseline: Path) -> None:
+    MigrationRunner(disposable_db.dsn, p3_migration_baseline, is_test_env=True).migrate_up()
+    assert (p3_migration_baseline / "0003_outbox_and_projections.sql").is_file(), "P3-001 requires production 0003"
     with disposable_db.connect() as connection:
+        assert connection.execute("SELECT version FROM controlplane.cp_schema_migrations ORDER BY version").fetchall() == [(1,), (2,), (3,)]
         connection.execute("INSERT INTO controlplane.cp_workspaces (workspace_id, name, status) VALUES (%s, 'P3 test workspace', 'ACTIVE')", (WORKSPACE_ID,))
         _assert_future_production_p3_schema(connection)
         # Future production rows prove CHECK behavior through savepoints, not constraint text alone.
@@ -179,7 +197,7 @@ def test_tst_m2_p3_001_production_0003_forward_rollback_and_schema_constraints(d
         connection.execute("INSERT INTO controlplane.cp_event_quarantine (consumer_id, event_id, workspace_id, reason_code, event_envelope) VALUES ('consumer-A', %s, %s, 'x', '{}'::jsonb), ('consumer-B', %s, %s, 'x', '{}'::jsonb)", (event_id, WORKSPACE_ID, event_id, WORKSPACE_ID))
         with pytest.raises(psycopg.errors.UniqueViolation): connection.execute("INSERT INTO controlplane.cp_event_quarantine (consumer_id, event_id, workspace_id, reason_code, event_envelope) VALUES ('consumer-A', %s, %s, 'x', '{}'::jsonb)", (event_id, WORKSPACE_ID))
         assert connection.execute("SELECT count(*) FROM controlplane.cp_event_quarantine WHERE event_id=%s", (event_id,)).fetchone()[0] == 2
-        rollback = (PRODUCTION_MIGRATIONS / "0003_outbox_and_projections.rollback.sql").read_text(encoding="utf-8")
+        rollback = (p3_migration_baseline / "0003_outbox_and_projections.rollback.sql").read_text(encoding="utf-8")
         with connection.transaction():
             connection.execute(rollback)
             connection.execute("DELETE FROM controlplane.cp_schema_migrations WHERE version=3")
