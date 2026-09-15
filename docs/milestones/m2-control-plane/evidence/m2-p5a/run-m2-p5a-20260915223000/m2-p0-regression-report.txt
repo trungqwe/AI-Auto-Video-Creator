@@ -1,0 +1,48 @@
+STDOUT:
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 33 items
+
+tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_ast_boundary_rules_clean_codebase PASSED [  3%]
+tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_domain_rejects_fastapi_import PASSED [  6%]
+tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_domain_rejects_psycopg_import PASSED [  9%]
+tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_rejects_m1proof_prototype_import PASSED [ 12%]
+tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_rejects_src_m1proof_prefix_import PASSED [ 15%]
+tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_domain_rejects_outer_layer_import PASSED [ 18%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_evidence_validator_accepts_valid_package PASSED [ 21%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_evidence_validator_rejects_tampered_hash PASSED [ 24%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_evidence_validator_rejects_self_referential_hash PASSED [ 27%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_evidence_validator_rejects_schema_mismatch PASSED [ 30%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_evidence_validator_rejects_failing_gate_with_pass_status PASSED [ 33%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_evidence_validator_rejects_untracked_extra_file PASSED [ 36%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_semantic_evaluator_rejects_junit_failures PASSED [ 39%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_semantic_evaluator_rejects_skipped_tests PASSED [ 42%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_semantic_evaluator_rejects_m1_count_mismatch PASSED [ 45%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_semantic_evaluator_rejects_dirty_secret_scan PASSED [ 48%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_semantic_evaluator_rejects_failed_txt_reports PASSED [ 51%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_live_p0_evidence_is_valid PASSED [ 54%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_semantic_evaluator_rejects_unknown_package_or_profile PASSED [ 57%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_semantic_evaluator_dispatches_registered_p1_sample_profile PASSED [ 60%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_semantic_evaluator_blocks_cross_package_profile_spoofing PASSED [ 63%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_semantic_evaluator_rejects_provenance_run_id_mismatch PASSED [ 66%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_semantic_evaluator_rejects_provenance_timestamp_drift PASSED [ 69%]
+tests/m2/test_p0_evidence_validator.py::test_tst_m2_p0_002_semantic_evaluator_rejects_missing_run_id_in_status PASSED [ 72%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_003_controlplane_import_without_syspath_hack PASSED [ 75%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_003_no_syspath_hacks_in_controlplane_source PASSED [ 78%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_003_pyproject_and_build_lock_metadata PASSED [ 81%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_003_backend_dependency_graph_and_build_lock PASSED [ 84%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_003_frozen_project_environment_install PASSED [ 87%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_003_fresh_environment_wheel_build_and_install PASSED [ 90%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_003_frozen_install_rejects_mutated_lock_mismatch PASSED [ 93%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_004_frontend_toolchain_exact_pins_and_runtime_manifest PASSED [ 96%]
+tests/m2/test_p0_packaging.py::test_tst_m2_p0_005_skeleton_interfaces_raise_not_implemented PASSED [100%]
+
+- generated xml file: D:\AI Auto Video Creator\docs\milestones\m2-control-plane\evidence\m2-p4\m2-p0-regression.xml -
+============================= 33 passed in 2.71s ==============================
+
+STDERR:

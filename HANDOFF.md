@@ -1,8 +1,8 @@
 # HANDOFF
 
-- Đã quyết định: M1 và M2-P1..P4 là `ACCEPTED / CLOSED`; checkpoint P4 đóng tại `8db00b30afe7286430e9b40d14bfd8b26b8194d5`.
-- Trạng thái hiện hành: `M2-P5A_RED_READY_FOR_REVIEW`; P5B là `M2-P5B_PLAN_ACCEPTED_RED_LOCKED`. Hardening run `run-m2-p5a-20260915091544` ghi exact 5/5 `VALID_BEHAVIORAL_RED`, baseline migration 1--3 riêng cho P5A-004, P4 9/9, architecture 6/6 và orphan=0. Chưa có implementation P5A hay migration `0004`.
-- P5A: schema target `0004_config_and_secrets`, exact 5 oracle đã RED. `config_revision_number` là immutable business lineage/version per scope; `revision` là CT-CMN-005 CAS revision, khởi tạo 1 và tăng đúng một qua state mutation. CT-STATE-013 khóa `DRAFT → PUBLISHED → SUPERSEDED` và security `DRAFT|PUBLISHED|SUPERSEDED → INVALIDATED`; chỉ INVALIDATED terminal, không self-transition/reopen. Content hash tái dùng canonicalizer RFC 8785/JCS P2 trên canonical UTF-8 bytes rồi SHA-256 lowercase hex; không tự phát minh canonicalizer.
-- P5B: schema target `0005_artifact_metadata`, exact 5 future oracle; tái dùng P4 ArtifactLocationState. P5B kết thúc ở `CLEANUP_AUTHORIZED`, chỉ persistence authorization bất biến và không xóa/simulate byte, persist `DELETED` hay phát `CleanupCompleted`. Dù P5A/B logical siblings, `MigrationRunner` tuần tự bắt buộc P5B RED/implementation chờ checkpoint P5A/`0004` được accept.
-- Tệp cần đọc tiếp: `docs/milestones/m2-control-plane/spec.md`, `implementation-plan.md`, contracts `00-common`, `02-domain-events`, `10-storage`, `11-config-security`, `12-state-machines`; ADR `0004`, `0006`, `0009`, `0010`; và `docs/12-pre-code-checklist.md`.
-- Điểm tiếp tục: independent audit RED evidence P5A trước khi user cấp quyền implementation. P5B, P6+, M3 và Module A vẫn `NOT AUTHORIZED`.
+- Đã quyết định: M1 và M2-P1..P4 là `ACCEPTED / CLOSED`; P5A đã triển khai sau checkpoint `8a30a34bac8ef1fe092a340e639b81afd980dfa1`.
+- Trạng thái hiện hành: `M2-P5A_IMPLEMENTATION_READY_FOR_REVIEW`; source commit `0b862b9b75bbee32a61bc29b466f4d9b1f564dbf` đã push. Evidence implementation mới: `docs/milestones/m2-control-plane/evidence/m2-p5a/run-m2-p5a-20260915223000/`, hash DAG PASS, verifier PASS.
+- P5A GREEN: exact 5/5; P4 9/9, P3/P2/P1 11/11, P0 33/33 (architecture 6/6), M1 93/93; runtime PostgreSQL 18.6, Python 3.13.15, psycopg 3.3.5, psycopg-pool 3.3.1, orphan 0, secret scan CLEAN/0. P5B/P6+/M3/Module A vẫn bị khóa.
+- Đã giữ nguyên test oracle SHA-256 `A9C809332309A934E83DE5AB37A8A2A29261E86E3E38386878CB765C7B70A1F8`, `pyproject.toml`, `uv.lock`, MigrationRunner và các migration P1-P3. Không có plaintext secret trong business DB hoặc event payload.
+- Tệp cần đọc tiếp: evidence `status.json`, `status.md`, `commands.jsonl`, `verify-only-stdout.txt`, `hashes.sha256`; sau đó active M2 plan/spec và P5B plan khi có checkpoint mới.
+- Điểm tiếp tục: chờ independent review/acceptance của M2-P5A; không bắt đầu P5B hoặc milestone bị khóa.

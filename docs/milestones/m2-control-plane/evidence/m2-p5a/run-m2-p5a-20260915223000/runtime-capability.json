@@ -1,0 +1,16 @@
+{
+  "schema_version": "m2_p5a_runtime_capability_v1",
+  "run_id": "run-m2-p5a-20260915223000",
+  "uv_runtime_observed": "unavailable",
+  "uv_lock_version": "0.12.13",
+  "python": "3.13.15",
+  "psycopg": "3.3.5",
+  "psycopg_pool": "3.3.1",
+  "pool_public_import": "psycopg_pool.ConnectionPool",
+  "pool_runtime_class": "psycopg_pool.pool.ConnectionPool",
+  "borrowed_connection_class": "psycopg.Connection",
+  "postgresql": "18.6",
+  "createdb": true,
+  "observed_host_port": 56280,
+  "disposable_db_orphans": 0
+}
