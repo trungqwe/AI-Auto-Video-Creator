@@ -144,6 +144,19 @@ def _revision_snapshot(revision: object) -> tuple[object, ...]:
     )
 
 
+def _config_revision_immutable_snapshot(revision: object) -> tuple[object, ...]:
+    """Capture the name-defined immutable facts preserved by a successful publish."""
+    return (
+        revision.config_revision_id,
+        revision.workspace_id,
+        revision.scope_kind,
+        revision.scope_key,
+        revision.config_revision_number,
+        revision.content_hash,
+        canonicalize_json(revision.payload),
+    )
+
+
 @contextmanager
 def _p5a_transaction_manager(database: DisposableDatabase) -> Iterator[TransactionManager]:
     """Provide P1's pool/UoW boundary; callers own each active UoW explicitly."""
@@ -550,6 +563,7 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
             assert not hasattr(repository, "get_by_id")
             assert revision is not None
             before_foreign = _revision_snapshot(revision)
+            before_immutable = _config_revision_immutable_snapshot(revision)
             outbox_before = _p5a_outbox_count(uow.connection, seed.config_revision_id)
         with manager.unit_of_work() as uow:
             assert ConfigRevisionRepository().get_scoped(workspace_id=WORKSPACE_B, config_revision_id=seed.config_revision_id, connection=uow.connection) is None
@@ -593,8 +607,10 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
         with manager.unit_of_work() as uow:
             repository = ConfigRevisionRepository()
             persisted = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, connection=uow.connection)
-            assert persisted is not None and persisted.revision == 2
-            assert _revision_snapshot(persisted)[:2] + _revision_snapshot(persisted)[4:] == before_foreign[:2] + before_foreign[4:]
+            assert persisted is not None
+            assert persisted.revision == 2
+            assert persisted.status is ConfigRevisionStatus.PUBLISHED
+            assert _config_revision_immutable_snapshot(persisted) == before_immutable
             assert _p5a_outbox_count(uow.connection, seed.config_revision_id) == outbox_before + 1
         def publish_stale() -> object:
             with manager.unit_of_work() as uow:
