@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_ACCEPTED_CLOSED; M2-P4_IMPLEMENTATION_READY_FOR_REVIEW`.
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_ACCEPTED_CLOSED; M2-P4_ACCEPTED_CLOSED; M2-P5A_PLAN_READY_FOR_REVIEW; M2-P5B_PLAN_READY_FOR_REVIEW`.
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** `M2-P4_IMPLEMENTATION_READY_FOR_REVIEW`. P3 đã `ACCEPTED / CLOSED`; P4 exact 9 GREEN, frozen regressions và closure evidence đã được verifier xác nhận, chờ independent audit. M2-P5..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc:** P1..P4 là `ACCEPTED / CLOSED`. P5A/P5B mới được lập kế hoạch và chờ independent review; RED, implementation, migration và runtime evidence đều chưa được ủy quyền. P5B còn chờ P5A/`0004` accepted vì migration tuần tự. P6+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
@@ -213,7 +213,7 @@ src/controlplane/
 - **Boundary**: application/domain không chứa SQL, tên bảng, psycopg hoặc transaction ownership. PostgreSQL adapter chỉ dùng connection active của P1 UoW, không tự acquire pool, commit, rollback hoặc mở transaction ẩn. Không sửa `MigrationRunner`.
 
 ### 6.3. Operation Semantics Mapping (M2-P4)
-**Trạng thái P4:** implementation pure-domain và mapper đã được chứng kiến GREEN; closure evidence vẫn chờ independent audit. Không có persistence, transport hay work package kế tiếp trong checkpoint này.
+**Trạng thái P4:** `ACCEPTED / CLOSED`; implementation pure-domain và mapper đã được chứng kiến GREEN, closure evidence đã qua independent audit. Không có persistence, transport hay work package kế tiếp trong checkpoint này.
 
 **Traceability bắt buộc:** `CT-STATE-008` (Stage Run), `CT-STATE-009` (Video Job), `CT-STATE-010` (Production Batch), `CT-STATE-011` (Operation), `CT-STATE-012` (Artifact Location), `CT-API-007` (`OperationView`), `CT-CMN-005` (revision) và danh mục lỗi `FORBIDDEN_TRANSITION`/`REVISION_CONFLICT` của `CT-CMN-010`. `ADR-0004` chỉ là căn cứ fencing/reconcile; P4 không triển khai CAS PostgreSQL hay owner persistence.
 
@@ -264,9 +264,17 @@ Theo đúng `CT-ORC-002` và `CT-ORC-012` (AUD2-B01):
    - Invariant: Unique completion trên mỗi `job_id`.
    - Phạm vi claim của M2: *"G-side completion skeleton/invariants proven using typed test ports/fixtures."* Tuyệt đối không claim full CommitVideoCompletion end-to-end vì C/D/F và render media thực tế chưa thuộc M2.
 
-### 6.5. Module I Artifact Metadata Skeleton (M2-P5B)
-- Quản lý metadata `ArtifactVersion` (`sha256_hash`, `size_bytes`, `mime_type`) và `ArtifactLocation` (`storage_type`, `uri`, `status`).
-- `CleanupAuthorization` trong M2 là metadata/eligibility skeleton; **không thực hiện real destructive cleanup** và không claim production-safe cleanup khi cloud verification và consumer lease đầy đủ chưa tồn tại.
+### 6.5. Module J Config & Secret Boundary Foundation (M2-P5A)
+
+P5A chỉ là target đã plan, không là behavior hiện hữu. `ConfigRevision` có identity immutable, workspace scope, scope key, revision monotonic, canonical content hash, typed payload, effective/audit/change-reason refs và state. PostgreSQL phải giữ FK/unique/check structural; application chịu trách nhiệm canonicalization, typed validation, policy/effective rule và CAS. Contract xác nhận `DRAFT → PUBLISHED → SUPERSEDED`; published không update tại chỗ và `SUPERSEDED` terminal theo terminal rule chung.
+
+`CT-STATE-013` nói revision có thể `INVALIDATED` do lỗi bảo mật nhưng không xác định source state. Đây là **contract clarification required before P5A RED**: không encode cạnh vào `INVALIDATED` hay mở external-account lifecycle trong P5A. `SecretHandle` chỉ giữ workspace/provider/account/alias, redacted fingerprint-or-version, validation/revocation/expiry/audit metadata; không có secret value, raw credential hoặc read-secret-value port. Mọi event/audit chỉ chứa safe ID/ref/revision/status/reason đã redacted theo CT-EVT/CT-SEC; secret store nằm ngoài PostgreSQL business boundary của ADR-0009.
+
+### 6.6. Module I Artifact Metadata & Cleanup Authorization Skeleton (M2-P5B)
+
+P5B là target đã plan, logical sibling P5A sau P4 nhưng migration `0005` chỉ hợp lệ sau `0004` P5A được accept. `ArtifactVersion` là immutable workspace-scoped version có logical artifact identity, SHA-256 64 ký tự, size dương, MIME không rỗng và metadata/ref CT-STO-001. `ArtifactLocation` thuộc cùng workspace/version bằng FK, giữ opaque provider/storage locator không credential/token/signed URL dài hay path có traversal; state/revision mutation tái sử dụng chính xác ArtifactLocationState P4/CT-STATE-012.
+
+P5B phải hỗ trợ `VERIFIED → MISSING` khi verify sau phát hiện mất; không thêm recovery từ `MISSING`, `CORRUPT` hay `OUTCOME_UNKNOWN`. Cleanup metadata luôn theo `VERIFIED → CLEANUP_ELIGIBLE → CLEANUP_AUTHORIZED → DELETED`; authorization immutable giữ version/hash/evidence/policy/epoch/owner/audit refs. Nó không thực thi delete, upload, Drive lifecycle, local journal hoặc claim external byte integrity.
 
 ---
 

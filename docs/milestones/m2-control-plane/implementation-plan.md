@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_ACCEPTED_CLOSED; M2-P4_IMPLEMENTATION_READY_FOR_REVIEW`.
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_ACCEPTED_CLOSED; M2-P4_ACCEPTED_CLOSED; M2-P5A_PLAN_READY_FOR_REVIEW; M2-P5B_PLAN_READY_FOR_REVIEW`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** `M2-P4_IMPLEMENTATION_READY_FOR_REVIEW`. M2-P3 đã `ACCEPTED / CLOSED`; P4 exact 9 đã GREEN cùng frozen regression/evidence closure được verifier xác nhận. Chờ independent audit trước khi có bất kỳ acceptance/phase kế tiếp nào. M2-P5..P7, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** P1..P4 là `ACCEPTED / CLOSED`. P5A và P5B chỉ ở `PLAN_READY_FOR_REVIEW`: chưa có Behavioral RED, implementation, migration hay runtime evidence. P5B còn bị chặn migration bởi checkpoint P5A/`0004` được accept. P6+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -382,7 +382,7 @@ Không đổi tên, thêm, bỏ hoặc gộp 11 identities này trong phase RED/
 
 ### M2-P4: Foundational State Machines & Operation Semantics Mapping
 
-- **Authorization / checkpoint:** `M2-P4_IMPLEMENTATION_READY_FOR_REVIEW`. Exact 9 oracle đã GREEN; closure run `run-m2-p4-20260915002012` bind source `3225891dc7328603be38002ff2295c4bf3a50b48` và M1 compatibility evidence descendant. Chỉ independent audit mới có thể xét acceptance; không mở P5.
+- **Authorization / checkpoint:** `M2-P4_ACCEPTED_CLOSED`. Exact 9 oracle và closure run `run-m2-p4-20260915002012` đã được independent audit accept; P4 frozen, không mở lại khi không có evidence mâu thuẫn.
 - **Requirement traceability:** `CT-STATE-008` (Stage Run), `CT-STATE-009` (Job), `CT-STATE-010` (Batch), `CT-STATE-011` (Operation), `CT-STATE-012` (Artifact Location), `CT-API-007` (`OperationView`), `CT-CMN-005` (revision) và `CT-CMN-010` (mã `FORBIDDEN_TRANSITION`/`REVISION_CONFLICT`). `ADR-0004` chỉ định hướng fencing/reconcile, không mở persistence/CAS mới.
 - **Canonical state graph:** source of truth là `12-state-machines.md`, với các cạnh đúng như matrix ở spec M2 §6.3, gồm cạnh `VERIFIED → MISSING` khi verify sau phát hiện location mất. Không có self-transition idempotent trong contract; P4 phải reject nó trừ khi hợp đồng được sửa và re-audit. Terminal không mở lại tại chỗ; retry/regenerate tạo attempt/revision phù hợp ngoài P4. `CT-STATE-011` khóa `OUTCOME_UNKNOWN → SUCCEEDED | FAILED` chỉ khi có reconciliation evidence; reconcile inconclusive giữ unknown, `SUCCEEDED` và `FAILED` đều terminal. `CT-STATE-009` khóa `ACTIVE | WAITING → READY_FOR_COMPLETION`; `CT-STATE-010` khóa direct terminal từ cả `RUNNING` và `WAITING_CAPABILITY`. Đặc biệt, `CT-STATE-008` không cấp cạnh từ `WAITING_DEPENDENCY`, `WAITING_CAPABILITY` hay `FAILED_RETRYABLE`; P4 không tự phát minh recovery edge.
 - **Domain contract và lỗi:** mỗi hàm pure nhận state hiện hành, expected/current revision, requested next state và evidence/condition explicit nếu cạnh yêu cầu reconcile. Thành công trả state + resulting revision (`current + 1`) đúng một lần; expected revision stale ném `RevisionConflictError(current_revision=...)` và không mutation. Cạnh cấm ném `ForbiddenTransitionError` code `FORBIDDEN_TRANSITION`, các field an toàn `aggregate_type`, `current_state`, `requested_next_state`, `current_revision` khi có; không stack/HTTP/side effect. P4 tái dùng error revision P2, không triển khai PostgreSQL CAS.
@@ -410,68 +410,55 @@ Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Khôn
 
 ---
 
-### M2-P5A: Module J — Config Revision, Policy & Secret Boundary Foundation
+### M2-P5A: Module J — Config Revision & Secret-Boundary Foundation
 
-- **Requirement / CT / INV IDs**: `09-contracts/11-configuration-security-contracts.md`, `CT-STATE-013`, `ADR-0009`.
-- **Dependencies**: M2-P4.
-- **Mục tiêu**:
-  1. Migration tạo bảng `controlplane.cp_config_revisions` (`config_id`, `scope`, `revision`, `content_hash`, `payload`, `status`, `created_at`) và `controlplane.cp_secret_handles` (`handle_id`, `provider`, `account_label`, `status`, `updated_at`).
-  2. `ConfigRevisionManager`: Quản lý bản sửa đổi cấu hình bất biến, revision tăng đơn điệu, đối soát `content_hash` SHA-256; chuyển trạng thái `DRAFT → PUBLISHED → SUPERSEDED | INVALIDATED`.
-  3. `SecretHandleResolver`: Lưu trữ metadata của secret và trả về `SecretHandle` an toàn; **cam kết 0 byte plaintext secret** được lưu trong PostgreSQL nghiệp vụ; tương thích cơ chế vault process cô lập của ADR-0009.
-- **Allowed File Scope**:
-  - `src/controlplane/infrastructure/db/migrations/0004_config_and_secrets.*`
-  - `src/controlplane/domain/config_security/**`
-  - `src/controlplane/application/config_security/**`
-  - `tests/m2/test_p5a_config_and_secrets.py`
-  - `docs/milestones/m2-control-plane/evidence/m2-p5a/**`
-- **Forbidden File Scope**:
-  - `src/controlplane/api/**`, `src/controlplane/ui/**`, `src/m1proof/**`.
-- **RED Oracle**:
-  - `test_tst_m2_p5a_001_config_revision_immutability_and_hash`: Cố tình update nội dung config revision đã PUBLISHED -> FAILED vì chưa có immutability enforcement.
-  - `test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext`: Thử lưu trữ secret plaintext vào cp_secret_handles -> FAILED vì chưa có schema cấm trường secret.
-  - `test_tst_m2_p5a_003_secret_redaction_in_domain_events`: Phát event config updated -> FAILED vì payload chứa secret thay vì handle.
-- **Positive Tests**: Tạo và publish config revision thành công; hash SHA-256 khớp 100%; secret handle ánh xạ an toàn mà không lộ token.
-- **Negative Tests**: Cố tình sửa revision đã published trả lỗi `CONFIG_REVISION_IMMUTABLE`; quét bảng DB xác nhận 0 byte token/key.
-- **Concurrency / Fault / Security Tests**: Standalone secret scanner quét toàn bộ schema và data của Module J; concurrent publishing với cùng revision number.
-- **Migration / Rollback**: `0004_config_and_secrets.sql` và rollback tương ứng trên isolated test DB.
-- **Evidence**: `docs/milestones/m2-control-plane/evidence/m2-p5a/` (`commands.jsonl`, `status.json`, `status.md`, `red-observations.md`, `red-p5a-stdout.txt`, `hashes.sha256`).
-- **PASS Criteria**: Evidence validator P0 đạt PASS; 0 secret leak; 93 tests M1 tiếp tục PASS; 100% tests P5A đạt GREEN.
-- **STOP Condition**: Phát hiện plaintext secret trong PostgreSQL hoặc trong event payload của Module J.
-- **Claim Allowed**: "M2-P5A hoàn tất: Phân hệ J đã bảo vệ bản sửa đổi cấu hình bất biến và ranh giới bí mật."
-- **Claim Forbidden**: "Toàn bộ M2-P5 đã xong (còn P5B)."
+**Trạng thái:** `M2-P5A_PLAN_READY_FOR_REVIEW`. Đây chỉ là plan/traceability; không được viết RED, source, SQL, migration hay evidence runtime trước independent review.
+
+**Traceability có thẩm quyền:** `CT-CFG-001` (revision bất biến, scope/effective rule/change reason), `CT-CFG-002` chỉ ở mức trả ref/fingerprint/provenance không chứa secret, `CT-SEC-001`, `CT-SEC-002` chỉ cho metadata handle/boundary, `CT-SEC-003`, `CT-SEC-004`, `CT-STATE-013`, `CT-CMN-005/006/008/010/013`, `CT-EVT-001..005`, `ADR-0009` và UoW/MigrationRunner P1 đã accept. Các mã cũ `CONFIG_REVISION_IMMUTABLE` không có trong danh mục `CT-CMN-010`; future implementation dùng lỗi chuẩn có thẩm quyền (`FORBIDDEN_TRANSITION`, `REVISION_CONFLICT`, `VALIDATION_ERROR`, `POLICY_VIOLATION`) cho đến khi contract bổ sung mã riêng.
+
+**State clarification bắt buộc:** contract chỉ xác nhận `DRAFT → PUBLISHED → SUPERSEDED`, và nói revision *có thể* `INVALIDATED` vì lỗi bảo mật. Không nguồn nào định nghĩa source state của `INVALIDATED`; vì vậy P5A không được encode, test, hay implement bất kỳ cạnh vào `INVALIDATED` cho đến khi contract clarification có thẩm quyền. `SUPERSEDED` được xử lý terminal theo quy tắc terminal chung; published không bị sửa tại chỗ. ExternalAccount là aggregate khác (`DISABLED/ENABLED/...`) và nằm ngoài P5A này.
+
+**Schema target sau authorization:** production `0004_config_and_secrets.sql`/rollback tạo `controlplane.cp_config_revisions` với `config_revision_id` immutable PK, `workspace_id` FK, `scope_kind`, `scope_key`, `revision`, canonical `content_hash CHAR(64)`, typed `payload JSONB`, `status`, `effective_at`, `created_at`, actor/change-reason/audit refs; unique `(workspace_id, scope_kind, scope_key, revision)` và check hash lowercase hexadecimal 64 ký tự. Revision cùng scope tăng đơn điệu; content được canonicalize/validate ở application, hash kiểm lại trước persist; PostgreSQL giữ shape/unique/FK/check, application giữ typed payload/effective policy và CAS `expected_revision`. `cp_secret_handles` chỉ có `secret_handle_id` PK, `workspace_id` FK, provider/account/alias refs, redacted fingerprint-or-version, validation/revocation status, issued/expiry/update/audit refs; không có cột value/token/password/blob, không có read-secret-value port. Chính API domain/application chỉ nhận/ghi handle metadata; value chỉ đi qua secret-store boundary ngoài business PostgreSQL.
+
+**Transaction/event boundary:** repositories nhận connection đang active của `SqlUnitOfWork`, không pool/commit/rollback/SQL ẩn. Publish cùng revision dùng unique key và revision/CAS; một winner, loser nhận conflict không merge. Event dùng envelope/outbox P3 đã accept, payload chỉ ID/ref/revision/status/reason đã redacted; cấm secret, credential, stack, blob và signed URL dài. Audit ghi actor/action/resource-before-after refs/time/correlation/outcome/reason đã redacted, không secret.
+
+| Mandatory future oracle (exact, 5) | Traceability | GREEN purpose; RED seam trước implementation |
+|---|---|---|
+| `test_tst_m2_p5a_001_config_revision_immutability_and_hash` | CT-CFG-001; CT-CMN-005/013 | Canonical content/hash, immutable revision, DRAFT→PUBLISHED→SUPERSEDED; RED thiếu store/validation. |
+| `test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext` | CT-SEC-001/002/003; ADR-0009 | Schema/ports chỉ materialize metadata; direct plaintext-shaped input bị chặn, không có read-value surface; RED thiếu boundary. |
+| `test_tst_m2_p5a_003_secret_redaction_in_domain_events` | CT-EVT-002/003; CT-CMN-013; CT-SEC-004 | Config event/audit chỉ có safe refs và không leak canary; RED thiếu payload safety. |
+| `test_tst_m2_p5a_004_production_0004_forward_rollback_and_constraints` | CT-CFG-001; CT-SEC-001; P1 MigrationRunner | Forward real `0004`, verify FK/unique/hash/absence-of-secret-value schema; exact rollback leaves P1–P3 intact and tracker `[1,2,3]`; RED missing `0004`. |
+| `test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish` | CT-CMN-005/013; CT-SEC-003; CT-CFG-001 | Foreign scope inaccessible; two same-scope/revision publishes give one commit/one conflict and no mutation of published row; RED missing scoped repository/CAS. |
+
+**Future RED protocol/classification:** real PostgreSQL only: Python 3.13.15, psycopg 3.3.5, psycopg-pool 3.3.1, actual `psycopg_pool.ConnectionPool`, PostgreSQL 18.6, `CREATEDB=true`, `M2_TEST_PG_DSN`, function-scoped `m2_p5a_test_<uuid>`, production schema `controlplane`, no SQLite/mocks/fallback. Fixture verifies exact identity/regex, closes target pools then admin drops only that verified name; orphan count must be zero. Migration oracle uses production files and exact rollback in a disposable DB; P1/P2/P3 files and runner remain immutable. A valid RED is an expected missing P5A capability after imports/fixture/schema prerequisites succeed; import/syntax/DSN/CREATEDB/fixture failure, skip, or unexpected pass is not RED.
+
+**Evidence/closure design:** hash raw prerequisite, exact `--collect-only`, RED, GREEN, frozen regressions, secret scan, orphan report, runtime capability, `commands.jsonl`, `status.json`, human observations and dedicated hashed `verify-only-stdout.txt`; `status.json` pins immutable `source_commit_sha`, exact identities/count and producer provenance. Fail closed for missing/hash-mismatched artifacts, skipped/error, wrong count, stale source or invalid DAG. Future closure: P5A 5/5; P4 9/9; P3/P2/P1 11/11 each; P0 exact 33/33 including architecture 6/6; M1 93/93 and 0 skipped.
+
+**Future allowed paths:** `0004_config_and_secrets.sql` and paired rollback; `domain/config_security/**`; `application/config_security/**`; P5A PostgreSQL adapter/ports only as needed; `tests/m2/test_p5a_config_and_secrets.py`; P5A profile/synthesizer and evidence. **Forbidden:** HTTP/UI/Temporal/provider retrieval, raw secret persistence, external-account lifecycle, P4 edits, P1–P3 edits, `MigrationRunner`, P5B/P6+, M3 and Module A. **STOP:** any plaintext in business DB/event/audit/log, unclear `INVALIDATED` transition, wrong migration sequence, or RED not matching its oracle.
 
 ---
 
-### M2-P5B: Module I — Artifact Version & Location Metadata Skeleton
+### M2-P5B: Module I — Artifact Metadata & Cleanup-Authorization Skeleton
 
-- **Requirement / CT / INV IDs**: `09-contracts/10-storage-contracts.md`, `CT-STATE-012`, `ADR-0006`, `ADR-0010`.
-- **Dependencies**: M2-P4.
-- **Mục tiêu**:
-  1. Migration tạo bảng `controlplane.cp_artifact_versions` (`artifact_id`, `version_id`, `sha256_hash`, `size_bytes`, `mime_type`, `created_at`) và `controlplane.cp_artifact_locations` (`location_id`, `version_id`, `storage_type`, `uri`, `status`, `last_verified_at`).
-  2. `ArtifactMetadataStore`: Quản lý vòng đời metadata tệp theo CT-STATE-012; lưu trữ và xác thực mã băm SHA-256; chuyển trạng thái vị trí (`DECLARED → MATERIALIZING → AVAILABLE_UNVERIFIED → VERIFYING → VERIFIED | CORRUPT | MISSING`).
-  3. `CleanupAuthorization` Skeleton: Quản lý tính đủ điều kiện dọn dẹp metadata (`CLEANUP_ELIGIBLE → CLEANUP_AUTHORIZED → DELETED`).
-  4. **Phạm vi Giới hạn**: Không claim external byte integrity / Drive lifecycle trong M2. Không thực hiện real destructive cleanup và không claim production-safe cleanup khi lease/cloud verification đầy đủ chưa tồn tại.
-- **Allowed File Scope**:
-  - `src/controlplane/infrastructure/db/migrations/0005_artifact_metadata.*`
-  - `src/controlplane/domain/storage_meta/**`
-  - `src/controlplane/application/storage_meta/**`
-  - `tests/m2/test_p5b_artifact_metadata.py`
-  - `docs/milestones/m2-control-plane/evidence/m2-p5b/**`
-- **Forbidden File Scope**:
-  - `src/controlplane/api/**`, `src/controlplane/ui/**`, `src/m1proof/**`.
-- **RED Oracle**:
-  - `test_tst_m2_p5b_001_artifact_version_registration_and_hash_integrity`: Đăng ký version tệp -> FAILED vì chưa có metadata store.
-  - `test_tst_m2_p5b_002_location_state_lifecycle_and_verification`: Chuyển trạng thái location sang VERIFIED -> FAILED vì chưa có validator.
-  - `test_tst_m2_p5b_003_cleanup_authorization_requires_verified_location`: Yêu cầu cleanup location chưa VERIFIED -> FAILED vì chưa có rule chặn cleanup trái phép.
-- **Positive Tests**: Đăng ký artifact version với hash SHA-256; cập nhật location status đúng luồng; cấp phép cleanup skeleton đúng quy tắc.
-- **Negative Tests**: Đăng ký với hash không hợp lệ trả `INVALID_ARTIFACT_HASH`; yêu cầu cleanup location đang `VERIFYING` bị từ chối `CLEANUP_NOT_ELIGIBLE`.
-- **Concurrency / Fault / Security Tests**: Concurrent location verification updates; test path traversal trong URI.
-- **Migration / Rollback**: `0005_artifact_metadata.sql` và rollback tương ứng trên isolated test DB.
-- **Evidence**: `docs/milestones/m2-control-plane/evidence/m2-p5b/` (`commands.jsonl`, `status.json`, `status.md`, `red-observations.md`, `red-p5b-stdout.txt`, `hashes.sha256`).
-- **PASS Criteria**: Evidence validator P0 đạt PASS; metadata skeleton tuân thủ CT-STATE-012; 93 tests M1 tiếp tục PASS.
-- **STOP Condition**: Artifact location bị đánh dấu deleted khi chưa qua trạng thái `CLEANUP_AUTHORIZED`.
-- **Claim Allowed**: "M2-P5B hoàn tất: Phân hệ I metadata skeleton đã được thiết lập."
-- **Claim Forbidden**: "Drive storage lifecycle hay destructive cleanup đã hoàn tất."
+**Trạng thái/gate:** `M2-P5B_PLAN_READY_FOR_REVIEW`. P5B là logical sibling của P5A sau P4, nhưng sequential `MigrationRunner` bắt buộc `0004 → 0005`; do đó **P5B RED và implementation chờ checkpoint source P5A/`0004` đã được accept**. Không làm yếu gap detection, không sửa runner.
+
+**Traceability có thẩm quyền:** `CT-STO-001/002/007/008`, `CT-STO-009` chỉ cho epoch/reference authorization, `CT-STATE-012`, `CT-CMN-005/006/009/010/013`, `CT-EVT-001..005`, `ADR-0004`, `ADR-0006`, `ADR-0010`, và ArtifactLocationState P4 đã closed. `INVALID_ARTIFACT_HASH`/`CLEANUP_NOT_ELIGIBLE` không phải mã `CT-CMN-010`; dùng `VALIDATION_ERROR`, `FORBIDDEN_TRANSITION`, `POLICY_VIOLATION` hoặc `REVISION_CONFLICT` đến khi contract đổi.
+
+**Schema target sau gate:** real `0005_artifact_metadata.sql`/rollback tạo `cp_artifact_versions` với immutable `artifact_version_id` PK, logical `artifact_id`, `workspace_id` FK, `sha256_hash CHAR(64)`, positive `size_bytes`, non-empty `mime_type`, artifact kind/owner/lineage/retention/sensitivity refs và timestamps; unique identity policy gồm `(workspace_id, artifact_id, sha256_hash)` để cùng byte cùng identity tái dùng version, byte khác luôn version mới. `cp_artifact_locations` có `location_id` PK, `workspace_id`, `artifact_version_id` composite FK cùng workspace, storage/provider namespace/object/logical locator fields, P4 `status`, verify/metadata revision, mutation `revision`, timestamps; unique provider location identity trong workspace. Locator là opaque metadata, reject absolute/local traversal and unsafe URI/path forms at application boundary; never stores credential, token, signed URL dài or arbitrary shell path. `cp_cleanup_authorizations` chỉ là immutable/auditable metadata skeleton: authorization ID, workspace/location/version/hash refs, reason/policy/evidence refs, issued/expiry, recovery epoch, authorizing owner/actor/audit/correlation refs and status; it never performs delete.
+
+**State/concurrency/ownership:** consume P4 ArtifactLocationState exactly, including `VERIFIED → MISSING` after later verification, no recovery edge from `MISSING`, `CORRUPT` or `OUTCOME_UNKNOWN`, and cleanup only `VERIFIED → CLEANUP_ELIGIBLE → CLEANUP_AUTHORIZED → DELETED`. No second state machine. Version is immutable; mutable location transition uses `expected_revision`/CAS and one active UoW connection. Repositories never own pool/transaction/commit/rollback. P5B emits no cloud/cleanup side effect; event only if current package truly persists a safe metadata fact, through existing P3 envelope/outbox without secret/byte/blob/signed URL.
+
+| Mandatory future oracle (exact, 5) | Traceability | GREEN purpose; RED seam before implementation |
+|---|---|---|
+| `test_tst_m2_p5b_001_artifact_version_registration_and_hash_integrity` | CT-STO-001; CT-CMN-005/009 | Immutable scoped version, SHA-256/size/MIME validation and same-byte reuse; RED missing store. |
+| `test_tst_m2_p5b_002_location_state_lifecycle_and_verification` | CT-STO-002; CT-STATE-012; P4 | Exact reused transitions, including VERIFIED→MISSING and no unsupported recovery; RED missing P4-backed validator/store. |
+| `test_tst_m2_p5b_003_cleanup_authorization_requires_verified_location` | CT-STO-007/008/009; ADR-0010 | Immutable auditable authorization only after strict chain, with evidence/epoch refs and no deletion; RED missing policy. |
+| `test_tst_m2_p5b_004_production_0005_forward_rollback_and_constraints` | CT-STO-001/002/008; P1 runner | Real forward/FK/unique/hash/positive/locator constraints and exact rollback leaves P1–P4 objects/tracker `[1,2,3,4]`; RED missing `0005`. |
+| `test_tst_m2_p5b_005_workspace_isolation_and_location_revision_conflict` | CT-CMN-005/013; CT-SEC-003; CT-STATE-012 | Cross-workspace reads/mutations denied; concurrent expected revision has one commit/one conflict, no duplicate/foreign location; RED missing scoped CAS. |
+
+**Future RED/evidence protocol:** same real PostgreSQL matrix as P5A, function-scoped `m2_p5b_test_<uuid>`, `M2_TEST_PG_DSN`, no fallback/SQLite/mock; destructive fixture verifies exact package name then closes target connections and admin drops only verified target, orphan=0. Test `0005` only from production migration directory after P5A accepted `0004`; P1–P4 migrations/runner immutable. Valid RED must be the stated P5B seam after prerequisite setup succeeds; setup/DSN/CREATEDB/import/syntax/skip/unexpected-pass are invalid. Evidence is fail-closed and hashes raw prerequisite/collect/RED/GREEN plus dedicated `verify-only-stdout.txt`, status/provenance, producer commands, runtime/pool/CREATEDB/orphan/secret reports and SHA-256 DAG/negative verifier checks. Closure preserves P5B 5/5, accepted P5A, P4 9/9, P3/P2/P1 11/11, P0 33/33 incl architecture 6/6, M1 93/93 no skipped.
+
+**Future allowed paths:** `0005_artifact_metadata.sql`/rollback; `domain/storage_meta/**`; `application/storage_meta/**`; required UoW-bound adapter/ports; `tests/m2/test_p5b_artifact_metadata.py`; P5B profile/synthesizer/evidence. **Forbidden:** cloud upload/Drive lifecycle, destructive filesystem/cloud deletion, local journal, API/UI/Temporal, P4 modification, P1–P3 changes, runner changes, P6+, M3 and Module A. **STOP:** P5A/`0004` checkpoint absent, a state edge conflicts with P4/contract, locator can reach credentials/path traversal, destructive behavior appears, or RED classification is not exact.
 
 ---
 

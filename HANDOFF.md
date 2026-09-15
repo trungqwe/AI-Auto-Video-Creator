@@ -1,10 +1,8 @@
 # HANDOFF
 
-- Đã quyết định: M1, M2-P0, M2-P1, M2-P2 và M2-P3 là `ACCEPTED / CLOSED`. M2-P4 ở `M2-P4_IMPLEMENTATION_READY_FOR_REVIEW`: exact 9 GREEN, frozen regressions và evidence verifier đã PASS; chờ independent audit, chưa `ACCEPTED / CLOSED`. M2-P5..P7, M3 và Module A bị khóa.
-- Kế hoạch P4 khóa năm state machine thuần theo `CT-STATE-008..012`, mapper `CT-API-007`, `CT-CMN-005` revision và `FORBIDDEN_TRANSITION`; catalogue RED đề xuất cố định đúng 9 identity trong `implementation-plan.md`.
-- Hợp đồng P4 đã đóng ba mơ hồ: Operation `OUTCOME_UNKNOWN → SUCCEEDED | FAILED` chỉ với reconciliation evidence; reconcile inconclusive giữ unknown; `SUCCEEDED`/`FAILED` terminal. Job cho phép `ACTIVE` hoặc `WAITING → READY_FOR_COMPLETION`; Batch cho phép `RUNNING` hoặc `WAITING_CAPABILITY` → terminal. Không có edge bổ sung.
-- Không tự phát minh cạnh Stage Run: `CT-STATE-008` không định nghĩa lối ra từ `WAITING_*`/`FAILED_RETRYABLE`; `OUTCOME_UNKNOWN` chỉ reconcile. Artifact chỉ có cạnh `VERIFIED → MISSING` sau later verification và cleanup chain contract. Mapper waiting chỉ dùng `wait_reason` structured của `CT-API-007`, không timestamp/progress/UI.
-- P4 implementation chỉ gồm `domain/statemachine/**`, mapper projection thuần và compatibility revision error domain; closure tooling/evidence P4 là fail-closed. Cấm HTTP/SSE/UI/Temporal/persistence/migration/P5+/M3/Module A và mọi thay đổi P1-P3 đã accept.
-- Closure P4 authoritative run `run-m2-p4-20260915002012`: source `3225891dc7328603be38002ff2295c4bf3a50b48`, M1 compatibility `772679c6a97ea7ea41ab98487dfa4d1697c3b385`, P4 9/9, P3/P2/P1 11/11, P0 33/33, architecture 6/6, M1 93/93, PostgreSQL 18.6/CREATEDB, orphan 0, secret CLEAN và `synthesizer_p4 --verify-only` PASS.
-- Tệp cần đọc tiếp: `docs/milestones/m2-control-plane/spec.md`, `implementation-plan.md`, `docs/09-contracts/12-state-machines.md`, `docs/09-contracts/01-control-api-and-stream.md`, `docs/09-contracts/00-common-contract.md`, `docs/12-pre-code-checklist.md`.
-- Điểm tiếp tục: independent audit P4 closure evidence. Không mở P5+/M3/Module A.
+- Đã quyết định: M1 và M2-P1..P4 là `ACCEPTED / CLOSED`; checkpoint P4 đóng tại `8db00b30afe7286430e9b40d14bfd8b26b8194d5`.
+- Trạng thái hiện hành: `M2-P5A_PLAN_READY_FOR_REVIEW` và `M2-P5B_PLAN_READY_FOR_REVIEW`. Chỉ có planning/contract traceability; chưa được viết Behavioral RED, implementation, migration hay runtime evidence.
+- P5A: schema target `0004_config_and_secrets`, exact 5 future oracle. `CT-STATE-013` không xác định state đi vào `INVALIDATED`; đây là clarification bắt buộc trước P5A RED. Không tự phát minh cạnh transition hoặc external-account lifecycle.
+- P5B: schema target `0005_artifact_metadata`, exact 5 future oracle; tái dùng P4 ArtifactLocationState, không cloud/delete/local journal. Dù P5A/B logical siblings, `MigrationRunner` tuần tự bắt buộc P5B RED/implementation chờ checkpoint P5A/`0004` được accept.
+- Tệp cần đọc tiếp: `docs/milestones/m2-control-plane/spec.md`, `implementation-plan.md`, contracts `00-common`, `02-domain-events`, `10-storage`, `11-config-security`, `12-state-machines`; ADR `0004`, `0006`, `0009`, `0010`; và `docs/12-pre-code-checklist.md`.
+- Điểm tiếp tục: independent audit hai P5 plan. P6+, M3 và Module A vẫn `NOT AUTHORIZED`.
