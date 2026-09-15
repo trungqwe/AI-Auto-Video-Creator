@@ -1,0 +1,12 @@
+{
+  "syntax": "PASS: source parsed by AST static check and imported/executed by fresh suites",
+  "lint": "SKIP: ruff not installed",
+  "type_check": "SKIP: mypy not installed",
+  "build": "SKIP: project uses tool.uv.package=false with no build-system; build module not installed",
+  "observed_tools": {
+    "ruff": "unavailable",
+    "mypy": "unavailable",
+    "build": "unavailable"
+  },
+  "scope_note": "No dependency installation or packaging change authorized."
+}

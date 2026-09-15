@@ -1,0 +1,91 @@
+FFF                                                                      [100%]
+================================== FAILURES ===================================
+_____________ test_correction_stale_cas_reports_persisted_current _____________
+
+database = DisposableDatabase(name='m2_p5a_test_a6f68241e60947fcb11aa71d6de112cc', connections=[<psycopg.Connection [BAD] at 0x2c4e7ec9f90>])
+
+    def test_correction_stale_cas_reports_persisted_current(database):
+        with oracle._p5a_transaction_manager(database) as manager:
+            service = oracle._config_revision_service()
+            with manager.unit_of_work() as uow:
+                stale = service.create_revision(**values(), connection=uow.connection)
+            with manager.unit_of_work() as uow:
+                published = service.transition(revision=stale, expected_revision=1, requested_status=ConfigRevisionStatus.PUBLISHED, actor_ref='correction', connection=uow.connection)
+            with manager.unit_of_work() as uow:
+                persisted = oracle._config_revision_repository().get_scoped(workspace_id=oracle.WORKSPACE_A, config_revision_id=stale.config_revision_id, connection=uow.connection)
+                before = oracle._revision_snapshot(persisted)
+                outbox_before = oracle._p5a_outbox_count(uow.connection, stale.config_revision_id)
+                with pytest.raises(RevisionConflictError) as conflict:
+                    service.transition(revision=stale, expected_revision=0, requested_status=ConfigRevisionStatus.PUBLISHED, actor_ref='correction', connection=uow.connection)
+                assert persisted.revision == published.revision == 2
+>               assert conflict.value.current_revision == persisted.revision
+E               AssertionError: assert 1 == 2
+E                +  where 1 = RevisionConflictError('Revision conflict; current revision is 1.').current_revision
+E                +    where RevisionConflictError('Revision conflict; current revision is 1.') = <ExceptionInfo RevisionConflictError('Revision conflict; current revision is 1.') tblen=2>.value
+E                +  and   2 = ConfigRevision(config_revision_id='9a159787-029e-4b4f-b7c2-1075bc69bcb4', workspace_id='00000000-0000-0000-0000-000000...a0bbf66d13fc512b0c6b138a23c290f30a2a', payload={'enabled': True}, status=<ConfigRevisionStatus.PUBLISHED: 'PUBLISHED'>).revision
+
+.local-tools\temp\test_p5a_correction.py:39: AssertionError
+_________________ test_correction_explicit_config_revision_id _________________
+
+database = DisposableDatabase(name='m2_p5a_test_c86822c4a890490e93c0b2ccfbd66c48', connections=[<psycopg.Connection [BAD] at 0x2c4e7ea7460>])
+
+    def test_correction_explicit_config_revision_id(database):
+        identity = str(uuid.uuid4())
+        with oracle._p5a_transaction_manager(database) as manager:
+            with manager.unit_of_work() as uow:
+>               result = oracle._config_revision_service().create_revision(**values(), config_revision_id=identity, connection=uow.connection)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.local-tools\temp\test_p5a_correction.py:48:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.config_security.ConfigRevisionService object at 0x000002C4E7ECB4D0>
+kwargs = {'workspace_id': '00000000-0000-0000-0000-0000000005a1', 'scope_kind': 'prompt', 'scope_key': 'correction', 'config_revision_number': 1, ...}
+
+    def create_revision(self, **kwargs: Any) -> ConfigRevision:
+        params = dict(kwargs); connection = params.pop("connection", None)
+        if connection is None: raise TypeError("connection is required")
+        required = ("workspace_id", "scope_kind", "scope_key", "config_revision_number", "payload", "actor_ref", "change_reason")
+        missing = [name for name in required if name not in params]
+        if missing: raise TypeError(f"missing required arguments: {', '.join(missing)}")
+        if not isinstance(params["payload"], dict): raise ValueError("payload must be a JSON object")
+>       return self._repository_factory(connection).create_revision(**params, config_revision_id=str(params.get("config_revision_id") or uuid.uuid4()), content_hash=request_hash(params["payload"]))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: controlplane.infrastructure.db.config_security.PostgresConfigSecurityRepository.create_revision() got multiple values for keyword argument 'config_revision_id'
+
+src\controlplane\application\config_security\__init__.py:90: TypeError
+__________________ test_correction_explicit_secret_handle_id __________________
+
+database = DisposableDatabase(name='m2_p5a_test_0d4f84a498684c5dbd0bba38895f683f', connections=[<psycopg.Connection [BAD] at 0x2c4e7ea7f00>])
+
+    def test_correction_explicit_secret_handle_id(database):
+        identity = str(uuid.uuid4())
+        with oracle._p5a_transaction_manager(database) as manager:
+            with manager.unit_of_work() as uow:
+>               result = oracle._secret_handle_store().register(secret_handle_id=identity, workspace_id=oracle.WORKSPACE_A, provider_ref='vault', account_ref='account', alias_ref='alias', redacted_fingerprint_or_version='redacted', validation_status='VALID', audit_ref='correction', connection=uow.connection)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.local-tools\temp\test_p5a_correction.py:58:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.config_security.SecretHandleStore object at 0x000002C4E7EAE7B0>
+kwargs = {'secret_handle_id': '042c3b4f-b824-4161-a720-bc7455b0c1e1', 'workspace_id': '00000000-0000-0000-0000-0000000005a1', 'provider_ref': 'vault', 'account_ref': 'account', ...}
+
+    def register(self, **kwargs: Any) -> SecretHandle:
+        params = dict(kwargs); connection = params.pop("connection", None)
+        if connection is None: raise TypeError("connection is required")
+        plaintext_keys = [name for name in params if name != "secret_handle_id" and (name.lower() in _UNSAFE_SECRET_NAMES or name.lower().endswith("_secret"))]
+        if plaintext_keys: raise ValueError("plaintext secret material is not accepted")
+        required = ("workspace_id", "provider_ref", "account_ref", "alias_ref", "redacted_fingerprint_or_version", "validation_status", "audit_ref")
+        missing = [name for name in required if name not in params]
+        if missing: raise TypeError(f"missing required arguments: {', '.join(missing)}")
+>       return self._repository_factory(connection).register_secret_handle(**params, secret_handle_id=str(params.get("secret_handle_id") or uuid.uuid4()))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: controlplane.infrastructure.db.config_security.PostgresConfigSecurityRepository.register_secret_handle() got multiple values for keyword argument 'secret_handle_id'
+
+src\controlplane\application\config_security\__init__.py:149: TypeError
+=========================== short test summary info ===========================
+FAILED .local-tools/temp/test_p5a_correction.py::test_correction_stale_cas_reports_persisted_current
+FAILED .local-tools/temp/test_p5a_correction.py::test_correction_explicit_config_revision_id
+FAILED .local-tools/temp/test_p5a_correction.py::test_correction_explicit_secret_handle_id
+3 failed in 0.73s

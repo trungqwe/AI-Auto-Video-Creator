@@ -1,0 +1,17 @@
+{
+  "test_wiring_commit_sha": "e544371780af234883153022c272593589bedfc5",
+  "parent_commit_sha": "d2e2cd3c7814d938c527d59d5e55414c55ad5703",
+  "normalized_ast_equivalence": true,
+  "tracked_paths": [
+    "tests/m2/test_p5a_config_and_secrets.py"
+  ],
+  "exact_identities": [
+    "test_tst_m2_p5a_001_config_revision_immutability_and_hash",
+    "test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext",
+    "test_tst_m2_p5a_003_secret_redaction_in_domain_events",
+    "test_tst_m2_p5a_004_production_0004_forward_rollback_and_constraints",
+    "test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish"
+  ],
+  "normalization": "remove only three injection helpers and infrastructure import; map only three helper call names back to original constructors",
+  "oracle_assertions_expected_values_fixture_semantics_unchanged": true
+}

@@ -1,0 +1,24 @@
+{
+  "test_wiring_commit_sha": "e544371780af234883153022c272593589bedfc5",
+  "red_baseline_git_sha": "e544371780af234883153022c272593589bedfc5",
+  "red_worktree": "preserved uncommitted production persistence/migration corrections, before the three application fixes",
+  "red_before_fix": true,
+  "red_timestamp": "2026-09-16T02:57:53.107045+07:00",
+  "source_fix_commit_timestamp": "2026-09-16T03:00:37+07:00",
+  "red_exit_code": 1,
+  "red_application_sha256": "29975d38c87a6369272464fd10a652982ff03b3ffb0a83c5a2c6fe5d574158d9",
+  "red_application_snapshot_method": "reconstructed by reversing only the recorded three minimal application fixes; not claimed as an observed immutable RED commit",
+  "original_stdout_sha256": "a0abe21a530d0a5cf1a9a885e3d934ab77e0babe98ed9b0fdf4d6e74e876b223",
+  "stdout_transcode": "utf-16 -> UTF-8 LF",
+  "harness_sha256": "6884c69897b181397bee347000d568151742f0f33bbc8d6fbd0b708f584e7484",
+  "red_command": [
+    "D:\\AI Auto Video Creator\\.venv\\Scripts\\python.exe",
+    "-m",
+    "pytest",
+    ".local-tools/temp/test_p5a_correction.py",
+    "-q",
+    "--junitxml=.local-tools/temp/p5a-correction-red.xml"
+  ],
+  "frozen_p5a_count": 5,
+  "supplementary_correction_count": 3
+}

@@ -1,0 +1,44 @@
+{
+  "runtime": {
+    "python": "3.13.15",
+    "psycopg": "3.3.5",
+    "psycopg_pool": "3.3.1",
+    "uv_runtime_observed": "uv 0.12.13 (0ebbd9274 2026-09-10 x86_64-pc-windows-msvc)",
+    "uv_lock_version": "0.12.13",
+    "m2_postgresql": "18.6",
+    "createdb": true,
+    "m2_observed_port": 63702,
+    "orphan_db_count": 0,
+    "pool_public_import": "psycopg_pool.ConnectionPool",
+    "pool_runtime_class": "psycopg_pool.pool.ConnectionPool",
+    "borrowed_connection_class": "psycopg.Connection",
+    "m1_postgresql": "18.6",
+    "m1_database": "aiavc_m1",
+    "m1_select_one": true,
+    "m1_endpoint": "127.0.0.1:55432/aiavc_m1",
+    "temporal_server_version": "temporal version 1.31.2",
+    "temporal_archive_sha256": "044a4610695bb31bd5b982c818cd406c2ca88279ddaa776391a7dc909afe7a67",
+    "temporal_executable_sha256": "5575b3693f37c9c0f19379a5744210ad9558ada54dadb2d1eabe74001a1f5e6b",
+    "vault_encrypted": true,
+    "vault_plaintext_secret_fields_absent": true
+  },
+  "static": {
+    "app_infra_forbidden_imports": 0,
+    "domain_application_imports": 0,
+    "global_psycopg_patch_absent": true,
+    "migration_ledger_side_effect_absent": true,
+    "migration_runner_unchanged": true,
+    "adapter_caller_transaction_ownership": true,
+    "migration_0005_absent": true
+  },
+  "secret_scan": {
+    "verdict": "CLEAN",
+    "total_findings": 0,
+    "files_scanned": 6
+  },
+  "optional_quality_tools": {
+    "ruff": "unavailable",
+    "mypy": "unavailable",
+    "build": "unavailable"
+  }
+}
