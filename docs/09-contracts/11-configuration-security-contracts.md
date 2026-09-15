@@ -40,6 +40,8 @@ Output:
 
 Bất biến:
 
+- `base revision` là immutable configuration lineage/version trước đó trong **cùng** `(workspace_id, scope_kind, scope_key)`, không phải optimistic-concurrency revision. Version nghiệp vụ này được gọi rõ là `config_revision_number`, tăng đơn điệu theo scope, nhận diện revision mà job/snapshot dùng và không đổi sau khi tạo.
+- Nếu command chuyển state hoặc metadata của ConfigRevision đã tồn tại, nó mang riêng `expected_revision` theo `CT-CMN-005`. Field `revision` của aggregate là concurrency revision khác namespace với `config_revision_number`: khởi tạo `1` khi tạo aggregate, chỉ tăng đúng một khi mutation/state transition commit thành công và không thuộc base/version lineage.
 - Job chưa bắt đầu tạo script có thể dùng revision mới, kể cả trong batch đang chạy.
 - Job đã commit production snapshot giữ revision cũ.
 - Thay đổi không sửa revision tại chỗ.
@@ -233,4 +235,3 @@ Audit record có actor, action, resource/revisions trước-sau, time, correlati
 4. Pool tài khoản được điều phối theo quota/project thực, không theo giả định.
 5. AI unavailable không dừng công việc không cần AI và không tự mua dịch vụ.
 6. Mọi thay đổi cấu hình/tài khoản nhạy cảm có audit trail.
-

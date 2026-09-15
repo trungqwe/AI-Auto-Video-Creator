@@ -1,5 +1,7 @@
 # Changelog
 
+- Tách rõ hai namespace revision P5A: `config_revision_number` immutable cho lineage/version CT-CFG-001 và `revision` CT-CMN-005 cho CAS, khởi tạo 1 rồi tăng đúng một per state mutation. CT-CFG base revision nay chỉ lineage immutable; concurrent publish phân biệt stale CAS với unique version identity. P5B plan được accept nhưng vẫn `RED_LOCKED` sau P5A/`0004`; không có source/test/SQL/runtime evidence.
+
 - Làm rõ contract/plan P5 trước RED: CT-STATE-013 khóa đầy đủ ConfigRevision graph và security invalidation bất biến; P5A tái dùng RFC 8785/JCS P2 cho `content_hash`; P5B chỉ thực thi cleanup đến `CLEANUP_AUTHORIZED`, `CleanupAuthorization` là immutable fact không status mutable. Giữ đúng 5+5 oracle, migration `0004 → 0005` và trạng thái review; không có source/test/SQL/runtime evidence.
 
 - M2-P4 đã được independent audit `ACCEPTED / CLOSED`. Hoàn tất kế hoạch/traceability riêng cho P5A Config & Secret Boundary và P5B Artifact Metadata: catalogue chính xác 5+5 oracle, protocol PostgreSQL/evidence fail-closed, UoW/migration guard và frozen regressions. `INVALIDATED` của ConfigRevision là contract clarification bắt buộc trước RED; P5B RED/implementation chờ P5A migration `0004` được accept. Không có source, test, SQL hay runtime evidence mới.

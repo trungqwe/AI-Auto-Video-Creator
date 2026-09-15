@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_ACCEPTED_CLOSED; M2-P4_ACCEPTED_CLOSED; M2-P5A_PLAN_READY_FOR_REVIEW; M2-P5B_PLAN_READY_FOR_REVIEW`.
+**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_ACCEPTED_CLOSED; M2-P4_ACCEPTED_CLOSED; M2-P5A_PLAN_READY_FOR_REVIEW; M2-P5B_PLAN_ACCEPTED_RED_LOCKED`.
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** P1..P4 là `ACCEPTED / CLOSED`. P5A/P5B mới được lập kế hoạch và chờ independent review; RED, implementation, migration và runtime evidence đều chưa được ủy quyền. P5B còn chờ P5A/`0004` accepted vì migration tuần tự. P6+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc:** P1..P4 là `ACCEPTED / CLOSED`; P5B plan đã accept nhưng `RED_LOCKED`, P5A chờ independent review. RED, implementation, migration và runtime evidence đều chưa được ủy quyền. P5B còn chờ P5A/`0004` accepted vì migration tuần tự. P6+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
@@ -266,9 +266,9 @@ Theo đúng `CT-ORC-002` và `CT-ORC-012` (AUD2-B01):
 
 ### 6.5. Module J Config & Secret Boundary Foundation (M2-P5A)
 
-P5A chỉ là target đã plan, không là behavior hiện hữu. `ConfigRevision` có identity immutable, workspace scope, scope key, revision monotonic, canonical content hash, typed payload, effective/audit/change-reason refs và state. PostgreSQL phải giữ FK/unique/check structural; application chịu trách nhiệm typed validation, policy/effective rule, CAS và canonical JSON hashing bằng canonicalizer RFC 8785/JCS P2 đã accept (I-JSON input, raw-name UTF-16 sorting, UTF-8 canonical bytes, ECMAScript numbers, không normalization, reject NaN/Infinity/non-JCS), rồi SHA-256 lowercase hex. Không dùng `repr`, JSONB text, pretty JSON hay insertion order.
+P5A chỉ là target đã plan, không là behavior hiện hữu. `ConfigRevision` có identity immutable, workspace scope, scope key, immutable `config_revision_number`, CT-CMN-005 concurrency `revision`, canonical content hash, typed payload, effective/audit/change-reason refs và state. `config_revision_number` là lineage/base version dương tăng đơn điệu trong scope, giữ nguyên qua mọi transition và nhận diện revision của job/snapshot; `revision` khởi tạo `1`, dùng `expected_revision` và tăng đúng một khi metadata/state mutation commit. PostgreSQL phải giữ FK/unique/check structural, gồm unique `(workspace_id, scope_kind, scope_key, config_revision_number)`; application chịu trách nhiệm typed validation, policy/effective rule, CAS và canonical JSON hashing bằng canonicalizer RFC 8785/JCS P2 đã accept (I-JSON input, raw-name UTF-16 sorting, UTF-8 canonical bytes, ECMAScript numbers, không normalization, reject NaN/Infinity/non-JCS), rồi SHA-256 lowercase hex. Không dùng `repr`, JSONB text, pretty JSON hay insertion order.
 
-CT-STATE-013 đã khóa graph: `DRAFT → PUBLISHED → SUPERSEDED`; security defect cho phép `DRAFT | PUBLISHED | SUPERSEDED → INVALIDATED`. `INVALIDATED` là terminal; `SUPERSEDED` chỉ có outgoing edge security này, còn mọi cạnh khác/self-transition/reopen bị cấm. Invalidation không sửa payload/content hash/identity revision bất biến. ExternalAccount vẫn ngoài P5A. `SecretHandle` chỉ giữ workspace/provider/account/alias, redacted fingerprint-or-version, validation/revocation/expiry/audit metadata; không có secret value, raw credential hoặc read-secret-value port. Mọi event/audit chỉ chứa safe ID/ref/revision/status/reason đã redacted theo CT-EVT/CT-SEC; secret store nằm ngoài PostgreSQL business boundary của ADR-0009.
+CT-STATE-013 đã khóa graph: `DRAFT → PUBLISHED → SUPERSEDED`; security defect cho phép `DRAFT | PUBLISHED | SUPERSEDED → INVALIDATED`. `INVALIDATED` là terminal; `SUPERSEDED` chỉ có outgoing edge security này, còn mọi cạnh khác/self-transition/reopen bị cấm. Invalidation giữ nguyên `config_revision_id`, `config_revision_number`, payload và content hash, nhưng tăng concurrency `revision` đúng một nếu commit thành công; stale/forbidden không mutation/event. ExternalAccount vẫn ngoài P5A. `SecretHandle` chỉ giữ workspace/provider/account/alias, redacted fingerprint-or-version, validation/revocation/expiry/audit metadata; không có secret value, raw credential hoặc read-secret-value port. Mọi event/audit chỉ chứa safe ID/ref/revision/status/reason đã redacted theo CT-EVT/CT-SEC; secret store nằm ngoài PostgreSQL business boundary của ADR-0009.
 
 ### 6.6. Module I Artifact Metadata & Cleanup Authorization Skeleton (M2-P5B)
 
