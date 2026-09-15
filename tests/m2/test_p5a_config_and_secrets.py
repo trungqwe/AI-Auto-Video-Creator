@@ -5,9 +5,12 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import tempfile
 import uuid
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
@@ -49,9 +52,9 @@ class DisposableDatabase:
         return connection
 
 
-@pytest.fixture
-def p5a_database() -> Iterator[DisposableDatabase]:
-    """One P1--P3 production-migrated PostgreSQL database per P5A oracle."""
+@contextmanager
+def _create_disposable_database(migration_dir: Path) -> Iterator[DisposableDatabase]:
+    """Create one exact P5A database and migrate only the supplied directory."""
     admin_dsn = os.environ.get("M2_TEST_PG_DSN")
     if not admin_dsn:
         pytest.fail("BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required; no fallback is permitted.")
@@ -69,7 +72,7 @@ def p5a_database() -> Iterator[DisposableDatabase]:
         pytest.fail(f"BLOCKED_EXTERNAL: PostgreSQL prerequisite failed ({type(exc).__name__}); DSN redacted.")
     database = DisposableDatabase(name=name, dsn=make_conninfo(admin_dsn, dbname=name))
     try:
-        MigrationRunner(database.dsn, PRODUCTION_MIGRATIONS, is_test_env=True).migrate_up()
+        MigrationRunner(database.dsn, migration_dir, is_test_env=True).migrate_up()
         yield database
     finally:
         for connection in database.connections:
@@ -82,9 +85,33 @@ def p5a_database() -> Iterator[DisposableDatabase]:
             assert admin.execute("SELECT count(*) FROM pg_database WHERE datname=%s", (name,)).fetchone()[0] == 0
 
 
+@pytest.fixture
+def p5a_database() -> Iterator[DisposableDatabase]:
+    """Normal P5A behavior database; future production 0004 may be present."""
+    with _create_disposable_database(PRODUCTION_MIGRATIONS) as database:
+        yield database
+
+
+@pytest.fixture
+def p5a_migration_004_baseline() -> Iterator[tuple[DisposableDatabase, Path]]:
+    """Real runner baseline pinned at accepted production migrations 0001--0003."""
+    with tempfile.TemporaryDirectory(prefix="m2_p5a_migration_baseline_") as temporary:
+        sandbox = Path(temporary)
+        for version in range(1, 4):
+            forward = next(path for path in PRODUCTION_MIGRATIONS.glob(f"{version:04d}_*.sql") if not path.name.endswith(".rollback.sql"))
+            rollback = next(PRODUCTION_MIGRATIONS.glob(f"{version:04d}_*.rollback.sql"))
+            shutil.copy2(forward, sandbox / forward.name)
+            shutil.copy2(rollback, sandbox / rollback.name)
+        with _create_disposable_database(sandbox) as database:
+            with database.connect() as connection:
+                assert connection.execute("SELECT version FROM controlplane.cp_schema_migrations ORDER BY version").fetchall() == [(1,), (2,), (3,)]
+            yield database, sandbox
+
+
 def _assert_p1_to_p3_prerequisites(database: DisposableDatabase) -> None:
     with database.connect() as connection:
-        assert connection.execute("SELECT version FROM controlplane.cp_schema_migrations ORDER BY version").fetchall() == [(1,), (2,), (3,)]
+        applied = [row[0] for row in connection.execute("SELECT version FROM controlplane.cp_schema_migrations ORDER BY version").fetchall()]
+        assert {1, 2, 3} <= set(applied)
         assert connection.execute("SELECT to_regclass('controlplane.cp_outbox_events')").fetchone()[0] == "controlplane.cp_outbox_events"
 
 
@@ -100,8 +127,36 @@ def _assert_immutable_identity(before: object, after: object) -> None:
         assert getattr(after, name) == getattr(before, name)
 
 
+def _assert_successful_transition(before: object, after: object, status: ConfigRevisionStatus) -> None:
+    _assert_immutable_identity(before, after)
+    assert after.status is status
+    assert after.revision == before.revision + 1
+
+
+def _clone_duplicate_config_revision(connection: psycopg.Connection, config_revision_id: str) -> None:
+    """Clone all final-schema values, changing only identity, to target UNIQUE precisely."""
+    columns = [row[0] for row in connection.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema='controlplane' AND table_name='cp_config_revisions' "
+        "ORDER BY ordinal_position"
+    ).fetchall()]
+    assert "config_revision_id" in columns
+    target_columns = sql.SQL(", ").join(sql.Identifier(column) for column in columns)
+    source_columns = sql.SQL(", ").join(
+        sql.Placeholder() if column == "config_revision_id" else sql.Identifier(column)
+        for column in columns
+    )
+    statement = sql.SQL(
+        "INSERT INTO controlplane.cp_config_revisions ({targets}) "
+        "SELECT {sources} FROM controlplane.cp_config_revisions WHERE config_revision_id=%s"
+    ).format(targets=target_columns, sources=source_columns)
+    connection.execute(statement, (str(uuid.uuid4()), config_revision_id))
+
+
 def test_tst_m2_p5a_001_config_revision_immutability_and_hash(p5a_database: DisposableDatabase) -> None:
     _assert_p1_to_p3_prerequisites(p5a_database)
+    with p5a_database.connect() as connection:
+        _seed_workspaces(connection)
     first_payload = json.loads('{ "scope": "prompt", "values": { "a": 1, "b": [true, null] } }')
     equivalent_payload = json.loads('{"values":{"b":[true,null],"a":1},"scope":"prompt"}')
     changed_payload = {"scope": "prompt", "values": {"a": 2, "b": [True, None]}}
@@ -111,33 +166,34 @@ def test_tst_m2_p5a_001_config_revision_immutability_and_hash(p5a_database: Disp
     assert request_hash(first_payload) != request_hash(changed_payload)
 
     service = ConfigRevisionService()
-    draft = service.create_revision(
-        workspace_id=WORKSPACE_A,
-        scope_kind="prompt",
-        scope_key="primary",
-        config_revision_number=1,
-        payload=first_payload,
-        actor_ref="actor-a",
-        change_reason="initial",
-    )
+    def create(scope_key: str) -> object:
+        return service.create_revision(workspace_id=WORKSPACE_A, scope_kind="prompt", scope_key=scope_key, config_revision_number=1, payload=first_payload, actor_ref="actor-a", change_reason="initial")
+
+    draft = create("draft-published")
     assert draft.config_revision_number == 1 and draft.revision == 1 and draft.status is ConfigRevisionStatus.DRAFT
     assert draft.content_hash == request_hash(first_payload)
     published = service.transition(revision=draft, expected_revision=1, requested_status=ConfigRevisionStatus.PUBLISHED, actor_ref="actor-a")
-    _assert_immutable_identity(draft, published)
-    assert published.revision == 2 and published.status is ConfigRevisionStatus.PUBLISHED
+    _assert_successful_transition(draft, published, ConfigRevisionStatus.PUBLISHED)
     superseded = service.transition(revision=published, expected_revision=2, requested_status=ConfigRevisionStatus.SUPERSEDED, actor_ref="actor-a")
-    _assert_immutable_identity(draft, superseded)
-    assert superseded.revision == 3
-    invalidated = service.transition(revision=superseded, expected_revision=3, requested_status=ConfigRevisionStatus.INVALIDATED, actor_ref="security-owner")
-    _assert_immutable_identity(draft, invalidated)
-    assert invalidated.revision == 4 and invalidated.status is ConfigRevisionStatus.INVALIDATED
-    for current, target in ((draft, ConfigRevisionStatus.SUPERSEDED), (published, ConfigRevisionStatus.DRAFT), (invalidated, ConfigRevisionStatus.PUBLISHED), (invalidated, ConfigRevisionStatus.INVALIDATED)):
+    _assert_successful_transition(published, superseded, ConfigRevisionStatus.SUPERSEDED)
+    draft_for_invalidation = create("draft-invalidated")
+    invalidated_draft = service.transition(revision=draft_for_invalidation, expected_revision=1, requested_status=ConfigRevisionStatus.INVALIDATED, actor_ref="security-owner")
+    _assert_successful_transition(draft_for_invalidation, invalidated_draft, ConfigRevisionStatus.INVALIDATED)
+    published_for_invalidation = service.transition(revision=create("published-invalidated"), expected_revision=1, requested_status=ConfigRevisionStatus.PUBLISHED, actor_ref="actor-a")
+    invalidated_published = service.transition(revision=published_for_invalidation, expected_revision=2, requested_status=ConfigRevisionStatus.INVALIDATED, actor_ref="security-owner")
+    _assert_successful_transition(published_for_invalidation, invalidated_published, ConfigRevisionStatus.INVALIDATED)
+    invalidated_superseded = service.transition(revision=superseded, expected_revision=3, requested_status=ConfigRevisionStatus.INVALIDATED, actor_ref="security-owner")
+    _assert_successful_transition(superseded, invalidated_superseded, ConfigRevisionStatus.INVALIDATED)
+    for current, target in ((draft, ConfigRevisionStatus.SUPERSEDED), (published, ConfigRevisionStatus.DRAFT), (superseded, ConfigRevisionStatus.PUBLISHED), (invalidated_draft, ConfigRevisionStatus.PUBLISHED), (draft, ConfigRevisionStatus.DRAFT)):
+        before = current
         with pytest.raises(ForbiddenTransitionError) as forbidden:
             service.transition(revision=current, expected_revision=current.revision, requested_status=target, actor_ref="actor-a")
         assert forbidden.value.code == "FORBIDDEN_TRANSITION"
+        assert current == before
     with pytest.raises(RevisionConflictError) as stale:
         service.transition(revision=published, expected_revision=1, requested_status=ConfigRevisionStatus.SUPERSEDED, actor_ref="actor-a")
     assert stale.value.current_revision == 2
+    assert published.status is ConfigRevisionStatus.PUBLISHED and published.revision == 2
 
 
 def test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext(p5a_database: DisposableDatabase) -> None:
@@ -179,12 +235,14 @@ def test_tst_m2_p5a_003_secret_redaction_in_domain_events(p5a_database: Disposab
     assert event.payload == safe_payload
 
 
-def test_tst_m2_p5a_004_production_0004_forward_rollback_and_constraints(p5a_database: DisposableDatabase) -> None:
-    _assert_p1_to_p3_prerequisites(p5a_database)
+def test_tst_m2_p5a_004_production_0004_forward_rollback_and_constraints(p5a_migration_004_baseline: tuple[DisposableDatabase, Path]) -> None:
+    p5a_database, baseline_migrations = p5a_migration_004_baseline
     forward = PRODUCTION_MIGRATIONS / "0004_config_and_secrets.sql"
     rollback = PRODUCTION_MIGRATIONS / "0004_config_and_secrets.rollback.sql"
     assert forward.is_file() and rollback.is_file(), "P5A-004 requires production migration 0004 and its exact rollback"
-    MigrationRunner(p5a_database.dsn, PRODUCTION_MIGRATIONS, is_test_env=True).migrate_up()
+    shutil.copy2(forward, baseline_migrations / forward.name)
+    shutil.copy2(rollback, baseline_migrations / rollback.name)
+    MigrationRunner(p5a_database.dsn, baseline_migrations, is_test_env=True).migrate_up()
     with p5a_database.connect() as connection:
         _seed_workspaces(connection)
         config_columns = dict(connection.execute("SELECT column_name, is_nullable FROM information_schema.columns WHERE table_schema='controlplane' AND table_name='cp_config_revisions'").fetchall())
@@ -195,7 +253,8 @@ def test_tst_m2_p5a_004_production_0004_forward_rollback_and_constraints(p5a_dat
         assert any("revision" in item and ">= 1" in item for item in constraints)
         assert any("content_hash" in item and "[0-9a-f]" in item for item in constraints)
         secret_columns = {row[0].lower() for row in connection.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='controlplane' AND table_name='cp_secret_handles'").fetchall()}
-        assert not any(word in column for column in secret_columns for word in ("value", "token", "password", "blob", "secret"))
+        plaintext_columns = {"value", "secret_value", "plaintext", "plaintext_secret", "token", "access_token", "refresh_token", "password", "private_key", "credential", "raw_credential", "blob", "secret_blob"}
+        assert not (secret_columns & plaintext_columns)
         rollback_sql = rollback.read_text(encoding="utf-8")
         with connection.transaction():
             connection.execute(rollback_sql)
@@ -209,19 +268,34 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
     _assert_p1_to_p3_prerequisites(p5a_database)
     with p5a_database.connect() as connection:
         _seed_workspaces(connection)
-    repository = ConfigRevisionRepository()
+    seed = ConfigRevisionService().create_revision(workspace_id=WORKSPACE_A, scope_kind="prompt", scope_key="primary", config_revision_number=1, payload={"enabled": True}, actor_ref="actor-a", change_reason="fixture seed")
+    with p5a_database.connect() as connection:
+        repository = ConfigRevisionRepository(connection)
+        revision = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id)
     assert not hasattr(repository, "get_by_id")
-    revision = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id="revision-5a")
     assert revision is not None
-    assert repository.get_scoped(workspace_id=WORKSPACE_B, config_revision_id="revision-5a") is None
+    assert repository.get_scoped(workspace_id=WORKSPACE_B, config_revision_id=seed.config_revision_id) is None
     with pytest.raises(PermissionError):
-        repository.publish(workspace_id=WORKSPACE_B, config_revision_id="revision-5a", expected_revision=1)
+        repository.publish(workspace_id=WORKSPACE_B, config_revision_id=seed.config_revision_id, expected_revision=1)
+
+    def publish_once() -> object:
+        with p5a_database.connect() as connection:
+            try:
+                return ConfigRevisionRepository(connection).publish(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, expected_revision=1)
+            except RevisionConflictError as conflict:
+                return conflict
+
     with ThreadPoolExecutor(max_workers=2) as executor:
-        outcomes = list(executor.map(lambda _: repository.publish(workspace_id=WORKSPACE_A, config_revision_id="revision-5a", expected_revision=1), range(2)))
+        outcomes = list(executor.map(lambda _: publish_once(), range(2)))
     winners = [outcome for outcome in outcomes if not isinstance(outcome, Exception)]
     losers = [outcome for outcome in outcomes if isinstance(outcome, RevisionConflictError)]
     assert len(winners) == 1 and winners[0].revision == 2
     assert len(losers) == 1 and losers[0].current_revision == 2
     with p5a_database.connect() as connection:
-        with pytest.raises(psycopg.errors.UniqueViolation):
-            connection.execute("INSERT INTO controlplane.cp_config_revisions (workspace_id, scope_kind, scope_key, config_revision_number) VALUES (%s, 'prompt', 'primary', 1)", (WORKSPACE_A,))
+        with pytest.raises(psycopg.errors.UniqueViolation) as duplicate:
+            _clone_duplicate_config_revision(connection, seed.config_revision_id)
+        expected_constraints = connection.execute(
+            "SELECT conname FROM pg_constraint WHERE conrelid='controlplane.cp_config_revisions'::regclass "
+            "AND contype='u' AND pg_get_constraintdef(oid) LIKE '%workspace_id, scope_kind, scope_key, config_revision_number%'"
+        ).fetchall()
+        assert duplicate.value.diag.constraint_name in {row[0] for row in expected_constraints}

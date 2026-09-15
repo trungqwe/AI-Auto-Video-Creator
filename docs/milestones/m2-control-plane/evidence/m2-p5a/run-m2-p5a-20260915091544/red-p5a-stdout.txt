@@ -1,0 +1,155 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- D:\AI Auto Video Creator\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\AI Auto Video Creator
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 5 items
+
+tests/m2/test_p5a_config_and_secrets.py::test_tst_m2_p5a_001_config_revision_immutability_and_hash FAILED [ 20%]
+tests/m2/test_p5a_config_and_secrets.py::test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext FAILED [ 40%]
+tests/m2/test_p5a_config_and_secrets.py::test_tst_m2_p5a_003_secret_redaction_in_domain_events FAILED [ 60%]
+tests/m2/test_p5a_config_and_secrets.py::test_tst_m2_p5a_004_production_0004_forward_rollback_and_constraints FAILED [ 80%]
+tests/m2/test_p5a_config_and_secrets.py::test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish FAILED [100%]
+
+================================== FAILURES ===================================
+__________ test_tst_m2_p5a_001_config_revision_immutability_and_hash __________
+
+p5a_database = DisposableDatabase(name='m2_p5a_test_90011b17fe144fe5a4b6db172c42283c', connections=[<psycopg.Connection [BAD] at 0x25cb2b38b90>, <psycopg.Connection [BAD] at 0x25cb2b4c510>])
+
+    def test_tst_m2_p5a_001_config_revision_immutability_and_hash(p5a_database: DisposableDatabase) -> None:
+        _assert_p1_to_p3_prerequisites(p5a_database)
+        with p5a_database.connect() as connection:
+            _seed_workspaces(connection)
+        first_payload = json.loads('{ "scope": "prompt", "values": { "a": 1, "b": [true, null] } }')
+        equivalent_payload = json.loads('{"values":{"b":[true,null],"a":1},"scope":"prompt"}')
+        changed_payload = {"scope": "prompt", "values": {"a": 2, "b": [True, None]}}
+        assert canonicalize_json(first_payload) == canonicalize_json(equivalent_payload)
+        assert request_hash(first_payload) == request_hash(equivalent_payload)
+        assert request_hash(first_payload) == hashlib.sha256(canonicalize_json(first_payload)).hexdigest()
+        assert request_hash(first_payload) != request_hash(changed_payload)
+
+        service = ConfigRevisionService()
+        def create(scope_key: str) -> object:
+            return service.create_revision(workspace_id=WORKSPACE_A, scope_kind="prompt", scope_key=scope_key, config_revision_number=1, payload=first_payload, actor_ref="actor-a", change_reason="initial")
+
+>       draft = create("draft-published")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p5a_config_and_secrets.py:172:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\m2\test_p5a_config_and_secrets.py:170: in create
+    return service.create_revision(workspace_id=WORKSPACE_A, scope_kind="prompt", scope_key=scope_key, config_revision_number=1, payload=first_payload, actor_ref="actor-a", change_reason="initial")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.config_security.ConfigRevisionService object at 0x0000025CB2AC1160>
+kwargs = {'workspace_id': '00000000-0000-0000-0000-0000000005a1', 'scope_kind': 'prompt', 'scope_key': 'draft-published', 'config_revision_number': 1, ...}
+
+    def create_revision(self, **kwargs: Any) -> object:
+>       raise NotImplementedError("P5A ConfigRevision behavior is not implemented")
+E       NotImplementedError: P5A ConfigRevision behavior is not implemented
+
+src\controlplane\application\config_security\__init__.py:9: NotImplementedError
+_________ test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext __________
+
+p5a_database = DisposableDatabase(name='m2_p5a_test_78e4057a88df4281bf48f532a156b587', connections=[<psycopg.Connection [BAD] at 0x25cb2aa19d0>])
+
+    def test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext(p5a_database: DisposableDatabase) -> None:
+        _assert_p1_to_p3_prerequisites(p5a_database)
+        metadata_fields = {item.name for item in fields(SecretHandle)}
+        prohibited = {"plaintext", "secret_value", "token", "password", "private_key", "blob", "raw_credential", "value"}
+        assert not (metadata_fields & prohibited)
+        assert not hasattr(SecretHandleStore, "read_secret_value")
+        store = SecretHandleStore()
+        try:
+>           store.register(
+                workspace_id=WORKSPACE_A,
+                provider_ref="provider",
+                account_ref="account",
+                alias_ref="alias",
+                **{"plaintext_secret": "p5a-canary"},
+            )
+
+tests\m2\test_p5a_config_and_secrets.py:207:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.config_security.SecretHandleStore object at 0x0000025CB2AC0EC0>
+kwargs = {'workspace_id': '00000000-0000-0000-0000-0000000005a1', 'provider_ref': 'provider', 'account_ref': 'account', 'alias_ref': 'alias', ...}
+
+    def register(self, **kwargs: Any) -> object:
+>       raise NotImplementedError("P5A secret-handle boundary is not implemented")
+E       NotImplementedError: P5A secret-handle boundary is not implemented
+
+src\controlplane\application\config_security\__init__.py:25: NotImplementedError
+____________ test_tst_m2_p5a_003_secret_redaction_in_domain_events ____________
+
+p5a_database = DisposableDatabase(name='m2_p5a_test_168dd61c4aa34420905e0d177269c833', connections=[<psycopg.Connection [BAD] at 0x25cb2a33f20>])
+
+    def test_tst_m2_p5a_003_secret_redaction_in_domain_events(p5a_database: DisposableDatabase) -> None:
+        _assert_p1_to_p3_prerequisites(p5a_database)
+        safe_payload = {"workspace_id": WORKSPACE_A, "config_revision_id": "revision-5a", "config_revision_number": 1, "revision": 2, "status": "PUBLISHED", "reason": "approved", "correlation_id": "corr-5a", "audit_ref": "audit-5a"}
+        ensure_safe_event_payload(safe_payload)
+        factory = ConfigEventFactory()
+>       event = factory.publish_event(payload=safe_payload, workspace_id=WORKSPACE_A)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p5a_config_and_secrets.py:230:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.config_security.ConfigEventFactory object at 0x0000025CB2AC1010>
+kwargs = {'payload': {'workspace_id': '00000000-0000-0000-0000-0000000005a1', 'config_revision_id': 'revision-5a', 'config_revision_number': 1, 'revision': 2, ...}, 'workspace_id': '00000000-0000-0000-0000-0000000005a1'}
+
+    def publish_event(self, **kwargs: Any) -> object:
+>       raise NotImplementedError("P5A config event/audit construction is not implemented")
+E       NotImplementedError: P5A config event/audit construction is not implemented
+
+src\controlplane\application\config_security\__init__.py:30: NotImplementedError
+____ test_tst_m2_p5a_004_production_0004_forward_rollback_and_constraints _____
+
+p5a_migration_004_baseline = (DisposableDatabase(name='m2_p5a_test_d0b6cd3acae3433a8520a7087550c1ee', connections=[<psycopg.Connection [BAD] at 0x25cb2bdc320>]), WindowsPath('C:/Users/Admin/AppData/Local/Temp/m2_p5a_migration_baseline_a_cvsaik'))
+
+    def test_tst_m2_p5a_004_production_0004_forward_rollback_and_constraints(p5a_migration_004_baseline: tuple[DisposableDatabase, Path]) -> None:
+        p5a_database, baseline_migrations = p5a_migration_004_baseline
+        forward = PRODUCTION_MIGRATIONS / "0004_config_and_secrets.sql"
+        rollback = PRODUCTION_MIGRATIONS / "0004_config_and_secrets.rollback.sql"
+>       assert forward.is_file() and rollback.is_file(), "P5A-004 requires production migration 0004 and its exact rollback"
+E       AssertionError: P5A-004 requires production migration 0004 and its exact rollback
+E       assert (False)
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/AI Auto Video Creator/src/controlplane/infrastructure/db/migrations/0004_config_and_secrets.sql').is_file
+
+tests\m2\test_p5a_config_and_secrets.py:242: AssertionError
+_______ test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish ________
+
+p5a_database = DisposableDatabase(name='m2_p5a_test_0710aac367e54ca7978b61c187806af6', connections=[<psycopg.Connection [BAD] at 0x25cb2bdc050>, <psycopg.Connection [BAD] at 0x25cb2bdce60>])
+
+    def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database: DisposableDatabase) -> None:
+        _assert_p1_to_p3_prerequisites(p5a_database)
+        with p5a_database.connect() as connection:
+            _seed_workspaces(connection)
+>       seed = ConfigRevisionService().create_revision(workspace_id=WORKSPACE_A, scope_kind="prompt", scope_key="primary", config_revision_number=1, payload={"enabled": True}, actor_ref="actor-a", change_reason="fixture seed")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p5a_config_and_secrets.py:271:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <controlplane.application.config_security.ConfigRevisionService object at 0x0000025CB2B39D10>
+kwargs = {'workspace_id': '00000000-0000-0000-0000-0000000005a1', 'scope_kind': 'prompt', 'scope_key': 'primary', 'config_revision_number': 1, ...}
+
+    def create_revision(self, **kwargs: Any) -> object:
+>       raise NotImplementedError("P5A ConfigRevision behavior is not implemented")
+E       NotImplementedError: P5A ConfigRevision behavior is not implemented
+
+src\controlplane\application\config_security\__init__.py:9: NotImplementedError
+=========================== short test summary info ===========================
+FAILED tests/m2/test_p5a_config_and_secrets.py::test_tst_m2_p5a_001_config_revision_immutability_and_hash - NotImplementedError: P5A ConfigRevision behavior is not implemented
+FAILED tests/m2/test_p5a_config_and_secrets.py::test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext - NotImplementedError: P5A secret-handle boundary is not implemented
+FAILED tests/m2/test_p5a_config_and_secrets.py::test_tst_m2_p5a_003_secret_redaction_in_domain_events - NotImplementedError: P5A config event/audit construction is not implemented
+FAILED tests/m2/test_p5a_config_and_secrets.py::test_tst_m2_p5a_004_production_0004_forward_rollback_and_constraints - AssertionError: P5A-004 requires production migration 0004 and its exact rollback
+assert (False)
+ +  where False = is_file()
+ +    where is_file = WindowsPath('D:/AI Auto Video Creator/src/controlplane/infrastructure/db/migrations/0004_config_and_secrets.sql').is_file
+FAILED tests/m2/test_p5a_config_and_secrets.py::test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish - NotImplementedError: P5A ConfigRevision behavior is not implemented
+============================== 5 failed in 1.18s ==============================

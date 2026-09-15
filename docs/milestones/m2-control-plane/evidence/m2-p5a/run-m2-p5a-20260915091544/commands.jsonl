@@ -1,0 +1,5 @@
+{"run_id":"run-m2-p5a-20260915091544","command":"runtime prerequisite (DSN redacted)","exit_code":0}
+{"run_id":"run-m2-p5a-20260915091544","command":"pytest P5A --collect-only","exit_code":0,"summary":"5 collected"}
+{"run_id":"run-m2-p5a-20260915091544","command":"pytest P5A -vv","exit_code":1,"summary":"5 expected RED failures"}
+{"run_id":"run-m2-p5a-20260915091544","command":"pytest P4 -q","exit_code":0,"summary":"9 passed"}
+{"run_id":"run-m2-p5a-20260915091544","command":"pytest architecture -q","exit_code":0,"summary":"6 passed"}

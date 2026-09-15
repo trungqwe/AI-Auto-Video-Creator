@@ -1,5 +1,7 @@
 # Changelog
 
+- Harden P5A exact RED oracle: baseline migration 1--3 tách riêng khỏi future `0004`, graph invalidation có các branch độc lập, secret schema kiểm tra plaintext-value surface thay vì substring `secret`, và race/unique proof được chuẩn bị cho GREEN. Không có implementation P5A hay migration `0004`.
+
 - Thiết lập Behavioral RED M2-P5A exact 5 trên PostgreSQL thật: structural seams importable chỉ ném `NotImplementedError`; 5/5 failure đúng capability ConfigRevision, secret-handle boundary, event/audit safety, production migration `0004` và scoped CAS. Evidence run `run-m2-p5a-20260915090417` ghi P4 9/9, architecture 6/6, orphan=0 và secret scan CLEAN. Không có implementation P5A, migration `0004`, P5B hay work package sau.
 
 - Tách rõ hai namespace revision P5A: `config_revision_number` immutable cho lineage/version CT-CFG-001 và `revision` CT-CMN-005 cho CAS, khởi tạo 1 rồi tăng đúng một per state mutation. CT-CFG base revision nay chỉ lineage immutable; concurrent publish phân biệt stale CAS với unique version identity. P5B plan được accept nhưng vẫn `RED_LOCKED` sau P5A/`0004`; không có source/test/SQL/runtime evidence.
