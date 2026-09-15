@@ -262,17 +262,18 @@ def test_tst_m2_p5a_001_config_revision_immutability_and_hash(p5a_database: Disp
     assert request_hash(first_payload) == hashlib.sha256(canonicalize_json(first_payload)).hexdigest()
     assert request_hash(first_payload) != request_hash(changed_payload)
 
+    first_persisted_hash = request_hash(first_payload)
     with _p5a_transaction_manager(p5a_database) as manager:
         with manager.unit_of_work() as uow:
             service = ConfigRevisionService()
 
-            def create(scope_key: str) -> object:
+            def create(scope_key: str, payload: object = first_payload) -> object:
                 return service.create_revision(
                     workspace_id=WORKSPACE_A,
                     scope_kind="prompt",
                     scope_key=scope_key,
                     config_revision_number=1,
-                    payload=first_payload,
+                    payload=payload,
                     actor_ref="actor-a",
                     change_reason="initial",
                     connection=uow.connection,
@@ -289,11 +290,26 @@ def test_tst_m2_p5a_001_config_revision_immutability_and_hash(p5a_database: Disp
 
             draft = create("draft-published")
             assert draft.config_revision_number == 1 and draft.revision == 1 and draft.status is ConfigRevisionStatus.DRAFT
-            assert draft.content_hash == request_hash(first_payload)
+            assert draft.content_hash == first_persisted_hash
             assert uow.connection.execute(
                 "SELECT content_hash FROM controlplane.cp_config_revisions WHERE config_revision_id=%s",
                 (draft.config_revision_id,),
-            ).fetchone() == (request_hash(first_payload),)
+            ).fetchone() == (first_persisted_hash,)
+            equivalent_revision = create("equivalent-payload", equivalent_payload)
+            assert equivalent_revision.content_hash == request_hash(first_payload)
+            assert equivalent_revision.content_hash == first_persisted_hash
+            assert uow.connection.execute(
+                "SELECT content_hash FROM controlplane.cp_config_revisions WHERE config_revision_id=%s",
+                (equivalent_revision.config_revision_id,),
+            ).fetchone() == (first_persisted_hash,)
+            changed_revision = create("changed-payload", changed_payload)
+            changed_hash = request_hash(changed_payload)
+            assert changed_revision.content_hash == changed_hash
+            assert changed_hash != first_persisted_hash
+            assert uow.connection.execute(
+                "SELECT content_hash FROM controlplane.cp_config_revisions WHERE config_revision_id=%s",
+                (changed_revision.config_revision_id,),
+            ).fetchone() == (changed_hash,)
             published = transition(draft, 1, ConfigRevisionStatus.PUBLISHED, "actor-a")
             _assert_successful_transition(draft, published, ConfigRevisionStatus.PUBLISHED)
             superseded = transition(published, 2, ConfigRevisionStatus.SUPERSEDED, "actor-a")
@@ -322,6 +338,17 @@ def test_tst_m2_p5a_001_config_revision_immutability_and_hash(p5a_database: Disp
                 transition(published, 1, ConfigRevisionStatus.SUPERSEDED, "actor-a")
             assert stale.value.current_revision == 2
             assert _revision_snapshot(published) == stale_before
+    with p5a_database.connect() as connection:
+        durable_hashes = connection.execute(
+            "SELECT config_revision_id::text, content_hash FROM controlplane.cp_config_revisions "
+            "WHERE config_revision_id IN (%s, %s, %s)",
+            (draft.config_revision_id, equivalent_revision.config_revision_id, changed_revision.config_revision_id),
+        ).fetchall()
+    assert dict(durable_hashes) == {
+        draft.config_revision_id: first_persisted_hash,
+        equivalent_revision.config_revision_id: first_persisted_hash,
+        changed_revision.config_revision_id: request_hash(changed_payload),
+    }
 
 
 def test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext(p5a_database: DisposableDatabase) -> None:
@@ -472,6 +499,51 @@ def test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish(p5a_database:
                 change_reason="fixture seed",
                 connection=uow.connection,
             )
+        with manager.unit_of_work() as uow:
+            rollback_seed = ConfigRevisionService().create_revision(
+                workspace_id=WORKSPACE_A,
+                scope_kind="prompt",
+                scope_key="rollback-probe",
+                config_revision_number=1,
+                payload={"enabled": False},
+                actor_ref="actor-a",
+                change_reason="rollback fixture",
+                connection=uow.connection,
+            )
+        with manager.unit_of_work() as uow:
+            rollback_repository = ConfigRevisionRepository()
+            rollback_before_revision = rollback_repository.get_scoped(
+                workspace_id=WORKSPACE_A,
+                config_revision_id=rollback_seed.config_revision_id,
+                connection=uow.connection,
+            )
+            assert rollback_before_revision is not None
+            rollback_before_snapshot = _revision_snapshot(rollback_before_revision)
+            rollback_outbox_before = _p5a_outbox_count(uow.connection, rollback_seed.config_revision_id)
+
+        class _RollbackProbe(Exception):
+            pass
+
+        with pytest.raises(_RollbackProbe):
+            with manager.unit_of_work() as uow:
+                published = ConfigRevisionRepository().publish(
+                    workspace_id=WORKSPACE_A,
+                    config_revision_id=rollback_seed.config_revision_id,
+                    expected_revision=rollback_before_revision.revision,
+                    connection=uow.connection,
+                )
+                assert published.revision == rollback_before_revision.revision + 1
+                assert _p5a_outbox_count(uow.connection, rollback_seed.config_revision_id) == rollback_outbox_before + 1
+                raise _RollbackProbe()
+        with manager.unit_of_work() as uow:
+            rollback_persisted = ConfigRevisionRepository().get_scoped(
+                workspace_id=WORKSPACE_A,
+                config_revision_id=rollback_seed.config_revision_id,
+                connection=uow.connection,
+            )
+            assert rollback_persisted is not None
+            assert _revision_snapshot(rollback_persisted) == rollback_before_snapshot
+            assert _p5a_outbox_count(uow.connection, rollback_seed.config_revision_id) == rollback_outbox_before
         with manager.unit_of_work() as uow:
             repository = ConfigRevisionRepository()
             revision = repository.get_scoped(workspace_id=WORKSPACE_A, config_revision_id=seed.config_revision_id, connection=uow.connection)
