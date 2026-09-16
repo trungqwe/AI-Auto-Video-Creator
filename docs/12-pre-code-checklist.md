@@ -27,7 +27,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS E3 (ADR-0009 Subprocess Broker OS isolation, Windows DPAPI Vault, Broker-owned provisioning, live E3 probe xác thực Drive thật) |
 | G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS strict version (Python, uv, PG, Temporal, ffprobe WAV duration > 0, fail-closed dynamic matrix observation) |
 | ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất qua Broker Subprocess boundary |
-| M2 | 🟡 `M2-P1..P5B_ACCEPTED_CLOSED; M2-P6_BEHAVIORAL_RED_READY_FOR_REVIEW` | Architecture-wired exact-four P6 oracle đã RED hợp lệ tại `run-m2-p6-20260916190000`; application inject repository factory, structural PostgreSQL adapter chưa có SQL và persisted batch target là future authority. Implementation P6 vẫn khóa. |
+| M2 | 🟡 `M2-P1..P5B_ACCEPTED_CLOSED; M2-P6_BEHAVIORAL_RED_ACCEPTED; M2-P6_IMPLEMENTATION_AUTHORIZED` | Người dùng đã chấp thuận architecture-wired exact-four P6 RED tại `run-m2-p6-20260916190000` và mở implementation P6 theo oracle SHA-256 `42cf15e9b87e88728aa3d84f633bafc98bb8794c2c4a271d72b74c7258252517`. P7+ vẫn khóa. |
 | M3 / Module A | ⛔ `NOT AUTHORIZED` | Tiếp tục bị khóa chặt; không được bắt đầu trước khi M2 đạt exit gate và có User Checkpoint riêng |
 
 Đây là bảng trạng thái có thẩm quyền trước lệnh code đầu tiên. Kết quả P2/P3 đã đạt được ghi `PASS_M1_SCOPE`; G01/G04 toàn phần vẫn `PARTIALLY_PROVEN` cho tới khi đủ evidence các milestone tiếp theo.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-16 — M2-P6 implementation authorized
+
+- Người dùng chấp thuận architecture-wired Behavioral RED `run-m2-p6-20260916190000`, khóa oracle SHA-256 `42cf15e9b87e88728aa3d84f633bafc98bb8794c2c4a271d72b74c7258252517` và mở implementation P6.
+- P7+, M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`; lifecycle mục tiêu của candidate là `M2-P6_IMPLEMENTATION_READY_FOR_REVIEW`, không tự đóng P6.
+
 ## 2026-09-16 — M2-P6 RED architecture wiring correction
 
 - Bổ sung application persistence Protocol/repository factory injection cho cả bốn P6 services và structural `PostgresOrchestrationRepository` chỉ giữ caller-owned connection, không SQL/transaction ownership.

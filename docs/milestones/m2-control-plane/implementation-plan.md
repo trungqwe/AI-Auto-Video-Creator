@@ -466,6 +466,8 @@ Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Khôn
 
 ### M2-P6: Module G — Orchestration Shell, Variant Reservation & Completion Ledger Skeleton
 
+**Trạng thái/gate:** `M2-P6_BEHAVIORAL_RED_ACCEPTED; M2-P6_IMPLEMENTATION_AUTHORIZED`. Accepted RED source/tooling `4755e54cd7571195a1d6aa2a430042255751a104`, run `run-m2-p6-20260916190000`, locked oracle SHA-256 `42cf15e9b87e88728aa3d84f633bafc98bb8794c2c4a271d72b74c7258252517`. Quyền này chỉ mở implementation/evidence P6; P7+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+
 - **Requirement / CT / INV IDs**: `09-contracts/09-orchestration-contracts.md`, `CT-ORC-002`, `CT-ORC-012`, `AUD2-B01`, `ADR-0004`.
 - **Dependencies**: M2-P5A, M2-P5B.
 - **Mục tiêu**:
