@@ -466,7 +466,7 @@ Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Khôn
 
 ### M2-P6: Module G — Orchestration Shell, Variant Reservation & Completion Ledger Skeleton
 
-**Trạng thái/gate:** `M2-P6_IMPLEMENTATION_READY_FOR_REVIEW`. Candidate pin source/tooling `0b123805215bf3d77250676bcd04a5c749dca2d5`, fresh evidence `run-m2-p6-20260916134313`, locked oracle SHA-256 `42cf15e9b87e88728aa3d84f633bafc98bb8794c2c4a271d72b74c7258252517`. Chưa `ACCEPTED/CLOSED`; P7+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Trạng thái/gate:** `M2-P6_IMPLEMENTATION_READY_FOR_REVIEW`. Independent review không chấp thuận candidate `run-m2-p6-20260916134313`; corrected candidate pin immutable source/tooling `8120bac96cc5f5d223cb8f0c64daa904699c04c9`, fresh evidence `run-m2-p6-20260916084617`, locked oracle SHA-256 `42cf15e9b87e88728aa3d84f633bafc98bb8794c2c4a271d72b74c7258252517`. 18/18 PostgreSQL hardening probes độc lập, rollback tracker `[1,2,3,4,5,6] → [1,2,3,4,5]`. Chưa `ACCEPTED/CLOSED`; P7+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 
 - **Requirement / CT / INV IDs**: `09-contracts/09-orchestration-contracts.md`, `CT-ORC-002`, `CT-ORC-012`, `AUD2-B01`, `ADR-0004`.
 - **Dependencies**: M2-P5A, M2-P5B.

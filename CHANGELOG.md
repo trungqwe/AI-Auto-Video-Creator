@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-16 — M2-P6 independent-review correction
+
+- Sửa duplicate completion khác logical input trả mã chuẩn `FORBIDDEN_TRANSITION`; variant retry đối chiếu cả expected registry revision; capacity retry chặn batch sai bằng `VALIDATION_ERROR`; registry được khởi tạo an toàn trong caller-owned UoW và stale first-use không để partial row kể cả khi caller bắt lỗi.
+- Thay các probe alias bằng 18 hành động/khẳng định PostgreSQL độc lập; rollback version 6 được commit và tracker sau rollback là `[1,2,3,4,5]`. Fresh run `run-m2-p6-20260916084617` pin source/tooling `8120bac96cc5f5d223cb8f0c64daa904699c04c9`, P6 4/4 và tất cả regression PASS. Candidate cũ được giữ byte-exact nhưng **không được chấp thuận**; lifecycle vẫn `M2-P6_IMPLEMENTATION_READY_FOR_REVIEW`.
+
 ## 2026-09-16 — M2-P6 implementation ready for review
 
 - Triển khai migration `0006`, orchestration domain/application và PostgreSQL adapter dưới caller-owned UoW với row locking cho variant CAS, capacity và completion idempotency.

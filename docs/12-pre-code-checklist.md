@@ -27,7 +27,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS E3 (ADR-0009 Subprocess Broker OS isolation, Windows DPAPI Vault, Broker-owned provisioning, live E3 probe xác thực Drive thật) |
 | G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS strict version (Python, uv, PG, Temporal, ffprobe WAV duration > 0, fail-closed dynamic matrix observation) |
 | ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất qua Broker Subprocess boundary |
-| M2 | 🟡 `M2-P1..P5B_ACCEPTED_CLOSED; M2-P6_IMPLEMENTATION_READY_FOR_REVIEW` | Candidate pin source/tooling `0b123805215bf3d77250676bcd04a5c749dca2d5`, run `run-m2-p6-20260916134313`: P6 4/4 GREEN, 12/12 hardening probes và toàn bộ regression bắt buộc PASS. Chưa `ACCEPTED/CLOSED`; P7+ vẫn khóa. |
+| M2 | 🟡 `M2-P1..P5B_ACCEPTED_CLOSED; M2-P6_IMPLEMENTATION_READY_FOR_REVIEW` | Independent review không chấp thuận candidate cũ `run-m2-p6-20260916134313`. Corrected candidate pin source/tooling `8120bac96cc5f5d223cb8f0c64daa904699c04c9`, run `run-m2-p6-20260916084617`: P6 4/4 GREEN, 18/18 hardening probes độc lập và regression bắt buộc PASS. Chưa `ACCEPTED/CLOSED`; P7+ vẫn khóa. |
 | M3 / Module A | ⛔ `NOT AUTHORIZED` | Tiếp tục bị khóa chặt; không được bắt đầu trước khi M2 đạt exit gate và có User Checkpoint riêng |
 
 Đây là bảng trạng thái có thẩm quyền trước lệnh code đầu tiên. Kết quả P2/P3 đã đạt được ghi `PASS_M1_SCOPE`; G01/G04 toàn phần vẫn `PARTIALLY_PROVEN` cho tới khi đủ evidence các milestone tiếp theo.
