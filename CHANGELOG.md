@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-16 — M2-P6 RED architecture wiring correction
+
+- Bổ sung application persistence Protocol/repository factory injection cho cả bốn P6 services và structural `PostgresOrchestrationRepository` chỉ giữ caller-owned connection, không SQL/transaction ownership.
+- Loại caller-supplied target khỏi capacity allocation; future implementation phải đọc persisted `ProductionBatch.target_count`.
+- Fresh evidence `run-m2-p6-20260916190000` pin oracle SHA `42cf15e9b87e88728aa3d84f633bafc98bb8794c2c4a271d72b74c7258252517` và chứng minh architecture gates bằng AST.
+
 ## 2026-09-16 — Corrected M2-P6 Behavioral RED
 
 - Sửa P6-003 để completion dùng actual concurrent winner và xác nhận loser không giữ capacity reservation.

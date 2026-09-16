@@ -1,6 +1,6 @@
 # AI Auto Video Creator
 
-> Cập nhật hiện hành: M2-P1..P5B là `ACCEPTED / CLOSED`; corrected M2-P6 Behavioral RED (`run-m2-p6-20260916174500`) đang `READY_FOR_REVIEW`. Implementation P6, P7+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+> Cập nhật hiện hành: M2-P1..P5B là `ACCEPTED / CLOSED`; architecture-wired M2-P6 Behavioral RED (`run-m2-p6-20260916190000`) đang `READY_FOR_REVIEW`. Implementation P6, P7+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 
 Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều góc kể tiếng Anh, dựng video ngắn 61–70 giây và đồng bộ đầu ra lên cloud. Dự án được phát triển theo từng milestone có evidence gate; không coi việc chương trình chạy một lần là bằng chứng kiến trúc đã đạt.
 
