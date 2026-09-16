@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="4" time="1.052" timestamp="2026-09-16T12:53:18.530458+07:00" hostname="Admin"><testcase classname="tests.m2.test_p6_orchestration_shell" name="test_tst_m2_p6_001_execution_grant_stale_epoch_fencing" time="0.300"><failure message="NotImplementedError: P6-001 execution grant fencing is not implemented">p6_database = DisposableDatabase(name='m2_p6_test_794a2b3bdf634a5d9cd10b87b71b9111')
+
+    def test_tst_m2_p6_001_execution_grant_stale_epoch_fencing(
+        p6_database: DisposableDatabase,
+    ) -&gt; None:
+        service = ExecutionGrantService()
+        grant = ExecutionGrant(WORKSPACE_ID, "operation-1", "job-1", "stage-1", 4, 9)
+        with _manager(p6_database.dsn) as manager:
+            with manager.unit_of_work() as uow:
+&gt;               accepted = service.accept_result(
+                    grant=grant,
+                    submitted_generation=4,
+                    submitted_recovery_epoch=9,
+                    result_ref="result-1",
+                    connection=uow.connection,
+                )
+
+tests\m2\test_p6_orchestration_shell.py:105:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;controlplane.application.orchestration.ExecutionGrantService object at 0x000001ED73FC5E80&gt;
+kwargs = {'grant': ExecutionGrant(workspace_id='00000000-0000-0000-0000-000000000601', operation_id='operation-1', job_id='job-...neration=4, recovery_epoch=9), 'submitted_generation': 4, 'submitted_recovery_epoch': 9, 'result_ref': 'result-1', ...}
+
+    def accept_result(self, **kwargs: Any) -&gt; object:
+&gt;       raise NotImplementedError("P6-001 execution grant fencing is not implemented")
+E       NotImplementedError: P6-001 execution grant fencing is not implemented
+
+src\controlplane\application\orchestration\__init__.py:10: NotImplementedError</failure></testcase><testcase classname="tests.m2.test_p6_orchestration_shell" name="test_tst_m2_p6_002_variant_reservation_cas_and_conflict" time="0.233"><failure message="NotImplementedError: P6-002 variant reservation CAS is not implemented">p6_database = DisposableDatabase(name='m2_p6_test_e1832384779b482fbb6a5c5d9455e84c')
+
+    def test_tst_m2_p6_002_variant_reservation_cas_and_conflict(
+        p6_database: DisposableDatabase,
+    ) -&gt; None:
+        service = VariantReservationService()
+        request = dict(
+            workspace_id=WORKSPACE_ID,
+            fingerprint="fingerprint-1",
+            snapshot_scope="snapshot-1",
+            validation_ref="validation-1",
+            variation_policy_revision="policy-1",
+            expected_registry_revision=1,
+        )
+        with _manager(p6_database.dsn) as manager:
+
+            def reserve(job_id: str) -&gt; object:
+                try:
+                    with manager.unit_of_work() as uow:
+                        return service.reserve(
+                            **request, job_id=job_id, connection=uow.connection
+                        )
+                except OrchestrationContractError as error:
+                    return error
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+&gt;               outcomes = list(executor.map(reserve, ("job-a", "job-b")))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p6_orchestration_shell.py:159:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.local-tools\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:625: in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.local-tools\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:318: in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+.local-tools\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:460: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+.local-tools\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\_base.py:402: in __get_result
+    raise self._exception
+.local-tools\python\cpython-3.13.15-windows-x86_64-none\Lib\concurrent\futures\thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\m2\test_p6_orchestration_shell.py:152: in reserve
+    return service.reserve(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;controlplane.application.orchestration.VariantReservationService object at 0x000001ED73FC5A90&gt;
+kwargs = {'workspace_id': '00000000-0000-0000-0000-000000000601', 'fingerprint': 'fingerprint-1', 'snapshot_scope': 'snapshot-1', 'validation_ref': 'validation-1', ...}
+
+    def reserve(self, **kwargs: Any) -&gt; object:
+&gt;       raise NotImplementedError("P6-002 variant reservation CAS is not implemented")
+E       NotImplementedError: P6-002 variant reservation CAS is not implemented
+
+src\controlplane\application\orchestration\__init__.py:15: NotImplementedError</failure></testcase><testcase classname="tests.m2.test_p6_orchestration_shell" name="test_tst_m2_p6_003_batch_capacity_reservation_lifecycle" time="0.190"><failure message="NotImplementedError: P6-003 batch capacity persistence is not implemented">p6_database = DisposableDatabase(name='m2_p6_test_197db9afcf184c309bddcbb4632c536a')
+
+    def test_tst_m2_p6_003_batch_capacity_reservation_lifecycle(
+        p6_database: DisposableDatabase,
+    ) -&gt; None:
+        service = BatchCapacityService()
+        with _manager(p6_database.dsn) as manager:
+
+            class InjectedAllocationFailure(Exception):
+                pass
+
+            def fail_after_job(boundary: str) -&gt; None:
+                if boundary == "after_job_insert":
+                    raise InjectedAllocationFailure
+
+            with pytest.raises(InjectedAllocationFailure):
+                with manager.unit_of_work() as uow:
+&gt;                   service.allocate(
+                        workspace_id=WORKSPACE_ID,
+                        batch_id="batch-1",
+                        job_id="job-rollback",
+                        target_completed_videos=2,
+                        fault_hook=fail_after_job,
+                        connection=uow.connection,
+                    )
+
+tests\m2\test_p6_orchestration_shell.py:194:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;controlplane.application.orchestration.BatchCapacityService object at 0x000001ED73FC7770&gt;
+kwargs = {'workspace_id': '00000000-0000-0000-0000-000000000601', 'batch_id': 'batch-1', 'job_id': 'job-rollback', 'target_completed_videos': 2, ...}
+
+    def allocate(self, **kwargs: Any) -&gt; object:
+&gt;       raise NotImplementedError(
+            "P6-003 batch capacity persistence is not implemented"
+        )
+E       NotImplementedError: P6-003 batch capacity persistence is not implemented
+
+src\controlplane\application\orchestration\__init__.py:20: NotImplementedError</failure></testcase><testcase classname="tests.m2.test_p6_orchestration_shell" name="test_tst_m2_p6_004_completion_ledger_unique_job_invariant" time="0.206"><failure message="NotImplementedError: P6-004 completion ledger persistence is not implemented">p6_database = DisposableDatabase(name='m2_p6_test_f503eeff0b394400a9777dcbae3c31c9')
+
+    def test_tst_m2_p6_004_completion_ledger_unique_job_invariant(
+        p6_database: DisposableDatabase,
+    ) -&gt; None:
+        service = CompletionLedgerService()
+        values = dict(
+            workspace_id=WORKSPACE_ID,
+            job_id="job-1",
+            batch_id="batch-1",
+            capacity_reservation_id="capacity-1",
+            variant_reservation_id="variant-1",
+            output_artifact_version_id="00000000-0000-0000-0000-000000005b01",
+            output_artifact_hash=HASH_A,
+            actor_ref="actor-1",
+            completed_at=datetime.now(timezone.utc),
+            audit_ref="audit-1",
+        )
+        with _manager(p6_database.dsn) as manager:
+
+            class InjectedCompletionFailure(Exception):
+                pass
+
+            def fail_before_ledger(boundary: str) -&gt; None:
+                if boundary == "before_ledger_insert":
+                    raise InjectedCompletionFailure
+
+            with pytest.raises(InjectedCompletionFailure):
+                with manager.unit_of_work() as uow:
+&gt;                   service.commit(
+                        **{**values, "job_id": "job-rollback"},
+                        fault_hook=fail_before_ledger,
+                        connection=uow.connection,
+                    )
+
+tests\m2\test_p6_orchestration_shell.py:298:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;controlplane.application.orchestration.CompletionLedgerService object at 0x000001ED73FC78C0&gt;
+kwargs = {'workspace_id': '00000000-0000-0000-0000-000000000601', 'job_id': 'job-rollback', 'batch_id': 'batch-1', 'capacity_reservation_id': 'capacity-1', ...}
+
+    def commit(self, **kwargs: Any) -&gt; object:
+&gt;       raise NotImplementedError(
+            "P6-004 completion ledger persistence is not implemented"
+        )
+E       NotImplementedError: P6-004 completion ledger persistence is not implemented
+
+src\controlplane\application\orchestration\__init__.py:36: NotImplementedError</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,6 @@
+tests/m2/test_p6_orchestration_shell.py::test_tst_m2_p6_001_execution_grant_stale_epoch_fencing
+tests/m2/test_p6_orchestration_shell.py::test_tst_m2_p6_002_variant_reservation_cas_and_conflict
+tests/m2/test_p6_orchestration_shell.py::test_tst_m2_p6_003_batch_capacity_reservation_lifecycle
+tests/m2/test_p6_orchestration_shell.py::test_tst_m2_p6_004_completion_ledger_unique_job_invariant
+
+4 tests collected in 0.06s

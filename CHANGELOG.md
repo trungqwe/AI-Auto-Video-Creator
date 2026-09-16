@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-16 — M2-P6 Behavioral RED ready for review
+
+- Khóa exact four P6 behavioral oracle cho execution fencing, variant CAS, batch capacity lifecycle và unique completion ledger; structural seams chỉ ném capability-specific `NotImplementedError`.
+- Fresh evidence `run-m2-p6-20260916163000` xác nhận RED `4 failed / 0 passed / 0 errors / 0 skipped`, toàn bộ accepted regressions GREEN, migration `0006` vắng mặt và implementation P6 vẫn khóa.
+
 ## 2026-09-16 — M2-P5B accepted; P6 Behavioral RED authorized
 
 - Independent review chấp thuận và đóng corrected M2-P5B tại source `d305bbb` với evidence `run-m2-p5b-20260916144500`.
