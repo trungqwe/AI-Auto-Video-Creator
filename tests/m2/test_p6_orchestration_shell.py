@@ -32,6 +32,9 @@ from controlplane.domain.orchestration import (
     VariantReservation,
 )
 from controlplane.infrastructure.db.migration_runner import MigrationRunner
+from controlplane.infrastructure.db.orchestration import (
+    PostgresOrchestrationRepository,
+)
 from controlplane.infrastructure.db.uow import TransactionManager
 
 ROOT = Path(__file__).parents[2]
@@ -94,6 +97,26 @@ def _manager(dsn: str) -> Iterator[TransactionManager]:
         yield manager
     finally:
         manager.close()
+
+
+def _repository_factory(connection: object) -> PostgresOrchestrationRepository:
+    return PostgresOrchestrationRepository(connection)
+
+
+def _execution_grant_service() -> ExecutionGrantService:
+    return ExecutionGrantService(_repository_factory)
+
+
+def _variant_reservation_service() -> VariantReservationService:
+    return VariantReservationService(_repository_factory)
+
+
+def _batch_capacity_service() -> BatchCapacityService:
+    return BatchCapacityService(_repository_factory)
+
+
+def _completion_ledger_service() -> CompletionLedgerService:
+    return CompletionLedgerService(_repository_factory)
 
 
 def _seed_batch(connection: psycopg.Connection[object]) -> bool:
@@ -182,7 +205,7 @@ def _seed_completion_prerequisites(connection: psycopg.Connection[object]) -> No
 def test_tst_m2_p6_001_execution_grant_stale_epoch_fencing(
     p6_database: DisposableDatabase,
 ) -> None:
-    service = ExecutionGrantService()
+    service = _execution_grant_service()
     grant = ExecutionGrant(WORKSPACE_ID, "operation-1", "job-1", "stage-1", 4, 9)
     with _manager(p6_database.dsn) as manager:
         with manager.unit_of_work() as uow:
@@ -219,7 +242,7 @@ def test_tst_m2_p6_001_execution_grant_stale_epoch_fencing(
 def test_tst_m2_p6_002_variant_reservation_cas_and_conflict(
     p6_database: DisposableDatabase,
 ) -> None:
-    service = VariantReservationService()
+    service = _variant_reservation_service()
     request = dict(
         workspace_id=WORKSPACE_ID,
         fingerprint="fingerprint-1",
@@ -265,7 +288,7 @@ def test_tst_m2_p6_002_variant_reservation_cas_and_conflict(
 def test_tst_m2_p6_003_batch_capacity_reservation_lifecycle(
     p6_database: DisposableDatabase,
 ) -> None:
-    service = BatchCapacityService()
+    service = _batch_capacity_service()
     with _manager(p6_database.dsn) as manager:
         with manager.unit_of_work() as uow:
             seeded = _seed_batch(uow.connection)
@@ -290,7 +313,6 @@ def test_tst_m2_p6_003_batch_capacity_reservation_lifecycle(
                     workspace_id=WORKSPACE_ID,
                     batch_id="batch-1",
                     job_id="job-rollback",
-                    target_completed_videos=2,
                     fault_hook=fail_after_job,
                     connection=uow.connection,
                 )
@@ -309,19 +331,18 @@ def test_tst_m2_p6_003_batch_capacity_reservation_lifecycle(
                 workspace_id=WORKSPACE_ID,
                 batch_id="batch-1",
                 job_id="job-1",
-                target_completed_videos=2,
                 connection=uow.connection,
             )
         assert (
             isinstance(first, CapacityAllocation)
             and first.state is ReservationState.ACTIVE
         )
+        assert first.target_completed_videos == 2
         with manager.unit_of_work() as uow:
             retry = service.allocate(
                 workspace_id=WORKSPACE_ID,
                 batch_id="batch-1",
                 job_id="job-1",
-                target_completed_videos=2,
                 connection=uow.connection,
             )
         assert retry.reservation_id == first.reservation_id
@@ -338,7 +359,6 @@ def test_tst_m2_p6_003_batch_capacity_reservation_lifecycle(
                         workspace_id=WORKSPACE_ID,
                         batch_id="batch-1",
                         job_id=job_id,
-                        target_completed_videos=2,
                         connection=uow.connection,
                     )
             except OrchestrationContractError as error:
@@ -378,7 +398,7 @@ def test_tst_m2_p6_003_batch_capacity_reservation_lifecycle(
 def test_tst_m2_p6_004_completion_ledger_unique_job_invariant(
     p6_database: DisposableDatabase,
 ) -> None:
-    service = CompletionLedgerService()
+    service = _completion_ledger_service()
     values = dict(
         workspace_id=WORKSPACE_ID,
         job_id="job-1",

@@ -2,20 +2,32 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable, Protocol
 
 
-class ExecutionGrantService:
+class OrchestrationRepository(Protocol):
+    """Persistence output port for future P6 behavior."""
+
+
+RepositoryFactory = Callable[[object], OrchestrationRepository]
+
+
+class _Service:
+    def __init__(self, repository_factory: RepositoryFactory) -> None:
+        self._repository_factory = repository_factory
+
+
+class ExecutionGrantService(_Service):
     def accept_result(self, **kwargs: Any) -> object:
         raise NotImplementedError("P6-001 execution grant fencing is not implemented")
 
 
-class VariantReservationService:
+class VariantReservationService(_Service):
     def reserve(self, **kwargs: Any) -> object:
         raise NotImplementedError("P6-002 variant reservation CAS is not implemented")
 
 
-class BatchCapacityService:
+class BatchCapacityService(_Service):
     def allocate(self, **kwargs: Any) -> object:
         raise NotImplementedError(
             "P6-003 batch capacity persistence is not implemented"
@@ -31,7 +43,7 @@ class BatchCapacityService:
         raise NotImplementedError("P6-003 completion conversion is not implemented")
 
 
-class CompletionLedgerService:
+class CompletionLedgerService(_Service):
     def commit(self, **kwargs: Any) -> object:
         raise NotImplementedError(
             "P6-004 completion ledger persistence is not implemented"
@@ -42,5 +54,7 @@ __all__ = [
     "BatchCapacityService",
     "CompletionLedgerService",
     "ExecutionGrantService",
+    "OrchestrationRepository",
+    "RepositoryFactory",
     "VariantReservationService",
 ]
