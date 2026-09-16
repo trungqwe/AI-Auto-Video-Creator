@@ -1,0 +1,2 @@
+EXPECTED_REJECTION=PASS
+ERROR_TYPE=EvidenceValidationError

@@ -1,0 +1,12 @@
+{
+  "verdict": "PASS",
+  "database": "real_postgresql_disposable",
+  "checks": {
+    "mismatched_verification_ref_zero_mutation": true,
+    "credential_refs_rejected_not_persisted": true,
+    "direct_sql_update_rejected": true,
+    "direct_sql_delete_rejected": true,
+    "direct_sql_binding_mismatch_rejected": true,
+    "failed_authorization_no_orphan_or_partial": true
+  }
+}

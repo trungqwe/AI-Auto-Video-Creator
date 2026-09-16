@@ -1,0 +1,7 @@
+P5B_HARDENING_PROBES=PASS
+mismatched_verification_ref_zero_mutation=PASS
+credential_refs_rejected_not_persisted=PASS
+direct_sql_update_rejected=PASS
+direct_sql_delete_rejected=PASS
+direct_sql_binding_mismatch_rejected=PASS
+failed_authorization_no_orphan_or_partial=PASS

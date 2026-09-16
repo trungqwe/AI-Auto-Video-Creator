@@ -1,0 +1,30 @@
+{
+  "run_id": "run-m2-p5b-20260916144500",
+  "source_commit_sha": "d305bbb816dfd277d8f14b7e3126d6c566883e53",
+  "python": "3.13.15",
+  "psycopg": "3.3.5",
+  "psycopg_pool": "3.3.1",
+  "pool_public_import": "psycopg_pool.ConnectionPool",
+  "pool_runtime_class": "psycopg_pool.pool.ConnectionPool",
+  "postgresql": "18.6",
+  "createdb": true,
+  "m2_orphan_count": 0,
+  "migration_runner_unchanged": true,
+  "p5a_source_and_oracle_unchanged": true,
+  "historical_corrected_red_preserved": true,
+  "migration_0005_present": true,
+  "application_storage_meta_sql_statements": 0,
+  "infrastructure_storage_meta_sql_present": true,
+  "adapter_uses_caller_owned_connection": true,
+  "domain_to_application_imports": 0,
+  "domain_to_infrastructure_imports": 0,
+  "application_to_infrastructure_imports": 0,
+  "domain_psycopg_imports": 0,
+  "application_psycopg_imports": 0,
+  "oracle_sha256": "be87c943b9a4a129156b452df70bf55e58b95ea8c418a8822a82100cd9c77030",
+  "quality": {
+    "ruff": "PASS",
+    "mypy": "SKIP_UNAVAILABLE",
+    "build": "SKIP_TOOL_UV_PACKAGE_FALSE"
+  }
+}

@@ -1,7 +1,8 @@
 # HANDOFF
 
-- Hiện hành: `M2-P5A_ACCEPTED_CLOSED`; P5B candidate ở `M2-P5B_IMPLEMENTATION_READY_FOR_REVIEW`. P6+, M3 và Module A vẫn khóa.
-- Test-wiring commit riêng: `e544371780af234883153022c272593589bedfc5`, không đổi năm oracle/assertion. Production checkpoint: `413070c074997d6f02c2d7933c64d0d17c9b9704`, persistence adapter được inject dưới caller-owned P1 UoW; stale CAS lấy current revision từ DB; explicit IDs không duplicate keyword; global psycopg patch và shared-ledger side effect đã loại bỏ. MigrationRunner/P1–P4/M1/dependency lock giữ nguyên.
-- Corrected RED `run-m2-p5b-20260916114530` giữ byte-exact. Production source/tooling checkpoint `1d369204d66f24ff6347263594c30de3fc52e7dc` chứa migration `0005`, metadata stores dưới caller-owned UoW và committed evidence producer; implementation closure `run-m2-p5b-20260916120500` ghi GREEN 5/5 cùng regressions 5/9/11/11/11/33/6/93, generic validator và tamper-negative proof.
-- External blocker đã khôi phục: M1 PostgreSQL 18.6 đúng `127.0.0.1:55432/aiavc_m1`; exact Temporal 1.31.2 ở ignored `scratch/`; Google OAuth đã được người dùng cấp quyền lại, broker Windows DPAPI và E3 thật PASS. M2 port là mapping động, phải rediscover. Historical M1 Drive evidence đã khôi phục đúng byte sau live regression. Credentials/vault/local tooling không được commit.
-- Đọc tiếp: `docs/12-pre-code-checklist.md`, M2 implementation plan và closure run trên. Điểm tiếp tục duy nhất là independent review/user checkpoint; không tự bắt đầu implementation kế tiếp.
+- Hiện hành: `M2-P1..P5A_ACCEPTED_CLOSED`; corrected P5B candidate ở `M2-P5B_IMPLEMENTATION_READY_FOR_REVIEW`. P6+, M3 và Phân hệ A vẫn khóa.
+- Wiring-only commit `279c260` đổi composition sang real PostgreSQL adapter, giữ nguyên exact 5 identities/assertions; oracle SHA mới `be87c943b9a4a129156b452df70bf55e58b95ea8c418a8822a82100cd9c77030` (cũ `2d26b5c015323ddfde6b9aaf5d802354a7e20aa1a96a93793aae86436589311d`).
+- Production correction `a665756`: application không còn SQL/psycopg; adapter infrastructure dùng caller-owned P1 UoW; exact verification evidence, credential boundary, immutable authorization và composite location/version/hash binding được thực thi.
+- Immutable source/tooling checkpoint `d305bbb816dfd277d8f14b7e3126d6c566883e53`; fresh closure `run-m2-p5b-20260916144500` PASS P5B 5/5, P5A 5/5, P4 9/9, P3/P2/P1 11/11, P0 33/33, architecture 6/6, M1 93/93 và sáu hardening probes real PostgreSQL.
+- Historical runs `run-m2-p5b-20260916114530` và `run-m2-p5b-20260916120500` được giữ byte-exact. MigrationRunner, P1–P5A và M1 source/tests không đổi.
+- Điểm tiếp tục duy nhất: independent review/user checkpoint cho corrected P5B candidate. Không bắt đầu P6.

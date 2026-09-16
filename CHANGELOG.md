@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-16 — M2-P5B corrected implementation candidate
+
+- Tách toàn bộ SQL/row mapping P5B khỏi application sang PostgreSQL adapter dùng connection thuộc caller-owned P1 UoW.
+- Khóa exact verification evidence, credential boundary trên mọi location ref, immutable CleanupAuthorization và composite location/version/hash binding.
+- Fresh evidence `run-m2-p5b-20260916144500` đạt exact P5B 5/5, toàn bộ regression và sáu real-PostgreSQL hardening probes; lifecycle vẫn `M2-P5B_IMPLEMENTATION_READY_FOR_REVIEW`.
+
 - Triển khai P5B artifact metadata persistence trên PostgreSQL: migration `0005` forward/rollback, immutable ArtifactVersion, P4-backed ArtifactLocation CAS và immutable CleanupAuthorization kết thúc ở `CLEANUP_AUTHORIZED`; không delete bytes và không `CleanupCompleted`. Candidate chờ independent review.
 
 - Corrective Behavioral RED M2-P5B sau independent audit: chuyển structural seams về đúng `storage_meta`, thêm test-only persisted ArtifactVersion prerequisite chỉ khi schema `0005` tồn tại, và nâng evidence lên generic fail-closed validator với hash recomputation/tamper-negative proof. Không tạo `0005` và không implement P5B.

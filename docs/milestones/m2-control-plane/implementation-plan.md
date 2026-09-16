@@ -3,7 +3,7 @@
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
 **Trạng thái:** `M2-P1..P5A_ACCEPTED_CLOSED; M2-P5B_IMPLEMENTATION_READY_FOR_REVIEW`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** P1..P5A là `ACCEPTED / CLOSED`. P5B implementation candidate `1d36920` đã đạt exact GREEN closure và chờ independent review; không tự ACCEPT/CLOSE. P6+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** P1..P5A là `ACCEPTED / CLOSED`. Corrected P5B implementation candidate `d305bbb` đã đạt exact GREEN closure, real-PostgreSQL hardening probes và chờ independent review; không tự ACCEPT/CLOSE. P6+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -442,7 +442,7 @@ Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Khôn
 
 ### M2-P5B: Module I — Artifact Metadata & Cleanup-Authorization Skeleton
 
-**Trạng thái/gate:** `M2-P5B_IMPLEMENTATION_READY_FOR_REVIEW`. Production candidate có migration `0005`, immutable ArtifactVersion, workspace-scoped location CAS và immutable CleanupAuthorization; P5B chỉ kết thúc tại `CLEANUP_AUTHORIZED`. Independent review/user checkpoint là điều kiện bắt buộc trước P6.
+**Trạng thái/gate:** `M2-P5B_IMPLEMENTATION_READY_FOR_REVIEW`. Corrected production candidate có migration `0005`, immutable ArtifactVersion/CleanupAuthorization, composite location-version-hash binding, workspace-scoped location CAS và PostgreSQL adapter dưới caller-owned UoW; P5B chỉ kết thúc tại `CLEANUP_AUTHORIZED`. Fresh closure: `run-m2-p5b-20260916144500`. Independent review/user checkpoint là điều kiện bắt buộc trước P6.
 
 **Traceability có thẩm quyền:** `CT-STO-001/002/007/008`, `CT-STO-009` chỉ cho epoch/reference authorization, `CT-STATE-012`, `CT-CMN-005/006/009/010/013`, `CT-EVT-001..005`, `ADR-0004`, `ADR-0006`, `ADR-0010`, và ArtifactLocationState P4 đã closed. `INVALID_ARTIFACT_HASH`/`CLEANUP_NOT_ELIGIBLE` không phải mã `CT-CMN-010`; dùng `VALIDATION_ERROR`, `FORBIDDEN_TRANSITION`, `POLICY_VIOLATION` hoặc `REVISION_CONFLICT` đến khi contract đổi.
 
