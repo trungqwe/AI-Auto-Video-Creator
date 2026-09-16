@@ -27,6 +27,7 @@ from controlplane.domain.storage_meta import ArtifactLocation, ArtifactVersion, 
 from controlplane.domain.concurrency import RevisionConflictError
 from controlplane.domain.statemachine import ArtifactLocationState, ForbiddenTransitionError
 from controlplane.infrastructure.db.migration_runner import MigrationRunner
+from controlplane.infrastructure.db.storage_meta import PostgresStorageMetaRepository
 from controlplane.infrastructure.db.uow import TransactionManager
 
 
@@ -37,6 +38,22 @@ WORKSPACE_A = "00000000-0000-0000-0000-0000000005b1"
 WORKSPACE_B = "00000000-0000-0000-0000-0000000005b2"
 HASH_A = "a" * 64
 HASH_B = "b" * 64
+
+
+def _repository_factory(connection: object) -> PostgresStorageMetaRepository:
+    return PostgresStorageMetaRepository(connection)
+
+
+def _version_store() -> ArtifactVersionStore:
+    return ArtifactVersionStore(_repository_factory)
+
+
+def _location_store() -> ArtifactLocationStore:
+    return ArtifactLocationStore(_repository_factory)
+
+
+def _authorization_store() -> CleanupAuthorizationStore:
+    return CleanupAuthorizationStore(_repository_factory)
 
 
 @dataclass
@@ -201,7 +218,7 @@ def _seed_location_version_prerequisite(connection: psycopg.Connection[object], 
 
 
 def test_tst_m2_p5b_001_artifact_version_registration_and_hash_integrity(p5b_database: DisposableDatabase) -> None:
-    store = ArtifactVersionStore()
+    store = _version_store()
     with _manager(p5b_database.dsn) as manager:
         with manager.unit_of_work() as uow:
             first = store.register(**_version_input(), connection=uow.connection)
@@ -227,7 +244,7 @@ def test_tst_m2_p5b_001_artifact_version_registration_and_hash_integrity(p5b_dat
 
 
 def test_tst_m2_p5b_002_location_state_lifecycle_and_verification(p5b_database: DisposableDatabase) -> None:
-    location_store = ArtifactLocationStore()
+    location_store = _location_store()
     version = _artifact_version_fixture()
     with _manager(p5b_database.dsn) as manager:
         with manager.unit_of_work() as uow:
@@ -269,8 +286,8 @@ def test_tst_m2_p5b_002_location_state_lifecycle_and_verification(p5b_database: 
 
 
 def test_tst_m2_p5b_003_cleanup_authorization_requires_verified_location(p5b_database: DisposableDatabase) -> None:
-    location_store = ArtifactLocationStore()
-    authorization_store = CleanupAuthorizationStore()
+    location_store = _location_store()
+    authorization_store = _authorization_store()
     now = datetime.now(timezone.utc)
     version = _artifact_version_fixture()
     location = _artifact_location_fixture()
@@ -347,7 +364,7 @@ def test_tst_m2_p5b_004_production_0005_forward_rollback_and_constraints(p5b_mig
 
 
 def test_tst_m2_p5b_005_workspace_isolation_and_location_revision_conflict(p5b_database: DisposableDatabase) -> None:
-    location_store = ArtifactLocationStore()
+    location_store = _location_store()
     version = _artifact_version_fixture()
     assert not hasattr(location_store, "get_by_id") and not hasattr(location_store, "update_unscoped")
     with _manager(p5b_database.dsn) as manager:
