@@ -15,7 +15,8 @@ from controlplane.domain.orchestration import (
 _CAPACITY_COLUMNS = "workspace_id::text, batch_id, job_id, reservation_id, state"
 _VARIANT_COLUMNS = (
     "reservation_id, workspace_id::text, job_id, fingerprint, snapshot_scope, "
-    "validation_ref, variation_policy_revision, committed_registry_revision, state"
+    "validation_ref, variation_policy_revision, committed_registry_revision, state, "
+    "expected_registry_revision"
 )
 _LEDGER_COLUMNS = (
     "ledger_id::text, workspace_id::text, job_id, batch_id, capacity_reservation_id, "
@@ -81,6 +82,12 @@ class PostgresOrchestrationRepository:
         self, reservation_id: str, values: dict[str, Any]
     ) -> VariantReservation:
         workspace_id = values["workspace_id"]
+        self._connection.execute(
+            "INSERT INTO controlplane.cp_variant_registry "
+            "(workspace_id,current_registry_revision) VALUES (%s,1) "
+            "ON CONFLICT (workspace_id) DO NOTHING",
+            (workspace_id,),
+        )
         registry = self._connection.execute(
             "SELECT current_registry_revision FROM controlplane.cp_variant_registry WHERE workspace_id=%s FOR UPDATE",
             (workspace_id,),
@@ -97,6 +104,7 @@ class PostgresOrchestrationRepository:
                 and str(existing[4]) == values["snapshot_scope"]
                 and str(existing[5]) == values["validation_ref"]
                 and str(existing[6]) == values["variation_policy_revision"]
+                and int(existing[9]) == values["expected_registry_revision"]
             )
             if same:
                 return _variant(existing)
@@ -148,6 +156,8 @@ class PostgresOrchestrationRepository:
             (workspace_id, values["job_id"]),
         ).fetchone()
         if existing is not None:
+            if str(existing[1]) != batch_id:
+                raise OrchestrationContractError("VALIDATION_ERROR")
             return _capacity(existing, target)
         occupied = self._connection.execute(
             "SELECT (SELECT count(*) FROM controlplane.cp_completion_ledger WHERE workspace_id=%s AND batch_id=%s) + (SELECT count(*) FROM controlplane.cp_batch_capacity_reservations WHERE workspace_id=%s AND batch_id=%s AND state='ACTIVE')",
@@ -221,11 +231,12 @@ class PostgresOrchestrationRepository:
                 values["output_artifact_version_id"],
                 values["output_artifact_hash"],
                 values["actor_ref"],
+                values["completed_at"],
                 values["audit_ref"],
             )
-            actual = tuple(str(existing[index]) for index in (3, 4, 5, 6, 7, 8, 10))
+            actual = tuple(str(existing[index]) for index in (3, 4, 5, 6, 7, 8, 9, 10))
             if actual != tuple(str(value) for value in expected):
-                raise OrchestrationContractError("COMPLETION_CONFLICT")
+                raise OrchestrationContractError("FORBIDDEN_TRANSITION")
             return _ledger(existing)
         if values.get("fault_hook") is not None:
             values["fault_hook"]("before_ledger_insert")
