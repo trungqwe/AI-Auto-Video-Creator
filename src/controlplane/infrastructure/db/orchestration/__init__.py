@@ -84,16 +84,17 @@ class PostgresOrchestrationRepository:
         workspace_id = values["workspace_id"]
         self._connection.execute(
             "INSERT INTO controlplane.cp_variant_registry "
-            "(workspace_id,current_registry_revision) VALUES (%s,1) "
+            "(workspace_id,current_registry_revision) "
+            "SELECT %s,1 WHERE %s=1 "
             "ON CONFLICT (workspace_id) DO NOTHING",
-            (workspace_id,),
+            (workspace_id, values["expected_registry_revision"]),
         )
         registry = self._connection.execute(
             "SELECT current_registry_revision FROM controlplane.cp_variant_registry WHERE workspace_id=%s FOR UPDATE",
             (workspace_id,),
         ).fetchone()
         if registry is None:
-            raise OrchestrationContractError("NOT_FOUND")
+            raise OrchestrationContractError("VARIANT_VALIDATION_STALE")
         existing = self._connection.execute(
             f"SELECT {_VARIANT_COLUMNS} FROM controlplane.cp_variant_reservations WHERE workspace_id=%s AND job_id=%s",
             (workspace_id, values["job_id"]),
