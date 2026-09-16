@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -29,6 +30,61 @@ from controlplane.infrastructure.evidence.validator import (
 from controlplane.infrastructure.security.secret_scanner import scan_file
 
 ROOT = Path(__file__).parents[4]
+
+
+def _imports(path: Path) -> list[str]:
+    result: list[str] = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            result.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            result.append(node.module or "")
+    return result
+
+
+def _sql_statement_count(path: Path) -> int:
+    count = 0
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            value = node.value.lstrip().upper()
+            count += value.startswith(
+                ("SELECT ", "INSERT INTO ", "UPDATE ", "DELETE FROM ")
+            )
+    return count
+
+
+def _services_use_factory(path: Path) -> bool:
+    classes = {
+        node.name: node
+        for node in ast.parse(path.read_text(encoding="utf-8")).body
+        if isinstance(node, ast.ClassDef)
+    }
+    base = classes.get("_Service")
+    if base is None:
+        return False
+    constructors = [
+        node
+        for node in base.body
+        if isinstance(node, ast.FunctionDef) and node.name == "__init__"
+    ]
+    if len(constructors) != 1 or "repository_factory" not in {
+        arg.arg for arg in constructors[0].args.args
+    }:
+        return False
+    names = (
+        "ExecutionGrantService",
+        "VariantReservationService",
+        "BatchCapacityService",
+        "CompletionLedgerService",
+    )
+    return all(
+        name in classes
+        and any(
+            isinstance(parent, ast.Name) and parent.id == "_Service"
+            for parent in classes[name].bases
+        )
+        for name in names
+    )
 
 
 def _stamp() -> str:
@@ -160,6 +216,27 @@ def main() -> None:
         ).returncode
         == 0
     )
+    historical_p6_ok = (
+        subprocess.run(
+            [
+                "git",
+                "diff",
+                "--quiet",
+                "196ce94b8591635541c6b43060655c522535f5c2",
+                "--",
+                "docs/milestones/m2-control-plane/evidence/m2-p6/run-m2-p6-20260916163000",
+                "docs/milestones/m2-control-plane/evidence/m2-p6/run-m2-p6-20260916174500",
+            ],
+            cwd=ROOT,
+        ).returncode
+        == 0
+    )
+    app_path = ROOT / "src/controlplane/application/orchestration/__init__.py"
+    domain_path = ROOT / "src/controlplane/domain/orchestration/__init__.py"
+    adapter_path = ROOT / "src/controlplane/infrastructure/db/orchestration/__init__.py"
+    app_imports = _imports(app_path)
+    domain_imports = _imports(domain_path)
+    adapter_source = adapter_path.read_text(encoding="utf-8")
     runtime = {
         "run_id": out.name,
         "source_commit_sha": source,
@@ -178,6 +255,29 @@ def main() -> None:
         "migration_runner_unchanged": runner_ok,
         "p5a_p5b_accepted_unchanged": accepted_ok,
         "p5b_evidence_preserved": evidence_ok,
+        "historical_p6_evidence_preserved": historical_p6_ok,
+        "application_orchestration_sql_statements": _sql_statement_count(app_path),
+        "application_orchestration_psycopg_imports": sum(
+            name.startswith(("psycopg", "psycopg_pool")) for name in app_imports
+        ),
+        "application_to_infrastructure_imports": sum(
+            name.startswith("controlplane.infrastructure") for name in app_imports
+        ),
+        "domain_to_application_imports": sum(
+            name.startswith("controlplane.application") for name in domain_imports
+        ),
+        "domain_to_infrastructure_imports": sum(
+            name.startswith("controlplane.infrastructure") for name in domain_imports
+        ),
+        "domain_external_db_imports": sum(
+            name.startswith(("psycopg", "psycopg_pool", "sqlalchemy", "asyncpg"))
+            for name in domain_imports
+        ),
+        "postgres_adapter_exists": adapter_path.is_file(),
+        "adapter_receives_caller_owned_connection": "self._connection = connection"
+        in adapter_source,
+        "adapter_sql_statements": _sql_statement_count(adapter_path),
+        "services_repository_factory_injected": _services_use_factory(app_path),
         "oracle_sha256": hashlib.sha256(
             subprocess.check_output(
                 ["git", "show", f"{source}:tests/m2/test_p6_orchestration_shell.py"],
@@ -198,6 +298,17 @@ def main() -> None:
         and runner_ok
         and accepted_ok
         and evidence_ok
+        and historical_p6_ok
+        and runtime["application_orchestration_sql_statements"] == 0
+        and runtime["application_orchestration_psycopg_imports"] == 0
+        and runtime["application_to_infrastructure_imports"] == 0
+        and runtime["domain_to_application_imports"] == 0
+        and runtime["domain_to_infrastructure_imports"] == 0
+        and runtime["domain_external_db_imports"] == 0
+        and runtime["postgres_adapter_exists"]
+        and runtime["adapter_receives_caller_owned_connection"]
+        and runtime["adapter_sql_statements"] == 0
+        and runtime["services_repository_factory_injected"]
         and runtime["oracle_sha256"] == ORACLE_SHA
     )
     _write(out / "runtime-and-static.json", json.dumps(runtime, indent=2) + "\n")
@@ -211,6 +322,7 @@ def main() -> None:
         "check",
         "src/controlplane/domain/orchestration",
         "src/controlplane/application/orchestration",
+        "src/controlplane/infrastructure/db/orchestration",
         "tests/m2/test_p6_orchestration_shell.py",
         "src/controlplane/infrastructure/evidence/profile_p6.py",
         "src/controlplane/infrastructure/evidence/synthesizer_p6.py",
@@ -230,7 +342,7 @@ def main() -> None:
     record("quality-build", ["build-stdout.txt"])
     _write(
         out / "red-observations.md",
-        "# M2-P6 corrected Behavioral RED\n\nExact four tests reach the intended application seams and fail only with capability-specific `NotImplementedError`. The corrected oracle uses the actual capacity-race winner, locks idempotent duplicate completion to one ledger identity, and keeps future parent seeding test-only behind the presence of migration `0006`. PostgreSQL 18.6 prerequisites and migrations `0001..0005` pass; migration `0006` is absent. No P6 persistence behavior is implemented.\n",
+        "# M2-P6 architecture-wired Behavioral RED\n\nExact four tests reach injected application services and fail only with capability-specific `NotImplementedError`. Application and structural PostgreSQL adapter contain zero SQL; the adapter only retains a caller-owned connection. The oracle uses the actual capacity-race winner, locks idempotent duplicate completion to one ledger identity, and keeps future parent seeding test-only behind migration `0006`. PostgreSQL 18.6 prerequisites and migrations `0001..0005` pass; migration `0006` is absent.\n",
     )
     _write(
         out / "status.md",
@@ -240,6 +352,9 @@ def main() -> None:
         ROOT / "tests/m2/test_p6_orchestration_shell.py",
         *list((ROOT / "src/controlplane/domain/orchestration").rglob("*.py")),
         *list((ROOT / "src/controlplane/application/orchestration").rglob("*.py")),
+        *list(
+            (ROOT / "src/controlplane/infrastructure/db/orchestration").rglob("*.py")
+        ),
         ROOT / "src/controlplane/infrastructure/evidence/profile_p6.py",
         ROOT / "src/controlplane/infrastructure/evidence/synthesizer_p6.py",
         *[path for path in out.iterdir() if path.is_file()],

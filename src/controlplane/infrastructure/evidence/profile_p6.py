@@ -21,7 +21,7 @@ from controlplane.infrastructure.evidence.validator import (
 )
 
 ORACLE_PATH = "tests/m2/test_p6_orchestration_shell.py"
-ORACLE_SHA = "e5d2b248481366597a96caee313c46e03238e16369fb48799d6359ad80daccc1"
+ORACLE_SHA = "42cf15e9b87e88728aa3d84f633bafc98bb8794c2c4a271d72b74c7258252517"
 NAMES = (
     "test_tst_m2_p6_001_execution_grant_stale_epoch_fencing",
     "test_tst_m2_p6_002_variant_reservation_cas_and_conflict",
@@ -111,6 +111,17 @@ class M2P6SemanticProfile(PackageSemanticProfile):
             "migration_runner_unchanged": True,
             "p5a_p5b_accepted_unchanged": True,
             "p5b_evidence_preserved": True,
+            "historical_p6_evidence_preserved": True,
+            "application_orchestration_sql_statements": 0,
+            "application_orchestration_psycopg_imports": 0,
+            "application_to_infrastructure_imports": 0,
+            "domain_to_application_imports": 0,
+            "domain_to_infrastructure_imports": 0,
+            "domain_external_db_imports": 0,
+            "postgres_adapter_exists": True,
+            "adapter_receives_caller_owned_connection": True,
+            "adapter_sql_statements": 0,
+            "services_repository_factory_injected": True,
         }
         if any(runtime.get(key) != value for key, value in required.items()):
             raise SemanticEvaluationError("runtime/static mismatch")
