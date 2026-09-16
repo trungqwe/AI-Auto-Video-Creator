@@ -21,7 +21,7 @@ from controlplane.infrastructure.evidence.validator import (
 )
 
 ORACLE_PATH = "tests/m2/test_p6_orchestration_shell.py"
-ORACLE_SHA = "d31da181bfabe52f0d9d3c347530801135692ef6defc0a3af989bb949e7d640d"
+ORACLE_SHA = "e5d2b248481366597a96caee313c46e03238e16369fb48799d6359ad80daccc1"
 NAMES = (
     "test_tst_m2_p6_001_execution_grant_stale_epoch_fencing",
     "test_tst_m2_p6_002_variant_reservation_cas_and_conflict",
