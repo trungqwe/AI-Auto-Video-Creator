@@ -1,6 +1,6 @@
 # HANDOFF
 
 - Hiện hành: `M2-P1..P6_ACCEPTED_CLOSED`. Independent review chấp thuận corrected P6 tại `76daa18d66b2b468cf08189b0ec666fcc1638ec4`; evidence `run-m2-p6-20260916084617`, immutable source/tooling `8120bac96cc5f5d223cb8f0c64daa904699c04c9`, oracle SHA-256 `42cf15e9b87e88728aa3d84f633bafc98bb8794c2c4a271d72b74c7258252517`.
-- Chỉ `M2-P7A_BEHAVIORAL_RED_AUTHORIZED`; `M2-P7A_IMPLEMENTATION_LOCKED`. P7B/P8/P9, M3 và Phân hệ A `NOT AUTHORIZED`. Không tạo migration `0007` hoặc API/TLS behavior trong RED.
-- HEAD bắt đầu `76daa18d66b2b468cf08189b0ec666fcc1638ec4` khớp `origin/main`, worktree sạch. Exact Control Plane lock chạy trong venv cô lập; root `.venv` và lockfile không thay đổi.
-- Đọc tiếp: `docs/12-pre-code-checklist.md`, `docs/milestones/m2-control-plane/spec.md`, `implementation-plan.md`, `toolchain-lock.md`, CT-API-001..007/010 và ADR-0007/0009/0010. Điểm tiếp tục: exact four P7A capability-specific RED, fresh evidence, independent review; không triển khai P7A trước acceptance riêng.
+- `M2-P7A_BEHAVIORAL_RED_READY_FOR_REVIEW`; `M2-P7A_IMPLEMENTATION_LOCKED`. P7B/P8/P9, M3 và Phân hệ A `NOT AUTHORIZED`. Không có migration `0007`, API/TLS behavior hoặc certificate/private key trong RED.
+- Exact-four P7A oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035`; immutable source/tooling `609cf70c72b3f08303c91b4a8c56bdec9f9237e3`; fresh run `run-m2-p7a-20260916091430`: 4 failed đúng capability, 0 pass/error/skip; P6 4/4 + 18/18, các regression còn lại GREEN, semantic/provenance/hash/tamper/secret PASS. Exact-lock Control Plane venv cô lập; root `.venv`/lock không đổi.
+- Đọc tiếp: `docs/12-pre-code-checklist.md`, `docs/milestones/m2-control-plane/implementation-plan.md`, P7A `status.json`/`runtime-and-static.json`/`tls_handshake_evidence.json`. Điểm tiếp tục duy nhất: independent review P7A RED; không triển khai P7A trước acceptance riêng.

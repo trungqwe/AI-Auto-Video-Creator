@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-16 — M2-P7A Behavioral RED ready for independent review
+
+- Khóa bốn oracle P7A độc lập cho Host spoofing, CSRF, technical detail và verified local TLS handshake; chỉ thêm structural seams ném `NotImplementedError`, không tạo migration `0007` hoặc implementation.
+- Fresh evidence `run-m2-p7a-20260916091430` pin source/tooling `609cf70c72b3f08303c91b4a8c56bdec9f9237e3`, oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035`: exact 4/0/4/0/0, P6 4/4 + 18/18 hardening, mọi accepted regression GREEN, semantic/provenance/hash/tamper PASS. Implementation P7A vẫn khóa.
+
 ## 2026-09-16 — M2-P6 accepted; P7A Behavioral RED authorized
 
 - Independent review chấp thuận/đóng corrected P6 tại `76daa18d66b2b468cf08189b0ec666fcc1638ec4`, evidence `run-m2-p6-20260916084617`; source/tooling và oracle SHA giữ nguyên.

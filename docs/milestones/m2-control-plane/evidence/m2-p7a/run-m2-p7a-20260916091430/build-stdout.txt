@@ -1,0 +1,386 @@
+Building source distribution...
+running egg_info
+creating controlplane.egg-info
+writing controlplane.egg-info\PKG-INFO
+writing dependency_links to controlplane.egg-info\dependency_links.txt
+writing entry points to controlplane.egg-info\entry_points.txt
+writing requirements to controlplane.egg-info\requires.txt
+writing top-level names to controlplane.egg-info\top_level.txt
+writing manifest file 'controlplane.egg-info\SOURCES.txt'
+reading manifest file 'controlplane.egg-info\SOURCES.txt'
+writing manifest file 'controlplane.egg-info\SOURCES.txt'
+running sdist
+running egg_info
+writing controlplane.egg-info\PKG-INFO
+writing dependency_links to controlplane.egg-info\dependency_links.txt
+writing entry points to controlplane.egg-info\entry_points.txt
+writing requirements to controlplane.egg-info\requires.txt
+writing top-level names to controlplane.egg-info\top_level.txt
+reading manifest file 'controlplane.egg-info\SOURCES.txt'
+writing manifest file 'controlplane.egg-info\SOURCES.txt'
+running check
+creating controlplane-0.2.0
+creating controlplane-0.2.0\application\identity
+creating controlplane-0.2.0\controlplane.egg-info
+creating controlplane-0.2.0\domain
+creating controlplane-0.2.0\domain\identity
+creating controlplane-0.2.0\domain\interfaces
+creating controlplane-0.2.0\infrastructure
+creating controlplane-0.2.0\infrastructure\db
+creating controlplane-0.2.0\infrastructure\db\migrations
+creating controlplane-0.2.0\infrastructure\evidence
+creating controlplane-0.2.0\infrastructure\security
+copying files to controlplane-0.2.0...
+copying README.md -> controlplane-0.2.0
+copying __init__.py -> controlplane-0.2.0
+copying entrypoint.py -> controlplane-0.2.0
+copying pyproject.toml -> controlplane-0.2.0
+copying .\__init__.py -> controlplane-0.2.0\.
+copying .\entrypoint.py -> controlplane-0.2.0\.
+copying application\identity\__init__.py -> controlplane-0.2.0\application\identity
+copying application\identity\ports.py -> controlplane-0.2.0\application\identity
+copying controlplane.egg-info\PKG-INFO -> controlplane-0.2.0\controlplane.egg-info
+copying controlplane.egg-info\SOURCES.txt -> controlplane-0.2.0\controlplane.egg-info
+copying controlplane.egg-info\dependency_links.txt -> controlplane-0.2.0\controlplane.egg-info
+copying controlplane.egg-info\entry_points.txt -> controlplane-0.2.0\controlplane.egg-info
+copying controlplane.egg-info\requires.txt -> controlplane-0.2.0\controlplane.egg-info
+copying controlplane.egg-info\top_level.txt -> controlplane-0.2.0\controlplane.egg-info
+copying domain\__init__.py -> controlplane-0.2.0\domain
+copying domain\concurrency.py -> controlplane-0.2.0\domain
+copying domain\identity\__init__.py -> controlplane-0.2.0\domain\identity
+copying domain\identity\models.py -> controlplane-0.2.0\domain\identity
+copying domain\identity\ports.py -> controlplane-0.2.0\domain\identity
+copying domain\interfaces\__init__.py -> controlplane-0.2.0\domain\interfaces
+copying domain\interfaces\outbox.py -> controlplane-0.2.0\domain\interfaces
+copying domain\interfaces\repository.py -> controlplane-0.2.0\domain\interfaces
+copying domain\interfaces\statemachine.py -> controlplane-0.2.0\domain\interfaces
+copying domain\interfaces\uow.py -> controlplane-0.2.0\domain\interfaces
+copying domain\interfaces\vault.py -> controlplane-0.2.0\domain\interfaces
+copying infrastructure\__init__.py -> controlplane-0.2.0\infrastructure
+copying infrastructure\db\__init__.py -> controlplane-0.2.0\infrastructure\db
+copying infrastructure\db\migration_runner.py -> controlplane-0.2.0\infrastructure\db
+copying infrastructure\db\repositories.py -> controlplane-0.2.0\infrastructure\db
+copying infrastructure\db\safety.py -> controlplane-0.2.0\infrastructure\db
+copying infrastructure\db\uow.py -> controlplane-0.2.0\infrastructure\db
+copying infrastructure\db\migrations\0001_initial_controlplane.rollback.sql -> controlplane-0.2.0\infrastructure\db\migrations
+copying infrastructure\db\migrations\0001_initial_controlplane.sql -> controlplane-0.2.0\infrastructure\db\migrations
+copying infrastructure\db\migrations\0002_idempotency_and_receipts.rollback.sql -> controlplane-0.2.0\infrastructure\db\migrations
+copying infrastructure\db\migrations\0002_idempotency_and_receipts.sql -> controlplane-0.2.0\infrastructure\db\migrations
+copying infrastructure\db\migrations\0003_outbox_and_projections.rollback.sql -> controlplane-0.2.0\infrastructure\db\migrations
+copying infrastructure\db\migrations\0003_outbox_and_projections.sql -> controlplane-0.2.0\infrastructure\db\migrations
+copying infrastructure\db\migrations\0004_config_and_secrets.rollback.sql -> controlplane-0.2.0\infrastructure\db\migrations
+copying infrastructure\db\migrations\0004_config_and_secrets.sql -> controlplane-0.2.0\infrastructure\db\migrations
+copying infrastructure\db\migrations\0005_artifact_metadata.rollback.sql -> controlplane-0.2.0\infrastructure\db\migrations
+copying infrastructure\db\migrations\0005_artifact_metadata.sql -> controlplane-0.2.0\infrastructure\db\migrations
+copying infrastructure\db\migrations\0006_orchestration_shell.rollback.sql -> controlplane-0.2.0\infrastructure\db\migrations
+copying infrastructure\db\migrations\0006_orchestration_shell.sql -> controlplane-0.2.0\infrastructure\db\migrations
+copying infrastructure\evidence\__init__.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\ast_checker.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\evaluator.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\probe_p5b_hardening.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\probe_p6_implementation.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\profile_p1.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\profile_p2.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\profile_p3.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\profile_p4.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\profile_p5b.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\profile_p5b_red.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\profile_p6.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\profile_p6_correction.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\profile_p6_implementation.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\profile_p7a.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\synthesizer.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p1.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p2.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p3.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p4.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p5b.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p6.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p6_correction.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p7a.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\evidence\validator.py -> controlplane-0.2.0\infrastructure\evidence
+copying infrastructure\security\__init__.py -> controlplane-0.2.0\infrastructure\security
+copying infrastructure\security\secret_scanner.py -> controlplane-0.2.0\infrastructure\security
+copying controlplane.egg-info\SOURCES.txt -> controlplane-0.2.0\controlplane.egg-info
+Writing controlplane-0.2.0\setup.cfg
+Creating tar archive
+removing 'controlplane-0.2.0' (and everything under it)
+Building wheel from source distribution...
+running egg_info
+writing controlplane.egg-info\PKG-INFO
+writing dependency_links to controlplane.egg-info\dependency_links.txt
+writing entry points to controlplane.egg-info\entry_points.txt
+writing requirements to controlplane.egg-info\requires.txt
+writing top-level names to controlplane.egg-info\top_level.txt
+reading manifest file 'controlplane.egg-info\SOURCES.txt'
+writing manifest file 'controlplane.egg-info\SOURCES.txt'
+running bdist_wheel
+running build
+running build_py
+creating build\lib\controlplane
+copying .\entrypoint.py -> build\lib\controlplane
+copying .\__init__.py -> build\lib\controlplane
+creating build\lib\controlplane\domain
+copying domain\concurrency.py -> build\lib\controlplane\domain
+copying domain\__init__.py -> build\lib\controlplane\domain
+creating build\lib\controlplane\domain\interfaces
+copying domain\interfaces\outbox.py -> build\lib\controlplane\domain\interfaces
+copying domain\interfaces\repository.py -> build\lib\controlplane\domain\interfaces
+copying domain\interfaces\statemachine.py -> build\lib\controlplane\domain\interfaces
+copying domain\interfaces\uow.py -> build\lib\controlplane\domain\interfaces
+copying domain\interfaces\vault.py -> build\lib\controlplane\domain\interfaces
+copying domain\interfaces\__init__.py -> build\lib\controlplane\domain\interfaces
+creating build\lib\controlplane\domain\identity
+copying domain\identity\models.py -> build\lib\controlplane\domain\identity
+copying domain\identity\ports.py -> build\lib\controlplane\domain\identity
+copying domain\identity\__init__.py -> build\lib\controlplane\domain\identity
+creating build\lib\controlplane\application\identity
+copying application\identity\ports.py -> build\lib\controlplane\application\identity
+copying application\identity\__init__.py -> build\lib\controlplane\application\identity
+creating build\lib\controlplane\infrastructure
+copying infrastructure\__init__.py -> build\lib\controlplane\infrastructure
+creating build\lib\controlplane\infrastructure\db
+copying infrastructure\db\migration_runner.py -> build\lib\controlplane\infrastructure\db
+copying infrastructure\db\repositories.py -> build\lib\controlplane\infrastructure\db
+copying infrastructure\db\safety.py -> build\lib\controlplane\infrastructure\db
+copying infrastructure\db\uow.py -> build\lib\controlplane\infrastructure\db
+copying infrastructure\db\__init__.py -> build\lib\controlplane\infrastructure\db
+creating build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\ast_checker.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\evaluator.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\probe_p5b_hardening.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\probe_p6_implementation.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\profile_p1.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\profile_p2.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\profile_p3.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\profile_p4.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\profile_p5b.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\profile_p5b_red.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\profile_p6.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\profile_p6_correction.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\profile_p6_implementation.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\profile_p7a.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\synthesizer.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p1.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p2.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p3.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p4.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p5b.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p6.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p6_correction.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\synthesizer_p7a.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\validator.py -> build\lib\controlplane\infrastructure\evidence
+copying infrastructure\evidence\__init__.py -> build\lib\controlplane\infrastructure\evidence
+creating build\lib\controlplane\infrastructure\security
+copying infrastructure\security\secret_scanner.py -> build\lib\controlplane\infrastructure\security
+copying infrastructure\security\__init__.py -> build\lib\controlplane\infrastructure\security
+running egg_info
+writing controlplane.egg-info\PKG-INFO
+writing dependency_links to controlplane.egg-info\dependency_links.txt
+writing entry points to controlplane.egg-info\entry_points.txt
+writing requirements to controlplane.egg-info\requires.txt
+writing top-level names to controlplane.egg-info\top_level.txt
+reading manifest file 'controlplane.egg-info\SOURCES.txt'
+writing manifest file 'controlplane.egg-info\SOURCES.txt'
+C:\Users\Admin\AppData\Local\uv\cache\builds-v0\.tmpj3pUl9\Lib\site-packages\setuptools\command\build_py.py:212: _Warning: Package 'controlplane.infrastructure.db.migrations' is absent from the `packages` configuration.
+!!
+
+        ********************************************************************************
+        ############################
+        # Package would be ignored #
+        ############################
+        Python recognizes 'controlplane.infrastructure.db.migrations' as an importable package[^1],
+        but it is absent from setuptools' `packages` configuration.
+
+        This leads to an ambiguous overall configuration. If you want to distribute this
+        package, please make sure that 'controlplane.infrastructure.db.migrations' is explicitly added
+        to the `packages` configuration field.
+
+        Alternatively, you can also rely on setuptools' discovery methods
+        (for example by using `find_namespace_packages(...)`/`find_namespace:`
+        instead of `find_packages(...)`/`find:`).
+
+        You can read more about "package discovery" on setuptools documentation page:
+
+        - https://setuptools.pypa.io/en/latest/userguide/package_discovery.html
+
+        If you don't want 'controlplane.infrastructure.db.migrations' to be distributed and are
+        already explicitly excluding 'controlplane.infrastructure.db.migrations' via
+        `find_namespace_packages(...)/find_namespace` or `find_packages(...)/find`,
+        you can try to use `exclude_package_data`, or `include-package-data=False` in
+        combination with a more fine grained `package-data` configuration.
+
+        You can read more about "package data files" on setuptools documentation page:
+
+        - https://setuptools.pypa.io/en/latest/userguide/datafiles.html
+
+
+        [^1]: For Python, any directory (with suitable naming) can be imported,
+              even if it does not contain any `.py` files.
+              On the other hand, currently there is no concept of package data
+              directory, all directories are treated like packages.
+        ********************************************************************************
+
+!!
+  check.warn(importable)
+creating build\lib\controlplane\infrastructure\db\migrations
+copying infrastructure\db\migrations\0001_initial_controlplane.rollback.sql -> build\lib\controlplane\infrastructure\db\migrations
+copying infrastructure\db\migrations\0001_initial_controlplane.sql -> build\lib\controlplane\infrastructure\db\migrations
+copying infrastructure\db\migrations\0002_idempotency_and_receipts.rollback.sql -> build\lib\controlplane\infrastructure\db\migrations
+copying infrastructure\db\migrations\0002_idempotency_and_receipts.sql -> build\lib\controlplane\infrastructure\db\migrations
+copying infrastructure\db\migrations\0003_outbox_and_projections.rollback.sql -> build\lib\controlplane\infrastructure\db\migrations
+copying infrastructure\db\migrations\0003_outbox_and_projections.sql -> build\lib\controlplane\infrastructure\db\migrations
+copying infrastructure\db\migrations\0004_config_and_secrets.rollback.sql -> build\lib\controlplane\infrastructure\db\migrations
+copying infrastructure\db\migrations\0004_config_and_secrets.sql -> build\lib\controlplane\infrastructure\db\migrations
+copying infrastructure\db\migrations\0005_artifact_metadata.rollback.sql -> build\lib\controlplane\infrastructure\db\migrations
+copying infrastructure\db\migrations\0005_artifact_metadata.sql -> build\lib\controlplane\infrastructure\db\migrations
+copying infrastructure\db\migrations\0006_orchestration_shell.rollback.sql -> build\lib\controlplane\infrastructure\db\migrations
+copying infrastructure\db\migrations\0006_orchestration_shell.sql -> build\lib\controlplane\infrastructure\db\migrations
+installing to build\bdist.win-amd64\wheel
+running install
+running install_lib
+creating build\bdist.win-amd64\wheel
+creating build\bdist.win-amd64\wheel\controlplane
+creating build\bdist.win-amd64\wheel\controlplane\application
+creating build\bdist.win-amd64\wheel\controlplane\application\identity
+copying build\lib\controlplane\application\identity\ports.py -> build\bdist.win-amd64\wheel\.\controlplane\application\identity
+copying build\lib\controlplane\application\identity\__init__.py -> build\bdist.win-amd64\wheel\.\controlplane\application\identity
+creating build\bdist.win-amd64\wheel\controlplane\domain
+copying build\lib\controlplane\domain\concurrency.py -> build\bdist.win-amd64\wheel\.\controlplane\domain
+creating build\bdist.win-amd64\wheel\controlplane\domain\identity
+copying build\lib\controlplane\domain\identity\models.py -> build\bdist.win-amd64\wheel\.\controlplane\domain\identity
+copying build\lib\controlplane\domain\identity\ports.py -> build\bdist.win-amd64\wheel\.\controlplane\domain\identity
+copying build\lib\controlplane\domain\identity\__init__.py -> build\bdist.win-amd64\wheel\.\controlplane\domain\identity
+creating build\bdist.win-amd64\wheel\controlplane\domain\interfaces
+copying build\lib\controlplane\domain\interfaces\outbox.py -> build\bdist.win-amd64\wheel\.\controlplane\domain\interfaces
+copying build\lib\controlplane\domain\interfaces\repository.py -> build\bdist.win-amd64\wheel\.\controlplane\domain\interfaces
+copying build\lib\controlplane\domain\interfaces\statemachine.py -> build\bdist.win-amd64\wheel\.\controlplane\domain\interfaces
+copying build\lib\controlplane\domain\interfaces\uow.py -> build\bdist.win-amd64\wheel\.\controlplane\domain\interfaces
+copying build\lib\controlplane\domain\interfaces\vault.py -> build\bdist.win-amd64\wheel\.\controlplane\domain\interfaces
+copying build\lib\controlplane\domain\interfaces\__init__.py -> build\bdist.win-amd64\wheel\.\controlplane\domain\interfaces
+copying build\lib\controlplane\domain\__init__.py -> build\bdist.win-amd64\wheel\.\controlplane\domain
+copying build\lib\controlplane\entrypoint.py -> build\bdist.win-amd64\wheel\.\controlplane
+creating build\bdist.win-amd64\wheel\controlplane\infrastructure
+creating build\bdist.win-amd64\wheel\controlplane\infrastructure\db
+creating build\bdist.win-amd64\wheel\controlplane\infrastructure\db\migrations
+copying build\lib\controlplane\infrastructure\db\migrations\0001_initial_controlplane.rollback.sql -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db\migrations
+copying build\lib\controlplane\infrastructure\db\migrations\0001_initial_controlplane.sql -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db\migrations
+copying build\lib\controlplane\infrastructure\db\migrations\0002_idempotency_and_receipts.rollback.sql -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db\migrations
+copying build\lib\controlplane\infrastructure\db\migrations\0002_idempotency_and_receipts.sql -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db\migrations
+copying build\lib\controlplane\infrastructure\db\migrations\0003_outbox_and_projections.rollback.sql -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db\migrations
+copying build\lib\controlplane\infrastructure\db\migrations\0003_outbox_and_projections.sql -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db\migrations
+copying build\lib\controlplane\infrastructure\db\migrations\0004_config_and_secrets.rollback.sql -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db\migrations
+copying build\lib\controlplane\infrastructure\db\migrations\0004_config_and_secrets.sql -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db\migrations
+copying build\lib\controlplane\infrastructure\db\migrations\0005_artifact_metadata.rollback.sql -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db\migrations
+copying build\lib\controlplane\infrastructure\db\migrations\0005_artifact_metadata.sql -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db\migrations
+copying build\lib\controlplane\infrastructure\db\migrations\0006_orchestration_shell.rollback.sql -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db\migrations
+copying build\lib\controlplane\infrastructure\db\migrations\0006_orchestration_shell.sql -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db\migrations
+copying build\lib\controlplane\infrastructure\db\migration_runner.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db
+copying build\lib\controlplane\infrastructure\db\repositories.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db
+copying build\lib\controlplane\infrastructure\db\safety.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db
+copying build\lib\controlplane\infrastructure\db\uow.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db
+copying build\lib\controlplane\infrastructure\db\__init__.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\db
+creating build\bdist.win-amd64\wheel\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\ast_checker.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\evaluator.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\probe_p5b_hardening.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\probe_p6_implementation.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\profile_p1.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\profile_p2.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\profile_p3.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\profile_p4.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\profile_p5b.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\profile_p5b_red.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\profile_p6.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\profile_p6_correction.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\profile_p6_implementation.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\profile_p7a.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\synthesizer.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\synthesizer_p1.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\synthesizer_p2.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\synthesizer_p3.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\synthesizer_p4.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\synthesizer_p5b.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\synthesizer_p6.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\synthesizer_p6_correction.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\synthesizer_p7a.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\validator.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+copying build\lib\controlplane\infrastructure\evidence\__init__.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\evidence
+creating build\bdist.win-amd64\wheel\controlplane\infrastructure\security
+copying build\lib\controlplane\infrastructure\security\secret_scanner.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\security
+copying build\lib\controlplane\infrastructure\security\__init__.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure\security
+copying build\lib\controlplane\infrastructure\__init__.py -> build\bdist.win-amd64\wheel\.\controlplane\infrastructure
+copying build\lib\controlplane\__init__.py -> build\bdist.win-amd64\wheel\.\controlplane
+running install_egg_info
+Copying controlplane.egg-info to build\bdist.win-amd64\wheel\.\controlplane-0.2.0-py3.13.egg-info
+running install_scripts
+creating build\bdist.win-amd64\wheel\controlplane-0.2.0.dist-info\WHEEL
+creating 'D:\AI Auto Video Creator\.local-tools\temp\p7a-build\.tmp-n3xs11jl\controlplane-0.2.0-py3-none-any.whl' and adding 'build\bdist.win-amd64\wheel' to it
+adding 'controlplane/__init__.py'
+adding 'controlplane/entrypoint.py'
+adding 'controlplane/application/identity/__init__.py'
+adding 'controlplane/application/identity/ports.py'
+adding 'controlplane/domain/__init__.py'
+adding 'controlplane/domain/concurrency.py'
+adding 'controlplane/domain/identity/__init__.py'
+adding 'controlplane/domain/identity/models.py'
+adding 'controlplane/domain/identity/ports.py'
+adding 'controlplane/domain/interfaces/__init__.py'
+adding 'controlplane/domain/interfaces/outbox.py'
+adding 'controlplane/domain/interfaces/repository.py'
+adding 'controlplane/domain/interfaces/statemachine.py'
+adding 'controlplane/domain/interfaces/uow.py'
+adding 'controlplane/domain/interfaces/vault.py'
+adding 'controlplane/infrastructure/__init__.py'
+adding 'controlplane/infrastructure/db/__init__.py'
+adding 'controlplane/infrastructure/db/migration_runner.py'
+adding 'controlplane/infrastructure/db/repositories.py'
+adding 'controlplane/infrastructure/db/safety.py'
+adding 'controlplane/infrastructure/db/uow.py'
+adding 'controlplane/infrastructure/db/migrations/0001_initial_controlplane.rollback.sql'
+adding 'controlplane/infrastructure/db/migrations/0001_initial_controlplane.sql'
+adding 'controlplane/infrastructure/db/migrations/0002_idempotency_and_receipts.rollback.sql'
+adding 'controlplane/infrastructure/db/migrations/0002_idempotency_and_receipts.sql'
+adding 'controlplane/infrastructure/db/migrations/0003_outbox_and_projections.rollback.sql'
+adding 'controlplane/infrastructure/db/migrations/0003_outbox_and_projections.sql'
+adding 'controlplane/infrastructure/db/migrations/0004_config_and_secrets.rollback.sql'
+adding 'controlplane/infrastructure/db/migrations/0004_config_and_secrets.sql'
+adding 'controlplane/infrastructure/db/migrations/0005_artifact_metadata.rollback.sql'
+adding 'controlplane/infrastructure/db/migrations/0005_artifact_metadata.sql'
+adding 'controlplane/infrastructure/db/migrations/0006_orchestration_shell.rollback.sql'
+adding 'controlplane/infrastructure/db/migrations/0006_orchestration_shell.sql'
+adding 'controlplane/infrastructure/evidence/__init__.py'
+adding 'controlplane/infrastructure/evidence/ast_checker.py'
+adding 'controlplane/infrastructure/evidence/evaluator.py'
+adding 'controlplane/infrastructure/evidence/probe_p5b_hardening.py'
+adding 'controlplane/infrastructure/evidence/probe_p6_implementation.py'
+adding 'controlplane/infrastructure/evidence/profile_p1.py'
+adding 'controlplane/infrastructure/evidence/profile_p2.py'
+adding 'controlplane/infrastructure/evidence/profile_p3.py'
+adding 'controlplane/infrastructure/evidence/profile_p4.py'
+adding 'controlplane/infrastructure/evidence/profile_p5b.py'
+adding 'controlplane/infrastructure/evidence/profile_p5b_red.py'
+adding 'controlplane/infrastructure/evidence/profile_p6.py'
+adding 'controlplane/infrastructure/evidence/profile_p6_correction.py'
+adding 'controlplane/infrastructure/evidence/profile_p6_implementation.py'
+adding 'controlplane/infrastructure/evidence/profile_p7a.py'
+adding 'controlplane/infrastructure/evidence/synthesizer.py'
+adding 'controlplane/infrastructure/evidence/synthesizer_p1.py'
+adding 'controlplane/infrastructure/evidence/synthesizer_p2.py'
+adding 'controlplane/infrastructure/evidence/synthesizer_p3.py'
+adding 'controlplane/infrastructure/evidence/synthesizer_p4.py'
+adding 'controlplane/infrastructure/evidence/synthesizer_p5b.py'
+adding 'controlplane/infrastructure/evidence/synthesizer_p6.py'
+adding 'controlplane/infrastructure/evidence/synthesizer_p6_correction.py'
+adding 'controlplane/infrastructure/evidence/synthesizer_p7a.py'
+adding 'controlplane/infrastructure/evidence/validator.py'
+adding 'controlplane/infrastructure/security/__init__.py'
+adding 'controlplane/infrastructure/security/secret_scanner.py'
+adding 'controlplane-0.2.0.dist-info/METADATA'
+adding 'controlplane-0.2.0.dist-info/WHEEL'
+adding 'controlplane-0.2.0.dist-info/entry_points.txt'
+adding 'controlplane-0.2.0.dist-info/top_level.txt'
+adding 'controlplane-0.2.0.dist-info/RECORD'
+removing build\bdist.win-amd64\wheel
+Successfully built .local-tools\temp\p7a-build\controlplane-0.2.0.tar.gz
+Successfully built .local-tools\temp\p7a-build\controlplane-0.2.0-py3-none-any.whl

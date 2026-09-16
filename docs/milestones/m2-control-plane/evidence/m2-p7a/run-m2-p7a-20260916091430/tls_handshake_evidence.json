@@ -1,0 +1,7 @@
+{
+  "capability": "NOT_IMPLEMENTED",
+  "phase": "RED",
+  "test_identity": "test_tst_m2_p7a_004_tls_handshake_verification",
+  "failure_marker": "P7A-004 local TLS listener/handshake unimplemented",
+  "certificate_provisioning": "NOT_TESTED"
+}

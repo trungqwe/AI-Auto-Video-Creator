@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="4" time="0.332" timestamp="2026-09-16T16:14:31.240081+07:00" hostname="Admin"><testcase classname="tests.m2.test_p7a_control_api_security" name="test_tst_m2_p7a_001_host_header_spoofing_rejected" time="0.001"><failure message="NotImplementedError: P7A-001 Host validation unimplemented">tests\m2\test_p7a_control_api_security.py:34: in test_tst_m2_p7a_001_host_header_spoofing_rejected
+    enforce_host(request)
+src\controlplane\api\security.py:10: in enforce_host
+    raise NotImplementedError("P7A-001 Host validation unimplemented")
+E   NotImplementedError: P7A-001 Host validation unimplemented</failure></testcase><testcase classname="tests.m2.test_p7a_control_api_security" name="test_tst_m2_p7a_002_csrf_mutation_without_token_rejected" time="0.000"><failure message="NotImplementedError: P7A-002 CSRF protection unimplemented">tests\m2\test_p7a_control_api_security.py:51: in test_tst_m2_p7a_002_csrf_mutation_without_token_rejected
+    enforce_csrf(request)
+src\controlplane\api\security.py:15: in enforce_csrf
+    raise NotImplementedError("P7A-002 CSRF protection unimplemented")
+E   NotImplementedError: P7A-002 CSRF protection unimplemented</failure></testcase><testcase classname="tests.m2.test_p7a_control_api_security" name="test_tst_m2_p7a_003_safe_technical_detail_ref_retrieval" time="0.202"><failure message="NotImplementedError: P7A-003 technical-detail safety/storage unimplemented">tests\m2\test_p7a_control_api_security.py:80: in test_tst_m2_p7a_003_safe_technical_detail_ref_retrieval
+    problem = record_internal_error(
+src\controlplane\api\technical_details.py:13: in record_internal_error
+    raise NotImplementedError("P7A-003 technical-detail safety/storage unimplemented")
+E   NotImplementedError: P7A-003 technical-detail safety/storage unimplemented</failure></testcase><testcase classname="tests.m2.test_p7a_control_api_security" name="test_tst_m2_p7a_004_tls_handshake_verification" time="0.000"><failure message="NotImplementedError: P7A-004 local TLS listener/handshake unimplemented">tests\m2\test_p7a_control_api_security.py:109: in test_tst_m2_p7a_004_tls_handshake_verification
+    with start_loopback_tls_server() as endpoint:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\controlplane\api\tls.py:18: in start_loopback_tls_server
+    raise NotImplementedError("P7A-004 local TLS listener/handshake unimplemented")
+E   NotImplementedError: P7A-004 local TLS listener/handshake unimplemented</failure></testcase></testsuite></testsuites>

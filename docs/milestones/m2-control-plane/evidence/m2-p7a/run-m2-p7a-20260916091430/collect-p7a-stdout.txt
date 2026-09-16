@@ -1,0 +1,6 @@
+tests/m2/test_p7a_control_api_security.py::test_tst_m2_p7a_001_host_header_spoofing_rejected
+tests/m2/test_p7a_control_api_security.py::test_tst_m2_p7a_002_csrf_mutation_without_token_rejected
+tests/m2/test_p7a_control_api_security.py::test_tst_m2_p7a_003_safe_technical_detail_ref_retrieval
+tests/m2/test_p7a_control_api_security.py::test_tst_m2_p7a_004_tls_handshake_verification
+
+4 tests collected in 0.07s

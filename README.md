@@ -1,6 +1,6 @@
 # AI Auto Video Creator
 
-> Cập nhật hiện hành: M2-P1..P6 là `ACCEPTED / CLOSED` sau independent review P6 tại `76daa18`; chỉ M2-P7A Behavioral RED được ủy quyền. P7A implementation, P7B/P8/P9, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+> Cập nhật hiện hành: M2-P1..P6 là `ACCEPTED / CLOSED`; M2-P7A Behavioral RED tại `run-m2-p7a-20260916091430` sẵn sàng independent review, chưa accepted. P7A implementation, P7B/P8/P9, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 
 Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều góc kể tiếng Anh, dựng video ngắn 61–70 giây và đồng bộ đầu ra lên cloud. Dự án được phát triển theo từng milestone có evidence gate; không coi việc chương trình chạy một lần là bằng chứng kiến trúc đã đạt.
 
@@ -13,10 +13,10 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G04 Drive/OAuth | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G07 Compatibility | `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` |
-| M2 Control Plane | `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_AUTHORIZED; M2-P7A_IMPLEMENTATION_LOCKED` |
+| M2 Control Plane | `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_READY_FOR_REVIEW; M2-P7A_IMPLEMENTATION_LOCKED` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
-Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P6 đã được chấp thuận/đóng; P6 dùng corrected evidence `run-m2-p6-20260916084617`. Giai đoạn hiện tại chỉ được viết P7A Behavioral RED và chuẩn bị independent review; không được triển khai P7A hoặc các package sau. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
+Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P6 đã được chấp thuận/đóng; P6 dùng corrected evidence `run-m2-p6-20260916084617`. P7A Behavioral RED đã có evidence mới và đang chờ independent review; không được triển khai P7A hoặc các package sau. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ## Bắt đầu một phiên làm việc
 

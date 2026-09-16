@@ -1,0 +1,39 @@
+{
+  "verdict": "PASS",
+  "count": 18,
+  "checks": {
+    "migration_forward": true,
+    "migration_rollback_preserves_0001_0005": true,
+    "cross_workspace_binding_rejected": true,
+    "allocation_fault_no_orphan": true,
+    "capacity_last_slot_no_orphan": true,
+    "capacity_cross_batch_retry_rejected": true,
+    "variant_race_one_conflict": true,
+    "stale_variant_zero_reservation": true,
+    "variant_exact_retry_and_changed_expected_rejected": true,
+    "registry_concurrent_first_use": true,
+    "registry_fresh_workspace_initialized": true,
+    "registry_failed_first_use_atomic": true,
+    "second_completion_rejected": true,
+    "artifact_hash_mismatch_rejected": true,
+    "reservation_job_mismatch_rejected": true,
+    "completion_fault_zero_mutation": true,
+    "duplicate_completion_one_identity": true,
+    "different_completion_input_forbidden_unchanged": true
+  },
+  "migration_tracker_before_rollback": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "migration_tracker_after_rollback": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ]
+}
