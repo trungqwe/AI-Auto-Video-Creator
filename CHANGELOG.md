@@ -1,5 +1,7 @@
 # Changelog
 
+- Triển khai P5B artifact metadata persistence trên PostgreSQL: migration `0005` forward/rollback, immutable ArtifactVersion, P4-backed ArtifactLocation CAS và immutable CleanupAuthorization kết thúc ở `CLEANUP_AUTHORIZED`; không delete bytes và không `CleanupCompleted`. Candidate chờ independent review.
+
 - Corrective Behavioral RED M2-P5B sau independent audit: chuyển structural seams về đúng `storage_meta`, thêm test-only persisted ArtifactVersion prerequisite chỉ khi schema `0005` tồn tại, và nâng evidence lên generic fail-closed validator với hash recomputation/tamper-negative proof. Không tạo `0005` và không implement P5B.
 
 - Khóa Behavioral RED M2-P5B trên source `bd225c8cf1b3416f06dd96aea483db9cba757a62`: exact five oracle fail đúng các capability ArtifactVersion, P4-backed ArtifactLocation, CleanupAuthorization, production migration `0005` còn thiếu và scoped CAS. Regressions P5A/P4/P3/P2/P1/P0/architecture/M1 giữ GREEN 5/9/11/11/11/33/6/93; không triển khai P5B và không tạo `0005`.
