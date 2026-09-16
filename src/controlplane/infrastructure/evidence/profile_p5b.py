@@ -21,7 +21,7 @@ from controlplane.infrastructure.evidence.validator import (
 )
 
 ORACLE_PATH = "tests/m2/test_p5b_artifact_metadata.py"
-ORACLE_SHA = "2d26b5c015323ddfde6b9aaf5d802354a7e20aa1a96a93793aae86436589311d"
+ORACLE_SHA = "be87c943b9a4a129156b452df70bf55e58b95ea8c418a8822a82100cd9c77030"
 NAMES = (
     "test_tst_m2_p5b_001_artifact_version_registration_and_hash_integrity",
     "test_tst_m2_p5b_002_location_state_lifecycle_and_verification",
@@ -44,6 +44,7 @@ STAGES = {
     "collect-p5b",
     *{x.removesuffix(".xml") for x in SUITES},
     "runtime-static-capture",
+    "hardening-probes",
     "orphan-check",
     "secret-scan",
     "evidence-synthesis",
@@ -88,6 +89,9 @@ class M2P5BSemanticProfile(PackageSemanticProfile):
         runtime = json.loads(
             (directory / "runtime-and-static.json").read_text(encoding="utf-8")
         )
+        probes = json.loads((directory / "hardening-probes.json").read_text(encoding="utf-8"))
+        if probes.get("verdict") != "PASS" or not all(probes.get("checks", {}).values()):
+            raise SemanticEvaluationError("hardening probes failed")
         required = {
             "python": "3.13.15",
             "psycopg": "3.3.5",
@@ -99,6 +103,9 @@ class M2P5BSemanticProfile(PackageSemanticProfile):
             "p5a_source_and_oracle_unchanged": True,
             "historical_corrected_red_preserved": True,
             "migration_0005_present": True,
+            "application_storage_meta_sql_statements": 0,
+            "infrastructure_storage_meta_sql_present": True,
+            "adapter_uses_caller_owned_connection": True,
         }
         if any(runtime.get(k) != v for k, v in required.items()) or any(
             runtime.get(k) != 0

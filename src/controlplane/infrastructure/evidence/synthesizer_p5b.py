@@ -108,6 +108,7 @@ def main():
 
     domain = ROOT / "src/controlplane/domain/storage_meta"
     app = ROOT / "src/controlplane/application/storage_meta"
+    adapter = ROOT / "src/controlplane/infrastructure/db/storage_meta/__init__.py"
     di = [x for p in domain.rglob("*.py") for x in imports(p)]
     ai = [x for p in app.rglob("*.py") for x in imports(p)]
     with psycopg.connect(os.environ["M2_TEST_PG_DSN"], autocommit=True) as c:
@@ -181,6 +182,13 @@ def main():
                 "0005_artifact_metadata.rollback.sql",
             )
         ),
+        "application_storage_meta_sql_statements": sum(
+            token in p.read_text(encoding="utf-8").upper()
+            for p in app.rglob("*.py")
+            for token in ("SELECT ", "INSERT ", "UPDATE ", "DELETE ")
+        ),
+        "infrastructure_storage_meta_sql_present": "SELECT " in adapter.read_text(encoding="utf-8").upper(),
+        "adapter_uses_caller_owned_connection": "self._connection = connection" in adapter.read_text(encoding="utf-8"),
         "domain_to_application_imports": sum(
             x.startswith("controlplane.application") for x in di
         ),
@@ -216,6 +224,9 @@ def main():
         and p5a_ok
         and red_ok
         and runtime["oracle_sha256"] == ORACLE_SHA
+        and runtime["application_storage_meta_sql_statements"] == 0
+        and runtime["infrastructure_storage_meta_sql_present"]
+        and runtime["adapter_uses_caller_owned_connection"]
     )
     write(out / "runtime-and-static.json", json.dumps(runtime, indent=2) + "\n")
     record("runtime-static-capture", ["runtime-and-static.json"])
@@ -247,7 +258,7 @@ def main():
     results = json.loads((out / "results.json").read_text(encoding="utf-8"))
     write(
         out / "observations.md",
-        "# M2-P5B implementation closure\n\nExact five GREEN. Migration `0005` forward/rollback, workspace CAS and cleanup authorization passed. Boundary stops at `CLEANUP_AUTHORIZED`; no `DELETED`, delete side effect or `CleanupCompleted`.\n",
+        "# M2-P5B corrected implementation closure\n\nExact five GREEN. Application SQL is zero; PostgreSQL persistence is in the caller-owned adapter. Exact evidence binding, credential boundaries, immutable cleanup authorization and composite DB binding passed real-PostgreSQL hardening probes. Boundary stops at `CLEANUP_AUTHORIZED`; no `DELETED`, delete side effect or `CleanupCompleted`.\n",
     )
     write(
         out / "status.md",
@@ -315,6 +326,7 @@ def main():
                 "status": "PASS",
                 "evidence_files": [
                     "runtime-and-static.json",
+                    "hardening-probes.json",
                     "secret-scan.json",
                     "orphan-check.txt",
                 ],
