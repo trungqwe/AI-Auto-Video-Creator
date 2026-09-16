@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_ACCEPTED_CLOSED; M2-P4_ACCEPTED_CLOSED; M2-P5A_IMPLEMENTATION_READY_FOR_REVIEW; M2-P5B_PLAN_ACCEPTED_RED_LOCKED`.
+**Trạng thái:** `M2-P1..P5A_ACCEPTED_CLOSED; M2-P5B_BEHAVIORAL_RED_READY_FOR_REVIEW; M2-P5B_IMPLEMENTATION_LOCKED`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** P1..P4 là `ACCEPTED / CLOSED`; P5A corrected candidate ở `IMPLEMENTATION_READY_FOR_REVIEW`, pin source `413070c074997d6f02c2d7933c64d0d17c9b9704` và [closure mới](./evidence/m2-p5a/run-m2-p5a-20260915200040/status.md). Chưa accepted. P5B plan đã accept nhưng RED/implementation vẫn khóa tới khi P5A/`0004` accepted. P6+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** P1..P5A là `ACCEPTED / CLOSED`. P5B Behavioral RED đã khóa trên source `bd225c8cf1b3416f06dd96aea483db9cba757a62`; implementation vẫn chưa được phép cho tới independent review/user checkpoint. P6+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -412,7 +412,7 @@ Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Khôn
 
 ### M2-P5A: Module J — Config Revision & Secret-Boundary Foundation
 
-**Trạng thái:** `M2-P5A_IMPLEMENTATION_READY_FOR_REVIEW`. Corrected candidate theo authorization hẹp của người dùng: test-wiring checkpoint riêng, correction RED trước ba application fixes, targeted GREEN và frozen closure mới trên immutable source. Đây chưa phải acceptance và không mở P5B+.
+**Trạng thái:** `M2-P5A_ACCEPTED_CLOSED`. Corrected closure đã được independent review chấp nhận; checkpoint này mở Behavioral RED P5B nhưng không tự mở implementation P5B hay P6+.
 
 **Traceability có thẩm quyền:** `CT-CFG-001` (revision bất biến, scope/effective rule/change reason), `CT-CFG-002` chỉ ở mức trả ref/fingerprint/provenance không chứa secret, `CT-SEC-001`, `CT-SEC-002` chỉ cho metadata handle/boundary, `CT-SEC-003`, `CT-SEC-004`, `CT-STATE-013`, `CT-CMN-005/006/008/010/013`, `CT-EVT-001..005`, `ADR-0009` và UoW/MigrationRunner P1 đã accept. Các mã cũ `CONFIG_REVISION_IMMUTABLE` không có trong danh mục `CT-CMN-010`; future implementation dùng lỗi chuẩn có thẩm quyền (`FORBIDDEN_TRANSITION`, `REVISION_CONFLICT`, `VALIDATION_ERROR`, `POLICY_VIOLATION`) cho đến khi contract bổ sung mã riêng.
 
@@ -442,7 +442,7 @@ Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Khôn
 
 ### M2-P5B: Module I — Artifact Metadata & Cleanup-Authorization Skeleton
 
-**Trạng thái/gate:** `M2-P5B_PLAN_ACCEPTED_RED_LOCKED`. P5B plan đã được accept, nhưng sequential `MigrationRunner` bắt buộc `0004 → 0005`; do đó **P5B RED và implementation chờ checkpoint source P5A/`0004` đã được accept**. Không làm yếu gap detection, không sửa runner.
+**Trạng thái/gate:** `M2-P5B_BEHAVIORAL_RED_READY_FOR_REVIEW`; `M2-P5B_IMPLEMENTATION_LOCKED`. Exact five Behavioral RED đã chạy sau P5A/`0004` accepted, không làm yếu gap detection và không sửa runner. Independent review/user checkpoint là điều kiện bắt buộc trước implementation.
 
 **Traceability có thẩm quyền:** `CT-STO-001/002/007/008`, `CT-STO-009` chỉ cho epoch/reference authorization, `CT-STATE-012`, `CT-CMN-005/006/009/010/013`, `CT-EVT-001..005`, `ADR-0004`, `ADR-0006`, `ADR-0010`, và ArtifactLocationState P4 đã closed. `INVALID_ARTIFACT_HASH`/`CLEANUP_NOT_ELIGIBLE` không phải mã `CT-CMN-010`; dùng `VALIDATION_ERROR`, `FORBIDDEN_TRANSITION`, `POLICY_VIOLATION` hoặc `REVISION_CONFLICT` đến khi contract đổi.
 
