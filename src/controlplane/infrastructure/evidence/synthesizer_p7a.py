@@ -148,7 +148,7 @@ def main() -> None:
         "migration_0007_absent": 7 not in versions, "migrations_0001_0006_pass": versions == [1, 2, 3, 4, 5, 6],
         "migration_runner_unchanged": _git("diff", "--quiet", "8120bac96cc5f5d223cb8f0c64daa904699c04c9", "HEAD", "--", "src/controlplane/infrastructure/db/migration_runner.py").returncode == 0,
         "p6_p5b_accepted_source_unchanged": _git("diff", "--quiet", "8120bac96cc5f5d223cb8f0c64daa904699c04c9", "HEAD", "--", *accepted_paths).returncode == 0,
-        "historical_evidence_preserved": _git("diff", "--quiet", "76daa18d66b2b468cf08189b0ec666fcc1638ec4c", "HEAD", "--", "docs/milestones/m2-control-plane/evidence/m2-p6", "docs/milestones/m2-control-plane/evidence/m2-p5b").returncode == 0,
+        "historical_evidence_preserved": _git("diff", "--quiet", "76daa18d66b2b468cf08189b0ec666fcc1638ec4", "HEAD", "--", "docs/milestones/m2-control-plane/evidence/m2-p6", "docs/milestones/m2-control-plane/evidence/m2-p5b").returncode == 0,
         "application_to_infrastructure_imports": sum(name.startswith("controlplane.infrastructure") for name in app_imports),
         "domain_to_application_imports": sum(name.startswith("controlplane.application") for name in domain_imports),
         "p6_oracle_sha256": hashlib.sha256((ROOT / "tests/m2/test_p6_orchestration_shell.py").read_bytes()).hexdigest(),
