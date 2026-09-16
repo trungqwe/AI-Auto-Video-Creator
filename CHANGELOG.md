@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-16 — M2-P7A RED accepted; implementation authority design locked
+
+- Independent review chấp nhận exact-four P7A Behavioral RED tại `7de529b80f2e058a2ae07d4b01e148707c39686e`; accepted oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035` và evidence `run-m2-p7a-20260916091430` giữ nguyên.
+- Khóa docs-only future scope, application port/PostgreSQL adapter, `0007` schema/session token binding, actual FastAPI/Uvicorn middleware/TLS composition và 28 independent GREEN hardening keys. P7A implementation vẫn `LOCKED`; P7B/P8/P9, M3 và Phân hệ A chưa được ủy quyền.
+
 ## 2026-09-16 — M2-P7A Behavioral RED ready for independent review
 
 - Khóa bốn oracle P7A độc lập cho Host spoofing, CSRF, technical detail và verified local TLS handshake; chỉ thêm structural seams ném `NotImplementedError`, không tạo migration `0007` hoặc implementation.

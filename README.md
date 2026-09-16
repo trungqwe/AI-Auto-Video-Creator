@@ -1,6 +1,6 @@
 # AI Auto Video Creator
 
-> Cập nhật hiện hành: M2-P1..P6 là `ACCEPTED / CLOSED`; M2-P7A Behavioral RED tại `run-m2-p7a-20260916091430` sẵn sàng independent review, chưa accepted. P7A implementation, P7B/P8/P9, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+> Cập nhật hiện hành: M2-P1..P6 là `ACCEPTED / CLOSED`; M2-P7A Behavioral RED tại `run-m2-p7a-20260916091430` đã được independent review `ACCEPTED`. P7A implementation mới `READY_FOR_AUTHORIZATION` và vẫn `LOCKED`; P7B/P8/P9, M3 và Phân hệ A `NOT AUTHORIZED`.
 
 Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều góc kể tiếng Anh, dựng video ngắn 61–70 giây và đồng bộ đầu ra lên cloud. Dự án được phát triển theo từng milestone có evidence gate; không coi việc chương trình chạy một lần là bằng chứng kiến trúc đã đạt.
 
@@ -13,10 +13,10 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G04 Drive/OAuth | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G07 Compatibility | `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` |
-| M2 Control Plane | `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_READY_FOR_REVIEW; M2-P7A_IMPLEMENTATION_LOCKED` |
+| M2 Control Plane | `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_ACCEPTED; M2-P7A_IMPLEMENTATION_READY_FOR_AUTHORIZATION; M2-P7A_IMPLEMENTATION_LOCKED` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
-Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P6 đã được chấp thuận/đóng; P6 dùng corrected evidence `run-m2-p6-20260916084617`. P7A Behavioral RED đã có evidence mới và đang chờ independent review; không được triển khai P7A hoặc các package sau. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
+Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P6 đã được chấp thuận/đóng; P6 dùng corrected evidence `run-m2-p6-20260916084617`. P7A Behavioral RED đã được independent review chấp thuận, nhưng implementation P7A vẫn cần user authorization riêng. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ## Bắt đầu một phiên làm việc
 
@@ -25,8 +25,8 @@ Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày
 1. [HANDOFF.md](./HANDOFF.md) — trạng thái ngắn của phiên gần nhất.
 2. [Checklist trước code](./docs/12-pre-code-checklist.md) — quyền và gate hiện hành.
 3. [Roadmap](./docs/11-roadmap.md) — milestone và dependency.
-4. [M1 implementation plan](./docs/milestones/m1-proof/implementation-plan.md) — work package đang được phép thực hiện.
-5. [M1-R1 version lock](./docs/milestones/m1-proof/version-lock.md) — phiên bản bắt buộc.
+4. [M2 implementation plan](./docs/milestones/m2-control-plane/implementation-plan.md) — package/gate đang được phép thực hiện.
+5. [M2 toolchain lock](./docs/milestones/m2-control-plane/toolchain-lock.md) — phiên bản bắt buộc.
 
 Chỉ đọc sâu contracts/ADR được work package hiện tại trích dẫn; không remap toàn bộ dự án nếu `HANDOFF` và tài liệu nguồn sự thật còn nhất quán.
 

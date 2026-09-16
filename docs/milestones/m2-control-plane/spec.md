@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_READY_FOR_REVIEW; M2-P7A_IMPLEMENTATION_LOCKED`.
+**Trạng thái:** `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_ACCEPTED; M2-P7A_IMPLEMENTATION_READY_FOR_AUTHORIZATION; M2-P7A_IMPLEMENTATION_LOCKED`.
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** P1..P6 là `ACCEPTED / CLOSED`. Exact-four P7A Behavioral RED tại `run-m2-p7a-20260916091430` chờ independent review; P7A implementation, P7B/P8/P9, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc:** P1..P6 là `ACCEPTED / CLOSED`. Independent review tại `7de529b80f2e058a2ae07d4b01e148707c39686e` đã chấp nhận exact-four P7A Behavioral RED tại `run-m2-p7a-20260916091430`; P7A implementation vẫn `LOCKED` cho tới user authorization riêng. P7B/P8/P9, M3 và Phân hệ A `NOT AUTHORIZED`.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
@@ -300,6 +300,8 @@ P5B phải hỗ trợ `VERIFIED → MISSING` khi verify sau phát hiện mất; 
    - Response lỗi API chỉ trả về `technical_detail_ref`. Endpoint `/v1/errors/{detail_ref}` yêu cầu session hợp lệ cùng workspace mới được truy xuất.
 6. **Idempotency Trên Mọi Mutation**:
    - Bắt buộc header `Idempotency-Key` cho cả `POST /v1/batches`, `PUT /v1/configs/{scope}` và mọi thao tác thay đổi trạng thái.
+
+**P7A design lock sau RED acceptance:** [implementation plan P7A](./implementation-plan.md#m2-p7a-module-h--control-api-core-local-https--security-boundaries) là authority cho exact future file scope, application ports/PostgreSQL adapters, migration `0007` (kể cả `cp_auth_sessions.token_hash` và technical-detail access audit), `create_app` middleware order, Host/Origin/session/CSRF policy, actual Uvicorn+FastAPI TLS proof và 28 hardening keys. API facade không sở hữu SQL; adapter dùng caller-owned P1 UoW connection. `api/security.py`, `api/technical_details.py`, `api/tls.py` giữ import/call shape của accepted oracle byte-exact. Không tạo migration, code production hoặc GREEN claim trong checkpoint tài liệu này.
 
 ---
 

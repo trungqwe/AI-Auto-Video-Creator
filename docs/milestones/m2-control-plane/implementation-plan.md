@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_READY_FOR_REVIEW; M2-P7A_IMPLEMENTATION_LOCKED`.
+**Trạng thái:** `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_ACCEPTED; M2-P7A_IMPLEMENTATION_READY_FOR_AUTHORIZATION; M2-P7A_IMPLEMENTATION_LOCKED`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** P1..P6 là `ACCEPTED / CLOSED`. P7A Behavioral RED tại source/tooling `609cf70c72b3f08303c91b4a8c56bdec9f9237e3` và run `run-m2-p7a-20260916091430` sẵn sàng independent review, chưa accepted. Implementation P7A, P7B/P8/P9, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** P1..P6 là `ACCEPTED / CLOSED`. Independent review tại `7de529b80f2e058a2ae07d4b01e148707c39686e` đã chấp nhận P7A Behavioral RED, pin source/tooling `609cf70c72b3f08303c91b4a8c56bdec9f9237e3`, run `run-m2-p7a-20260916091430` và oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035`. Checkpoint này chỉ khóa authority/design; implementation P7A, P7B/P8/P9, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -511,7 +511,7 @@ Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Khôn
 
 ### M2-P7A: Module H — Control API Core, Local HTTPS & Security Boundaries
 
-**Trạng thái/gate hiện hành:** `M2-P7A_BEHAVIORAL_RED_READY_FOR_REVIEW; M2-P7A_IMPLEMENTATION_LOCKED`. Bốn testcase dưới đây là oracle RED SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035`; run `run-m2-p7a-20260916091430` thu đúng 4 và fail 4 capability seam độc lập, không có pass/error/skip. Migration `0007`, API behavior và HTTPS listener chỉ thuộc implementation sau independent acceptance riêng.
+**Trạng thái/gate hiện hành:** `M2-P7A_BEHAVIORAL_RED_ACCEPTED; M2-P7A_IMPLEMENTATION_READY_FOR_AUTHORIZATION; M2-P7A_IMPLEMENTATION_LOCKED`. Bốn testcase dưới đây là oracle RED byte-exact SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035`; run `run-m2-p7a-20260916091430` thu đúng 4 và fail 4 capability seam độc lập, không có pass/error/skip. Chưa có quyền viết implementation/migration `0007` cho tới user checkpoint riêng.
 
 - **Requirement / CT / INV IDs**: `CT-API-001..007`, `CT-API-010`, `ADR-0007`, `ADR-0009`, `ADR-0010`.
 - **Dependencies**: M2-P6.
@@ -532,28 +532,86 @@ Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Khôn
   5. Host & Origin Validation: Host header bắt buộc là `localhost`/`127.0.0.1` (chặn DNS rebinding); Origin header kiểm tra strict.
   6. Durable Technical-Detail Storage: Bảng `cp_technical_details` lưu trữ stack trace và context an toàn; response lỗi API chỉ trả về `technical_detail_ref`.
   7. Secret Redaction: Middleware quét response và log lọc bỏ chuỗi nhạy cảm.
-- **Allowed File Scope**:
-  - `src/controlplane/infrastructure/db/migrations/0007_technical_details.*`
-  - `src/controlplane/infrastructure/security/**`
-  - `src/controlplane/api/main.py`, `routes/**`, `middleware/**`
-  - `tests/m2/test_p7a_control_api_security.py`
-  - `docs/milestones/m2-control-plane/evidence/m2-p7a/**`
+- **Future implementation Allowed File Scope (chỉ sau khi được ủy quyền riêng)**:
+  - `src/controlplane/api/main.py`, `src/controlplane/api/security.py`, `src/controlplane/api/technical_details.py`, `src/controlplane/api/tls.py`, `src/controlplane/api/routes/**`, `src/controlplane/api/middleware/**`.
+  - `src/controlplane/application/technical_details/__init__.py` (port + coordinator), `src/controlplane/infrastructure/db/technical_details/__init__.py` (PostgreSQL adapter).
+  - `src/controlplane/application/session_security/__init__.py` (session/token port + coordinator), `src/controlplane/infrastructure/db/session_security/__init__.py` (P1-session PostgreSQL adapter).
+  - `src/controlplane/application/control_api/query_ports.py`, `src/controlplane/infrastructure/db/control_api_queries.py` (read-only query/projection ports + SQL); `src/controlplane/application/orchestration/start_batch.py`, `src/controlplane/infrastructure/db/orchestration/start_batch.py` (P7A-only StartBatch command extension; không sửa các tệp P6 accepted).
+  - `src/controlplane/infrastructure/security/loopback_certificate.py`, `src/controlplane/infrastructure/security/redaction.py` (certificate/key lifecycle và redaction primitives); `src/controlplane/infrastructure/db/migrations/0007_technical_details.sql` và `src/controlplane/infrastructure/db/migrations/0007_technical_details.rollback.sql`.
+  - `src/controlplane/pyproject.toml`, `src/controlplane/requirements.lock`, `src/controlplane/uv.lock` chỉ để thêm package discovery cho package P7A và exact pin certificate dependency theo mục TLS dưới đây; không đổi pin hiện hữu. `src/controlplane/entrypoint.py` chỉ để nối production launcher với cùng app/TLS composition đã kiểm thử.
+  - `tests/m2/test_p7a_control_api_integration.py`, `tests/m2/test_p7a_hardening.py`, `src/controlplane/infrastructure/evidence/probe_p7a_implementation.py`, `src/controlplane/infrastructure/evidence/profile_p7a_implementation.py`, `src/controlplane/infrastructure/evidence/synthesizer_p7a_implementation.py` và một run mới dưới `docs/milestones/m2-control-plane/evidence/m2-p7a/`; không sửa accepted RED profile hoặc evidence cũ.
+  - `tests/m2/test_p7a_control_api_security.py` **read-only, byte-exact** trong implementation; các test P1–P6 và M1 cũng read-only.
 - **Forbidden File Scope**:
-  - `src/controlplane/ui/**`, `src/m1proof/**`.
+  - `src/controlplane/ui/**`, `src/m1proof/**`, `MigrationRunner`, migration `0001..0006`, P1–P6 accepted source/test/oracle (ngoại trừ hai tệp StartBatch mới đã nêu), evidence P6/P7A RED lịch sử, P7B/P8/P9/M3/Phân hệ A.
 - **RED Oracle**:
   - `test_tst_m2_p7a_001_host_header_spoofing_rejected`: Gửi header Host lạ `evil.com` -> FAILED vì chưa có Host validation.
   - `test_tst_m2_p7a_002_csrf_mutation_without_token_rejected`: Gửi POST mutation không có header `X-CSRF-Token` khớp cookie -> FAILED vì chưa có CSRF validator.
-  - `test_tst_m2_p7a_003_safe_technical_detail_ref_retrieval`: Gây lỗi 500, kiểm tra response -> FAILED vì response chứa stack trace thay vì technical_detail_ref.
-  - `test_tst_m2_p7a_004_tls_handshake_verification`: Kết nối TLS tới local server -> FAILED vì chưa khởi tạo HTTPS listener.
+  - `test_tst_m2_p7a_003_safe_technical_detail_ref_retrieval`: Sau khi migrate `0001..0006` trên DB cô lập, gọi technical-detail facade -> capability-specific `NotImplementedError`; future GREEN kiểm safe reference và workspace lookup. RED **không** chứng minh response hiện chứa stack trace.
+  - `test_tst_m2_p7a_004_tls_handshake_verification`: Gọi TLS-server seam -> capability-specific `NotImplementedError`; future GREEN phải handshake có xác minh, không dùng lỗi connection/certificate setup làm RED.
 - **Positive Tests**: Gọi API hợp lệ trả về HTTP 200/202; idempotent command xử lý chuẩn; lỗi định dạng đúng RFC 9457; TLS handshake hoạt động an toàn.
 - **Negative Tests**: Host spoofing trả 403; CSRF thiếu trả 403; Revision conflict trả 409; Input sai quy tắc trả 422; PUT config thiếu `Idempotency-Key` bị từ chối.
 - **Concurrency / Fault / Security Tests**: Security scan kiểm tra zero leak token; test tra cứu lỗi xuyên workspace bị từ chối 404/403.
 - **Migration / Rollback**: `0007_technical_details.sql` và rollback tương ứng trên isolated test DB.
-- **Evidence**: `docs/milestones/m2-control-plane/evidence/m2-p7a/` (`commands.jsonl`, `status.json`, `status.md`, `red-observations.md`, `red-p7a-stdout.txt`, `hashes.sha256`, `tls_handshake_evidence.json`).
+- **Accepted RED Evidence**: `docs/milestones/m2-control-plane/evidence/m2-p7a/run-m2-p7a-20260916091430/` (`commands.jsonl`, `status.json`, `status.md`, `observations.md`, `red-p7a.xml`, `red-p7a-stdout.txt`, `hashes.sha256`, `tls_handshake_evidence.json`). Future GREEN tạo run/profile mới, không ghi đè thư mục này.
 - **PASS Criteria**: Evidence validator P0 đạt PASS; ranh giới bảo mật CT-API-010 đạt 100%; 93 tests M1 tiếp tục PASS.
 - **STOP Condition**: Response làm lộ chuỗi token/credential hoặc stack trace thô của hệ thống.
 - **Claim Allowed**: "M2-P7A hoàn tất: Control API core, local HTTPS và các ranh giới bảo mật đã hoạt động."
 - **Claim Forbidden**: "SSE stream đã xong (thuộc P7B)."
+
+#### P7A authority/design lock — chưa cấp quyền implementation
+
+**Lựa chọn layer.** Điểm 1–10 càng cao càng tốt; tổng điểm dùng trọng số correctness 25%, integration risk 20%, complexity 10%, performance 5%, operations 10%, maintainability 15%, resource cost 5%, time-to-proof 10%. Đây là đánh giá thiết kế dựa trên source P1–P6 hiện tại, không phải benchmark runtime.
+
+| Phương án | Cơ chế, ưu/nhược và rủi ro tích hợp | Correct / Risk / Complexity / Perf / Ops / Maintain / Cost / Proof | Tổng |
+|---|---|---|---:|
+| API tự chạy SQL | Ít tệp, nhanh chứng minh một route; phá dependency/ownership, khó audit transaction và workspace. Chi phí code đầu thấp nhưng chi phí bảo trì cao. | 2 / 4 / 8 / 8 / 7 / 2 / 8 / 8 | 4,70 |
+| Gắn repository mới trực tiếp vào P1 `SqlUnitOfWork` | Dùng chung transaction và hiệu năng tốt; phải sửa P1 accepted source, tăng coupling và regression risk. Chi phí tích hợp trung bình. | 8 / 4 / 5 / 8 / 7 / 6 / 7 / 5 | 6,15 |
+| **Application port/service → PostgreSQL adapter nhận caller-owned connection** | Giữ API thuần presentation, P1 UoW và P1 source nguyên vẹn; thêm port/adapter nhưng test tách layer được, SQL kiểm toán tập trung. | 9 / 8 / 6 / 8 / 8 / 9 / 7 / 7 | **8,05** |
+
+**Quyết định:** chọn phương án 3. `api/technical_details.py` giữ đúng tên và hàm mà accepted oracle import nhưng chỉ chuyển request/response; `application/technical_details/__init__.py` sở hữu `TechnicalDetailRepository(Protocol)`, coordinator store/retrieve và quy tắc workspace/session authorization. `infrastructure/db/technical_details/__init__.py` sở hữu toàn bộ SQL/row mapping. `api/security.py` giữ `enforce_host`/`enforce_csrf` đã khóa; ASGI middleware phải thực sự gọi cùng logic đó (qua request adapter nếu cần), không tạo validator song song chỉ để bốn test GREEN. API không import `psycopg`, không có SQL; application không import infrastructure. Mọi adapter nhận `uow.connection` từ P1 `TransactionManager.unit_of_work()`, không tự mở pool/commit/rollback. Nếu không nối được call shape hiện có mà phải đổi accepted oracle, STOP để review lại, không sửa test.
+
+**Migration `0007` — schema quyết định trước code.** `controlplane.cp_technical_details`: `detail_ref UUID PRIMARY KEY`, `workspace_id UUID NOT NULL REFERENCES cp_workspaces(workspace_id) ON DELETE RESTRICT`, `correlation_id TEXT NOT NULL` không rỗng, `error_type TEXT NOT NULL` không rỗng, `stack_trace TEXT NULL`, `sanitized_context JSONB NOT NULL DEFAULT '{}'::jsonb`, `created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`, `UNIQUE(workspace_id, detail_ref)` cho composite access binding. Stack nội bộ được giữ ở durable store sau secret redaction; ordinary ProblemDetail chỉ chứa safe metadata/opaque `technical_detail_ref`, không raw stack/path/token. Không thêm actor/session vào error row vì lỗi có thể xảy ra trước auth; retention chưa có thời hạn được duyệt, nên P7A không tự động xóa dữ liệu.
+
+CT-API-010 yêu cầu audit actor cho thao tác nhạy cảm, vì vậy lookup detail được xem là thao tác nhạy cảm. Cùng `0007` tạo `cp_technical_detail_access_audit` với `access_id UUID PRIMARY KEY`, `workspace_id UUID NOT NULL`, `detail_ref UUID NOT NULL`, `actor_id UUID NOT NULL`, `session_id UUID NOT NULL`, `correlation_id TEXT NOT NULL`, `accessed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`; FK composite `(workspace_id, detail_ref)` đến detail, `(workspace_id, actor_id)` đến P1 actor và `(workspace_id, session_id)` đến P1 session. Audit được ghi cùng caller-owned UoW khi lookup hợp lệ; không lưu stack hay token. Lookup khác workspace trả 404/403 mà không tiết lộ sự tồn tại của ref. Không suy diễn retention mới cho audit.
+
+P1 `cp_auth_sessions` hiện **không có token binding**. `0007` chỉ bổ sung `token_hash BYTEA NULL` với `CHECK (token_hash IS NULL OR octet_length(token_hash)=32)`, unique partial index trên non-null `token_hash`, và `UNIQUE(workspace_id, session_id)` để audit FK; không viết lại `0001`. Null giữ tương thích bản ghi P1 cũ, nhưng HTTP P7A **chỉ** nhận session có non-null SHA-256 của token ngẫu nhiên 256-bit, status active và `expires_at` chưa qua. `application/session_security/__init__.py` sở hữu port/coordinator; `infrastructure/db/session_security/__init__.py` tra hash và trả workspace+actor từ DB bằng caller-owned connection. Token gốc chỉ tồn tại trong bộ nhớ/cookie, không được ghi DB, body, log hoặc evidence. Rollback `0007` gỡ đúng các bảng/index/column P7A và giữ tracker `0001..0006` cùng dữ liệu P1–P6. Forward/rollback, FK, uniqueness, workspace isolation và tracker `[1..7] → [1..6]` phải qua DB probes.
+
+**HTTP composition và session authority.** `api/main.py:create_app(...)` là factory duy nhất cho route và middleware; production launcher và TLS test helper dùng cùng factory. Thứ tự xử lý *outer → inner* (kiểm bằng integration probe, không giả định thứ tự decorator): (1) correlation ID + safe outbound/log redaction; (2) exception boundary ghi diagnostic đã redacted rồi map `ProblemDetail`; (3) Host allowlist; (4) Origin policy; (5) resolve session/token → workspace+actor server-side; (6) CSRF cho mutation; (7) idempotency/precondition guard; (8) route/application. Khi trả ra, lớp ngoài cùng là điểm kiểm soát redaction cuối; không log raw request body, cookie, token, stack. Nếu technical-detail persistence lỗi, trả generic safe 500, không phơi exception. Host bị chặn trước business dispatch; CSRF bị chặn trước command/UoW mutation.
+
+Không thêm login screen. Local Agent tạo bootstrap token ngẫu nhiên khi khởi động, bind sẵn workspace+actor đã được cấu hình server-side và đưa cho browser qua one-time local launch capability (không qua URL/query/log); bootstrap capability dùng một lần, hết hạn tối đa 60 giây và không được thay workspace. `api/routes/session.py` chỉ nhận capability từ trusted local-launch channel, không có public unauthenticated mint-session endpoint. Session cookie `cp_session` có `HttpOnly; Secure; SameSite=Strict; Path=/`; cookie CSRF riêng `csrf_token` có `Secure; SameSite=Strict; Path=/`, đọc được bởi UI, đối chiếu constant-time với `X-CSRF-Token`. Browser-supplied `workspace_id`, role hoặc actor không bao giờ là authority. P7A chỉ định nghĩa server/bootstrap contract; UI/launcher bridge đầy đủ thuộc P8 và không được claim từ P7A.
+
+**Host/Origin policy.** Host chỉ nhận `localhost`, `localhost:<port>`, `127.0.0.1`, `127.0.0.1:<port>` với port decimal 1–65535; reject malformed, foreign, suffix, userinfo, IPv6/percent-encoding và nhiều Host header. CORS không thay Host validation. Origin nếu hiện diện phải đúng `https://localhost:<bound-port>` hoặc `https://127.0.0.1:<bound-port>` theo cấu hình local UI đã được cấp, so scheme/host/port chính xác, không wildcard/null; không tin Forwarded/X-Forwarded-Host. Browser mutation hoặc mọi HTTP mutation trong P7A thiếu Origin đều bị từ chối; local-agent/non-browser HTTP cũng không có bypass khi Origin vắng mặt. GET không có Origin được phép sau session/Host check, nhưng Origin có mặt phải hợp lệ. Nếu sau này cần device-identity bypass, đó là contract/authority riêng, không tự thêm ở P7A.
+
+**TLS composition.** `api/tls.py:start_loopback_tls_server()` (accepted oracle import) phải khởi động chính `create_app(...)` qua Uvicorn bind `127.0.0.1` hoặc `localhost`, không phải SSL echo/helper socket tách biệt. Production launcher dùng cùng hàm cấu hình server; route request thật qua HTTPS tới ít nhất một `/v1` endpoint và `ssl`/HTTPX client tin public test certificate/CA được cung cấp tường minh. Không `verify=False`, `ignoreHTTPSErrors` hoặc plain HTTP fallback. `infrastructure/security/loopback_certificate.py` sở hữu tạo certificate/key self-signed với SAN `localhost` và `127.0.0.1`, xoay vòng theo startup, private key chỉ ở OS-protected transient location ngoài repo, xóa khi server/context đóng; evidence chỉ giữ public certificate/hash/metadata an toàn. Future implementation được phép thêm exact `cryptography==46.0.5` và resolve lock mới (không nâng các pin hiện hữu); nếu exact dependency/toolchain không tái lập được, STOP trước GREEN. Uvicorn dùng certificate/key của cùng provider; handshake thành công **không** chứng minh browser trust/provisioning — đó là claim/packaging gate riêng. Căn cứ cơ chế: [X.509 self-signed tutorial](https://cryptography.io/en/stable/x509/tutorial/), [Uvicorn HTTPS settings](https://www.uvicorn.org/settings/).
+
+**Route integration — không dùng backend in-memory để đạt 200.**
+
+| Route | Nguồn thẩm quyền/đường đi future-GREEN |
+|---|---|
+| `GET /v1/operations`, `GET /v1/operations/{id}` | Read-only query port đọc P2 `cp_command_receipts` + P3 `cp_operation_stream` theo workspace; P4 `map_operation_view` chỉ map execution state khi có state fact hợp lệ. Không suy status/progress từ timestamp hay arbitrary event; thiếu fact thì giữ `accepted` từ receipt hoặc fail closed, không dựng trạng thái giả. |
+| `POST /v1/batches` | P7A `StartBatchService` mới gọi P2 idempotency/receipt và insert P6 `cp_production_batches` trong cùng P1 UoW, trả `202` chỉ sau commit receipt+batch. P6 accepted services không có StartProductionBatch, nên hai tệp StartBatch mới được cấp scope rõ; không sửa P6 accepted code và không tạo job/render. |
+| `GET /v1/jobs`, `GET /v1/jobs/{id}` | Read-only query port đọc P6 `cp_video_jobs`/`cp_stage_runs` theo workspace; không materialize M3/Module A data. |
+| `GET /v1/configs` | P5A ConfigRevisionService/repository cho scope đã xác thực; chỉ safe metadata, không secret value. |
+| `PUT /v1/configs/{scope}` | P5A ConfigRevisionService + P2 idempotency/CAS trong caller UoW, yêu cầu `Idempotency-Key` và `If-Match`; không thay accepted P5A semantics. |
+| `GET /v1/errors/{technical_detail_ref}` | P7A technical-detail application coordinator và PostgreSQL adapter; session/workspace authorization + durable access audit, không để lộ ref khác workspace. |
+
+`GET /v1/operations/stream`, SSE, cursor reconnect/resync thuộc **P7B**; React/UI thuộc **P8**. Không mở P7B/P8/P9, M3 hoặc Phân hệ A. Nếu route cần P1–P6 source edit, migration ngoài `0007`, mock/in-memory state hoặc mới làm được bằng cách đổi accepted oracle thì STOP và xin authority delta.
+
+**Future-GREEN hardening catalogue (machine-readable `p7a-hardening.json`):** mỗi key dưới đây là một test/probe độc lập có command/JUnit hoặc DB/network artifact riêng, không lấy `pass` từ bốn oracle. Profile GREEN mới/versioned phải fail closed nếu thiếu key, sai count hoặc provenance.
+
+| Keys | Bằng chứng bắt buộc |
+|---|---|
+| `H01_actual_app_host_reject`, `H02_origin_reject`, `H03_valid_host_origin_success` | HTTP tới cùng `create_app`; Host spoofing/Origin lạ 403, valid path qua middleware. |
+| `H04_csrf_missing_reject`, `H05_csrf_mismatch_reject`, `H06_csrf_match_success` | Browser mutation qua actual app, đối chiếu cookie/header và zero mutation khi reject. |
+| `H07_session_cookie_flags`, `H08_client_workspace_ignored`, `H09_session_workspace_binding` | Set-Cookie flags; client workspace giả không có quyền; token hash P1 session resolve workspace+actor server-side. |
+| `H10_detail_cross_workspace_reject`, `H11_problem_detail_safe`, `H12_detail_durable_row`, `H13_detail_access_audit` | DB thực: ref khác workspace bị chặn; 500 không stack/path/secret; row và audit actor/session bền vững. |
+| `H14_migration_forward`, `H15_rollback_preserves_0001_0006`, `H16_migration_tracker` | Disposable PostgreSQL 18.6, schema/FK/unique/check, tracker `[1..7] → [1..6]`, P1–P6 nguyên vẹn. |
+| `H17_actual_fastapi_tls_request`, `H18_tls_verification_enabled`, `H19_loopback_only` | HTTPS request tới actual `/v1` qua Uvicorn+same app, explicit CA/hostname verification, không wildcard bind/plain HTTP. |
+| `H20_response_log_redaction`, `H21_idempotency_header_reject`, `H22_if_match_reject` | Canary giả không lộ response/log; mutation thiếu key và PUT thiếu precondition bị reject trước write. |
+| `H23_revision_conflict_409`, `H24_business_validation_422`, `H25_idempotent_replay_one_command` | HTTP mapping + PostgreSQL receipt/row count, không duplicate durable command. |
+| `H26_correlation_id`, `H27_accepted_202_not_completion`, `H28_static_architecture` | Mọi response có correlation; `202` chỉ ACK durable accepted; AST: Domain external imports 0, Application→Infrastructure 0, API SQL/psycopg persistence imports 0, technical-detail SQL chỉ approved adapter, TLS/cert chỉ Infrastructure/security, M1 imports 0. |
+
+GREEN còn phải đạt accepted exact-four 4/4 (oracle SHA giữ nguyên), P6 4/4 + 18/18, P5B/P5A 5/5, P4 9/9, P3/P2/P1 11/11, P0 33/33, architecture 6/6, M1 93/93, 0 fail/error/skip. Versioned GREEN profile/evidence pin immutable implementation source/tooling; giữ byte-exact accepted P6 evidence và P7A RED `run-m2-p7a-20260916091430`. Secret scan, runtime pins, hash DAG, provenance và tamper-negative đều là hard gate; helper-only SSL socket hoặc direct helper assertions không thay integration proof.
 
 ---
 
