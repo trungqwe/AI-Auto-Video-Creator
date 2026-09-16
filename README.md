@@ -16,7 +16,7 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | M2 Control Plane | `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_READY_FOR_REVIEW; M2-P7B_BEHAVIORAL_RED_LOCKED; M2-P7B_IMPLEMENTATION_LOCKED` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
-Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7A đã được chấp thuận/đóng; P7A correction có oracle 4/4, exact H01–H36 36/36, toàn bộ hồi quy PASS, secret scan sạch và hash DAG PASS. Thiết kế P7B hiện chỉ chờ independent review; chưa tạo RED/source/evidence P7B. Open gate về commit-order cần quyết định quyền riêng trước RED. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
+Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7A đã được chấp thuận/đóng; P7A correction có oracle 4/4, exact H01–H36 36/36, toàn bộ hồi quy PASS, secret scan sạch và hash DAG PASS. Thiết kế P7B đã chọn per-workspace transaction fence trước BIGSERIAL allocation và exact 5 future RED identities, nhưng checkpoint mới chỉ là docs-only authority draft chờ independent review; chưa tạo RED/source/evidence P7B. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ## Bắt đầu một phiên làm việc
 

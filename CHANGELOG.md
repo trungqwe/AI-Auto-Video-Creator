@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-17 — M2-P7B commit-order authority correction, docs-only
+
+- Independent review checkpoint `a60471af2ab03978e6a88657dbec62a43b82da0c` chọn hướng B: future per-workspace transaction ordering fence trước `stream_event_id` allocation, với exact accepted-P3 exception chỉ trong `PostgresOperationStreamRepository.append()`. Khóa inventory writer, RED #000 upstream invariant trên hai PostgreSQL transactions thật và future exact 5-case RED; không sửa source/test/migration/evidence tại checkpoint này.
+- Sửa `minimum_available_cursor` thành oldest resumable cursor C (`==C` replay exclusive, `<C` resync rồi close), khóa classification order, first-subscribe workspace-visible high-water và H37 GREEN proof độc lập. Index `(workspace_id, stream_event_id)` vẫn conditional STOP gate; không tạo `0008`. P7B `AUTHORITY_READY_FOR_REVIEW`, RED/implementation tiếp tục LOCKED; P7A `ACCEPTED_CLOSED` bất biến.
+
 ## 2026-09-17 — M2-P7A accepted; P7B authority/design draft ready for review
 
 - Independent review chấp thuận/đóng P7A correction source/tooling `6c3a52bde905ee5e71e12334da1873ed20f5c5db` và GREEN `run-m2-p7a-green-20260916224033`; accepted/rejected historical evidence giữ byte-exact, không chạy lại. Lifecycle `M2-P1..P7A_ACCEPTED_CLOSED`.
