@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-17 — M2-P7A governance correction ready for independent review
+
+- Independent review từ chối candidate `d5032eb` vì source scope, hardening identity và quality evidence; run GREEN cũ giữ nguyên. Correction source/tooling `6c3a52bde905ee5e71e12334da1873ed20f5c5db` bỏ `application/control_api/__init__.py`, khóa exact file allowlist và 36 full identities, thêm negative scope probe cùng quality build/wheel/mypy status.
+- Fresh GREEN `run-m2-p7a-green-20260916224033`: oracle 4/4, H01–H36 36/36, mọi hồi quy PASS; migration `[1..7] → [1..6] → [1..7]`; Ruff/lock/build/wheel import PASS, mypy `SKIP_UNAVAILABLE_NOT_IN_LOCK`; secret scan CLEAN/0, semantic/provenance/hash/tamper PASS. Accepted oracle/RED/P1–P6 evidence bất biến. Lifecycle vẫn `M2-P7A_IMPLEMENTATION_READY_FOR_REVIEW`; P7B/P8/P9, M3 và Phân hệ A khóa.
+
 ## 2026-09-17 — M2-P7A implementation ready for review
 
 - Khôi phục prerequisite PostgreSQL M2 an toàn từ Docker metadata trong bộ nhớ, không ghi DSN/credential. Triển khai Control API FastAPI, session hash/bootstrap một lần, Host/Origin/CSRF, local HTTPS, technical detail bền vững có audit, migration `0007` và StartBatch/config mutation cùng P1 UoW.

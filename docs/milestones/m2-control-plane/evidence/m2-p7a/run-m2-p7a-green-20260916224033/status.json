@@ -1,0 +1,54 @@
+{
+  "schema_version": "m2_package_status_v1",
+  "milestone": "M2",
+  "package": "M2-P7A",
+  "semantic_profile": "m2-p7a-implementation",
+  "status": "READY_FOR_REVIEW",
+  "lifecycle": "M2-P7A_IMPLEMENTATION_READY_FOR_REVIEW",
+  "run_id": "run-m2-p7a-green-20260916224033",
+  "source_commit_sha": "6c3a52bde905ee5e71e12334da1873ed20f5c5db",
+  "oracle_sha256": "63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035",
+  "gates": [
+    {
+      "gate_id": "P7A-GREEN",
+      "status": "PASS",
+      "evidence_files": [
+        "p7a-oracle.xml",
+        "p7a-hardening.xml",
+        "p7a-hardening.json"
+      ]
+    },
+    {
+      "gate_id": "REGRESSIONS",
+      "status": "PASS",
+      "evidence_files": [
+        "p6-regression.xml",
+        "p5b-regression.xml",
+        "p5a-regression.xml",
+        "p4-regression.xml",
+        "p3-regression.xml",
+        "p2-regression.xml",
+        "p1-regression.xml",
+        "p0-regression.xml",
+        "architecture.xml",
+        "m1-regression.xml"
+      ]
+    },
+    {
+      "gate_id": "RUNTIME-STATIC-SECURITY",
+      "status": "PASS",
+      "evidence_files": [
+        "runtime-and-static.json",
+        "secret-scan.json"
+      ]
+    },
+    {
+      "gate_id": "INTEGRITY",
+      "status": "PASS",
+      "evidence_files": [
+        "verify-only-stdout.txt",
+        "negative-verifier-stdout.txt"
+      ]
+    }
+  ]
+}

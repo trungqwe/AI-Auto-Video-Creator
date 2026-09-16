@@ -3,7 +3,7 @@
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
 **Trạng thái:** `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_IMPLEMENTATION_READY_FOR_REVIEW`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** P1..P6 là `ACCEPTED / CLOSED`. P7A implementation candidate pin source/tooling `d5032ebc76e4946e5824ddf01c95ba28795eb377` và GREEN run `run-m2-p7a-green-20260916204220`; accepted RED oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035` vẫn bất biến. Chờ independent review/user acceptance; P7A chưa `ACCEPTED/CLOSED`. P7B/P8/P9 vẫn khóa, M3 và Phân hệ A `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** P1..P6 là `ACCEPTED / CLOSED`. Independent review từ chối P7A candidate `d5032eb` về governance; GREEN cũ giữ làm lịch sử. Correction candidate pin source/tooling `6c3a52bde905ee5e71e12334da1873ed20f5c5db` và fresh GREEN `run-m2-p7a-green-20260916224033`; accepted RED oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035` vẫn bất biến. Chờ independent review/user acceptance; P7A chưa `ACCEPTED/CLOSED`. P7B/P8/P9 vẫn khóa, M3 và Phân hệ A `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -511,7 +511,7 @@ Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Khôn
 
 ### M2-P7A: Module H — Control API Core, Local HTTPS & Security Boundaries
 
-**Trạng thái/gate hiện hành:** `M2-P7A_IMPLEMENTATION_READY_FOR_REVIEW`. Bốn testcase accepted RED vẫn byte-exact SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035`; run RED lịch sử `run-m2-p7a-20260916091430` không đổi. Source/tooling GREEN `d5032ebc76e4946e5824ddf01c95ba28795eb377`, fresh run `run-m2-p7a-green-20260916204220` đạt oracle 4/4, H01–H36 36/36, mọi hồi quy, semantic/provenance/tamper/hash/secret PASS. Candidate chờ independent review và user acceptance; P7A chưa ACCEPTED/CLOSED, P7B/P8/P9 vẫn khóa.
+**Trạng thái/gate hiện hành:** `M2-P7A_IMPLEMENTATION_READY_FOR_REVIEW`. Bốn testcase accepted RED vẫn byte-exact SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035`; run RED lịch sử `run-m2-p7a-20260916091430` không đổi. Independent review từ chối candidate `d5032eb` vì source scope, hardening identity và quality evidence; run `run-m2-p7a-green-20260916204220` được bảo tồn làm historical rejected-candidate evidence. Correction source/tooling `6c3a52bde905ee5e71e12334da1873ed20f5c5db`, fresh run `run-m2-p7a-green-20260916224033` đạt oracle 4/4, exact H01–H36 36/36, mọi hồi quy, scope/quality/semantic/provenance/tamper/hash/secret PASS. Candidate correction chờ independent review và user acceptance; P7A chưa ACCEPTED/CLOSED, P7B/P8/P9 vẫn khóa.
 
 - **Requirement / CT / INV IDs**: `CT-API-001..007`, `CT-API-010`, `ADR-0007`, `ADR-0009`, `ADR-0010`.
 - **Dependencies**: M2-P6.

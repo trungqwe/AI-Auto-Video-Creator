@@ -1,0 +1,31 @@
+{
+  "testcase": "test_h16_migration_tracker",
+  "observed_by": "p7a-hardening.xml",
+  "forward_versions": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "rollback_versions": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "reapply_versions": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "verdict": "PASS"
+}

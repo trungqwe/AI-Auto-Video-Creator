@@ -1,0 +1,26 @@
+Using Python 3.13.15 environment at: C:\Users\Admin\AppData\Local\Temp\p7a_locked_wheel_n5e5xqcy\venv
+Resolved 23 packages in 6ms
+Installed 23 packages in 115ms
+ + annotated-doc==0.0.5
+ + annotated-types==0.8.0
+ + anyio==4.15.1
+ + certifi==2026.7.22
+ + cffi==2.1.1
+ + click==8.5.0
+ + cryptography==46.0.5
+ + fastapi==0.141.1
+ + h11==0.16.0
+ + httpcore==1.0.9
+ + httpx==0.28.1
+ + idna==3.19
+ + psycopg==3.3.5
+ + psycopg-binary==3.3.5
+ + psycopg-pool==3.3.1
+ + pycparser==3.0
+ + pydantic==2.13.5
+ + pydantic-core==2.46.5
+ + starlette==1.6.0
+ + typing-extensions==4.16.0
+ + typing-inspection==0.4.4
+ + tzdata==2026.4
+ + uvicorn==0.52.4
