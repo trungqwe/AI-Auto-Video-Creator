@@ -14,6 +14,7 @@ dependencies = [
     "httpx==0.28.1",
     "pydantic==2.13.5",
     "psycopg[binary,pool]==3.3.5",
+    "cryptography==46.0.5",
 ]
 
 [project.scripts]
@@ -24,10 +25,38 @@ controlplane = "controlplane.entrypoint:main"
 "controlplane.domain" = "domain"
 "controlplane.domain.interfaces" = "domain/interfaces"
 "controlplane.domain.identity" = "domain/identity"
+"controlplane.domain.common" = "domain/common"
+"controlplane.domain.config_security" = "domain/config_security"
+"controlplane.domain.events" = "domain/events"
 "controlplane.application" = "application"
+"controlplane.domain.orchestration" = "domain/orchestration"
+"controlplane.domain.statemachine" = "domain/statemachine"
+"controlplane.domain.storage_meta" = "domain/storage_meta"
 "controlplane.application.identity" = "application/identity"
+"controlplane.application.config_security" = "application/config_security"
+"controlplane.application.concurrency" = "application/concurrency"
+"controlplane.application.idempotency" = "application/idempotency"
+"controlplane.application.outbox" = "application/outbox"
+"controlplane.application.projections" = "application/projections"
+"controlplane.application.storage_meta" = "application/storage_meta"
+"controlplane.application.control_api" = "application/control_api"
+"controlplane.application.session_security" = "application/session_security"
+"controlplane.application.technical_details" = "application/technical_details"
+"controlplane.application.orchestration" = "application/orchestration"
+"controlplane.api" = "api"
+"controlplane.api.routes" = "api/routes"
 "controlplane.infrastructure" = "infrastructure"
 "controlplane.infrastructure.db" = "infrastructure/db"
+"controlplane.infrastructure.db.config_security" = "infrastructure/db/config_security"
+"controlplane.infrastructure.db.concurrency" = "infrastructure/db/concurrency"
+"controlplane.infrastructure.db.idempotency" = "infrastructure/db/idempotency"
+"controlplane.infrastructure.db.migrations" = "infrastructure/db/migrations"
+"controlplane.infrastructure.db.outbox" = "infrastructure/db/outbox"
+"controlplane.infrastructure.db.projections" = "infrastructure/db/projections"
+"controlplane.infrastructure.db.storage_meta" = "infrastructure/db/storage_meta"
+"controlplane.infrastructure.db.orchestration" = "infrastructure/db/orchestration"
+"controlplane.infrastructure.db.session_security" = "infrastructure/db/session_security"
+"controlplane.infrastructure.db.technical_details" = "infrastructure/db/technical_details"
 "controlplane.infrastructure.evidence" = "infrastructure/evidence"
 "controlplane.infrastructure.security" = "infrastructure/security"
 
@@ -37,10 +66,38 @@ packages = [
     "controlplane.domain",
     "controlplane.domain.interfaces",
     "controlplane.domain.identity",
+    "controlplane.domain.common",
+    "controlplane.domain.config_security",
+    "controlplane.domain.events",
+    "controlplane.domain.orchestration",
+    "controlplane.domain.statemachine",
+    "controlplane.domain.storage_meta",
     "controlplane.application",
     "controlplane.application.identity",
+    "controlplane.application.config_security",
+    "controlplane.application.concurrency",
+    "controlplane.application.idempotency",
+    "controlplane.application.outbox",
+    "controlplane.application.projections",
+    "controlplane.application.storage_meta",
+    "controlplane.application.control_api",
+    "controlplane.application.session_security",
+    "controlplane.application.technical_details",
+    "controlplane.application.orchestration",
+    "controlplane.api",
+    "controlplane.api.routes",
     "controlplane.infrastructure",
     "controlplane.infrastructure.db",
+    "controlplane.infrastructure.db.config_security",
+    "controlplane.infrastructure.db.concurrency",
+    "controlplane.infrastructure.db.idempotency",
+    "controlplane.infrastructure.db.migrations",
+    "controlplane.infrastructure.db.outbox",
+    "controlplane.infrastructure.db.projections",
+    "controlplane.infrastructure.db.storage_meta",
+    "controlplane.infrastructure.db.orchestration",
+    "controlplane.infrastructure.db.session_security",
+    "controlplane.infrastructure.db.technical_details",
     "controlplane.infrastructure.evidence",
     "controlplane.infrastructure.security",
 ]
