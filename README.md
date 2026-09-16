@@ -1,6 +1,6 @@
 # AI Auto Video Creator
 
-> Cập nhật hiện hành: M2-P1..P6 là `ACCEPTED / CLOSED`; M2-P7A correction đạt `READY_FOR_REVIEW` với source `6c3a52b` và GREEN evidence `run-m2-p7a-green-20260916224033`. Candidate trước tại `d5032eb` bị independent review từ chối về governance; evidence cũ được giữ nguyên. P7A chưa ACCEPTED/CLOSED; P7B/P8/P9 vẫn khóa, M3 và Phân hệ A `NOT AUTHORIZED`.
+> Cập nhật hiện hành: M2-P1..P7A là `ACCEPTED / CLOSED`; P7A source `6c3a52b` và GREEN `run-m2-p7a-green-20260916224033` đã được independent review chấp thuận. P7B chỉ `AUTHORITY_READY_FOR_REVIEW`; RED/implementation vẫn khóa. P8/P9 khóa, M3 và Phân hệ A `NOT AUTHORIZED`.
 
 Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều góc kể tiếng Anh, dựng video ngắn 61–70 giây và đồng bộ đầu ra lên cloud. Dự án được phát triển theo từng milestone có evidence gate; không coi việc chương trình chạy một lần là bằng chứng kiến trúc đã đạt.
 
@@ -13,10 +13,10 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G04 Drive/OAuth | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G07 Compatibility | `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` |
-| M2 Control Plane | `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_IMPLEMENTATION_READY_FOR_REVIEW` |
+| M2 Control Plane | `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_READY_FOR_REVIEW; M2-P7B_BEHAVIORAL_RED_LOCKED; M2-P7B_IMPLEMENTATION_LOCKED` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
-Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P6 đã được chấp thuận/đóng; P6 dùng corrected evidence `run-m2-p6-20260916084617`. P7A có GREEN evidence correction mới: accepted oracle 4/4, exact H01–H36 36/36, toàn bộ hồi quy PASS, secret scan sạch và hash DAG PASS. Đây là candidate chờ independent review, không phải acceptance. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
+Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7A đã được chấp thuận/đóng; P7A correction có oracle 4/4, exact H01–H36 36/36, toàn bộ hồi quy PASS, secret scan sạch và hash DAG PASS. Thiết kế P7B hiện chỉ chờ independent review; chưa tạo RED/source/evidence P7B. Open gate về commit-order cần quyết định quyền riêng trước RED. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ## Bắt đầu một phiên làm việc
 

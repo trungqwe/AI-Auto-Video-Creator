@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-17 — M2-P7A accepted; P7B authority/design draft ready for review
+
+- Independent review chấp thuận/đóng P7A correction source/tooling `6c3a52bde905ee5e71e12334da1873ed20f5c5db` và GREEN `run-m2-p7a-green-20260916224033`; accepted/rejected historical evidence giữ byte-exact, không chạy lại. Lifecycle `M2-P1..P7A_ACCEPTED_CLOSED`.
+- Khóa docs-only exact future P7B scope, FastAPI composition, cursor/SSE/reconnect/resync, watermark, connection/backpressure, RED identities, hardening và evidence rules. P7B `AUTHORITY_READY_FOR_REVIEW`, Behavioral RED/implementation vẫn `LOCKED`. Open STOP gate: P3 `BIGSERIAL` chưa bảo đảm commit-order/no-loss dưới concurrent writers; cần independent review/authority riêng, không sửa P3 hoặc tạo `0008` trong checkpoint này. P8/P9, M3 và Phân hệ A vẫn khóa.
+
 ## 2026-09-17 — M2-P7A governance correction ready for independent review
 
 - Independent review từ chối candidate `d5032eb` vì source scope, hardening identity và quality evidence; run GREEN cũ giữ nguyên. Correction source/tooling `6c3a52bde905ee5e71e12334da1873ed20f5c5db` bỏ `application/control_api/__init__.py`, khóa exact file allowlist và 36 full identities, thêm negative scope probe cùng quality build/wheel/mypy status.

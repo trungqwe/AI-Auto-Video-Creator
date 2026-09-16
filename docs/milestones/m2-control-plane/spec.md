@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_ACCEPTED; M2-P7A_IMPLEMENTATION_AUTHORIZED`.
+**Trạng thái:** `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_READY_FOR_REVIEW; M2-P7B_BEHAVIORAL_RED_LOCKED; M2-P7B_IMPLEMENTATION_LOCKED`.
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** P1..P6 là `ACCEPTED / CLOSED`. Exact-four P7A Behavioral RED tại `run-m2-p7a-20260916091430` giữ nguyên. Independent review chấp thuận authority correction `24897a84bea68dadb7554380ffc469002c17e403`; user đã cấp quyền implementation P7A, chưa cấp ACCEPTED/CLOSED. P7B/P8/P9 khóa; M3 và Phân hệ A `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc:** P1..P7A là `ACCEPTED / CLOSED`. Independent review chấp thuận source/tooling P7A `6c3a52bde905ee5e71e12334da1873ed20f5c5db` và GREEN `run-m2-p7a-green-20260916224033`; accepted RED và rejected historical GREEN giữ nguyên. P7B chỉ là authority/design draft chờ review; RED/implementation vẫn khóa, đặc biệt vì open gate về commit-order của `BIGSERIAL` trong implementation plan. P8/P9 khóa; M3 và Phân hệ A `NOT AUTHORIZED`.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
