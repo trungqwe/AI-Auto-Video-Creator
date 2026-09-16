@@ -343,7 +343,9 @@ def test_h16_migration_tracker() -> None:
             )] == list(range(1, 7))
         MigrationRunner(dsn, MIGRATIONS, is_test_env=True).migrate_up()
         with psycopg.connect(dsn) as connection:
-            assert connection.execute("SELECT max(version) FROM controlplane.cp_schema_migrations").fetchone()[0] == 7
+            assert [row[0] for row in connection.execute(
+                "SELECT version FROM controlplane.cp_schema_migrations ORDER BY version"
+            )] == list(range(1, 8))
 
 
 def test_h17_actual_fastapi_tls_request() -> None:

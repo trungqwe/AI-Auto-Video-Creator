@@ -20,30 +20,57 @@ from controlplane.infrastructure.evidence.profile_p7a import ORACLE_PATH, ORACLE
 
 ROOT = Path(__file__).parents[4]
 BASE = "609cf70c72b3f08303c91b4a8c56bdec9f9237e3"
-HISTORICAL_CHECKPOINT = "adb56ad8dd46a1d3a58fb989b099b4e868cad94b"
-ALLOWED_SOURCE = {
-    "src/controlplane/api/security.py", "src/controlplane/api/technical_details.py",
-    "src/controlplane/api/tls.py", "src/controlplane/entrypoint.py",
-    "src/controlplane/pyproject.toml", "src/controlplane/requirements.lock",
-    "src/controlplane/uv.lock",
-}
-ALLOWED_PREFIXES = (
-    "src/controlplane/api/main.py", "src/controlplane/api/routes/",
-    "src/controlplane/application/control_api/",
+HISTORICAL_CHECKPOINT = "f6e1552798f0e33d57a98d2b1af0b33dc6ce3e81"
+ALLOWED_SOURCE = frozenset({
+    "src/controlplane/api/main.py",
+    "src/controlplane/api/security.py",
+    "src/controlplane/api/technical_details.py",
+    "src/controlplane/api/tls.py",
+    "src/controlplane/application/control_api/commands.py",
+    "src/controlplane/application/control_api/query_ports.py",
     "src/controlplane/application/orchestration/start_batch.py",
-    "src/controlplane/application/session_security/",
-    "src/controlplane/application/technical_details/",
-    "src/controlplane/infrastructure/db/control_api_",
+    "src/controlplane/application/session_security/__init__.py",
+    "src/controlplane/application/technical_details/__init__.py",
+    "src/controlplane/entrypoint.py",
+    "src/controlplane/infrastructure/db/control_api_commands.py",
+    "src/controlplane/infrastructure/db/control_api_queries.py",
+    "src/controlplane/infrastructure/db/migrations/0007_technical_details.sql",
+    "src/controlplane/infrastructure/db/migrations/0007_technical_details.rollback.sql",
     "src/controlplane/infrastructure/db/orchestration/start_batch.py",
-    "src/controlplane/infrastructure/db/session_security/",
-    "src/controlplane/infrastructure/db/technical_details/",
-    "src/controlplane/infrastructure/db/migrations/0007_technical_details",
+    "src/controlplane/infrastructure/db/session_security/__init__.py",
+    "src/controlplane/infrastructure/db/technical_details/__init__.py",
     "src/controlplane/infrastructure/evidence/probe_p7a_implementation.py",
     "src/controlplane/infrastructure/evidence/profile_p7a_implementation.py",
     "src/controlplane/infrastructure/evidence/synthesizer_p7a_implementation.py",
     "src/controlplane/infrastructure/security/loopback_certificate.py",
     "src/controlplane/infrastructure/security/redaction.py",
+    "src/controlplane/pyproject.toml",
+    "src/controlplane/requirements.lock",
+    "src/controlplane/uv.lock",
+    "tests/m2/test_p7a_control_api_integration.py",
+    "tests/m2/test_p7a_hardening.py",
+})
+ALLOWED_PREFIXES = (
+    "src/controlplane/api/routes/",
+    "src/controlplane/api/middleware/",
 )
+
+
+def unexpected_scope_paths(paths: list[str]) -> list[str]:
+    """Reject all changes not explicitly authorized by the P7A plan."""
+    return [path for path in paths if path not in ALLOWED_SOURCE
+            and not path.startswith(ALLOWED_PREFIXES)]
+
+
+def scope_negative_probe() -> bool:
+    """A sibling of an authorized application file must never pass by prefix."""
+    return unexpected_scope_paths([
+        "src/controlplane/application/control_api/test_h29_dummy.py",
+        "tests/m2/test_p7a_control_api_security.py",
+    ]) == [
+        "src/controlplane/application/control_api/test_h29_dummy.py",
+        "tests/m2/test_p7a_control_api_security.py",
+    ]
 
 
 def _git(*args: str) -> subprocess.CompletedProcess[str]:
@@ -94,9 +121,12 @@ def collect(source_sha: str) -> dict[str, object]:
         source / "infrastructure/db/technical_details/__init__.py",
         source / "infrastructure/db/session_security/__init__.py",
     ]
-    changed = _git("diff", "--name-only", BASE, source_sha, "--", "src/controlplane").stdout.splitlines()
-    unexpected = [path for path in changed if path not in ALLOWED_SOURCE
-                  and not path.startswith(ALLOWED_PREFIXES)]
+    scope_diff = _git("diff", "--name-only", BASE, source_sha, "--",
+                      "src/controlplane", "tests/m2")
+    if scope_diff.returncode:
+        raise RuntimeError("source scope diff unavailable")
+    changed = scope_diff.stdout.splitlines()
+    unexpected = unexpected_scope_paths(changed)
     uv = subprocess.check_output([str(ROOT / ".local-tools/uv/uv.exe"), "--version"], text=True).split()[1]
     return {
         "source_commit_sha": source_sha, "python": platform.python_version(),
@@ -113,9 +143,13 @@ def collect(source_sha: str) -> dict[str, object]:
                                            "src/controlplane/infrastructure/db/migration_runner.py").returncode == 0,
         "accepted_oracle_unchanged": hashlib.sha256((ROOT / ORACLE_PATH).read_bytes()).hexdigest() == ORACLE_SHA,
         "p1_p6_source_unchanged": not unexpected,
+        "source_scope_exact_pass": not unexpected,
+        "source_scope_negative_probe_pass": scope_negative_probe(),
+        "unexpected_scope_paths": unexpected,
         "historical_evidence_preserved": _git(
             "diff", "--quiet", HISTORICAL_CHECKPOINT, source_sha, "--",
-            "docs/milestones/m2-control-plane/evidence"
+            "docs/milestones/m2-control-plane/evidence",
+            "docs/milestones/m1-proof/evidence",
         ).returncode == 0,
         "application_to_infrastructure_imports": sum(
             name.startswith("controlplane.infrastructure") for name in app_imports
@@ -146,7 +180,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     result = collect(args.source_sha)
-    args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8", newline="\n")
     print("P7A_RUNTIME_STATIC=CAPTURED")
 
 
