@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-16 — M2-P6 implementation ready for review
+
+- Triển khai migration `0006`, orchestration domain/application và PostgreSQL adapter dưới caller-owned UoW với row locking cho variant CAS, capacity và completion idempotency.
+- Fresh evidence `run-m2-p6-20260916134313` pin source/tooling `0b123805215bf3d77250676bcd04a5c749dca2d5`: P6 4/4, 12/12 hardening probes, P5B/P5A/P4/P3/P2/P1/P0/architecture/M1 đều GREEN; lifecycle dừng `M2-P6_IMPLEMENTATION_READY_FOR_REVIEW`.
+
 ## 2026-09-16 — M2-P6 implementation authorized
 
 - Người dùng chấp thuận architecture-wired Behavioral RED `run-m2-p6-20260916190000`, khóa oracle SHA-256 `42cf15e9b87e88728aa3d84f633bafc98bb8794c2c4a271d72b74c7258252517` và mở implementation P6.

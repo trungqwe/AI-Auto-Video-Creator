@@ -1,0 +1,1 @@
+SKIP_UNAVAILABLE: mypy executable is not installed in the locked environment.
