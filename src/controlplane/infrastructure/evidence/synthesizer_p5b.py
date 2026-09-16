@@ -66,6 +66,15 @@ def imports(path: Path):
             yield n.module or ""
 
 
+def sql_statement_count(path: Path) -> int:
+    count = 0
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            normalized = node.value.lstrip().upper()
+            count += normalized.startswith(("SELECT ", "INSERT INTO ", "UPDATE ", "DELETE FROM "))
+    return count
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("run_dir")
@@ -182,11 +191,7 @@ def main():
                 "0005_artifact_metadata.rollback.sql",
             )
         ),
-        "application_storage_meta_sql_statements": sum(
-            token in p.read_text(encoding="utf-8").upper()
-            for p in app.rglob("*.py")
-            for token in ("SELECT ", "INSERT ", "UPDATE ", "DELETE ")
-        ),
+        "application_storage_meta_sql_statements": sum(sql_statement_count(p) for p in app.rglob("*.py")),
         "infrastructure_storage_meta_sql_present": "SELECT " in adapter.read_text(encoding="utf-8").upper(),
         "adapter_uses_caller_owned_connection": "self._connection = connection" in adapter.read_text(encoding="utf-8"),
         "domain_to_application_imports": sum(
