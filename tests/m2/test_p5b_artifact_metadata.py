@@ -18,12 +18,12 @@ import pytest
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
 
-from controlplane.application.artifact_metadata import (
+from controlplane.application.storage_meta import (
     ArtifactLocationStore,
     ArtifactVersionStore,
     CleanupAuthorizationStore,
 )
-from controlplane.domain.artifact_metadata import ArtifactLocation, ArtifactVersion, CleanupAuthorization
+from controlplane.domain.storage_meta import ArtifactLocation, ArtifactVersion, CleanupAuthorization
 from controlplane.domain.concurrency import RevisionConflictError
 from controlplane.domain.statemachine import ArtifactLocationState, ForbiddenTransitionError
 from controlplane.infrastructure.db.migration_runner import MigrationRunner
@@ -173,6 +173,33 @@ def _artifact_location_fixture(state: ArtifactLocationState = ArtifactLocationSt
     )
 
 
+def _seed_location_version_prerequisite(connection: psycopg.Connection[object], version: ArtifactVersion) -> None:
+    """Seed the FK parent only once production 0005 makes that table available."""
+    table = connection.execute("SELECT to_regclass('controlplane.cp_artifact_versions')").fetchone()[0]
+    if table is None:
+        return
+    connection.execute(
+        "INSERT INTO controlplane.cp_artifact_versions "
+        "(workspace_id, artifact_id, artifact_version_id, sha256_hash, size_bytes, mime_type, "
+        "artifact_kind, owner_ref, lineage_ref, retention_ref, sensitivity_ref, created_at) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        (
+            version.workspace_id,
+            version.artifact_id,
+            version.artifact_version_id,
+            version.sha256_hash,
+            version.size_bytes,
+            version.mime_type,
+            version.artifact_kind,
+            version.owner_ref,
+            version.lineage_ref,
+            version.retention_ref,
+            version.sensitivity_ref,
+            version.created_at,
+        ),
+    )
+
+
 def test_tst_m2_p5b_001_artifact_version_registration_and_hash_integrity(p5b_database: DisposableDatabase) -> None:
     store = ArtifactVersionStore()
     with _manager(p5b_database.dsn) as manager:
@@ -204,6 +231,7 @@ def test_tst_m2_p5b_002_location_state_lifecycle_and_verification(p5b_database: 
     version = _artifact_version_fixture()
     with _manager(p5b_database.dsn) as manager:
         with manager.unit_of_work() as uow:
+            _seed_location_version_prerequisite(uow.connection, version)
             location = location_store.declare(**_location_input(version.artifact_version_id), connection=uow.connection)
         assert isinstance(location, ArtifactLocation)
         assert location.state is ArtifactLocationState.DECLARED and location.revision == 1
@@ -251,6 +279,7 @@ def test_tst_m2_p5b_003_cleanup_authorization_requires_verified_location(p5b_dat
             with pytest.raises((ForbiddenTransitionError, ValueError)):
                 authorization_store.authorize(workspace_id=WORKSPACE_A, location_id=location.location_id, expected_revision=1, recovery_epoch=7, current_recovery_epoch=7, connection=uow.connection)
         with manager.unit_of_work() as uow:
+            _seed_location_version_prerequisite(uow.connection, version)
             location = location_store.declare(**_location_input(version.artifact_version_id), connection=uow.connection)
         for requested in (ArtifactLocationState.MATERIALIZING, ArtifactLocationState.AVAILABLE_UNVERIFIED, ArtifactLocationState.VERIFYING, ArtifactLocationState.VERIFIED, ArtifactLocationState.CLEANUP_ELIGIBLE):
             with manager.unit_of_work() as uow:
@@ -323,6 +352,7 @@ def test_tst_m2_p5b_005_workspace_isolation_and_location_revision_conflict(p5b_d
     assert not hasattr(location_store, "get_by_id") and not hasattr(location_store, "update_unscoped")
     with _manager(p5b_database.dsn) as manager:
         with manager.unit_of_work() as uow:
+            _seed_location_version_prerequisite(uow.connection, version)
             location = location_store.declare(**_location_input(version.artifact_version_id), connection=uow.connection)
         with manager.unit_of_work() as uow:
             assert location_store.get_scoped(workspace_id=WORKSPACE_B, location_id=location.location_id, connection=uow.connection) is None

@@ -1,4 +1,4 @@
-"""Structural P5B artifact-metadata contracts; behavior is intentionally absent."""
+"""Structural P5B storage-metadata contracts; behavior is intentionally absent."""
 from __future__ import annotations
 
 from dataclasses import dataclass
