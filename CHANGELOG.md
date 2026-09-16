@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-16 — M2-P6 accepted; P7A Behavioral RED authorized
+
+- Independent review chấp thuận/đóng corrected P6 tại `76daa18d66b2b468cf08189b0ec666fcc1638ec4`, evidence `run-m2-p6-20260916084617`; source/tooling và oracle SHA giữ nguyên.
+- Chỉ mở P7A Behavioral RED. P7A implementation, P7B/P8/P9, M3 và Phân hệ A tiếp tục khóa.
+
 ## 2026-09-16 — M2-P6 independent-review correction
 
 - Sửa duplicate completion khác logical input trả mã chuẩn `FORBIDDEN_TRANSITION`; variant retry đối chiếu cả expected registry revision; capacity retry chặn batch sai bằng `VALIDATION_ERROR`; registry được khởi tạo an toàn trong caller-owned UoW và stale first-use không để partial row kể cả khi caller bắt lỗi.

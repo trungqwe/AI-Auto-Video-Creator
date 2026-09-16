@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1..P5B_ACCEPTED_CLOSED; M2-P6_BEHAVIORAL_RED_READY_FOR_REVIEW`.
+**Trạng thái:** `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_AUTHORIZED; M2-P7A_IMPLEMENTATION_LOCKED`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** P1..P5B là `ACCEPTED / CLOSED`. Architecture-wired exact-four P6 Behavioral RED tại source `4755e54` và run `run-m2-p6-20260916190000` đã sẵn sàng independent review; implementation P6, P7+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** P1..P6 là `ACCEPTED / CLOSED`. Chỉ P7A Behavioral RED được ủy quyền; implementation P7A, P7B/P8/P9, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -466,7 +466,7 @@ Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Khôn
 
 ### M2-P6: Module G — Orchestration Shell, Variant Reservation & Completion Ledger Skeleton
 
-**Trạng thái/gate:** `M2-P6_IMPLEMENTATION_READY_FOR_REVIEW`. Independent review không chấp thuận candidate `run-m2-p6-20260916134313`; corrected candidate pin immutable source/tooling `8120bac96cc5f5d223cb8f0c64daa904699c04c9`, fresh evidence `run-m2-p6-20260916084617`, locked oracle SHA-256 `42cf15e9b87e88728aa3d84f633bafc98bb8794c2c4a271d72b74c7258252517`. 18/18 PostgreSQL hardening probes độc lập, rollback tracker `[1,2,3,4,5,6] → [1,2,3,4,5]`. Chưa `ACCEPTED/CLOSED`; P7+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Trạng thái/gate:** `M2-P6_ACCEPTED_CLOSED`. Independent review chấp thuận corrected candidate tại `76daa18d66b2b468cf08189b0ec666fcc1638ec4`, pin immutable source/tooling `8120bac96cc5f5d223cb8f0c64daa904699c04c9`, fresh evidence `run-m2-p6-20260916084617`, locked oracle SHA-256 `42cf15e9b87e88728aa3d84f633bafc98bb8794c2c4a271d72b74c7258252517`. 18/18 PostgreSQL hardening probes độc lập, rollback tracker `[1,2,3,4,5,6] → [1,2,3,4,5]`. Chỉ P7A Behavioral RED được mở; implementation P7A và các package sau vẫn khóa.
 
 - **Requirement / CT / INV IDs**: `09-contracts/09-orchestration-contracts.md`, `CT-ORC-002`, `CT-ORC-012`, `AUD2-B01`, `ADR-0004`.
 - **Dependencies**: M2-P5A, M2-P5B.
@@ -510,6 +510,8 @@ Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Khôn
 ---
 
 ### M2-P7A: Module H — Control API Core, Local HTTPS & Security Boundaries
+
+**Trạng thái/gate hiện hành:** `M2-P7A_BEHAVIORAL_RED_AUTHORIZED; M2-P7A_IMPLEMENTATION_LOCKED`. Bốn testcase dưới đây là oracle RED; migration `0007`, API behavior và HTTPS listener chỉ thuộc implementation sau independent acceptance riêng. RED hợp lệ phải fail tại bốn capability seam độc lập, không phải import/setup/dependency/certificate/connection.
 
 - **Requirement / CT / INV IDs**: `CT-API-001..007`, `CT-API-010`, `ADR-0007`, `ADR-0009`, `ADR-0010`.
 - **Dependencies**: M2-P6.
