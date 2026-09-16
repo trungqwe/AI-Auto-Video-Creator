@@ -16,7 +16,7 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | M2 Control Plane | `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_ACCEPTED; M2-P7A_IMPLEMENTATION_READY_FOR_AUTHORIZATION; M2-P7A_IMPLEMENTATION_LOCKED` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
-Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P6 đã được chấp thuận/đóng; P6 dùng corrected evidence `run-m2-p6-20260916084617`. P7A Behavioral RED đã được independent review chấp thuận, nhưng implementation P7A vẫn cần user authorization riêng. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
+Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P6 đã được chấp thuận/đóng; P6 dùng corrected evidence `run-m2-p6-20260916084617`. P7A Behavioral RED đã được independent review chấp thuận. Docs-only transaction correction hiện khóa một P1 UoW cho P2 idempotency, business mutation và outbox, cùng 36 hardening keys; implementation P7A vẫn cần user authorization riêng. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ## Bắt đầu một phiên làm việc
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-17 — M2-P7A command transaction authority corrected (docs-only)
+
+- Sau independent review của `72f3d65b374df617506d69bd6647c442be4c3044`, khóa `ControlApiCommandService` dùng một caller-owned P1 UoW cho P2 idempotency, StartBatch/P5A mutation và P3 outbox; cấm nested `IdempotencyCoordinator.submit()` và middleware commit receipt. Khóa StartBatch receipt/outbox identity, full rollback/duplicate proof và bootstrap capability proof thành 36 independent H01–H36. Accepted RED/oracle/evidence giữ nguyên; P7A implementation vẫn `LOCKED`, chờ independent review và user authorization riêng.
+
 ## 2026-09-16 — M2-P7A RED accepted; implementation authority design locked
 
 - Independent review chấp nhận exact-four P7A Behavioral RED tại `7de529b80f2e058a2ae07d4b01e148707c39686e`; accepted oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035` và evidence `run-m2-p7a-20260916091430` giữ nguyên.
