@@ -3,7 +3,7 @@
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
 **Trạng thái:** `M2-P1..P5A_ACCEPTED_CLOSED; M2-P5B_BEHAVIORAL_RED_READY_FOR_REVIEW; M2-P5B_IMPLEMENTATION_LOCKED`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** P1..P5A là `ACCEPTED / CLOSED`. P5B Behavioral RED đã khóa trên source `bd225c8cf1b3416f06dd96aea483db9cba757a62`; implementation vẫn chưa được phép cho tới independent review/user checkpoint. P6+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** P1..P5A là `ACCEPTED / CLOSED`. Historical P5B RED `e390fdf` bị independent review yêu cầu corrective RED; corrected source `99cc2b95a8308e2a95c63690f2d9ef6da76be873` dùng đúng `storage_meta` và FK-parent prerequisite fail-closed. Implementation vẫn khóa tới checkpoint tiếp theo. P6+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -442,7 +442,7 @@ Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Khôn
 
 ### M2-P5B: Module I — Artifact Metadata & Cleanup-Authorization Skeleton
 
-**Trạng thái/gate:** `M2-P5B_BEHAVIORAL_RED_READY_FOR_REVIEW`; `M2-P5B_IMPLEMENTATION_LOCKED`. Exact five Behavioral RED đã chạy sau P5A/`0004` accepted, không làm yếu gap detection và không sửa runner. Independent review/user checkpoint là điều kiện bắt buộc trước implementation.
+**Trạng thái/gate:** `M2-P5B_BEHAVIORAL_RED_READY_FOR_REVIEW`; `M2-P5B_IMPLEMENTATION_LOCKED`. Historical candidate không được accept; corrected exact-five RED đã sửa package path và future FK prerequisite mà không làm yếu oracle, gap detection hay runner. Independent review/user checkpoint vẫn là điều kiện bắt buộc trước implementation.
 
 **Traceability có thẩm quyền:** `CT-STO-001/002/007/008`, `CT-STO-009` chỉ cho epoch/reference authorization, `CT-STATE-012`, `CT-CMN-005/006/009/010/013`, `CT-EVT-001..005`, `ADR-0004`, `ADR-0006`, `ADR-0010`, và ArtifactLocationState P4 đã closed. `INVALID_ARTIFACT_HASH`/`CLEANUP_NOT_ELIGIBLE` không phải mã `CT-CMN-010`; dùng `VALIDATION_ERROR`, `FORBIDDEN_TRANSITION`, `POLICY_VIOLATION` hoặc `REVISION_CONFLICT` đến khi contract đổi.
 

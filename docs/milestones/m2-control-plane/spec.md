@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1_ACCEPTED_CLOSED; M2-P2_ACCEPTED_CLOSED; M2-P3_ACCEPTED_CLOSED; M2-P4_ACCEPTED_CLOSED; M2-P5A_PLAN_READY_FOR_REVIEW; M2-P5B_PLAN_ACCEPTED_RED_LOCKED`.
+**Trạng thái:** `M2-P1..P5A_ACCEPTED_CLOSED; M2-P5B_BEHAVIORAL_RED_READY_FOR_REVIEW; M2-P5B_IMPLEMENTATION_LOCKED`.
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** P1..P4 là `ACCEPTED / CLOSED`; P5B plan đã accept nhưng `RED_LOCKED`, P5A chờ independent review. RED, implementation, migration và runtime evidence đều chưa được ủy quyền. P5B còn chờ P5A/`0004` accepted vì migration tuần tự. P6+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc:** P1..P5A là `ACCEPTED / CLOSED`. Historical P5B RED `e390fdf` đã bị independent review yêu cầu làm lại vì thiếu persisted ArtifactVersion prerequisite và dùng sai package path. Corrected RED đã trở lại review checkpoint; implementation P5B, migration `0005`, P6+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)

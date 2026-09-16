@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="5" skipped="0" tests="5" time="1.064" timestamp="2026-09-16T11:38:46.854779+07:00" hostname="Admin"><testcase classname="tests.m2.test_p5b_artifact_metadata" name="test_tst_m2_p5b_001_artifact_version_registration_and_hash_integrity" time="0.201"><failure message="NotImplementedError: P5B artifact-version store is not implemented">p5b_database = DisposableDatabase(name='m2_p5b_test_283b14609821487aa8da6f15026a6d9b')
+
+    def test_tst_m2_p5b_001_artifact_version_registration_and_hash_integrity(p5b_database: DisposableDatabase) -&gt; None:
+        store = ArtifactVersionStore()
+        with _manager(p5b_database.dsn) as manager:
+            with manager.unit_of_work() as uow:
+&gt;               first = store.register(**_version_input(), connection=uow.connection)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p5b_artifact_metadata.py:207:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;controlplane.application.storage_meta.ArtifactVersionStore object at 0x000002C34D8E9D30&gt;
+kwargs = {'workspace_id': '00000000-0000-0000-0000-0000000005b1', 'artifact_id': 'artifact-5b', 'sha256_hash': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'size_bytes': 128, ...}
+
+    def register(self, **kwargs: Any) -&gt; object:
+&gt;       raise NotImplementedError("P5B artifact-version store is not implemented")
+E       NotImplementedError: P5B artifact-version store is not implemented
+
+src\controlplane\application\storage_meta\__init__.py:9: NotImplementedError</failure></testcase><testcase classname="tests.m2.test_p5b_artifact_metadata" name="test_tst_m2_p5b_002_location_state_lifecycle_and_verification" time="0.171"><failure message="NotImplementedError: P5B artifact-location store is not implemented">p5b_database = DisposableDatabase(name='m2_p5b_test_bbb5d89763454cc6945d7f753d447e9a')
+
+    def test_tst_m2_p5b_002_location_state_lifecycle_and_verification(p5b_database: DisposableDatabase) -&gt; None:
+        location_store = ArtifactLocationStore()
+        version = _artifact_version_fixture()
+        with _manager(p5b_database.dsn) as manager:
+            with manager.unit_of_work() as uow:
+                _seed_location_version_prerequisite(uow.connection, version)
+&gt;               location = location_store.declare(**_location_input(version.artifact_version_id), connection=uow.connection)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p5b_artifact_metadata.py:235:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;controlplane.application.storage_meta.ArtifactLocationStore object at 0x000002C34D8E9940&gt;
+kwargs = {'workspace_id': '00000000-0000-0000-0000-0000000005b1', 'artifact_version_id': '00000000-0000-0000-0000-000000005b01', 'backend_ref': 'cloud-object-store', 'provider_namespace_ref': 'provider-account-ref', ...}
+
+    def declare(self, **kwargs: Any) -&gt; object:
+&gt;       raise NotImplementedError("P5B artifact-location store is not implemented")
+E       NotImplementedError: P5B artifact-location store is not implemented
+
+src\controlplane\application\storage_meta\__init__.py:17: NotImplementedError</failure></testcase><testcase classname="tests.m2.test_p5b_artifact_metadata" name="test_tst_m2_p5b_003_cleanup_authorization_requires_verified_location" time="0.182"><failure message="NotImplementedError: P5B cleanup-authorization policy/store is not implemented">p5b_database = DisposableDatabase(name='m2_p5b_test_d8633a670c5c45de88b69223739a66e9')
+
+    def test_tst_m2_p5b_003_cleanup_authorization_requires_verified_location(p5b_database: DisposableDatabase) -&gt; None:
+        location_store = ArtifactLocationStore()
+        authorization_store = CleanupAuthorizationStore()
+        now = datetime.now(timezone.utc)
+        version = _artifact_version_fixture()
+        location = _artifact_location_fixture()
+        with _manager(p5b_database.dsn) as manager:
+            with manager.unit_of_work() as uow:
+                with pytest.raises((ForbiddenTransitionError, ValueError)):
+&gt;                   authorization_store.authorize(workspace_id=WORKSPACE_A, location_id=location.location_id, expected_revision=1, recovery_epoch=7, current_recovery_epoch=7, connection=uow.connection)
+
+tests\m2\test_p5b_artifact_metadata.py:280:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;controlplane.application.storage_meta.CleanupAuthorizationStore object at 0x000002C34D8EA900&gt;
+kwargs = {'workspace_id': '00000000-0000-0000-0000-0000000005b1', 'location_id': '00000000-0000-0000-0000-000000005b02', 'expected_revision': 1, 'recovery_epoch': 7, ...}
+
+    def authorize(self, **kwargs: Any) -&gt; object:
+&gt;       raise NotImplementedError("P5B cleanup-authorization policy/store is not implemented")
+E       NotImplementedError: P5B cleanup-authorization policy/store is not implemented
+
+src\controlplane\application\storage_meta\__init__.py:31: NotImplementedError</failure></testcase><testcase classname="tests.m2.test_p5b_artifact_metadata" name="test_tst_m2_p5b_004_production_0005_forward_rollback_and_constraints" time="0.185"><failure message="AssertionError: P5B-004 requires missing production migration 0005 and exact rollback&#10;assert (False)&#10; +  where False = is_file()&#10; +    where is_file = WindowsPath('D:/AI Auto Video Creator/src/controlplane/infrastructure/db/migrations/0005_artifact_metadata.sql').is_file">p5b_migration_baseline = (DisposableDatabase(name='m2_p5b_test_4c11fb0f5e8142068cc84f9542b06256'), WindowsPath('C:/Users/Admin/AppData/Local/Temp/m2_p5b_migration_baseline_7z227z5q'))
+
+    def test_tst_m2_p5b_004_production_0005_forward_rollback_and_constraints(p5b_migration_baseline: tuple[DisposableDatabase, Path]) -&gt; None:
+        database, sandbox = p5b_migration_baseline
+        forward = PRODUCTION_MIGRATIONS / "0005_artifact_metadata.sql"
+        rollback = PRODUCTION_MIGRATIONS / "0005_artifact_metadata.rollback.sql"
+&gt;       assert forward.is_file() and rollback.is_file(), "P5B-004 requires missing production migration 0005 and exact rollback"
+E       AssertionError: P5B-004 requires missing production migration 0005 and exact rollback
+E       assert (False)
+E        +  where False = is_file()
+E        +    where is_file = WindowsPath('D:/AI Auto Video Creator/src/controlplane/infrastructure/db/migrations/0005_artifact_metadata.sql').is_file
+
+tests\m2\test_p5b_artifact_metadata.py:329: AssertionError</failure></testcase><testcase classname="tests.m2.test_p5b_artifact_metadata" name="test_tst_m2_p5b_005_workspace_isolation_and_location_revision_conflict" time="0.192"><failure message="NotImplementedError: P5B artifact-location store is not implemented">p5b_database = DisposableDatabase(name='m2_p5b_test_c5f61c2317564a869bd48bfc8a38dc11')
+
+    def test_tst_m2_p5b_005_workspace_isolation_and_location_revision_conflict(p5b_database: DisposableDatabase) -&gt; None:
+        location_store = ArtifactLocationStore()
+        version = _artifact_version_fixture()
+        assert not hasattr(location_store, "get_by_id") and not hasattr(location_store, "update_unscoped")
+        with _manager(p5b_database.dsn) as manager:
+            with manager.unit_of_work() as uow:
+                _seed_location_version_prerequisite(uow.connection, version)
+&gt;               location = location_store.declare(**_location_input(version.artifact_version_id), connection=uow.connection)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\m2\test_p5b_artifact_metadata.py:356:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;controlplane.application.storage_meta.ArtifactLocationStore object at 0x000002C34DE18E10&gt;
+kwargs = {'workspace_id': '00000000-0000-0000-0000-0000000005b1', 'artifact_version_id': '00000000-0000-0000-0000-000000005b01', 'backend_ref': 'cloud-object-store', 'provider_namespace_ref': 'provider-account-ref', ...}
+
+    def declare(self, **kwargs: Any) -&gt; object:
+&gt;       raise NotImplementedError("P5B artifact-location store is not implemented")
+E       NotImplementedError: P5B artifact-location store is not implemented
+
+src\controlplane\application\storage_meta\__init__.py:17: NotImplementedError</failure></testcase></testsuite></testsuites>

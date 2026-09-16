@@ -1,5 +1,7 @@
 # Changelog
 
+- Corrective Behavioral RED M2-P5B sau independent audit: chuyển structural seams về đúng `storage_meta`, thêm test-only persisted ArtifactVersion prerequisite chỉ khi schema `0005` tồn tại, và nâng evidence lên generic fail-closed validator với hash recomputation/tamper-negative proof. Không tạo `0005` và không implement P5B.
+
 - Khóa Behavioral RED M2-P5B trên source `bd225c8cf1b3416f06dd96aea483db9cba757a62`: exact five oracle fail đúng các capability ArtifactVersion, P4-backed ArtifactLocation, CleanupAuthorization, production migration `0005` còn thiếu và scoped CAS. Regressions P5A/P4/P3/P2/P1/P0/architecture/M1 giữ GREEN 5/9/11/11/11/33/6/93; không triển khai P5B và không tạo `0005`.
 
 - Hoàn tất corrected candidate M2-P5A: test-wiring commit riêng, correction RED/ GREEN cho persisted CAS và hai explicit-ID path, PostgreSQL adapter được inject dưới P1 UoW, không global psycopg patch hoặc migration-ledger side effect. Closure mới pin source `413070c074997d6f02c2d7933c64d0d17c9b9704`: P5A/P4/P3/P2/P1/P0/architecture/M1 = 5/9/11/11/11/33/6/93, không skip. OAuth runtime khôi phục qua người dùng cấp quyền lại; historical M1 evidence giữ nguyên byte. Dừng `M2-P5A_IMPLEMENTATION_READY_FOR_REVIEW`; P5B+ vẫn khóa.

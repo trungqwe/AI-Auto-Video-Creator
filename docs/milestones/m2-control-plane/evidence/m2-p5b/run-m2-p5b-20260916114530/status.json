@@ -1,0 +1,333 @@
+{
+  "schema_version": "m2_package_status_v1",
+  "milestone": "M2",
+  "package": "M2-P5B",
+  "semantic_profile": "m2-p5b-behavioral-red",
+  "status": "READY_FOR_REVIEW",
+  "lifecycle": "M2-P5B_BEHAVIORAL_RED_READY_FOR_REVIEW",
+  "implementation_authorized": false,
+  "run_id": "run-m2-p5b-20260916114530",
+  "source_commit_sha": "99cc2b95a8308e2a95c63690f2d9ef6da76be873",
+  "oracle_sha256": "2d26b5c015323ddfde6b9aaf5d802354a7e20aa1a96a93793aae86436589311d",
+  "suite_results": {
+    "p5b": {
+      "total": 5,
+      "passed": 0,
+      "failed": 5,
+      "errors": 0,
+      "skipped": 0,
+      "identities": [
+        "tests.m2.test_p5b_artifact_metadata::test_tst_m2_p5b_001_artifact_version_registration_and_hash_integrity",
+        "tests.m2.test_p5b_artifact_metadata::test_tst_m2_p5b_002_location_state_lifecycle_and_verification",
+        "tests.m2.test_p5b_artifact_metadata::test_tst_m2_p5b_003_cleanup_authorization_requires_verified_location",
+        "tests.m2.test_p5b_artifact_metadata::test_tst_m2_p5b_004_production_0005_forward_rollback_and_constraints",
+        "tests.m2.test_p5b_artifact_metadata::test_tst_m2_p5b_005_workspace_isolation_and_location_revision_conflict"
+      ]
+    },
+    "p5a-regression": {
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "identities": [
+        "tests.m2.test_p5a_config_and_secrets::test_tst_m2_p5a_001_config_revision_immutability_and_hash",
+        "tests.m2.test_p5a_config_and_secrets::test_tst_m2_p5a_002_secret_handle_storage_blocks_plaintext",
+        "tests.m2.test_p5a_config_and_secrets::test_tst_m2_p5a_003_secret_redaction_in_domain_events",
+        "tests.m2.test_p5a_config_and_secrets::test_tst_m2_p5a_004_production_0004_forward_rollback_and_constraints",
+        "tests.m2.test_p5a_config_and_secrets::test_tst_m2_p5a_005_workspace_isolation_and_concurrent_publish"
+      ]
+    },
+    "p4-regression": {
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "identities": [
+        "tests.m2.test_p4_statemachines::test_tst_m2_p4_001_valid_lifecycle_transitions",
+        "tests.m2.test_p4_statemachines::test_tst_m2_p4_002_forbidden_transition_completed_to_running_rejected",
+        "tests.m2.test_p4_statemachines::test_tst_m2_p4_003_operation_execution_to_projection_mapping",
+        "tests.m2.test_p4_statemachines::test_tst_m2_p4_004_artifact_cleanup_strict_transition_order",
+        "tests.m2.test_p4_statemachines::test_tst_m2_p4_005_batch_waiting_resume_and_terminal_transitions",
+        "tests.m2.test_p4_statemachines::test_tst_m2_p4_006_job_waiting_resume_and_completion_admission",
+        "tests.m2.test_p4_statemachines::test_tst_m2_p4_007_stage_run_reconcile_and_terminal_transitions",
+        "tests.m2.test_p4_statemachines::test_tst_m2_p4_008_operation_forbidden_transition_classes_rejected",
+        "tests.m2.test_p4_statemachines::test_tst_m2_p4_009_stale_expected_revision_rejected_without_mutation"
+      ]
+    },
+    "p3-regression": {
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "identities": [
+        "tests.m2.test_p3_outbox_and_projections::test_tst_m2_p3_001_production_0003_forward_rollback_and_schema_constraints",
+        "tests.m2.test_p3_outbox_and_projections::test_tst_m2_p3_002_business_mutation_and_outbox_atomic_commit_rollback",
+        "tests.m2.test_p3_outbox_and_projections::test_tst_m2_p3_003_at_least_once_dispatch_crash_before_published_ack_redispatch",
+        "tests.m2.test_p3_outbox_and_projections::test_tst_m2_p3_004_consumer_deduplicates_same_event_id",
+        "tests.m2.test_p3_outbox_and_projections::test_tst_m2_p3_005_concurrent_consumers_same_event_exactly_one_logical_effect",
+        "tests.m2.test_p3_outbox_and_projections::test_tst_m2_p3_006_checkpoint_projection_atomic_rollback",
+        "tests.m2.test_p3_outbox_and_projections::test_tst_m2_p3_007_unsupported_schema_durably_quarantined",
+        "tests.m2.test_p3_outbox_and_projections::test_tst_m2_p3_008_aggregate_revision_gap_and_out_of_order_blocked",
+        "tests.m2.test_p3_outbox_and_projections::test_tst_m2_p3_009_stale_recovery_epoch_quarantined",
+        "tests.m2.test_p3_outbox_and_projections::test_tst_m2_p3_010_operation_stream_monotonic_cursor_under_concurrency",
+        "tests.m2.test_p3_outbox_and_projections::test_tst_m2_p3_011_operation_stream_safe_projection_and_payload_policy"
+      ]
+    },
+    "p2-regression": {
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "identities": [
+        "tests.m2.test_p2_envelopes_and_idempotency::test_tst_m2_p2_001_envelope_required_fields_and_rfc3339_utc",
+        "tests.m2.test_p2_envelopes_and_idempotency::test_tst_m2_p2_002_problem_detail_transport_neutral_safe_contract",
+        "tests.m2.test_p2_envelopes_and_idempotency::test_tst_m2_p2_003_durable_command_receipt_persistence",
+        "tests.m2.test_p2_envelopes_and_idempotency::test_tst_m2_p2_004_same_key_same_canonical_payload_replays_same_receipt",
+        "tests.m2.test_p2_envelopes_and_idempotency::test_tst_m2_p2_005_same_key_different_payload_rejected",
+        "tests.m2.test_p2_envelopes_and_idempotency::test_tst_m2_p2_006_concurrent_same_key_same_payload_one_logical_receipt",
+        "tests.m2.test_p2_envelopes_and_idempotency::test_tst_m2_p2_007_concurrent_same_key_different_payload_rejects_loser",
+        "tests.m2.test_p2_envelopes_and_idempotency::test_tst_m2_p2_008_workspace_scoped_idempotency_isolation_and_restart",
+        "tests.m2.test_p2_envelopes_and_idempotency::test_tst_m2_p2_009_successful_revision_update_increments_exactly_once",
+        "tests.m2.test_p2_envelopes_and_idempotency::test_tst_m2_p2_010_stale_revision_conflict_zero_mutation_and_current_revision",
+        "tests.m2.test_p2_envelopes_and_idempotency::test_tst_m2_p2_011_production_0002_forward_rollback_and_constraints"
+      ]
+    },
+    "p1-regression": {
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "identities": [
+        "tests.m2.test_p1_db_and_workspace::test_tst_m2_p1_001_migration_forward_and_rollback_on_disposable_db",
+        "tests.m2.test_p1_db_and_workspace::test_tst_m2_p1_002_migration_checksum_tamper_rejected",
+        "tests.m2.test_p1_db_and_workspace::test_tst_m2_p1_003_migration_version_gap_and_duplicate_rejected",
+        "tests.m2.test_p1_db_and_workspace::test_tst_m2_p1_004_bounded_advisory_lock_and_timeout",
+        "tests.m2.test_p1_db_and_workspace::test_tst_m2_p1_005_uow_transaction_atomicity_and_rollback",
+        "tests.m2.test_p1_db_and_workspace::test_tst_m2_p1_006_workspace_isolation_and_composite_fk_enforcement",
+        "tests.m2.test_p1_db_and_workspace::test_tst_m2_p1_007_cross_workspace_read_and_status_mutation_prevented",
+        "tests.m2.test_p1_db_and_workspace::test_tst_m2_p1_008_destructive_guard_rejects_non_test_db",
+        "tests.m2.test_p1_db_and_workspace::test_tst_m2_p1_009_applied_migration_file_missing_rejected",
+        "tests.m2.test_p1_db_and_workspace::test_tst_m2_p1_010_sql_migration_failure_rolls_back_without_applied_record",
+        "tests.m2.test_p1_db_and_workspace::test_tst_m2_p1_011_uow_rollback_returns_clean_connection_to_pool"
+      ]
+    },
+    "p0-regression": {
+      "total": 33,
+      "passed": 33,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "identities": [
+        "tests.m2.test_p0_packaging::test_tst_m2_p0_003_controlplane_import_without_syspath_hack",
+        "tests.m2.test_p0_packaging::test_tst_m2_p0_003_no_syspath_hacks_in_controlplane_source",
+        "tests.m2.test_p0_packaging::test_tst_m2_p0_003_pyproject_and_build_lock_metadata",
+        "tests.m2.test_p0_packaging::test_tst_m2_p0_003_backend_dependency_graph_and_build_lock",
+        "tests.m2.test_p0_packaging::test_tst_m2_p0_003_frozen_project_environment_install",
+        "tests.m2.test_p0_packaging::test_tst_m2_p0_003_fresh_environment_wheel_build_and_install",
+        "tests.m2.test_p0_packaging::test_tst_m2_p0_003_frozen_install_rejects_mutated_lock_mismatch",
+        "tests.m2.test_p0_packaging::test_tst_m2_p0_004_frontend_toolchain_exact_pins_and_runtime_manifest",
+        "tests.m2.test_p0_packaging::test_tst_m2_p0_005_skeleton_interfaces_raise_not_implemented",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_evidence_validator_accepts_valid_package",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_evidence_validator_rejects_tampered_hash",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_evidence_validator_rejects_self_referential_hash",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_evidence_validator_rejects_schema_mismatch",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_evidence_validator_rejects_failing_gate_with_pass_status",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_evidence_validator_rejects_untracked_extra_file",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_semantic_evaluator_rejects_junit_failures",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_semantic_evaluator_rejects_skipped_tests",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_semantic_evaluator_rejects_m1_count_mismatch",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_semantic_evaluator_rejects_dirty_secret_scan",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_semantic_evaluator_rejects_failed_txt_reports",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_live_p0_evidence_is_valid",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_semantic_evaluator_rejects_unknown_package_or_profile",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_semantic_evaluator_dispatches_registered_p1_sample_profile",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_semantic_evaluator_blocks_cross_package_profile_spoofing",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_semantic_evaluator_rejects_provenance_run_id_mismatch",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_semantic_evaluator_rejects_provenance_timestamp_drift",
+        "tests.m2.test_p0_evidence_validator::test_tst_m2_p0_002_semantic_evaluator_rejects_missing_run_id_in_status",
+        "tests.m2.test_p0_architecture_rules::test_tst_m2_p0_001_ast_boundary_rules_clean_codebase",
+        "tests.m2.test_p0_architecture_rules::test_tst_m2_p0_001_domain_rejects_fastapi_import",
+        "tests.m2.test_p0_architecture_rules::test_tst_m2_p0_001_domain_rejects_psycopg_import",
+        "tests.m2.test_p0_architecture_rules::test_tst_m2_p0_001_rejects_m1proof_prototype_import",
+        "tests.m2.test_p0_architecture_rules::test_tst_m2_p0_001_rejects_src_m1proof_prefix_import",
+        "tests.m2.test_p0_architecture_rules::test_tst_m2_p0_001_domain_rejects_outer_layer_import"
+      ]
+    },
+    "architecture": {
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "identities": [
+        "tests.m2.test_p0_architecture_rules::test_tst_m2_p0_001_ast_boundary_rules_clean_codebase",
+        "tests.m2.test_p0_architecture_rules::test_tst_m2_p0_001_domain_rejects_fastapi_import",
+        "tests.m2.test_p0_architecture_rules::test_tst_m2_p0_001_domain_rejects_psycopg_import",
+        "tests.m2.test_p0_architecture_rules::test_tst_m2_p0_001_rejects_m1proof_prototype_import",
+        "tests.m2.test_p0_architecture_rules::test_tst_m2_p0_001_rejects_src_m1proof_prefix_import",
+        "tests.m2.test_p0_architecture_rules::test_tst_m2_p0_001_domain_rejects_outer_layer_import"
+      ]
+    },
+    "m1-regression": {
+      "total": 93,
+      "passed": 93,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "identities": [
+        "tests.m1.p0.test_environment_capture::test_capture_rejects_observed_version_mismatch",
+        "tests.m1.p0.test_environment_capture::test_capture_rejects_secret_like_keys",
+        "tests.m1.p0.test_environment_live_probe::test_capture_and_validation_probe_live_workspace",
+        "tests.m1.p0.test_environment_live_probe::test_validation_detects_live_lockfile_drift",
+        "tests.m1.p0.test_environment_live_probe::test_capture_fails_when_postgresql_endpoint_is_not_live",
+        "tests.m1.p0.test_environment_manifest::test_environment_manifest_matches_locked_bootstrap",
+        "tests.m1.p0.test_environment_manifest::test_environment_manifest_contains_successful_postgresql_preflight",
+        "tests.m1.p0.test_environment_validation::test_validator_accepts_untampered_environment_manifest",
+        "tests.m1.p0.test_environment_validation::test_validator_rejects_tampered_bootstrap_hash",
+        "tests.m1.p0.test_environment_validation::test_validator_rejects_tampered_locked_section",
+        "tests.m1.p1.test_activity_receipts_v2::test_activity_result_is_idempotent_by_operation_and_bound_to_input",
+        "tests.m1.p1.test_activity_receipts_v2::test_grant_cannot_rebind_at_same_generation_and_operation_input_is_stable",
+        "tests.m1.p1.test_command_semantics::test_duplicate_command_returns_same_receipt_and_one_mutation",
+        "tests.m1.p1.test_command_semantics::test_concurrent_duplicate_commands_commit_only_once",
+        "tests.m1.p1.test_command_semantics::test_concurrent_distinct_commands_cannot_both_create_same_revision",
+        "tests.m1.p1.test_command_semantics::test_reused_idempotency_key_with_different_payload_is_rejected",
+        "tests.m1.p1.test_command_semantics::test_mutation_and_outbox_roll_back_together_at_crash_boundary",
+        "tests.m1.p1.test_completion_admission::test_completion_rejects_unverified_admission_without_state_change",
+        "tests.m1.p1.test_completion_uow::test_completion_uow_is_atomic_at_every_crash_boundary[after_ledger]",
+        "tests.m1.p1.test_completion_uow::test_completion_uow_is_atomic_at_every_crash_boundary[after_job]",
+        "tests.m1.p1.test_completion_uow::test_completion_uow_is_atomic_at_every_crash_boundary[after_capacity]",
+        "tests.m1.p1.test_completion_uow::test_completion_uow_is_atomic_at_every_crash_boundary[after_variant]",
+        "tests.m1.p1.test_completion_uow::test_completion_uow_is_atomic_at_every_crash_boundary[after_media_usage]",
+        "tests.m1.p1.test_completion_uow::test_completion_uow_is_atomic_at_every_crash_boundary[after_outbox]",
+        "tests.m1.p1.test_completion_uow::test_completion_uow_is_atomic_at_every_crash_boundary[after_cleanup_eligibility]",
+        "tests.m1.p1.test_completion_uow::test_lost_ack_and_duplicate_completion_return_one_committed_result",
+        "tests.m1.p1.test_epoch_authority::test_stale_command_and_event_cannot_persist",
+        "tests.m1.p1.test_epoch_authority::test_epoch_and_fence_cannot_move_backwards",
+        "tests.m1.p1.test_operation_receipts_v2::test_operation_key_is_scoped_by_workspace_and_type_is_fingerprinted",
+        "tests.m1.p1.test_operation_receipts_v2::test_external_state_machine_rejects_forbidden_transitions",
+        "tests.m1.p1.test_operation_receipts_v2::test_receipt_from_old_epoch_is_not_reused_as_current",
+        "tests.m1.p1.test_outbox_delivery::test_dispatch_crash_before_checkpoint_is_recovered_by_consumer_dedupe",
+        "tests.m1.p1.test_recovery_semantics::test_duplicate_and_reordered_events_do_not_repeat_projection_side_effect",
+        "tests.m1.p1.test_recovery_semantics::test_lost_ack_after_commit_returns_existing_receipt",
+        "tests.m1.p1.test_recovery_semantics::test_lost_ack_is_recovered_after_real_process_restart",
+        "tests.m1.p1.test_recovery_semantics::test_stale_generation_or_recovery_epoch_cannot_commit_result",
+        "tests.m1.p1.test_recovery_semantics::test_unknown_external_outcome_requires_reconciliation_before_retry",
+        "tests.m1.p1.test_recovery_semantics::test_sensitive_input_is_rejected_without_persistence_or_echo",
+        "tests.m1.p1.test_remediation_migration::test_remediation_migration_moves_forward_and_back",
+        "tests.m1.p1.test_sensitive_boundaries::test_event_payload_rejects_secret_and_unknown_fields",
+        "tests.m1.p1.test_sensitive_boundaries::test_activity_and_external_payload_boundaries_reject_secrets",
+        "tests.m1.p1.test_sensitive_boundaries::test_reconciliation_output_rejects_secret_without_persistence",
+        "tests.m1.p2.test_activity_idempotency::test_tst_m1_p2_002_activity_retry_lost_ack_uses_p1_receipt",
+        "tests.m1.p2.test_activity_idempotency::test_tst_m1_p2_003_stale_worker_generation_rejected",
+        "tests.m1.p2.test_child_isolation::test_tst_m1_p2_004_child_failure_isolation",
+        "tests.m1.p2.test_exact_temporal_server_integration::test_tst_m1_p2_008_exact_server_identity_and_version_observation",
+        "tests.m1.p2.test_exact_temporal_server_integration::test_tst_m1_p2_009_exact_server_workflow_activity_roundtrip",
+        "tests.m1.p2.test_exact_temporal_server_integration::test_tst_m1_p2_010_exact_server_idempotent_retry_boundary",
+        "tests.m1.p2.test_reconciliation_routing::test_tst_m1_p2_006_unknown_outcome_routes_to_reconciliation",
+        "tests.m1.p2.test_replay_versioning::test_tst_m1_p2_005_replay_versioning_and_detection",
+        "tests.m1.p2.test_temporal_payload_boundaries::test_tst_m1_p2_007_payload_boundary_blocks_secrets_and_large_blobs",
+        "tests.m1.p2.test_worker_lifecycle::test_tst_m1_p2_001_desktop_worker_offline_and_resume",
+        "tests.m1.p3.test_drive_integrity::test_tst_m1_p3_003_byte_integrity_and_sha256_hash_verification",
+        "tests.m1.p3.test_drive_integrity::test_tst_m1_p3_004_session_expired_or_conflict_reconciliation",
+        "tests.m1.p3.test_drive_live_probe::test_live_e3_drive_verification",
+        "tests.m1.p3.test_drive_resumable_upload::test_tst_m1_p3_001_pregenerated_id_and_resumable_retry_lost_ack",
+        "tests.m1.p3.test_drive_resumable_upload::test_tst_m1_p3_002_timeout_classification_and_reconciliation",
+        "tests.m1.p3.test_oauth_lifecycle::test_tst_m1_p3_005_token_lifecycle_and_adr0009_desktop_boundary",
+        "tests.m1.p3.test_oauth_lifecycle::test_tst_m1_p3_006_rate_limit_http_429_bounded_backoff",
+        "tests.m1.p3.test_oauth_lifecycle::test_tst_m1_p3_007_secret_boundary_scanning_in_logs_and_receipts",
+        "tests.m1.p3.test_oauth_lifecycle::test_tst_m1_p3_008_adr0009_token_placement_and_desktop_disk_audit",
+        "tests.m1.p3.test_oauth_lifecycle::test_tst_m1_p3_009_desktop_refresh_delegation_to_broker",
+        "tests.m1.p3.test_oauth_lifecycle::test_tst_m1_p3_010_token_revocation_boundary",
+        "tests.m1.p3.test_oauth_lifecycle::test_tst_m1_p3_011_insufficient_scope_classification",
+        "tests.m1.p3.test_oauth_lifecycle::test_tst_m1_p3_012_broker_http_process_boundary",
+        "tests.m1.p3.test_oauth_lifecycle::test_tst_m1_p3_013_broker_subprocess_isolation",
+        "tests.m1.p3.test_oauth_lifecycle::test_tst_m1_p3_014_dpapi_encrypted_vault",
+        "tests.m1.p3.test_oauth_lifecycle::test_tst_m1_p3_015_broker_owned_oauth_provisioning",
+        "tests.m1.p4.test_journal_crash_recovery::test_tst_m1_p4_001_crash_after_artifact_complete_resends_operation",
+        "tests.m1.p4.test_journal_crash_recovery::test_tst_m1_p4_002_crash_during_write_or_rename_rejects_partial_byte",
+        "tests.m1.p4.test_journal_crash_recovery::test_tst_m1_p4_003_lost_ack_reconciles_existing_cloud_receipt",
+        "tests.m1.p4.test_journal_epoch_and_cleanup::test_tst_m1_p4_004_stale_epoch_or_generation_quarantined",
+        "tests.m1.p4.test_journal_epoch_and_cleanup::test_tst_m1_p4_005_cache_eviction_protects_unsent_journal_and_active_refs",
+        "tests.m1.p4.test_journal_epoch_and_cleanup::test_tst_m1_p4_006_file_missing_or_hash_mismatch_detected",
+        "tests.m1.p5.test_compatibility_smoke::test_tst_m1_p5_001_exact_python_uv_and_frozen_lock_integrity",
+        "tests.m1.p5.test_compatibility_smoke::test_tst_m1_p5_002_postgresql_connection_rollback_and_vietnamese_utf8",
+        "tests.m1.p5.test_compatibility_smoke::test_tst_m1_p5_003_temporal_sdk_and_server_handshake_smoke",
+        "tests.m1.p5.test_compatibility_smoke::test_tst_m1_p5_004_google_client_boundaries_and_missing_credential_classification",
+        "tests.m1.p5.test_compatibility_smoke::test_tst_m1_p5_005_ffmpeg_version_buildconf_ffprobe_and_safe_probe",
+        "tests.m1.p5.test_compatibility_smoke::test_tst_m1_p5_006_evidence_hash_mismatch_and_unsupported_version_rejected",
+        "tests.m1.p5.test_compatibility_smoke::test_tst_m1_p5_007_machine_readable_compatibility_matrix",
+        "tests.m1.p5.test_compatibility_smoke::test_tst_m1_p5_008_dynamic_matrix_observation",
+        "tests.m1.p5.test_compatibility_smoke::test_tst_m1_p5_009_fail_closed_compatibility_matrix",
+        "tests.m1.p6.test_evidence_audit::test_tst_m1_p6_001_manifest_schema_and_completeness_validation",
+        "tests.m1.p6.test_evidence_audit::test_tst_m1_p6_002_artifact_hash_tampering_and_missing_file_detection",
+        "tests.m1.p6.test_evidence_audit::test_tst_m1_p6_003_milestone_exit_rule_engine_gate_enforcement",
+        "tests.m1.p6.test_evidence_audit::test_tst_m1_p6_004_scoped_gate_boundary_protection",
+        "tests.m1.p6.test_evidence_audit::test_tst_m1_p6_005_secret_and_canary_scanner_fail_closed",
+        "tests.m1.p6.test_evidence_audit::test_tst_m1_p6_006_fail_closed_package_status_parser",
+        "tests.m1.p6.test_evidence_audit::test_tst_m1_p6_007_missing_mandatory_evidence_blocks_ready",
+        "tests.m1.p6.test_evidence_audit::test_tst_m1_p6_008_capability_evidence_fail_closed",
+        "tests.m1.p6.test_evidence_audit::test_tst_m1_p6_009_semantic_capability_validation",
+        "tests.m1.p6.test_evidence_audit::test_tst_m1_p6_010_semantic_capability_negative_fields"
+      ]
+    }
+  },
+  "failure_classifications": {
+    "001": "missing ArtifactVersion capability",
+    "002": "missing P4-backed location persistence/validator",
+    "003": "missing CleanupAuthorization policy/store",
+    "004": "missing production migration 0005",
+    "005": "missing scoped location CAS"
+  },
+  "gates": [
+    {
+      "gate_id": "GATE-P5B-RED-01",
+      "status": "PASS",
+      "evidence_files": [
+        "p5b-red.xml",
+        "collect-p5b-stdout.txt"
+      ]
+    },
+    {
+      "gate_id": "GATE-P5B-RED-02",
+      "status": "PASS",
+      "evidence_files": [
+        "p5a-regression.xml",
+        "p4-regression.xml",
+        "p3-regression.xml",
+        "p2-regression.xml",
+        "p1-regression.xml",
+        "p0-regression.xml",
+        "architecture.xml",
+        "m1-regression.xml"
+      ]
+    },
+    {
+      "gate_id": "GATE-P5B-RED-03",
+      "status": "PASS",
+      "evidence_files": [
+        "runtime-and-static.json",
+        "orphan-check.txt"
+      ]
+    },
+    {
+      "gate_id": "GATE-P5B-RED-04",
+      "status": "PASS",
+      "evidence_files": [
+        "secret-scan.json"
+      ]
+    },
+    {
+      "gate_id": "GATE-P5B-RED-05",
+      "status": "PASS",
+      "evidence_files": [
+        "negative-verifier-stdout.txt",
+        "verify-only-stdout.txt"
+      ]
+    }
+  ]
+}

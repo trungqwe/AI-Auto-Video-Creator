@@ -27,7 +27,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS E3 (ADR-0009 Subprocess Broker OS isolation, Windows DPAPI Vault, Broker-owned provisioning, live E3 probe xác thực Drive thật) |
 | G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS strict version (Python, uv, PG, Temporal, ffprobe WAV duration > 0, fail-closed dynamic matrix observation) |
 | ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất qua Broker Subprocess boundary |
-| M2 | 🟡 `M2-P5A_IMPLEMENTATION_READY_FOR_REVIEW; M2-P5B_PLAN_ACCEPTED_RED_LOCKED` | P1..P4 `ACCEPTED / CLOSED`. P5A corrected candidate pin source `413070c074997d6f02c2d7933c64d0d17c9b9704`, [closure mới](./milestones/m2-control-plane/evidence/m2-p5a/run-m2-p5a-20260915200040/status.md), chờ independent review, chưa accepted. P5B RED/implementation chờ P5A/`0004` accepted; P6+ vẫn khóa. |
+| M2 | 🟡 `M2-P1..P5A_ACCEPTED_CLOSED; M2-P5B_BEHAVIORAL_RED_READY_FOR_REVIEW; M2-P5B_IMPLEMENTATION_LOCKED` | P5A đã `ACCEPTED / CLOSED`. Historical P5B RED tại `e390fdf` không được independent audit chấp nhận để mở implementation; corrected RED chuyển package về `storage_meta` và bổ sung FK-parent prerequisite fail-closed. P6+ vẫn khóa. |
 | M3 / Module A | ⛔ `NOT AUTHORIZED` | Tiếp tục bị khóa chặt; không được bắt đầu trước khi M2 đạt exit gate và có User Checkpoint riêng |
 
 Đây là bảng trạng thái có thẩm quyền trước lệnh code đầu tiên. Kết quả P2/P3 đã đạt được ghi `PASS_M1_SCOPE`; G01/G04 toàn phần vẫn `PARTIALLY_PROVEN` cho tới khi đủ evidence các milestone tiếp theo.
