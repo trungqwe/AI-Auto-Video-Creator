@@ -36,6 +36,7 @@ from controlplane.infrastructure.db.uow import TransactionManager
 
 ROOT = Path(__file__).parents[2]
 MIGRATIONS = ROOT / "src/controlplane/infrastructure/db/migrations"
+P6_MIGRATION = MIGRATIONS / "0006_orchestration_shell.sql"
 DATABASE_NAME = re.compile(r"^m2_p6_test_[0-9a-f]+$")
 WORKSPACE_ID = "00000000-0000-0000-0000-000000000601"
 HASH_A = "a" * 64
@@ -95,6 +96,89 @@ def _manager(dsn: str) -> Iterator[TransactionManager]:
         manager.close()
 
 
+def _seed_batch(connection: psycopg.Connection[object]) -> bool:
+    if not P6_MIGRATION.exists():
+        return False
+    connection.execute(
+        "INSERT INTO controlplane.cp_production_batches "
+        "(batch_id, workspace_id, status, target_count) "
+        "VALUES ('batch-1', %s, 'RUNNING', 2) ON CONFLICT DO NOTHING",
+        (WORKSPACE_ID,),
+    )
+    return True
+
+
+def _seed_variant_prerequisites(connection: psycopg.Connection[object]) -> None:
+    if not _seed_batch(connection):
+        return
+    for job_id in ("job-a", "job-b", "job-c"):
+        connection.execute(
+            "INSERT INTO controlplane.cp_video_jobs "
+            "(job_id, batch_id, workspace_id, status, snapshot_ref, revision) "
+            "VALUES (%s, 'batch-1', %s, 'ACTIVE', 'snapshot-1', 1) "
+            "ON CONFLICT DO NOTHING",
+            (job_id, WORKSPACE_ID),
+        )
+    connection.execute(
+        "INSERT INTO controlplane.cp_variant_registry "
+        "(workspace_id, current_registry_revision) VALUES (%s, 1) "
+        "ON CONFLICT DO NOTHING",
+        (WORKSPACE_ID,),
+    )
+
+
+def _seed_completion_prerequisites(connection: psycopg.Connection[object]) -> None:
+    if not _seed_batch(connection):
+        return
+    for job_id in ("job-1", "job-rollback"):
+        connection.execute(
+            "INSERT INTO controlplane.cp_video_jobs "
+            "(job_id, batch_id, workspace_id, status, snapshot_ref, revision) "
+            "VALUES (%s, 'batch-1', %s, 'READY_FOR_COMPLETION', 'snapshot-1', 1) "
+            "ON CONFLICT DO NOTHING",
+            (job_id, WORKSPACE_ID),
+        )
+    connection.execute(
+        "INSERT INTO controlplane.cp_variant_registry "
+        "(workspace_id, current_registry_revision) VALUES (%s, 1) "
+        "ON CONFLICT DO NOTHING",
+        (WORKSPACE_ID,),
+    )
+    for capacity_id, variant_id, job_id, fingerprint in (
+        ("capacity-1", "variant-1", "job-1", "fingerprint-1"),
+        (
+            "capacity-rollback",
+            "variant-rollback",
+            "job-rollback",
+            "fingerprint-rollback",
+        ),
+    ):
+        connection.execute(
+            "INSERT INTO controlplane.cp_batch_capacity_reservations "
+            "(reservation_id, workspace_id, batch_id, job_id, state) "
+            "VALUES (%s, %s, 'batch-1', %s, 'ACTIVE') ON CONFLICT DO NOTHING",
+            (capacity_id, WORKSPACE_ID, job_id),
+        )
+        connection.execute(
+            "INSERT INTO controlplane.cp_variant_reservations "
+            "(reservation_id, workspace_id, job_id, fingerprint, snapshot_scope, "
+            "validation_ref, variation_policy_revision, expected_registry_revision, "
+            "committed_registry_revision, state) "
+            "VALUES (%s, %s, %s, %s, 'snapshot-1', 'validation-1', "
+            "'policy-1', 1, 1, 'ACTIVE') ON CONFLICT DO NOTHING",
+            (variant_id, WORKSPACE_ID, job_id, fingerprint),
+        )
+    connection.execute(
+        "INSERT INTO controlplane.cp_artifact_versions "
+        "(artifact_version_id, workspace_id, artifact_id, sha256_hash, size_bytes, "
+        "mime_type, artifact_kind, owner_ref, lineage_ref, retention_ref, sensitivity_ref) "
+        "VALUES ('00000000-0000-0000-0000-000000005b01', %s, 'artifact-p6', %s, "
+        "128, 'video/mp4', 'rendered_video', 'owner-p6', 'lineage-p6', "
+        "'retention-p6', 'internal') ON CONFLICT DO NOTHING",
+        (WORKSPACE_ID, HASH_A),
+    )
+
+
 def test_tst_m2_p6_001_execution_grant_stale_epoch_fencing(
     p6_database: DisposableDatabase,
 ) -> None:
@@ -145,6 +229,8 @@ def test_tst_m2_p6_002_variant_reservation_cas_and_conflict(
         expected_registry_revision=1,
     )
     with _manager(p6_database.dsn) as manager:
+        with manager.unit_of_work() as uow:
+            _seed_variant_prerequisites(uow.connection)
 
         def reserve(job_id: str) -> object:
             try:
@@ -181,6 +267,15 @@ def test_tst_m2_p6_003_batch_capacity_reservation_lifecycle(
 ) -> None:
     service = BatchCapacityService()
     with _manager(p6_database.dsn) as manager:
+        with manager.unit_of_work() as uow:
+            seeded = _seed_batch(uow.connection)
+            if seeded:
+                target = uow.connection.execute(
+                    "SELECT target_count FROM controlplane.cp_production_batches "
+                    "WHERE workspace_id=%s AND batch_id='batch-1'",
+                    (WORKSPACE_ID,),
+                ).fetchone()[0]
+                assert target == 2
 
         class InjectedAllocationFailure(Exception):
             pass
@@ -251,7 +346,17 @@ def test_tst_m2_p6_003_batch_capacity_reservation_lifecycle(
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             outcomes = list(executor.map(last_slot, ("job-2", "job-3")))
-        assert sum(isinstance(x, CapacityAllocation) for x in outcomes) == 1
+        winners = [x for x in outcomes if isinstance(x, CapacityAllocation)]
+        assert len(winners) == 1
+        winner = winners[0]
+        loser_job_id = ({"job-2", "job-3"} - {winner.job_id}).pop()
+        with manager.unit_of_work() as uow:
+            loser_reservations = uow.connection.execute(
+                "SELECT count(*) FROM controlplane.cp_batch_capacity_reservations "
+                "WHERE workspace_id=%s AND job_id=%s",
+                (WORKSPACE_ID, loser_job_id),
+            ).fetchone()[0]
+        assert loser_reservations == 0
         with manager.unit_of_work() as uow:
             released = service.release_terminal(
                 workspace_id=WORKSPACE_ID,
@@ -262,7 +367,9 @@ def test_tst_m2_p6_003_batch_capacity_reservation_lifecycle(
         assert released.state is ReservationState.RELEASED
         with manager.unit_of_work() as uow:
             completed = service.convert_completion(
-                workspace_id=WORKSPACE_ID, job_id="job-2", connection=uow.connection
+                workspace_id=WORKSPACE_ID,
+                job_id=winner.job_id,
+                connection=uow.connection,
             )
         assert completed.state is ReservationState.CONVERTED
         assert completed.state is not ReservationState.RELEASED
@@ -285,6 +392,8 @@ def test_tst_m2_p6_004_completion_ledger_unique_job_invariant(
         audit_ref="audit-1",
     )
     with _manager(p6_database.dsn) as manager:
+        with manager.unit_of_work() as uow:
+            _seed_completion_prerequisites(uow.connection)
 
         class InjectedCompletionFailure(Exception):
             pass
@@ -296,10 +405,39 @@ def test_tst_m2_p6_004_completion_ledger_unique_job_invariant(
         with pytest.raises(InjectedCompletionFailure):
             with manager.unit_of_work() as uow:
                 service.commit(
-                    **{**values, "job_id": "job-rollback"},
+                    **{
+                        **values,
+                        "job_id": "job-rollback",
+                        "capacity_reservation_id": "capacity-rollback",
+                        "variant_reservation_id": "variant-rollback",
+                    },
                     fault_hook=fail_before_ledger,
                     connection=uow.connection,
                 )
+        with manager.unit_of_work() as uow:
+            rollback_ledgers = uow.connection.execute(
+                "SELECT count(*) FROM controlplane.cp_completion_ledger "
+                "WHERE workspace_id=%s AND job_id='job-rollback'",
+                (WORKSPACE_ID,),
+            ).fetchone()[0]
+            capacity_state = uow.connection.execute(
+                "SELECT state FROM controlplane.cp_batch_capacity_reservations "
+                "WHERE workspace_id=%s AND reservation_id='capacity-rollback'",
+                (WORKSPACE_ID,),
+            ).fetchone()[0]
+            variant_state = uow.connection.execute(
+                "SELECT state FROM controlplane.cp_variant_reservations "
+                "WHERE workspace_id=%s AND reservation_id='variant-rollback'",
+                (WORKSPACE_ID,),
+            ).fetchone()[0]
+            rollback_job_state = uow.connection.execute(
+                "SELECT status FROM controlplane.cp_video_jobs "
+                "WHERE workspace_id=%s AND job_id='job-rollback'",
+                (WORKSPACE_ID,),
+            ).fetchone()[0]
+        assert rollback_ledgers == 0
+        assert capacity_state == "ACTIVE" and variant_state == "ACTIVE"
+        assert rollback_job_state == "READY_FOR_COMPLETION"
 
         def commit() -> object:
             try:
@@ -311,10 +449,13 @@ def test_tst_m2_p6_004_completion_ledger_unique_job_invariant(
         with ThreadPoolExecutor(max_workers=2) as executor:
             outcomes = list(executor.map(lambda _: commit(), range(2)))
         ledgers = [x for x in outcomes if isinstance(x, CompletionLedger)]
-        assert len(ledgers) == 1
-        assert (
-            ledgers[0].job_id == "job-1" and ledgers[0].output_artifact_hash == HASH_A
-        )
+        assert len(ledgers) == 2
+        assert ledgers[0].ledger_id == ledgers[1].ledger_id
+        assert {ledger.job_id for ledger in ledgers} == {"job-1"}
+        assert {ledger.output_artifact_version_id for ledger in ledgers} == {
+            values["output_artifact_version_id"]
+        }
+        assert {ledger.output_artifact_hash for ledger in ledgers} == {HASH_A}
         with manager.unit_of_work() as uow:
             count = uow.connection.execute(
                 "SELECT count(*) FROM controlplane.cp_completion_ledger WHERE workspace_id=%s AND job_id=%s",
