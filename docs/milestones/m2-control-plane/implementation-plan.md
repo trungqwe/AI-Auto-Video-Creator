@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_ACCEPTED; M2-P7A_IMPLEMENTATION_READY_FOR_AUTHORIZATION; M2-P7A_IMPLEMENTATION_LOCKED`.
+**Trạng thái:** `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_ACCEPTED; M2-P7A_IMPLEMENTATION_AUTHORIZED`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** P1..P6 là `ACCEPTED / CLOSED`. Independent review tại `7de529b80f2e058a2ae07d4b01e148707c39686e` đã chấp nhận P7A Behavioral RED, pin source/tooling `609cf70c72b3f08303c91b4a8c56bdec9f9237e3`, run `run-m2-p7a-20260916091430` và oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035`. Checkpoint này chỉ khóa authority/design; implementation P7A, P7B/P8/P9, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** P1..P6 là `ACCEPTED / CLOSED`. P7A Behavioral RED pin source/tooling `609cf70c72b3f08303c91b4a8c56bdec9f9237e3`, run `run-m2-p7a-20260916091430` và oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035`. Independent review đã chấp thuận authority/design correction tại `24897a84bea68dadb7554380ffc469002c17e403`; user cấp quyền P7A implementation theo exact scope dưới đây. P7A chưa `ACCEPTED/CLOSED`; P7B/P8/P9 vẫn khóa, M3 và Phân hệ A `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -511,7 +511,7 @@ Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Khôn
 
 ### M2-P7A: Module H — Control API Core, Local HTTPS & Security Boundaries
 
-**Trạng thái/gate hiện hành:** `M2-P7A_BEHAVIORAL_RED_ACCEPTED; M2-P7A_IMPLEMENTATION_READY_FOR_AUTHORIZATION; M2-P7A_IMPLEMENTATION_LOCKED`. Bốn testcase dưới đây là oracle RED byte-exact SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035`; run `run-m2-p7a-20260916091430` thu đúng 4 và fail 4 capability seam độc lập, không có pass/error/skip. Chưa có quyền viết implementation/migration `0007` cho tới user checkpoint riêng.
+**Trạng thái/gate hiện hành:** `M2-P7A_BEHAVIORAL_RED_ACCEPTED; M2-P7A_IMPLEMENTATION_AUTHORIZED`. Bốn testcase dưới đây là oracle RED byte-exact SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035`; run `run-m2-p7a-20260916091430` thu đúng 4 và fail 4 capability seam độc lập, không có pass/error/skip. Implementation P7A được cấp quyền sau independent review của `24897a84bea68dadb7554380ffc469002c17e403`; chưa được claim ACCEPTED/CLOSED.
 
 - **Requirement / CT / INV IDs**: `CT-API-001..007`, `CT-API-010`, `ADR-0007`, `ADR-0009`, `ADR-0010`.
 - **Dependencies**: M2-P6.
@@ -558,7 +558,7 @@ Catalogue có đúng **9** identity; P4 RED chỉ collect đúng set này. Khôn
 - **Claim Allowed**: "M2-P7A hoàn tất: Control API core, local HTTPS và các ranh giới bảo mật đã hoạt động."
 - **Claim Forbidden**: "SSE stream đã xong (thuộc P7B)."
 
-#### P7A authority/design lock — chưa cấp quyền implementation
+#### P7A authority/design lock — đã cấp quyền implementation P7A riêng
 
 **Lựa chọn layer.** Điểm 1–10 càng cao càng tốt; tổng điểm dùng trọng số correctness 25%, integration risk 20%, complexity 10%, performance 5%, operations 10%, maintainability 15%, resource cost 5%, time-to-proof 10%. Đây là đánh giá thiết kế dựa trên source P1–P6 hiện tại, không phải benchmark runtime.
 

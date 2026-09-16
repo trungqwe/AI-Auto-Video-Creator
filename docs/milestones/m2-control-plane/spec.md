@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_ACCEPTED; M2-P7A_IMPLEMENTATION_READY_FOR_AUTHORIZATION; M2-P7A_IMPLEMENTATION_LOCKED`.
+**Trạng thái:** `M2-P1..P6_ACCEPTED_CLOSED; M2-P7A_BEHAVIORAL_RED_ACCEPTED; M2-P7A_IMPLEMENTATION_AUTHORIZED`.
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** P1..P6 là `ACCEPTED / CLOSED`. Independent review tại `7de529b80f2e058a2ae07d4b01e148707c39686e` đã chấp nhận exact-four P7A Behavioral RED tại `run-m2-p7a-20260916091430`; P7A implementation vẫn `LOCKED` cho tới user authorization riêng. P7B/P8/P9, M3 và Phân hệ A `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc:** P1..P6 là `ACCEPTED / CLOSED`. Exact-four P7A Behavioral RED tại `run-m2-p7a-20260916091430` giữ nguyên. Independent review chấp thuận authority correction `24897a84bea68dadb7554380ffc469002c17e403`; user đã cấp quyền implementation P7A, chưa cấp ACCEPTED/CLOSED. P7B/P8/P9 khóa; M3 và Phân hệ A `NOT AUTHORIZED`.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
