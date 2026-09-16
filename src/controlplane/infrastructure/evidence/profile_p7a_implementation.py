@@ -164,7 +164,8 @@ class M2P7AImplementationSemanticProfile(PackageSemanticProfile):
         required_stages.update({"runtime-static", "secret-scan", "hash-verification",
                                 "negative-verifier-tamper-check", "verify-only",
                                 "quality-ruff", "quality-lock", "quality-build",
-                                "quality-wheel-import", "quality-mypy", "quality-status",
+                                "quality-wheel-locked-deps", "quality-wheel-import",
+                                "quality-mypy", "quality-status",
                                 "migration-tracker-proof"})
         if not required_stages <= stages or any(item.get("source_commit_sha") != source for item in commands):
             raise SemanticEvaluationError("command provenance mismatch")

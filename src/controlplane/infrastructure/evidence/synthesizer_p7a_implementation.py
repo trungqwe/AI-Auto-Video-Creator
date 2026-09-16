@@ -193,6 +193,9 @@ def main() -> None:
             execute("quality-wheel-venv", [str(ROOT / ".local-tools/uv/uv.exe"), "venv",
                 str(wheel_env), "--python", "3.13.15"], [])
             wheel_python = str(wheel_env / "Scripts/python.exe")
+            execute("quality-wheel-locked-deps", [str(ROOT / ".local-tools/uv/uv.exe"),
+                "pip", "install", "--python", wheel_python, "--offline", "--requirement",
+                "src/controlplane/requirements.lock"], [])
             execute("quality-wheel-install", [str(ROOT / ".local-tools/uv/uv.exe"),
                 "pip", "install", "--python", wheel_python, "--no-deps", str(wheels[0])], [])
             execute("quality-wheel-import", [wheel_python, "-I", "-c",
