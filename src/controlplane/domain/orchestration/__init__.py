@@ -31,6 +31,13 @@ class ExecutionGrant:
 
 
 @dataclass(frozen=True)
+class AcceptedExecutionResult:
+    grant: ExecutionGrant
+    result_ref: str
+    accepted: bool = True
+
+
+@dataclass(frozen=True)
 class VariantReservation:
     reservation_id: str
     workspace_id: str
@@ -69,6 +76,7 @@ class CompletionLedger:
 
 
 __all__ = [
+    "AcceptedExecutionResult",
     "CapacityAllocation",
     "CompletionLedger",
     "ExecutionGrant",
