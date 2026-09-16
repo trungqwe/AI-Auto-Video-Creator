@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-16 — M2-P5B accepted; P6 Behavioral RED authorized
+
+- Independent review chấp thuận và đóng corrected M2-P5B tại source `d305bbb` với evidence `run-m2-p5b-20260916144500`.
+- M2-P6 chỉ được phép tạo Behavioral RED; implementation P6, P7+, M3 và Phân hệ A vẫn khóa.
+
 ## 2026-09-16 — M2-P5B corrected implementation candidate
 
 - Tách toàn bộ SQL/row mapping P5B khỏi application sang PostgreSQL adapter dùng connection thuộc caller-owned P1 UoW.
