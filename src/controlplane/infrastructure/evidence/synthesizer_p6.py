@@ -269,7 +269,7 @@ def main() -> None:
         "milestone": "M2",
         "package": "M2-P6",
         "semantic_profile": "m2-p6",
-        "status": "RED_READY_FOR_REVIEW",
+        "status": "READY_FOR_REVIEW",
         "lifecycle": "M2-P6_BEHAVIORAL_RED_READY_FOR_REVIEW",
         "implementation": "LOCKED",
         "run_id": out.name,

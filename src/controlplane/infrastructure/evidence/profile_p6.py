@@ -76,7 +76,7 @@ class M2P6SemanticProfile(PackageSemanticProfile):
 
     def evaluate(self, directory: Path, status: dict[str, Any]) -> dict[str, Any]:
         if (
-            status.get("status") != "RED_READY_FOR_REVIEW"
+            status.get("status") != "READY_FOR_REVIEW"
             or status.get("lifecycle") != "M2-P6_BEHAVIORAL_RED_READY_FOR_REVIEW"
         ):
             raise SemanticEvaluationError("P6 RED lifecycle mismatch")
