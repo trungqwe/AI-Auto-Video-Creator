@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-16 — Corrected M2-P6 Behavioral RED
+
+- Sửa P6-003 để completion dùng actual concurrent winner và xác nhận loser không giữ capacity reservation.
+- Sửa P6-004 để hai duplicate caller cùng nhận một `ledger_id`, trong khi persisted logical row count vẫn là một; bổ sung parent seeding chỉ khi `0006` tồn tại và zero-mutation checks cho injected failures.
+- Fresh evidence `run-m2-p6-20260916174500` pin corrected oracle SHA `e5d2b248481366597a96caee313c46e03238e16369fb48799d6359ad80daccc1`; implementation P6 vẫn khóa.
+
 ## 2026-09-16 — M2-P6 Behavioral RED ready for review
 
 - Khóa exact four P6 behavioral oracle cho execution fencing, variant CAS, batch capacity lifecycle và unique completion ledger; structural seams chỉ ném capability-specific `NotImplementedError`.

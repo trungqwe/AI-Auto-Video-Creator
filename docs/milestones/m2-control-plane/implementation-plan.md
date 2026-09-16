@@ -3,7 +3,7 @@
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
 **Trạng thái:** `M2-P1..P5B_ACCEPTED_CLOSED; M2-P6_BEHAVIORAL_RED_READY_FOR_REVIEW`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** P1..P5B là `ACCEPTED / CLOSED`. Exact four P6 Behavioral RED tại source `9c00b4c` và run `run-m2-p6-20260916163000` đã sẵn sàng independent review; implementation P6, P7+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** P1..P5B là `ACCEPTED / CLOSED`. Corrected exact-four P6 Behavioral RED tại source `cb68f23` và run `run-m2-p6-20260916174500` đã sẵn sàng independent review; implementation P6, P7+, M3 và Phân hệ A vẫn `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)

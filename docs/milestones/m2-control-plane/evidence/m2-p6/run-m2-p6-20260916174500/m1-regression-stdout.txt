@@ -1,0 +1,30 @@
+........................................................................ [ 77%]
+.....................                                                    [100%]
+============================== warnings summary ===============================
+tests/m1/p2/test_activity_idempotency.py::test_tst_m1_p2_002_activity_retry_lost_ack_uses_p1_receipt
+tests/m1/p2/test_activity_idempotency.py::test_tst_m1_p2_003_stale_worker_generation_rejected
+tests/m1/p2/test_reconciliation_routing.py::test_tst_m1_p2_006_unknown_outcome_routes_to_reconciliation
+tests/m1/p2/test_replay_versioning.py::test_tst_m1_p2_005_replay_versioning_and_detection
+tests/m1/p2/test_temporal_payload_boundaries.py::test_tst_m1_p2_007_payload_boundary_blocks_secrets_and_large_blobs
+tests/m1/p2/test_worker_lifecycle.py::test_tst_m1_p2_001_desktop_worker_offline_and_resume
+  D:\AI Auto Video Creator\.venv\Lib\site-packages\temporalio\converter\_payload_converter.py:779: UserWarning: If you're using Pydantic v2, use temporalio.contrib.pydantic.pydantic_data_converter. If you're using Pydantic v1 and cannot upgrade, refer to https://github.com/temporalio/samples-python/tree/main/pydantic_converter_v1 for better v1 support.
+    warnings.warn(
+
+tests/m1/p2/test_activity_idempotency.py: 7 warnings
+tests/m1/p2/test_reconciliation_routing.py: 3 warnings
+tests/m1/p2/test_replay_versioning.py: 3 warnings
+tests/m1/p2/test_temporal_payload_boundaries.py: 5 warnings
+tests/m1/p2/test_worker_lifecycle.py: 7 warnings
+  D:\AI Auto Video Creator\.venv\Lib\site-packages\temporalio\converter\_payload_converter.py:686: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    return dict_fn()
+
+tests/m1/p2/test_activity_idempotency.py: 8 warnings
+tests/m1/p2/test_reconciliation_routing.py: 3 warnings
+tests/m1/p2/test_replay_versioning.py: 3 warnings
+tests/m1/p2/test_temporal_payload_boundaries.py: 5 warnings
+tests/m1/p2/test_worker_lifecycle.py: 8 warnings
+  D:\AI Auto Video Creator\.venv\Lib\site-packages\temporalio\converter\_payload_converter.py:1028: PydanticDeprecatedSince20: The `parse_obj` method is deprecated; use `model_validate` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    return getattr(hint, "parse_obj")(value)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+93 passed, 58 warnings in 49.36s

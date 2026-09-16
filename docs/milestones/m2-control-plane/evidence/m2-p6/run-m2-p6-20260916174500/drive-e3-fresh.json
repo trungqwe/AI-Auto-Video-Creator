@@ -1,0 +1,22 @@
+{
+  "status": "PASS_E3_LIVE",
+  "architecture": "ADR-0009_CLOUD_TOKEN_BROKER",
+  "broker_boundary": "HTTP_IPC_SUBPROCESS_BOUNDARY",
+  "process_isolated": true,
+  "broker_pid": 24956,
+  "desktop_pid": 34376,
+  "broker_endpoint": "http://127.0.0.1:61640",
+  "broker_owns_oauth_provisioning": true,
+  "desktop_vault_access": false,
+  "desktop_refresh_token_retained": false,
+  "secure_storage_verified": true,
+  "encryption_method": "WINDOWS_DPAPI",
+  "desktop_disk_token_violations": 0,
+  "pregenerated_id_redacted": "1gSaYA...kdb5",
+  "byte_size": 64,
+  "sha256_verified": true,
+  "sha256_hash": "a1489a57bff218ba7ca6cb599b8085a95fa9c411780b260167e1bc352a63ba73",
+  "scope": "https://www.googleapis.com/auth/drive.file",
+  "timestamp_utc": "2026-09-16T06:11:07.786101+00:00",
+  "limitations": "DPAPI proof runs under one Windows user; OS-account isolation between cloud host and desktop belongs to later deployment validation."
+}
