@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-17 — M2-P7A implementation ready for review
+
+- Khôi phục prerequisite PostgreSQL M2 an toàn từ Docker metadata trong bộ nhớ, không ghi DSN/credential. Triển khai Control API FastAPI, session hash/bootstrap một lần, Host/Origin/CSRF, local HTTPS, technical detail bền vững có audit, migration `0007` và StartBatch/config mutation cùng P1 UoW.
+- Source/tooling commit `d5032ebc76e4946e5824ddf01c95ba28795eb377`; GREEN evidence `run-m2-p7a-green-20260916204220` đạt oracle 4/4, H01–H36 36/36 và hồi quy P6/P5B/P5A/P4/P3/P2/P1/P0/architecture/M1 4/5/5/9/11/11/11/33/6/93. PostgreSQL 18.6, orphan=0, secret scan CLEAN, semantic/provenance/tamper/hash DAG PASS. Không thay accepted RED oracle/evidence; P7A chờ independent review, chưa ACCEPTED/CLOSED. P7B/P8/P9, M3 và Phân hệ A vẫn khóa.
+
 ## 2026-09-17 — M2-P7A implementation authorized
 
 - Independent review chấp thuận authority/design correction `24897a84bea68dadb7554380ffc469002c17e403`; user cấp quyền triển khai riêng P7A. Behavioral RED/oracle/evidence bất biến; P7A chưa GREEN hoặc ACCEPTED/CLOSED. P7B/P8/P9 khóa, M3 và Phân hệ A chưa được ủy quyền.
