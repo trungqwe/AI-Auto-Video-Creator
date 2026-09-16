@@ -12,7 +12,8 @@ CREATE TABLE controlplane.cp_artifact_versions (
     sensitivity_ref TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (workspace_id, artifact_id, sha256_hash),
-    UNIQUE (workspace_id, artifact_version_id)
+    UNIQUE (workspace_id, artifact_version_id),
+    UNIQUE (workspace_id, artifact_version_id, sha256_hash)
 );
 
 CREATE FUNCTION controlplane.cp_reject_artifact_version_mutation() RETURNS trigger
@@ -44,7 +45,8 @@ CREATE TABLE controlplane.cp_artifact_locations (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (workspace_id, artifact_version_id) REFERENCES controlplane.cp_artifact_versions(workspace_id, artifact_version_id) ON DELETE RESTRICT,
     UNIQUE (workspace_id, backend_ref, provider_namespace_ref, provider_object_ref),
-    UNIQUE (workspace_id, location_id)
+    UNIQUE (workspace_id, location_id),
+    UNIQUE (workspace_id, location_id, artifact_version_id)
 );
 
 CREATE TABLE controlplane.cp_cleanup_authorizations (
@@ -64,6 +66,17 @@ CREATE TABLE controlplane.cp_cleanup_authorizations (
     actor_ref TEXT NOT NULL,
     audit_ref TEXT NOT NULL,
     correlation_ref TEXT NOT NULL,
-    FOREIGN KEY (workspace_id, location_id) REFERENCES controlplane.cp_artifact_locations(workspace_id, location_id) ON DELETE RESTRICT,
-    FOREIGN KEY (workspace_id, artifact_version_id) REFERENCES controlplane.cp_artifact_versions(workspace_id, artifact_version_id) ON DELETE RESTRICT
+    FOREIGN KEY (workspace_id, location_id, artifact_version_id) REFERENCES controlplane.cp_artifact_locations(workspace_id, location_id, artifact_version_id) ON DELETE RESTRICT,
+    FOREIGN KEY (workspace_id, artifact_version_id, artifact_hash) REFERENCES controlplane.cp_artifact_versions(workspace_id, artifact_version_id, sha256_hash) ON DELETE RESTRICT
 );
+
+CREATE FUNCTION controlplane.cp_reject_cleanup_authorization_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'cleanup authorizations are immutable';
+END;
+$$;
+
+CREATE TRIGGER cp_cleanup_authorizations_immutable
+BEFORE UPDATE OR DELETE ON controlplane.cp_cleanup_authorizations
+FOR EACH ROW EXECUTE FUNCTION controlplane.cp_reject_cleanup_authorization_mutation();
