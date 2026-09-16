@@ -102,6 +102,7 @@ class M2P7ASemanticProfile(PackageSemanticProfile):
             "p6_p5b_accepted_source_unchanged": True, "historical_evidence_preserved": True,
             "application_to_infrastructure_imports": 0, "domain_to_application_imports": 0,
             "p6_oracle_sha256": P6_ORACLE_SHA,
+            "uv_runtime_observed": "0.12.13", "uv_lock_version": "0.12.13",
         }
         if any(runtime.get(key) != value for key, value in required.items()):
             raise SemanticEvaluationError("runtime/static mismatch")

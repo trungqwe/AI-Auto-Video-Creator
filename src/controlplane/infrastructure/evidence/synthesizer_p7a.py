@@ -152,7 +152,8 @@ def main() -> None:
         "application_to_infrastructure_imports": sum(name.startswith("controlplane.infrastructure") for name in app_imports),
         "domain_to_application_imports": sum(name.startswith("controlplane.application") for name in domain_imports),
         "p6_oracle_sha256": hashlib.sha256((ROOT / "tests/m2/test_p6_orchestration_shell.py").read_bytes()).hexdigest(),
-        "uv_runtime_observed": "unavailable", "uv_lock_version": "0.12.13",
+        "uv_runtime_observed": subprocess.check_output([str(ROOT / ".local-tools/uv/uv.exe"), "--version"], text=True).split()[1],
+        "uv_lock_version": "0.12.13",
     }
     _write(out / "runtime-and-static.json", json.dumps(runtime, indent=2) + "\n")
     record("runtime-static-capture", sys.argv, ["runtime-and-static.json"])
