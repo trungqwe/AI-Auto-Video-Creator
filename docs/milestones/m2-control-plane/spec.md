@@ -3,7 +3,7 @@
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
 **Trạng thái:** `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_READY_FOR_REVIEW; M2-P7B_BEHAVIORAL_RED_LOCKED; M2-P7B_IMPLEMENTATION_LOCKED`.
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** P1..P7A là `ACCEPTED / CLOSED`. Independent review chấp thuận source/tooling P7A `6c3a52bde905ee5e71e12334da1873ed20f5c5db` và GREEN `run-m2-p7a-green-20260916224033`; accepted RED và rejected historical GREEN giữ nguyên. Independent review checkpoint `a60471a` chọn hướng future P7B per-workspace transaction fence trước BIGSERIAL allocation và exact RED #000 upstream invariant; chỉ cập nhật docs authority draft. P7B RED/implementation vẫn khóa chờ review tiếp; không sửa P3 hay migration `0008` trong checkpoint này. P8/P9 khóa; M3 và Phân hệ A `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc:** P1..P7A là `ACCEPTED / CLOSED`. Independent review chấp thuận source/tooling P7A `6c3a52bde905ee5e71e12334da1873ed20f5c5db` và GREEN `run-m2-p7a-green-20260916224033`; accepted RED và rejected historical GREEN giữ nguyên. Review checkpoint `25e7f24` giữ hướng B nhưng phát hiện accepted P3 autocommit path, nên P7B authority draft yêu cầu fence/sequence allocation/INSERT trong **một SQL statement** tương thích cả autocommit và P1 UoW; RED #000 vẫn phải witnessed trước implementation. P7B RED/implementation tiếp tục khóa chờ review; không sửa P3 hay migration `0008` trong checkpoint này. P8/P9 khóa; M3 và Phân hệ A `NOT AUTHORIZED`.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)

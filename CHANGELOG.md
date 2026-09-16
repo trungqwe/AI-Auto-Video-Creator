@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-17 — M2-P7B autocommit-compatible ordering authority, docs-only
+
+- Review checkpoint `25e7f2488d8298be08816bd2147315b4677eb442` phát hiện accepted P3 #011 append trên autocommit connection. Rút lại two-statement transaction fence và autocommit fail-closed wording; future exact `PostgresOperationStreamRepository.append()` exception phải dùng **một SQL statement** gồm materialized ordering fence → dependent explicit sequence allocation → INSERT/RETURNING, tương thích cả autocommit và P1 UoW. CTE là intended shape, runtime proof còn bắt buộc.
+- Exact five-case RED giữ nguyên (#000 `UPSTREAM_INVARIANT_RED` trước fix); thêm H38 P3 autocommit/UoW compatibility, future catalogue H01–H38 count=38; accepted P3 full 11/11 và #010/#011 là hard gate. Không sửa source/test/migration/evidence, không tạo P7B RED hoặc `0008`. Lifecycle P7A accepted, P7B authority draft chờ review và RED/implementation vẫn LOCKED.
+
 ## 2026-09-17 — M2-P7B commit-order authority correction, docs-only
 
 - Independent review checkpoint `a60471af2ab03978e6a88657dbec62a43b82da0c` chọn hướng B: future per-workspace transaction ordering fence trước `stream_event_id` allocation, với exact accepted-P3 exception chỉ trong `PostgresOperationStreamRepository.append()`. Khóa inventory writer, RED #000 upstream invariant trên hai PostgreSQL transactions thật và future exact 5-case RED; không sửa source/test/migration/evidence tại checkpoint này.
