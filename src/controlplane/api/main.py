@@ -11,6 +11,7 @@ import uuid
 
 from controlplane.api.routes.control import router as control_router
 from controlplane.api.routes.session import router as session_router
+from controlplane.api.sse.stream import SseStreamPresenter, router as sse_router
 from controlplane.api.security import enforce_csrf, enforce_host
 from controlplane.api.technical_details import record_internal_error
 from controlplane.application.control_api.query_ports import ControlApiQueryService
@@ -70,6 +71,7 @@ def create_app(*, manager: object | None = None,
     app.state.command_service = (
         compose_command_service(manager.unit_of_work) if manager is not None else None
     )
+    app.state.sse_presenter = SseStreamPresenter()
 
     @app.middleware("http")
     async def boundary(request: Request, call_next):
@@ -144,5 +146,6 @@ def create_app(*, manager: object | None = None,
         return response
 
     app.include_router(session_router)
+    app.include_router(sse_router)
     app.include_router(control_router)
     return app

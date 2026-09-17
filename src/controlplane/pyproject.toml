@@ -43,8 +43,10 @@ controlplane = "controlplane.entrypoint:main"
 "controlplane.application.session_security" = "application/session_security"
 "controlplane.application.technical_details" = "application/technical_details"
 "controlplane.application.orchestration" = "application/orchestration"
+"controlplane.application.sse" = "application/sse"
 "controlplane.api" = "api"
 "controlplane.api.routes" = "api/routes"
+"controlplane.api.sse" = "api/sse"
 "controlplane.infrastructure" = "infrastructure"
 "controlplane.infrastructure.db" = "infrastructure/db"
 "controlplane.infrastructure.db.config_security" = "infrastructure/db/config_security"
@@ -57,6 +59,7 @@ controlplane = "controlplane.entrypoint:main"
 "controlplane.infrastructure.db.orchestration" = "infrastructure/db/orchestration"
 "controlplane.infrastructure.db.session_security" = "infrastructure/db/session_security"
 "controlplane.infrastructure.db.technical_details" = "infrastructure/db/technical_details"
+"controlplane.infrastructure.db.sse" = "infrastructure/db/sse"
 "controlplane.infrastructure.evidence" = "infrastructure/evidence"
 "controlplane.infrastructure.security" = "infrastructure/security"
 
@@ -84,8 +87,10 @@ packages = [
     "controlplane.application.session_security",
     "controlplane.application.technical_details",
     "controlplane.application.orchestration",
+    "controlplane.application.sse",
     "controlplane.api",
     "controlplane.api.routes",
+    "controlplane.api.sse",
     "controlplane.infrastructure",
     "controlplane.infrastructure.db",
     "controlplane.infrastructure.db.config_security",
@@ -98,6 +103,7 @@ packages = [
     "controlplane.infrastructure.db.orchestration",
     "controlplane.infrastructure.db.session_security",
     "controlplane.infrastructure.db.technical_details",
+    "controlplane.infrastructure.db.sse",
     "controlplane.infrastructure.evidence",
     "controlplane.infrastructure.security",
 ]
