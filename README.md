@@ -13,7 +13,7 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G04 Drive/OAuth | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G07 Compatibility | `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` |
-| M2 Control Plane | `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_READY_FOR_REVIEW; M2-P7B_BEHAVIORAL_RED_LOCKED; M2-P7B_IMPLEMENTATION_LOCKED` |
+| M2 Control Plane | `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_ACCEPTED; M2-P7B_BEHAVIORAL_RED_AUTHORIZED; M2-P7B_IMPLEMENTATION_LOCKED` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
 Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7A đã được chấp thuận/đóng; P7A correction có oracle 4/4, exact H01–H36 36/36, toàn bộ hồi quy PASS, secret scan sạch và hash DAG PASS. Thiết kế P7B dùng one-statement per-workspace fence để giữ tương thích P3 autocommit và P1 UoW; exact 5 future RED identities và H01–H38 đã khóa trong authority draft. RED/implementation chưa được cấp quyền, chưa tạo source/test/evidence P7B. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.

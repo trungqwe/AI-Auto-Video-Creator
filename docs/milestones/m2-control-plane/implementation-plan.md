@@ -1,7 +1,7 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_READY_FOR_REVIEW; M2-P7B_BEHAVIORAL_RED_LOCKED; M2-P7B_IMPLEMENTATION_LOCKED`.
+**Trạng thái:** `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_ACCEPTED; M2-P7B_BEHAVIORAL_RED_AUTHORIZED; M2-P7B_IMPLEMENTATION_LOCKED`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
 **Điểm dừng bắt buộc hiện hành:** P1..P7A là `ACCEPTED / CLOSED`. Independent review chấp thuận P7A correction source/tooling `6c3a52bde905ee5e71e12334da1873ed20f5c5db` và GREEN `run-m2-p7a-green-20260916224033` tại evidence/handoff HEAD `5bf8bf81d5628590dd41bb8989cefb72a2523175`; candidate `d5032eb` và GREEN cũ giữ làm lịch sử bị từ chối. Accepted RED oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035` bất biến. P7B chỉ `AUTHORITY_READY_FOR_REVIEW`; Behavioral RED và implementation vẫn `LOCKED`. Review checkpoint `a60471a` đã chọn hướng B cho commit-order, nhưng tài liệu correction này vẫn cần independent review trước khi mở RED. P8/P9 khóa, M3 và Phân hệ A `NOT AUTHORIZED`.
 **Căn cứ:**
@@ -631,7 +631,7 @@ GREEN còn phải đạt accepted exact-four 4/4 (oracle SHA giữ nguyên), P6 
 
 ### M2-P7B: Module H — Server-Sent Events (SSE) Stream, Cursor Reconnect & Resync
 
-**Trạng thái:** `M2-P7B_AUTHORITY_READY_FOR_REVIEW`; `M2-P7B_BEHAVIORAL_RED_LOCKED`; `M2-P7B_IMPLEMENTATION_LOCKED`. Đây là thiết kế đề xuất để independent review, không phải quyền tạo RED/code. Phụ thuộc P7A `ACCEPTED_CLOSED`, `CT-API-008`, hợp đồng `09-contracts/01-control-api-and-stream.md` và ADR-0007. Không có migration `0008`, Redis, broker, Temporal hoặc WebSocket trong phạm vi này.
+**Trạng thái:** `M2-P7B_AUTHORITY_ACCEPTED`; `M2-P7B_BEHAVIORAL_RED_AUTHORIZED`; `M2-P7B_IMPLEMENTATION_LOCKED`. Independent review checkpoint `763aa63b` đã chấp nhận thiết kế và chỉ cấp quyền Behavioral RED, không cấp quyền triển khai GREEN. Phụ thuộc P7A `ACCEPTED_CLOSED`, `CT-API-008`, hợp đồng `09-contracts/01-control-api-and-stream.md` và ADR-0007. Không có migration `0008`, Redis, broker, Temporal hoặc WebSocket trong phạm vi này.
 
 **Exact future Allowed File Scope, chỉ có hiệu lực sau checkpoint cấp quyền riêng:**
 
