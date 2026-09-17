@@ -16,7 +16,7 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | M2 Control Plane | `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_IMPLEMENTATION_READY_FOR_REVIEW` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
-Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7A đã được chấp thuận/đóng. P7B corrected RED `run-m2-p7b-red-20260917002633` đã accepted; RED cũ vẫn là lịch sử bị từ chối. Source/tooling P7B `1578d3e38bee60f42d81cef4a395af414752777a` và GREEN `run-m2-p7b-green-20260917024918` đã qua các gate nội bộ, đang chờ independent review; P7B chưa accepted/closed. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
+Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7A đã được chấp thuận/đóng. P7B corrected RED `run-m2-p7b-red-20260917002633` đã accepted. Independent review từ chối ACCEPT/CLOSE của candidate source `1578d3e`/GREEN `run-m2-p7b-green-20260917024918`; evidence cũ giữ nguyên. Source/tooling correction `c44214ad027986a0db7cb9d8e221590f232a0036` và GREEN fresh `run-m2-p7b-green-20260917040648` đã qua gate nội bộ, đang chờ independent review; P7B chưa accepted/closed. P8/P9, M3 và Phân hệ A tiếp tục khóa.
 
 ## Bắt đầu một phiên làm việc
 

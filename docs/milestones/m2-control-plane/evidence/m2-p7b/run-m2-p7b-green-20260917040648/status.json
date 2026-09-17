@@ -1,0 +1,72 @@
+{
+  "schema_version": "m2_package_status_v1",
+  "milestone": "M2",
+  "package": "M2-P7B",
+  "semantic_profile": "m2-p7b-implementation",
+  "status": "READY_FOR_REVIEW",
+  "lifecycle": "M2-P7B_IMPLEMENTATION_READY_FOR_REVIEW",
+  "run_id": "run-m2-p7b-green-20260917040648",
+  "source_commit_sha": "c44214ad027986a0db7cb9d8e221590f232a0036",
+  "oracle_sha256": "d83d0f2d808f1b0067d5288ea131ded24d8fc46a16462b5254fd4167f7425738",
+  "gates": [
+    {
+      "gate_id": "P7B-GREEN",
+      "status": "PASS",
+      "evidence_files": [
+        "p7b-oracle.xml",
+        "p7b-hardening.xml",
+        "hardening-catalogue.json"
+      ]
+    },
+    {
+      "gate_id": "REGRESSIONS",
+      "status": "PASS",
+      "evidence_files": [
+        "p7a-oracle.xml",
+        "p7a-hardening.xml",
+        "p6-regression.xml",
+        "p5b-regression.xml",
+        "p5a-regression.xml",
+        "p4-regression.xml",
+        "p3-regression.xml",
+        "p2-regression.xml",
+        "p1-regression.xml",
+        "p0-regression.xml",
+        "architecture.xml",
+        "m1-regression.xml"
+      ]
+    },
+    {
+      "gate_id": "MIGRATION-H18",
+      "status": "PASS",
+      "evidence_files": [
+        "runtime-and-static.json",
+        "pre-index-absent-explain.json",
+        "pre-index-resume-explain.json",
+        "post-index-absent-explain.json",
+        "post-index-resume-explain.json",
+        "index-catalog.json",
+        "tracker-forward.json",
+        "tracker-rollback.json",
+        "tracker-reapply.json",
+        "rollback-preservation.json"
+      ]
+    },
+    {
+      "gate_id": "QUALITY-SECURITY",
+      "status": "PASS",
+      "evidence_files": [
+        "quality-status.json",
+        "secret-scan.json"
+      ]
+    },
+    {
+      "gate_id": "INTEGRITY",
+      "status": "PASS",
+      "evidence_files": [
+        "verify-only-stdout.txt",
+        "negative-verifier-stdout.txt"
+      ]
+    }
+  ]
+}

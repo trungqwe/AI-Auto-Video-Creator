@@ -1,0 +1,50 @@
+tests/m2/test_p7b_hardening.py::test_h01_actual_route_mounted
+tests/m2/test_p7b_hardening.py::test_h02_event_stream_headers
+tests/m2/test_p7b_hardening.py::test_h03_utf8_compact_framing
+tests/m2/test_p7b_hardening.py::test_h04_authenticated_workspace_binding
+tests/m2/test_p7b_hardening.py::test_h05_foreign_workspace_excluded
+tests/m2/test_p7b_hardening.py::test_h06_monotonic_workspace_cursors
+tests/m2/test_p7b_hardening.py::test_h07_reconnect_exclusive_replay
+tests/m2/test_p7b_hardening.py::test_h08_expired_cursor_exact_resync_close
+tests/m2/test_p7b_hardening.py::test_h09_malformed_cursor
+tests/m2/test_p7b_hardening.py::test_h10_query_header_mismatch
+tests/m2/test_p7b_hardening.py::test_h11_future_cursor_safe_conflict
+tests/m2/test_p7b_hardening.py::test_h12_foreign_cursor_safe_conflict
+tests/m2/test_p7b_hardening.py::test_h13_get_only_no_mutation
+tests/m2/test_p7b_hardening.py::test_h14_safe_projection_allowlist
+tests/m2/test_p7b_hardening.py::test_h15_no_secret_or_stack_surface
+tests/m2/test_p7b_hardening.py::test_h16_concurrent_https_clients
+tests/m2/test_p7b_hardening.py::test_h17_abrupt_disconnect_releases_client_slot
+tests/m2/test_p7b_hardening.py::test_h18_bounded_limit_100_and_query_plan
+tests/m2/test_p7b_hardening.py::test_h19_no_unbounded_thread_growth
+tests/m2/test_p7b_hardening.py::test_h20_no_borrowed_connection_after_yield
+tests/m2/test_p7b_hardening.py::test_h21_real_p7a_https_ca_verified
+tests/m2/test_p7b_hardening.py::test_h22_host_validation_precedes_stream
+tests/m2/test_p7b_hardening.py::test_h23_origin_validation_precedes_stream
+tests/m2/test_p7b_hardening.py::test_h24_session_revocation_closes_live_stream
+tests/m2/test_p7b_hardening.py::test_h25_accepted_p7a_oracle_regression
+tests/m2/test_p7b_hardening.py::test_h26_accepted_p7a_hardening_regression
+tests/m2/test_p7b_hardening.py::test_h27_accepted_p6_regression
+tests/m2/test_p7b_hardening.py::test_h28_accepted_p5b_regression
+tests/m2/test_p7b_hardening.py::test_h29_accepted_p5a_regression
+tests/m2/test_p7b_hardening.py::test_h30_accepted_p4_regression
+tests/m2/test_p7b_hardening.py::test_h31_accepted_p3_regression
+tests/m2/test_p7b_hardening.py::test_h32_accepted_p2_regression
+tests/m2/test_p7b_hardening.py::test_h33_accepted_p1_regression
+tests/m2/test_p7b_hardening.py::test_h34_accepted_p0_regression
+tests/m2/test_p7b_hardening.py::test_h35_architecture_regression
+tests/m2/test_p7b_hardening.py::test_h36_m1_regression
+tests/m2/test_p7b_hardening.py::test_h37_concurrent_two_writer_commit_order_no_loss
+tests/m2/test_p7b_hardening.py::test_h38_p3_autocommit_and_uow_append_compatibility
+
+============================== warnings summary ===============================
+.local-tools\temp\p7a-locked-venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\AI Auto Video Creator\.local-tools\temp\p7a-locked-venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.local-tools\temp\p7a-locked-venv\Lib\site-packages\starlette\testclient.py:53
+  D:\AI Auto Video Creator\.local-tools\temp\p7a-locked-venv\Lib\site-packages\starlette\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+38 tests collected in 0.29s

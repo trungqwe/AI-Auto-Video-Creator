@@ -1,0 +1,3 @@
+Using CPython 3.13.15
+Creating virtual environment at: C:\Users\Admin\AppData\Local\Temp\p7b_locked_wheel_xsrn67vx\venv
+Activate with: C:\Users\Admin\AppData\Local\Temp\p7b_locked_wheel_xsrn67vx\venv\Scripts\activate

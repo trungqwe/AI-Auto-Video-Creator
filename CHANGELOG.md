@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-17 — M2-P7B narrow review correction ready for independent review
+
+- Review từ chối ACCEPT/CLOSE candidate `1578d3e`/`run-m2-p7b-green-20260917024918` vì thiếu H38 P1 UoW rollback độc lập, sequence `CACHE=1`, H16 HTTPS capacity 16+1 và exact H01–H38 profile lock; mã `STREAM_CAPACITY_EXCEEDED` ngoài contract. Candidate evidence cũ giữ nguyên; đây không phải behavioral rollback.
+- Source/tooling correction `c44214ad027986a0db7cb9d8e221590f232a0036` chỉ đổi helper ProblemDetail SSE, H16/H38, sequence/capacity probe và semantic profile. Saturation trả `429 RATE_LIMITED`, category `capacity`, retryable; H38 quan sát T2 chờ lock trước cấp cursor khi P1 UoW rollback, sau đó chỉ row M commit. H16 giữ 16 stream thực qua HTTPS, từ chối kết nối thứ 17 và xác nhận slot được trả lại. Profile khóa exact 38 tên, 16 client/3 poll và PostgreSQL `CACHE=1`.
+- Fresh GREEN `run-m2-p7b-green-20260917040648`: P7B 5/5 + 38/38; P7A 4/4 + 36/36; P6/P5B/P5A/P4/P3/P2/P1/P0/architecture/M1 đều đạt, 0 failed/error/skipped. Migration/index 0008 `[1..8] → [1..7] → [1..8]`, 100.000 rows, EXPLAIN PASS; Ruff/lock/wheel PASS, mypy không có trong lock, secret scan CLEAN/0, semantic/provenance/hash/tamper PASS. Chỉ `READY_FOR_REVIEW`, chưa accepted/closed; P8/P9, M3 và Phân hệ A vẫn khóa.
+
 ## 2026-09-17 — M2-P7B implementation ready for independent review
 
 - Source/tooling `1578d3e38bee60f42d81cef4a395af414752777a` triển khai SSE bounded workspace stream, P3 one-statement ordering fence, migration/index `0008`, H01–H38 và ngoại lệ compatibility đúng thân P7A H16. P7A/P7B Behavioral oracle và historical accepted evidence giữ nguyên; H16 bỏ giả định 0007 luôn là migration cuối.
