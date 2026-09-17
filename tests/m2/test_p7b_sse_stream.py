@@ -4,24 +4,31 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import json
 import os
 from pathlib import Path
+import ssl
 from threading import Event
 import uuid
 
 from fastapi.testclient import TestClient
+import httpx
 import psycopg
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
 
 from controlplane.api.main import create_app
-from controlplane.application.session_security import BootstrapCapabilityRegistry
+from controlplane.api.tls import start_loopback_tls_server
+from controlplane.application.session_security import (
+    BootstrapBinding, BootstrapCapabilityRegistry, SessionSecurityService,
+)
 from controlplane.application.sse.stream import SseStreamService
 from controlplane.domain.events import DomainEvent
 from controlplane.infrastructure.db.migration_runner import MigrationRunner
 from controlplane.infrastructure.db.projections.postgres import PostgresOperationStreamRepository
 from controlplane.infrastructure.db.sse.postgres import PostgresSseReader
+from controlplane.infrastructure.db.session_security import PostgresSessionRepository
 from controlplane.infrastructure.db.uow import TransactionManager
 
 
@@ -168,24 +175,75 @@ def test_tst_m2_p7b_000_stream_cursor_commit_order_concurrent_writers():
 
 def test_tst_m2_p7b_001_sse_stream_format_and_headers():
     with database() as dsn:
-        cursor = _append(dsn, WORKSPACE_A, "format-event")
-        with authenticated_app(dsn) as (client, _, _):
-            response = client.get(
-                "/v1/operations/stream", headers={"Origin": "https://localhost:8443"},
-            )
-            assert response.status_code != 404, "P7B SSE route was not mounted"
-            if response.status_code == 500:
-                with psycopg.connect(dsn) as connection:
-                    assert connection.execute(
-                        "SELECT error_type FROM controlplane.cp_technical_details "
-                        "WHERE detail_ref=%s AND workspace_id=%s",
-                        (response.json()["technical_detail_ref"], WORKSPACE_A),
-                    ).fetchone() == ("NotImplementedError",)
-            assert response.status_code == 200, response.text
-            assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
-            assert f"id: {cursor}\n" in response.text
-            assert "event: operation.changed\n" in response.text
-            assert "data: " in response.text
+        boundary_cursor = _append(dsn, WORKSPACE_A, "resume-boundary")
+        next_cursor = _append(dsn, WORKSPACE_A, "format-event")
+        assert next_cursor > boundary_cursor
+        manager = TransactionManager(dsn)
+        try:
+            with manager.unit_of_work() as uow:
+                _, token = SessionSecurityService(PostgresSessionRepository).create(
+                    connection=uow.connection,
+                    binding=BootstrapBinding(
+                        WORKSPACE_A, ACTOR_A,
+                        datetime.now(timezone.utc) + timedelta(seconds=60),
+                    ),
+                )
+            with start_loopback_tls_server(manager=manager) as endpoint:
+                context = ssl.create_default_context(cadata=endpoint.ca_certificate_pem)
+                with httpx.Client(verify=context, timeout=5) as client:
+                    with client.stream(
+                        "GET",
+                        f"https://localhost:{endpoint.port}/v1/operations/stream",
+                        params={"cursor": str(boundary_cursor)},
+                        cookies={"cp_session": token},
+                    ) as response:
+                        assert response.status_code != 404, "P7B SSE route was not mounted"
+                        if response.status_code == 500:
+                            response.read()
+                            body = response.json()
+                            assert body["code"] == "INTERNAL_ERROR"
+                            with psycopg.connect(dsn) as connection:
+                                detail = connection.execute(
+                                    "SELECT error_type,stack_trace FROM controlplane.cp_technical_details "
+                                    "WHERE detail_ref=%s AND workspace_id=%s",
+                                    (body["technical_detail_ref"], WORKSPACE_A),
+                                ).fetchone()
+                            assert detail is not None
+                            assert detail[0] == "NotImplementedError"
+                            assert "P7B_SSE_FRAMING_NOT_IMPLEMENTED" in detail[1]
+                        assert response.status_code == 200, "SSE route did not open a stream"
+                        assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+                        assert response.headers["cache-control"] == "no-cache, no-transform"
+                        assert response.headers["x-accel-buffering"] == "no"
+                        assert response.headers["x-correlation-id"]
+                        frame: list[str] = []
+                        first_data_frame: list[str] | None = None
+                        for line in response.iter_lines():
+                            if line:
+                                frame.append(line)
+                                continue
+                            if any(part.startswith("data: ") for part in frame):
+                                first_data_frame = frame
+                                break
+                            frame = []  # Ignore retry and heartbeat frames.
+                        assert first_data_frame is not None, "No complete SSE data frame"
+                        event_fields = [part for part in first_data_frame
+                                        if not part.startswith("retry:")]
+                        assert f"id: {boundary_cursor}" not in event_fields
+                        assert event_fields[0] == f"id: {next_cursor}"
+                        assert event_fields[1] == "event: operation.changed"
+                        assert len(event_fields) == 3
+                        assert event_fields[2].startswith("data: ")
+                        data_text = event_fields[2].removeprefix("data: ")
+                        payload = json.loads(data_text)
+                        assert data_text in {
+                            json.dumps(payload, separators=(",", ":"), ensure_ascii=True),
+                            json.dumps(payload, separators=(",", ":"), ensure_ascii=False),
+                        }
+                        assert payload["cursor"] == str(next_cursor)
+                    # Leaving the stream context explicitly disconnects the client.
+        finally:
+            manager.close()
 
 
 def test_tst_m2_p7b_002_sse_reconnect_with_cursor_delivers_missed_events():
