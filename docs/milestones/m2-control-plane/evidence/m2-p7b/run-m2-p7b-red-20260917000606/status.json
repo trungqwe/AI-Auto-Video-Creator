@@ -1,0 +1,31 @@
+{
+  "schema_version": "m2_p7b_behavioral_red_v1",
+  "run_id": "run-m2-p7b-red-20260917000606",
+  "source_commit_sha": "7fa928b1f715a66b0d5a579c2530884598ed482d",
+  "lifecycle": "M2-P7B_BEHAVIORAL_RED_READY_FOR_REVIEW",
+  "implementation": "LOCKED",
+  "collected": 5,
+  "failed": 5,
+  "passed": 0,
+  "errors": 0,
+  "skipped": 0,
+  "classifications": {
+    "test_tst_m2_p7b_000_stream_cursor_commit_order_concurrent_writers": "UPSTREAM_INVARIANT_RED",
+    "test_tst_m2_p7b_001_sse_stream_format_and_headers": "VALID_CAPABILITY_RED_PRESENTER",
+    "test_tst_m2_p7b_002_sse_reconnect_with_cursor_delivers_missed_events": "VALID_CAPABILITY_RED_REPLAY",
+    "test_tst_m2_p7b_003_sse_cursor_expired_triggers_resync_required": "VALID_CAPABILITY_RED_CLASSIFICATION",
+    "test_tst_m2_p7b_004_sse_session_workspace_isolation": "VALID_CAPABILITY_RED_WORKSPACE_READER"
+  },
+  "postgresql": "18.6",
+  "createdb": true,
+  "orphan": 0,
+  "secret_scan": "CLEAN",
+  "secret_findings": 0,
+  "mandatory_regressions": {
+    "p7a_oracle": "4/4",
+    "p7a_hardening": "36/36",
+    "p3": "11/11",
+    "architecture": "6/6"
+  },
+  "m1_regression": "NOT_RUN_OPTIONAL"
+}

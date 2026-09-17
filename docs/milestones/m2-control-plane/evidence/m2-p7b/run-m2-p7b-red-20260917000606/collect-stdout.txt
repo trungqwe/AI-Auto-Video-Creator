@@ -1,0 +1,17 @@
+tests/m2/test_p7b_sse_stream.py::test_tst_m2_p7b_000_stream_cursor_commit_order_concurrent_writers
+tests/m2/test_p7b_sse_stream.py::test_tst_m2_p7b_001_sse_stream_format_and_headers
+tests/m2/test_p7b_sse_stream.py::test_tst_m2_p7b_002_sse_reconnect_with_cursor_delivers_missed_events
+tests/m2/test_p7b_sse_stream.py::test_tst_m2_p7b_003_sse_cursor_expired_triggers_resync_required
+tests/m2/test_p7b_sse_stream.py::test_tst_m2_p7b_004_sse_session_workspace_isolation
+
+============================== warnings summary ===============================
+.local-tools\temp\p7a-locked-venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\AI Auto Video Creator\.local-tools\temp\p7a-locked-venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+.local-tools\temp\p7a-locked-venv\Lib\site-packages\starlette\testclient.py:53
+  D:\AI Auto Video Creator\.local-tools\temp\p7a-locked-venv\Lib\site-packages\starlette\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+5 tests collected in 0.24s

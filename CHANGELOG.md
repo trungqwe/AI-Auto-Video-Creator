@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-17 — M2-P7B Behavioral RED ready for independent review
+
+- Independent review checkpoint `763aa63b` chấp nhận authority; commit docs-only `ef6639d` mở riêng Behavioral RED. Source/test/seam `7fa928b1f715a66b0d5a579c2530884598ed482d` tạo đúng năm oracle, không triển khai GREEN hay sửa accepted P3 writer.
+- Fresh evidence `run-m2-p7b-red-20260917000606`: collect 5, 5 failed/0 passed/0 errors/0 skipped; #000 tái hiện ba lần T1 N=1 commit muộn sau T2 M=2 và replay `>2` bỏ N; #001–#004 fail đúng capability seam. P7A oracle 4/4, hardening 36/36, P3 11/11, architecture 6/6 và P6→P0 PASS; PostgreSQL 18.6, orphan=0, secret scan CLEAN/0. P7B RED chỉ `READY_FOR_REVIEW`; implementation vẫn khóa.
+
 ## 2026-09-17 — M2-P7B autocommit-compatible ordering authority, docs-only
 
 - Review checkpoint `25e7f2488d8298be08816bd2147315b4677eb442` phát hiện accepted P3 #011 append trên autocommit connection. Rút lại two-statement transaction fence và autocommit fail-closed wording; future exact `PostgresOperationStreamRepository.append()` exception phải dùng **một SQL statement** gồm materialized ordering fence → dependent explicit sequence allocation → INSERT/RETURNING, tương thích cả autocommit và P1 UoW. CTE là intended shape, runtime proof còn bắt buộc.

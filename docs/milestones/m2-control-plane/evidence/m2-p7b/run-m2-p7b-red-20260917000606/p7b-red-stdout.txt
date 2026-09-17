@@ -1,0 +1,38 @@
+FFFFF                                                                    [100%]
+================================== FAILURES ===================================
+______ test_tst_m2_p7b_000_stream_cursor_commit_order_concurrent_writers ______
+tests\m2\test_p7b_sse_stream.py:162: in test_tst_m2_p7b_000_stream_cursor_commit_order_concurrent_writers
+    assert not inverted, (
+E   AssertionError: UPSTREAM_INVARIANT_RED: T1 cursor N=1 committed late; T2 cursor M=2 committed first; reader advanced to 2; replay > M omits late N
+E   assert not True
+______________ test_tst_m2_p7b_001_sse_stream_format_and_headers ______________
+tests\m2\test_p7b_sse_stream.py:184: in test_tst_m2_p7b_001_sse_stream_format_and_headers
+    assert response.status_code == 200, response.text
+E   AssertionError: {"type":"about:blank","title":"Internal Error","status":500,"detail":"\u0110\xe3 x\u1ea3y ra l\u1ed7i n\u1ed9i b\u1ed9.","instance":"0ef7fe93-91c6-4fce-abcf-77b0fed7fb4b","code":"INTERNAL_ERROR","category":"internal","retryable":false,"correlation_id":"0ef7fe93-91c6-4fce-abcf-77b0fed7fb4b","field_errors":{},"technical_detail_ref":"dd72a456-502b-43de-8d6d-0d1351cb6858"}
+E   assert 500 == 200
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+____ test_tst_m2_p7b_002_sse_reconnect_with_cursor_delivers_missed_events _____
+tests\m2\test_p7b_sse_stream.py:200: in test_tst_m2_p7b_002_sse_reconnect_with_cursor_delivers_missed_events
+    replay = SseStreamService(PostgresSseReader(connection)).replay_after(
+src\controlplane\application\sse\stream.py:9: in replay_after
+    raise NotImplementedError("P7B_SSE_REPLAY_NOT_IMPLEMENTED")
+E   NotImplementedError: P7B_SSE_REPLAY_NOT_IMPLEMENTED
+_______ test_tst_m2_p7b_003_sse_cursor_expired_triggers_resync_required _______
+tests\m2\test_p7b_sse_stream.py:223: in test_tst_m2_p7b_003_sse_cursor_expired_triggers_resync_required
+    classification = SseStreamService(PostgresSseReader(connection)).classify_cursor(
+src\controlplane\application\sse\stream.py:12: in classify_cursor
+    raise NotImplementedError("P7B_SSE_CURSOR_CLASSIFICATION_NOT_IMPLEMENTED")
+E   NotImplementedError: P7B_SSE_CURSOR_CLASSIFICATION_NOT_IMPLEMENTED
+_____________ test_tst_m2_p7b_004_sse_session_workspace_isolation _____________
+tests\m2\test_p7b_sse_stream.py:244: in test_tst_m2_p7b_004_sse_session_workspace_isolation
+    page = PostgresSseReader(connection).fetch_workspace_page(
+src\controlplane\infrastructure\db\sse\postgres.py:10: in fetch_workspace_page
+    raise NotImplementedError("P7B_SSE_WORKSPACE_PAGE_NOT_IMPLEMENTED")
+E   NotImplementedError: P7B_SSE_WORKSPACE_PAGE_NOT_IMPLEMENTED
+=========================== short test summary info ===========================
+FAILED tests/m2/test_p7b_sse_stream.py::test_tst_m2_p7b_000_stream_cursor_commit_order_concurrent_writers
+FAILED tests/m2/test_p7b_sse_stream.py::test_tst_m2_p7b_001_sse_stream_format_and_headers
+FAILED tests/m2/test_p7b_sse_stream.py::test_tst_m2_p7b_002_sse_reconnect_with_cursor_delivers_missed_events
+FAILED tests/m2/test_p7b_sse_stream.py::test_tst_m2_p7b_003_sse_cursor_expired_triggers_resync_required
+FAILED tests/m2/test_p7b_sse_stream.py::test_tst_m2_p7b_004_sse_session_workspace_isolation
+5 failed, 3 warnings in 1.90s
