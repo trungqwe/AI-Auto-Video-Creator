@@ -1,0 +1,1 @@
+DROP INDEX controlplane.cp_operation_stream_workspace_cursor_idx;

@@ -16,12 +16,24 @@ class PostgresOperationStreamRepository:
     def append(self, *, event: Any, safe_summary: str = "projection", operation_id: str | None = None) -> int:
         _ensure_safe(event.payload, safe_summary)
         return self._connection.execute(
-            """INSERT INTO controlplane.cp_operation_stream
-            (workspace_id, operation_id, resource_type, resource_id, resource_revision,
-             event_kind, occurred_at, recorded_at, summary, correlation_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, %s, %s)
+            """WITH ordering_fence AS MATERIALIZED (
+                SELECT pg_advisory_xact_lock(
+                    hashtextextended('cp_operation_stream:' || %s::text, 0)
+                ) AS acquired
+            ), allocated_cursor AS MATERIALIZED (
+                SELECT nextval(
+                    pg_get_serial_sequence('controlplane.cp_operation_stream', 'stream_event_id')::regclass
+                ) AS stream_event_id
+                FROM ordering_fence
+            )
+            INSERT INTO controlplane.cp_operation_stream
+            (stream_event_id, workspace_id, operation_id, resource_type, resource_id,
+             resource_revision, event_kind, occurred_at, recorded_at, summary, correlation_id)
+            SELECT allocated_cursor.stream_event_id, %s, %s, %s, %s, %s, %s, %s,
+                   CURRENT_TIMESTAMP, %s, %s
+            FROM allocated_cursor
             RETURNING stream_event_id""",
-            (event.workspace_id, operation_id, event.aggregate_type, event.aggregate_id,
+            (event.workspace_id, event.workspace_id, operation_id, event.aggregate_type, event.aggregate_id,
              event.aggregate_revision, event.event_name, event.occurred_at, safe_summary,
              event.correlation_id),
         ).fetchone()[0]

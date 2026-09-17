@@ -1,0 +1,2 @@
+CREATE INDEX cp_operation_stream_workspace_cursor_idx
+ON controlplane.cp_operation_stream (workspace_id, stream_event_id);

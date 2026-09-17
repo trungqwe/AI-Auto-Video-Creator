@@ -21,6 +21,7 @@ from controlplane.domain.concurrency import RevisionConflictError
 from controlplane.infrastructure.db.control_api_commands import compose_command_service
 from controlplane.infrastructure.db.control_api_queries import PostgresControlQueries
 from controlplane.infrastructure.db.session_security import PostgresSessionRepository
+from controlplane.infrastructure.db.sse.postgres import PostgresSseReader
 from controlplane.infrastructure.db.technical_details import PostgresTechnicalDetailRepository
 
 
@@ -71,7 +72,7 @@ def create_app(*, manager: object | None = None,
     app.state.command_service = (
         compose_command_service(manager.unit_of_work) if manager is not None else None
     )
-    app.state.sse_presenter = SseStreamPresenter()
+    app.state.sse_presenter = SseStreamPresenter(PostgresSseReader)
 
     @app.middleware("http")
     async def boundary(request: Request, call_next):

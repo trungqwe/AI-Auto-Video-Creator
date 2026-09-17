@@ -334,18 +334,27 @@ def test_h16_migration_tracker() -> None:
             versions = [row[0] for row in connection.execute(
                 "SELECT version FROM controlplane.cp_schema_migrations ORDER BY version"
             )]
-            assert versions == list(range(1, 8))
-            connection.execute((MIGRATIONS / "0007_technical_details.rollback.sql").read_text(encoding="utf-8"))
-            connection.execute("DELETE FROM controlplane.cp_schema_migrations WHERE version=7")
+            assert versions
+            latest = versions[-1]
+            assert latest >= 7
+            assert versions == list(range(1, latest + 1))
+            assert versions[:7] == list(range(1, 8))
+            rollbacks = list(MIGRATIONS.glob(f"{latest:04d}_*.rollback.sql"))
+            assert len(rollbacks) == 1
+            connection.execute(rollbacks[0].read_text(encoding="utf-8"))
+            connection.execute(
+                "DELETE FROM controlplane.cp_schema_migrations WHERE version=%s",
+                (latest,),
+            )
             connection.commit()
             assert [row[0] for row in connection.execute(
                 "SELECT version FROM controlplane.cp_schema_migrations ORDER BY version"
-            )] == list(range(1, 7))
+            )] == list(range(1, latest))
         MigrationRunner(dsn, MIGRATIONS, is_test_env=True).migrate_up()
         with psycopg.connect(dsn) as connection:
             assert [row[0] for row in connection.execute(
                 "SELECT version FROM controlplane.cp_schema_migrations ORDER BY version"
-            )] == list(range(1, 8))
+            )] == list(range(1, latest + 1))
 
 
 def test_h17_actual_fastapi_tls_request() -> None:
