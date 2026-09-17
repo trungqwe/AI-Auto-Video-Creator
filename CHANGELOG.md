@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-17 — M2-P7B dừng tại xung đột accepted P7A tracker oracle
+
+- Migration `0008` được cấp quyền làm accepted P7A hardening `test_h16_migration_tracker` fail: expected tracker `[1..7]`, observed `[1..8]` (35/36). P7B oracle targeted 5/5 và các proof index/fence targeted đã chạy, nhưng source/migration/test P7B giữ unstaged/uncommitted, chưa có final GREEN evidence hoặc source pin. Không sửa P7A oracle; chờ independent review quyết định gate tương thích migration.
+
 ## 2026-09-17 — M2-P7B index authority delta accepted
 
 - Independent review checkpoint `aed557f5269f0af7641197d9b662b2dcff5e8d65` chấp nhận blocker PK-only và cho phép đúng migration `0008_operation_stream_workspace_cursor_index` tạo B-tree `(workspace_id, stream_event_id)` cùng rollback chỉ drop index. Không cho phép `CREATE INDEX CONCURRENTLY`, migration khác, sửa `MigrationRunner` hoặc thay accepted RED oracle/evidence. P7B implementation tiếp tục nhưng chưa GREEN/accepted/closed; P8/P9, M3/Phân hệ A vẫn khóa.
