@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-17 — M2-P7B index authority delta accepted
+
+- Independent review checkpoint `aed557f5269f0af7641197d9b662b2dcff5e8d65` chấp nhận blocker PK-only và cho phép đúng migration `0008_operation_stream_workspace_cursor_index` tạo B-tree `(workspace_id, stream_event_id)` cùng rollback chỉ drop index. Không cho phép `CREATE INDEX CONCURRENTLY`, migration khác, sửa `MigrationRunner` hoặc thay accepted RED oracle/evidence. P7B implementation tiếp tục nhưng chưa GREEN/accepted/closed; P8/P9, M3/Phân hệ A vẫn khóa.
+
 ## 2026-09-17 — M2-P7B RED accepted, implementation authorized
 
 - Independent review chấp nhận immutable RED source/test `c35571fb334dc7b842ee23378f041e74f1caa277`, oracle SHA-256 `d83d0f2d808f1b0067d5288ea131ded24d8fc46a16462b5254fd4167f7425738` và evidence `run-m2-p7b-red-20260917002633`. Rejected historical RED `run-m2-p7b-red-20260917000606` giữ bất biến. Chỉ mở quyền implementation P7B, chưa chấp nhận/đóng P7B; P8/P9, M3/Phân hệ A vẫn khóa.
