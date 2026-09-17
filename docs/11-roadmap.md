@@ -214,7 +214,7 @@ Nếu M1-P3 là `BLOCKED_EXTERNAL`, M1 cũng kết luận `BLOCKED_EXTERNAL` t�
 
 **Kế hoạch thực thi có thẩm quyền:** [M2 implementation plan](./milestones/m2-control-plane/implementation-plan.md)  
 **Đặc tả kỹ thuật:** [M2 technical spec](./milestones/m2-control-plane/spec.md)  
-**Trạng thái:** `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` ngày 13-09-2026 theo quyết định User Checkpoint sau khi M1 được chấp thuận. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
+**Trạng thái:** `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` ngày 13-09-2026 theo quyết định User Checkpoint sau khi M1 được chấp thuận; hiện `M2-P1..P7B_ACCEPTED_CLOSED`. P7B accepted source/tooling `c44214ad027986a0db7cb9d8e221590f232a0036`, GREEN `run-m2-p7b-green-20260917040648`. P8/P9 vẫn khóa và cần checkpoint riêng trước RED/implementation; M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ### Mục tiêu
 

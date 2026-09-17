@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-17 — M2-P7B accepted và đóng lifecycle
+
+- Independent review chấp thuận P7B implementation tại source/tooling `c44214ad027986a0db7cb9d8e221590f232a0036` và GREEN `run-m2-p7b-green-20260917040648`; lifecycle hiện hành `M2-P1..P7B_ACCEPTED_CLOSED`. Migration `0008`, ngoại lệ đúng thân P3 `PostgresOperationStreamRepository.append()` và compatibility đúng thân P7A hardening H16 thuộc kết quả được chấp thuận. Oracle P7B/P7A, accepted evidence và candidate GREEN cũ bị từ chối đều giữ bất biến. Checkpoint này chỉ sửa tài liệu; P8/P9 vẫn khóa, M3/Phân hệ A `NOT AUTHORIZED`.
+
 ## 2026-09-17 — M2-P7B narrow review correction ready for independent review
 
 - Review từ chối ACCEPT/CLOSE candidate `1578d3e`/`run-m2-p7b-green-20260917024918` vì thiếu H38 P1 UoW rollback độc lập, sequence `CACHE=1`, H16 HTTPS capacity 16+1 và exact H01–H38 profile lock; mã `STREAM_CAPACITY_EXCEEDED` ngoài contract. Candidate evidence cũ giữ nguyên; đây không phải behavioral rollback.

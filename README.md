@@ -1,6 +1,6 @@
 # AI Auto Video Creator
 
-> Cập nhật hiện hành: M2-P1..P7A là `ACCEPTED / CLOSED`; P7B có source/tooling và GREEN evidence mới ở trạng thái `IMPLEMENTATION_READY_FOR_REVIEW`, chưa accepted/closed. P8/P9 khóa, M3 và Phân hệ A `NOT AUTHORIZED`.
+> Cập nhật hiện hành: `M2-P1..P7B_ACCEPTED_CLOSED`. P8/P9 vẫn khóa; M3 và Phân hệ A `NOT AUTHORIZED`.
 
 Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều góc kể tiếng Anh, dựng video ngắn 61–70 giây và đồng bộ đầu ra lên cloud. Dự án được phát triển theo từng milestone có evidence gate; không coi việc chương trình chạy một lần là bằng chứng kiến trúc đã đạt.
 
@@ -13,10 +13,10 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G04 Drive/OAuth | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G07 Compatibility | `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` |
-| M2 Control Plane | `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_IMPLEMENTATION_READY_FOR_REVIEW` |
+| M2 Control Plane | `M2-P1..P7B_ACCEPTED_CLOSED`; P8/P9 `LOCKED` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
-Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7A đã được chấp thuận/đóng. P7B corrected RED `run-m2-p7b-red-20260917002633` đã accepted. Independent review từ chối ACCEPT/CLOSE của candidate source `1578d3e`/GREEN `run-m2-p7b-green-20260917024918`; evidence cũ giữ nguyên. Source/tooling correction `c44214ad027986a0db7cb9d8e221590f232a0036` và GREEN fresh `run-m2-p7b-green-20260917040648` đã qua gate nội bộ, đang chờ independent review; P7B chưa accepted/closed. P8/P9, M3 và Phân hệ A tiếp tục khóa.
+Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7B đã được independent review chấp thuận/đóng. P7B accepted source/tooling `c44214ad027986a0db7cb9d8e221590f232a0036` và GREEN `run-m2-p7b-green-20260917040648` giữ bất biến; candidate GREEN `run-m2-p7b-green-20260917024918` giữ làm lịch sử bị từ chối. Migration `0008`, ngoại lệ hẹp P3 `append()` và P7A H16 thuộc kết quả P7B accepted. P8/P9 chưa được mở; M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ## Bắt đầu một phiên làm việc
 

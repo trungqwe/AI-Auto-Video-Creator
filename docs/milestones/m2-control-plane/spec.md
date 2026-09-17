@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_ACCEPTED; M2-P7B_BEHAVIORAL_RED_ACCEPTED; M2-P7B_IMPLEMENTATION_AUTHORIZED; M2-P7B_INDEX_AUTHORITY_DELTA_ACCEPTED; M2-P7B_P7A_TRACKER_COMPAT_DELTA_ACCEPTED`.
+**Trạng thái:** `M2-P1..P7B_ACCEPTED_CLOSED`; P8/P9 `LOCKED`.
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** P1..P7A là `ACCEPTED / CLOSED`. Corrected P7B RED source/test `c35571fb334dc7b842ee23378f041e74f1caa277` và evidence `run-m2-p7b-red-20260917002633` đã được independent review chấp nhận; RED cũ `run-m2-p7b-red-20260917000606` giữ làm lịch sử bị từ chối. Implementation riêng P7B được cấp quyền, chưa GREEN/accepted/closed. Fence/sequence allocation/INSERT phải nằm trong **một SQL statement** tương thích autocommit/P1 UoW; ngoại lệ P3 chỉ thân hàm `append()`. Authority delta cho phép đúng migration `0008_operation_stream_workspace_cursor_index` tạo B-tree `(workspace_id, stream_event_id)` và rollback drop index; không sửa `0001..0007`/`MigrationRunner`, không tạo `0009`. P8/P9 khóa; M3 và Phân hệ A `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc:** P1..P7B là `ACCEPTED / CLOSED`. P7B accepted source/tooling `c44214ad027986a0db7cb9d8e221590f232a0036`, GREEN `run-m2-p7b-green-20260917040648`; accepted RED `run-m2-p7b-red-20260917002633` và các run bị từ chối vẫn bất biến. Migration `0008_operation_stream_workspace_cursor_index` tạo B-tree `(workspace_id, stream_event_id)`, ngoại lệ một SQL statement trong đúng thân P3 `append()` và compatibility đúng thân P7A hardening H16 thuộc kết quả accepted; không sửa `0001..0007`/`MigrationRunner`, không có `0009`. Checkpoint này không mở P8 Behavioral RED/implementation hoặc P9; M3 và Phân hệ A `NOT AUTHORIZED`.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)
