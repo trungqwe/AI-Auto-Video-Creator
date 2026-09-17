@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Kế hoạch Thực thi (Implementation Plan)
 
 **Tệp:** `docs/milestones/m2-control-plane/implementation-plan.md`  
-**Trạng thái:** `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_ACCEPTED; M2-P7B_BEHAVIORAL_RED_READY_FOR_REVIEW; M2-P7B_IMPLEMENTATION_LOCKED`.
+**Trạng thái:** `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_ACCEPTED; M2-P7B_BEHAVIORAL_RED_ACCEPTED; M2-P7B_IMPLEMENTATION_AUTHORIZED`.
 **Ngày lập:** 13-09-2026 (User đã chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`.)
-**Điểm dừng bắt buộc hiện hành:** P1..P7A là `ACCEPTED / CLOSED`. P7A source/tooling `6c3a52bde905ee5e71e12334da1873ed20f5c5db`, GREEN `run-m2-p7a-green-20260916224033` và oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035` giữ bất biến. P7B authority accepted tại `763aa63b`; source `7fa928b1f715a66b0d5a579c2530884598ed482d`/run `run-m2-p7b-red-20260917000606` bị independent review từ chối do #001. Corrected source/test `c35571fb334dc7b842ee23378f041e74f1caa277`, fresh run `run-m2-p7b-red-20260917002633` là `READY_FOR_REVIEW`, chưa `ACCEPTED`. Implementation và P3 ordering fence vẫn `LOCKED`; P8/P9 khóa, M3/Phân hệ A `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc hiện hành:** P1..P7A là `ACCEPTED / CLOSED`. P7A source/tooling `6c3a52bde905ee5e71e12334da1873ed20f5c5db`, GREEN `run-m2-p7a-green-20260916224033` và oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035` giữ bất biến. Independent review chấp nhận P7B corrected RED source/test `c35571fb334dc7b842ee23378f041e74f1caa277`, oracle SHA-256 `d83d0f2d808f1b0067d5288ea131ded24d8fc46a16462b5254fd4167f7425738`, evidence `run-m2-p7b-red-20260917002633`; run cũ `run-m2-p7b-red-20260917000606` là lịch sử bị từ chối. Implementation chỉ mở riêng P7B và ngoại lệ đúng thân hàm P3 `append()`; P7B chưa GREEN/accepted/closed. P8/P9 khóa, M3/Phân hệ A `NOT AUTHORIZED`.
 **Căn cứ:**
 - [Đặc tả Kỹ thuật M2](./spec.md)
 - [Roadmap Mục 8 — M2 Control Plane](../../11-roadmap.md)
@@ -631,7 +631,7 @@ GREEN còn phải đạt accepted exact-four 4/4 (oracle SHA giữ nguyên), P6 
 
 ### M2-P7B: Module H — Server-Sent Events (SSE) Stream, Cursor Reconnect & Resync
 
-**Trạng thái:** `M2-P7B_AUTHORITY_ACCEPTED`; `M2-P7B_BEHAVIORAL_RED_READY_FOR_REVIEW`; `M2-P7B_IMPLEMENTATION_LOCKED`. Independent review checkpoint `763aa63b` chấp nhận thiết kế và chỉ cấp quyền RED. Run cũ `run-m2-p7b-red-20260917000606` bị từ chối, giữ bất biến; corrected run `run-m2-p7b-red-20260917002633` chờ review. Không cấp quyền GREEN. Phụ thuộc P7A `ACCEPTED_CLOSED`, `CT-API-008`, hợp đồng `09-contracts/01-control-api-and-stream.md` và ADR-0007. Không có migration `0008`, Redis, broker, Temporal hoặc WebSocket trong phạm vi này.
+**Trạng thái:** `M2-P7B_AUTHORITY_ACCEPTED`; `M2-P7B_BEHAVIORAL_RED_ACCEPTED`; `M2-P7B_IMPLEMENTATION_AUTHORIZED`. Independent review chấp nhận corrected RED `run-m2-p7b-red-20260917002633` và mở quyền implementation riêng P7B. Run cũ `run-m2-p7b-red-20260917000606` giữ làm lịch sử bị từ chối. Phụ thuộc P7A `ACCEPTED_CLOSED`, `CT-API-008`, hợp đồng `09-contracts/01-control-api-and-stream.md` và ADR-0007. Không có migration `0008`, Redis, broker, Temporal hoặc WebSocket trong phạm vi này.
 
 **Exact future Allowed File Scope, chỉ có hiệu lực sau checkpoint cấp quyền riêng:**
 

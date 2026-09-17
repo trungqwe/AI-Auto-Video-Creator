@@ -1,9 +1,9 @@
 # M2 — Control Plane và Nền tảng Có thể Quan sát: Đặc tả Kỹ thuật (Technical Specification)
 
 **Tệp:** `docs/milestones/m2-control-plane/spec.md`  
-**Trạng thái:** `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_ACCEPTED; M2-P7B_BEHAVIORAL_RED_READY_FOR_REVIEW; M2-P7B_IMPLEMENTATION_LOCKED`.
+**Trạng thái:** `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_ACCEPTED; M2-P7B_BEHAVIORAL_RED_ACCEPTED; M2-P7B_IMPLEMENTATION_AUTHORIZED`.
 **Ngày lập:** 13-09-2026 (Hiệu chỉnh R2 trước Behavioral RED M2-P1; chờ User Review)
-**Điểm dừng bắt buộc:** P1..P7A là `ACCEPTED / CLOSED`. P7A source/tooling `6c3a52bde905ee5e71e12334da1873ed20f5c5db` và GREEN `run-m2-p7a-green-20260916224033` đã accepted. P7B authority accepted tại `763aa63b`; RED cũ `run-m2-p7b-red-20260917000606` bị review từ chối do #001 sai first-subscribe baseline và giữ bất biến. Corrected Behavioral RED `run-m2-p7b-red-20260917002633` đang chờ independent review, chưa `ACCEPTED`. Future fence/sequence allocation/INSERT phải nằm trong **một SQL statement** tương thích autocommit/P1 UoW. P7B implementation vẫn khóa; không sửa P3 hay migration `0008`. P8/P9 khóa; M3 và Phân hệ A `NOT AUTHORIZED`.
+**Điểm dừng bắt buộc:** P1..P7A là `ACCEPTED / CLOSED`. Corrected P7B RED source/test `c35571fb334dc7b842ee23378f041e74f1caa277` và evidence `run-m2-p7b-red-20260917002633` đã được independent review chấp nhận; RED cũ `run-m2-p7b-red-20260917000606` giữ làm lịch sử bị từ chối. Implementation riêng P7B được cấp quyền, chưa GREEN/accepted/closed. Fence/sequence allocation/INSERT phải nằm trong **một SQL statement** tương thích autocommit/P1 UoW; ngoại lệ P3 chỉ thân hàm `append()`, không tạo migration `0008`. P8/P9 khóa; M3 và Phân hệ A `NOT AUTHORIZED`.
 **Căn cứ kiến trúc:**
 - [Roadmap, Mục 8 — M2 Control Plane](../../11-roadmap.md)
 - [08-architecture.md](../../08-architecture.md)

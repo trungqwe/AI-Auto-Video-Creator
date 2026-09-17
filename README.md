@@ -1,6 +1,6 @@
 # AI Auto Video Creator
 
-> Cập nhật hiện hành: M2-P1..P7A là `ACCEPTED / CLOSED`. P7B authority đã được chấp nhận; Behavioral RED hiệu chỉnh tại `run-m2-p7b-red-20260917002633` đang chờ independent review. P7B implementation vẫn khóa. P8/P9 khóa, M3 và Phân hệ A `NOT AUTHORIZED`.
+> Cập nhật hiện hành: M2-P1..P7A là `ACCEPTED / CLOSED`. P7B Behavioral RED `run-m2-p7b-red-20260917002633` đã được independent review chấp nhận và implementation P7B được cấp quyền; P7B chưa accepted/closed. P8/P9 khóa, M3 và Phân hệ A `NOT AUTHORIZED`.
 
 Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều góc kể tiếng Anh, dựng video ngắn 61–70 giây và đồng bộ đầu ra lên cloud. Dự án được phát triển theo từng milestone có evidence gate; không coi việc chương trình chạy một lần là bằng chứng kiến trúc đã đạt.
 
@@ -13,10 +13,10 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G04 Drive/OAuth | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G07 Compatibility | `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` |
-| M2 Control Plane | `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_ACCEPTED; M2-P7B_BEHAVIORAL_RED_READY_FOR_REVIEW; M2-P7B_IMPLEMENTATION_LOCKED` |
+| M2 Control Plane | `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_ACCEPTED; M2-P7B_BEHAVIORAL_RED_ACCEPTED; M2-P7B_IMPLEMENTATION_AUTHORIZED` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
-Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7A đã được chấp thuận/đóng; P7A correction có oracle 4/4 và H01–H36 36/36. P7B RED cũ `run-m2-p7b-red-20260917000606` bị review từ chối do oracle #001 trái first-subscribe baseline và giữ bất biến. RED mới `run-m2-p7b-red-20260917002633` dùng explicit resume cursor, exact 5 failed đúng seam, đang chờ review; chưa cho phép GREEN. Future one-statement P3 fence và H01–H38 giữ nguyên authority. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
+Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7A đã được chấp thuận/đóng. P7B corrected RED `run-m2-p7b-red-20260917002633` và exact-five oracle đã được independent review chấp nhận; RED cũ `run-m2-p7b-red-20260917000606` giữ làm lịch sử bị từ chối. P7B implementation được cấp quyền nhưng chưa GREEN hoặc accepted/closed; one-statement P3 fence và H01–H38 vẫn là hard gates. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ## Bắt đầu một phiên làm việc
 

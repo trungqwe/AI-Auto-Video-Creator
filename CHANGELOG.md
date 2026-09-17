@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-17 — M2-P7B RED accepted, implementation authorized
+
+- Independent review chấp nhận immutable RED source/test `c35571fb334dc7b842ee23378f041e74f1caa277`, oracle SHA-256 `d83d0f2d808f1b0067d5288ea131ded24d8fc46a16462b5254fd4167f7425738` và evidence `run-m2-p7b-red-20260917002633`. Rejected historical RED `run-m2-p7b-red-20260917000606` giữ bất biến. Chỉ mở quyền implementation P7B, chưa chấp nhận/đóng P7B; P8/P9, M3/Phân hệ A vẫn khóa.
+
 ## 2026-09-17 — Hiệu chỉnh M2-P7B Behavioral RED oracle #001
 
 - Independent review từ chối ứng viên RED `run-m2-p7b-red-20260917000606`: #001 dùng no-cursor initial subscribe nhưng đòi phát lại row cũ, trái baseline committed MAX. Run cũ giữ bất biến. Chỉ sửa `tests/m2/test_p7b_sse_stream.py` tại source commit `c35571fb334dc7b842ee23378f041e74f1caa277`: seed C/N và resume explicit `?cursor=C`; dùng P7A app qua loopback HTTPS, CA verification, session DB thật, `httpx` streaming tới frame hoàn chỉnh rồi disconnect.
