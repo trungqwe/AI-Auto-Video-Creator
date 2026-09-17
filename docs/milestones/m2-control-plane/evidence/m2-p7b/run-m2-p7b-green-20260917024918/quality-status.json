@@ -1,0 +1,8 @@
+{
+  "ruff": "PASS",
+  "uv_lock_check": "PASS",
+  "wheel_build": "PASS",
+  "wheel_import": "PASS",
+  "mypy": "SKIP_UNAVAILABLE_NOT_IN_LOCK",
+  "build_backend_locked": true
+}

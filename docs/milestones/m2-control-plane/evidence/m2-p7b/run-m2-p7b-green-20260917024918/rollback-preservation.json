@@ -1,0 +1,7 @@
+{
+  "stream_rows": 100000,
+  "workspace_rows": 100,
+  "watermark_rows": 1,
+  "p7a_auth_sessions_table": true,
+  "p7a_technical_details_table": true
+}

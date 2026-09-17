@@ -1,0 +1,13 @@
+{
+  "method": "btree",
+  "unique": false,
+  "key_count": 2,
+  "attribute_count": 2,
+  "no_predicate": true,
+  "no_expression": true,
+  "keys": [
+    "workspace_id",
+    "stream_event_id"
+  ],
+  "definition": "CREATE INDEX cp_operation_stream_workspace_cursor_idx ON controlplane.cp_operation_stream USING btree (workspace_id, stream_event_id)"
+}

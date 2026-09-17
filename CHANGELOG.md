@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-17 — M2-P7B implementation ready for independent review
+
+- Source/tooling `1578d3e38bee60f42d81cef4a395af414752777a` triển khai SSE bounded workspace stream, P3 one-statement ordering fence, migration/index `0008`, H01–H38 và ngoại lệ compatibility đúng thân P7A H16. P7A/P7B Behavioral oracle và historical accepted evidence giữ nguyên; H16 bỏ giả định 0007 luôn là migration cuối.
+- Fresh GREEN `run-m2-p7b-green-20260917024918`: P7B 5/5 + H01–H38 38/38; P7A 4/4 + 36/36; P6/P5B/P5A/P4/P3/P2/P1/P0/architecture/M1 đều đạt đúng số lượng, 0 failed/error/skipped. Migration 0008 `[1..8] → [1..7] → [1..8]`, EXPLAIN composite index trên 100.000 rows, Ruff/lock/wheel PASS, mypy không có trong lock, secret scan CLEAN/0, semantic/provenance/hash/tamper PASS. Chỉ `READY_FOR_REVIEW`, chưa accepted/closed; P8/P9, M3 và Phân hệ A vẫn khóa.
+
 ## 2026-09-17 — M2-P7B P7A tracker compatibility delta accepted
 
 - Independent review checkpoint `1cbdcf1d2fc245d3d1515c8864fc6a3d8e377bc9` cho phép sửa **chỉ thân** P7A hardening H16 để kiểm migration set hiện hành liên tục và rollback/reapply migration mới nhất, thay giả định cũ 0007 luôn là cuối. P7A Behavioral oracle/source/evidence lịch sử không đổi; H15 và các H01–H36 khác bất biến. Full 36/36 trên schema gồm 0008 là gate ngay trước khi tiếp tục P7B; P8/P9, M3/Phân hệ A vẫn khóa.
