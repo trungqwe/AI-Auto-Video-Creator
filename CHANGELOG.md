@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-17 — Hiệu chỉnh M2-P7B Behavioral RED oracle #001
+
+- Independent review từ chối ứng viên RED `run-m2-p7b-red-20260917000606`: #001 dùng no-cursor initial subscribe nhưng đòi phát lại row cũ, trái baseline committed MAX. Run cũ giữ bất biến. Chỉ sửa `tests/m2/test_p7b_sse_stream.py` tại source commit `c35571fb334dc7b842ee23378f041e74f1caa277`: seed C/N và resume explicit `?cursor=C`; dùng P7A app qua loopback HTTPS, CA verification, session DB thật, `httpx` streaming tới frame hoàn chỉnh rồi disconnect.
+- Fresh RED `run-m2-p7b-red-20260917002633` có 5/5 failure đúng seam, #000 race tái hiện 3 lần; P7A 4/4 + 36/36, P3 11/11, architecture 6/6, P6→P0 PASS, M1 `NOT_RUN`, PG18.6/orphan=0. P7B RED chỉ `READY_FOR_REVIEW`; implementation/P3 fence vẫn khóa, không migration `0008` hay dependency pin drift.
+
 ## 2026-09-17 — M2-P7B Behavioral RED ready for independent review
 
 - Independent review checkpoint `763aa63b` chấp nhận authority; commit docs-only `ef6639d` mở riêng Behavioral RED. Source/test/seam `7fa928b1f715a66b0d5a579c2530884598ed482d` tạo đúng năm oracle, không triển khai GREEN hay sửa accepted P3 writer.

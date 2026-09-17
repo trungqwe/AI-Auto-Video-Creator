@@ -1,6 +1,6 @@
 # AI Auto Video Creator
 
-> Cập nhật hiện hành: M2-P1..P7A là `ACCEPTED / CLOSED`; P7A source `6c3a52b` và GREEN `run-m2-p7a-green-20260916224033` đã được independent review chấp thuận. P7B chỉ `AUTHORITY_READY_FOR_REVIEW`; RED/implementation vẫn khóa. P8/P9 khóa, M3 và Phân hệ A `NOT AUTHORIZED`.
+> Cập nhật hiện hành: M2-P1..P7A là `ACCEPTED / CLOSED`. P7B authority đã được chấp nhận; Behavioral RED hiệu chỉnh tại `run-m2-p7b-red-20260917002633` đang chờ independent review. P7B implementation vẫn khóa. P8/P9 khóa, M3 và Phân hệ A `NOT AUTHORIZED`.
 
 Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều góc kể tiếng Anh, dựng video ngắn 61–70 giây và đồng bộ đầu ra lên cloud. Dự án được phát triển theo từng milestone có evidence gate; không coi việc chương trình chạy một lần là bằng chứng kiến trúc đã đạt.
 
@@ -16,7 +16,7 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | M2 Control Plane | `M2-P1..P7A_ACCEPTED_CLOSED; M2-P7B_AUTHORITY_ACCEPTED; M2-P7B_BEHAVIORAL_RED_READY_FOR_REVIEW; M2-P7B_IMPLEMENTATION_LOCKED` |
 | M3 / Module A | `NOT AUTHORIZED` |
 
-Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7A đã được chấp thuận/đóng; P7A correction có oracle 4/4, exact H01–H36 36/36, toàn bộ hồi quy PASS, secret scan sạch và hash DAG PASS. Thiết kế P7B dùng one-statement per-workspace fence để giữ tương thích P3 autocommit và P1 UoW; exact 5 future RED identities và H01–H38 đã khóa trong authority draft. RED/implementation chưa được cấp quyền, chưa tạo source/test/evidence P7B. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
+Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7A đã được chấp thuận/đóng; P7A correction có oracle 4/4 và H01–H36 36/36. P7B RED cũ `run-m2-p7b-red-20260917000606` bị review từ chối do oracle #001 trái first-subscribe baseline và giữ bất biến. RED mới `run-m2-p7b-red-20260917002633` dùng explicit resume cursor, exact 5 failed đúng seam, đang chờ review; chưa cho phép GREEN. Future one-statement P3 fence và H01–H38 giữ nguyên authority. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ## Bắt đầu một phiên làm việc
 

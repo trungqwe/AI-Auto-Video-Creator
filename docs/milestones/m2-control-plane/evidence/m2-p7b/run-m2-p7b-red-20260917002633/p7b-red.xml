@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="5" skipped="0" tests="5" time="4.504" timestamp="2026-09-17T07:28:14.081364+07:00" hostname="Admin"><testcase classname="tests.m2.test_p7b_sse_stream" name="test_tst_m2_p7b_000_stream_cursor_commit_order_concurrent_writers" time="0.287"><failure message="AssertionError: UPSTREAM_INVARIANT_RED: T1 cursor N=1 committed late; T2 cursor M=2 committed first; reader advanced to 2; replay &gt; M omits late N&#10;assert not True">tests\m2\test_p7b_sse_stream.py:169: in test_tst_m2_p7b_000_stream_cursor_commit_order_concurrent_writers
+    assert not inverted, (
+E   AssertionError: UPSTREAM_INVARIANT_RED: T1 cursor N=1 committed late; T2 cursor M=2 committed first; reader advanced to 2; replay &gt; M omits late N
+E   assert not True</failure></testcase><testcase classname="tests.m2.test_p7b_sse_stream" name="test_tst_m2_p7b_001_sse_stream_format_and_headers" time="2.525"><failure message="AssertionError: SSE route did not open a stream&#10;assert 500 == 200&#10; +  where 500 = &lt;Response [500 Internal Server Error]&gt;.status_code">tests\m2\test_p7b_sse_stream.py:214: in test_tst_m2_p7b_001_sse_stream_format_and_headers
+    assert response.status_code == 200, "SSE route did not open a stream"
+E   AssertionError: SSE route did not open a stream
+E   assert 500 == 200
+E    +  where 500 = &lt;Response [500 Internal Server Error]&gt;.status_code</failure></testcase><testcase classname="tests.m2.test_p7b_sse_stream" name="test_tst_m2_p7b_002_sse_reconnect_with_cursor_delivers_missed_events" time="0.319"><failure message="NotImplementedError: P7B_SSE_REPLAY_NOT_IMPLEMENTED">tests\m2\test_p7b_sse_stream.py:258: in test_tst_m2_p7b_002_sse_reconnect_with_cursor_delivers_missed_events
+    replay = SseStreamService(PostgresSseReader(connection)).replay_after(
+src\controlplane\application\sse\stream.py:9: in replay_after
+    raise NotImplementedError("P7B_SSE_REPLAY_NOT_IMPLEMENTED")
+E   NotImplementedError: P7B_SSE_REPLAY_NOT_IMPLEMENTED</failure></testcase><testcase classname="tests.m2.test_p7b_sse_stream" name="test_tst_m2_p7b_003_sse_cursor_expired_triggers_resync_required" time="0.321"><failure message="NotImplementedError: P7B_SSE_CURSOR_CLASSIFICATION_NOT_IMPLEMENTED">tests\m2\test_p7b_sse_stream.py:281: in test_tst_m2_p7b_003_sse_cursor_expired_triggers_resync_required
+    classification = SseStreamService(PostgresSseReader(connection)).classify_cursor(
+src\controlplane\application\sse\stream.py:12: in classify_cursor
+    raise NotImplementedError("P7B_SSE_CURSOR_CLASSIFICATION_NOT_IMPLEMENTED")
+E   NotImplementedError: P7B_SSE_CURSOR_CLASSIFICATION_NOT_IMPLEMENTED</failure></testcase><testcase classname="tests.m2.test_p7b_sse_stream" name="test_tst_m2_p7b_004_sse_session_workspace_isolation" time="0.693"><failure message="NotImplementedError: P7B_SSE_WORKSPACE_PAGE_NOT_IMPLEMENTED">tests\m2\test_p7b_sse_stream.py:302: in test_tst_m2_p7b_004_sse_session_workspace_isolation
+    page = PostgresSseReader(connection).fetch_workspace_page(
+src\controlplane\infrastructure\db\sse\postgres.py:10: in fetch_workspace_page
+    raise NotImplementedError("P7B_SSE_WORKSPACE_PAGE_NOT_IMPLEMENTED")
+E   NotImplementedError: P7B_SSE_WORKSPACE_PAGE_NOT_IMPLEMENTED</failure></testcase></testsuite></testsuites>

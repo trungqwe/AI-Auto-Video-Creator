@@ -1,0 +1,8 @@
+uv.exe : Using CPython 3.13.15
+At line:8 char:11
++   $output=& $exe @argsList 2>&1 | Out-String
++           ~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Using CPython 3.13.15:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Resolved 24 packages in 0.70ms
