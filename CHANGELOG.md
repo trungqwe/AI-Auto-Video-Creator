@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-17 — M2-P7B P7A tracker compatibility delta accepted
+
+- Independent review checkpoint `1cbdcf1d2fc245d3d1515c8864fc6a3d8e377bc9` cho phép sửa **chỉ thân** P7A hardening H16 để kiểm migration set hiện hành liên tục và rollback/reapply migration mới nhất, thay giả định cũ 0007 luôn là cuối. P7A Behavioral oracle/source/evidence lịch sử không đổi; H15 và các H01–H36 khác bất biến. Full 36/36 trên schema gồm 0008 là gate ngay trước khi tiếp tục P7B; P8/P9, M3/Phân hệ A vẫn khóa.
+
 ## 2026-09-17 — M2-P7B dừng tại xung đột accepted P7A tracker oracle
 
 - Migration `0008` được cấp quyền làm accepted P7A hardening `test_h16_migration_tracker` fail: expected tracker `[1..7]`, observed `[1..8]` (35/36). P7B oracle targeted 5/5 và các proof index/fence targeted đã chạy, nhưng source/migration/test P7B giữ unstaged/uncommitted, chưa có final GREEN evidence hoặc source pin. Không sửa P7A oracle; chờ independent review quyết định gate tương thích migration.
