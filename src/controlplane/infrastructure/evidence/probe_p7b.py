@@ -29,6 +29,7 @@ P7A_ACCEPTED = "6c3a52bde905ee5e71e12334da1873ed20f5c5db"
 P7A_ORACLE_SHA = "63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035"
 P7B_ORACLE_SHA = "d83d0f2d808f1b0067d5288ea131ded24d8fc46a16462b5254fd4167f7425738"
 BASE = "2c0a371fcfe5ea6d1c6e97fa1f7c9983a16c82f8"
+REJECTED_GREEN_HEAD = "cab2e33e5d2e22637f0c3f45f7aed75b4dec26c3"
 ALLOWED_CODE = frozenset({
     "src/controlplane/api/main.py",
     "src/controlplane/api/sse/stream.py",
@@ -85,6 +86,31 @@ def _without_function_body(source: bytes, *, class_name: str | None,
                   if isinstance(node, ast.FunctionDef) and node.name.startswith("test_h")]
     matches[0].body = []
     return ast.dump(tree, include_attributes=False), identities
+
+
+def _presenter_limits(source: bytes) -> dict[str, int]:
+    tree = ast.parse(source.decode("utf-8"))
+    presenters = [node for node in tree.body if isinstance(node, ast.ClassDef)
+                  and node.name == "SseStreamPresenter"]
+    assert len(presenters) == 1
+    constructors = [node for node in presenters[0].body
+                    if isinstance(node, ast.FunctionDef) and node.name == "__init__"]
+    assert len(constructors) == 1
+    limits: dict[str, int] = {}
+    for node in constructors[0].body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        value = node.value
+        if (isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name)
+                and target.value.id == "self" and target.attr in {"_clients", "_polls"}):
+            assert (isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
+                    and value.func.id == "BoundedSemaphore" and len(value.args) == 1
+                    and not value.keywords and isinstance(value.args[0], ast.Constant)
+                    and type(value.args[0].value) is int and target.attr not in limits)
+            limits[target.attr] = value.args[0].value
+    assert limits == {"_clients": 16, "_polls": 3}
+    return limits
 
 
 def _scope(source_sha: str) -> dict[str, object]:
@@ -146,10 +172,11 @@ def _scope(source_sha: str) -> dict[str, object]:
     assert subprocess.run(["git", "diff", "--quiet", BASE, source_sha, "--",
                            "src/controlplane/infrastructure/db/migration_runner.py"],
                           cwd=ROOT).returncode == 0
-    assert subprocess.run(["git", "diff", "--quiet", BASE, source_sha, "--",
+    assert subprocess.run(["git", "diff", "--quiet", REJECTED_GREEN_HEAD, source_sha, "--",
                            "docs/milestones/m2-control-plane/evidence",
                            "docs/milestones/m1-proof/evidence"],
                           cwd=ROOT).returncode == 0
+    limits = _presenter_limits(_git_bytes(source_sha, "src/controlplane/api/sse/stream.py"))
     runtime_writers = [path for path in (ROOT / "src/controlplane").rglob("*.py")
                        if "infrastructure/evidence" not in path.as_posix()
                        and "INSERT INTO controlplane.cp_operation_stream" in
@@ -184,6 +211,7 @@ def _scope(source_sha: str) -> dict[str, object]:
         "runtime_stream_writers": [p3_path],
         "one_statement_fence_before_allocation": True,
         "migration_0008_exact_ddl": True,
+        "sse_client_slots": limits["_clients"], "sse_poll_slots": limits["_polls"],
     }
 
 
@@ -256,6 +284,13 @@ def migration_and_plan_proof(output: Path, admin_dsn: str) -> dict[str, object]:
             connection.commit()
         MigrationRunner(dsn, MIGRATIONS, is_test_env=True).migrate_up()
         with psycopg.connect(dsn) as connection:
+            cache_rows = connection.execute(
+                "SELECT cache_size FROM pg_sequences "
+                "WHERE schemaname='controlplane' "
+                "AND sequencename='cp_operation_stream_stream_event_id_seq'"
+            ).fetchall()
+            assert cache_rows == [(1,)], "operation stream sequence CACHE must equal 1"
+            sequence_cache_size = cache_rows[0][0]
             forward = [row[0] for row in connection.execute(
                 "SELECT version FROM controlplane.cp_schema_migrations ORDER BY version")]
             assert forward == list(range(1, 9))
@@ -326,7 +361,8 @@ def migration_and_plan_proof(output: Path, admin_dsn: str) -> dict[str, object]:
             assert connection.execute("SELECT count(*) FROM controlplane.cp_operation_stream").fetchone()[0] == before_count
             _write_json(output / "tracker-reapply.json", reapplied)
         return {"forward": forward, "rollback": rollback, "reapply": reapplied,
-                "rows": before_count, "post_index_plan": "PASS"}
+                "rows": before_count, "post_index_plan": "PASS",
+                "sequence_cache_size": sequence_cache_size}
     finally:
         with psycopg.connect(admin_dsn, autocommit=True) as admin:
             admin.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=%s",
@@ -359,6 +395,7 @@ def main() -> None:
         "fastapi": metadata.version("fastapi"), "uvicorn": metadata.version("uvicorn"),
         "httpx": metadata.version("httpx"), "postgresql": pg,
         "createdb": createdb, "m2_orphan_count": orphan,
+        "operation_stream_sequence_cache_size": migration["sequence_cache_size"],
         "uv_runtime_observed": subprocess.check_output(
             [str(ROOT / ".local-tools/uv/uv.exe"), "--version"], text=True).split()[1],
         "uv_lock_version": "0.12.13", "migration_proof": migration,

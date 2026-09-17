@@ -16,6 +16,14 @@ from controlplane.application.sse.stream import SseStreamService, parse_cursor
 
 router = APIRouter()
 
+_PROBLEM_SPECS = {
+    "INVALID_CURSOR": (400, "validation", False, "Cursor không hợp lệ."),
+    "CURSOR_MISMATCH": (400, "validation", False, "Cursor không khớp."),
+    "CURSOR_AHEAD": (409, "conflict", False, "Cursor vượt quá dữ liệu hiện có."),
+    "UNKNOWN_CURSOR": (409, "conflict", False, "Cursor không tồn tại trong workspace."),
+    "RATE_LIMITED": (429, "capacity", True, "Luồng SSE tạm thời đã đạt giới hạn kết nối đồng thời."),
+}
+
 
 class SseStreamPresenter:
     def __init__(self, reader_factory: Callable[[Any], Any]) -> None:
@@ -25,13 +33,16 @@ class SseStreamPresenter:
 
     @staticmethod
     def _problem(request: Request, status: int, code: str) -> JSONResponse:
+        expected_status, category, retryable, detail = _PROBLEM_SPECS[code]
+        if status != expected_status:
+            raise ValueError("SSE ProblemDetail status mismatch")
         correlation_id = request.state.correlation_id
         response = JSONResponse(
             {"type": "about:blank", "title": code.replace("_", " ").title(),
-             "status": status, "detail": "Cursor không hợp lệ.",
+             "status": status, "detail": detail,
              "instance": correlation_id, "code": code,
-             "category": "validation" if status == 400 else "conflict",
-             "retryable": False, "correlation_id": correlation_id,
+             "category": category, "retryable": retryable,
+             "correlation_id": correlation_id,
              "field_errors": {}},
             status_code=status, media_type="application/problem+json",
         )
@@ -82,7 +93,7 @@ class SseStreamPresenter:
         if classification == "invalid":
             return self._problem(request, 400, "INVALID_CURSOR")
         if not self._clients.acquire(blocking=False):
-            return self._problem(request, 503, "STREAM_CAPACITY_EXCEEDED")
+            return self._problem(request, 429, "RATE_LIMITED")
         token = request.cookies.get("cp_session", "")
         manager = request.app.state.manager
         session_service = request.app.state.session_service

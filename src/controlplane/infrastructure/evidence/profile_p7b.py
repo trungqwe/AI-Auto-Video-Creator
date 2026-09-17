@@ -31,6 +31,46 @@ ORACLE_NAMES = (
     "test_tst_m2_p7b_003_sse_cursor_expired_triggers_resync_required",
     "test_tst_m2_p7b_004_sse_session_workspace_isolation",
 )
+HARDENING_NAMES = (
+    "test_h01_actual_route_mounted",
+    "test_h02_event_stream_headers",
+    "test_h03_utf8_compact_framing",
+    "test_h04_authenticated_workspace_binding",
+    "test_h05_foreign_workspace_excluded",
+    "test_h06_monotonic_workspace_cursors",
+    "test_h07_reconnect_exclusive_replay",
+    "test_h08_expired_cursor_exact_resync_close",
+    "test_h09_malformed_cursor",
+    "test_h10_query_header_mismatch",
+    "test_h11_future_cursor_safe_conflict",
+    "test_h12_foreign_cursor_safe_conflict",
+    "test_h13_get_only_no_mutation",
+    "test_h14_safe_projection_allowlist",
+    "test_h15_no_secret_or_stack_surface",
+    "test_h16_concurrent_https_clients",
+    "test_h17_abrupt_disconnect_releases_client_slot",
+    "test_h18_bounded_limit_100_and_query_plan",
+    "test_h19_no_unbounded_thread_growth",
+    "test_h20_no_borrowed_connection_after_yield",
+    "test_h21_real_p7a_https_ca_verified",
+    "test_h22_host_validation_precedes_stream",
+    "test_h23_origin_validation_precedes_stream",
+    "test_h24_session_revocation_closes_live_stream",
+    "test_h25_accepted_p7a_oracle_regression",
+    "test_h26_accepted_p7a_hardening_regression",
+    "test_h27_accepted_p6_regression",
+    "test_h28_accepted_p5b_regression",
+    "test_h29_accepted_p5a_regression",
+    "test_h30_accepted_p4_regression",
+    "test_h31_accepted_p3_regression",
+    "test_h32_accepted_p2_regression",
+    "test_h33_accepted_p1_regression",
+    "test_h34_accepted_p0_regression",
+    "test_h35_architecture_regression",
+    "test_h36_m1_regression",
+    "test_h37_concurrent_two_writer_commit_order_no_loss",
+    "test_h38_p3_autocommit_and_uow_append_compatibility",
+)
 SUITES = {
     "p7b-oracle.xml": 5,
     "p7b-hardening.xml": 38,
@@ -66,10 +106,7 @@ def hardening_names(source: bytes) -> tuple[str, ...]:
     tree = ast.parse(source.decode("utf-8"))
     names = tuple(node.name for node in tree.body
                   if isinstance(node, ast.FunctionDef) and node.name.startswith("test_h"))
-    if len(names) != 38 or any(
-        re.fullmatch(rf"test_h{index:02d}_[a-z0-9_]+", name) is None
-        for index, name in enumerate(names, 1)
-    ) or len(set(names)) != 38:
+    if names != HARDENING_NAMES:
         raise SemanticEvaluationError("H01-H38 identity catalogue mismatch")
     return names
 
@@ -132,8 +169,17 @@ class M2P7BImplementationSemanticProfile(PackageSemanticProfile):
             raise SemanticEvaluationError("P7B oracle testcase identities mismatch")
         committed_hardening = subprocess.check_output(
             ["git", "show", f"{source}:tests/m2/test_p7b_hardening.py"], cwd=ROOT)
-        if _cases(directory, "p7b-hardening.xml") != hardening_names(committed_hardening):
+        if hardening_names(committed_hardening) != HARDENING_NAMES:
+            raise SemanticEvaluationError("committed H01-H38 identities mismatch")
+        if _cases(directory, "p7b-hardening.xml") != HARDENING_NAMES:
             raise SemanticEvaluationError("P7B H01-H38 JUnit identity mismatch")
+        hardening_catalogue = json.loads(
+            (directory / "hardening-catalogue.json").read_text(encoding="utf-8"))
+        if (hardening_catalogue.get("count") != 38
+                or hardening_catalogue.get("identities") != list(HARDENING_NAMES)
+                or hardening_catalogue.get("source_commit_sha") != source
+                or hardening_catalogue.get("verdict") != "PASS"):
+            raise SemanticEvaluationError("H01-H38 catalogue mismatch")
         runtime = json.loads((directory / "runtime-and-static.json").read_text(encoding="utf-8"))
         required = {
             "source_commit_sha": source, "python": "3.13.15",
@@ -154,6 +200,8 @@ class M2P7BImplementationSemanticProfile(PackageSemanticProfile):
             "runtime_stream_writers": ["src/controlplane/infrastructure/db/projections/postgres.py"],
             "one_statement_fence_before_allocation": True,
             "migration_0008_exact_ddl": True,
+            "operation_stream_sequence_cache_size": 1,
+            "sse_client_slots": 16, "sse_poll_slots": 3,
         }
         if any(runtime.get(key) != value for key, value in required.items()):
             raise SemanticEvaluationError("runtime/static/scope mismatch")

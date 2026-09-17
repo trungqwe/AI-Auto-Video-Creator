@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 from datetime import datetime, timedelta, timezone
 import json
 import os
@@ -242,14 +243,44 @@ def test_h16_concurrent_https_clients():
         try:
             with start_loopback_tls_server(manager=manager) as endpoint:
                 context = ssl.create_default_context(cadata=endpoint.ca_certificate_pem)
-                def receive():
-                    with httpx.Client(verify=context, timeout=5) as client:
-                        with client.stream("GET", f"https://localhost:{endpoint.port}/v1/operations/stream",
-                                           params={"cursor": str(first)}, cookies={"cp_session": token}) as response:
+                url = f"https://localhost:{endpoint.port}/v1/operations/stream"
+                with httpx.Client(verify=context, timeout=5) as client:
+                    slots: list[ExitStack] = []
+                    streams = []
+                    try:
+                        for _ in range(16):
+                            slot = ExitStack()
+                            slots.append(slot)
+                            response = slot.enter_context(client.stream(
+                                "GET", url, params={"cursor": str(first)},
+                                cookies={"cp_session": token},
+                            ))
                             assert response.status_code == 200
-                            return _first_frame(response.iter_lines())[0]
-                with ThreadPoolExecutor(max_workers=2) as workers:
-                    assert list(workers.map(lambda _: receive(), range(2))) == [f"id: {second}"] * 2
+                            assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+                            lines = response.iter_lines()
+                            streams.append(lines)
+                            assert _first_frame(lines)[0] == f"id: {second}"
+                        with client.stream("GET", url, params={"cursor": str(first)},
+                                           cookies={"cp_session": token}) as saturated:
+                            assert saturated.status_code == 429
+                            capacity_problem = json.loads(saturated.read())
+                            assert capacity_problem["code"] == "RATE_LIMITED"
+                            assert capacity_problem["category"] == "capacity"
+                            assert capacity_problem["retryable"] is True
+                        slots.pop().close()
+                        deadline = time.monotonic() + 5
+                        while True:
+                            with client.stream("GET", url, params={"cursor": str(first)},
+                                               cookies={"cp_session": token}) as reopened:
+                                if reopened.status_code == 200:
+                                    assert _first_frame(reopened.iter_lines())[0] == f"id: {second}"
+                                    break
+                                assert reopened.status_code == 429
+                            assert time.monotonic() < deadline, "SSE client slot was not released"
+                            time.sleep(0.05)
+                    finally:
+                        for slot in reversed(slots):
+                            slot.close()
         finally:
             manager.close()
 
@@ -573,6 +604,13 @@ def test_h37_concurrent_two_writer_commit_order_no_loss():
 
 def test_h38_p3_autocommit_and_uow_append_compatibility():
     with database() as dsn:
+        with psycopg.connect(dsn) as connection:
+            cache_rows = connection.execute(
+                "SELECT cache_size FROM pg_sequences "
+                "WHERE schemaname='controlplane' "
+                "AND sequencename='cp_operation_stream_stream_event_id_seq'"
+            ).fetchall()
+            assert cache_rows == [(1,)]
         with psycopg.connect(dsn, autocommit=True) as connection:
             first = PostgresOperationStreamRepository(connection).append(
                 event=_event(WORKSPACE_A, "h38-autocommit"), safe_summary="safe")
@@ -625,4 +663,70 @@ def test_h38_p3_autocommit_and_uow_append_compatibility():
             assert first < outcome["uow"] < outcome["autocommit"]
         finally:
             release.set()
+            manager.close()
+
+    with database() as dsn:
+        manager = TransactionManager(dsn)
+        allocated = Event()
+        second_started = Event()
+        release_rollback = Event()
+        outcome: dict[str, int | bool] = {}
+
+        def rolling_back_uow_writer():
+            try:
+                with manager.unit_of_work() as uow:
+                    outcome["aborted"] = PostgresOperationStreamRepository(uow.connection).append(
+                        event=_event(WORKSPACE_A, "h38-uow-rollback"))
+                    allocated.set()
+                    assert release_rollback.wait(10)
+                    raise RuntimeError("deliberate H38 UoW rollback")
+            except RuntimeError as exc:
+                assert str(exc) == "deliberate H38 UoW rollback"
+                outcome["rolled_back"] = True
+
+        def after_rollback_writer():
+            assert allocated.wait(10)
+            with psycopg.connect(dsn, autocommit=True) as connection:
+                outcome["second_pid"] = connection.execute("SELECT pg_backend_pid()").fetchone()[0]
+                second_started.set()
+                outcome["committed"] = PostgresOperationStreamRepository(connection).append(
+                    event=_event(WORKSPACE_A, "h38-after-rollback"))
+
+        try:
+            with ThreadPoolExecutor(max_workers=2) as workers:
+                one = workers.submit(rolling_back_uow_writer)
+                two = workers.submit(after_rollback_writer)
+                try:
+                    assert second_started.wait(10)
+                    with psycopg.connect(dsn) as observer:
+                        deadline = time.monotonic() + 5
+                        wait_type = None
+                        while time.monotonic() < deadline:
+                            wait_type = observer.execute(
+                                "SELECT wait_event_type FROM pg_stat_activity WHERE pid=%s",
+                                (outcome["second_pid"],)).fetchone()[0]
+                            observer.commit()
+                            if wait_type == "Lock":
+                                break
+                            time.sleep(0.02)
+                        assert wait_type == "Lock", "T2 did not wait for UoW rollback"
+                        assert observer.execute(
+                            "SELECT last_value FROM controlplane.cp_operation_stream_stream_event_id_seq"
+                        ).fetchone()[0] == outcome["aborted"], "T2 allocated before UoW rollback"
+                finally:
+                    release_rollback.set()
+                one.result(timeout=10)
+                two.result(timeout=10)
+            assert outcome["rolled_back"] is True
+            assert outcome["committed"] > outcome["aborted"]
+            with psycopg.connect(dsn) as connection:
+                rows = connection.execute(
+                    "SELECT stream_event_id FROM controlplane.cp_operation_stream "
+                    "WHERE workspace_id=%s ORDER BY stream_event_id", (WORKSPACE_A,)).fetchall()
+                assert rows == [(outcome["committed"],)]
+                replay = PostgresSseReader(connection).fetch_workspace_page(
+                    workspace_id=WORKSPACE_A, after_cursor=0)
+                assert [row.stream_event_id for row in replay] == [outcome["committed"]]
+        finally:
+            release_rollback.set()
             manager.close()
