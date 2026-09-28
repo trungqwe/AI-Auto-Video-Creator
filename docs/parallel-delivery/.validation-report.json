@@ -3,10 +3,10 @@
   "status": "PASS",
   "attestation": {
     "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
-    "candidate_commit": "c26ead1ad8bc99f7034d45e1be3b8121bce245ab",
-    "parent_commit": "3b7a618c50e0fab72723952269f34177f6e8c567",
-    "wrapper_commit": "c26ead1ad8bc99f7034d45e1be3b8121bce245ab",
-    "candidate_is_actual_head": true,
+    "candidate_commit": "4366a59d514f06665cc96c39fccfdb3c377174a8",
+    "parent_commit": "4366a59d514f06665cc96c39fccfdb3c377174a8",
+    "wrapper_commit": "4366a59d514f06665cc96c39fccfdb3c377174a8",
+    "candidate_is_actual_head": false,
     "committed_changes_count": 20,
     "dirty_overlay_count": 0,
     "overlay_clean": true,
@@ -72,10 +72,22 @@
       "5_forbid_direct_harness_state_assignment": "RESOLVED",
       "6_broadened_secret_scan_anthropic_and_common_providers": "RESOLVED",
       "7_exact_head_attestation_parent_plus_wrapper_semantics": "RESOLVED"
+    },
+    "sol_round_7": {
+      "1_process_safe_registry_atomic_read_modify_write": "RESOLVED",
+      "2_durable_default_registry_on_disk": "RESOLVED",
+      "3_forbid_lifecycle_bypass_through_set_task_state": "RESOLVED",
+      "4_per_slot_fencing_validation_for_multi_slot_tasks": "RESOLVED",
+      "5_attestation_rejection_of_zero_commits_and_disconnected_wrapper": "RESOLVED"
+    },
+    "sol_round_8": {
+      "1_set_task_state_terminal_and_rewind_rejection": "RESOLVED",
+      "2_exact_allowed_git_topology_attestation_freshness": "RESOLVED",
+      "3_compound_cross_process_atomic_dispatch_registry_mutation": "RESOLVED"
     }
   },
   "fixture_stats": {
-    "tests_run": 162,
+    "tests_run": 165,
     "failures": 0,
     "errors": 0,
     "passed": true
@@ -146,16 +158,16 @@
   ],
   "bundle_sha256": {
     "contract-registry.yaml": "417687b7520f9b0cfc26d7f5a2c0df098581f18ad87ef91c0452356cbb9bfc01",
-    "delivery_engine.py": "43e151627573d6abc75e59c030bc6600e776bec4a1e4004b2fcae406182a2267",
+    "delivery_engine.py": "dda60c838ac4b6d5b91abb63daf0d69425b4103c87a3e5be02930eca6c596b05",
     "merge-and-integration.md": "fe85a843f23057dbc4109eda8a2d40467ac5531d38cd92f6379a5f446318fa29",
-    "operating-model.md": "d313abda34ac10d3b5f7d1f53af13a8a2846e4437e4427bc24d96085839351d8",
+    "operating-model.md": "7b90af4936f4fb4ef7a34e16a81bc2c70b537de71164edc5555eacad50693622",
     "ownership-and-locks.yaml": "ca060cf8603f0d98370260dadc088d22e63850b7ae324280c2262008b14760c2",
-    "protocol.md": "de1e2e5cc5b2ede6105f811b8d18bf2d355be85bed943173328ea4610efad31c",
-    "README.md": "20c74a7086faa4459f1cc35f10147d93fecbdc92785218c0cb5660b864203963",
+    "protocol.md": "5db6a0d99825486baac53d1463b045fb128665ff5012a8e963ac5ec866118744",
+    "README.md": "11826c9eeb05ae21d8505f69da34f6324d673e57001796b836d6182d76796abc",
     "security-performance-recovery.md": "3508b41c995bf3b0d964ddab28da4ce5ad79ae33e1d14c5aa8b7f335ce7066f1",
     "task-dag.yaml": "9dbdaca04f8c186f2ff333a981605d6b4a45332dee487dd8d0fdf987fc605cb3",
-    "test_negative_fixtures.py": "752f971359f0b83c43d48e47920bfcb1335b2ed4396332830e1da7c5885ce3eb",
+    "test_negative_fixtures.py": "d6f93201318e518caaa07f9fcb7cad13a8087b511d45a7236605eb7d1342e3f3",
     "traceability.md": "69caff38f6fe526253071bf8fe3c27d7a7064f4af771a8e88eeddc86ee5632cc",
-    "validate.py": "476ef6738426aa83543c592d2713612cac55e6212ed3ccb8adb615f1448570e5"
+    "validate.py": "489f7d87f6a8362ca1801f815f82f4331e5a614dc390ff3cf7ede5bd614337e4"
   }
 }
