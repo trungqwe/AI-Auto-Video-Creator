@@ -164,6 +164,7 @@ locks:
     class: external_resource
     mode: exclusive_by_account_and_fixture_namespace
     scope: real_drive_oauth_probe
+    partition_key_prefix: "drive:"
     lease_seconds: 600
     renewable: true
   - id: LOCK-POSTGRES-TEST-DB

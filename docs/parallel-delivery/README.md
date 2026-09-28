@@ -93,11 +93,50 @@ Cần một user checkpoint riêng để:
 
 Không điều nào ở trên đã được bundle này chứng minh runtime.
 
-## 8. Khắc phục toàn diện các phát hiện từ Sol review
+## 8. Khắc phục toàn diện 21 bypass độc lập từ Sol review
 
-1. **Scope Validation & HEAD Candidate Attestation**: `validate.py` không còn silently pin `ac5bd30`; candidate/base là explicit validated git commit hoặc fail-closed. Validator attest exact new HEAD candidate, dirty overlay, và đánh giá rename ở cả hai đầu (old_path và new_path).
-2. **LeaseManager Hoàn Thiện**: Từ chối unknown locks, missing/invalid resource_key cho partitionable locks, non-positive units; tính toán và enforce `expires_at`, purge/deny expired leases; hỗ trợ renewal/release an toàn; duy trì monotonic fencing per resource; reject stale/absent fencing token trên result mutation; kiểm tra authority 'granted' cho mọi active state.
-3. **OrcaDeliveryAdapter Ràng Buộc Định Danh Chặt Chẽ**: Ràng buộc và xác thực `delivery_task_id`, exact `orca_task_id`, authoritative `dispatch_id`, `candidate_commit`, và fencing token; từ chối identity trống/sai, duplicate/stale attempts và candidate mismatch.
-4. **Adversarial Sol Fixtures Suite**: Bổ sung bộ probes đối kháng trong `test_negative_fixtures.py` kiểm chứng toàn diện mọi nhánh thất bại và góc cạnh Sol đã nêu.
-5. **Harness Compatibility Gate**: Ghi nhận cổng tương thích harness: Codex CLI định tuyến sang `ag/gemini-3.8-flash-high` có thể làm sụp namespace công cụ (`functions.exec` -> `functions`), do đó route success không đồng nghĩa với executable. Bắt buộc vượt qua tool-execution smoke test trước mutation; nếu fail, kích hoạt STOP condition và fallback sang Antigravity native mà không tuyệt đối hóa vĩnh viễn.
-6. **Bảo Toàn Phạm Vi Docs/Config & Containment**: Giữ nguyên toàn bộ ranh giới, không đụng vào product code hay accepted evidence.
+### 8.1. Ngữ nghĩa lệnh thẩm định: Read-only Audit vs Explicit Report Generation
+
+Hệ thống thẩm định `validate.py` phân tách nghiêm ngặt hai chế độ vận hành:
+
+1. **Chế độ Read-only Audit (Mặc định)**:
+   - Lệnh: `python docs/parallel-delivery/validate.py` hoặc `python docs/parallel-delivery/validate.py --audit`
+   - Mục đích: Chạy cho kiểm tra thường nhật của validator, reviewer và CI mà không sửa đổi bất kỳ tệp tin nào được theo dõi trong Git.
+   - Hành vi: Thẩm định cấu trúc YAML, Task DAG, Contract Registry, Lock & Leases, Authority, thay đổi phạm vi (Scope & Deltas) và chạy negative fixture suite. Tuyệt đối không ghi đè `.validation-report.json`, đảm bảo cây làm việc (worktree) hoàn toàn sạch sẽ (`clean`).
+
+2. **Chế độ phát hành kiến trúc / Ghi nhận báo cáo tường minh (Explicit Report Generation)**:
+   - Lệnh: `python docs/parallel-delivery/validate.py --generate-report --base <APPROVED_BASE_SHA> --candidate <EXACT_HEAD_SHA>`
+   - Bắt buộc truyền đầy đủ giá trị SHA bất biến 40 ký tự hexa cho cả `--base` và `--candidate`; cấm tuyệt đối việc sử dụng ref name như `HEAD`, tên nhánh, tag hoặc short SHA.
+   - `--base` bắt buộc phải khớp chính xác baseline dự án đã được phê duyệt (`4a7c8c921b7e05066505d51b168a02c3fde61317`); từ chối các pin cũ/lạc hậu (như `ac5bd30`).
+   - `--candidate` bắt buộc phải khớp chính xác commit `HEAD` hiện hành thực tế trong Git; từ chối candidate không phải HEAD.
+   - Bắt buộc `--base != --candidate`; từ chối việc tự chứng thực `base == candidate` không có delta thực chất.
+   - Ngữ nghĩa tài liệu: Tệp `.validation-report.json` được tạo ra mang trường `semantics` ghi rõ attestation được sinh bởi cờ tường minh với base và candidate khớp HEAD thực tế, tránh các tuyên bố giả định tự quy chiếu (self-referential false claims).
+
+### 8.2. Danh mục khắc phục 21 bypass độc lập và boundary probes
+
+Toàn bộ 21 bypass độc lập do Sol review phát hiện cùng các boundary test lân cận đã được khắc phục triệt để và bảo đảm bằng bộ fixture kiểm thử tự động bền vững (`TestSolTwentyOneIndependentProbes` trong `test_negative_fixtures.py`):
+
+1. **Sol Probe 01**: Từ chối ref name (`HEAD`, nhánh, tag) và short SHA cho candidate; yêu cầu SHA-40 bất biến.
+2. **Sol Probe 02**: Từ chối `base == candidate` (tự chọn base bằng candidate để né kiểm tra delta).
+3. **Sol Probe 03**: Từ chối candidate commit khác với commit `HEAD` hiện hành thực tế.
+4. **Sol Probe 04**: Từ chối base commit lạc hậu (stale pin `ac5bd30`) hoặc không khớp baseline đã duyệt (`4a7c8c9`).
+5. **Sol Probe 05**: Chế độ read-only audit thẩm định hoàn tất mà không làm bẩn (`dirty`) `.validation-report.json`.
+6. **Sol Probe 06**: Thao tác đổi tên file (rename) được đánh giá ở cả hai đầu (`old_path` và `new_path`), chặn mọi đường dẫn bị cấm.
+7. **Sol Probe 07**: Lock Registry Schema: Từ chối ID lock trùng lặp ngay tại thời điểm khởi tạo (`__init__`).
+8. **Sol Probe 08**: Lock Registry Schema: Từ chối các chế độ lock không xác định (`unknown mode`) ngay tại khởi tạo.
+9. **Sol Probe 09**: Lock Registry Schema: Bắt buộc khai báo cờ boolean `renewable` rõ ràng (true|false).
+10. **Sol Probe 10**: Lock Registry Schema: Từ chối dung lượng (`capacity`) hoặc thời hạn (`lease_seconds`) bằng 0 hoặc âm.
+11. **Sol Probe 11**: Lock Registry Schema: Lock phân vùng (`exclusive_by_database_name`, ...) bắt buộc khai báo `partition_key_prefix` không rỗng.
+12. **Sol Probe 12**: Chiếm giữ lease: Từ chối đơn vị kiểu boolean (`isinstance(True, int)` bypass).
+13. **Sol Probe 13**: Chiếm giữ lease: Từ chối đơn vị số thực (`float`), số 0, số âm hoặc kiểu chuỗi.
+14. **Sol Probe 14**: Thẩm quyền task bắt buộc phải được đăng ký và cấp quyền rõ ràng (`granted`), không bao giờ mặc định được cấp (`never default granted`).
+15. **Sol Probe 15**: Từ chối các lease tài nguyên ngoài (external resource) trùng lặp hoặc chồng chéo giữa các task.
+16. **Sol Probe 16**: Gia hạn lease (`renew_lease`) từ chối lock không được phép gia hạn, lease đã hết hạn hoặc thẩm quyền task bị thu hồi (`revoked`).
+17. **Sol Probe 17**: Fencing token: Từ chối token tương lai (`token > current counter`), không dùng shortcut chỉ chấp nhận hiện tại mà bỏ qua tương lai.
+18. **Sol Probe 18**: Fencing token: Từ chối token bị thiếu (`absent`), cũ (`stale`) hoặc lease đã hết hạn (`expired`).
+19. **Sol Probe 19**: Khởi tạo dispatch bắt buộc ràng buộc exact nonblank Orca task ID, candidate commit SHA-40, positive fencing token và active lease ID hợp lệ.
+20. **Sol Probe 20**: `worker_done` từ chối task ID Orca không khớp, candidate commit không khớp, kết quả trùng lặp (`duplicate`) hoặc kết quả từ attempt cũ (`stale`).
+21. **Sol Probe 21**: Máy trạng thái lifecycle: Task có thẩm quyền `locked`, `future_template`, `revoked` không thể dispatch; thu hồi thẩm quyền sẽ chặn lập tức mọi chuyển trạng thái review, integration và replan.
+22. **Boundary Probe 22**: Cổng tương thích harness: Phát hiện hiện tượng sụp namespace công cụ (`functions.exec` -> `functions`) và thất bại khói thực thi, kích hoạt `STOP condition` và cơ chế fallback.
+23. **Boundary Probe 23**: Cổng tương thích harness: Khác biệt namespace công cụ yêu cầu/thực tế kích hoạt `STOP condition`.
+24. **Boundary Probe 24**: Fencing token: Ranh giới kiểu dữ liệu nghiêm ngặt, từ chối bool, string, float, list.

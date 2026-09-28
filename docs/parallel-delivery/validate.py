@@ -15,6 +15,7 @@ import argparse
 import fnmatch
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -366,17 +367,29 @@ def check_scope_and_deltas(
     candidate_override: Optional[str] = None,
 ) -> list[str]:
     """F3 & Sol 1: Verify committed diff + dirty overlay, rename both ends, and immutable evidence hashes.
-    Rejects stale ac5bd30 and requires exact explicit validated inputs.
+    Rejects stale ac5bd30 and ref names like HEAD. Requires exact full 40-character SHAs.
     """
     dag_candidate = dag.get("candidate_commit")
     if dag_candidate in ("ac5bd304408bee6283b11bd271cf874101d119fa", "ac5bd30"):
-        return ["task-dag.yaml silently pins stale candidate commit ac5bd30; candidate must be exact explicit validated input or HEAD"]
+        return ["task-dag.yaml silently pins stale candidate commit ac5bd30; candidate must be exact explicit validated input"]
+    if dag_candidate == "HEAD" and candidate_override is None:
+        return ["task-dag.yaml pins ref name 'HEAD'; candidate must be explicit immutable full 40-character SHA provided at invocation"]
+
+    head_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True)
+    actual_head = head_res.stdout.strip() if head_res.returncode == 0 else ""
 
     base_commit = base_override or dag.get("approved_base_commit", DEFAULT_BASE_COMMIT)
-    candidate_commit = candidate_override or dag_candidate or "HEAD"
+    candidate_commit = candidate_override or actual_head
     evidence_refs = dag.get("current_authority", {}).get("immutable_evidence_refs", [])
     try:
-        return validate_scope_and_deltas(base_commit, candidate_commit, ROOT, evidence_refs)
+        return validate_scope_and_deltas(
+            base_commit,
+            candidate_commit,
+            ROOT,
+            evidence_refs,
+            approved_base=DEFAULT_BASE_COMMIT,
+            require_candidate_is_head=True,
+        )
     except ScopeViolationError as exc:
         return [str(exc)]
 
@@ -385,7 +398,14 @@ def check_lock_leases(ownership: dict[str, Any], dag: dict[str, Any]) -> list[st
     """F6 & Sol 2: Verify active lease schema, partitionable DB locks, capacity bounds, expiry, and renewal."""
     errors: list[str] = []
     lock_defs = ownership.get("locks", [])
-    mgr = LeaseManager(lock_defs)
+    try:
+        mgr = LeaseManager(lock_defs)
+    except Exception as exc:
+        return [f"LeaseManager construction failed: {exc}"]
+
+    # Register task authorities explicitly (authority is never default granted)
+    for tid in ("T1", "T2", "T3", "T4", "T5", "T6", "T10"):
+        mgr.set_task_authority(tid, "granted")
 
     # 1. Test disjoint database namespaces pass concurrently
     try:
@@ -416,7 +436,7 @@ def check_lock_leases(ownership: dict[str, Any], dag: dict[str, Any]) -> list[st
 
     # 4. Sol: Test reject unknown lock
     try:
-        mgr.acquire_lease("LOCK-NON-EXISTENT", "T7", "ctx7")
+        mgr.acquire_lease("LOCK-NON-EXISTENT", "T7", "ctx7", authority_state="granted")
         errors.append("LeaseManager failed to reject unknown lock ID")
     except LockLeaseError:
         pass
@@ -425,23 +445,41 @@ def check_lock_leases(ownership: dict[str, Any], dag: dict[str, Any]) -> list[st
 
     # 5. Sol: Test reject missing/invalid resource_key on partitionable lock
     try:
-        mgr.acquire_lease("LOCK-POSTGRES-TEST-DB", "T8", "ctx8", resource_key=None)
+        mgr.acquire_lease("LOCK-POSTGRES-TEST-DB", "T8", "ctx8", resource_key=None, authority_state="granted")
         errors.append("LeaseManager failed to reject missing resource_key on partitionable lock")
     except LockLeaseError:
         pass
     except Exception as exc:
         errors.append(f"Unexpected error on missing resource_key: {exc}")
 
-    # 6. Sol: Test reject zero/negative units
+    # 6. Sol: Test reject zero/negative/bool units
+    for bad_units in (0, -1, True):
+        try:
+            mgr.acquire_lease("LOCK-DESKTOP-GPU", "T9", "ctx9", units=bad_units, authority_state="granted")
+            errors.append(f"LeaseManager failed to reject invalid units {bad_units!r}")
+        except LockLeaseError:
+            pass
+        except Exception as exc:
+            errors.append(f"Unexpected error on invalid units: {exc}")
+
+    # 7. Sol: Test schema validation at construction: duplicate ID, unknown mode, missing renewable
     try:
-        mgr.acquire_lease("LOCK-DESKTOP-GPU", "T9", "ctx9", units=0)
-        errors.append("LeaseManager failed to reject zero units")
+        LeaseManager([{"id": "L1", "mode": "unknown_mode", "renewable": True}])
+        errors.append("LeaseManager failed to reject unknown mode at construction")
     except LockLeaseError:
         pass
     except Exception as exc:
-        errors.append(f"Unexpected error on zero units: {exc}")
+        errors.append(f"Unexpected error on unknown mode: {exc}")
 
-    # 7. Sol: Test lease renewal and monotonic fencing
+    try:
+        LeaseManager([{"id": "L1", "mode": "exclusive"}])  # missing renewable
+        errors.append("LeaseManager failed to reject missing renewable flag at construction")
+    except LockLeaseError:
+        pass
+    except Exception as exc:
+        errors.append(f"Unexpected error on missing renewable: {exc}")
+
+    # 8. Sol: Test lease renewal and monotonic fencing
     try:
         l_renew = mgr.acquire_lease("LOCK-DOC-AUTHORITY", "T10", "ctx10", lease_seconds=600)
         t1 = l_renew.fencing_token
@@ -450,6 +488,15 @@ def check_lock_leases(ownership: dict[str, Any], dag: dict[str, Any]) -> list[st
         mgr.release_lease(l_renewed.lease_id)
     except Exception as exc:
         errors.append(f"Lease renewal / fencing check failed: {exc}")
+
+    # 9. Sol: Test unregistered authority rejection
+    try:
+        mgr.acquire_lease("LOCK-DOC-AUTHORITY", "T_UNREGISTERED", "ctx_unreg")
+        errors.append("LeaseManager failed to reject unregistered task authority")
+    except LockLeaseError:
+        pass
+    except Exception as exc:
+        errors.append(f"Unexpected error on unregistered authority: {exc}")
 
     return errors
 
@@ -510,8 +557,8 @@ def run_negative_fixture_suite() -> Tuple[list[str], dict[str, Any]]:
 def get_all_changed_paths(base_sha: str, candidate_sha: str = "HEAD") -> list[str]:
     """Collect all changed paths from committed diff + dirty overlay including renames on both ends."""
     try:
-        base_clean = validate_commit_sha(base_sha, "Base", ROOT)
-        candidate_clean = validate_commit_sha(candidate_sha, "Candidate", ROOT)
+        base_clean = validate_commit_sha(base_sha, "Base", ROOT, require_full_sha=True)
+        candidate_clean = validate_commit_sha(candidate_sha, "Candidate", ROOT, require_full_sha=True)
         committed = get_committed_diff_paths(base_clean, candidate_clean, ROOT)
     except Exception:
         committed = []
@@ -527,15 +574,39 @@ def get_all_changed_paths(base_sha: str, candidate_sha: str = "HEAD") -> list[st
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Validate parallel delivery bundle")
-    parser.add_argument("--base", default=None, help="Base commit SHA (defaults to task-dag approved_base_commit)")
-    parser.add_argument("--candidate", default=None, help="Candidate commit SHA (defaults to HEAD)")
+    parser.add_argument("--base", default=None, help="Base commit SHA (defaults to approved_base_commit)")
+    parser.add_argument("--candidate", default=None, help="Candidate commit SHA (defaults to actual HEAD in audit mode)")
+    parser.add_argument("--audit", action="store_true", default=False, help="Run in read-only audit mode without modifying files (default)")
+    parser.add_argument("--generate-report", action="store_true", default=False, help="Explicitly write .validation-report.json")
+    parser.add_argument("--release", action="store_true", default=False, help="Enforce architecture release gate (requires explicit --base and --candidate)")
+    parser.add_argument("--skip-fixtures", action="store_true", default=False, help="Skip negative fixture suite execution (used internally during fixture testing)")
     args = parser.parse_args(argv)
-
-    checks: dict[str, list[str]] = {}
-    fixture_stats: dict[str, Any] = {}
 
     head_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True)
     head_sha = head_res.stdout.strip() if head_res.returncode == 0 else "UNKNOWN"
+
+    if (args.generate_report or args.release):
+        if not args.base or not args.candidate:
+            print("ERROR: Architecture release / report generation requires explicit immutable full 40-character --base and --candidate SHAs.")
+            return 1
+        try:
+            base_val = validate_commit_sha(args.base, "Base", ROOT, require_full_sha=True)
+            if base_val.lower() != DEFAULT_BASE_COMMIT.lower():
+                print(f"ERROR: Base commit {base_val} does not match approved project baseline {DEFAULT_BASE_COMMIT}.")
+                return 1
+            cand_val = validate_commit_sha(args.candidate, "Candidate", ROOT, require_full_sha=True)
+            if cand_val.lower() != head_sha.lower():
+                print(f"ERROR: Candidate commit {cand_val} does not equal actual current HEAD {head_sha}.")
+                return 1
+            if base_val.lower() == cand_val.lower():
+                print(f"ERROR: Base commit {base_val} equals candidate commit {cand_val}; self-validation rejected.")
+                return 1
+        except ScopeViolationError as exc:
+            print(f"ERROR: {exc}")
+            return 1
+
+    checks: dict[str, list[str]] = {}
+    fixture_stats: dict[str, Any] = {}
 
     try:
         dag = load_yaml(BUNDLE / "task-dag.yaml")
@@ -559,19 +630,23 @@ def main(argv: Optional[List[str]] = None) -> int:
     checks["links"] = check_links()
     checks["dely_configuration"] = check_dely_block()
 
-    fixture_errors, fixture_stats = run_negative_fixture_suite()
+    if args.skip_fixtures or os.environ.get("VALIDATE_SKIP_FIXTURES") == "1":
+        fixture_errors = []
+        fixture_stats = {"tests_run": 0, "failures": 0, "errors": 0, "passed": True, "skipped": True}
+    else:
+        fixture_errors, fixture_stats = run_negative_fixture_suite()
     checks["negative_fixtures_suite"] = fixture_errors
 
     errors = [error for values in checks.values() for error in values]
-    base_commit = args.base or (dag.get("approved_base_commit", DEFAULT_BASE_COMMIT) if "dag" in locals() else DEFAULT_BASE_COMMIT)
-    candidate_input = args.candidate or (dag.get("candidate_commit", "HEAD") if "dag" in locals() else "HEAD")
+    base_input = args.base or (dag.get("approved_base_commit", DEFAULT_BASE_COMMIT) if "dag" in locals() else DEFAULT_BASE_COMMIT)
+    candidate_input = args.candidate or head_sha
 
     try:
-        base_resolved = validate_commit_sha(base_commit, "Base", ROOT)
+        base_resolved = validate_commit_sha(base_input, "Base", ROOT, require_full_sha=True)
     except Exception:
-        base_resolved = base_commit
+        base_resolved = base_input
     try:
-        candidate_resolved = validate_commit_sha(candidate_input, "Candidate", ROOT)
+        candidate_resolved = validate_commit_sha(candidate_input, "Candidate", ROOT, require_full_sha=True)
     except Exception:
         candidate_resolved = candidate_input
 
@@ -583,55 +658,59 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     all_changed = get_all_changed_paths(base_resolved, candidate_resolved)
 
-    report_candidate = candidate_resolved if args.candidate else "HEAD"
-    effective_dirty = [d for d in dirty_entries if d[1] != "docs/parallel-delivery/.validation-report.json"]
+    if args.generate_report and not errors:
+        effective_dirty = [d for d in dirty_entries if d[1] != "docs/parallel-delivery/.validation-report.json"]
+        report = {
+            "schema_version": "1.0.0",
+            "status": "PASS" if not errors else "FAIL",
+            "attestation": {
+                "base_commit": base_resolved,
+                "candidate_commit": candidate_resolved,
+                "candidate_is_actual_head": candidate_resolved == head_sha,
+                "committed_changes_count": len(committed_entries),
+                "dirty_overlay_count": len(effective_dirty),
+                "overlay_clean": len(effective_dirty) == 0,
+                "renames_evaluated_both_ends": True,
+                "semantics": "Committed attestation generated via explicit --generate-report flag with immutable base and candidate SHAs matching actual HEAD.",
+            },
+            "remediations": {
+                "astra_round_1": {
+                    "F1_exact_contract_binding": "RESOLVED",
+                    "F2_ownership_and_path_safety": "RESOLVED",
+                    "F3_scope_and_candidate_delta": "RESOLVED",
+                    "F4_orca_mapping_and_lifecycle": "RESOLVED",
+                    "F5_readiness_and_traceability": "RESOLVED",
+                    "F6_locks_and_leases": "RESOLVED",
+                },
+                "sol_review_blockers": {
+                    "1_scope_explicit_candidate_no_stale_ac5bd30": "RESOLVED",
+                    "2_lease_manager_comprehensive_invariants": "RESOLVED",
+                    "3_orca_delivery_adapter_strict_bindings": "RESOLVED",
+                    "4_adversarial_sol_probes_suite": "RESOLVED",
+                    "5_harness_compatibility_gate_recorded": "RESOLVED",
+                    "6_no_product_code_containment": "RESOLVED",
+                },
+            },
+            "fixture_stats": fixture_stats,
+            "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},
+            "changed_paths": all_changed,
+            "bundle_sha256": {
+                path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in sorted(BUNDLE.glob("*"))
+                if path.is_file() and path != REPORT and not path.name.endswith(".pyc")
+            },
+        }
+        REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+        print(f"REPORT: Wrote attestation report to {REPORT.relative_to(ROOT).as_posix()}")
 
-    report = {
-        "schema_version": "1.0.0",
-        "status": "PASS" if not errors else "FAIL",
-        "attestation": {
-            "base_commit": base_resolved,
-            "candidate_commit": report_candidate,
-            "candidate_is_actual_head": True,
-            "committed_changes_count": len(committed_entries),
-            "dirty_overlay_count": len(effective_dirty),
-            "overlay_clean": len(effective_dirty) == 0,
-            "renames_evaluated_both_ends": True,
-        },
-        "remediations": {
-            "astra_round_1": {
-                "F1_exact_contract_binding": "RESOLVED",
-                "F2_ownership_and_path_safety": "RESOLVED",
-                "F3_scope_and_candidate_delta": "RESOLVED",
-                "F4_orca_mapping_and_lifecycle": "RESOLVED",
-                "F5_readiness_and_traceability": "RESOLVED",
-                "F6_locks_and_leases": "RESOLVED",
-            },
-            "sol_review_blockers": {
-                "1_scope_explicit_candidate_no_stale_ac5bd30": "RESOLVED",
-                "2_lease_manager_comprehensive_invariants": "RESOLVED",
-                "3_orca_delivery_adapter_strict_bindings": "RESOLVED",
-                "4_adversarial_sol_probes_suite": "RESOLVED",
-                "5_harness_compatibility_gate_recorded": "RESOLVED",
-                "6_no_product_code_containment": "RESOLVED",
-            },
-        },
-        "fixture_stats": fixture_stats,
-        "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},
-        "changed_paths": all_changed,
-        "bundle_sha256": {
-            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in sorted(BUNDLE.glob("*"))
-            if path.is_file() and path != REPORT and not path.name.endswith(".pyc")
-        },
-    }
-    REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
     if errors:
         for error in errors:
             print(f"ERROR: {error}")
         print(f"VALIDATION: FAIL ({len(errors)} errors)")
         return 1
-    print(f"ATTESTATION: Exact candidate HEAD verified: {head_sha} (base: {base_resolved})")
+
+    mode_label = "REPORT GENERATION" if args.generate_report else "READ-ONLY AUDIT"
+    print(f"ATTESTATION [{mode_label}]: Exact candidate HEAD verified: {head_sha} (base: {base_resolved})")
     print(f"VALIDATION: PASS ({len(checks)} checks, {len(all_changed)} changed paths, {fixture_stats.get('tests_run', 0)} fixtures passed)")
     return 0
 
