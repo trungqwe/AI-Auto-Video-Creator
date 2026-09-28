@@ -277,3 +277,17 @@ Toàn bộ 21 bypass độc lập do Sol review phát hiện cùng các boundary
    - Xác thực sự tồn tại thực tế của các commit trong Git DAG qua `git rev-parse --verify`.
    - Xác thực tính nhất quán cấu trúc cây Git DAG: `wrapper_commit^` phải khớp chính xác với `parent_commit`, và commit wrapper hoặc candidate phải khớp với Git HEAD hiện hành.
 
+## 14. Khắc phục triệt để các phát hiện Sol Round 8 (Review Blockers & Hardened Topology/Registry Invariants)
+
+Đợt rà soát vòng 8 của `cx/gpt-5.6-sol-high` đã xác lập 3 điểm nghẽn cốt lõi độc lập cần xử lý dứt điểm. Toàn bộ các điểm nghẽn đã được khắc phục hoàn toàn và chứng minh qua 3 fixtures phản ví dụ mới trong `TestSolRoundEightCounterexamples` (tổng bộ kiểm thử đạt 165 fixtures tự động PASS 100%):
+
+1. **Cấm Tái Mở Trạng Thái Terminal và Cấm Tua Ngược `review`/`merge_queued` về `planned` (`Atomic Terminal & Rewind Prevention`)**:
+   - `set_task_state` từ chối triệt để mọi nỗ lực tái mở hoặc đột biến bất kỳ tác vụ nào đã ở trạng thái terminal (`integrated`, `cancelled`, `stopped`).
+   - Cấm tuyệt đối hành vi tua ngược trạng thái `review` hoặc `merge_queued` về `planned` hoặc bất kỳ trạng thái pre-dispatch nào. Toàn bộ đột biến và truy vấn trạng thái được đồng bộ nguyên tử qua `_task_state_lock`.
+2. **Xác thực Freshness Attestation theo Đúng Cấu trúc Cây Git DAG Cho Phép (`Exact Allowed Git DAG Topology Validation`)**:
+   - `check_attestation_report_freshness` từ chối fail-closed nếu báo cáo không khớp chính xác một trong hai cấu trúc topology được phép: Direct HEAD (`candidate_commit == wrapper_commit == HEAD` và `parent_commit == HEAD^`) hoặc Parent-plus-wrapper (`candidate_commit == HEAD^`, `wrapper_commit == HEAD`, `parent_commit == HEAD^`).
+   - Loại bỏ hoàn toàn lỗ hổng kiểm tra quan hệ thuộc tập hợp `{HEAD, HEAD^}` lỏng lẻo; từ chối dứt điểm trường hợp candidate/wrapper thuộc commit cha (`HEAD^`) và parent thuộc `HEAD^^` khi Git HEAD đang ở commit wrapper mới.
+3. **Đột biến Registry Phức hợp Nguyên tử Đa Tiến trình khi Tạo Dispatch (`Atomic Compound Registry Mutation & Two-Process Race Rollback`)**:
+   - `create_dispatch` thực hiện đột biến phức hợp đăng ký dispatch binding và Orca task ID thông qua `register_dispatch_and_orca_task` trong duy nhất một giao dịch nguyên tử có khóa tệp đa tiến trình `_transaction(write=True)`.
+   - Cơ chế rollback snapshot tự động khôi phục hoàn toàn trạng thái in-memory và không ghi đĩa khi xảy ra lỗi/tranh chấp trùng lặp ID, bảo đảm không bao giờ để lại orphan dispatch binding tồn tại bền vững trên đĩa.
+

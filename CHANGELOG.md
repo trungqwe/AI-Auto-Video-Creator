@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 8 (Atomic Terminal/Rewind Prevention, Exact Git Topology Freshness & Compound Mutation)
+
+- Khắc phục toàn diện 3 phát hiện/blockers từ `cx/gpt-5.6-sol-high` round 8 review cho bundle `docs/parallel-delivery/`:
+  - **(1) Cấm Tái Mở Trạng Thái Terminal & Cấm Tua Ngược `review`/`merge_queued` về `planned`**: Hạn chế `set_task_state` từ chối triệt để mọi nỗ lực tái mở hoặc đột biến bất kỳ tác vụ nào đã ở trạng thái terminal (`integrated`, `cancelled`, `stopped`); cấm tuyệt đối hành vi tua ngược trạng thái `review` hoặc `merge_queued` về `planned` hoặc các trạng thái pre-dispatch; toàn bộ đột biến trạng thái tác vụ được thực hiện nguyên tử qua `_task_state_lock`.
+  - **(2) Xác Thực Freshness Attestation theo Đúng Cấu Trúc Cây Git DAG Cho Phép**: `check_attestation_report_freshness` từ chối fail-closed nếu báo cáo không khớp chính xác một trong hai cấu trúc topology được phép: Direct HEAD (`candidate_commit == wrapper_commit == HEAD` và `parent_commit == HEAD^`) hoặc Parent-plus-wrapper (`candidate_commit == HEAD^`, `wrapper_commit == HEAD`, `parent_commit == HEAD^`); loại bỏ hoàn toàn lỗ hổng kiểm tra quan hệ thuộc tập hợp `{HEAD, HEAD^}` lỏng lẻo; từ chối dứt điểm trường hợp candidate/wrapper thuộc commit cha (`HEAD^`) và parent thuộc `HEAD^^` khi Git HEAD đang ở commit wrapper mới.
+  - **(3) Đột Biến Registry Phức Hợp Nguyên Tử Đa Tiến Trình Khi Tạo Dispatch**: `create_dispatch` thực hiện đột biến phức hợp đăng ký dispatch binding và Orca task ID thông qua `register_dispatch_and_orca_task` trong duy nhất một giao dịch nguyên tử có khóa tệp đa tiến trình `_transaction(write=True)`; cơ chế snapshot rollback tự động khôi phục hoàn toàn trạng thái in-memory và không ghi đĩa khi xảy ra lỗi/tranh chấp trùng lặp ID, bảo đảm không bao giờ để lại orphan dispatch binding tồn tại bền vững trên đĩa.
+  - **(4) Fixture Suite Tự Động 165/165 PASS**: Bổ sung 3 bài kiểm tra phản ví dụ độc lập trong `TestSolRoundEightCounterexamples` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 165/165 passed 100%.
+
 ## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 7 (Registry Read-Modify-Write, Durability, Lifecycle & Fencing Hardening)
 
 - Khắc phục toàn diện 5 phát hiện/blockers từ `cx/gpt-5.6-sol-high` round 7 review cho bundle `docs/parallel-delivery/`:

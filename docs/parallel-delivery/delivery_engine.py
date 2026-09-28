@@ -1253,7 +1253,7 @@ class SharedOrcaExecutionRegistry:
 
     @contextmanager
     def _transaction(self, write: bool = True):
-        """Cross-process and intra-process atomic transaction context manager."""
+        """Cross-process and intra-process atomic transaction context manager with rollback on failure."""
         lock_path = self._get_lock_path()
         lock_ctx = _FileLock(lock_path) if lock_path else None
         with self._lock:
@@ -1261,15 +1261,49 @@ class SharedOrcaExecutionRegistry:
                 with lock_ctx:
                     if self.storage_path and self.storage_path.is_file():
                         self._load_from_storage()
-                    yield
-                    if write and self.storage_path:
-                        self._persist_atomic()
+                    snapshot = (
+                        set(self.seen_orca_task_ids),
+                        set(self.seen_dispatch_ids),
+                        set(self.settled_dispatches),
+                        dict(self.orca_task_to_delivery_task),
+                        dict(self.dispatch_bindings),
+                    )
+                    try:
+                        yield
+                        if write and self.storage_path:
+                            self._persist_atomic()
+                    except Exception:
+                        (
+                            self.seen_orca_task_ids,
+                            self.seen_dispatch_ids,
+                            self.settled_dispatches,
+                            self.orca_task_to_delivery_task,
+                            self.dispatch_bindings,
+                        ) = snapshot
+                        raise
             else:
                 if self.storage_path and self.storage_path.is_file():
                     self._load_from_storage()
-                yield
-                if write and self.storage_path:
-                    self._persist_atomic()
+                snapshot = (
+                    set(self.seen_orca_task_ids),
+                    set(self.seen_dispatch_ids),
+                    set(self.settled_dispatches),
+                    dict(self.orca_task_to_delivery_task),
+                    dict(self.dispatch_bindings),
+                )
+                try:
+                    yield
+                    if write and self.storage_path:
+                        self._persist_atomic()
+                except Exception:
+                    (
+                        self.seen_orca_task_ids,
+                        self.seen_dispatch_ids,
+                        self.settled_dispatches,
+                        self.orca_task_to_delivery_task,
+                        self.dispatch_bindings,
+                    ) = snapshot
+                    raise
 
     def clear(self) -> None:
         with self._transaction(write=False):
@@ -1393,6 +1427,56 @@ class SharedOrcaExecutionRegistry:
             self.seen_dispatch_ids.add(clean_id)
             self.dispatch_bindings[clean_id] = binding
 
+    def register_dispatch_and_orca_task(
+        self,
+        dispatch_id: str,
+        binding: DispatchBinding,
+        orca_task_id: str,
+        delivery_task_id: str,
+    ) -> None:
+        """Atomic cross-process compound registration of dispatch binding and Orca task association.
+        Guarantees either both are registered and persisted atomically to disk, or neither is;
+        rolls back all in-memory mutations on any duplicate or conflict failure so no orphan
+        dispatch bindings are ever left on disk or in memory.
+        """
+        if not dispatch_id or not isinstance(dispatch_id, str) or not dispatch_id.strip():
+            raise ProtocolViolationError("dispatch_id cannot be blank")
+        if not orca_task_id or not isinstance(orca_task_id, str) or not orca_task_id.strip():
+            raise ProtocolViolationError("orca_task_id cannot be blank")
+        if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
+            raise ProtocolViolationError("delivery_task_id cannot be blank")
+        clean_disp_id = dispatch_id.strip()
+        clean_orca_id = orca_task_id.strip()
+        clean_delivery_id = delivery_task_id.strip()
+
+        with self._transaction(write=True):
+            # Check orca_task_id uniqueness first
+            if clean_orca_id in self.seen_orca_task_ids:
+                other = self.orca_task_to_delivery_task.get(clean_orca_id)
+                if other and other != clean_delivery_id:
+                    raise ProtocolViolationError(
+                        f"Orca task ID {clean_orca_id!r} is already assigned to delivery task {other!r}; global reuse across adapter instances is forbidden"
+                    )
+                raise ProtocolViolationError(
+                    f"Orca task ID {clean_orca_id!r} has already been registered or used; global reuse across adapter instances is forbidden"
+                )
+
+            # Check dispatch_id uniqueness
+            if (
+                clean_disp_id in self.seen_dispatch_ids
+                or clean_disp_id in self.settled_dispatches
+                or clean_disp_id in self.dispatch_bindings
+            ):
+                raise ProtocolViolationError(
+                    f"Duplicate dispatch binding overwrite: dispatch ID {clean_disp_id!r} is already bound or settled; global reuse is forbidden"
+                )
+
+            # Both checks passed inside the locked cross-process transaction; mutate both
+            self.seen_orca_task_ids.add(clean_orca_id)
+            self.orca_task_to_delivery_task[clean_orca_id] = clean_delivery_id
+            self.seen_dispatch_ids.add(clean_disp_id)
+            self.dispatch_bindings[clean_disp_id] = binding
+
     def is_orca_task_registered(self, orca_task_id: str) -> bool:
         if not orca_task_id or not isinstance(orca_task_id, str):
             return False
@@ -1458,6 +1542,7 @@ class OrcaDeliveryAdapter:
         self.git_root = git_root
         self.registry = registry if registry is not None else SharedOrcaExecutionRegistry.get_default()
         self._task_states: Dict[str, str] = {}
+        self._task_state_lock = threading.RLock()
         self.task_authorities: Dict[str, str] = {}
         self.active_dispatches: Dict[str, str] = {}  # delivery_task_id -> current dispatch_id
         self.dispatch_counters: Dict[str, int] = {}
@@ -1467,7 +1552,8 @@ class OrcaDeliveryAdapter:
     @property
     def task_states(self) -> Dict[str, str]:
         """Read-only view of internal task states to prevent direct bypass mutation."""
-        return dict(self._task_states)
+        with self._task_state_lock:
+            return dict(self._task_states)
 
     @property
     def seen_orca_task_ids(self) -> Set[str]:
@@ -1496,7 +1582,10 @@ class OrcaDeliveryAdapter:
 
     def set_task_state(self, delivery_task_id: str, state: str) -> None:
         """Constrained state setter restricted strictly to pre-dispatch planning/readiness states.
-        Execution lifecycle states (dispatched -> acknowledged -> running -> worker_done) cannot be bypassed.
+        Execution lifecycle states (dispatched -> acknowledged -> running -> review -> merge_queued -> integrated)
+        cannot be bypassed, terminal states (integrated, cancelled, stopped) cannot be reopened or mutated,
+        and illegal rewinds (e.g. review/merge_queued to planned) are strictly rejected.
+        All transitions are aligned with protocol transition rules and mutations are atomic.
         """
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
             raise ProtocolViolationError("delivery_task_id cannot be blank")
@@ -1504,7 +1593,7 @@ class OrcaDeliveryAdapter:
         clean_state = state.strip() if isinstance(state, str) else ""
 
         forbidden_direct = {
-            "dispatched", "acknowledged", "running", "review", "merge_queued", "integrated"
+            "dispatched", "acknowledged", "running", "review", "merge_queued", "integrated", "remediation"
         }
         allowed_set_states = {"planned", "waiting_dependency", "ready", "blocked", "locked", "cancelled"}
 
@@ -1519,29 +1608,40 @@ class OrcaDeliveryAdapter:
                 f"only planning/readiness states {sorted(allowed_set_states)} are permitted"
             )
 
-        current = self.get_task_state(clean_tid)
-        if current in {"dispatched", "acknowledged", "running"}:
-            raise ProtocolViolationError(
-                f"Cannot overwrite state of task {clean_tid!r} via set_task_state while in active lifecycle state {current!r}"
-            )
-        self._task_states[clean_tid] = clean_state
+        with self._task_state_lock:
+            current = self.get_task_state(clean_tid)
+            # Terminal states must never be reopened or mutated
+            if current in {"integrated", "cancelled", "stopped"}:
+                raise ProtocolViolationError(
+                    f"Cannot mutate or reopen task {clean_tid!r} in terminal state {current!r}"
+                )
+
+            # Active lifecycle / verification states cannot be overwritten or bypassed
+            if current in {"dispatched", "acknowledged", "running", "review", "merge_queued", "remediation"}:
+                raise ProtocolViolationError(
+                    f"Cannot overwrite state of task {clean_tid!r} via set_task_state while in active lifecycle state {current!r}"
+                )
+
+            self._task_states[clean_tid] = clean_state
 
     def transition_task_state(self, delivery_task_id: str, new_state: str) -> None:
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
             raise ProtocolViolationError("delivery_task_id cannot be blank")
         clean_tid = delivery_task_id.strip()
-        current = self.get_task_state(clean_tid)
-        allowed = LEGAL_TASK_STATE_TRANSITIONS.get(current, set())
-        if new_state not in allowed:
-            raise ProtocolViolationError(
-                f"Illegal task-state transition for {clean_tid}: {current!r} -> {new_state!r}; allowed: {sorted(allowed)}"
-            )
-        self._task_states[clean_tid] = new_state
+        with self._task_state_lock:
+            current = self.get_task_state(clean_tid)
+            allowed = LEGAL_TASK_STATE_TRANSITIONS.get(current, set())
+            if new_state not in allowed:
+                raise ProtocolViolationError(
+                    f"Illegal task-state transition for {clean_tid}: {current!r} -> {new_state!r}; allowed: {sorted(allowed)}"
+                )
+            self._task_states[clean_tid] = new_state
 
     def get_task_state(self, delivery_task_id: str) -> str:
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
             return "planned"
-        return self._task_states.get(delivery_task_id.strip(), "planned")
+        with self._task_state_lock:
+            return self._task_states.get(delivery_task_id.strip(), "planned")
 
     def set_task_authority(self, delivery_task_id: str, authority: str) -> None:
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
@@ -1845,11 +1945,16 @@ class OrcaDeliveryAdapter:
             settled=False,
             slot_fencing_tokens=slot_fencing_map,
         )
-        self.registry.register_dispatch_binding(dispatch_id, binding)
-        self.registry.register_orca_task(orca_task_id, delivery_task_id)
-        self.active_dispatches[delivery_task_id] = dispatch_id
-        self.transition_task_state(delivery_task_id, "dispatched")
-        self.last_fencing_tokens[delivery_task_id] = fencing_token
+        self.registry.register_dispatch_and_orca_task(
+            dispatch_id=dispatch_id,
+            binding=binding,
+            orca_task_id=orca_task_id,
+            delivery_task_id=delivery_task_id,
+        )
+        with self._task_state_lock:
+            self.active_dispatches[delivery_task_id] = dispatch_id
+            self.transition_task_state(delivery_task_id, "dispatched")
+            self.last_fencing_tokens[delivery_task_id] = fencing_token
         return dispatch_id
 
     def handle_worker_done(

@@ -264,6 +264,15 @@ orca orchestration send --from <worker_terminal> --dispatch-capability <dcap> --
     - Mọi slot trong `allocated_slots` được kiểm tra độc lập và toàn diện, từ chối các slot không được cấp phát (`was not allocated`) và phát hiện tái cấp phát bất đối xứng (`asymmetric slot reallocation detected`).
 28. **Từ chối báo cáo Attestation có commit Zero hoặc Topology sai lệch Git DAG**:
     - `check_attestation_report_freshness` từ chối các commit zero SHA, commit không tồn tại trong Git DAG, hoặc khi `wrapper_commit^` không khớp `parent_commit` trong topology Git.
+29. **Cấm tái mở trạng thái terminal và cấm tua ngược `review`/`merge_queued` về `planned` qua `set_task_state`**:
+    - `set_task_state` cấm tuyệt đối tái mở hoặc đột biến bất kỳ tác vụ nào đã ở trạng thái terminal (`integrated`, `cancelled`, `stopped`).
+    - Cấm tuyệt đối hành vi tua ngược trạng thái `review`, `remediation` hoặc `merge_queued` về `planned` hoặc bất kỳ trạng thái khởi tạo nào. Toàn bộ thao tác đọc và đột biến trạng thái tác vụ được thực hiện nguyên tử qua `_task_state_lock`.
+30. **Xác thực Freshness Attestation theo Đúng Cấu trúc Cây Git DAG Cho Phép**:
+    - `check_attestation_report_freshness` bắt buộc báo cáo khớp chính xác một trong hai cấu trúc topology được phép: Direct HEAD (`candidate_commit == wrapper_commit == HEAD` và `parent_commit == HEAD^`) hoặc Parent-plus-wrapper (`candidate_commit == HEAD^`, `wrapper_commit == HEAD`, `parent_commit == HEAD^`).
+    - Nghiêm cấm chấp nhận báo cáo dựa trên kiểm tra quan hệ thuộc tập hợp `{HEAD, HEAD^}`; từ chối dứt điểm trường hợp candidate/wrapper thuộc commit cha (`HEAD^`) và parent thuộc `HEAD^^` khi Git HEAD đang ở commit wrapper hiện hành.
+31. **Đột biến Registry Phức hợp Nguyên tử Đa Tiến trình khi Tạo Dispatch**:
+    - `create_dispatch` thực hiện đột biến phức hợp đăng ký dispatch binding và Orca task ID thông qua `register_dispatch_and_orca_task` trong duy nhất một giao dịch nguyên tử có khóa tệp đa tiến trình `_transaction(write=True)`.
+    - Khi xảy ra xung đột (như tranh chấp trùng lặp `orca_task_id` giữa hai tiến trình), toàn bộ thay đổi được rollback sạch sẽ, tuyệt đối không để lại orphan dispatch binding tồn tại bền vững trên đĩa.
 
 ## 8. Review/remediation protocol
 
@@ -298,7 +307,8 @@ Finding trong contract đi một remediation pass bởi original implementer v�
 - Không chuyển task future/locked thành ready chỉ bằng message.
 - Route success không thay thế khả năng thực thi thực tế; bắt buộc vượt qua tool-execution smoke test trước mutation.
 - Toàn bộ cập nhật registry phải an toàn tiến trình và bền vững trên đĩa.
-- Vòng đời tác vụ không bị can thiệp qua `set_task_state`.
+- Vòng đời tác vụ không bị can thiệp qua `set_task_state`; cấm tái mở trạng thái terminal và cấm tua ngược review/merge_queued về planned; mutation nguyên tử.
 - Fencing capacity đa slot kiểm tra toàn bộ slot và chống tái phân bổ bất đối xứng.
-- Attestation report bắt buộc có commit thực tế và topo Git nhất quán.
+- Attestation report bắt buộc có commit thực tế và topo Git nhất quán, từ chối quan hệ thuộc tập hợp {HEAD, HEAD^} lỏng lẻo.
+- Đột biến phức hợp khi dispatch là một giao dịch nguyên tử đa tiến trình duy nhất có rollback, không để lại orphan dispatch binding.
 

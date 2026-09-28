@@ -3340,6 +3340,245 @@ class TestSolRoundSevenCounterexamples(unittest.TestCase):
             self.assertTrue(any("topology mismatch" in e for e in errs), f"Expected topology mismatch error, got: {errs}")
 
 
+class TestSolRoundEightCounterexamples(unittest.TestCase):
+    """Sol Round 8 Counterexamples:
+    1. set_task_state must never reopen terminal integrated/cancelled/stopped states or illegally rewind review/merge_queued to planned.
+    2. attestation freshness must reject the actual reproduced mismatch where report candidate/wrapper=c26ead1..., parent=3b7a618..., while Git HEAD=dffd856... and HEAD^=c26ead1...; validate exact allowed topology, not membership in {HEAD,HEAD^}.
+    3. create_dispatch compound registry mutation must be one cross-process atomic transaction so duplicate Orca task races cannot leave durable orphan dispatch bindings; rollback/no partial write on any failure.
+    """
+
+    def setUp(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        self.lock_defs = [
+            {
+                "id": "R8-LOCK-EXCL",
+                "mode": "exclusive",
+                "renewable": True,
+                "lease_seconds": 600,
+            },
+            {
+                "id": "R8-LOCK-CAP",
+                "mode": "capacity",
+                "capacity": 3,
+                "renewable": True,
+                "lease_seconds": 600,
+            },
+        ]
+        self.mgr = LeaseManager(self.lock_defs)
+        self.mgr.set_task_authority("TASK-A", "granted")
+        self.mgr.set_task_authority("TASK-B", "granted")
+        cmd_head = ["git", "rev-parse", "HEAD"]
+        self.candidate_commit = subprocess.run(
+            cmd_head, cwd=ROOT_DIR, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        cmd_parent = ["git", "rev-parse", "HEAD~1"]
+        self.parent_commit = subprocess.run(
+            cmd_parent, cwd=ROOT_DIR, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        self.adapter = OrcaDeliveryAdapter(
+            lease_manager=self.mgr,
+            approved_candidate_commit=self.candidate_commit,
+            git_root=ROOT_DIR,
+            declared_task_locks={"TASK-A": ["R8-LOCK-EXCL"], "TASK-B": ["R8-LOCK-CAP"]},
+        )
+        self.adapter.set_task_authority("TASK-A", "granted")
+        self.adapter.set_task_authority("TASK-B", "granted")
+
+    def test_r8_01_set_task_state_terminal_and_rewind_rejection(self):
+        """1. Counterexample: set_task_state must never reopen terminal states or illegally rewind review/merge_queued."""
+        # 1a. Terminal state integrated cannot be reopened or mutated via set_task_state
+        self.adapter.set_task_state("TASK-A", "ready")
+        self.adapter._task_states["TASK-A"] = "integrated"
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.set_task_state("TASK-A", "ready")
+        self.assertTrue(
+            "terminal" in str(ctx.exception).lower() or "cannot mutate or reopen" in str(ctx.exception).lower(),
+            f"Expected terminal error, got: {ctx.exception}"
+        )
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.set_task_state("TASK-A", "planned")
+
+        # 1b. Terminal state cancelled cannot be reopened via set_task_state
+        self.adapter._task_states["TASK-A"] = "cancelled"
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.set_task_state("TASK-A", "ready")
+        self.assertTrue(
+            "terminal" in str(ctx.exception).lower() or "cannot mutate or reopen" in str(ctx.exception).lower(),
+            f"Expected terminal error, got: {ctx.exception}"
+        )
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.set_task_state("TASK-A", "planned")
+
+        # 1c. Terminal state stopped cannot be reopened via set_task_state
+        self.adapter._task_states["TASK-A"] = "stopped"
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.set_task_state("TASK-A", "ready")
+        self.assertTrue(
+            "terminal" in str(ctx.exception).lower() or "cannot mutate or reopen" in str(ctx.exception).lower(),
+            f"Expected terminal error, got: {ctx.exception}"
+        )
+
+        # 1d. Illegal rewind: review -> planned is strictly forbidden
+        self.adapter._task_states["TASK-A"] = "review"
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.set_task_state("TASK-A", "planned")
+        self.assertTrue(
+            "review" in str(ctx.exception).lower() or "illegal" in str(ctx.exception).lower() or "overwrite" in str(ctx.exception).lower(),
+            f"Expected illegal rewind rejection, got: {ctx.exception}"
+        )
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.set_task_state("TASK-A", "ready")
+
+        # 1e. Illegal rewind: merge_queued -> planned is strictly forbidden
+        self.adapter._task_states["TASK-A"] = "merge_queued"
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.set_task_state("TASK-A", "planned")
+        self.assertTrue(
+            "merge_queued" in str(ctx.exception).lower() or "illegal" in str(ctx.exception).lower() or "overwrite" in str(ctx.exception).lower(),
+            f"Expected illegal rewind rejection, got: {ctx.exception}"
+        )
+
+        # 1f. Protocol transition alignment: planned -> blocked is illegal via transition_task_state
+        self.adapter._task_states["TASK-A"] = "planned"
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.transition_task_state("TASK-A", "blocked")
+        self.assertIn("Illegal task-state transition", str(ctx.exception))
+
+        # 1g. Valid pre-dispatch planning/readiness settings succeed
+        self.adapter.set_task_state("TASK-A", "ready")
+        self.assertEqual(self.adapter.get_task_state("TASK-A"), "ready")
+        self.adapter.set_task_state("TASK-A", "planned")
+        self.assertEqual(self.adapter.get_task_state("TASK-A"), "planned")
+        self.adapter.set_task_state("TASK-A", "ready")
+        self.assertEqual(self.adapter.get_task_state("TASK-A"), "ready")
+        self.adapter.set_task_state("TASK-A", "ready")
+        self.assertEqual(self.adapter.get_task_state("TASK-A"), "ready")
+
+    def test_r8_02_attestation_freshness_rejection_of_reproduced_head_mismatch(self):
+        """2. Counterexample: attestation freshness must reject the actual reproduced mismatch where
+        report candidate/wrapper=c26ead1..., parent=3b7a618..., while Git HEAD=dffd856... and HEAD^=c26ead1...
+        """
+        import validate
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            rep_path = td_path / ".validation-report.json"
+            # Exactly reproduced mismatch from Sol Round 7 audit
+            rep_data = {
+                "status": "PASS",
+                "attestation": {
+                    "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
+                    "candidate_commit": "c26ead1ad8bc99f7034d45e1be3b8121bce245ab",
+                    "parent_commit": "3b7a618c50e0fab72723952269f34177f6e8c567",
+                    "wrapper_commit": "c26ead1ad8bc99f7034d45e1be3b8121bce245ab",
+                    "candidate_is_actual_head": True,
+                    "overlay_clean": True,
+                    "dirty_overlay_count": 0,
+                },
+                "bundle_sha256": {}
+            }
+            rep_path.write_text(json.dumps(rep_data), encoding="utf-8")
+            # Tested against Git HEAD = dffd856...
+            errs = validate.check_attestation_report_freshness(
+                ROOT_DIR, td_path, rep_path, "dffd8569fe4cae9b7a834c2d77ba66d2b1b953a0"
+            )
+            self.assertTrue(
+                any("stale" in e.lower() or "topology" in e.lower() for e in errs),
+                f"Expected stale / topology mismatch rejection for reproduced Sol blocker, got: {errs}"
+            )
+
+    def test_r8_03_create_dispatch_atomic_compound_registry_mutation_two_process_race(self):
+        """3. Counterexample: create_dispatch compound registry mutation must be one cross-process atomic transaction;
+        duplicate Orca task races cannot leave durable orphan dispatch bindings; rollback on failure.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            reg_file = Path(td) / "race-reg.json"
+            shared_reg = SharedOrcaExecutionRegistry(storage_path=reg_file)
+
+            adapter1 = OrcaDeliveryAdapter(
+                lease_manager=self.mgr,
+                approved_candidate_commit=self.candidate_commit,
+                git_root=ROOT_DIR,
+                registry=shared_reg,
+                declared_task_locks={"TASK-A": ["R8-LOCK-EXCL"]},
+            )
+            adapter1.set_task_authority("TASK-A", "granted")
+            adapter1.set_task_state("TASK-A", "ready")
+            lease1 = self.mgr.acquire_lease("R8-LOCK-EXCL", "TASK-A", "ctx-winner")
+
+            adapter2 = OrcaDeliveryAdapter(
+                lease_manager=self.mgr,
+                approved_candidate_commit=self.candidate_commit,
+                git_root=ROOT_DIR,
+                registry=shared_reg,
+                declared_task_locks={"TASK-B": ["R8-LOCK-CAP"]},
+            )
+            adapter2.set_task_authority("TASK-B", "granted")
+            adapter2.set_task_state("TASK-B", "ready")
+            lease2 = self.mgr.acquire_lease("R8-LOCK-CAP", "TASK-B", "ctx-loser", units=1)
+
+            # Winner creates dispatch with orca_task_id = "orca-race-task-01"
+            disp_winner = adapter1.create_dispatch(
+                "TASK-A",
+                orca_task_id="orca-race-task-01",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease1.fencing_token,
+                lease_id=lease1.lease_id,
+                intended_dispatch_id="ctx-winner",
+            )
+            self.assertEqual(disp_winner, "ctx-winner")
+
+            # Loser attempts to dispatch with the SAME orca_task_id
+            with self.assertRaises(ProtocolViolationError) as ctx:
+                adapter2.create_dispatch(
+                    "TASK-B",
+                    orca_task_id="orca-race-task-01",
+                    candidate_commit=self.candidate_commit,
+                    fencing_token=lease2.fencing_token,
+                    lease_id=lease2.lease_id,
+                    intended_dispatch_id="ctx-loser",
+                )
+            self.assertTrue(
+                "already" in str(ctx.exception) or "forbidden" in str(ctx.exception),
+                f"Expected duplicate orca_task_id rejection, got: {ctx.exception}"
+            )
+
+            # Verify on-disk persistence: ctx-loser MUST NOT exist as durable orphan binding!
+            disk_data = json.loads(reg_file.read_text(encoding="utf-8"))
+            disk_bindings = disk_data.get("dispatch_bindings", {})
+            self.assertIn("ctx-winner", disk_bindings, "Winner dispatch must be durably recorded on disk")
+            self.assertNotIn("ctx-loser", disk_bindings, "Loser dispatch must NEVER leave durable orphan binding on disk")
+            self.assertNotIn("ctx-loser", disk_data.get("seen_dispatch_ids", []), "Loser dispatch ID must not be marked seen on disk")
+
+            # Verify in-memory state of loser adapter / registry: ctx-loser is rolled back
+            self.assertNotIn("ctx-loser", shared_reg.dispatch_bindings)
+            self.assertNotIn("ctx-loser", shared_reg.seen_dispatch_ids)
+            self.assertEqual(adapter2.get_task_state("TASK-B"), "ready", "TASK-B must remain in ready state on failed dispatch")
+
+            # Direct test of atomic compound registration method rollback on simulated failure:
+            from delivery_engine import DispatchBinding
+            fake_binding = DispatchBinding(
+                delivery_task_id="TASK-B",
+                orca_task_id="orca-race-task-01",
+                dispatch_id="ctx-orphan-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease2.fencing_token,
+                lease_id=lease2.lease_id,
+                lease_ids=[lease2.lease_id],
+                authority_state="granted",
+            )
+            with self.assertRaises(ProtocolViolationError):
+                shared_reg.register_dispatch_and_orca_task(
+                    dispatch_id="ctx-orphan-probe",
+                    binding=fake_binding,
+                    orca_task_id="orca-race-task-01",
+                    delivery_task_id="TASK-B",
+                )
+            # Re-read disk
+            disk_data2 = json.loads(reg_file.read_text(encoding="utf-8"))
+            self.assertNotIn("ctx-orphan-probe", disk_data2.get("dispatch_bindings", {}))
+            self.assertNotIn("ctx-orphan-probe", shared_reg.dispatch_bindings)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

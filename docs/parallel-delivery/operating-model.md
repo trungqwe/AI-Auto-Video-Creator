@@ -149,8 +149,9 @@ Dừng task và mọi descendant chưa dispatch khi:
 - candidate identity thay đổi sau review;
 - tool-execution smoke test thất bại hoặc phát hiện harness làm sụp namespace công cụ (`functions.exec` -> `functions`);
 - phát hiện bất kỳ sự tăng thế hệ bất đối xứng nào trên capacity lock đa slot;
-- nỗ lực can thiệp hoặc ghi đè trạng thái vòng đời tác vụ đang hoạt động qua `set_task_state`;
-- báo cáo attestation chứa zero commit, commit không tồn tại hoặc topology không nhất quán với Git DAG.
+- nỗ lực can thiệp, tái mở trạng thái terminal hoặc tua ngược review/merge_queued về planned qua `set_task_state`;
+- báo cáo attestation chứa zero commit, commit không tồn tại hoặc topology không nhất quán với Git DAG (từ chối quan hệ thuộc tập hợp `{HEAD, HEAD^}` lỏng lẻo);
+- xung đột tranh chấp tạo dispatch bỏ sót rollback hoặc để lại durable orphan dispatch binding trên đĩa.
 
 Task trả `blocked` nếu phụ thuộc có thể được giải quyết không đổi contract; trả `needs_replan` nếu scope/architecture/acceptance cần đổi; trả `stopped` khi authority hoặc safety yêu cầu kết thúc. Không giao phần còn lại cho worker khác dưới cùng lease.
 

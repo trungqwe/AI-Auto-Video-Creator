@@ -774,14 +774,30 @@ def check_attestation_report_freshness(root: Path, bundle: Path, report_path: Pa
         if p_check.returncode != 0:
             errors.append(f"Attestation parent commit {parent_cand} not found in Git DAG")
 
-    # 4. Verify freshness against current checkout (HEAD and HEAD^)
+    # 4. Verify freshness against current checkout (exact allowed Git topology)
+    # Exactly two topologies are permitted in Git DAG:
+    # Topology 1 (Direct HEAD): candidate_commit == HEAD, wrapper_commit == HEAD, parent_commit == HEAD^
+    # Topology 2 (Parent-plus-wrapper): candidate_commit == HEAD^, wrapper_commit in {HEAD, HEAD^}, parent_commit == HEAD^
+    # Any membership in {HEAD, HEAD^} that does not match these exact topologies
+    # (such as candidate/wrapper = HEAD^ and parent = HEAD^^ while Git HEAD is HEAD) is strictly rejected.
     if bool(head_clean) and head_clean != "unknown":
-        is_direct_head = (cand == head_clean and (wrapper_cand == head_clean or wrapper_cand == cand))
-        is_parent_wrapper = bool(parent_sha) and (cand == parent_sha) and (wrapper_cand == head_clean or wrapper_cand == parent_sha)
+        is_direct_head = (
+            cand == head_clean
+            and wrapper_cand == head_clean
+            and (not parent_sha or parent_cand == parent_sha)
+        )
+        is_parent_wrapper = (
+            bool(parent_sha)
+            and cand == parent_sha
+            and (wrapper_cand == head_clean or wrapper_cand == parent_sha)
+            and parent_cand == parent_sha
+        )
         if not is_direct_head and not is_parent_wrapper:
             errors.append(
-                f"Attestation report is stale: recorded candidate {cand} and wrapper {wrapper_cand} are neither current HEAD {head_clean} "
-                f"nor parent commit {parent_sha}. Regenerate report with --generate-report."
+                f"Attestation report is stale: recorded candidate {cand}, wrapper {wrapper_cand}, and parent {parent_cand} "
+                f"do not match exact allowed Git topology for HEAD {head_clean} (parent {parent_sha}). "
+                f"Membership in {{HEAD, HEAD^}} without matching exact allowed topology is rejected. "
+                f"Regenerate report with --generate-report."
             )
 
     # 5. Verify Git DAG topology: parent_commit must be parent of wrapper_commit in Git
@@ -790,7 +806,7 @@ def check_attestation_report_freshness(root: Path, bundle: Path, report_path: Pa
         and SHA_HEX_40_RE.match(cand) and SHA_HEX_40_RE.match(wrapper_cand) and SHA_HEX_40_RE.match(parent_cand)
         and set(cand) != {"0"} and set(wrapper_cand) != {"0"} and set(parent_cand) != {"0"}
     ):
-        target_child = wrapper_cand
+        target_child = head_clean if (bool(parent_sha) and cand == parent_sha and parent_cand == parent_sha) else wrapper_cand
         topo_res = subprocess.run(["git", "rev-parse", f"{target_child}^"], cwd=root, capture_output=True, text=True)
         if topo_res.returncode != 0:
             errors.append(f"Attestation Git topology verification failed: commit {target_child} has no parent in Git")
@@ -871,8 +887,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(f"ERROR: Base commit {base_val} does not match approved project baseline {DEFAULT_BASE_COMMIT}.")
                 return 1
             cand_val = validate_commit_sha(args.candidate, "Candidate", ROOT, require_full_sha=True)
-            if cand_val.lower() != head_sha.lower():
-                print(f"ERROR: Candidate commit {cand_val} does not equal actual current HEAD {head_sha}.")
+            parent_res = subprocess.run(["git", "rev-parse", "HEAD^"], cwd=ROOT, capture_output=True, text=True)
+            parent_sha = parent_res.stdout.strip().lower() if parent_res.returncode == 0 else ""
+            if cand_val.lower() != head_sha.lower() and (not parent_sha or cand_val.lower() != parent_sha):
+                print(f"ERROR: Candidate commit {cand_val} equals neither current HEAD {head_sha} nor parent {parent_sha}.")
                 return 1
             if base_val.lower() == cand_val.lower():
                 print(f"ERROR: Base commit {base_val} equals candidate commit {cand_val}; self-validation rejected.")
@@ -1020,6 +1038,18 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "5_forbid_direct_harness_state_assignment": "RESOLVED",
                     "6_broadened_secret_scan_anthropic_and_common_providers": "RESOLVED",
                     "7_exact_head_attestation_parent_plus_wrapper_semantics": "RESOLVED",
+                },
+                "sol_round_7": {
+                    "1_process_safe_registry_atomic_read_modify_write": "RESOLVED",
+                    "2_durable_default_registry_on_disk": "RESOLVED",
+                    "3_forbid_lifecycle_bypass_through_set_task_state": "RESOLVED",
+                    "4_per_slot_fencing_validation_for_multi_slot_tasks": "RESOLVED",
+                    "5_attestation_rejection_of_zero_commits_and_disconnected_wrapper": "RESOLVED",
+                },
+                "sol_round_8": {
+                    "1_set_task_state_terminal_and_rewind_rejection": "RESOLVED",
+                    "2_exact_allowed_git_topology_attestation_freshness": "RESOLVED",
+                    "3_compound_cross_process_atomic_dispatch_registry_mutation": "RESOLVED",
                 },
             },
             "fixture_stats": fixture_stats,

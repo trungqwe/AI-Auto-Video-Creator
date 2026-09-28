@@ -4,13 +4,11 @@
 
 - Authority hiện hành giữ nguyên: `M2-P1..P7B_ACCEPTED_CLOSED`; M2-P8/P9 `LOCKED`; M3/Phân hệ A `NOT AUTHORIZED`.
 - Đã thêm [kiến trúc triển khai song song](./docs/parallel-delivery/README.md) ở trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`. Bundle chỉ là docs/config và định nghĩa DAG, contract registry, ownership/lease, Orca worker protocol, merge queue, traceability, security/performance/recovery.
-- Đã khắc phục triệt để toàn bộ 21 bypass độc lập từ Sol review, 3 boundary probe, toàn bộ các phát hiện Sol Round 3, toàn bộ 9 blocker Sol Round 4, toàn bộ 12 blocker Sol Round 5, toàn bộ 7 blocker Sol Round 6, và toàn bộ 5 blocker Sol Round 7:
-  1. Giao dịch đọc-sửa-ghi và chống trùng lặp ID an toàn tiến trình trên `SharedOrcaExecutionRegistry` qua `_transaction` và `_FileLock` reentrant;
-  2. Durable default registry trên đĩa khi `storage_path=None` tại `DEFAULT_PRODUCTION_REGISTRY_PATH` (`runtime/orca-execution-registry.json`);
-  3. Cấm tuyệt đối hành vi can thiệp hoặc ghi đè vòng đời tác vụ đang hoạt động qua `set_task_state`; `task_states` trả về read-only copy;
-  4. Xác thực fencing toàn diện cho từng slot trong multi-slot capacity task và phát hiện tái cấp phát bất đối xứng;
-  5. Từ chối báo cáo attestation có commit zero SHA, commit không tồn tại hoặc topology không nhất quán với Git DAG (`wrapper_commit^ == parent_commit`);
-  6. Bộ kiểm thử tự động đạt 162/162 tests PASS; `validate.py --audit` và `--release` PASS 100%.
+- Đã khắc phục triệt để toàn bộ 21 bypass độc lập từ Sol review, 3 boundary probe, toàn bộ các phát hiện Sol Round 3, toàn bộ 9 blocker Sol Round 4, toàn bộ 12 blocker Sol Round 5, toàn bộ 7 blocker Sol Round 6, toàn bộ 5 blocker Sol Round 7, và toàn bộ 3 blocker Sol Round 8:
+  1. `set_task_state` cấm tuyệt đối tái mở trạng thái terminal (`integrated`, `cancelled`, `stopped`) hoặc tua ngược `review`/`merge_queued` về `planned`; toàn bộ đột biến trạng thái tác vụ được thực hiện nguyên tử qua `_task_state_lock`;
+  2. Xác thực attestation freshness tuân thủ đúng cấu trúc cây Git DAG cho phép (Direct HEAD hoặc Parent-plus-wrapper với wrapper tại HEAD), loại bỏ hoàn toàn quan hệ thuộc tập hợp `{HEAD, HEAD^}` lỏng lẻo;
+  3. Đột biến phức hợp khi `create_dispatch` là một giao dịch nguyên tử đa tiến trình duy nhất trên `SharedOrcaExecutionRegistry` qua `register_dispatch_and_orca_task`, tự động rollback sạch sẽ và loại bỏ triệt để orphan dispatch binding khi có tranh chấp;
+  4. Bộ kiểm thử tự động đạt 165/165 tests PASS; `validate.py --audit` và `--release` PASS 100%.
 - Orca là execution/communication plane. Dely chỉ quản lý implement → independent review bên trong task đã có authority. Dely implement: Codex CLI / `ag/gemini-3.8-flash-high` / `high`; review: Claude Code / `cx/gpt-5.6-sol-high` / `high`. Supreme audit `cx/gpt-6-astra-medium` / `medium` nằm ngoài Dely và chỉ cho audit cực khó.
 - Rollback reference trước thí nghiệm: `D:/AI_SETUP/backups/AI-Auto-Video-Creator/20260928-175542`; đây không phải bằng chứng G05 PASS.
 
