@@ -13,13 +13,16 @@ from __future__ import annotations
 
 import fnmatch
 import hashlib
+import json
 import os
 import re
 import subprocess
+import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 try:
     import yaml
@@ -991,6 +994,20 @@ class LeaseManager:
                 f"No active lease found for resource {resource_key!r} with fencing token {fencing_token}"
             )
         lease_obj = matching[0]
+
+        # Multi-slot capacity validation: every slot has its own monotonic generation.
+        # A lease remains valid only when all its exact slot tokens are current, including asymmetric reuse.
+        if lease_obj.allocated_slots:
+            for s in lease_obj.allocated_slots:
+                s_key = f"{lease_obj.lock_id}:slot_{s}"
+                exp_s = self.fencing_counters.get(s_key)
+                rec_s = lease_obj.slot_fencing_tokens.get(s)
+                if exp_s is None or rec_s is None or rec_s != exp_s:
+                    raise LockLeaseError(
+                        f"Stale slot token for slot {s} in capacity lock {lease_obj.lock_id}: "
+                        f"lease recorded {rec_s}, current counter is {exp_s} (asymmetric slot reallocation detected)"
+                    )
+
         if lease_obj.expires_at:
             try:
                 exp_dt = datetime.fromisoformat(lease_obj.expires_at)
@@ -1016,9 +1033,9 @@ LEGAL_TASK_STATE_TRANSITIONS: Dict[str, Set[str]] = {
     "planned": {"waiting_dependency", "ready", "cancelled"},
     "waiting_dependency": {"ready", "cancelled"},
     "ready": {"dispatched", "cancelled"},
-    "dispatched": {"acknowledged", "running", "review", "needs_replan", "blocked", "stopped"},
-    "acknowledged": {"running", "review", "needs_replan", "blocked", "stopped"},
-    "running": {"review", "needs_replan", "blocked", "stopped"},
+    "dispatched": {"acknowledged", "blocked", "stopped", "needs_replan", "cancelled"},
+    "acknowledged": {"running", "blocked", "stopped", "needs_replan", "cancelled"},
+    "running": {"review", "needs_replan", "blocked", "stopped", "cancelled"},
     "blocked": {"ready", "stopped"},
     "needs_replan": {"planned", "stopped"},
     "review": {"merge_queued", "remediation", "blocked"},
@@ -1043,70 +1060,233 @@ class DispatchBinding:
     settled: bool = False
 
 
+class _FileLock:
+    """Portable atomic file locking mechanism for cross-process registry safety."""
+
+    def __init__(self, lock_path: Path, timeout: float = 5.0):
+        self.lock_path = lock_path
+        self.timeout = timeout
+        self.fd: Optional[int] = None
+
+    def __enter__(self):
+        start = time.time()
+        while True:
+            try:
+                self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+                self.fd = os.open(str(self.lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR)
+                return self
+            except (FileExistsError, PermissionError):
+                if time.time() - start > self.timeout:
+                    try:
+                        mtime = self.lock_path.stat().st_mtime
+                        if time.time() - mtime > self.timeout * 2:
+                            self.lock_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                time.sleep(0.01)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.fd is not None:
+            try:
+                os.close(self.fd)
+            except OSError:
+                pass
+            try:
+                self.lock_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 class SharedOrcaExecutionRegistry:
-    """Durable ledger/registry tracking Orca task IDs and dispatch IDs globally
-    across all OrcaDeliveryAdapter instances.
+    """Process-durable ledger/registry tracking Orca task IDs and dispatch IDs globally
+    across all OrcaDeliveryAdapter instances with explicit storage path, atomic persistence,
+    and locking semantics.
     """
     _default_instance: Optional[SharedOrcaExecutionRegistry] = None
+    _default_storage_path: Optional[Path] = None
 
-    def __init__(self):
+    def __init__(self, storage_path: Optional[Union[str, Path]] = None):
+        self.storage_path: Optional[Path] = Path(storage_path) if storage_path else self._default_storage_path
+        self._lock = threading.RLock()
         self.seen_orca_task_ids: Set[str] = set()
         self.seen_dispatch_ids: Set[str] = set()
         self.settled_dispatches: Set[str] = set()
         self.orca_task_to_delivery_task: Dict[str, str] = {}
         self.dispatch_bindings: Dict[str, DispatchBinding] = {}
 
+        if self.storage_path and self.storage_path.is_file():
+            self._load_from_storage()
+
     @classmethod
-    def get_default(cls) -> SharedOrcaExecutionRegistry:
+    def set_default_storage_path(cls, path: Optional[Union[str, Path]]) -> None:
+        cls._default_storage_path = Path(path) if path else None
+
+    @classmethod
+    def get_default(cls, storage_path: Optional[Union[str, Path]] = None) -> SharedOrcaExecutionRegistry:
         if cls._default_instance is None:
-            cls._default_instance = cls()
+            effective_path = storage_path or cls._default_storage_path
+            cls._default_instance = cls(storage_path=effective_path)
         return cls._default_instance
 
     @classmethod
-    def reset_default(cls) -> None:
-        cls._default_instance = cls()
+    def reset_default(cls, storage_path: Optional[Union[str, Path]] = None) -> None:
+        effective_path = Path(storage_path) if storage_path else cls._default_storage_path
+        if effective_path and effective_path.is_file():
+            try:
+                effective_path.unlink()
+            except OSError:
+                pass
+            lock_p = effective_path.with_name(f"{effective_path.name}.lock")
+            if lock_p.is_file():
+                try:
+                    lock_p.unlink()
+                except OSError:
+                    pass
+        cls._default_instance = cls(storage_path=effective_path)
+
+    def clear(self) -> None:
+        with self._lock:
+            self.seen_orca_task_ids.clear()
+            self.seen_dispatch_ids.clear()
+            self.settled_dispatches.clear()
+            self.orca_task_to_delivery_task.clear()
+            self.dispatch_bindings.clear()
+            if self.storage_path and self.storage_path.is_file():
+                try:
+                    self.storage_path.unlink()
+                except OSError:
+                    pass
+
+    def _get_lock_path(self) -> Optional[Path]:
+        if self.storage_path:
+            return self.storage_path.with_name(f"{self.storage_path.name}.lock")
+        return None
+
+    def _load_from_storage(self) -> None:
+        if not self.storage_path or not self.storage_path.is_file():
+            return
+        with self._lock:
+            try:
+                data = json.loads(self.storage_path.read_text(encoding="utf-8"))
+                self.seen_orca_task_ids = set(data.get("seen_orca_task_ids", []))
+                self.seen_dispatch_ids = set(data.get("seen_dispatch_ids", []))
+                self.settled_dispatches = set(data.get("settled_dispatches", []))
+                self.orca_task_to_delivery_task = dict(data.get("orca_task_to_delivery_task", {}))
+                self.dispatch_bindings = {}
+                for d_id, b_data in data.get("dispatch_bindings", {}).items():
+                    self.dispatch_bindings[d_id] = DispatchBinding(
+                        delivery_task_id=b_data.get("delivery_task_id", ""),
+                        orca_task_id=b_data.get("orca_task_id", ""),
+                        dispatch_id=b_data.get("dispatch_id", d_id),
+                        candidate_commit=b_data.get("candidate_commit"),
+                        fencing_token=b_data.get("fencing_token"),
+                        lease_id=b_data.get("lease_id"),
+                        lease_ids=b_data.get("lease_ids", []),
+                        authority_state=b_data.get("authority_state", "granted"),
+                        settled=b_data.get("settled", False),
+                    )
+            except Exception as exc:
+                raise ProtocolViolationError(f"Failed to load execution registry from {self.storage_path}: {exc}")
+
+    def _persist(self) -> None:
+        if not self.storage_path:
+            return
+        lock_path = self._get_lock_path()
+        lock_ctx = _FileLock(lock_path) if lock_path else None
+        with self._lock:
+            if lock_ctx:
+                with lock_ctx:
+                    self._persist_atomic()
+            else:
+                self._persist_atomic()
+
+    def _persist_atomic(self) -> None:
+        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = self.storage_path.with_name(
+            f"{self.storage_path.name}.tmp.{os.getpid()}_{time.time_ns()}"
+        )
+        data = {
+            "seen_orca_task_ids": sorted(self.seen_orca_task_ids),
+            "seen_dispatch_ids": sorted(self.seen_dispatch_ids),
+            "settled_dispatches": sorted(self.settled_dispatches),
+            "orca_task_to_delivery_task": self.orca_task_to_delivery_task,
+            "dispatch_bindings": {
+                d_id: {
+                    "delivery_task_id": b.delivery_task_id,
+                    "orca_task_id": b.orca_task_id,
+                    "dispatch_id": b.dispatch_id,
+                    "candidate_commit": b.candidate_commit,
+                    "fencing_token": b.fencing_token,
+                    "lease_id": b.lease_id,
+                    "lease_ids": b.lease_ids,
+                    "authority_state": b.authority_state,
+                    "settled": b.settled,
+                }
+                for d_id, b in self.dispatch_bindings.items()
+            },
+        }
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, self.storage_path)
 
     def register_orca_task(self, orca_task_id: str, delivery_task_id: str) -> None:
-        if not orca_task_id or not isinstance(orca_task_id, str) or not orca_task_id.strip():
-            raise ProtocolViolationError("orca_task_id cannot be blank")
-        clean_id = orca_task_id.strip()
-        if clean_id in self.seen_orca_task_ids:
-            other = self.orca_task_to_delivery_task.get(clean_id)
-            if other and other != delivery_task_id:
+        with self._lock:
+            if self.storage_path and self.storage_path.is_file():
+                self._load_from_storage()
+            if not orca_task_id or not isinstance(orca_task_id, str) or not orca_task_id.strip():
+                raise ProtocolViolationError("orca_task_id cannot be blank")
+            clean_id = orca_task_id.strip()
+            if clean_id in self.seen_orca_task_ids:
+                other = self.orca_task_to_delivery_task.get(clean_id)
+                if other and other != delivery_task_id:
+                    raise ProtocolViolationError(
+                        f"Orca task ID {clean_id!r} is already assigned to delivery task {other!r}; global reuse across adapter instances is forbidden"
+                    )
                 raise ProtocolViolationError(
-                    f"Orca task ID {clean_id!r} is already assigned to delivery task {other!r}; global reuse across adapter instances is forbidden"
+                    f"Orca task ID {clean_id!r} has already been registered or used; global reuse across adapter instances is forbidden"
                 )
-            raise ProtocolViolationError(
-                f"Orca task ID {clean_id!r} has already been registered or used; global reuse across adapter instances is forbidden"
-            )
-        self.seen_orca_task_ids.add(clean_id)
-        self.orca_task_to_delivery_task[clean_id] = delivery_task_id
+            self.seen_orca_task_ids.add(clean_id)
+            self.orca_task_to_delivery_task[clean_id] = delivery_task_id
+            self._persist()
 
     def register_dispatch_binding(self, dispatch_id: str, binding: DispatchBinding) -> None:
-        if not dispatch_id or not isinstance(dispatch_id, str) or not dispatch_id.strip():
-            raise ProtocolViolationError("dispatch_id cannot be blank")
-        clean_id = dispatch_id.strip()
-        if (
-            clean_id in self.seen_dispatch_ids
-            or clean_id in self.settled_dispatches
-            or clean_id in self.dispatch_bindings
-        ):
-            raise ProtocolViolationError(
-                f"Duplicate dispatch binding overwrite: dispatch ID {clean_id!r} is already bound or settled; global reuse is forbidden"
-            )
-        self.seen_dispatch_ids.add(clean_id)
-        self.dispatch_bindings[clean_id] = binding
+        with self._lock:
+            if self.storage_path and self.storage_path.is_file():
+                self._load_from_storage()
+            if not dispatch_id or not isinstance(dispatch_id, str) or not dispatch_id.strip():
+                raise ProtocolViolationError("dispatch_id cannot be blank")
+            clean_id = dispatch_id.strip()
+            if (
+                clean_id in self.seen_dispatch_ids
+                or clean_id in self.settled_dispatches
+                or clean_id in self.dispatch_bindings
+            ):
+                raise ProtocolViolationError(
+                    f"Duplicate dispatch binding overwrite: dispatch ID {clean_id!r} is already bound or settled; global reuse is forbidden"
+                )
+            self.seen_dispatch_ids.add(clean_id)
+            self.dispatch_bindings[clean_id] = binding
+            self._persist()
 
     def is_dispatch_settled(self, dispatch_id: str) -> bool:
-        return dispatch_id.strip() in self.settled_dispatches
+        with self._lock:
+            if self.storage_path and self.storage_path.is_file():
+                self._load_from_storage()
+            return dispatch_id.strip() in self.settled_dispatches
 
     def settle_dispatch(self, dispatch_id: str) -> None:
-        clean_id = dispatch_id.strip()
-        if clean_id in self.settled_dispatches:
-            raise DuplicateResultError(f"Duplicate worker_done for already settled dispatch {clean_id}")
-        self.settled_dispatches.add(clean_id)
-        if clean_id in self.dispatch_bindings:
-            self.dispatch_bindings[clean_id].settled = True
+        with self._lock:
+            if self.storage_path and self.storage_path.is_file():
+                self._load_from_storage()
+            clean_id = dispatch_id.strip()
+            if clean_id in self.settled_dispatches:
+                raise DuplicateResultError(f"Duplicate worker_done for already settled dispatch {clean_id}")
+            self.settled_dispatches.add(clean_id)
+            if clean_id in self.dispatch_bindings:
+                self.dispatch_bindings[clean_id].settled = True
+            self._persist()
 
 
 class OrcaDeliveryAdapter:
@@ -1132,7 +1312,7 @@ class OrcaDeliveryAdapter:
         self.lease_mgr = lease_manager
         self.approved_candidate_commit = clean_commit
         self.git_root = git_root
-        self.registry = registry if registry is not None else SharedOrcaExecutionRegistry()
+        self.registry = registry if registry is not None else SharedOrcaExecutionRegistry.get_default()
         self.task_states: Dict[str, str] = {}
         self.task_authorities: Dict[str, str] = {}
         self.active_dispatches: Dict[str, str] = {}  # delivery_task_id -> current dispatch_id
@@ -1231,9 +1411,10 @@ class OrcaDeliveryAdapter:
                 f"Dispatch {clean_disp} is not the active dispatch for {clean_tid} (active is {active!r})"
             )
         current = self.get_task_state(clean_tid)
-        if current not in ("dispatched", "acknowledged"):
+        if current != "acknowledged":
             raise ProtocolViolationError(
-                f"Cannot start running task {clean_tid} in state {current!r}; must be 'dispatched' or 'acknowledged'"
+                f"Cannot start running task {clean_tid} in state {current!r}; "
+                f"mandatory lifecycle requires state 'acknowledged' (cannot skip acknowledged stage)"
             )
         self.transition_task_state(clean_tid, "running")
 
@@ -1405,15 +1586,31 @@ class OrcaDeliveryAdapter:
                         f"Lease {lid} is already bound to dispatch {prev_disp_id}; lease reuse across dispatches is forbidden"
                     )
 
-        # Dispatch proves the complete declared task lock set, not one representative lease
-        declared_locks = set(self.declared_task_locks.get(delivery_task_id, []))
-        if declared_locks:
-            leased_locks = {self.lease_mgr.active_leases[lid].lock_id for lid in all_leases}
+        # Mandatory declared_task_locks registration and exact complete lock set before dispatch
+        if delivery_task_id not in self.declared_task_locks:
+            raise ProtocolViolationError(
+                f"Task {delivery_task_id} has no registered declared_task_locks; "
+                f"declared_task_locks registration is mandatory before dispatch"
+            )
+        declared_locks = set(self.declared_task_locks[delivery_task_id])
+        if not declared_locks:
+            raise ProtocolViolationError(
+                f"Task {delivery_task_id} declared empty declared_task_locks; "
+                f"tasks must declare at least one resource lock before dispatch"
+            )
+        leased_locks = {self.lease_mgr.active_leases[lid].lock_id for lid in all_leases}
+        if leased_locks != declared_locks:
             missing = declared_locks - leased_locks
+            extraneous = leased_locks - declared_locks
+            err_parts = []
             if missing:
-                raise ProtocolViolationError(
-                    f"Task {delivery_task_id} declared locks {sorted(declared_locks)} but dispatch only proved {sorted(leased_locks)}; missing locks: {sorted(missing)}. Dispatch must prove the complete declared task lock set."
-                )
+                err_parts.append(f"missing locks: {sorted(missing)}")
+            if extraneous:
+                err_parts.append(f"extraneous locks: {sorted(extraneous)}")
+            raise ProtocolViolationError(
+                f"Task {delivery_task_id} declared locks {sorted(declared_locks)} but dispatch proved {sorted(leased_locks)}; "
+                f"{'; '.join(err_parts)}. Dispatch must prove the complete declared task lock set."
+            )
 
         dispatch_id = intended_dispatch_id
 
@@ -1490,11 +1687,13 @@ class OrcaDeliveryAdapter:
         if self.registry.is_dispatch_settled(dispatch_id):
             raise DuplicateResultError(f"Duplicate worker_done for already settled dispatch {dispatch_id}")
 
-        # Task must be in an active execution state: 'dispatched', 'acknowledged', or 'running'
+        # Mandatory lifecycle path: task must be in 'running' state
         current_state = self.get_task_state(delivery_task_id)
-        if current_state not in ("dispatched", "acknowledged", "running"):
+        if current_state != "running":
             raise ProtocolViolationError(
-                f"Cannot complete worker_done for task {delivery_task_id} in state {current_state!r}; must be 'dispatched', 'acknowledged', or 'running'"
+                f"Cannot complete worker_done for task {delivery_task_id} in state {current_state!r}; "
+                f"mandatory lifecycle requires state 'running' (cannot skip acknowledged/running stages; "
+                f"previously must be 'dispatched', 'acknowledged', or 'running')"
             )
 
         # Authority re-check on worker_done: revocation blocks mutation/settlement
@@ -1587,9 +1786,15 @@ class OrcaDeliveryAdapter:
                     del self.lease_mgr.active_leases[lid]
                     raise ProtocolViolationError(f"Bound lease {lid} has invalid expires_at format")
 
-        if binding.lease_id and binding.lease_id in self.lease_mgr.active_leases:
-            bound_lease = self.lease_mgr.active_leases[binding.lease_id]
-            self.lease_mgr.validate_fencing_token(bound_lease.resource_key, fencing_token, now=now_dt)
+        for lid in binding_leases:
+            if lid in self.lease_mgr.active_leases:
+                bound_lease = self.lease_mgr.active_leases[lid]
+                self.lease_mgr.validate_fencing_token(
+                    bound_lease.resource_key,
+                    fencing_token if lid == binding.lease_id else bound_lease.fencing_token,
+                    now=now_dt,
+                    active_lease_id=lid,
+                )
 
         # Settle the dispatch attempt in durable registry
         self.registry.settle_dispatch(dispatch_id)
@@ -1875,11 +2080,18 @@ class HarnessExecutionStateMachine:
 
     @current_state.setter
     def current_state(self, val: str) -> None:
-        if val not in self.LEGAL_STATES:
-            raise HarnessCompatibilityError(
-                f"Illegal direct state {val!r}; legal states: {sorted(self.LEGAL_STATES)}"
-            )
-        self._current_state = val
+        raise HarnessCompatibilityError(
+            f"Illegal direct state assignment to {val!r}: direct harness state assignment is forbidden; "
+            f"transitions must occur only through legal methods (transition())"
+        )
+
+    def reset(self) -> None:
+        """Reset state machine to IDLE through legal transition method."""
+        if self._current_state in ("SUCCESS", "FAILURE", "STOP_FALLBACK"):
+            self.transition("IDLE", "Reset to IDLE")
+        else:
+            self._current_state = "IDLE"
+            self.transitions.clear()
 
     def transition(self, to_state: str, reason: str) -> None:
         if to_state not in self.LEGAL_STATES:
@@ -1903,7 +2115,7 @@ class HarnessExecutionStateMachine:
         execution_time_ms: float = 0.0,
     ) -> HarnessExecutionResult:
         if self._current_state != "IDLE":
-            self.current_state = "IDLE"
+            self.reset()
         self.transition("RUNNING", "Started harness tool evaluation")
 
         if not isinstance(tool_name, str) or not tool_name.strip():

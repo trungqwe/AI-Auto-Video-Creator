@@ -239,6 +239,21 @@ orca orchestration send --from <worker_terminal> --dispatch-capability <dcap> --
     - Gia hạn lease bị chặn nếu tổng thời gian gia hạn tích lũy vượt quá `max_cumulative_seconds` hoặc số lần gia hạn vượt quá `max_renewals`.
 18. **Cấm tái chiếm giữ lease cho task đã tích hợp và từ chối ID rỗng**:
     - Task đã được đánh dấu tích hợp (`mark_task_integrated`) bị cấm vĩnh viễn không được tái chiếm giữ lease. Từ chối fail-closed mọi định danh rỗng/whitespace ở mọi thao tác lock/lease/dispatch.
+19. **Bền vững tiến trình qua Shared Execution Registry lưu đĩa nguyên tử**:
+    - `SharedOrcaExecutionRegistry` hỗ trợ lưu đĩa bền vững (`storage_path`) với ghi đĩa atomic (`.tmp` + `fsync` + `os.replace`) và khóa tệp cross-process (`_FileLock`).
+    - Tính duy nhất của task ID và dispatch ID tồn tại qua quá trình restart tiến trình; đường dẫn mặc định luôn dùng shared registry, cấm tạo registry in-memory mới ngầm trong production path.
+20. **Xác thực thế hệ từng slot trong Capacity đa slot và chặn tái sử dụng bất đối xứng**:
+    - Mỗi slot sở hữu thế hệ tăng đơn điệu độc lập. Lease đa slot chỉ hợp lệ khi toàn bộ các slot đều giữ đúng token hiện hành.
+    - Bất kỳ sự tái cấp phát bất đối xứng của một slot đơn lẻ đều lập tức vô hiệu hóa lease cũ.
+21. **Bắt buộc tuyến vòng đời tác vụ đầy đủ (Không bỏ qua ACK hoặc Running)**:
+    - Bắt buộc tuân thủ đúng thứ tự: `ready -> dispatched -> acknowledged -> running -> worker_done`.
+    - Cấm nhảy trực tiếp từ `dispatched` sang `running` hoặc sang `worker_done`. `handle_worker_done` chỉ chấp nhận tác vụ ở trạng thái `running`.
+22. **Bắt buộc đăng ký `declared_task_locks` và chứng minh tập hợp lock khớp chính xác**:
+    - Mọi tác vụ bắt buộc phải đăng ký `declared_task_locks` trước khi dispatch; cấm dispatch tác vụ chưa khai báo lock.
+    - Tập hợp lock được chứng minh qua active leases bắt buộc phải trùng khớp hoàn toàn với `declared_task_locks` (không thiếu, không thừa).
+23. **Cấm gán trực tiếp trạng thái trên Harness Execution State Machine**:
+    - Thuộc tính `@current_state.setter` từ chối mọi nỗ lực gán trạng thái trực tiếp bằng cách raise `HarnessCompatibilityError`.
+    - Mọi chuyển dịch trạng thái bắt buộc thông qua phương thức hợp lệ `transition()` hoặc `reset()`.
 
 ## 8. Review/remediation protocol
 
@@ -257,14 +272,16 @@ Finding trong contract đi một remediation pass bởi original implementer v�
 - Sequence tăng đơn điệu theo dispatch.
 - Old lease/recovery epoch/fencing token không mutation.
 - Toàn bộ mutation lease phải được đóng ngay khi worker_done thành công, trước khi vào review.
-- Không tái sử dụng Orca task ID hoặc dispatch ID trên toàn hệ thống (kể cả settled attempts) thông qua SharedOrcaExecutionRegistry.
+- Không tái sử dụng Orca task ID hoặc dispatch ID trên toàn hệ thống (kể cả settled attempts) thông qua SharedOrcaExecutionRegistry bền vững tiến trình.
 - Candidate commit bắt buộc khớp tuyệt đối với approved candidate và HEAD hiện hành của repository Git.
 - Intended dispatch ID là bắt buộc và không ghi đè active lease dispatch ID.
-- Dispatch bắt buộc chứng minh đầy đủ tập hợp lock đã khai báo cho task.
+- Dispatch bắt buộc chứng minh chính xác và đầy đủ toàn bộ tập hợp lock đã khai báo cho task (`declared_task_locks`).
+- Bắt buộc tuân thủ chu trình vòng đời: `ready -> dispatched -> acknowledged -> running -> worker_done` mà không bỏ qua bước ACK hoặc running.
+- Mọi capacity lease đa slot bắt buộc bảo lưu và xác thực thế hệ đơn điệu cho từng slot; phát hiện và từ chối tái cấp phát bất đối xứng.
 - Không nới rộng thời hạn lease vượt quá định nghĩa đã khai báo và không gia hạn vượt quá max_cumulative_seconds hoặc max_renewals.
 - Không cho phép lock không khai báo trong lock registry hoặc task DAG.
 - Cấm tái chiếm giữ lease cho các task đã ở trạng thái integrated.
-- Cấm các trường mâu thuẫn trong HarnessExecutionResult và cấm gán trực tiếp trạng thái bất hợp pháp trong HarnessExecutionStateMachine.
+- Cấm các trường mâu thuẫn trong HarnessExecutionResult và cấm gán trực tiếp trạng thái bất hợp pháp trong HarnessExecutionStateMachine (chỉ chuyển qua transition hoặc reset).
 - Không heartbeat sau `worker_done`.
 - Không review cùng working tree khi worker đang mutation.
 - Không merge nếu candidate SHA khác SHA được review.

@@ -82,10 +82,12 @@ Không được dùng ví dụ này để mở M2-P8/P9 hoặc M3+.
 - **Khai báo lock khác Active Lease**: Việc khai báo `resource_locks` trong định nghĩa task chỉ là danh mục yêu cầu tĩnh. Chỉ có active lease đang sống (chưa hết hạn) mới chiếm giữ tài nguyên. Task ở trạng thái `integrated` hoặc đã đóng không giữ active lease nào và không chặn các task tiếp theo.
 - **Tài nguyên phân vùng (Partitionable) và Capacity**:
   - `LOCK-POSTGRES-TEST-DB` (`exclusive_by_database_name`): Các task dùng namespace database tách rời (`db:ns1` và `db:ns2`) được cấp lease đồng thời không xung đột. Kiểm tra va chạm phân vùng là đối xứng hai chiều (`namespaces_overlap`): namespace cha (ví dụ `db:analytics`) chặn namespace con (ví dụ `db:analytics:us_east`) và ngược lại.
-  - `LOCK-DESKTOP-GPU` (`capacity`): Cấp phát theo đơn vị định mức (unit); vượt quá tổng dung lượng (over-capacity) sẽ bị từ chối fail-closed. Khi yêu cầu đa đơn vị (`units > 1`), hệ thống bảo lưu và cấp phát monotonic fencing token độc lập cho từng slot trong mảng `allocated_slots`.
-- **Chính sách gia hạn tích lũy và cấm tái chiếm giữ lease**:
+  - `LOCK-DESKTOP-GPU` (`capacity`): Cấp phát theo đơn vị định mức (unit); vượt quá tổng dung lượng (over-capacity) sẽ bị từ chối fail-closed. Khi yêu cầu đa đơn vị (`units > 1`), hệ thống bảo lưu và cấp phát monotonic fencing token độc lập cho từng slot trong mảng `allocated_slots`. Mỗi slot duy trì thế hệ tăng đơn điệu độc lập; một lease chỉ hợp lệ khi toàn bộ các slot được cấp phát giữ đúng token hiện hành, ngăn chặn triệt để tái sử dụng bất đối xứng (asymmetric reuse).
+- **Chính sách gia hạn tích lũy, đăng ký lock bắt buộc và cấm tái chiếm giữ lease**:
+  - Tác vụ bắt buộc phải đăng ký danh sách `declared_task_locks` trước khi dispatch; khi dispatch bắt buộc chứng minh chính xác và đầy đủ toàn bộ tập hợp lock này thông qua active leases.
   - Gia hạn lease không được vượt quá thời gian gia hạn tích lũy tối đa (`max_cumulative_seconds`) hoặc số lần gia hạn tối đa (`max_renewals`) đã quy định trong cấu hình lock.
   - Task đã hoàn tất tích hợp (`integrated`) bị cấm vĩnh viễn không được tái chiếm giữ lease. Mọi thao tác quản lý lease từ chối chuỗi định danh rỗng/whitespace fail-closed.
+  - Tính duy nhất của Orca task ID và dispatch ID được bảo toàn bền vững xuyên suốt tiến trình thông qua `SharedOrcaExecutionRegistry` với cơ chế khóa atomic và ghi đĩa bền vững.
 - **Exact Contract Binding**: Mỗi contract ID ràng buộc chặt chẽ với registry có source file định nghĩa nó. `CT-AI-ROUTE-*` thuộc về `CONTRACT-CONFIG-SECURITY` (owner `J`), tuyệt đối không bị chiếm bởi `CONTRACT-CREATIVE-AI` (owner `D`).
 - Contract owner phát hành revision frozen trước consumer task.
 - Consumer chỉ implement trên exact revision; unsupported version phải fail closed.

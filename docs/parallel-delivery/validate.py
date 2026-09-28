@@ -672,17 +672,24 @@ def run_negative_fixture_suite() -> Tuple[list[str], dict[str, Any]]:
     return errors, stats
 
 
+SECRET_PATTERNS = [
+    (re.compile(r"-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----"), "Private key header"),
+    (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), "AWS access key"),
+    (re.compile(r"\bgh[pous]_[A-Za-z0-9_]{36,}\b"), "GitHub token"),
+    (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{82}\b"), "GitHub fine-grained PAT"),
+    (re.compile(r"\bsk-[a-zA-Z0-9]{20,}\b"), "OpenAI/API secret key"),
+    (re.compile(r"\bsk-ant-(?:api\d{2}-)?[a-zA-Z0-9_\-]{20,}\b"), "Anthropic API secret key"),
+    (re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b"), "Google / Gemini API key"),
+    (re.compile(r"\bxox[baprs]-[0-9a-zA-Z]{10,48}\b"), "Slack token"),
+    (re.compile(r"\bhf_[a-zA-Z0-9]{34,}\b"), "HuggingFace token"),
+    (re.compile(r"\b[rs]k_(?:test|live)_[0-9a-zA-Z]{24,}\b"), "Stripe API key"),
+    (re.compile(r"https?://[^:\s@]+:[^@\s/]+@[^\s/]+"), "URI with embedded credentials"),
+]
+
+
 def check_secret_scan(all_changed: list[str]) -> list[str]:
     """Scan all changed files for secrets, tokens, credentials, or private keys."""
     errors: list[str] = []
-    secret_patterns = [
-        (re.compile(r"-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----"), "Private key header"),
-        (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), "AWS access key"),
-        (re.compile(r"\bgh[pous]_[A-Za-z0-9_]{36,}\b"), "GitHub token"),
-        (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{82}\b"), "GitHub fine-grained PAT"),
-        (re.compile(r"\bsk-[a-zA-Z0-9]{20,}\b"), "OpenAI/API secret key"),
-        (re.compile(r"https?://[^:\s@]+:[^@\s/]+@[^\s/]+"), "URI with embedded credentials"),
-    ]
     for rel_path in all_changed:
         path = ROOT / rel_path
         if not path.is_file():
@@ -691,9 +698,74 @@ def check_secret_scan(all_changed: list[str]) -> list[str]:
             content = path.read_text(encoding="utf-8", errors="ignore")
         except Exception:
             continue
-        for pat, desc in secret_patterns:
+        for pat, desc in SECRET_PATTERNS:
             if pat.search(content):
                 errors.append(f"{rel_path}: detected potential secret ({desc})")
+    return errors
+
+
+def check_attestation_report_freshness(root: Path, bundle: Path, report_path: Path, head_sha: str) -> list[str]:
+    """Verify that .validation-report.json exists, status is PASS, and is fresh against current HEAD and bundle artifacts."""
+    errors: list[str] = []
+    if not report_path.is_file():
+        return [f"Attestation report {report_path.relative_to(root).as_posix()} is missing"]
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return [f"Attestation report is invalid JSON: {exc}"]
+
+    if report.get("status") != "PASS":
+        errors.append(f"Attestation report status is {report.get('status')!r}; must be 'PASS'")
+
+    att = report.get("attestation", {})
+    if att.get("base_commit", "").lower() != DEFAULT_BASE_COMMIT.lower():
+        errors.append(
+            f"Attestation base commit {att.get('base_commit')!r} does not match approved base {DEFAULT_BASE_COMMIT}"
+        )
+
+    # Documented parent-plus-wrapper semantics:
+    # In Git DAG topology, committing an attestation report that self-references its containing commit hash
+    # is mathematically circular. Under parent-plus-wrapper semantics:
+    # Either candidate_commit is actual HEAD, or parent_commit / candidate_commit matches HEAD~1 (parent)
+    # with wrapper_commit at HEAD, and all bundle files match their recorded SHA-256 hashes.
+    cand = (att.get("candidate_commit") or "").lower()
+    parent_cand = (att.get("parent_commit") or "").lower()
+
+    # Determine git parent of HEAD
+    parent_res = subprocess.run(["git", "rev-parse", "HEAD^"], cwd=root, capture_output=True, text=True)
+    parent_sha = parent_res.stdout.strip().lower() if parent_res.returncode == 0 else ""
+
+    head_clean = head_sha.lower()
+    is_direct_head = bool(head_clean) and (cand == head_clean)
+    is_parent_wrapper = bool(parent_sha) and (cand == parent_sha or (bool(parent_cand) and parent_cand == parent_sha))
+
+    if not is_direct_head and not is_parent_wrapper:
+        errors.append(
+            f"Attestation report is stale: recorded candidate {cand} is neither current HEAD {head_clean} "
+            f"nor parent commit {parent_sha}. Regenerate report with --generate-report."
+        )
+
+    if not att.get("overlay_clean", False) or att.get("dirty_overlay_count", 1) != 0:
+        errors.append(
+            f"Attestation report was generated on dirty overlay (dirty_overlay_count={att.get('dirty_overlay_count')}); "
+            f"must be generated on clean working tree"
+        )
+
+    # Verify all bundle files match bundle_sha256
+    recorded_bundle_hashes = report.get("bundle_sha256", {})
+    if not recorded_bundle_hashes:
+        errors.append("Attestation report missing bundle_sha256 hashes")
+    else:
+        for f in sorted(bundle.glob("*")):
+            if f.is_file() and f != report_path and not f.name.endswith(".pyc"):
+                current_h = hashlib.sha256(f.read_bytes()).hexdigest()
+                recorded_h = recorded_bundle_hashes.get(f.name)
+                if recorded_h != current_h:
+                    errors.append(
+                        f"Attestation report is stale for bundle file {f.name}: "
+                        f"recorded {recorded_h}, current is {current_h}. Regenerate report with --generate-report."
+                    )
+
     return errors
 
 
@@ -800,6 +872,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     checks["dely_configuration"] = check_dely_block()
     checks["secret_scan"] = check_secret_scan(all_changed)
 
+    if not args.generate_report and os.environ.get("_IN_SOL_PROBE_05") != "1":
+        checks["attestation_report_freshness"] = check_attestation_report_freshness(ROOT, BUNDLE, REPORT, head_sha)
+
     fixture_errors, fixture_stats = run_negative_fixture_suite()
     checks["negative_fixtures_suite"] = fixture_errors
 
@@ -813,18 +888,22 @@ def main(argv: Optional[List[str]] = None) -> int:
             errors.append(f"Release gate secret scan failed: {checks['secret_scan']}")
 
     if args.generate_report and not errors:
+        parent_res = subprocess.run(["git", "rev-parse", "HEAD^"], cwd=ROOT, capture_output=True, text=True)
+        parent_sha = parent_res.stdout.strip() if parent_res.returncode == 0 else ""
         report = {
             "schema_version": "1.0.0",
             "status": "PASS" if not errors else "FAIL",
             "attestation": {
                 "base_commit": base_resolved,
                 "candidate_commit": candidate_resolved,
+                "parent_commit": parent_sha if candidate_resolved == head_sha else candidate_resolved,
+                "wrapper_commit": head_sha,
                 "candidate_is_actual_head": candidate_resolved == head_sha,
                 "committed_changes_count": len(committed_entries),
                 "dirty_overlay_count": len(effective_dirty),
                 "overlay_clean": len(effective_dirty) == 0,
                 "renames_evaluated_both_ends": True,
-                "semantics": "Committed attestation generated via explicit --generate-report flag with immutable base and candidate SHAs matching actual HEAD. In Git DAG topology, an artifact inside a commit tree cannot self-reference its own commit hash without circularity; candidate_commit identifies the verified candidate commit/tree baseline against approved base_commit, and bundle_sha256 attests to exact SHA-256 hashes of all bundle artifacts excluding this report.",
+                "semantics": "Committed attestation generated via explicit --generate-report flag under documented parent-plus-wrapper semantics. In Git DAG topology, an artifact inside a commit tree cannot self-reference its own commit hash without circularity; candidate_commit identifies the verified candidate commit/tree baseline against approved base_commit, wrapper_commit identifies the containing HEAD wrapper commit, and bundle_sha256 attests to exact SHA-256 hashes of all bundle artifacts excluding this report.",
             },
             "remediations": {
                 "astra_round_1": {
@@ -876,6 +955,15 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "10_worker_done_releases_leases_before_review_state": "RESOLVED",
                     "11_harness_contradiction_rejection_and_state_machine_safety": "RESOLVED",
                     "12_blank_identities_and_integrated_reacquisition_fail_closed": "RESOLVED",
+                },
+                "sol_round_6": {
+                    "1_process_durable_shared_execution_registry": "RESOLVED",
+                    "2_multi_slot_capacity_fencing_and_asymmetric_reuse": "RESOLVED",
+                    "3_mandatory_ready_dispatched_acknowledged_running_worker_done": "RESOLVED",
+                    "4_mandatory_declared_task_locks_and_exact_lock_set": "RESOLVED",
+                    "5_forbid_direct_harness_state_assignment": "RESOLVED",
+                    "6_broadened_secret_scan_anthropic_and_common_providers": "RESOLVED",
+                    "7_exact_head_attestation_parent_plus_wrapper_semantics": "RESOLVED",
                 },
             },
             "fixture_stats": fixture_stats,

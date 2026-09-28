@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 6 (Process-Durable Registry & Hardened Protocol Invariants)
+
+- Khắc phục toàn diện 7 phát hiện/blockers từ `cx/gpt-5.6-sol-high` round 6 review cho bundle `docs/parallel-delivery/`:
+  - **(1) Process-Durable Shared Execution Registry**: Trang bị đường dẫn lưu trữ tường minh (`storage_path`), khóa tệp nguyên tử cross-platform (`_FileLock` dùng `os.O_CREAT | os.O_EXCL`), ghi đĩa atomic (`.tmp` + `fsync` + `os.replace`), và khôi phục sau restart tiến trình giả lập (`simulated process restart`); loại bỏ hoàn toàn registry in-memory mới ngầm trong production path thông qua `SharedOrcaExecutionRegistry.get_default()`.
+  - **(2) Multi-Slot Capacity Monotonic Generation & Asymmetric Reuse Invalidation**: Mỗi slot trong capacity lock duy trì chuỗi thế hệ tăng đơn điệu riêng biệt (`fencing_counters[f"{lock_id}:slot_{s}"]`). Lease đa slot chỉ hợp lệ khi toàn bộ các slot đều giữ token hiện hành; phát hiện và từ chối fail-closed khi có tái cấp phát bất đối xứng (`asymmetric slot reallocation detected`).
+  - **(3) Bắt Buộc Chu Trình Vòng Đời Tác Vụ (`ready -> dispatched -> acknowledged -> running -> worker_done`)**: Nghiêm cấm mọi hành vi bỏ qua bước ACK hoặc running; `start_running` chỉ chấp nhận trạng thái `acknowledged`, `handle_worker_done` chỉ chấp nhận trạng thái `running`.
+  - **(4) Bắt Buộc Đăng Ký `declared_task_locks` & Chứng Minh Tập Hợp Lock Đầy Đủ Chính Xác**: Mọi tác vụ bắt buộc phải đăng ký `declared_task_locks` trước khi dispatch; `create_dispatch` bắt buộc chứng minh chính xác tập hợp lock yêu cầu qua `lease_ids` (`leased_locks == declared_locks`), từ chối cả missing và extraneous locks.
+  - **(5) Cấm Tuyệt Đối Gán Trực Tiếp Trạng Thái Harness**: Thuộc tính `@current_state.setter` trên `HarnessExecutionStateMachine` từ chối mọi nỗ lực gán trạng thái trực tiếp (nâng `HarnessCompatibilityError`), chỉ cho phép chuyển đổi qua `transition()` hoặc `reset()`.
+  - **(6) Mở Rộng Quét Secret Cho Anthropic & Provider Phổ Biến**: Bổ sung regex nhận diện token của Anthropic (`sk-ant-...`), Google/Gemini (`AIza...`), Slack (`xoxb-...`), HuggingFace (`hf_...`), Stripe (`sk_live_...`) mà không nhúng secret thật; fixtures kiểm thử tạo chuỗi động bằng ghép chuỗi.
+  - **(7) Báo Cáo Attestation Freshness Với Ngữ Nghĩa Parent-Plus-Wrapper**: Thẩm định báo cáo attestation trong audit mode với tính tươi mới so với HEAD thực tế và khớp SHA-256 các tệp bundle; giải quyết vòng lặp topo Git DAG qua ngữ nghĩa commit cha chứa thay đổi bundle và commit wrapper bọc attestation.
+  - **(8) Fixture Suite Tự Động 153/153 PASS**: Bổ sung 10 bài kiểm tra độc lập trong `TestSolRoundSixCounterexamples` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 153/153 passed 100%.
+
 ## 2026-09-28 — Khắc phục toàn bộ phát hiện Sol review vòng 5 (Fail-Closed Blockers & Attestation Hardening)
 
 - Khắc phục toàn diện 12 phát hiện/blockers từ `cx/gpt-5.6-sol-high` round 5 review cho bundle `docs/parallel-delivery/`:

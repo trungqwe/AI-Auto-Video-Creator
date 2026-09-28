@@ -225,3 +225,31 @@ Toàn bộ 21 bypass độc lập do Sol review phát hiện cùng các boundary
     - Khi tác vụ đã được đánh dấu tích hợp (`mark_task_integrated`), mọi nỗ lực tái chiếm giữ lease cho tác vụ đó đều bị từ chối fail-closed vĩnh viễn.
 13. **Tái tạo báo cáo Attestation với ngữ nghĩa Candidate và Hash chuẩn xác**:
     - Toàn bộ kết quả kiểm thử và thẩm định được ghi nhận trong `.validation-report.json` với đầy đủ trường `sol_round_5`, mã SHA bất biến của baseline và candidate HEAD hiện hành, đảm bảo cây làm việc sạch sẽ và vượt qua mọi kiểm tra tự động.
+
+## 12. Khắc phục triệt để các phát hiện Sol Round 6 (Review Blockers & Hardened Invariants)
+
+Đợt rà soát vòng 6 của `cx/gpt-5.6-sol-high` đã xác lập 7 nhóm yêu cầu cốt lõi nhằm đóng băng hoàn toàn kiến trúc thử nghiệm. Toàn bộ các điểm nghẽn đã được khắc phục triệt để và chứng minh qua 10 fixtures mới trong `TestSolRoundSixCounterexamples` (tổng bộ kiểm thử đạt 153 fixtures tự động PASS 100%):
+
+1. **Shared Execution Registry bền vững tiến trình (`Process-Durable Shared Registry`)**:
+   - `SharedOrcaExecutionRegistry` được trang bị đường dẫn lưu trữ tường minh (`storage_path`), cơ chế khóa tệp tin atomic chéo nền tảng (`_FileLock` sử dụng `os.O_CREAT | os.O_EXCL`), và ghi đĩa nguyên tử (`.tmp` + `fsync` + `os.replace`).
+   - Tính duy nhất của `orca_task_id` và `dispatch_id` tồn tại bền vững qua các lần khởi động lại tiến trình giả lập (`simulated process restart`).
+   - Đường dẫn mặc định của `OrcaDeliveryAdapter` tự động liên kết với `SharedOrcaExecutionRegistry.get_default()`, loại bỏ hoàn toàn các in-memory registry ngầm (`no silent fresh registry in production path`).
+2. **Xác thực Capacity Đa Slot với Monotonic Generation và Chống Tái Sử Dụng Bất Đối Xứng (`Asymmetric Reuse Invalidation`)**:
+   - Mỗi slot trong capacity lock sở hữu chuỗi thế hệ đơn điệu độc lập (`fencing_counters[f"{lock_id}:slot_{s}"]`).
+   - Một capacity lease chỉ hợp lệ khi toàn bộ các slot được cấp phát (`allocated_slots`) đều giữ fencing token hiện hành. Nếu một slot đơn lẻ bị thu hồi và tái cấp phát cho lease khác, token của slot đó tăng lên và lập tức vô hiệu hóa lease cũ ngay cả khi các slot khác không đổi.
+3. **Thực thi Bắt buộc Tuyến Vòng Đời Tác Vụ (`ready -> dispatched -> acknowledged -> running -> worker_done`)**:
+   - Nghiêm cấm mọi hành vi bỏ qua bước ACK (`acknowledged`) hoặc bước thực thi (`running`).
+   - `start_running` chỉ chấp nhận tác vụ đang ở trạng thái `acknowledged`.
+   - `handle_worker_done` chỉ chấp nhận tác vụ đang ở trạng thái `running`. Mọi nỗ lực gọi `worker_done` trực tiếp từ `dispatched` hoặc `acknowledged` đều bị từ chối fail-closed với `ProtocolViolationError`.
+4. **Bắt buộc Đăng ký `declared_task_locks` và Chứng minh Tập Hợp Lock Đầy Đủ Chính Xác**:
+   - Mọi tác vụ bắt buộc phải đăng ký danh sách lock dự kiến qua `register_task_locks` trước khi dispatch; cấm dispatch tác vụ chưa đăng ký lock hoặc đăng ký tập rỗng.
+   - Khi gọi `create_dispatch`, tập hợp các lock được chứng minh qua active leases (`leased_locks`) bắt buộc phải trùng khớp chính xác 100% với `declared_task_locks` (`missing == empty` và `extraneous == empty`).
+5. **Cấm Tuyệt Đối Gán Trực Tiếp Trạng Thái Harness (`Forbid Direct State Assignment`)**:
+   - `@current_state.setter` trên `HarnessExecutionStateMachine` nâng lỗi `HarnessCompatibilityError` với mọi nỗ lực gán trạng thái trực tiếp (kể cả các trạng thái hợp lệ như `IDLE -> SUCCESS`).
+   - Mọi chuyển dịch trạng thái bắt buộc phải thông qua phương thức hợp lệ `transition()` hoặc `reset()`.
+6. **Mở Rộng Quét Secret cho Anthropic và Các Nhà Cung Cấp Phổ Biến**:
+   - Bổ sung pattern quét định dạng secret của Anthropic (`sk-ant-...`), Google/Gemini (`AIza...`), Slack (`xoxb-...`), HuggingFace (`hf_...`), và Stripe (`sk_live_...`).
+   - Nghiêm cấm nhúng secret thật vào mã nguồn và fixtures; các bài kiểm tra synthetic token được khởi tạo động qua ghép chuỗi ký tự.
+7. **Báo cáo Attestation Freshness với Ngữ Nghĩa Parent-Plus-Wrapper**:
+   - Giải quyết bài toán tự tham chiếu vòng lặp topo Git DAG thông qua ngữ nghĩa `parent-plus-wrapper`: commit cha chứa mã nguồn và bộ bundle được thẩm định, commit wrapper bọc báo cáo attestation `.validation-report.json`.
+   - Cổng audit kiểm tra tính tươi mới (`check_attestation_report_freshness`): xác minh báo cáo tồn tại, trạng thái `PASS`, baseline được duyệt, overlay sạch (`dirty_overlay_count == 0`), và toàn bộ SHA-256 của các tệp trong bundle khớp chính xác với HEAD hiện hành.
