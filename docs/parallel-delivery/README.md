@@ -137,7 +137,7 @@ Toàn bộ 21 bypass độc lập do Sol review phát hiện cùng các boundary
 19. **Sol Probe 19**: Khởi tạo dispatch bắt buộc ràng buộc exact nonblank Orca task ID, candidate commit SHA-40, positive fencing token và active lease ID hợp lệ.
 20. **Sol Probe 20**: `worker_done` từ chối task ID Orca không khớp, candidate commit không khớp, kết quả trùng lặp (`duplicate`) hoặc kết quả từ attempt cũ (`stale`).
 21. **Sol Probe 21**: Máy trạng thái lifecycle: Task có thẩm quyền `locked`, `future_template`, `revoked` không thể dispatch; thu hồi thẩm quyền sẽ chặn lập tức mọi chuyển trạng thái review, integration và replan.
-22. **Boundary Probe 22**: Cổng tương thích harness: Phát hiện hiện tượng sụp namespace công cụ (`functions.exec` -> `functions`) và thất bại khói thực thi, kích hoạt `STOP condition` và cơ chế fallback.
+22. **Boundary Probe 22**: Cổng tương thích harness: Phát hiện hiện tượng sụp namespace công cụ (`functions.exec` -> `functions`) và thất bại khói thực thi, kích hoạt fail-closed `STOP condition` mà không fallback sang native provider.
 23. **Boundary Probe 23**: Cổng tương thích harness: Khác biệt namespace công cụ yêu cầu/thực tế kích hoạt `STOP condition`.
 24. **Boundary Probe 24**: Fencing token: Ranh giới kiểu dữ liệu nghiêm ngặt, từ chối bool, string, float, list.
 
@@ -167,7 +167,7 @@ Toàn bộ 21 bypass độc lập do Sol review phát hiện cùng các boundary
    - Nghiêm cấm nới rộng thời hạn lease: tham số `lease_seconds` khi chiếm giữ (`acquire_lease`) hoặc `extend_seconds` khi gia hạn (`renew_lease`) không được vượt quá giá trị `lease_seconds` tối đa đã khai báo trong định nghĩa lock.
 6. **Máy trạng thái thực thi harness quan sát được (Observable Harness State Machine)**:
    - Định nghĩa dataclass `HarnessExecutionResult` với thẩm định kiểu dữ liệu đối số chặt chẽ tại khởi tạo (`success: bool`, `execution_time_ms: int | float >= 0`).
-   - Máy trạng thái `HarnessExecutionStateMachine` quản lý chuyển đổi trạng thái thực thi (`IDLE` -> `RUNNING` -> `SUCCESS` | `FAILURE` | `STOP_FALLBACK`), lưu trữ toàn bộ lịch sử chuyển đổi và bảo đảm fallback Antigravity native minh bạch, có thể quan sát được khi gặp STOP condition.
+   - Máy trạng thái `HarnessExecutionStateMachine` quản lý chuyển đổi trạng thái thực thi (`IDLE` -> `RUNNING` -> `SUCCESS` | `FAILURE` | `STOP_BLOCKED`), lưu trữ toàn bộ lịch sử chuyển đổi và bảo đảm dừng fail-closed an toàn, không có mutation khi gặp STOP condition mà không fallback sang native provider.
 7. **Bộ kiểm thử tự động 103 fixtures**: Tích hợp 24 bài kiểm tra bổ sung trong `test_negative_fixtures.py` bao quát toàn bộ các ca đối chứng Sol Round 3 và các probe biên lân cận.
 
 ## 10. Khắc phục toàn diện các phát hiện Sol Round 4 (P1 Remediations & Counterexamples)
@@ -182,7 +182,7 @@ Toàn bộ 21 bypass độc lập do Sol review phát hiện cùng các boundary
 6. **Thực thi ma trận chuyển đổi trạng thái tác vụ nội bộ (Legal Task-State Transitions)**: Xác lập bảng `LEGAL_TASK_STATE_TRANSITIONS` theo đúng `protocol.md`. Mọi bước nhảy trạng thái trái phép (như `planned -> dispatched`, `ready -> review`, `dispatched -> integrated`) đều bị từ chối fail-closed.
 7. **Giải phóng toàn bộ Mutation Lease ngay sau worker_done thành công**: Khi `worker_done(succeeded)` được xác thực, toàn bộ live mutation lease được giải phóng ngay lập tức khỏi `active_leases` trước khi tác vụ chuyển sang `review`, đảm bảo đúng nguyên tắc bảo vệ candidate trong thời gian review độc lập.
 8. **Từ chối lock không khai báo và chống nới lỏng thời hạn**: Kiểm tra lock ID phải có mặt trong cấu hình lock tại `acquire_lease`, `create_dispatch` và toàn bộ DAG thông qua `validate.py:check_task_dag`. Nghiêm cấm nới rộng thời hạn `lease_seconds` vượt quá giá trị khai báo khi acquire hoặc renew.
-9. **Chuẩn hóa đối số HarnessExecutionResult và quan sát chu trình máy trạng thái**: Dataclass `HarnessExecutionResult` kiểm tra kiểu dữ liệu nghiêm ngặt (`success: bool`, `execution_time_ms: int | float >= 0`, `status: PASS|STOP`). Máy trạng thái `HarnessExecutionStateMachine` tuân thủ nghiêm ngặt chu trình quan sát: `IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_FALLBACK`.
+9. **Chuẩn hóa đối số HarnessExecutionResult và quan sát chu trình máy trạng thái**: Dataclass `HarnessExecutionResult` kiểm tra kiểu dữ liệu nghiêm ngặt (`success: bool`, `execution_time_ms: int | float >= 0`, `status: PASS|STOP`). Máy trạng thái `HarnessExecutionStateMachine` tuân thủ nghiêm ngặt chu trình quan sát: `IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_BLOCKED`.
 
 ## 11. Khắc phục toàn diện các phát hiện Sol Round 5 (Fail-Closed Blockers & Independent Counterexamples)
 
@@ -218,8 +218,8 @@ Toàn bộ 21 bypass độc lập do Sol review phát hiện cùng các boundary
 10. **Giải phóng toàn bộ Mutation Lease trước khi phơi bày trạng thái Review**:
     - Khi `worker_done` với `outcome == "succeeded"` được tiếp nhận, `OrcaDeliveryAdapter` thu hồi và giải phóng toàn bộ active mutation lease trong `LeaseManager` trước khi cập nhật trạng thái tác vụ sang `review`.
 11. **Từ chối trường mâu thuẫn trong HarnessExecutionResult và trạng thái trực tiếp trái phép trong Harness State Machine**:
-    - `HarnessExecutionResult` từ chối các kết hợp mâu thuẫn: `success=True` nhưng `status="STOP"`, `fallback_required=True`, hoặc mã lỗi `execution_returncode != 0`; `success=False` nhưng `status="PASS"` hoặc `fallback_required=False`.
-    - `HarnessExecutionStateMachine` từ chối gán trạng thái trực tiếp không hợp lệ qua setter và thực thi ma trận chuyển đổi trạng thái nghiêm ngặt (`IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_FALLBACK`).
+    - `HarnessExecutionResult` từ chối các kết hợp mâu thuẫn: `success=True` nhưng `status="STOP"`, `fallback_required=True`, hoặc mã lỗi `execution_returncode != 0`; `success=False` nhưng `status="PASS"` hoặc yêu cầu native fallback; nghiêm cấm tuyệt đối trạng thái và câu từ fallback sang native provider.
+    - `HarnessExecutionStateMachine` từ chối gán trạng thái trực tiếp không hợp lệ qua setter và thực thi ma trận chuyển đổi trạng thái nghiêm ngặt (`IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_BLOCKED`).
 12. **Từ chối triệt để định danh rỗng và tái chiếm giữ Lease sau khi tích hợp (`Integrated Tasks`)**:
     - Mọi thao tác `acquire_lease`, `renew_lease`, `release_lease`, `create_dispatch` đều từ chối chuỗi rỗng hoặc whitespace cho `lock_id`, `delivery_task_id`, `dispatch_id`, `lease_id`.
     - Khi tác vụ đã được đánh dấu tích hợp (`mark_task_integrated`), mọi nỗ lực tái chiếm giữ lease cho tác vụ đó đều bị từ chối fail-closed vĩnh viễn.

@@ -4,11 +4,12 @@
 
 - Authority hiện hành giữ nguyên: `M2-P1..P7B_ACCEPTED_CLOSED`; M2-P8/P9 `LOCKED`; M3/Phân hệ A `NOT AUTHORIZED`.
 - Đã thêm [kiến trúc triển khai song song](./docs/parallel-delivery/README.md) ở trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`. Bundle chỉ là docs/config và định nghĩa DAG, contract registry, ownership/lease, Orca worker protocol, merge queue, traceability, security/performance/recovery.
-- Đã khắc phục triệt để toàn bộ 21 bypass độc lập từ Sol review, 3 boundary probe, toàn bộ các phát hiện Sol Round 3, toàn bộ 9 blocker Sol Round 4, toàn bộ 12 blocker Sol Round 5, toàn bộ 7 blocker Sol Round 6, toàn bộ 5 blocker Sol Round 7, toàn bộ 3 blocker Sol Round 8, và toàn bộ phát hiện Sol Round 9:
-  1. Loại trừ dứt điểm bypass attestation tuple `candidate=wrapper=parent=HEAD^`, bảo toàn contract `parent-plus-wrapper` đòi hỏi wrapper commit phải tại exact current `HEAD`;
-  2. Ngữ nghĩa declared wrapper ref `"HEAD"` (hoặc `"git:HEAD"`) giải quyết bài toán tự tham chiếu SHA vòng lặp trong Git DAG mà vẫn bảo đảm fail-closed và xác thực toàn vẹn `bundle_sha256`;
-  3. Phân tách rõ ràng hai trường `model` (`cx/gpt-5.6-sol`) và `effort` (`high`) trong Dely block và toàn bộ cấu hình liên quan;
-  4. Bộ kiểm thử tự động đạt 169/169 tests PASS; `validate.py --audit` và `--release` PASS 100%.
+- Đã khắc phục triệt để toàn bộ 21 bypass độc lập từ Sol review, 3 boundary probe, toàn bộ các phát hiện Sol Round 3, toàn bộ 9 blocker Sol Round 4, toàn bộ 12 blocker Sol Round 5, toàn bộ 7 blocker Sol Round 6, toàn bộ 5 blocker Sol Round 7, toàn bộ 3 blocker Sol Round 8, toàn bộ phát hiện Sol Round 9, và toàn bộ phát hiện Sol Round 10 / 11:
+  1. Loại trừ triệt để mâu thuẫn Antigravity native fallback; tuân thủ chính sách fail-closed tại `AGENTS.md`, xóa bỏ hoàn toàn cơ chế fallback sang Antigravity native trong toàn bộ bundle kiến trúc;
+  2. Máy trạng thái `HarnessExecutionStateMachine` chuyển sang `STOP_BLOCKED`, từ chối fail-closed trạng thái `STOP_FALLBACK` và cấm yêu cầu/đích đến native fallback;
+  3. `OrcaDeliveryAdapter.handle_harness_failure` giải phóng và fence tài nguyên/lease an toàn mà không tạo mutation trên git candidate tree;
+  4. Ngữ nghĩa declared wrapper ref `"HEAD"` (hoặc `"git:HEAD"`) giải quyết bài toán tự tham chiếu SHA vòng lặp trong Git DAG mà vẫn bảo đảm fail-closed và xác thực toàn vẹn `bundle_sha256`;
+  5. Bộ kiểm thử tự động đạt 176/176 tests PASS; `validate.py --audit` và `--release` PASS 100%.
 - Orca là execution/communication plane. Dely chỉ quản lý implement → independent review bên trong task đã có authority. Dely implement: Codex CLI / `ag/gemini-3.8-flash-high` / `high`; review: Claude Code / `cx/gpt-5.6-sol` / `high`. Supreme audit `cx/gpt-6-astra-medium` / `medium` nằm ngoài Dely và chỉ cho audit cực khó.
 - Rollback reference trước thí nghiệm: `D:/AI_SETUP/backups/AI-Auto-Video-Creator/20260928-175542`; đây không phải bằng chứng G05 PASS.
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 10 / 11 (Fail-Closed Harness Compatibility, Loại Bỏ Mâu Thuẫn Antigravity Native Fallback)
+
+- Khắc phục toàn diện phát hiện/blocker từ independent Sol review trên HEAD `3f3e6f626455007001f5af6dd2f85bdfd0b5cbd3` cho bundle `docs/parallel-delivery/`:
+  - **(1) Loại Trừ Triệt Để Mâu Thuẫn Antigravity Native Fallback**: Tuân thủ chính sách fail-closed tại `AGENTS.md` (yêu cầu Codex CLI với route `ag/gemini-3.8-flash-high`, nghiêm cấm Antigravity native và cấm tuyệt đối fallback sang harness/provider/model khác). Xóa bỏ 100% logic và câu từ fallback sang Antigravity native trong toàn bộ bundle kiến trúc (`operating-model.md`, `protocol.md`, `security-performance-recovery.md`, `README.md`, `delivery_engine.py`).
+  - **(2) Máy Trạng Thái Harness Dừng Fail-Closed Ở STOP_BLOCKED**: `HarnessExecutionStateMachine` chuyển sang chu trình `IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_BLOCKED`; nghiêm cấm và từ chối fail-closed trạng thái `STOP_FALLBACK` hoặc bất kỳ trạng thái fallback nào qua `HarnessCompatibilityError`. Khi xảy ra lỗi tương thích hoặc khói thực thi công cụ (như sụp namespace), hệ thống kích hoạt điều kiện STOP và chuyển sang `STOP_BLOCKED`.
+  - **(3) Từ Chối Yêu Cầu/Đích Đến Native Fallback Trong HarnessExecutionResult**: Dataclass `HarnessExecutionResult` từ chối `fallback_required=True` và từ chối các đích đến native fallback (`antigravity_native`, `antigravity`, `native`); quy định mặc định `fallback_required=False` và `fallback_target="none"`.
+  - **(4) Thu Hồi/Fence Tài Nguyên An Toàn Khi Harness Lỗi Không Gây Đột Biến Candidate**: Bổ sung phương thức `handle_harness_failure` trên `OrcaDeliveryAdapter`, lập tức giải phóng toàn bộ active mutation lease, settle dispatch attempt và chuyển task state sang `blocked` mà không thực hiện bất kỳ mutation nào trên git candidate tree, đòi hỏi phục hồi từ Control hoặc can thiệp của con người.
+  - **(5) Fixture Suite Tự Động 176/176 PASS**: Bổ sung 7 bài kiểm tra phản ví dụ và kiểm chứng độc lập trong `TestSolRoundTenCounterexamples` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 176/176 passed 100%.
+
 ## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 9 (Declared Wrapper HEAD Semantics, Rejection of all-HEAD^ Bypass & Routing Separation)
 
 - Khắc phục toàn diện phát hiện/blocker từ `cx/gpt-5.6-sol` round 9 review cho bundle `docs/parallel-delivery/`:

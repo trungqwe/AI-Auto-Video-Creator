@@ -2136,6 +2136,34 @@ class OrcaDeliveryAdapter:
             self.transition_task_state(delivery_task_id, "blocked")
             return "blocked"
 
+    def handle_harness_failure(
+        self,
+        delivery_task_id: str,
+        dispatch_id: str,
+        reason: str = "Harness compatibility failure",
+    ) -> str:
+        """Handle harness compatibility or execution failure fail-closed:
+        stops/blocks task, safely releases all held mutation leases, settles dispatch,
+        and halts execution without candidate mutation or harness switching.
+        Requires external recovery or human intervention to resolve.
+        """
+        clean_tid = delivery_task_id.strip() if isinstance(delivery_task_id, str) else ""
+        clean_did = dispatch_id.strip() if isinstance(dispatch_id, str) else ""
+        if not clean_tid or not clean_did:
+            raise ProtocolViolationError("delivery_task_id and dispatch_id cannot be blank")
+
+        if self.lease_mgr is not None:
+            to_remove = [
+                lid for lid, l in list(self.lease_mgr.active_leases.items())
+                if l.dispatch_id == clean_did or l.delivery_task_id == clean_tid
+            ]
+            for lid in to_remove:
+                self.lease_mgr.release_lease(lid)
+
+        self.registry.settle_dispatch(clean_did)
+        self.transition_task_state(clean_tid, "blocked")
+        return "blocked"
+
     def handle_review_verdict(self, delivery_task_id: str, verdict: str) -> str:
         """Handle independent review disposition ('ACCEPT', 'CHANGES_REQUESTED', 'BLOCKED').
         Unknown review verdicts are strictly rejected.
@@ -2292,13 +2320,13 @@ class HarnessExecutionResult:
     success: bool
     execution_time_ms: float
     status: str  # "PASS" or "STOP"
-    state: str   # "SUCCESS", "FAILURE", "STOP_FALLBACK"
+    state: str   # "SUCCESS", "FAILURE", "STOP_BLOCKED"
     tool_name: str
     requested_tool: str
     execution_observed: bool
     execution_returncode: int
-    fallback_required: bool
-    fallback_target: str = "antigravity_native"
+    fallback_required: bool = False
+    fallback_target: str = "none"
     error_message: Optional[str] = None
 
     def __post_init__(self):
@@ -2312,9 +2340,17 @@ class HarnessExecutionResult:
             )
         if self.status not in ("PASS", "STOP"):
             raise HarnessCompatibilityError(f"status must be 'PASS' or 'STOP'; got {self.status!r}")
-        if self.state not in ("SUCCESS", "FAILURE", "STOP_FALLBACK", "VERIFIED"):
+
+        # Explicitly reject native-provider fallback states
+        if self.state in ("STOP_FALLBACK", "FALLBACK") or "fallback" in str(self.state).lower():
             raise HarnessCompatibilityError(
-                f"state must be 'SUCCESS', 'FAILURE', 'STOP_FALLBACK', or 'VERIFIED'; got {self.state!r}"
+                f"state {self.state!r} is forbidden: native-provider fallback state is strictly rejected fail-closed; "
+                f"repository routing policy in AGENTS.md forbids Antigravity native fallback; task must STOP/BLOCKED without fallback"
+            )
+
+        if self.state not in ("SUCCESS", "FAILURE", "STOP_BLOCKED", "BLOCKED", "VERIFIED"):
+            raise HarnessCompatibilityError(
+                f"state must be 'SUCCESS', 'FAILURE', 'STOP_BLOCKED', or 'VERIFIED'; got {self.state!r}"
             )
         if type(self.execution_observed) is not bool:
             raise HarnessCompatibilityError(
@@ -2328,8 +2364,8 @@ class HarnessExecutionResult:
             raise HarnessCompatibilityError(
                 f"fallback_required must be strict bool; got {type(self.fallback_required).__name__}: {self.fallback_required!r}"
             )
-        if not self.fallback_target or not isinstance(self.fallback_target, str) or not self.fallback_target.strip():
-            raise HarnessCompatibilityError("fallback_target cannot be blank")
+
+        clean_ft = (self.fallback_target or "").strip().lower()
 
         # Reject contradictory field combinations fail-closed
         if self.success:
@@ -2343,7 +2379,7 @@ class HarnessExecutionResult:
                 )
             if self.fallback_required:
                 raise HarnessCompatibilityError(
-                    "Contradictory fields: success=True but fallback_required=True"
+                    "Contradictory fields: success=True but fallback_required=True; native-provider fallback is forbidden"
                 )
             if self.execution_returncode != 0:
                 raise HarnessCompatibilityError(
@@ -2352,6 +2388,10 @@ class HarnessExecutionResult:
             if not self.execution_observed:
                 raise HarnessCompatibilityError(
                     "Contradictory fields: success=True but execution_observed=False"
+                )
+            if clean_ft not in ("none", ""):
+                raise HarnessCompatibilityError(
+                    f"Contradictory fields: success=True but fallback_target={self.fallback_target!r}; expected 'none'"
                 )
         else:
             if self.status != "STOP":
@@ -2362,27 +2402,33 @@ class HarnessExecutionResult:
                 raise HarnessCompatibilityError(
                     f"Contradictory fields: success=False but state={self.state!r}; cannot be success state"
                 )
-            if not self.fallback_required:
+            if self.fallback_required:
                 raise HarnessCompatibilityError(
-                    "Contradictory fields: success=False but fallback_required=False; failure must require fallback"
+                    "Contradictory fields: fallback_required=True is forbidden; native-provider fallback is rejected fail-closed; "
+                    "repository routing policy in AGENTS.md forbids Antigravity native fallback; task must STOP/BLOCKED without fallback"
                 )
-            if self.fallback_target.strip().lower() in ("none", ""):
+            if clean_ft in ("antigravity_native", "antigravity", "native_fallback", "native") or "antigravity" in clean_ft:
                 raise HarnessCompatibilityError(
-                    "Contradictory fields: fallback_required=True but fallback_target is 'none' or empty"
+                    f"Contradictory fields: fallback_target={self.fallback_target!r} specifies forbidden native-provider fallback; "
+                    "native-provider fallback is rejected fail-closed; task must STOP/BLOCKED without fallback"
+                )
+            if clean_ft not in ("none", ""):
+                raise HarnessCompatibilityError(
+                    f"Contradictory fields: fallback_target={self.fallback_target!r} is forbidden; fail-closed STOP/BLOCKED required without provider fallback"
                 )
 
 
 class HarnessExecutionStateMachine:
-    """Observable state machine for harness tool execution and fallback / STOP transitions.
-    States: IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_FALLBACK.
+    """Observable state machine for harness tool execution and fail-closed STOP / BLOCKED transitions.
+    States: IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_BLOCKED.
     """
 
-    LEGAL_STATES = {"IDLE", "RUNNING", "SUCCESS", "FAILURE", "STOP_FALLBACK"}
+    LEGAL_STATES = {"IDLE", "RUNNING", "SUCCESS", "FAILURE", "STOP_BLOCKED"}
     LEGAL_TRANSITIONS = {
         "IDLE": {"RUNNING"},
-        "RUNNING": {"SUCCESS", "FAILURE", "STOP_FALLBACK"},
-        "FAILURE": {"STOP_FALLBACK", "IDLE"},
-        "STOP_FALLBACK": {"IDLE"},
+        "RUNNING": {"SUCCESS", "FAILURE", "STOP_BLOCKED"},
+        "FAILURE": {"STOP_BLOCKED", "IDLE"},
+        "STOP_BLOCKED": {"IDLE"},
         "SUCCESS": {"IDLE"},
     }
 
@@ -2403,13 +2449,19 @@ class HarnessExecutionStateMachine:
 
     def reset(self) -> None:
         """Reset state machine to IDLE through legal transition method."""
-        if self._current_state in ("SUCCESS", "FAILURE", "STOP_FALLBACK"):
+        if self._current_state in ("SUCCESS", "FAILURE", "STOP_BLOCKED"):
             self.transition("IDLE", "Reset to IDLE")
         else:
             self._current_state = "IDLE"
             self.transitions.clear()
 
     def transition(self, to_state: str, reason: str) -> None:
+        if to_state in ("STOP_FALLBACK", "FALLBACK") or "fallback" in str(to_state).lower():
+            raise HarnessCompatibilityError(
+                f"Illegal target state {to_state!r}: native-provider fallback state is strictly rejected fail-closed; "
+                f"repository routing policy in AGENTS.md forbids Antigravity native fallback; "
+                f"harness failures must stop/block as 'STOP_BLOCKED' without switching provider/harness"
+            )
         if to_state not in self.LEGAL_STATES:
             raise HarnessCompatibilityError(
                 f"Illegal target state {to_state!r}; legal states: {sorted(self.LEGAL_STATES)}"
@@ -2435,19 +2487,19 @@ class HarnessExecutionStateMachine:
         self.transition("RUNNING", "Started harness tool evaluation")
 
         if not isinstance(tool_name, str) or not tool_name.strip():
-            self.transition("STOP_FALLBACK", "Effective tool identity blank")
+            self.transition("STOP_BLOCKED", "Effective tool identity blank")
             raise HarnessCompatibilityError("Effective tool identity cannot be blank")
         if not isinstance(requested_tool, str) or not requested_tool.strip():
-            self.transition("STOP_FALLBACK", "Requested tool identity blank")
+            self.transition("STOP_BLOCKED", "Requested tool identity blank")
             raise HarnessCompatibilityError("Requested tool identity cannot be blank")
 
         if type(execution_observed) is not bool:
-            self.transition("STOP_FALLBACK", "execution_observed not strict bool")
+            self.transition("STOP_BLOCKED", "execution_observed not strict bool")
             raise HarnessCompatibilityError(
                 f"execution_observed must be strict bool; got {type(execution_observed).__name__}: {execution_observed!r}"
             )
         if type(execution_returncode) is not int or isinstance(execution_returncode, bool):
-            self.transition("STOP_FALLBACK", "execution_returncode not strict int")
+            self.transition("STOP_BLOCKED", "execution_returncode not strict int")
             raise HarnessCompatibilityError(
                 f"execution_returncode must be strict int; got {type(execution_returncode).__name__}: {execution_returncode!r}"
             )
@@ -2458,27 +2510,27 @@ class HarnessExecutionStateMachine:
         if "." in requested and "." not in effective:
             msg = (
                 f"Harness namespaced tool collapse detected: requested {requested!r} collapsed to unnamespaced {effective!r}. "
-                "Route success does not imply executable harness. STOP condition triggered: fallback to verified native harness required."
+                "Route success does not imply executable harness. STOP condition triggered: fail-closed STOP/BLOCKED required without native provider fallback."
             )
-            self.transition("STOP_FALLBACK", msg)
+            self.transition("STOP_BLOCKED", msg)
             raise HarnessCompatibilityError(msg)
 
         if effective != requested:
             msg = (
                 f"Harness tool identity mismatch: requested {requested!r} != effective {effective!r}. "
-                "STOP condition triggered: fallback to verified native harness required."
+                "STOP condition triggered: fail-closed STOP/BLOCKED required without native provider fallback."
             )
-            self.transition("STOP_FALLBACK", msg)
+            self.transition("STOP_BLOCKED", msg)
             raise HarnessCompatibilityError(msg)
 
         if not execution_observed:
             msg = (
                 f"Harness tool execution smoke gate failed: execution_observed=False, returncode={execution_returncode}. "
                 "No successful tool execution observed. Observed successful tool execution required before routing work. "
-                "STOP condition triggered: fallback to verified native harness required."
+                "STOP condition triggered: fail-closed STOP/BLOCKED required without native provider fallback."
             )
             self.transition("FAILURE", msg)
-            self.transition("STOP_FALLBACK", "Fallback to verified native harness required")
+            self.transition("STOP_BLOCKED", "Fail-closed STOP/BLOCKED required without native provider fallback")
             raise HarnessCompatibilityError(msg)
 
         if execution_returncode != 0:
@@ -2486,10 +2538,10 @@ class HarnessExecutionStateMachine:
                 f"Harness tool execution smoke gate failed: execution_observed=True, returncode={execution_returncode}. "
                 f"Harness tool execution smoke test failed with returncode {execution_returncode}. "
                 "Observed successful tool execution required before routing work. "
-                "STOP condition triggered: fallback to verified native harness required."
+                "STOP condition triggered: fail-closed STOP/BLOCKED required without native provider fallback."
             )
             self.transition("FAILURE", msg)
-            self.transition("STOP_FALLBACK", "Fallback to verified native harness required")
+            self.transition("STOP_BLOCKED", "Fail-closed STOP/BLOCKED required without native provider fallback")
             raise HarnessCompatibilityError(msg)
 
         self.transition("SUCCESS", f"Tool {effective} verified successfully")

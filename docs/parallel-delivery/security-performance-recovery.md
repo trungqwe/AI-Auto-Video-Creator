@@ -125,7 +125,7 @@ Retry không thay failure handling.
 | Evidence synthesis gián đoạn | Bỏ run chưa finalized hoặc resume theo manifest protocol; không sửa accepted run |
 | Contract đổi giữa task | Mark dependent `needs_replan`, issue exact revision mới |
 | Security incident | Stop descendants, preserve redacted forensic refs, rotate/contain bởi owner có quyền |
-| Harness tool namespace collapse | Kích hoạt STOP condition, đánh dấu `blocked_harness`, trả lease, fallback an toàn sang Antigravity native |
+| Harness tool namespace collapse | Kích hoạt STOP condition, đánh dấu `blocked_harness`, giải phóng và fence lease an toàn, chuyển task sang `blocked` không có mutation; nghiêm cấm tuyệt đối fallback sang Antigravity native |
 | Duplicate dispatch / ID reuse | Fail-closed, từ chối ghi đè binding, bắt buộc cấp fresh dispatch ID và Orca task ID mới |
 | Capacity slot stale token | Bị fence bởi bộ đếm monotonic slot độc lập, thu hồi slot và cấp token mới |
 

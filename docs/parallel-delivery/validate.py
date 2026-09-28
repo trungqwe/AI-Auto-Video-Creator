@@ -1074,6 +1074,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "1_reject_all_head_parent_attestation_bypass": "RESOLVED",
                     "2_declared_wrapper_head_semantics_no_circular_self_reference": "RESOLVED",
                 },
+                "sol_round_10": {
+                    "1_forbid_antigravity_native_fallback_fail_closed": "RESOLVED",
+                    "2_harness_state_machine_transitions_to_stop_blocked": "RESOLVED",
+                    "3_safe_release_and_fencing_without_candidate_mutation": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

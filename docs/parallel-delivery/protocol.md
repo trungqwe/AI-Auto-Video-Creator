@@ -107,8 +107,8 @@ Worker ACK đúng một lần, nêu exact `task_id`, `dispatch_id`, baseline và
 ### Kiểm tra khói tương thích Harness (Tool-Execution Smoke Test)
 
 Trước khi tiến hành sửa đổi hoặc mutation dưới lease được cấp, worker hoặc harness thực thi bắt buộc phải vượt qua bài kiểm tra khói thực thi công cụ:
-- Xác nhận harness gọi đúng tên công cụ đầy đủ, không làm sụp tên công cụ có namespace (`functions.exec` -> `functions`). Hiện tượng này đã được quan sát thực tế trên Codex CLI kết hợp `ag/gemini-3.8-flash-high` trong khi Antigravity native với effective model `ag/gemini-3.8-flash-high` thực thi thành công.
-- Nếu smoke test thất bại: kích hoạt điều kiện `STOP` / `blocked_harness`, giải phóng lease, và fallback an toàn sang harness tương thích đã kiểm chứng (Antigravity native); không giả định route thành công là harness có thể thực thi.
+- Xác nhận harness gọi đúng tên công cụ đầy đủ, không làm sụp tên công cụ có namespace (`functions.exec` -> `functions`). Không giả định thành công định tuyến (route success) đồng nghĩa với khả năng thực thi công cụ thực tế.
+- Nếu smoke test thất bại: kích hoạt điều kiện `STOP` / `blocked_harness`, giải phóng và fence lease an toàn, chuyển task sang `blocked` không có candidate mutation, và yêu cầu can thiệp phục hồi từ Control hoặc con người; tuân thủ chính sách fail-closed tại `AGENTS.md`, nghiêm cấm tuyệt đối việc fallback sang Antigravity native hay tự ý chuyển đổi provider/harness.
 - Không xem lỗi này là vĩnh viễn đối với Codex CLI; đây là một cổng kiểm tra động tại runtime (dynamic compatibility gate).
 
 ## 4. Heartbeat, check và status
@@ -222,9 +222,9 @@ orca orchestration send --from <worker_terminal> --dispatch-capability <dcap> --
     - Không được vượt quá thời hạn `lease_seconds` đã công bố trong cấu hình lock tại thời điểm chiếm giữ hoặc gia hạn.
     - Mọi lock chưa khai báo trong registry đều bị từ chối tại `acquire_lease`, `create_dispatch` và toàn bộ DAG.
 11. **Máy trạng thái thực thi Harness quan sát được**:
-    - Harness tuân thủ chu trình: `IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_FALLBACK`.
+    - Harness tuân thủ chu trình: `IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_BLOCKED`.
     - Đối số trong `HarnessExecutionResult` được thẩm định kiểu dữ liệu nghiêm ngặt (`success: bool`, `execution_time_ms >= 0`, `status: PASS|STOP`).
-    - Từ chối các trường mâu thuẫn (`success=True` với `status="STOP"` hoặc `fallback_required=True`; `success=False` với `status="PASS"` hoặc `fallback_required=False`).
+    - Từ chối các trường mâu thuẫn (`success=True` với `status="STOP"` hoặc `fallback_required=True`; `success=False` với `status="PASS"` hoặc bất kỳ yêu cầu/đích đến fallback sang native provider nào). Trạng thái fallback và mọi hình thức fallback native bị từ chối fail-closed theo chính sách tại `AGENTS.md`.
 12. **Durable Ledger/Registry dùng chung (`SharedOrcaExecutionRegistry`)**:
     - Task ID và dispatch ID của Orca được lưu vết qua registry dùng chung giữa các adapter instance, bảo đảm tính duy nhất toàn cục và chống tái sử dụng ID trên toàn hệ thống.
 13. **Intended Dispatch bắt buộc không rewrite lease (`No Lease Rewrite`)**:

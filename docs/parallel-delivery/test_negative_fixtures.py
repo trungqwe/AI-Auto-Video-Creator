@@ -1732,13 +1732,13 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
         self.assertEqual(sm.current_state, "SUCCESS")
         self.assertFalse(res.fallback_required)
 
-        # 2. Namespace collapse STOP condition: IDLE -> RUNNING -> STOP_FALLBACK
+        # 2. Namespace collapse STOP condition: IDLE -> RUNNING -> STOP_BLOCKED
         with self.assertRaises(HarnessCompatibilityError):
             sm.evaluate("functions", "functions.exec")
-        self.assertEqual(sm.current_state, "STOP_FALLBACK")
+        self.assertEqual(sm.current_state, "STOP_BLOCKED")
         self.assertTrue(len(sm.transitions) >= 2)
         last_trans = sm.transitions[-1]
-        self.assertEqual(last_trans[1], "STOP_FALLBACK")
+        self.assertEqual(last_trans[1], "STOP_BLOCKED")
         self.assertIn("collapse detected", last_trans[2])
 
 
@@ -2114,7 +2114,7 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
         self.assertIn("status must be 'PASS' or 'STOP'", str(ctx3.exception))
 
     def test_r4_14_harness_state_machine_idle_running_transitions(self):
-        """14. Positive & negative: State machine observes IDLE -> RUNNING -> SUCCESS | STOP_FALLBACK."""
+        """14. Positive & negative: State machine observes IDLE -> RUNNING -> SUCCESS | STOP_BLOCKED."""
         sm = HarnessExecutionStateMachine()
         self.assertEqual(sm.current_state, "IDLE")
 
@@ -2129,17 +2129,17 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
         self.assertEqual(sm.transitions[1][0], "RUNNING")
         self.assertEqual(sm.transitions[1][1], "SUCCESS")
 
-        # 2. Re-evaluating resets from IDLE -> RUNNING -> STOP_FALLBACK on mismatch
+        # 2. Re-evaluating resets from IDLE -> RUNNING -> STOP_BLOCKED on mismatch
         with self.assertRaises(HarnessCompatibilityError):
             sm.evaluate("tool.mismatch", "tool.requested")
-        self.assertEqual(sm.current_state, "STOP_FALLBACK")
+        self.assertEqual(sm.current_state, "STOP_BLOCKED")
 
-        # 3. Execution failure: IDLE -> RUNNING -> FAILURE -> STOP_FALLBACK
+        # 3. Execution failure: IDLE -> RUNNING -> FAILURE -> STOP_BLOCKED
         with self.assertRaises(HarnessCompatibilityError):
             sm.evaluate("tool.err", "tool.err", execution_observed=True, execution_returncode=1)
-        self.assertEqual(sm.current_state, "STOP_FALLBACK")
+        self.assertEqual(sm.current_state, "STOP_BLOCKED")
         trans_names = [t[1] for t in sm.transitions[-3:]]
-        self.assertEqual(trans_names, ["RUNNING", "FAILURE", "STOP_FALLBACK"])
+        self.assertEqual(trans_names, ["RUNNING", "FAILURE", "STOP_BLOCKED"])
 
 
 
@@ -2651,7 +2651,7 @@ class TestSolRoundFiveCounterexamples(unittest.TestCase):
         self.assertIn("Contradictory fields: success=False but status='PASS'", str(ctx.exception))
 
     def test_r5_21_harness_result_rejects_contradictory_failure_without_fallback(self):
-        """21. Counterexample: HarnessExecutionResult rejects success=False with fallback_required=False."""
+        """21. Counterexample: HarnessExecutionResult rejects failure requesting native provider fallback."""
         with self.assertRaises(HarnessCompatibilityError) as ctx:
             HarnessExecutionResult(
                 success=False,
@@ -2662,9 +2662,10 @@ class TestSolRoundFiveCounterexamples(unittest.TestCase):
                 requested_tool="t",
                 execution_observed=True,
                 execution_returncode=1,
-                fallback_required=False,
+                fallback_required=True,
+                fallback_target="antigravity_native",
             )
-        self.assertIn("Contradictory fields: success=False but fallback_required=False", str(ctx.exception))
+        self.assertIn("native-provider fallback is rejected fail-closed", str(ctx.exception))
 
     def test_r5_22_harness_result_rejects_contradictory_success_nonzero_returncode(self):
         """22. Counterexample: HarnessExecutionResult rejects success=True with nonzero execution_returncode."""
@@ -3724,6 +3725,139 @@ class TestSolRoundNineCounterexamples(unittest.TestCase):
                 any("stale" in e.lower() or "topology" in e.lower() for e in errs),
                 f"Expected stale / topology mismatch rejection for dynamic all-HEAD^ bypass, got: {errs}"
             )
+
+
+class TestSolRoundTenCounterexamples(unittest.TestCase):
+    """Sol Round 10 / 11: Fail-closed harness compatibility without native-provider fallback.
+    In accordance with repository routing policy in AGENTS.md:
+    - Codex CLI with ag/gemini-3.8-flash-high is required; Antigravity native is forbidden.
+    - Harness failures must stop/block the task, safely release and fence resources,
+      and require recovery/human intervention.
+    - Silent or explicit fallback to Antigravity native (or any provider switch) is strictly forbidden.
+    - Harness state machine transitions to STOP_BLOCKED; STOP_FALLBACK state is rejected fail-closed.
+    - No mutation occurs on the candidate tree during harness failures.
+    """
+
+    def setUp(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        cmd_head = ["git", "rev-parse", "HEAD"]
+        self.candidate_commit = subprocess.run(
+            cmd_head, cwd=ROOT_DIR, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    def test_r10_01_harness_result_rejects_stop_fallback_state(self):
+        """1. Counterexample: HarnessExecutionResult strictly rejects state='STOP_FALLBACK'."""
+        with self.assertRaises(HarnessCompatibilityError) as ctx:
+            HarnessExecutionResult(
+                success=False,
+                execution_time_ms=10.0,
+                status="STOP",
+                state="STOP_FALLBACK",
+                tool_name="tool.a",
+                requested_tool="tool.a",
+                execution_observed=True,
+                execution_returncode=1,
+                fallback_required=False,
+                fallback_target="none",
+            )
+        self.assertIn("native-provider fallback", str(ctx.exception).lower())
+
+    def test_r10_02_harness_result_rejects_antigravity_native_fallback_target(self):
+        """2. Counterexample: HarnessExecutionResult rejects fallback_target='antigravity_native'."""
+        with self.assertRaises(HarnessCompatibilityError) as ctx:
+            HarnessExecutionResult(
+                success=False,
+                execution_time_ms=10.0,
+                status="STOP",
+                state="STOP_BLOCKED",
+                tool_name="tool.a",
+                requested_tool="tool.a",
+                execution_observed=True,
+                execution_returncode=1,
+                fallback_required=False,
+                fallback_target="antigravity_native",
+            )
+        self.assertIn("antigravity", str(ctx.exception).lower())
+
+    def test_r10_03_harness_result_rejects_fallback_required_true(self):
+        """3. Counterexample: HarnessExecutionResult rejects fallback_required=True on failure."""
+        with self.assertRaises(HarnessCompatibilityError) as ctx:
+            HarnessExecutionResult(
+                success=False,
+                execution_time_ms=10.0,
+                status="STOP",
+                state="STOP_BLOCKED",
+                tool_name="tool.a",
+                requested_tool="tool.a",
+                execution_observed=True,
+                execution_returncode=1,
+                fallback_required=True,
+                fallback_target="none",
+            )
+        self.assertIn("fallback_required=true is forbidden", str(ctx.exception).lower())
+
+    def test_r10_04_harness_state_machine_rejects_stop_fallback_transition(self):
+        """4. Counterexample: HarnessExecutionStateMachine rejects transition to 'STOP_FALLBACK'."""
+        sm = HarnessExecutionStateMachine()
+        sm.transition("RUNNING", "start")
+        with self.assertRaises(HarnessCompatibilityError) as ctx:
+            sm.transition("STOP_FALLBACK", "attempted fallback")
+        self.assertIn("native-provider fallback", str(ctx.exception).lower())
+
+    def test_r10_05_harness_state_machine_failure_transitions_to_stop_blocked(self):
+        """5. HarnessExecutionStateMachine failure transitions to STOP_BLOCKED, not STOP_FALLBACK."""
+        sm = HarnessExecutionStateMachine()
+        with self.assertRaises(HarnessCompatibilityError):
+            sm.evaluate("tool.mismatch", "tool.requested")
+        self.assertEqual(sm.current_state, "STOP_BLOCKED")
+        self.assertNotEqual(sm.current_state, "STOP_FALLBACK")
+
+    def test_r10_06_harness_failure_stops_task_releases_leases_without_candidate_mutation(self):
+        """6. Harness failure stops/blocks task, safely releases leases, without candidate mutation."""
+        mgr = LeaseManager([{"id": "R10-LOCK-MUT", "mode": "exclusive", "renewable": True, "lease_seconds": 600}])
+        mgr.set_task_authority("TASK-R10", "granted")
+        adapter = OrcaDeliveryAdapter(
+            mgr, approved_candidate_commit=self.candidate_commit, git_root=ROOT_DIR
+        )
+        adapter.register_task_locks("TASK-R10", ["R10-LOCK-MUT"])
+        adapter.set_task_authority("TASK-R10", "granted")
+        adapter.set_task_state("TASK-R10", "ready")
+        lease = mgr.acquire_lease("R10-LOCK-MUT", "TASK-R10", "ctx_r10")
+        disp_id = adapter.create_dispatch(
+            "TASK-R10", "orca_task_r10", self.candidate_commit, lease_id=lease.lease_id, intended_dispatch_id="ctx_r10", fencing_token=lease.fencing_token
+        )
+        adapter.acknowledge_dispatch("TASK-R10", disp_id)
+        adapter.start_running("TASK-R10", disp_id)
+
+        # Handle harness failure
+        adapter.handle_harness_failure("TASK-R10", disp_id, "Namespace collapse detected")
+        self.assertEqual(adapter.get_task_state("TASK-R10"), "blocked")
+        self.assertEqual(len(mgr.active_leases), 0, "All leases must be safely released upon harness failure")
+
+    def test_r10_07_bundle_documentation_forbids_antigravity_fallback_wording(self):
+        """7. Positive control: Parallel-delivery docs and engine contain zero occurrences of native fallback permissions."""
+        bundle_docs = [
+            BUNDLE_DIR / "operating-model.md",
+            BUNDLE_DIR / "protocol.md",
+            BUNDLE_DIR / "security-performance-recovery.md",
+            BUNDLE_DIR / "README.md",
+        ]
+        forbidden_phrases = [
+            "fallback an toàn sang antigravity native",
+            "fallback an toàn sang harness tương thích",
+            "safe fallback / stop condition",
+            'fallback_target: str = "antigravity_native"',
+            'fallback_target = "antigravity_native"',
+            "stop_fallback",
+        ]
+        for doc_path in bundle_docs:
+            text = doc_path.read_text(encoding="utf-8").lower()
+            for phrase in forbidden_phrases:
+                self.assertNotIn(
+                    phrase,
+                    text,
+                    f"Forbidden native-fallback phrase {phrase!r} found in {doc_path.name}",
+                )
 
 
 if __name__ == "__main__":
