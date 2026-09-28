@@ -1,0 +1,267 @@
+schema_version: "1.0.0"
+kind: parallel_delivery_contract_registry
+status: proposed_experiment_no_new_implementation_authority
+as_of: "2026-09-28"
+authority_refs:
+  - docs/09-contracts/README.md
+  - docs/09-contracts/00-common-contract.md
+  - docs/09-contracts/13-traceability-and-open-items.md
+
+version_policy:
+  authority: CT-CMN-012
+  compatible_change:
+    - additive_optional_field_when_all_consumers_ignore_unknown_fields
+    - additive_open_enum_value_when_all_consumers_ignore_unknown_values
+  breaking_change:
+    - remove_field
+    - redefine_field
+    - change_unit
+    - change_cardinality
+    - tighten_input_condition
+  breaking_action: increment_major_version
+  in_flight_rule: producer_supports_compatibility_window_until_workflows_complete_or_migrate
+  history_rule: do_not_rewrite_old_schema_or_accepted_evidence
+  consumer_rule: fail_closed_on_unsupported_version
+  freeze_rule: exact_revision_must_be_frozen_before_dependent_task_becomes_ready
+
+schema:
+  required_fields:
+    - id
+    - source
+    - owner
+    - consumers
+    - kind
+    - current_revision
+    - source_sha256
+    - lifecycle
+    - compatibility_window
+    - lock
+  lifecycle_enum:
+    - design_baseline
+    - active_accepted
+    - proposed
+    - deprecated
+  kind_enum:
+    - common
+    - synchronous_command_query
+    - domain_event
+    - workflow_activity
+    - artifact_reference
+    - state_machine
+
+contracts:
+  - id: CONTRACT-COMMON
+    source: docs/09-contracts/00-common-contract.md
+    id_prefixes:
+      - CT-CMN-*
+    owner: CROSS-CUTTING-CONTRACT-OWNER
+    consumers: [A, B, C, D, E, F, G, H, I, J]
+    kind: common
+    current_revision: sha256:dfdce8db13d5f1d1f286ccd233a66caf39f48552da2dbbad26692fde7be978e8
+    source_sha256: dfdce8db13d5f1d1f286ccd233a66caf39f48552da2dbbad26692fde7be978e8
+    lifecycle: design_baseline
+    compatibility_window: all_in_flight_workflows_and_persisted_history
+    lock: LOCK-CONTRACT-COMMON
+
+  - id: CONTRACT-CONTROL-API-STREAM
+    source: docs/09-contracts/01-control-api-and-stream.md
+    id_prefixes:
+      - CT-API-*
+    owner: H
+    co_owners:
+      - G
+      - J
+    consumers: [H, G, J]
+    kind: synchronous_command_query
+    current_revision: sha256:ea16fe04759e6bdf3b7bdde3e27ad498d13a271bd45d412ba0e9068a9b918e12
+    source_sha256: ea16fe04759e6bdf3b7bdde3e27ad498d13a271bd45d412ba0e9068a9b918e12
+    lifecycle: active_accepted
+    compatibility_window: current_and_previous_supported_ui_revision
+    lock: LOCK-CONTRACT-CONTROL-API
+
+  - id: CONTRACT-DOMAIN-EVENTS
+    source: docs/09-contracts/02-domain-events.md
+    id_prefixes:
+      - CT-EVT-*
+    owner: G
+    consumers: [A, B, C, D, E, F, H, I, J]
+    kind: domain_event
+    delivery: at_least_once_via_transactional_outbox
+    current_revision: sha256:8114a208cecca67e553345ea5574d68752323c79cf833c8c8c9fa5e2f86e7540
+    source_sha256: 8114a208cecca67e553345ea5574d68752323c79cf833c8c8c9fa5e2f86e7540
+    lifecycle: active_accepted
+    compatibility_window: all_in_flight_consumers_and_retained_outbox_messages
+    lock: LOCK-CONTRACT-DOMAIN-EVENTS
+
+  - id: CONTRACT-WORKFLOW-EXECUTION
+    source: docs/09-contracts/03-workflow-and-execution.md
+    id_prefixes:
+      - CT-WF-*
+    owner: G
+    consumers: [A, B, C, D, E, F, I, J]
+    kind: workflow_activity
+    current_revision: sha256:0fca25f2bc037a4c2bc58b844079dace8c19a9fd5af5c0ce8ad75e421bc2dc83
+    source_sha256: 0fca25f2bc037a4c2bc58b844079dace8c19a9fd5af5c0ce8ad75e421bc2dc83
+    lifecycle: active_accepted
+    compatibility_window: until_running_workflows_complete_or_are_explicitly_migrated
+    lock: LOCK-CONTRACT-WORKFLOW
+
+  - id: CONTRACT-SOURCE-CONTENT
+    source: docs/09-contracts/04-source-content-contracts.md
+    id_prefixes:
+      - CT-SRC-*
+      - CT-CNT-*
+    owner: A
+    co_owners:
+      - B
+    consumers: [B, C, G, H, I, J]
+    kind: synchronous_command_query
+    current_revision: sha256:61b075d202dd0d7729123f68f26285097be8120e2de48194d0ad2fe847701f31
+    source_sha256: 61b075d202dd0d7729123f68f26285097be8120e2de48194d0ad2fe847701f31
+    lifecycle: design_baseline
+    compatibility_window: must_be_defined_by_m3_plan_before_activation
+    lock: LOCK-CONTRACT-SOURCE-CONTENT
+
+  - id: CONTRACT-CONTENT-MEDIA
+    source: docs/09-contracts/05-content-media-contracts.md
+    id_prefixes:
+      - CT-MED-*
+      - CT-HOOK-*
+    owner: C
+    co_owners:
+      - B
+      - I
+    consumers: [D, E, F, G, H]
+    kind: artifact_reference
+    current_revision: sha256:ea6a3723dece842d132f634d44c32eb301fbc98b43b61d24b5c32c907782e4cf
+    source_sha256: ea6a3723dece842d132f634d44c32eb301fbc98b43b61d24b5c32c907782e4cf
+    lifecycle: design_baseline
+    compatibility_window: must_be_defined_by_m4_plan_before_activation
+    lock: LOCK-CONTRACT-CONTENT-MEDIA
+
+  - id: CONTRACT-CREATIVE-AI
+    source: docs/09-contracts/06-creative-ai-contracts.md
+    id_prefixes:
+      - CT-AI-*
+    owner: D
+    consumers: [B, C, E, F, G, H, J]
+    kind: synchronous_command_query
+    current_revision: sha256:92b74489890f1eaf3915aef809af4cff0585659842f6930bbdf11d1236861b3a
+    source_sha256: 92b74489890f1eaf3915aef809af4cff0585659842f6930bbdf11d1236861b3a
+    lifecycle: design_baseline
+    compatibility_window: must_be_defined_by_m5_plan_before_activation
+    lock: LOCK-CONTRACT-CREATIVE-AI
+
+  - id: CONTRACT-MEDIA-PROCESSING
+    source: docs/09-contracts/07-media-processing-contracts.md
+    id_prefixes:
+      - CT-PROC-*
+      - CT-TTS-*
+      - CT-SUB-*
+      - CT-AUD-*
+    owner: E
+    consumers: [C, D, F, G, H, I, J]
+    kind: artifact_reference
+    current_revision: sha256:c5f7abaea422916165d59f8a5508817729d21035cffd663123a913c49365cf49
+    source_sha256: c5f7abaea422916165d59f8a5508817729d21035cffd663123a913c49365cf49
+    lifecycle: design_baseline
+    compatibility_window: must_be_defined_by_m6_plan_before_activation
+    lock: LOCK-CONTRACT-MEDIA-PROCESSING
+
+  - id: CONTRACT-RENDER-QUALITY
+    source: docs/09-contracts/08-render-quality-contracts.md
+    id_prefixes:
+      - CT-RND-*
+      - CT-QC-*
+    owner: F
+    consumers: [D, E, G, H, I, J]
+    kind: artifact_reference
+    current_revision: sha256:c3e35d032c0a8e721ed35bbecb5fb57f350788e8520d6e8df5ca78284199b493
+    source_sha256: c3e35d032c0a8e721ed35bbecb5fb57f350788e8520d6e8df5ca78284199b493
+    lifecycle: design_baseline
+    compatibility_window: must_be_defined_by_m6_plan_before_activation
+    lock: LOCK-CONTRACT-RENDER-QUALITY
+
+  - id: CONTRACT-ORCHESTRATION
+    source: docs/09-contracts/09-orchestration-contracts.md
+    id_prefixes:
+      - CT-ORC-*
+    owner: G
+    consumers: [A, B, C, D, E, F, H, I, J]
+    kind: workflow_activity
+    current_revision: sha256:402f499f2ac2613502684f1d89697cf72d0cc136b25f2fd08fae07a7c1baaf59
+    source_sha256: 402f499f2ac2613502684f1d89697cf72d0cc136b25f2fd08fae07a7c1baaf59
+    lifecycle: active_accepted
+    compatibility_window: all_in_flight_batches_jobs_grants_and_receipts
+    lock: LOCK-CONTRACT-ORCHESTRATION
+
+  - id: CONTRACT-STORAGE
+    source: docs/09-contracts/10-storage-contracts.md
+    id_prefixes:
+      - CT-STO-*
+    owner: I
+    consumers: [A, B, C, D, E, F, G, H, J]
+    kind: artifact_reference
+    current_revision: sha256:6ab6f60bc2760ea9017ca0406e0053dc859cc06c1f0c80fff7e944d03d5e02ce
+    source_sha256: 6ab6f60bc2760ea9017ca0406e0053dc859cc06c1f0c80fff7e944d03d5e02ce
+    lifecycle: active_accepted
+    compatibility_window: all_referenced_artifact_versions_and_active_cleanup_authorizations
+    lock: LOCK-CONTRACT-STORAGE
+
+  - id: CONTRACT-CONFIG-SECURITY
+    source: docs/09-contracts/11-configuration-security-contracts.md
+    id_prefixes:
+      - CT-CFG-*
+      - CT-SEC-*
+      - CT-ACC-*
+      - CT-AI-ROUTE-*
+      - CT-CAP-*
+      - CT-COST-*
+    owner: J
+    consumers: [A, B, C, D, E, F, G, H, I]
+    kind: synchronous_command_query
+    current_revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+    source_sha256: 989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+    lifecycle: active_accepted
+    compatibility_window: all_jobs_bound_to_existing_config_prompt_and_policy_revisions
+    lock: LOCK-CONTRACT-CONFIG-SECURITY
+
+  - id: CONTRACT-STATE-MACHINES
+    source: docs/09-contracts/12-state-machines.md
+    id_prefixes:
+      - CT-STATE-*
+    owner: G
+    co_owners:
+      - A
+      - B
+      - C
+      - D
+      - E
+      - F
+      - I
+      - J
+    consumers: [A, B, C, D, E, F, G, H, I, J]
+    kind: state_machine
+    current_revision: sha256:2cab18e858b2e78eb3a578b5a64568619d20c7cb09fed2cb7766bc0636fb9f28
+    source_sha256: 2cab18e858b2e78eb3a578b5a64568619d20c7cb09fed2cb7766bc0636fb9f28
+    lifecycle: active_accepted
+    compatibility_window: all_persisted_nonterminal_entities_and_running_workflows
+    lock: LOCK-CONTRACT-STATE-MACHINES
+
+change_protocol:
+  steps:
+    - owner_opens_revision_proposal
+    - identify_producers_consumers_persisted_history_and_in_flight_workflows
+    - classify_compatible_or_breaking_using_CT_CMN_012
+    - add_producer_consumer_contract_tests_and_migration_or_dual_read_write_plan
+    - observe_discriminating_red
+    - freeze_exact_revision
+    - replan_all_dependent_tasks
+    - implement_producer_then_compatible_consumers
+    - verify_compatibility_window
+    - deprecate_only_after_no_references_remain
+  prohibited:
+    - concurrent_edit_of_same_contract_revision
+    - consumer_guessing_unknown_schema
+    - retroactive_edit_of_accepted_schema_or_evidence
+    - contract_change_hidden_inside_consumer_task

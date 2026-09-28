@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-28 — Đề xuất kiến trúc triển khai song song có kiểm soát
+
+- Thêm bundle `docs/parallel-delivery/` gồm operating model, task DAG, contract registry, ownership/resource lease, worker protocol, merge queue, traceability và guardrail security/performance/recovery có thể kiểm tra bằng máy. Đây chỉ là `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`; không triển khai M2-P8/P9, không mở M3/Phân hệ A hoặc milestone sau, và không sửa accepted/rejected evidence.
+- Khôi phục `AGENTS.md` về UTF-8 tiếng Việt hợp lệ; khóa Dely implement thành Codex CLI / `ag/gemini-3.8-flash-high` / `high`, review thành Claude Code / `cx/gpt-5.6-sol-high` / `high`, giữ supreme audit `cx/gpt-6-astra-medium` / `medium` bên ngoài Dely. Thêm `CLAUDE.md` import `@AGENTS.md` để Claude Code nhận cấu hình.
+- Đồng bộ README, roadmap, checklist và handoff với thiết kế docs/config-only; tham chiếu rollback `D:/AI_SETUP/backups/AI-Auto-Video-Creator/20260928-175542`. Toolchain, source, tests, SQL, runtime và lockfiles không đổi.
+
 ## 2026-09-17 — M2-P7B accepted và đóng lifecycle
 
 - Independent review chấp thuận P7B implementation tại source/tooling `c44214ad027986a0db7cb9d8e221590f232a0036` và GREEN `run-m2-p7b-green-20260917040648`; lifecycle hiện hành `M2-P1..P7B_ACCEPTED_CLOSED`. Migration `0008`, ngoại lệ đúng thân P3 `PostgresOperationStreamRepository.append()` và compatibility đúng thân P7A hardening H16 thuộc kết quả được chấp thuận. Oracle P7B/P7A, accepted evidence và candidate GREEN cũ bị từ chối đều giữ bất biến. Checkpoint này chỉ sửa tài liệu; P8/P9 vẫn khóa, M3/Phân hệ A `NOT AUTHORIZED`.

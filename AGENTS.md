@@ -12,6 +12,12 @@
 - Milestone M1 đã ACCEPTED / CLOSED. Milestone M2 được phép planning và implementation theo kế hoạch được duyệt. M3 và Phân hệ A tiếp tục bị khóa chặt tới khi M2 qua exit gate, audit và user checkpoint riêng.
 - Không ghi giả định thành quyết định. Nội dung chưa được xác nhận phải ghi `GIẢ ĐỊNH` hoặc open item với gate rõ ràng.
 
+## Định tuyến skill
+
+- Không chạy hoặc sử dụng global skill router trong repository này để tránh xung đột hướng dẫn.
+- Khi tác vụ liên quan Orca, dùng trực tiếp skill mặc định theo phiên bản hiện hành qua `orca skills get orca-cli --json`.
+- Với các tác vụ khác, ưu tiên skill cục bộ của repository; nếu không có, chọn trực tiếp skill phù hợp từ catalog hiện hành mà không tạo hoặc làm mới router.
+
 ## Quy tắc implementation
 
 - Tuân thủ test-first và evidence protocol của milestone plan đang hoạt động.
@@ -30,3 +36,14 @@
 6. Chạy test/validation phù hợp và không tuyên bố PASS thiếu evidence.
 7. Kiểm tra secret, commit theo Conventional Commits và push lên `origin` để sao lưu/rollback/đối chiếu.
 
+<!-- dely:begin -->
+## Dely
+
+Bounded or Architectural work invokes `dely:delivery`; Spike starts no
+delivery run.
+
+| Phase | Harness | Model | Effort |
+| --- | --- | --- | --- |
+| `implement` | Codex CLI | ag/gemini-3.8-flash-high | high |
+| `review` | Claude Code | cx/gpt-5.6-sol-high | high |
+<!-- dely:end -->

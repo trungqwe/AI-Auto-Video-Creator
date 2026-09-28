@@ -623,7 +623,11 @@ Sau khi dependency tương ứng được khóa, có thể chạy song song:
 | Observability dashboard | M2-M7 | Metric/event owner rõ; không đọc chéo DB ngoài contract |
 | Documentation/runbook | Mỗi milestone | Chỉ mô tả behavior đã test; không tuyên bố gate sớm |
 
-Không song song hóa nếu hai workstream đang cùng thay đổi một contract/state machine chưa được review. Khi đó owner contract phải khóa revision trước.
+Chi tiết machine-readable về task DAG, contract freeze, single-writer ownership, resource lease, worker protocol và merge queue nằm trong [bộ kiến trúc triển khai song song](./parallel-delivery/README.md). Bộ này là `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`; nó không thay milestone plan/checkpoint và không mở P8/P9, M3 hoặc milestone sau.
+
+Một wave chỉ hợp lệ khi các node độc lập đồng thời về dependency, exact contract revision, path/aggregate owner, resource/migration lock và evidence output. Authority là điều kiện riêng: predecessor hoàn tất không tự biến successor thành `ready`. Không song song hóa nếu hai workstream cùng thay đổi contract/state machine, migration sequence, dependency universe hoặc shared integration state; owner phải freeze revision và merge queue phải tích hợp tuần tự trước.
+
+DAG của bundle chỉ chứa future template cho M3-M7. Muốn kích hoạt cần milestone trước qua exit gate, audit, user checkpoint, plan có thẩm quyền và task-specific authority; scheduler/worker không được suy quyền từ template.
 
 ## 16. Definition of Ready cho một milestone
 

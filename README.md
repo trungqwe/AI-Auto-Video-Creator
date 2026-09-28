@@ -27,8 +27,9 @@ Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày
 3. [Roadmap](./docs/11-roadmap.md) — milestone và dependency.
 4. [M2 implementation plan](./docs/milestones/m2-control-plane/implementation-plan.md) — package/gate đang được phép thực hiện.
 5. [M2 toolchain lock](./docs/milestones/m2-control-plane/toolchain-lock.md) — phiên bản bắt buộc.
+6. [Kiến trúc triển khai song song](./docs/parallel-delivery/README.md) — thí nghiệm docs/config với DAG, ownership, protocol và merge queue có thể kiểm tra bằng máy.
 
-Chỉ đọc sâu contracts/ADR được work package hiện tại trích dẫn; không remap toàn bộ dự án nếu `HANDOFF` và tài liệu nguồn sự thật còn nhất quán.
+Bộ parallel delivery mang trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`: nó không mở P8/P9, M3/Phân hệ A hoặc milestone sau. Chỉ đọc sâu contracts/ADR được work package hiện tại trích dẫn; không remap toàn bộ dự án nếu `HANDOFF` và tài liệu nguồn sự thật còn nhất quán.
 
 ## Tài liệu nền
 

@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0.0",
+  "status": "PASS",
+  "checks": {
+    "yaml_and_task_dag": {
+      "status": "PASS",
+      "errors": []
+    },
+    "registries_and_locks": {
+      "status": "PASS",
+      "errors": []
+    },
+    "authority": {
+      "status": "PASS",
+      "errors": []
+    },
+    "utf8_and_text": {
+      "status": "PASS",
+      "errors": []
+    },
+    "links": {
+      "status": "PASS",
+      "errors": []
+    },
+    "changed_path_scope": {
+      "status": "PASS",
+      "errors": []
+    },
+    "dely_configuration": {
+      "status": "PASS",
+      "errors": []
+    }
+  },
+  "changed_paths": [
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "CLAUDE.md",
+    "HANDOFF.md",
+    "README.md",
+    "docs/11-roadmap.md",
+    "docs/12-pre-code-checklist.md",
+    "docs/parallel-delivery/.validation-report.json",
+    "docs/parallel-delivery/README.md",
+    "docs/parallel-delivery/contract-registry.yaml",
+    "docs/parallel-delivery/merge-and-integration.md",
+    "docs/parallel-delivery/operating-model.md",
+    "docs/parallel-delivery/ownership-and-locks.yaml",
+    "docs/parallel-delivery/protocol.md",
+    "docs/parallel-delivery/security-performance-recovery.md",
+    "docs/parallel-delivery/task-dag.yaml",
+    "docs/parallel-delivery/traceability.md",
+    "docs/parallel-delivery/validate.py"
+  ],
+  "bundle_sha256": {
+    "contract-registry.yaml": "2a895e5dcbb28ba95af76e3a5c7fd709b401723c946e0f3c1b4fedbab740e485",
+    "merge-and-integration.md": "3225440e556c25265f473142b18e2b8a96a1eb505973bc193f8ca4b648f4aaa9",
+    "operating-model.md": "8ff12461d1c18205c736151ee38a2e29004300716a35002c48ead26118c73fb3",
+    "ownership-and-locks.yaml": "c709267211c654323843a75778d274d71100df32b560d9044c39417553b28aba",
+    "protocol.md": "4d903206ca6a6b80cd4331d03fa6049d383295a812752dd1f83ab289e1b9121f",
+    "README.md": "9773086516c055c13db7995e67c673101f209f9c5fd853b2a6779f416e76f35b",
+    "security-performance-recovery.md": "b98d8cc2b8440f26455bd39f2ef3275a97646c25de02866de58b15536c137cb5",
+    "task-dag.yaml": "ddc0ab2eedc7e6a54b8cb66cbbbc8b323c06db2258a6a64f84939f007395cb9a",
+    "traceability.md": "99e5045bf9eb8c1b75b515464a431e538424e434eac5ef6051490b7c703abc05",
+    "validate.py": "3ce2c716810b71e3050b0ceb566f62b2e32cc3b0dbab31d7ad1f985e63555e07"
+  }
+}

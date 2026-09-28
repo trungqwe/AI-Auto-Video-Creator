@@ -1,0 +1,292 @@
+schema_version: "1.0.0"
+kind: parallel_delivery_ownership_and_lock_registry
+status: proposed_experiment_no_new_implementation_authority
+as_of: "2026-09-28"
+authority_refs:
+  - docs/06-system-map.md
+  - docs/09-contracts/README.md
+  - docs/09-contracts/00-common-contract.md
+
+single_writer_rules:
+  - one_active_write_lease_per_path
+  - one_logical_owner_per_aggregate
+  - one_exclusive_writer_per_contract_revision
+  - one_exclusive_writer_per_state_machine_revision
+  - one_exclusive_writer_per_migration_sequence
+  - one_evidence_writer_per_output_path
+  - caller_owned_postgresql_unit_of_work_for_cross_owner_atomic_use_cases
+  - no_direct_cross_owner_table_writes
+
+modules:
+  A:
+    responsibility: source_and_collection
+    aggregates: [SourceCandidate, Source, CollectionRun, CollectionAttempt, CollectedDocument]
+    contract_locks: [LOCK-CONTRACT-SOURCE-CONTENT]
+  B:
+    responsibility: articles_revisions_events_and_updates
+    aggregates: [Article, ArticleRevision, Event, EventUpdate]
+    contract_locks: [LOCK-CONTRACT-SOURCE-CONTENT, LOCK-CONTRACT-CONTENT-MEDIA]
+  C:
+    responsibility: media_catalog_hooks_provenance_and_usage
+    aggregates: [MediaAsset, MediaAnalysis, Hook, MediaUsage]
+    contract_locks: [LOCK-CONTRACT-CONTENT-MEDIA]
+  D:
+    responsibility: production_snapshot_analysis_angles_scripts_plans_variants
+    aggregates: [ProductionSnapshot, StoryAngle, ScriptVersion, ProductionPlan, VariantFingerprint]
+    contract_locks: [LOCK-CONTRACT-CREATIVE-AI]
+  E:
+    responsibility: processed_media_image_safety_voice_and_word_timing
+    aggregates: [ProcessedMedia, VoiceTrack, WordTiming]
+    contract_locks: [LOCK-CONTRACT-MEDIA-PROCESSING]
+  F:
+    responsibility: presets_render_attempts_quality_and_output
+    aggregates: [Preset, RenderAttempt, QualityReport, VideoOutput]
+    contract_locks: [LOCK-CONTRACT-RENDER-QUALITY]
+  G:
+    responsibility: orchestration_batch_job_stage_grants_capacity_variants_and_completion
+    aggregates: [Batch, BatchCapacityReservation, VariantReservation, VariantRegistryRevision, VideoJob, StageRun, ExecutionGrant, CompletionLedger]
+    contract_locks: [LOCK-CONTRACT-DOMAIN-EVENTS, LOCK-CONTRACT-WORKFLOW, LOCK-CONTRACT-ORCHESTRATION, LOCK-CONTRACT-STATE-MACHINES]
+  H:
+    responsibility: admin_ui_read_model_and_operation_stream
+    aggregates: [AdminReadModel, OperationStream]
+    contract_locks: [LOCK-CONTRACT-CONTROL-API]
+  I:
+    responsibility: artifact_identity_location_journal_sync_and_cleanup_authorization
+    aggregates: [ArtifactVersion, ArtifactLocation, CleanupAuthorization, LocalJournalEntry]
+    contract_locks: [LOCK-CONTRACT-STORAGE]
+  J:
+    responsibility: config_prompt_secret_handles_accounts_routing_quota_and_capacity
+    aggregates: [ConfigRevision, PromptRevision, ExternalAccount, ProviderCapacity]
+    contract_locks: [LOCK-CONTRACT-CONFIG-SECURITY]
+
+path_ownership:
+  - id: PATH-AUTHORITY-DOCS
+    patterns:
+      - HANDOFF.md
+      - docs/11-roadmap.md
+      - docs/12-pre-code-checklist.md
+    owner_role: Control
+    mode: exclusive
+    lock: LOCK-DOC-AUTHORITY
+  - id: PATH-AGENT-CONFIG
+    patterns:
+      - AGENTS.md
+      - CLAUDE.md
+    owner_role: Control
+    mode: exclusive
+    lock: LOCK-AGENT-CONFIG
+  - id: PATH-PARALLEL-DELIVERY
+    patterns:
+      - docs/parallel-delivery/**
+    owner_role: ParallelDeliveryContractOwner
+    mode: exclusive
+    lock: LOCK-PARALLEL-REGISTRY
+  - id: PATH-CHANGELOG-INDEX
+    patterns:
+      - README.md
+      - CHANGELOG.md
+    owner_role: DocumentationOwner
+    mode: exclusive
+    lock: LOCK-DOC-INDEX
+  - id: PATH-MIGRATIONS
+    patterns:
+      - src/**/migrations/**
+      - "**/*.sql"
+    owner_role: ActiveMilestoneMigrationOwner
+    mode: exclusive
+    lock: LOCK-MIGRATION-SEQUENCE
+  - id: PATH-DEPENDENCY-LOCKS
+    patterns:
+      - pyproject.toml
+      - uv.lock
+      - "**/pyproject.toml"
+      - "**/uv.lock"
+      - "**/requirements.lock"
+      - "**/package-lock.json"
+    owner_role: ActiveMilestoneToolchainOwner
+    mode: exclusive
+    lock: LOCK-DEPENDENCY-UNIVERSE
+  - id: PATH-ACCEPTED-EVIDENCE
+    patterns:
+      - docs/milestones/**/evidence/**
+    owner_role: EvidenceAuthority
+    mode: immutable
+    lock: LOCK-ACCEPTED-EVIDENCE
+
+locks:
+  - id: LOCK-DOC-AUTHORITY
+    class: path
+    mode: exclusive
+    scope: current_authority_documents
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-AGENT-CONFIG
+    class: path
+    mode: exclusive
+    scope: agent_instruction_files
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-PARALLEL-REGISTRY
+    class: path
+    mode: exclusive
+    scope: parallel_delivery_bundle
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-DOC-INDEX
+    class: path
+    mode: exclusive
+    scope: repository_index_and_changelog
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-MIGRATION-SEQUENCE
+    class: migration
+    mode: exclusive
+    scope: global_migration_number_and_schema_owner
+    lease_seconds: 900
+    renewable: true
+  - id: LOCK-DEPENDENCY-UNIVERSE
+    class: dependency
+    mode: exclusive
+    scope: each_package_universe
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-ACCEPTED-EVIDENCE
+    class: evidence
+    mode: immutable
+    scope: accepted_and_rejected_historical_runs
+    lease_seconds: null
+    renewable: false
+  - id: LOCK-EXTERNAL-DRIVE
+    class: external_resource
+    mode: exclusive_by_account_and_fixture_namespace
+    scope: real_drive_oauth_probe
+    lease_seconds: 600
+    renewable: true
+  - id: LOCK-POSTGRES-TEST-DB
+    class: runtime_resource
+    mode: exclusive_by_database_name
+    scope: disposable_database
+    lease_seconds: 900
+    renewable: true
+  - id: LOCK-DESKTOP-GPU
+    class: runtime_resource
+    mode: capacity
+    scope: gpu_vram_and_render_slot
+    capacity: policy_defined
+    lease_seconds: 300
+    renewable: true
+  - id: LOCK-CONTRACT-COMMON
+    class: contract_revision
+    mode: exclusive
+    scope: CONTRACT-COMMON
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONTRACT-CONTROL-API
+    class: contract_revision
+    mode: exclusive
+    scope: CONTRACT-CONTROL-API-STREAM
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONTRACT-DOMAIN-EVENTS
+    class: contract_revision
+    mode: exclusive
+    scope: CONTRACT-DOMAIN-EVENTS
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONTRACT-WORKFLOW
+    class: contract_revision
+    mode: exclusive
+    scope: CONTRACT-WORKFLOW-EXECUTION
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONTRACT-SOURCE-CONTENT
+    class: contract_revision
+    mode: exclusive
+    scope: CONTRACT-SOURCE-CONTENT
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONTRACT-CONTENT-MEDIA
+    class: contract_revision
+    mode: exclusive
+    scope: CONTRACT-CONTENT-MEDIA
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONTRACT-CREATIVE-AI
+    class: contract_revision
+    mode: exclusive
+    scope: CONTRACT-CREATIVE-AI
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONTRACT-MEDIA-PROCESSING
+    class: contract_revision
+    mode: exclusive
+    scope: CONTRACT-MEDIA-PROCESSING
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONTRACT-RENDER-QUALITY
+    class: contract_revision
+    mode: exclusive
+    scope: CONTRACT-RENDER-QUALITY
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONTRACT-ORCHESTRATION
+    class: contract_revision
+    mode: exclusive
+    scope: CONTRACT-ORCHESTRATION
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONTRACT-STORAGE
+    class: contract_revision
+    mode: exclusive
+    scope: CONTRACT-STORAGE
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONTRACT-CONFIG-SECURITY
+    class: contract_revision
+    mode: exclusive
+    scope: CONTRACT-CONFIG-SECURITY
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONTRACT-STATE-MACHINES
+    class: contract_revision
+    mode: exclusive
+    scope: CONTRACT-STATE-MACHINES
+    lease_seconds: 1800
+    renewable: true
+
+lease_protocol:
+  acquisition:
+    - scheduler_checks_authority_and_dependencies
+    - scheduler_computes_full_requested_lock_set
+    - scheduler_rejects_any_conflict
+    - scheduler_acquires_set_atomically
+    - scheduler_issues_monotonic_fencing_token_per_resource
+    - dispatch_records_lease_id_expiry_and_fencing_tokens
+  renewal:
+    - worker_sends_progress_heartbeat_before_expiry
+    - scheduler_renews_only_when_task_is_visible_and_authority_still_valid
+    - renewal_never_changes_scope_or_lock_set
+  expiry:
+    - mark_task_blocked
+    - reject_all_results_with_old_fencing_tokens
+    - reconcile_external_outcomes_before_reissue
+    - release_capacity_only_after_reconciliation
+  release:
+    - release_on_verified_worker_done_or_explicit_stop
+    - retain_immutable_evidence_lock
+    - record_owner_candidate_and_final_state
+  prohibited:
+    - worker_self_grants_lock
+    - partial_acquisition_of_required_lock_set
+    - lease_reuse_by_replacement_worker
+    - accepting_result_after_expiry
+    - hidden_path_expansion
+
+conflict_policy:
+  deterministic_order:
+    - lower_merge_priority_first
+    - earlier_ready_sequence_first
+    - lexicographically_lower_task_id_first
+  loser_state: blocked
+  escalation_after_seconds: policy_defined
+  no_force_steal: true

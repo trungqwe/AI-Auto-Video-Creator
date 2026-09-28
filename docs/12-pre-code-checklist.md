@@ -28,6 +28,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS strict version (Python, uv, PG, Temporal, ffprobe WAV duration > 0, fail-closed dynamic matrix observation) |
 | ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất qua Broker Subprocess boundary |
 | M2 | 🟡 `M2-P1..P7B_ACCEPTED_CLOSED`; P8/P9 `LOCKED` | Independent review đã chấp thuận P7B source/tooling `c44214ad027986a0db7cb9d8e221590f232a0036` và GREEN `run-m2-p7b-green-20260917040648`: P7B 5/5 + H01–H38 38/38, P7A 4/4 + 36/36, P6→P0/architecture/M1 đạt, migration/index/quality/secret scan/semantic/provenance/hash PASS. Migration `0008`, ngoại lệ đúng thân P3 `append()` và compatibility đúng thân P7A H16 thuộc kết quả accepted. P7A Behavioral oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035` và P7B Behavioral oracle SHA-256 `d83d0f2d808f1b0067d5288ea131ded24d8fc46a16462b5254fd4167f7425738` bất biến. Candidate GREEN `run-m2-p7b-green-20260917024918` giữ nguyên làm lịch sử bị từ chối. P8/P9 chưa có quyền RED/implementation; M3/Phân hệ A `NOT AUTHORIZED`. |
+| Parallel delivery experiment | 🧪 `PROPOSED — DOCS/CONFIG ONLY` | [Bundle](./parallel-delivery/README.md) định nghĩa DAG/ownership/lease/protocol/merge queue để review; không cấp authority mới. Pilot runtime, activation và thay đổi task state cần checkpoint riêng. Rollback reference: `D:/AI_SETUP/backups/AI-Auto-Video-Creator/20260928-175542`. |
 | M3 / Module A | ⛔ `NOT AUTHORIZED` | Tiếp tục bị khóa chặt; không được bắt đầu trước khi M2 đạt exit gate và có User Checkpoint riêng |
 
 Đây là bảng trạng thái có thẩm quyền trước lệnh code đầu tiên. Kết quả P2/P3 đã đạt được ghi `PASS_M1_SCOPE`; G01/G04 toàn phần vẫn `PARTIALLY_PROVEN` cho tới khi đủ evidence các milestone tiếp theo.
@@ -84,6 +85,7 @@ Nguồn có thẩm quyền: [charter](./00-project-charter.md), [product spec](.
 | PCC-026 | Người dùng đã đọc và chấp thuận bộ kế hoạch hiện hành | [x] User đã chấp thuận baseline 00–12, ADR, contracts, audit, roadmap và kế hoạch Phân hệ A sau khắc phục ngày 13-09-2026. |
 | PCC-027 | Người dùng cho phép bước qua ranh giới code | [x] Quyền implementation đã cấp cho M1 (ĐÃ HOÀN TẤT & ACCEPTED) và M2 (ĐÃ ĐƯỢC PHÊ DUYỆT BẮT ĐẦU). M3/Phân hệ A chưa được phép. |
 | PCC-028 | Runtime/dependency/test-tool versions đã khóa trước test code đầu tiên | [x] `ROADMAP-OPEN-002=CLOSED_FOR_M1_R1`; version set và quy tắc revision/rollback ghi tại [M1-R1 lock](./milestones/m1-proof/version-lock.md). Không đồng nghĩa compatibility/G01/G04/G07 PASS. |
+| PCC-029 | Kiến trúc triển khai song song được giữ tách biệt khỏi authority sản phẩm | [x] Bundle đề xuất có task DAG, contract registry, single-writer ownership, resource lease, worker protocol và merge queue; mọi future node là `locked`/`future_template`, không tự mở P8/P9 hoặc M3+. [Parallel delivery](./parallel-delivery/README.md). |
 
 ## 4. Xác nhận khắc phục audit
 
