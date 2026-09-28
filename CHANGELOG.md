@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-28 — Khắc phục sáu findings Astra audit round 1 và bổ sung negative fixtures
+
+- Khắc phục toàn bộ 6 findings từ Astra audit round 1 cho bundle `docs/parallel-delivery/`:
+  - **F1 (Exact contract binding)**: Khóa chặt từng contract ID với registry/source/owner/hash xác định; `CT-AI-ROUTE-*` thuộc về `CONTRACT-CONFIG-SECURITY` (owner `J`), tách biệt khỏi `CONTRACT-CREATIVE-AI` (owner `D`); từ chối wrong-registry và wrong-source hash fail-closed.
+  - **F2 (Ownership & path safety)**: Cấm tuyệt đối đường dẫn tuyệt đối, path traversal (`..`), và alias chuẩn tắc (`./`, `//`, `\`); kiểm tra tập giao rỗng giữa `owned_paths` và `forbidden_paths`; bảo vệ `LOCK-ACCEPTED-EVIDENCE` và evidence lịch sử bất biến, từ chối mọi mutation lease.
+  - **F3 (Scope check & committed delta)**: Pin approved base commit `4a7c8c9` và candidate commit; kiểm tra đồng thời committed diff và dirty/untracked overlay; kiểm tra rename cả hai đầu (old path & new path); đối chiếu bảo toàn hash evidence bất biến; từ chối forbidden committed delta.
+  - **F4 (Orca mapping & lifecycle)**: Phân định rõ ràng Delivery Ledger Task ID khỏi Orca execution Task/Dispatch/Run ID; chuẩn hóa CLI `worker_done` chỉ chấp nhận `--outcome succeeded|failed` để giải quyết attempt; định nghĩa `OrcaDeliveryAdapter` điều phối `succeeded → review → integrated`, `failed → blocked/needs_replan → fresh dispatch`; từ chối kết quả trùng lặp hoặc mang fencing token cũ.
+  - **F5 (Readiness & traceability)**: Thẩm định toàn bộ references thật (`authority_refs`, `module_owners`, `invariant_refs` INV-001..020, `requirement_refs`, `contract_refs`); từ chối fake IDs; thực thi predicate readiness (chặn locked/future_template chuyển sang ready; cấm red_observation rỗng hoặc mang giá trị `unknown`).
+  - **F6 (Locks & leases)**: Tách bạch khai báo lock khỏi active lease; task ở trạng thái `integrated` giải phóng toàn bộ active lease và không chặn task mới; hỗ trợ phân vùng database (`exclusive_by_database_name`), cấp phát đồng thời cho namespace tách rời và xung đột khi trùng namespace; áp dụng hạn mức capacity; cấp phát fencing token tăng đơn điệu.
+- Thêm `delivery_engine.py` và suite 34 test tự động trong `test_negative_fixtures.py` kiểm chứng toàn diện mọi counterexample của Astra và các positive cases tương ứng; tích hợp trực tiếp vào `validate.py` và `.validation-report.json`.
+
 ## 2026-09-28 — Đề xuất kiến trúc triển khai song song có kiểm soát
 
 - Thêm bundle `docs/parallel-delivery/` gồm operating model, task DAG, contract registry, ownership/resource lease, worker protocol, merge queue, traceability và guardrail security/performance/recovery có thể kiểm tra bằng máy. Đây chỉ là `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`; không triển khai M2-P8/P9, không mở M3/Phân hệ A hoặc milestone sau, và không sửa accepted/rejected evidence.

@@ -76,14 +76,16 @@ Objective → FR/QR/R → module owner → CT/INV exact revision
 
 Validator phải từ chối:
 
-- requirement/ref không tồn tại;
-- task không có authority ref;
-- owner không khớp registry;
+- requirement/ref không tồn tại hoặc mang ID giả lập (fake ID như `INV-999`, `FR-FAKE-001`, `CT-FAKE-001`, `MODULE-UNKNOWN`);
+- task không có authority ref hoặc authority ref trỏ tới tệp không tồn tại;
+- owner không khớp module registry;
 - contract dùng wildcard ở task implementation thay vì exact revision/ID;
+- task có authority `locked` hoặc `future_template` cố tình chuyển sang trạng thái `ready`;
+- acceptance rows của task sẵn sàng (`ready`) có `red_observation` rỗng, thiếu hoặc mang giá trị `unknown`;
 - evidence output trùng task khác;
 - gate PASS không có instrument đúng loại;
 - external gate dùng mock;
-- accepted evidence bị đổi hash.
+- accepted evidence bị đổi hash hoặc xin mutation lease.
 
 ## 5. Open thresholds giữ nguyên
 

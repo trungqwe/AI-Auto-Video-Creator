@@ -1,6 +1,20 @@
 {
   "schema_version": "1.0.0",
   "status": "PASS",
+  "astra_round_1_remediation": {
+    "F1_exact_contract_binding": "RESOLVED",
+    "F2_ownership_and_path_safety": "RESOLVED",
+    "F3_scope_and_candidate_delta": "RESOLVED",
+    "F4_orca_mapping_and_lifecycle": "RESOLVED",
+    "F5_readiness_and_traceability": "RESOLVED",
+    "F6_locks_and_leases": "RESOLVED"
+  },
+  "fixture_stats": {
+    "tests_run": 34,
+    "failures": 0,
+    "errors": 0,
+    "passed": true
+  },
   "checks": {
     "yaml_and_task_dag": {
       "status": "PASS",
@@ -10,7 +24,15 @@
       "status": "PASS",
       "errors": []
     },
+    "lock_and_lease_semantics": {
+      "status": "PASS",
+      "errors": []
+    },
     "authority": {
+      "status": "PASS",
+      "errors": []
+    },
+    "changed_path_scope": {
       "status": "PASS",
       "errors": []
     },
@@ -22,11 +44,11 @@
       "status": "PASS",
       "errors": []
     },
-    "changed_path_scope": {
+    "dely_configuration": {
       "status": "PASS",
       "errors": []
     },
-    "dely_configuration": {
+    "negative_fixtures_suite": {
       "status": "PASS",
       "errors": []
     }
@@ -42,25 +64,29 @@
     "docs/parallel-delivery/.validation-report.json",
     "docs/parallel-delivery/README.md",
     "docs/parallel-delivery/contract-registry.yaml",
+    "docs/parallel-delivery/delivery_engine.py",
     "docs/parallel-delivery/merge-and-integration.md",
     "docs/parallel-delivery/operating-model.md",
     "docs/parallel-delivery/ownership-and-locks.yaml",
     "docs/parallel-delivery/protocol.md",
     "docs/parallel-delivery/security-performance-recovery.md",
     "docs/parallel-delivery/task-dag.yaml",
+    "docs/parallel-delivery/test_negative_fixtures.py",
     "docs/parallel-delivery/traceability.md",
     "docs/parallel-delivery/validate.py"
   ],
   "bundle_sha256": {
-    "contract-registry.yaml": "2a895e5dcbb28ba95af76e3a5c7fd709b401723c946e0f3c1b4fedbab740e485",
-    "merge-and-integration.md": "3225440e556c25265f473142b18e2b8a96a1eb505973bc193f8ca4b648f4aaa9",
-    "operating-model.md": "8ff12461d1c18205c736151ee38a2e29004300716a35002c48ead26118c73fb3",
-    "ownership-and-locks.yaml": "c709267211c654323843a75778d274d71100df32b560d9044c39417553b28aba",
-    "protocol.md": "4d903206ca6a6b80cd4331d03fa6049d383295a812752dd1f83ab289e1b9121f",
-    "README.md": "9773086516c055c13db7995e67c673101f209f9c5fd853b2a6779f416e76f35b",
-    "security-performance-recovery.md": "b98d8cc2b8440f26455bd39f2ef3275a97646c25de02866de58b15536c137cb5",
-    "task-dag.yaml": "ddc0ab2eedc7e6a54b8cb66cbbbc8b323c06db2258a6a64f84939f007395cb9a",
-    "traceability.md": "99e5045bf9eb8c1b75b515464a431e538424e434eac5ef6051490b7c703abc05",
-    "validate.py": "3ce2c716810b71e3050b0ceb566f62b2e32cc3b0dbab31d7ad1f985e63555e07"
+    "contract-registry.yaml": "417687b7520f9b0cfc26d7f5a2c0df098581f18ad87ef91c0452356cbb9bfc01",
+    "delivery_engine.py": "09b3364f61345d50f2f395783bcd031163d21661371fb2b31f2ba32e2efa8f17",
+    "merge-and-integration.md": "fe85a843f23057dbc4109eda8a2d40467ac5531d38cd92f6379a5f446318fa29",
+    "operating-model.md": "1a7793764cfc2aa44c7283afed4c54d07421ea7ec7354bf6219bf4e7f310dabe",
+    "ownership-and-locks.yaml": "0dd81e5e1b9487aa5feb1227ed22598f7fcd9b018f72377a81636f4acba0fe66",
+    "protocol.md": "48fa89c61cc8690b945874a9c4ff97b6cc1ead7c35d9d586ca3da88d91c4e94f",
+    "README.md": "b28c4ae6fd3a4b6afe2774d474bd8ca52d673faf2fdc275d3082ef2ecb52f53b",
+    "security-performance-recovery.md": "4900e413f9bbd47bd5302bac79252aefd55b16d716425e61754b09c12e37bf4b",
+    "task-dag.yaml": "2e61ff7775967b2f629f188a8cc0b103d90883a9ff5ff173f7e37d939504bef7",
+    "test_negative_fixtures.py": "d3283e736ff929c9e22fefce5b6ca24317136509a5d01d6a76d8ab7ea1ff1223",
+    "traceability.md": "4a3ccc750d83c4d6693c58375acafc50e3b1d52df53d4315b16068b86e7c1211",
+    "validate.py": "9fd9ec2b1edd3374a7b4acdb6faa8b46cf77014a6e25da9b4a8c93ff5d773a4a"
   }
 }

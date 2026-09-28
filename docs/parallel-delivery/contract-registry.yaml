@@ -23,6 +23,12 @@ version_policy:
   history_rule: do_not_rewrite_old_schema_or_accepted_evidence
   consumer_rule: fail_closed_on_unsupported_version
   freeze_rule: exact_revision_must_be_frozen_before_dependent_task_becomes_ready
+  exact_binding_rules:
+    - each_contract_id_binds_strictly_to_its_defining_source_file_and_registry
+    - prefix_matching_is_subordinate_to_exact_source_file_definition
+    - wrong_registry_must_fail_closed
+    - wrong_source_hash_must_fail_closed
+    - correct_j_route_ct_ai_route_must_bind_to_contract_config_security_owner_j
 
 schema:
   required_fields:
@@ -143,6 +149,8 @@ contracts:
     source: docs/09-contracts/06-creative-ai-contracts.md
     id_prefixes:
       - CT-AI-*
+    excluded_prefixes:
+      - CT-AI-ROUTE-*
     owner: D
     consumers: [B, C, E, F, G, H, J]
     kind: synchronous_command_query

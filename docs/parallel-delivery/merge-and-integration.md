@@ -22,6 +22,13 @@ repository + base_sha + ordered_task_commits + tree_sha + evidence_manifest_hash
 
 Review và gate phải ghi exact identity. Rebase, conflict resolution, generated-file refresh, docs reconciliation hoặc bất kỳ mutation nào sau review tạo candidate mới và làm verdict cũ hết hiệu lực trong phần bị ảnh hưởng.
 
+### Quy tắc kiểm tra Scope (Committed Diff + Dirty Overlay)
+
+1. **Pin approved base/candidate**: Scope check không chỉ đọc working tree hiện tại mà bắt buộc so sánh exact committed diff giữa approved `base_sha` và candidate commit SHA (`git diff --name-status -z base_sha candidate_sha`), kết hợp với lớp phủ dirty / untracked (`git status --porcelain=v1 -z --untracked-files=all`).
+2. **Kiểm tra rename hai đầu**: Với mọi thao tác đổi tên (rename) hoặc sao chép, cả đường dẫn nguồn (`old_path`) lẫn đường dẫn đích (`new_path`) đều phải được kiểm tra độc lập. Nếu một trong hai đầu thuộc đường dẫn cấm (`src/`, `tests/`, `.sql`, v.v.) hoặc nằm ngoài scope cho phép, gate FAIL ngay lập tức.
+3. **Bảo toàn hash evidence bất biến**: Mọi tệp trong `docs/milestones/**/evidence/**` là bất biến (`immutable`). Hash SHA-256 của các tệp evidence lịch sử được đối chiếu với baseline; bất kỳ thay đổi nào đều bị từ chối fail-closed.
+4. **Forbidden committed delta fixture**: Bất kỳ commit delta nào chứa thay đổi ngoài scope docs/config (kể cả khi working tree hiện tại sạch) đều bị từ chối.
+
 ## 3. Merge queue tuần tự
 
 Song song kết thúc ở candidate task; tích hợp shared state luôn tuần tự.

@@ -50,6 +50,8 @@ Khi có mâu thuẫn, dừng node bị ảnh hưởng ở `needs_replan` hoặc 
 | [`merge-and-integration.md`](./merge-and-integration.md) | Worktree/branch, merge queue và integration gates | Một phần |
 | [`traceability.md`](./traceability.md) | Mục tiêu → FR/QR → module → contract/invariant → gate | Một phần |
 | [`security-performance-recovery.md`](./security-performance-recovery.md) | Guardrail bảo mật, hiệu năng, evidence và phục hồi | Một phần |
+| [`validate.py`](./validate.py) | Công cụ thẩm định bundle, DAG, registry, locks, scope, fixtures | Có |
+| [`test_negative_fixtures.py`](./test_negative_fixtures.py) | Suite kiểm thử negative fixtures tự động cho 6 findings Astra round 1 | Có |
 
 YAML dùng YAML 1.2, UTF-8 không BOM. Giá trị enum và identifier dùng tiếng Anh; mô tả cho người dùng dùng tiếng Việt.
 

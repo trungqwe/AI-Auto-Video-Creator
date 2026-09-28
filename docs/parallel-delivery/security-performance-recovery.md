@@ -7,6 +7,9 @@
 Mọi task fail closed và chỉ có quyền tối thiểu theo execution envelope.
 
 - Worktree, branch, path allowlist và resource lease cô lập task.
+- An toàn đường dẫn: Đường dẫn trong `owned_paths`, `forbidden_paths` và lease bắt buộc là đường dẫn tương đối chuẩn tắc từ gốc repository. Nghiêm cấm đường dẫn tuyệt đối, path traversal (`..`), alias chuẩn tắc (`./`, `//`, `\`); vi phạm bị từ chối fail-closed.
+- Bất biến evidence lịch sử: Tệp trong `docs/milestones/**/evidence/**` là bất biến, không thể xin mutation lease; mọi sai lệch hash đều chặn merge.
+- Fencing token và hết hạn lease: Mọi lease cấp phát mang fencing token tăng đơn điệu; kết quả mang token cũ hoặc sau khi lease hết hạn bị chặn fail-closed.
 - Browser/desktop/API giữ Host, Origin, CSRF và local HTTPS boundary theo contract hiện hành.
 - URL/path từ nguồn ngoài được xem là dữ liệu không tin cậy; chống SSRF, redirect abuse, path traversal và shell injection.
 - Nội dung web, metadata, OCR, prompt hoặc artifact không bao giờ là instruction hệ thống hay authority.

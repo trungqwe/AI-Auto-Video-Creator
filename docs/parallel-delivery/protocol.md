@@ -6,12 +6,24 @@
 
 Orca là execution plane và communication plane bắt buộc. Trạng thái task đến từ record Orca + Git candidate + evidence machine-readable, không suy từ dòng cuối terminal. Dely chạy bên trong task được cấp quyền và không tạo worker con ngoài dispatch do Control quản lý.
 
-Mọi message phải mang:
+### Tách biệt Delivery Ledger và Orca Execution Plane
+
+- **Delivery Ledger Task ID** (ví dụ: `PD-PILOT-CONTROL`, `M3-A-TEMPLATE`): Định danh work package trong DAG và delivery ledger (`task-dag.yaml`). Thuộc quyền quản lý của Control.
+- **Orca Execution Plane**:
+  - `run_id`: Định danh run thực thi tổng thể trong Orca.
+  - `task_id`: Định danh execution container / process trong Orca (ví dụ `task_576e006b5784`).
+  - `dispatch_id`: Định danh phiên / attempt thực thi cụ thể của worker (ví dụ `ctx_ea3797c96ced`).
+  - `worker_terminal_id`: Handle terminal của worker (ví dụ `term_299d71b8-d78c-41f9-ad72-2b25401fb60d`).
+  - `dispatch_capability`: Token thẩm quyền dispatch do Orca cấp.
+- **OrcaDeliveryAdapter** (do Control sở hữu): Thành phần chuyển ngữ giữa các sự kiện Orca CLI (`heartbeat`, `ask`, `escalation`, `worker_done`) và máy trạng thái delivery ledger. `worker_done` chỉ giải quyết attempt của dispatch, không trực tiếp đánh dấu `integrated`.
+
+Mọi message qua protocol phải mang:
 
 ```yaml
 protocol_version: "1.0.0"
 run_id: string
-task_id: string
+delivery_task_id: string
+orca_task_id: string
 dispatch_id: string
 worker_terminal_id: string
 sequence: integer
@@ -125,17 +137,21 @@ Worker gửi `status` khi đổi phase quan trọng, phát hiện STOP condition
 
 ## 5. Ask và escalation
 
-Worker dùng blocking `ask` khi câu trả lời quyết định tiếp tục hay dừng, đặc biệt:
+Khi worker cần coordinator trả lời câu hỏi quyết định tiếp tục hay dừng, worker bắt buộc dùng lệnh `ask` qua Orca CLI:
 
-- cần authority mới;
-- cần sửa ngoài owned scope;
-- contract/requirement mâu thuẫn;
-- destructive/outward-facing action;
-- external outcome unknown;
-- runtime bắt buộc không khả dụng;
-- counterexample không thể quan sát.
+```sh
+orca orchestration ask --from <worker_terminal> --dispatch-capability <dcap> --question "<nội dung>" --options "<opt1,opt2>" --timeout-ms <ms>
+```
 
-Sau `ask`, worker dừng mutation, giữ candidate và lease theo thời hạn. Không có trả lời trước expiry thì task chuyển `blocked`, lease hết hạn, mọi kết quả muộn bị fence.
+Lệnh `ask` chặn worker đồng bộ cho tới khi coordinator phản hồi. Nếu timeout hoặc mất kết nối, worker không lặp lại câu hỏi trùng lặp mà resume theo message ID đã nhận.
+
+Khi worker gặp blocker cần coordinator xử lý trước khi tiếp tục, worker gửi `escalation`:
+
+```sh
+orca orchestration send --from <worker_terminal> --dispatch-capability <dcap> --type escalation --subject "Blocked: <lý do>" --body "<chi tiết>" --task-id <orca_task_id> --dispatch-id <orca_dispatch_id>
+```
+
+Sau `ask` hoặc escalation, nếu lease hết hạn mà không có giải pháp, task chuyển `blocked`, mọi output muộn bị fence.
 
 Escalation tự động khi:
 
@@ -157,28 +173,34 @@ Control không tự trả lời câu hỏi thuộc user authority.
 - Terminal không phản hồi: kiểm Orca worker record, process và last message; không suy completion từ output.
 - Worker replacement luôn nhận dispatch/lease/fencing token mới; không tiếp tục bằng token cũ.
 
-## 7. Exactly-once `worker_done`
+## 7. Exactly-once `worker_done` và Orca CLI Mapping
 
-Mỗi dispatch được chấp nhận tối đa một `worker_done`. Message gồm:
+Lệnh Orca CLI `worker_done` chỉ hỗ trợ đúng hai giá trị outcome:
+`--outcome succeeded` hoặc `--outcome failed`.
 
-```yaml
-outcome: done|blocked|needs_replan|failed|cancelled
-candidate_commit: git_sha|null
-changed_paths: [path]
-verification_refs: [artifact_or_command_record]
-residue: string
-handoff_complete: true
+```sh
+orca orchestration send --from <worker_terminal> --dispatch-capability <dcap> --type worker_done --subject "<short status>" --body "<3-sentence summary>" --task-id <orca_task_id> --dispatch-id <orca_dispatch_id> --outcome succeeded|failed
 ```
 
-Quy tắc:
+### Ý nghĩa và cơ chế chuyển đổi của `OrcaDeliveryAdapter`
 
-- dedupe key là `(run_id, task_id, dispatch_id, type=worker_done)`;
-- duplicate giống byte được ACK idempotent nhưng không áp dụng lại;
-- duplicate khác nội dung là protocol violation và escalation;
-- `done` thiếu candidate/evidence hoặc scope check không chuyển task sang review;
-- completion chỉ phát sinh từ valid `worker_done`, không từ terminal exit;
-- sau `worker_done`, worker không mutation, message hoặc command nào nữa;
-- lease được release sau khi Control xác minh receipt và reconcile resource.
+1. **`worker_done` chỉ settle execution attempt (dispatch)**: Nó ghi nhận phiên làm việc của worker kết thúc. Nó KHÔNG tự động chuyển trạng thái delivery task sang `integrated`.
+2. **Chuyển đổi thành công (`--outcome succeeded`)**:
+   - `OrcaDeliveryAdapter` kiểm tra execution envelope, candidate commit SHA, committed diff + dirty overlay scope, và evidence.
+   - Nếu hợp lệ, delivery task chuyển sang `review` (chưa phải `integrated`).
+   - Sau khi reviewer độc lập xác nhận `ACCEPT`, task chuyển sang `merge_queued`.
+   - Sau khi các integration gate tuần tự PASS trên exact candidate HEAD, task mới trở thành `integrated`.
+3. **Chuyển đổi thất bại hoặc blocker (`--outcome failed`)**:
+   - Khi worker gặp lỗi không thể phục hồi hoặc blocker cần re-plan, worker gửi `worker_done --outcome failed` (hoặc escalation).
+   - `OrcaDeliveryAdapter` chuyển trạng thái delivery task sang `blocked` hoặc `needs_replan`.
+   - Toàn bộ live lease của dispatch đó bị hủy / giải phóng.
+4. **Tiếp tục sau blocker / re-plan cần Fresh Dispatch**:
+   - Khi nguyên nhân chặn được giải quyết, delivery task được chuyển về `ready` (nếu đủ eligibility).
+   - Khi dispatch lại, hệ thống cấp một **fresh dispatch** với `dispatch_id` hoàn toàn mới, active lease mới và monotonic fencing token mới. Tuyệt đối không tái sử dụng dispatch ID hoặc fencing token cũ!
+5. **Từ chối kết quả trùng lặp hoặc quá hạn (Duplicate / Stale Result Rejection)**:
+   - Một dispatch đã settled chỉ nhận đúng một lần `worker_done`.
+   - Kết quả gửi lại từ dispatch cũ, hoặc mang fencing token cũ hơn token hiện hành, bị từ chối fail-closed.
+   - Dedupe key là `(run_id, delivery_task_id, dispatch_id, type=worker_done)`.
 
 ## 8. Review/remediation protocol
 

@@ -16,6 +16,9 @@ single_writer_rules:
   - one_evidence_writer_per_output_path
   - caller_owned_postgresql_unit_of_work_for_cross_owner_atomic_use_cases
   - no_direct_cross_owner_table_writes
+  - canonical_relative_paths_only_reject_absolute_traversal_and_aliases
+  - disjoint_owned_and_forbidden_paths_in_every_task
+  - accepted_evidence_is_immutable_mutation_leases_strictly_prohibited
 
 modules:
   A:
@@ -156,6 +159,7 @@ locks:
     scope: accepted_and_rejected_historical_runs
     lease_seconds: null
     renewable: false
+    mutation_lease_forbidden: true
   - id: LOCK-EXTERNAL-DRIVE
     class: external_resource
     mode: exclusive_by_account_and_fixture_namespace
@@ -166,13 +170,17 @@ locks:
     class: runtime_resource
     mode: exclusive_by_database_name
     scope: disposable_database
+    partition_key_prefix: "db:"
+    disjoint_namespace_rule: disjoint_db_names_grant_concurrently_same_db_conflicts
     lease_seconds: 900
     renewable: true
   - id: LOCK-DESKTOP-GPU
     class: runtime_resource
     mode: capacity
     scope: gpu_vram_and_render_slot
-    capacity: policy_defined
+    capacity: 2
+    capacity_unit: slot
+    over_capacity_rule: reject_requests_exceeding_total_capacity_units
     lease_seconds: 300
     renewable: true
   - id: LOCK-CONTRACT-COMMON
@@ -253,6 +261,22 @@ locks:
     scope: CONTRACT-STATE-MACHINES
     lease_seconds: 1800
     renewable: true
+
+active_lease_schema:
+  fields:
+    lease_id: string_uuid
+    lock_id: string_lock_ref
+    resource_key: string_partition_or_namespace
+    units: integer_capacity_units
+    fencing_token: integer_monotonic
+    task_id: string_delivery_task_id
+    dispatch_id: string_orca_dispatch_id
+    acquired_at: timestamp_rfc3339
+    expires_at: timestamp_rfc3339
+  rules:
+    - declaration_in_dag_does_not_hold_resources
+    - integrated_or_closed_tasks_hold_zero_active_leases
+    - only_active_unexpired_leases_block_conflicting_acquisitions
 
 lease_protocol:
   acquisition:

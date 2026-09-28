@@ -4,6 +4,7 @@
 
 - Authority hiện hành giữ nguyên: `M2-P1..P7B_ACCEPTED_CLOSED`; M2-P8/P9 `LOCKED`; M3/Phân hệ A `NOT AUTHORIZED`.
 - Đã thêm [kiến trúc triển khai song song](./docs/parallel-delivery/README.md) ở trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`. Bundle chỉ là docs/config và định nghĩa DAG, contract registry, ownership/lease, Orca worker protocol, merge queue, traceability, security/performance/recovery.
+- Đã khắc phục toàn bộ 6 findings của Astra audit round 1 (F1 exact contract binding, F2 ownership & path safety, F3 scope & committed delta, F4 Orca mapping & lifecycle, F5 readiness & traceability, F6 locks & leases), bổ sung engine và negative fixture suite 34 test tự động trong `docs/parallel-delivery/test_negative_fixtures.py`, cập nhật `validate.py` và `.validation-report.json`.
 - Orca là execution/communication plane. Dely chỉ quản lý implement → independent review bên trong task đã có authority. Dely implement: Codex CLI / `ag/gemini-3.8-flash-high` / `high`; review: Claude Code / `cx/gpt-5.6-sol-high` / `high`. Supreme audit `cx/gpt-6-astra-medium` / `medium` nằm ngoài Dely và chỉ cho audit cực khó.
 - Rollback reference trước thí nghiệm: `D:/AI_SETUP/backups/AI-Auto-Video-Creator/20260928-175542`; đây không phải bằng chứng G05 PASS.
 

@@ -71,6 +71,11 @@ Không được dùng ví dụ này để mở M2-P8/P9 hoặc M3+.
 - Mỗi path có tối đa một active write lease.
 - Mỗi aggregate có một owner logic theo `docs/09-contracts/README.md`.
 - Mỗi migration sequence, lockfile, state machine và contract revision dùng exclusive lock.
+- **Khai báo lock khác Active Lease**: Việc khai báo `resource_locks` trong định nghĩa task chỉ là danh mục yêu cầu tĩnh. Chỉ có active lease đang sống (chưa hết hạn) mới chiếm giữ tài nguyên. Task ở trạng thái `integrated` hoặc đã đóng không giữ active lease nào và không chặn các task tiếp theo.
+- **Tài nguyên phân vùng (Partitionable) và Capacity**:
+  - `LOCK-POSTGRES-TEST-DB` (`exclusive_by_database_name`): Các task dùng namespace database tách rời (`db:ns1` và `db:ns2`) được cấp lease đồng thời không xung đột; trùng namespace database sẽ bị chặn.
+  - `LOCK-DESKTOP-GPU` (`capacity`): Cấp phát theo đơn vị định mức (unit); vượt quá tổng dung lượng (over-capacity) sẽ bị từ chối fail-closed.
+- **Exact Contract Binding**: Mỗi contract ID ràng buộc chặt chẽ với registry có source file định nghĩa nó. `CT-AI-ROUTE-*` thuộc về `CONTRACT-CONFIG-SECURITY` (owner `J`), tuyệt đối không bị chiếm bởi `CONTRACT-CREATIVE-AI` (owner `D`).
 - Contract owner phát hành revision frozen trước consumer task.
 - Consumer chỉ implement trên exact revision; unsupported version phải fail closed.
 - Thay đổi contract sau freeze làm dependent task `needs_replan`, không âm thầm cập nhật fixture.
@@ -83,15 +88,18 @@ Control đánh giá predicate sau từ machine records, không từ lời nói t
 ```text
 eligible(task) =
   task.authority.state == granted
-  and all(required predecessors are accepted)
-  and all(required contracts are frozen at exact revision)
+  and task.authority.state not in (locked, future_template, revoked)
+  and all(required predecessors are accepted or integrated)
+  and all(required contracts are frozen at exact revision and bound to defining source)
   and no active path/aggregate/evidence conflict
-  and all requested locks can be acquired atomically
+  and all requested locks can be acquired atomically as active leases
   and runtime prerequisites are observed available
   and every deterministic acceptance row has a reviewed oracle
+  and task.acceptance has no empty, missing or 'unknown' red_observation
+  and all referenced IDs (requirements, invariants, contracts, owners) are real
 ```
 
-Với task behavior, RED phải fail vì counterexample/behavior seam đã nêu, không vì import, setup hoặc binary thiếu. Với docs/config, parser, link checker, fixture hoặc diff inspection có thể là instrument phù hợp nhưng phải phân biệt implementation hiện diện mà sai.
+Task có `authority.state` là `locked` hoặc `future_template` tuyệt đối không thể ở trạng thái `ready` (chuyển sang `ready` sẽ bị validator từ chối). Với task behavior, RED phải fail vì counterexample/behavior seam đã nêu, không vì import, setup hoặc binary thiếu. Với docs/config, parser, link checker, fixture hoặc diff inspection có thể là instrument phù hợp nhưng phải phân biệt implementation hiện diện mà sai. Mọi red observation mang giá trị `unknown` đều không đủ điều kiện `ready`.
 
 ## 7. Safe automation qua nhiều milestone
 
