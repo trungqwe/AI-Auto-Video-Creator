@@ -38,11 +38,13 @@ from delivery_engine import (  # noqa: E402
     ProtocolViolationError,
     ReadinessTraceabilityError,
     ScopeViolationError,
+    SharedOrcaExecutionRegistry,
     StaleResultError,
     build_contract_catalog,
     check_harness_tool_compatibility,
     check_owned_vs_forbidden,
     check_path_scope,
+    namespaces_overlap,
     patterns_overlap,
     validate_commit_sha,
     validate_contract_ref,
@@ -50,7 +52,7 @@ from delivery_engine import (  # noqa: E402
     validate_scope_and_deltas,
     validate_task_traceability_and_readiness,
 )
-from validate import check_task_dag
+from validate import check_secret_scan, check_task_dag
 
 
 class TestF1ExactContractBinding(unittest.TestCase):
@@ -236,13 +238,17 @@ class TestF4OrcaMappingAndLifecycle(unittest.TestCase):
         if orca_task_id is None:
             self._dispatch_counter = getattr(self, "_dispatch_counter", 0) + 1
             orca_task_id = f"task_orca_{self._dispatch_counter:03d}"
-        lease = self.lease_mgr.acquire_lease("LOCK-PARALLEL-REGISTRY", delivery_id, "ctx_init")
+        else:
+            self._dispatch_counter = getattr(self, "_dispatch_counter", 0) + 1
+        ctx_id = f"ctx_{delivery_id}_{self._dispatch_counter:03d}"
+        lease = self.lease_mgr.acquire_lease("LOCK-PARALLEL-REGISTRY", delivery_id, ctx_id)
         dispatch_id = self.adapter.create_dispatch(
             delivery_id,
             orca_task_id=orca_task_id,
             candidate_commit=self.candidate_commit,
             fencing_token=lease.fencing_token,
             lease_id=lease.lease_id,
+            intended_dispatch_id=ctx_id,
         )
         return dispatch_id, lease
 
@@ -795,6 +801,7 @@ class TestSolOrcaDeliveryAdapterAdversarialProbes(unittest.TestCase):
             candidate_commit=self.candidate_commit,
             fencing_token=self.lease.fencing_token,
             lease_id=self.lease.lease_id,
+            intended_dispatch_id="ctx-setup",
         )
         with self.assertRaises(ProtocolViolationError):
             self.adapter.handle_worker_done(
@@ -832,6 +839,7 @@ class TestSolOrcaDeliveryAdapterAdversarialProbes(unittest.TestCase):
             candidate_commit=self.candidate_commit,
             fencing_token=self.lease.fencing_token,
             lease_id=self.lease.lease_id,
+            intended_dispatch_id="ctx-setup",
         )
         with self.assertRaises(ProtocolViolationError) as ctx:
             self.adapter.handle_worker_done(
@@ -854,6 +862,7 @@ class TestSolOrcaDeliveryAdapterAdversarialProbes(unittest.TestCase):
             candidate_commit=bound_commit,
             fencing_token=self.lease.fencing_token,
             lease_id=self.lease.lease_id,
+            intended_dispatch_id="ctx-setup",
         )
         with self.assertRaises(ProtocolViolationError) as ctx:
             self.adapter.handle_worker_done(
@@ -874,6 +883,7 @@ class TestSolOrcaDeliveryAdapterAdversarialProbes(unittest.TestCase):
             candidate_commit=self.candidate_commit,
             fencing_token=self.lease.fencing_token,
             lease_id=self.lease.lease_id,
+            intended_dispatch_id="ctx-setup",
         )
         with self.assertRaises(ProtocolViolationError) as ctx1:
             self.adapter.handle_worker_done(
@@ -908,6 +918,7 @@ class TestSolOrcaDeliveryAdapterAdversarialProbes(unittest.TestCase):
                     fencing_token=self.lease.fencing_token,
                     lease_id=self.lease.lease_id,
                     authority_state=unauthorized,
+                    intended_dispatch_id="ctx-setup",
                 )
             self.assertIn("only 'granted' authority permitted", str(ctx.exception))
 
@@ -958,7 +969,7 @@ class TestSolTwentyOneIndependentProbes(unittest.TestCase):
         self.mgr = LeaseManager(self.standard_lock_defs)
         self.mgr.set_task_authority("TASK-PROBE", "granted")
         self.mgr.set_task_authority("TASK-OTHER", "granted")
-        self.adapter = OrcaDeliveryAdapter(self.mgr)
+        self.adapter = OrcaDeliveryAdapter(self.mgr, approved_candidate_commit=self.candidate_commit, git_root=ROOT_DIR)
         self.adapter.set_task_authority("TASK-PROBE", "granted")
         self.adapter.set_task_authority("TASK-OTHER", "granted")
         self.adapter.set_task_state("TASK-PROBE", "ready")
@@ -1010,6 +1021,8 @@ class TestSolTwentyOneIndependentProbes(unittest.TestCase):
     # --- Sol Probe 05: Read-only validator leaves tree completely clean ---
     def test_sol_probe_05_read_only_validator_leaves_tree_clean(self):
         import os
+        if os.environ.get("_IN_SOL_PROBE_05") == "1":
+            return
         report_path = ROOT_DIR / "docs" / "parallel-delivery" / ".validation-report.json"
         content_before = report_path.read_bytes() if report_path.exists() else None
         stat_before = subprocess.run(
@@ -1019,9 +1032,11 @@ class TestSolTwentyOneIndependentProbes(unittest.TestCase):
             text=True,
         )
         env = os.environ.copy()
-        env["VALIDATE_SKIP_FIXTURES"] = "1"
+        env["_IN_SOL_PROBE_05"] = "1"
+        if "VALIDATE_SKIP_FIXTURES" in env:
+            del env["VALIDATE_SKIP_FIXTURES"]
         proc = subprocess.run(
-            [sys.executable, str(ROOT_DIR / "docs" / "parallel-delivery" / "validate.py"), "--skip-fixtures"],
+            [sys.executable, str(ROOT_DIR / "docs" / "parallel-delivery" / "validate.py")],
             cwd=str(ROOT_DIR),
             capture_output=True,
             text=True,
@@ -1220,6 +1235,7 @@ class TestSolTwentyOneIndependentProbes(unittest.TestCase):
             candidate_commit=self.candidate_commit,
             fencing_token=l.fencing_token,
             lease_id=l.lease_id,
+            intended_dispatch_id="ctx-disp",
         )
 
         # 1. Wrong orca_task_id
@@ -1255,7 +1271,7 @@ class TestSolTwentyOneIndependentProbes(unittest.TestCase):
 
         # Authority revocation blocks review, integration, and replan
         l = self.mgr.acquire_lease("SOL-LOCK-EXCL", "TASK-OTHER", "ctx-trans")
-        disp = self.adapter.create_dispatch("TASK-OTHER", "orca-t", self.candidate_commit, l.fencing_token, l.lease_id)
+        disp = self.adapter.create_dispatch("TASK-OTHER", "orca-t", self.candidate_commit, l.fencing_token, l.lease_id, intended_dispatch_id="ctx-trans")
         self.adapter.handle_worker_done("TASK-OTHER", "orca-t", disp, "succeeded", self.candidate_commit, l.fencing_token)
         self.assertEqual(self.adapter.get_task_state("TASK-OTHER"), "review")
 
@@ -1380,6 +1396,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
                 candidate_commit=self.candidate_commit,
                 fencing_token=lease_a.fencing_token,
                 lease_id=lease_a.lease_id,
+                intended_dispatch_id="ctx-a",
             )
         self.assertIn("belongs to task 'TASK-A', cannot be bound to 'TASK-B'", str(ctx.exception))
 
@@ -1395,6 +1412,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
                 candidate_commit=self.candidate_commit,
                 fencing_token=lease.fencing_token,
                 lease_id=lease.lease_id,
+                intended_dispatch_id="ctx-a",
                 now=past_expiry,
             )
         self.assertIn("has expired", str(ctx.exception))
@@ -1408,6 +1426,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             candidate_commit=self.candidate_commit,
             fencing_token=lease.fencing_token,
             lease_id=lease.lease_id,
+            intended_dispatch_id="ctx-a",
         )
         self.assertIsNotNone(disp1)
         self.adapter.set_task_state("TASK-A", "ready")
@@ -1418,6 +1437,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
                 candidate_commit=self.candidate_commit,
                 fencing_token=lease.fencing_token,
                 lease_id=lease.lease_id,
+                intended_dispatch_id="ctx-a",
             )
         self.assertIn("already bound to dispatch", str(ctx.exception))
 
@@ -1431,6 +1451,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
                 candidate_commit=self.candidate_commit,
                 fencing_token=lease.fencing_token + 99,
                 lease_id=lease.lease_id,
+                intended_dispatch_id="ctx-a",
             )
         self.assertIn("Fencing token mismatch", str(ctx.exception))
 
@@ -1445,6 +1466,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
                 candidate_commit=fake_sha,
                 fencing_token=lease.fencing_token,
                 lease_id=lease.lease_id,
+                intended_dispatch_id="ctx-a",
             )
         self.assertIn("does not exist in git", str(ctx.exception))
 
@@ -1459,6 +1481,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
                 candidate_commit=other_existing_commit,
                 fencing_token=lease.fencing_token,
                 lease_id=lease.lease_id,
+                intended_dispatch_id="ctx-a",
             )
         self.assertIn("does not match approved candidate / HEAD", str(ctx.exception))
 
@@ -1471,6 +1494,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             candidate_commit=self.candidate_commit,
             fencing_token=lease_a.fencing_token,
             lease_id=lease_a.lease_id,
+            intended_dispatch_id="ctx-a",
         )
         lease_b = self.mgr.acquire_lease("R3-LOCK-CAP", "TASK-B", "ctx-b", units=1)
         with self.assertRaises(ProtocolViolationError) as ctx:
@@ -1480,6 +1504,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
                 candidate_commit=self.candidate_commit,
                 fencing_token=lease_b.fencing_token,
                 lease_id=lease_b.lease_id,
+                intended_dispatch_id="ctx-b",
             )
         self.assertIn("already assigned to delivery task 'TASK-A'", str(ctx.exception))
 
@@ -1495,6 +1520,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
                     candidate_commit=self.candidate_commit,
                     fencing_token=lease.fencing_token,
                     lease_id=lease.lease_id,
+                    intended_dispatch_id="ctx-a",
                 )
             self.assertIn("only 'ready' state may be dispatched", str(ctx.exception))
 
@@ -1508,6 +1534,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             candidate_commit=self.candidate_commit,
             fencing_token=lease.fencing_token,
             lease_id=lease.lease_id,
+            intended_dispatch_id="ctx-a",
             now=now_time,
         )
         past_expiry = now_time + timedelta(seconds=15)
@@ -1546,6 +1573,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             candidate_commit=self.candidate_commit,
             fencing_token=lease.fencing_token,
             lease_id=lease.lease_id,
+            intended_dispatch_id="ctx-a",
         )
         self.adapter.handle_worker_done("TASK-A", "orca-a-rev", disp, "succeeded", self.candidate_commit, lease.fencing_token)
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "review")
@@ -1564,6 +1592,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             candidate_commit=self.candidate_commit,
             fencing_token=lease.fencing_token,
             lease_id=lease.lease_id,
+            intended_dispatch_id="ctx-a",
         )
         self.adapter.handle_worker_done("TASK-A", "orca-a-int", disp, "succeeded", self.candidate_commit, lease.fencing_token)
         self.adapter.handle_review_verdict("TASK-A", "ACCEPT")
@@ -1747,6 +1776,7 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
             candidate_commit=self.candidate_commit,
             fencing_token=lease_a.fencing_token,
             lease_id=lease_a.lease_id,
+            intended_dispatch_id="ctx-a",
         )
         self.adapter.handle_worker_done(
             "TASK-A",
@@ -1766,6 +1796,7 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
                 candidate_commit=self.candidate_commit,
                 fencing_token=lease_b.fencing_token,
                 lease_id=lease_b.lease_id,
+                intended_dispatch_id="ctx-b",
             )
         self.assertIn("global reuse is forbidden", str(ctx.exception))
 
@@ -1837,6 +1868,7 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
                 candidate_commit=fake_sha,
                 fencing_token=lease.fencing_token,
                 lease_id=lease.lease_id,
+                intended_dispatch_id="ctx-head",
             )
         self.assertTrue(
             "does not match approved candidate / HEAD" in str(ctx.exception)
@@ -1852,6 +1884,7 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
                 candidate_commit=self.candidate_commit,
                 fencing_token=lease.fencing_token,
                 lease_id=lease.lease_id,
+                intended_dispatch_id="ctx-head",
             )
         self.assertIn("does not match actual current HEAD", str(ctx2.exception))
 
@@ -2049,5 +2082,580 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
         self.assertEqual(trans_names, ["RUNNING", "FAILURE", "STOP_FALLBACK"])
 
 
+
+class TestSolRoundFiveCounterexamples(unittest.TestCase):
+    """Counterexamples and positive controls for cx/gpt-5.6-sol-high round 5 review findings."""
+
+    def setUp(self):
+        cmd_head = ["git", "rev-parse", "HEAD"]
+        self.candidate_commit = subprocess.run(
+            cmd_head, cwd=ROOT_DIR, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        self.lock_defs = [
+            {
+                "id": "R5-LOCK-EXCL",
+                "mode": "exclusive",
+                "renewable": True,
+                "lease_seconds": 600,
+                "max_cumulative_seconds": 1200,
+                "max_renewals": 2,
+            },
+            {
+                "id": "R5-LOCK-DB",
+                "mode": "exclusive_by_database_name",
+                "partition_key_prefix": "db:",
+                "renewable": True,
+            },
+            {"id": "R5-LOCK-CAP", "mode": "capacity", "capacity": 3, "renewable": True},
+            {
+                "id": "R5-LOCK-IMMUTABLE",
+                "mode": "immutable",
+                "renewable": False,
+                "mutation_lease_forbidden": True,
+            },
+            {"id": "R5-LOCK-EXTRA", "mode": "exclusive", "renewable": True, "lease_seconds": 300},
+        ]
+        self.mgr = LeaseManager(self.lock_defs)
+        self.mgr.set_task_authority("TASK-A", "granted")
+        self.mgr.set_task_authority("TASK-B", "granted")
+        self.adapter = OrcaDeliveryAdapter(
+            self.mgr, approved_candidate_commit=self.candidate_commit, git_root=ROOT_DIR
+        )
+        self.adapter.set_task_authority("TASK-A", "granted")
+        self.adapter.set_task_authority("TASK-B", "granted")
+        self.adapter.set_task_state("TASK-A", "ready")
+        self.adapter.set_task_state("TASK-B", "ready")
+
+    # Item 1: Non-skippable fixtures and secret scan gate in release/audit modes
+    def test_r5_01_cli_and_env_cannot_skip_fixtures_in_audit_release(self):
+        """1. Counterexample: --skip-fixtures and VALIDATE_SKIP_FIXTURES rejected fail-closed."""
+        proc_cli = subprocess.run(
+            [sys.executable, str(BUNDLE_DIR / "validate.py"), "--skip-fixtures"],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc_cli.returncode, 1)
+        self.assertIn("strictly forbidden in audit/release modes", proc_cli.stdout)
+
+        env_skip = {"VALIDATE_SKIP_FIXTURES": "1"}
+        proc_env = subprocess.run(
+            [sys.executable, str(BUNDLE_DIR / "validate.py")],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+            env=env_skip,
+        )
+        self.assertEqual(proc_env.returncode, 1)
+        self.assertIn("strictly forbidden in audit/release modes", proc_env.stdout)
+
+    def test_r5_02_secret_scan_detects_credentials_and_passes_clean_files(self):
+        """2. Counterexample: check_secret_scan detects credentials/keys and passes clean files."""
+        # Clean check
+        self.assertEqual(check_secret_scan(["docs/parallel-delivery/README.md"]), [])
+
+        # Adversarial check with synthetic secret in temp file
+        scratch_dir = ROOT_DIR / ".scratch_test_secrets"
+        scratch_dir.mkdir(exist_ok=True)
+        secret_file = scratch_dir / "secret_sample.txt"
+        try:
+            # Construct secret dynamically so this test source file does not match scan patterns
+            part_a = "AK" + "IA"
+            part_b = "1234567890ABCDEF"
+            secret_file.write_text(f"aws_key = {part_a}{part_b}\n", encoding="utf-8")
+            rel = secret_file.relative_to(ROOT_DIR).as_posix()
+            res = check_secret_scan([rel])
+            self.assertEqual(len(res), 1)
+            self.assertIn("detected potential secret", res[0])
+
+            sk_part = "s" + "k-"
+            sk_body = "012345678901234567890123456789"
+            secret_file.write_text(f"key = {sk_part}{sk_body}\n", encoding="utf-8")
+            res2 = check_secret_scan([rel])
+            self.assertEqual(len(res2), 1)
+            self.assertIn("OpenAI/API secret key", res2[0])
+        finally:
+            if secret_file.exists():
+                secret_file.unlink()
+            if scratch_dir.exists():
+                scratch_dir.rmdir()
+
+    # Item 2: Global Orca task IDs and dispatch IDs unique across adapter instances via shared registry
+    def test_r5_03_shared_durable_registry_task_id_uniqueness_across_adapters(self):
+        """3. Counterexample: Multiple adapter instances sharing registry enforce task ID uniqueness."""
+        shared_reg = SharedOrcaExecutionRegistry()
+        adapter1 = OrcaDeliveryAdapter(self.mgr, self.candidate_commit, git_root=ROOT_DIR, registry=shared_reg)
+        adapter2 = OrcaDeliveryAdapter(self.mgr, self.candidate_commit, git_root=ROOT_DIR, registry=shared_reg)
+        adapter1.set_task_authority("TASK-A", "granted")
+        adapter1.set_task_state("TASK-A", "ready")
+        adapter2.set_task_authority("TASK-B", "granted")
+        adapter2.set_task_state("TASK-B", "ready")
+
+        lease_a = self.mgr.acquire_lease("R5-LOCK-EXCL", "TASK-A", "ctx-a-r5")
+        adapter1.create_dispatch(
+            "TASK-A",
+            orca_task_id="orca-shared-task-001",
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease_a.fencing_token,
+            lease_id=lease_a.lease_id,
+            intended_dispatch_id="ctx-a-r5",
+        )
+
+        lease_b = self.mgr.acquire_lease("R5-LOCK-CAP", "TASK-B", "ctx-b-r5", units=1)
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            adapter2.create_dispatch(
+                "TASK-B",
+                orca_task_id="orca-shared-task-001",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease_b.fencing_token,
+                lease_id=lease_b.lease_id,
+                intended_dispatch_id="ctx-b-r5",
+            )
+        self.assertIn("global reuse is forbidden", str(ctx.exception))
+
+    def test_r5_04_shared_durable_registry_dispatch_id_uniqueness_across_adapters(self):
+        """4. Counterexample: Multiple adapter instances sharing registry enforce dispatch ID uniqueness."""
+        shared_reg = SharedOrcaExecutionRegistry()
+        adapter1 = OrcaDeliveryAdapter(self.mgr, self.candidate_commit, git_root=ROOT_DIR, registry=shared_reg)
+        adapter2 = OrcaDeliveryAdapter(self.mgr, self.candidate_commit, git_root=ROOT_DIR, registry=shared_reg)
+        adapter1.set_task_authority("TASK-A", "granted")
+        adapter1.set_task_state("TASK-A", "ready")
+        adapter2.set_task_authority("TASK-B", "granted")
+        adapter2.set_task_state("TASK-B", "ready")
+
+        lease_a = self.mgr.acquire_lease("R5-LOCK-EXCL", "TASK-A", "ctx-shared-disp")
+        adapter1.create_dispatch(
+            "TASK-A",
+            orca_task_id="orca-t1-unique",
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease_a.fencing_token,
+            lease_id=lease_a.lease_id,
+            intended_dispatch_id="ctx-shared-disp",
+        )
+
+        lease_b = self.mgr.acquire_lease("R5-LOCK-CAP", "TASK-B", "ctx-shared-disp", units=1)
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            adapter2.create_dispatch(
+                "TASK-B",
+                orca_task_id="orca-t2-unique",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease_b.fencing_token,
+                lease_id=lease_b.lease_id,
+                intended_dispatch_id="ctx-shared-disp",
+            )
+        self.assertIn("Duplicate dispatch binding overwrite", str(ctx.exception))
+
+    # Item 3: Approved candidate binding is mandatory and exact
+    def test_r5_05_mandatory_exact_approved_candidate_commit_binding(self):
+        """5. Counterexample: OrcaDeliveryAdapter strictly requires full 40-char approved_candidate_commit."""
+        for bad_candidate in (None, "", "   ", "HEAD", "12345", "not_hex_sha_1234567890123456789012345678"):
+            with self.assertRaises(ProtocolViolationError):
+                OrcaDeliveryAdapter(self.mgr, approved_candidate_commit=bad_candidate, git_root=ROOT_DIR)  # type: ignore
+
+        lease = self.mgr.acquire_lease("R5-LOCK-EXCL", "TASK-A", "ctx-cand-mismatch")
+        other_sha = "4a7c8c921b7e05066505d51b168a02c3fde61317"
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.create_dispatch(
+                "TASK-A",
+                orca_task_id="orca-cand-test",
+                candidate_commit=other_sha,
+                fencing_token=lease.fencing_token,
+                lease_id=lease.lease_id,
+                intended_dispatch_id="ctx-cand-mismatch",
+            )
+        self.assertTrue(
+            "does not match approved candidate" in str(ctx.exception)
+            or "does not match approved candidate / HEAD" in str(ctx.exception)
+        )
+
+    # Item 4: Intended dispatch is mandatory with no lease rewrite
+    def test_r5_06_intended_dispatch_mandatory_without_lease_rewrite(self):
+        """6. Counterexample: intended_dispatch_id is mandatory and cannot rewrite lease dispatch_id."""
+        lease = self.mgr.acquire_lease("R5-LOCK-EXCL", "TASK-A", "ctx-original-target")
+        self.assertEqual(lease.dispatch_id, "ctx-original-target")
+
+        # 1. Blank/omitted intended_dispatch_id fails closed
+        for blank_disp in (None, "", "   "):
+            with self.assertRaises(ProtocolViolationError) as ctx:
+                self.adapter.create_dispatch(
+                    "TASK-A",
+                    orca_task_id="orca-blank-disp",
+                    candidate_commit=self.candidate_commit,
+                    fencing_token=lease.fencing_token,
+                    lease_id=lease.lease_id,
+                    intended_dispatch_id=blank_disp,  # type: ignore
+                )
+            self.assertIn("intended_dispatch_id is mandatory", str(ctx.exception))
+            self.assertEqual(lease.dispatch_id, "ctx-original-target")  # No rewrite!
+
+        # 2. Mismatched intended_dispatch_id fails closed without rewrite
+        with self.assertRaises(ProtocolViolationError) as ctx2:
+            self.adapter.create_dispatch(
+                "TASK-A",
+                orca_task_id="orca-mismatch-disp",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease.fencing_token,
+                lease_id=lease.lease_id,
+                intended_dispatch_id="ctx-hijack-attempt",
+            )
+        self.assertIn("does not match requested", str(ctx2.exception))
+        self.assertEqual(lease.dispatch_id, "ctx-original-target")  # No rewrite!
+
+    # Item 5: Normal lifecycle progression and blocked illegal transitions
+    def test_r5_07_normal_lifecycle_progression_acknowledged_running_worker_done(self):
+        """7. Positive control: dispatched -> acknowledged -> running -> worker_done succeeded -> review."""
+        lease = self.mgr.acquire_lease("R5-LOCK-EXCL", "TASK-A", "ctx-lifecycle-1")
+        disp = self.adapter.create_dispatch(
+            "TASK-A",
+            orca_task_id="orca-life-1",
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease.fencing_token,
+            lease_id=lease.lease_id,
+            intended_dispatch_id="ctx-lifecycle-1",
+        )
+        self.assertEqual(self.adapter.get_task_state("TASK-A"), "dispatched")
+
+        # acknowledge_dispatch
+        self.adapter.acknowledge_dispatch("TASK-A", disp)
+        self.assertEqual(self.adapter.get_task_state("TASK-A"), "acknowledged")
+
+        # start_running
+        self.adapter.start_running("TASK-A", disp)
+        self.assertEqual(self.adapter.get_task_state("TASK-A"), "running")
+
+        # worker_done succeeded -> review
+        st = self.adapter.handle_worker_done(
+            "TASK-A",
+            "orca-life-1",
+            disp,
+            outcome="succeeded",
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease.fencing_token,
+        )
+        self.assertEqual(st, "review")
+        self.assertEqual(self.adapter.get_task_state("TASK-A"), "review")
+
+    def test_r5_08_lifecycle_failure_progression_to_blocked(self):
+        """8. Positive control: dispatched -> acknowledged -> running -> worker_done failed -> blocked."""
+        lease = self.mgr.acquire_lease("R5-LOCK-EXCL", "TASK-A", "ctx-lifecycle-2")
+        disp = self.adapter.create_dispatch(
+            "TASK-A",
+            orca_task_id="orca-life-2",
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease.fencing_token,
+            lease_id=lease.lease_id,
+            intended_dispatch_id="ctx-lifecycle-2",
+        )
+        self.adapter.acknowledge_dispatch("TASK-A", disp)
+        self.adapter.start_running("TASK-A", disp)
+        st = self.adapter.handle_worker_done(
+            "TASK-A",
+            "orca-life-2",
+            disp,
+            outcome="failed",
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease.fencing_token,
+        )
+        self.assertEqual(st, "blocked")
+        self.assertEqual(self.adapter.get_task_state("TASK-A"), "blocked")
+
+    def test_r5_09_lifecycle_illegal_direct_transitions_blocked(self):
+        """9. Counterexample: Illegal state transitions from lifecycle states are blocked."""
+        # dispatched -> integrated is forbidden
+        self.adapter.set_task_state("TASK-A", "dispatched")
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.transition_task_state("TASK-A", "integrated")
+
+        # acknowledged -> integrated is forbidden
+        self.adapter.set_task_state("TASK-A", "acknowledged")
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.transition_task_state("TASK-A", "integrated")
+
+        # running -> ready is forbidden
+        self.adapter.set_task_state("TASK-A", "running")
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.transition_task_state("TASK-A", "ready")
+
+        # Cannot acknowledge or start running a task in ready state
+        self.adapter.set_task_state("TASK-A", "ready")
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.acknowledge_dispatch("TASK-A", "ctx-none")
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.start_running("TASK-A", "ctx-none")
+
+    # Item 6: Dispatch proves complete declared task lock set
+    def test_r5_10_dispatch_proves_complete_declared_task_lock_set(self):
+        """10. Counterexample & positive: Dispatch requires proving all declared task locks."""
+        self.adapter.register_task_locks("TASK-A", ["R5-LOCK-EXCL", "R5-LOCK-EXTRA"])
+        lease_excl = self.mgr.acquire_lease("R5-LOCK-EXCL", "TASK-A", "ctx-lock-set")
+
+        # Proving only 1 of 2 declared locks fails
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.create_dispatch(
+                "TASK-A",
+                orca_task_id="orca-lock-set-fail",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease_excl.fencing_token,
+                lease_id=lease_excl.lease_id,
+                intended_dispatch_id="ctx-lock-set",
+            )
+        self.assertIn("Dispatch must prove the complete declared task lock set", str(ctx.exception))
+        self.assertIn("R5-LOCK-EXTRA", str(ctx.exception))
+
+        # Proving both declared locks succeeds
+        lease_extra = self.mgr.acquire_lease("R5-LOCK-EXTRA", "TASK-A", "ctx-lock-set")
+        disp = self.adapter.create_dispatch(
+            "TASK-A",
+            orca_task_id="orca-lock-set-pass",
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease_excl.fencing_token,
+            lease_ids=[lease_excl.lease_id, lease_extra.lease_id],
+            intended_dispatch_id="ctx-lock-set",
+        )
+        self.assertEqual(disp, "ctx-lock-set")
+
+    # Item 7: Multi-unit capacity reserves and fences every allocated slot
+    def test_r5_11_multi_unit_capacity_reserves_and_fences_every_allocated_slot(self):
+        """11. Counterexample & positive: Multi-unit capacity assigns and fences each allocated slot."""
+        lease_multi = self.mgr.acquire_lease("R5-LOCK-CAP", "TASK-A", "ctx-multi-cap", units=2)
+        self.assertEqual(lease_multi.units, 2)
+        self.assertEqual(lease_multi.allocated_slots, [1, 2])
+        self.assertEqual(set(lease_multi.slot_fencing_tokens.keys()), {1, 2})
+        tok1 = lease_multi.slot_fencing_tokens[1]
+        tok2 = lease_multi.slot_fencing_tokens[2]
+        self.assertEqual(tok1, 1)
+        self.assertEqual(tok2, 1)
+
+        # Release and reallocate unit 1
+        self.mgr.release_lease(lease_multi.lease_id)
+        lease_single = self.mgr.acquire_lease("R5-LOCK-CAP", "TASK-A", "ctx-single-cap", units=1)
+        self.assertEqual(lease_single.allocation_slot, 1)
+        self.assertEqual(lease_single.fencing_token, 2)  # Monotonically advanced
+
+    # Item 8: Partition namespace overlap is symmetric parent/child
+    def test_r5_12_symmetric_partition_namespace_overlap_parent_blocks_child(self):
+        """12. Counterexample: Parent namespace lease blocks child namespace lease."""
+        parent_l = self.mgr.acquire_lease("R5-LOCK-DB", "TASK-A", "ctx-p", resource_key="db:analytics")
+        with self.assertRaises(LockLeaseError) as ctx:
+            self.mgr.acquire_lease("R5-LOCK-DB", "TASK-B", "ctx-c", resource_key="db:analytics:us_east")
+        self.assertIn("symmetric parent/child overlap", str(ctx.exception))
+        self.mgr.release_lease(parent_l.lease_id)
+
+    def test_r5_13_symmetric_partition_namespace_overlap_child_blocks_parent(self):
+        """13. Counterexample: Child namespace lease blocks parent namespace lease."""
+        child_l = self.mgr.acquire_lease("R5-LOCK-DB", "TASK-A", "ctx-c", resource_key="db:analytics:us_east")
+        with self.assertRaises(LockLeaseError) as ctx:
+            self.mgr.acquire_lease("R5-LOCK-DB", "TASK-B", "ctx-p", resource_key="db:analytics")
+        self.assertIn("symmetric parent/child overlap", str(ctx.exception))
+        self.mgr.release_lease(child_l.lease_id)
+
+    def test_r5_14_symmetric_partition_namespace_non_conflicting_siblings_pass(self):
+        """14. Positive control: Sibling non-overlapping namespaces pass concurrently."""
+        l1 = self.mgr.acquire_lease("R5-LOCK-DB", "TASK-A", "ctx-1", resource_key="db:analytics_1")
+        l2 = self.mgr.acquire_lease("R5-LOCK-DB", "TASK-B", "ctx-2", resource_key="db:analytics_2")
+        self.assertIsNotNone(l1)
+        self.assertIsNotNone(l2)
+        self.mgr.release_lease(l1.lease_id)
+        self.mgr.release_lease(l2.lease_id)
+
+    # Item 9: Renewals cannot cumulatively exceed declared lease policy
+    def test_r5_15_cumulative_renewal_exceeding_max_cumulative_seconds_rejected(self):
+        """15. Counterexample: Renewals cannot cumulatively exceed max_cumulative_seconds."""
+        mgr_strict = LeaseManager([
+            {
+                "id": "L-CUM-STRICT",
+                "mode": "exclusive",
+                "renewable": True,
+                "lease_seconds": 600,
+                "max_cumulative_seconds": 600,
+                "max_renewals": 5,
+            }
+        ])
+        mgr_strict.set_task_authority("TASK-A", "granted")
+        lease = mgr_strict.acquire_lease("L-CUM-STRICT", "TASK-A", "ctx-renew-cum", lease_seconds=600)
+        # First renewal by 600s brings cumulative_extension_seconds to 600s == max_cumulative_seconds
+        mgr_strict.renew_lease(lease.lease_id, extend_seconds=600)
+        self.assertEqual(lease.renewal_count, 1)
+        self.assertEqual(lease.cumulative_extension_seconds, 600)
+
+        # Second renewal by 100s would bring cumulative extensions to 700s > max_cumulative_seconds (600s)
+        with self.assertRaises(LockLeaseError) as ctx:
+            mgr_strict.renew_lease(lease.lease_id, extend_seconds=100)
+        self.assertIn("would exceed declared lease policy", str(ctx.exception))
+
+    def test_r5_16_cumulative_renewal_exceeding_max_renewals_rejected(self):
+        """16. Counterexample: Renewals cannot exceed max_renewals count."""
+        mgr_strict = LeaseManager([
+            {"id": "L-MAX-R", "mode": "exclusive", "renewable": True, "lease_seconds": 600, "max_renewals": 1, "max_cumulative_seconds": 1800}
+        ])
+        mgr_strict.set_task_authority("TASK-A", "granted")
+        lease = mgr_strict.acquire_lease("L-MAX-R", "TASK-A", "ctx-mr")
+        mgr_strict.renew_lease(lease.lease_id, extend_seconds=600)
+        self.assertEqual(lease.renewal_count, 1)
+
+        with self.assertRaises(LockLeaseError) as ctx:
+            mgr_strict.renew_lease(lease.lease_id, extend_seconds=600)
+        self.assertIn("reached maximum allowed renewals (1)", str(ctx.exception))
+
+    # Item 10: Successful worker_done releases leases before exposing review state
+    def test_r5_17_successful_worker_done_releases_leases_before_review_state(self):
+        """17. Counterexample & positive: Successful worker_done releases all leases before exposing review state."""
+        l1 = self.mgr.acquire_lease("R5-LOCK-EXCL", "TASK-A", "ctx-wd-rel")
+        l2 = self.mgr.acquire_lease("R5-LOCK-EXTRA", "TASK-A", "ctx-wd-rel")
+        self.assertEqual(len(self.mgr.active_leases), 2)
+
+        disp = self.adapter.create_dispatch(
+            "TASK-A",
+            orca_task_id="orca-wd-rel",
+            candidate_commit=self.candidate_commit,
+            fencing_token=l1.fencing_token,
+            lease_ids=[l1.lease_id, l2.lease_id],
+            intended_dispatch_id="ctx-wd-rel",
+        )
+        st = self.adapter.handle_worker_done(
+            "TASK-A",
+            "orca-wd-rel",
+            disp,
+            outcome="succeeded",
+            candidate_commit=self.candidate_commit,
+            fencing_token=l1.fencing_token,
+        )
+        self.assertEqual(st, "review")
+        # All mutation leases must be purged immediately before state is exposed
+        self.assertEqual(len(self.mgr.active_leases), 0)
+
+        # Another task can immediately acquire the released exclusive lock
+        l_new = self.mgr.acquire_lease("R5-LOCK-EXCL", "TASK-B", "ctx-b-after")
+        self.assertIsNotNone(l_new)
+        self.mgr.release_lease(l_new.lease_id)
+
+    # Item 11: HarnessExecutionResult rejects contradictory fields and state machine rejects illegal direct states
+    def test_r5_18_harness_result_rejects_contradictory_success_status_stop(self):
+        """18. Counterexample: HarnessExecutionResult rejects success=True with status='STOP'."""
+        with self.assertRaises(HarnessCompatibilityError) as ctx:
+            HarnessExecutionResult(
+                success=True,
+                execution_time_ms=10.0,
+                status="STOP",
+                state="SUCCESS",
+                tool_name="t",
+                requested_tool="t",
+                execution_observed=True,
+                execution_returncode=0,
+                fallback_required=False,
+            )
+        self.assertIn("Contradictory fields: success=True but status='STOP'", str(ctx.exception))
+
+    def test_r5_19_harness_result_rejects_contradictory_success_with_fallback(self):
+        """19. Counterexample: HarnessExecutionResult rejects success=True with fallback_required=True."""
+        with self.assertRaises(HarnessCompatibilityError) as ctx:
+            HarnessExecutionResult(
+                success=True,
+                execution_time_ms=10.0,
+                status="PASS",
+                state="SUCCESS",
+                tool_name="t",
+                requested_tool="t",
+                execution_observed=True,
+                execution_returncode=0,
+                fallback_required=True,
+            )
+        self.assertIn("Contradictory fields: success=True but fallback_required=True", str(ctx.exception))
+
+    def test_r5_20_harness_result_rejects_contradictory_failure_status_pass(self):
+        """20. Counterexample: HarnessExecutionResult rejects success=False with status='PASS'."""
+        with self.assertRaises(HarnessCompatibilityError) as ctx:
+            HarnessExecutionResult(
+                success=False,
+                execution_time_ms=10.0,
+                status="PASS",
+                state="FAILURE",
+                tool_name="t",
+                requested_tool="t",
+                execution_observed=True,
+                execution_returncode=1,
+                fallback_required=True,
+            )
+        self.assertIn("Contradictory fields: success=False but status='PASS'", str(ctx.exception))
+
+    def test_r5_21_harness_result_rejects_contradictory_failure_without_fallback(self):
+        """21. Counterexample: HarnessExecutionResult rejects success=False with fallback_required=False."""
+        with self.assertRaises(HarnessCompatibilityError) as ctx:
+            HarnessExecutionResult(
+                success=False,
+                execution_time_ms=10.0,
+                status="STOP",
+                state="FAILURE",
+                tool_name="t",
+                requested_tool="t",
+                execution_observed=True,
+                execution_returncode=1,
+                fallback_required=False,
+            )
+        self.assertIn("Contradictory fields: success=False but fallback_required=False", str(ctx.exception))
+
+    def test_r5_22_harness_result_rejects_contradictory_success_nonzero_returncode(self):
+        """22. Counterexample: HarnessExecutionResult rejects success=True with nonzero execution_returncode."""
+        with self.assertRaises(HarnessCompatibilityError) as ctx:
+            HarnessExecutionResult(
+                success=True,
+                execution_time_ms=10.0,
+                status="PASS",
+                state="SUCCESS",
+                tool_name="t",
+                requested_tool="t",
+                execution_observed=True,
+                execution_returncode=2,
+                fallback_required=False,
+            )
+        self.assertIn("Contradictory fields: success=True but execution_returncode=2", str(ctx.exception))
+
+    def test_r5_23_harness_state_machine_rejects_illegal_direct_state(self):
+        """23. Counterexample: HarnessExecutionStateMachine rejects illegal direct state assignment."""
+        sm = HarnessExecutionStateMachine()
+        with self.assertRaises(HarnessCompatibilityError) as ctx:
+            sm.current_state = "BOGUS_INVALID_STATE"
+        self.assertIn("Illegal direct state", str(ctx.exception))
+
+    def test_r5_24_harness_state_machine_rejects_illegal_transitions(self):
+        """24. Counterexample: HarnessExecutionStateMachine rejects illegal state machine transitions."""
+        sm = HarnessExecutionStateMachine()
+        self.assertEqual(sm.current_state, "IDLE")
+        # Direct transition IDLE -> SUCCESS is illegal
+        with self.assertRaises(HarnessCompatibilityError) as ctx:
+            sm.transition("SUCCESS", "skip running")
+        self.assertIn("Illegal harness state transition", str(ctx.exception))
+
+    # Item 12: Blank identities and integrated-task reacquisition remain fail-closed
+    def test_r5_25_blank_identities_rejected_at_acquire_renew_release(self):
+        """25. Counterexample: Blank lock_id, task_id, dispatch_id, and lease_id fail closed."""
+        for blank_val in ("", "   ", None):
+            with self.assertRaises(LockLeaseError):
+                self.mgr.acquire_lease(blank_val, "TASK-A", "ctx-id")  # type: ignore
+            with self.assertRaises(LockLeaseError):
+                self.mgr.acquire_lease("R5-LOCK-EXCL", blank_val, "ctx-id")  # type: ignore
+            with self.assertRaises(LockLeaseError):
+                self.mgr.acquire_lease("R5-LOCK-EXCL", "TASK-A", blank_val)  # type: ignore
+            with self.assertRaises(LockLeaseError):
+                self.mgr.renew_lease(blank_val)  # type: ignore
+            with self.assertRaises(LockLeaseError):
+                self.mgr.release_lease(blank_val)  # type: ignore
+
+    def test_r5_26_integrated_task_lease_reacquisition_strictly_forbidden(self):
+        """26. Counterexample: Integrated task cannot re-acquire locks."""
+        l = self.mgr.acquire_lease("R5-LOCK-EXCL", "TASK-A", "ctx-integ")
+        self.assertEqual(len(self.mgr.active_leases), 1)
+
+        # Mark integrated
+        self.mgr.mark_task_integrated("TASK-A")
+        self.assertEqual(len(self.mgr.active_leases), 0)
+
+        # Re-acquisition must fail closed
+        with self.assertRaises(LockLeaseError) as ctx:
+            self.mgr.acquire_lease("R5-LOCK-EXCL", "TASK-A", "ctx-integ-reacquire")
+        self.assertIn("already integrated; reacquisition of leases is strictly prohibited", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

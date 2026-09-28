@@ -183,3 +183,45 @@ Toàn bộ 21 bypass độc lập do Sol review phát hiện cùng các boundary
 7. **Giải phóng toàn bộ Mutation Lease ngay sau worker_done thành công**: Khi `worker_done(succeeded)` được xác thực, toàn bộ live mutation lease được giải phóng ngay lập tức khỏi `active_leases` trước khi tác vụ chuyển sang `review`, đảm bảo đúng nguyên tắc bảo vệ candidate trong thời gian review độc lập.
 8. **Từ chối lock không khai báo và chống nới lỏng thời hạn**: Kiểm tra lock ID phải có mặt trong cấu hình lock tại `acquire_lease`, `create_dispatch` và toàn bộ DAG thông qua `validate.py:check_task_dag`. Nghiêm cấm nới rộng thời hạn `lease_seconds` vượt quá giá trị khai báo khi acquire hoặc renew.
 9. **Chuẩn hóa đối số HarnessExecutionResult và quan sát chu trình máy trạng thái**: Dataclass `HarnessExecutionResult` kiểm tra kiểu dữ liệu nghiêm ngặt (`success: bool`, `execution_time_ms: int | float >= 0`, `status: PASS|STOP`). Máy trạng thái `HarnessExecutionStateMachine` tuân thủ nghiêm ngặt chu trình quan sát: `IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_FALLBACK`.
+
+## 11. Khắc phục toàn diện các phát hiện Sol Round 5 (Fail-Closed Blockers & Independent Counterexamples)
+
+Đợt rà soát vòng 5 của `cx/gpt-5.6-sol-high` đã chỉ ra 12 điểm nghẽn (blockers) xung yếu và yêu cầu attestation report với ngữ nghĩa candidate chính xác. Toàn bộ các điểm nghẽn đã được khắc phục triệt để và bảo chứng bằng 26 bài kiểm tra độc lập mới trong `TestSolRoundFiveCounterexamples` (nâng tổng bộ kiểm thử tự động lên 143 fixtures PASS 100%):
+
+1. **Chế độ Release/Audit tuyệt đối không thể bỏ qua Fixtures; bổ sung Cổng Quét Secret tường minh**:
+   - `validate.py` từ chối fail-closed nếu phát hiện `--skip-fixtures` qua CLI hoặc `VALIDATE_SKIP_FIXTURES=1` qua môi trường trong các chế độ audit và release.
+   - Thêm cổng `check_secret_scan`: tự động quét toàn bộ tệp tin thay đổi để phát hiện khóa riêng tư (private keys), token GitHub, token OpenAI/API, khóa truy cập AWS và credentials nhúng trong URL. Chế độ `--release` từ chối phát hành nếu phát hiện bất kỳ secret nào hoặc cây làm việc không sạch (`clean`).
+2. **Định danh Task ID và Dispatch ID Orca duy nhất toàn cục qua Durable Ledger/Registry dùng chung (`SharedOrcaExecutionRegistry`)**:
+   - Tách biệt và trừu tượng hóa cơ chế lưu vết thực thi `SharedOrcaExecutionRegistry` dùng chung giữa nhiều thực thể adapter (`OrcaDeliveryAdapter`).
+   - Mọi task ID và dispatch ID một khi đã ghi nhận sẽ bị khóa vĩnh viễn trên toàn bộ hệ thống phân tán, ngăn chặn xung đột hoặc tấn công tráo đổi giữa các adapter instance.
+3. **Ràng buộc Candidate Commit được phê duyệt là bắt buộc và chính xác tuyệt đối (`approved_candidate_commit`)**:
+   - Khởi tạo `OrcaDeliveryAdapter` bắt buộc phải truyền `approved_candidate_commit` là một SHA-40 hexa hợp lệ đầy đủ; cấm các giá trị rỗng, short SHA hoặc ref name.
+   - Khi tạo dispatch, `candidate_commit` được đối chiếu nghiêm ngặt với `approved_candidate_commit` và commit `HEAD` thực tế trong Git DAG.
+4. **Intended Dispatch là bắt buộc và tuyệt đối không ghi đè Lease (`No Lease Rewrite`)**:
+   - Bắt buộc tham số `intended_dispatch_id` khi gọi `create_dispatch`, không cho phép bỏ qua hoặc mang giá trị rỗng.
+   - Tham số này bắt buộc phải trùng khớp với `dispatch_id` đã được cấp trong `ActiveLease`. Cấm tuyệt đối hành vi ghi đè trường `active_lease.dispatch_id`.
+5. **Vòng đời tác vụ tuần tự (`acknowledged` -> `running` -> `worker_done`) và chặn các bước nhảy bất hợp pháp**:
+   - Bổ sung phương thức `acknowledge_dispatch` và `start_running` trên `OrcaDeliveryAdapter` hỗ trợ đầy đủ chu trình: `dispatched -> acknowledged -> running -> worker_done (succeeded/failed)`.
+   - `handle_worker_done` chấp nhận các tác vụ đang ở trạng thái `dispatched`, `acknowledged` hoặc `running`. Mọi bước nhảy trạng thái trái phép khác (như `acknowledged -> integrated` hay `running -> ready`) đều bị từ chối fail-closed.
+6. **Dispatch bắt buộc chứng minh đầy đủ tập hợp Lock đã khai báo (`declared_task_locks`)**:
+   - Khởi tạo adapter hoặc đăng ký `register_task_locks` xác lập toàn bộ danh sách lock mà task yêu cầu.
+   - `create_dispatch` yêu cầu chứng minh đầy đủ lease hợp lệ cho mọi lock trong `declared_task_locks` (thông qua `lease_ids`), không chấp nhận chỉ chứng minh một lease đại diện.
+7. **Bảo lưu và Fencing từng Slot cho Yêu cầu Capacity Đa đơn vị (`units > 1`)**:
+   - `LeaseManager.acquire_lease` cho phép yêu cầu nhiều đơn vị `units > 1`, tự động phân bổ và theo dõi danh sách `allocated_slots`.
+   - Mỗi slot được gán monotonic fencing token độc lập và bảo lưu trong `slot_fencing_tokens`. `validate_fencing_token` hỗ trợ kiểm tra token theo từng slot cụ thể (`slot=N`).
+8. **Kiểm tra va chạm phân vùng đối xứng Cha - Con (`Symmetric Partition Namespace Overlap`)**:
+   - Hàm `namespaces_overlap(ns1, ns2)` hỗ trợ các dấu phân cách phân cấp (`:`, `/`, `.`) một cách đối xứng hoàn toàn.
+   - Lease cha (ví dụ `db:analytics`) chặn lease con (ví dụ `db:analytics:us_east`), và ngược lại lease con cũng chặn lease cha. Các namespace anh em không giao nhau (ví dụ `db:analytics_1` và `db:analytics_2`) được phép hoạt động đồng thời.
+9. **Gia hạn Lease bị giới hạn tích lũy bởi Chính sách đã khai báo (`max_cumulative_seconds` & `max_renewals`)**:
+   - Mở rộng schema lock cho phép khai báo `max_cumulative_seconds` và `max_renewals`.
+   - `renew_lease` từ chối fail-closed nếu số lần gia hạn vượt quá `max_renewals` hoặc tổng thời gian gia hạn tích lũy (`cumulative_extension_seconds`) vượt quá `max_cumulative_seconds`.
+10. **Giải phóng toàn bộ Mutation Lease trước khi phơi bày trạng thái Review**:
+    - Khi `worker_done` với `outcome == "succeeded"` được tiếp nhận, `OrcaDeliveryAdapter` thu hồi và giải phóng toàn bộ active mutation lease trong `LeaseManager` trước khi cập nhật trạng thái tác vụ sang `review`.
+11. **Từ chối trường mâu thuẫn trong HarnessExecutionResult và trạng thái trực tiếp trái phép trong Harness State Machine**:
+    - `HarnessExecutionResult` từ chối các kết hợp mâu thuẫn: `success=True` nhưng `status="STOP"`, `fallback_required=True`, hoặc mã lỗi `execution_returncode != 0`; `success=False` nhưng `status="PASS"` hoặc `fallback_required=False`.
+    - `HarnessExecutionStateMachine` từ chối gán trạng thái trực tiếp không hợp lệ qua setter và thực thi ma trận chuyển đổi trạng thái nghiêm ngặt (`IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_FALLBACK`).
+12. **Từ chối triệt để định danh rỗng và tái chiếm giữ Lease sau khi tích hợp (`Integrated Tasks`)**:
+    - Mọi thao tác `acquire_lease`, `renew_lease`, `release_lease`, `create_dispatch` đều từ chối chuỗi rỗng hoặc whitespace cho `lock_id`, `delivery_task_id`, `dispatch_id`, `lease_id`.
+    - Khi tác vụ đã được đánh dấu tích hợp (`mark_task_integrated`), mọi nỗ lực tái chiếm giữ lease cho tác vụ đó đều bị từ chối fail-closed vĩnh viễn.
+13. **Tái tạo báo cáo Attestation với ngữ nghĩa Candidate và Hash chuẩn xác**:
+    - Toàn bộ kết quả kiểm thử và thẩm định được ghi nhận trong `.validation-report.json` với đầy đủ trường `sol_round_5`, mã SHA bất biến của baseline và candidate HEAD hiện hành, đảm bảo cây làm việc sạch sẽ và vượt qua mọi kiểm tra tự động.

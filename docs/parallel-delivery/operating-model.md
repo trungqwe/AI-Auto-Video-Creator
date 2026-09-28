@@ -81,8 +81,11 @@ Không được dùng ví dụ này để mở M2-P8/P9 hoặc M3+.
 - Mỗi migration sequence, lockfile, state machine và contract revision dùng exclusive lock.
 - **Khai báo lock khác Active Lease**: Việc khai báo `resource_locks` trong định nghĩa task chỉ là danh mục yêu cầu tĩnh. Chỉ có active lease đang sống (chưa hết hạn) mới chiếm giữ tài nguyên. Task ở trạng thái `integrated` hoặc đã đóng không giữ active lease nào và không chặn các task tiếp theo.
 - **Tài nguyên phân vùng (Partitionable) và Capacity**:
-  - `LOCK-POSTGRES-TEST-DB` (`exclusive_by_database_name`): Các task dùng namespace database tách rời (`db:ns1` và `db:ns2`) được cấp lease đồng thời không xung đột; trùng namespace database sẽ bị chặn.
-  - `LOCK-DESKTOP-GPU` (`capacity`): Cấp phát theo đơn vị định mức (unit); vượt quá tổng dung lượng (over-capacity) sẽ bị từ chối fail-closed.
+  - `LOCK-POSTGRES-TEST-DB` (`exclusive_by_database_name`): Các task dùng namespace database tách rời (`db:ns1` và `db:ns2`) được cấp lease đồng thời không xung đột. Kiểm tra va chạm phân vùng là đối xứng hai chiều (`namespaces_overlap`): namespace cha (ví dụ `db:analytics`) chặn namespace con (ví dụ `db:analytics:us_east`) và ngược lại.
+  - `LOCK-DESKTOP-GPU` (`capacity`): Cấp phát theo đơn vị định mức (unit); vượt quá tổng dung lượng (over-capacity) sẽ bị từ chối fail-closed. Khi yêu cầu đa đơn vị (`units > 1`), hệ thống bảo lưu và cấp phát monotonic fencing token độc lập cho từng slot trong mảng `allocated_slots`.
+- **Chính sách gia hạn tích lũy và cấm tái chiếm giữ lease**:
+  - Gia hạn lease không được vượt quá thời gian gia hạn tích lũy tối đa (`max_cumulative_seconds`) hoặc số lần gia hạn tối đa (`max_renewals`) đã quy định trong cấu hình lock.
+  - Task đã hoàn tất tích hợp (`integrated`) bị cấm vĩnh viễn không được tái chiếm giữ lease. Mọi thao tác quản lý lease từ chối chuỗi định danh rỗng/whitespace fail-closed.
 - **Exact Contract Binding**: Mỗi contract ID ràng buộc chặt chẽ với registry có source file định nghĩa nó. `CT-AI-ROUTE-*` thuộc về `CONTRACT-CONFIG-SECURITY` (owner `J`), tuyệt đối không bị chiếm bởi `CONTRACT-CREATIVE-AI` (owner `D`).
 - Contract owner phát hành revision frozen trước consumer task.
 - Consumer chỉ implement trên exact revision; unsupported version phải fail closed.
@@ -133,8 +136,10 @@ Dừng task và mọi descendant chưa dispatch khi:
 - lock/lease mất hiệu lực hoặc fencing token cũ;
 - phát hiện lock không khai báo trong lock registry hoặc task DAG;
 - nỗ lực tái sử dụng Orca task ID hoặc dispatch ID đã tồn tại/settled;
-- nới rộng thời hạn lease vượt quá giới hạn đã khai báo;
+- nới rộng thời hạn lease vượt quá giới hạn đã khai báo hoặc vượt giới hạn gia hạn tích lũy;
 - candidate commit không khớp với commit HEAD thực tế;
+- nỗ lực bỏ qua fixture trong chế độ release/audit (--skip-fixtures hoặc VALIDATE_SKIP_FIXTURES);
+- phát hiện secret/token/private key trong tệp tin thay đổi tại cổng release;
 - runtime bắt buộc không khả dụng;
 - external outcome không xác định;
 - RED không phân biệt đúng lỗi;

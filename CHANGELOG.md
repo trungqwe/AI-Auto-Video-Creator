@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-28 — Khắc phục toàn bộ phát hiện Sol review vòng 5 (Fail-Closed Blockers & Attestation Hardening)
+
+- Khắc phục toàn diện 12 phát hiện/blockers từ `cx/gpt-5.6-sol-high` round 5 review cho bundle `docs/parallel-delivery/`:
+  - **(1) Non-Skippable Fixtures & Secret Scan Gate**: Chế độ audit và release tuyệt đối cấm bỏ qua fixtures qua CLI (`--skip-fixtures`) hoặc biến môi trường (`VALIDATE_SKIP_FIXTURES`); tích hợp cổng `check_secret_scan` kiểm tra khóa riêng tư (private keys), AWS/GitHub/OpenAI API tokens, và URI credentials trên toàn bộ tệp tin thay đổi; chế độ `--release` bắt buộc cây làm việc sạch và không có secret nào.
+  - **(2) Shared Durable Ledger Cho Orca Task & Dispatch ID Uniqueness**: Thêm `SharedOrcaExecutionRegistry` trừu tượng hóa việc lưu vết thực thi dùng chung giữa các thực thể adapter, đảm bảo tính duy nhất toàn cục của `orca_task_id` và `dispatch_id` trên toàn hệ thống.
+  - **(3) Bắt Buộc Approved Candidate Commit Chính Xác**: Khởi tạo `OrcaDeliveryAdapter` bắt buộc phải có `approved_candidate_commit` (SHA-40 hexa); `create_dispatch` kiểm tra candidate khớp tuyệt đối với candidate đã duyệt và Git HEAD hiện hành.
+  - **(4) Bắt Buộc Intended Dispatch Không Cho Phép Lease Rewrite**: `create_dispatch` yêu cầu `intended_dispatch_id` bắt buộc và phải khớp chính xác với `active_lease.dispatch_id`; cấm tuyệt đối việc ghi đè dispatch ID của lease.
+  - **(5) Vòng Đời Tác Vụ Chuẩn Tắc & Chặn Chuyển Đổi Trái Phép**: Hỗ trợ chu trình đầy đủ `dispatched -> acknowledged -> running -> worker_done (succeeded/failed)` qua các phương thức `acknowledge_dispatch` và `start_running`; chặn đứng các bước nhảy trạng thái bất hợp pháp (như `acknowledged -> integrated`, `running -> ready`).
+  - **(6) Dispatch Chứng Minh Đầy Đủ Tập Hợp Lock Khai Báo (`declared_task_locks`)**: Bắt buộc dispatch phải chứng minh đầy đủ lease hợp lệ cho mọi lock mà task yêu cầu, loại bỏ cơ chế chỉ chứng minh một lease đại diện.
+  - **(7) Multi-Unit Capacity Slot Allocation & Fencing**: Hỗ trợ yêu cầu đa đơn vị `units > 1`, tự động phân bổ và cấp phát monotonic fencing token riêng cho từng slot trong `allocated_slots`.
+  - **(8) Kiểm Tra Va Chạm Phân Vùng Đối Xứng Cha - Con**: Hàm `namespaces_overlap` kiểm tra đối xứng hai chiều qua các ký tự phân cấp (`:`, `/`, `.`), ngăn chặn hoàn toàn việc lease cha chiếm giữ tài nguyên mà lease con đang sở hữu và ngược lại.
+  - **(9) Giới Hạn Gia Hạn Tích Lũy Bằng Chính Sách Khai Báo**: Mở rộng schema lock với `max_cumulative_seconds` và `max_renewals`; `renew_lease` từ chối fail-closed nếu tổng thời gian gia hạn hoặc số lần gia hạn vượt ngưỡng cho phép.
+  - **(10) Giải Phóng Toàn Bộ Mutation Lease Trước Khi Vào Trạng Thái Review**: Thu hồi và giải phóng toàn bộ mutation lease trong `LeaseManager` ngay khi `worker_done(succeeded)` được xác thực, trước khi chuyển trạng thái sang `review`.
+  - **(11) Khử Mâu Thuẫn Trong HarnessExecutionResult & Khóa State Machine**: Từ chối các cặp trường mâu thuẫn trong `HarnessExecutionResult` (như success=True với status="STOP" hoặc fallback_required=True); `HarnessExecutionStateMachine` từ chối gán trực tiếp trạng thái bất hợp pháp và thực thi ma trận chuyển đổi nghiêm ngặt.
+  - **(12) Từ Chối ID Rỗng & Cấm Tái Chiếm Giữ Lease Cho Integrated Task**: Mọi thao tác quản lý lease từ chối chuỗi rỗng/whitespace; task đã `integrated` bị cấm tái chiếm giữ lease fail-closed.
+  - **(13) Fixture Suite Tự Động 143/143 PASS**: Bổ sung 26 bài kiểm tra độc lập trong `TestSolRoundFiveCounterexamples` (`test_negative_fixtures.py`), nâng tổng số test lên 143/143 passed.
+
 ## 2026-09-28 — Khắc phục toàn bộ phát hiện Sol review vòng 4 (P1 Remediations & Counterexamples)
 
 - Khắc phục toàn diện 9 phát hiện từ `cx/gpt-5.6-sol-high` round 4 review cho bundle `docs/parallel-delivery/`:

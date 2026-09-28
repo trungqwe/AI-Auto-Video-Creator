@@ -548,6 +548,74 @@ def check_lock_leases(ownership: dict[str, Any], dag: dict[str, Any]) -> list[st
     except Exception as exc:
         errors.append(f"Unexpected error on authority override: {exc}")
 
+    # 15. Sol round 5: Blank identities rejected fail-closed
+    for bad_id in ("", "   ", None):
+        try:
+            mgr.acquire_lease(bad_id, "T1", "ctx", authority_state="granted")  # type: ignore
+            errors.append(f"LeaseManager failed to reject blank lock_id {bad_id!r}")
+        except LockLeaseError:
+            pass
+        except Exception as exc:
+            errors.append(f"Unexpected error on blank lock_id: {exc}")
+
+        try:
+            mgr.acquire_lease("LOCK-POSTGRES-TEST-DB", bad_id, "ctx", resource_key="db:test", authority_state="granted")  # type: ignore
+            errors.append(f"LeaseManager failed to reject blank delivery_task_id {bad_id!r}")
+        except LockLeaseError:
+            pass
+        except Exception as exc:
+            errors.append(f"Unexpected error on blank delivery_task_id: {exc}")
+
+        try:
+            mgr.acquire_lease("LOCK-POSTGRES-TEST-DB", "T1", bad_id, resource_key="db:test", authority_state="granted")  # type: ignore
+            errors.append(f"LeaseManager failed to reject blank dispatch_id {bad_id!r}")
+        except LockLeaseError:
+            pass
+        except Exception as exc:
+            errors.append(f"Unexpected error on blank dispatch_id: {exc}")
+
+    # 16. Sol round 5: Reacquisition of leases by already integrated tasks rejected fail-closed
+    try:
+        mgr.acquire_lease("LOCK-DOC-AUTHORITY", "T3", "ctx_reacquire", authority_state="granted")
+        errors.append("LeaseManager failed to reject lease reacquisition for already-integrated task T3")
+    except LockLeaseError:
+        pass
+    except Exception as exc:
+        errors.append(f"Unexpected error on integrated task lease reacquisition: {exc}")
+
+    # 17. Sol round 5: Multi-unit capacity allocation allocates and fences each slot monotonically
+    try:
+        gpu_multi = mgr.acquire_lease("LOCK-DESKTOP-GPU", "T10", "ctx_multi", units=2)
+        if len(gpu_multi.allocated_slots) != 2:
+            errors.append(f"Expected 2 allocated slots for units=2; got {gpu_multi.allocated_slots}")
+        if len(gpu_multi.slot_fencing_tokens) != 2:
+            errors.append(f"Expected 2 slot fencing tokens for units=2; got {gpu_multi.slot_fencing_tokens}")
+        for slot in gpu_multi.allocated_slots:
+            mgr.validate_fencing_token("LOCK-DESKTOP-GPU", gpu_multi.slot_fencing_tokens[slot], active_lease_id=gpu_multi.lease_id, slot=slot)
+        mgr.release_lease(gpu_multi.lease_id)
+    except Exception as exc:
+        errors.append(f"Multi-unit capacity slot reservation/fencing failed: {exc}")
+
+    # 18. Sol round 5: Symmetric partition namespace overlap check
+    try:
+        l_parent = mgr.acquire_lease("LOCK-POSTGRES-TEST-DB", "T1", "ctx_p", resource_key="db:analytics")
+        try:
+            mgr.acquire_lease("LOCK-POSTGRES-TEST-DB", "T2", "ctx_c", resource_key="db:analytics:us_east")
+            errors.append("LeaseManager failed to reject child namespace when parent is leased")
+        except LockLeaseError:
+            pass
+        mgr.release_lease(l_parent.lease_id)
+
+        l_child = mgr.acquire_lease("LOCK-POSTGRES-TEST-DB", "T2", "ctx_c2", resource_key="db:analytics:us_east")
+        try:
+            mgr.acquire_lease("LOCK-POSTGRES-TEST-DB", "T1", "ctx_p2", resource_key="db:analytics")
+            errors.append("LeaseManager failed to reject parent namespace when child is leased")
+        except LockLeaseError:
+            pass
+        mgr.release_lease(l_child.lease_id)
+    except Exception as exc:
+        errors.append(f"Symmetric partition namespace check failed: {exc}")
+
     return errors
 
 
@@ -604,6 +672,31 @@ def run_negative_fixture_suite() -> Tuple[list[str], dict[str, Any]]:
     return errors, stats
 
 
+def check_secret_scan(all_changed: list[str]) -> list[str]:
+    """Scan all changed files for secrets, tokens, credentials, or private keys."""
+    errors: list[str] = []
+    secret_patterns = [
+        (re.compile(r"-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----"), "Private key header"),
+        (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), "AWS access key"),
+        (re.compile(r"\bgh[pous]_[A-Za-z0-9_]{36,}\b"), "GitHub token"),
+        (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{82}\b"), "GitHub fine-grained PAT"),
+        (re.compile(r"\bsk-[a-zA-Z0-9]{20,}\b"), "OpenAI/API secret key"),
+        (re.compile(r"https?://[^:\s@]+:[^@\s/]+@[^\s/]+"), "URI with embedded credentials"),
+    ]
+    for rel_path in all_changed:
+        path = ROOT / rel_path
+        if not path.is_file():
+            continue
+        try:
+            content = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        for pat, desc in secret_patterns:
+            if pat.search(content):
+                errors.append(f"{rel_path}: detected potential secret ({desc})")
+    return errors
+
+
 def get_all_changed_paths(base_sha: str, candidate_sha: str = "HEAD") -> list[str]:
     """Collect all changed paths from committed diff + dirty overlay including renames on both ends."""
     try:
@@ -629,8 +722,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--audit", action="store_true", default=False, help="Run in read-only audit mode without modifying files (default)")
     parser.add_argument("--generate-report", action="store_true", default=False, help="Explicitly write .validation-report.json")
     parser.add_argument("--release", action="store_true", default=False, help="Enforce architecture release gate (requires explicit --base and --candidate)")
-    parser.add_argument("--skip-fixtures", action="store_true", default=False, help="Skip negative fixture suite execution (used internally during fixture testing)")
+    parser.add_argument("--skip-fixtures", action="store_true", default=False, help="Skip negative fixture suite execution (strictly forbidden in release/audit modes)")
     args = parser.parse_args(argv)
+
+    # Sol Round 5: release/audit modes can never skip fixtures via CLI or environment
+    if args.skip_fixtures or os.environ.get("VALIDATE_SKIP_FIXTURES") == "1":
+        print("ERROR: Skipping fixtures via CLI (--skip-fixtures) or environment (VALIDATE_SKIP_FIXTURES) is strictly forbidden in audit/release modes.")
+        return 1
 
     head_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True)
     head_sha = head_res.stdout.strip() if head_res.returncode == 0 else "UNKNOWN"
@@ -658,8 +756,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     checks: dict[str, list[str]] = {}
     fixture_stats: dict[str, Any] = {}
 
+    dag_base = DEFAULT_BASE_COMMIT
     try:
         dag = load_yaml(BUNDLE / "task-dag.yaml")
+        dag_base = dag.get("approved_base_commit", DEFAULT_BASE_COMMIT)
         contracts = load_yaml(BUNDLE / "contract-registry.yaml")
         ownership = load_yaml(BUNDLE / "ownership-and-locks.yaml")
         catalog = build_contract_catalog(BUNDLE / "contract-registry.yaml", ROOT)
@@ -676,19 +776,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     except Exception as exc:
         checks["yaml_and_task_dag"] = [f"parser/engine failure: {exc}"]
 
-    checks["utf8_and_text"] = check_utf8()
-    checks["links"] = check_links()
-    checks["dely_configuration"] = check_dely_block()
-
-    if args.skip_fixtures or os.environ.get("VALIDATE_SKIP_FIXTURES") == "1":
-        fixture_errors = []
-        fixture_stats = {"tests_run": 0, "failures": 0, "errors": 0, "passed": True, "skipped": True}
-    else:
-        fixture_errors, fixture_stats = run_negative_fixture_suite()
-    checks["negative_fixtures_suite"] = fixture_errors
-
-    errors = [error for values in checks.values() for error in values]
-    base_input = args.base or (dag.get("approved_base_commit", DEFAULT_BASE_COMMIT) if "dag" in locals() else DEFAULT_BASE_COMMIT)
+    base_input = args.base or dag_base
     candidate_input = args.candidate or head_sha
 
     try:
@@ -705,11 +793,26 @@ def main(argv: Optional[List[str]] = None) -> int:
     except Exception:
         committed_entries = []
     dirty_entries = get_dirty_overlay_paths(ROOT)
-
     all_changed = get_all_changed_paths(base_resolved, candidate_resolved)
 
+    checks["utf8_and_text"] = check_utf8()
+    checks["links"] = check_links()
+    checks["dely_configuration"] = check_dely_block()
+    checks["secret_scan"] = check_secret_scan(all_changed)
+
+    fixture_errors, fixture_stats = run_negative_fixture_suite()
+    checks["negative_fixtures_suite"] = fixture_errors
+
+    errors = [error for values in checks.values() for error in values]
+
+    effective_dirty = [d for d in dirty_entries if d[1] != "docs/parallel-delivery/.validation-report.json"]
+    if args.release:
+        if effective_dirty:
+            errors.append(f"Release gate requires clean working tree; dirty files present: {[d[1] for d in effective_dirty]}")
+        if checks["secret_scan"]:
+            errors.append(f"Release gate secret scan failed: {checks['secret_scan']}")
+
     if args.generate_report and not errors:
-        effective_dirty = [d for d in dirty_entries if d[1] != "docs/parallel-delivery/.validation-report.json"]
         report = {
             "schema_version": "1.0.0",
             "status": "PASS" if not errors else "FAIL",
@@ -759,6 +862,20 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "7_release_all_mutation_leases_after_worker_done_success": "RESOLVED",
                     "8_reject_undeclared_locks_and_enforce_declared_duration_bounds": "RESOLVED",
                     "9_validate_harness_execution_result_and_state_machine_transitions": "RESOLVED",
+                },
+                "sol_round_5": {
+                    "1_non_skippable_fixtures_and_secret_scan_gate": "RESOLVED",
+                    "2_shared_durable_registry_task_and_dispatch_id_uniqueness": "RESOLVED",
+                    "3_mandatory_exact_approved_candidate_commit_binding": "RESOLVED",
+                    "4_mandatory_intended_dispatch_id_without_lease_rewrite": "RESOLVED",
+                    "5_normal_and_blocked_orca_lifecycle_transitions": "RESOLVED",
+                    "6_dispatch_proves_complete_declared_task_lock_set": "RESOLVED",
+                    "7_multi_unit_capacity_reserves_and_fences_every_slot": "RESOLVED",
+                    "8_symmetric_partition_namespace_overlap_check": "RESOLVED",
+                    "9_cumulative_renewal_enforces_declared_lease_policy": "RESOLVED",
+                    "10_worker_done_releases_leases_before_review_state": "RESOLVED",
+                    "11_harness_contradiction_rejection_and_state_machine_safety": "RESOLVED",
+                    "12_blank_identities_and_integrated_reacquisition_fail_closed": "RESOLVED",
                 },
             },
             "fixture_stats": fixture_stats,

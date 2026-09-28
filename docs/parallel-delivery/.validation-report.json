@@ -3,10 +3,10 @@
   "status": "PASS",
   "attestation": {
     "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
-    "candidate_commit": "ba700415e0096428427859ca882623357cbb1571",
+    "candidate_commit": "6f6bb41a132486dd880397b95df94ed670f31f96",
     "candidate_is_actual_head": true,
     "committed_changes_count": 20,
-    "dirty_overlay_count": 11,
+    "dirty_overlay_count": 8,
     "overlay_clean": false,
     "renames_evaluated_both_ends": true,
     "semantics": "Committed attestation generated via explicit --generate-report flag with immutable base and candidate SHAs matching actual HEAD. In Git DAG topology, an artifact inside a commit tree cannot self-reference its own commit hash without circularity; candidate_commit identifies the verified candidate commit/tree baseline against approved base_commit, and bundle_sha256 attests to exact SHA-256 hashes of all bundle artifacts excluding this report."
@@ -47,10 +47,24 @@
       "7_release_all_mutation_leases_after_worker_done_success": "RESOLVED",
       "8_reject_undeclared_locks_and_enforce_declared_duration_bounds": "RESOLVED",
       "9_validate_harness_execution_result_and_state_machine_transitions": "RESOLVED"
+    },
+    "sol_round_5": {
+      "1_non_skippable_fixtures_and_secret_scan_gate": "RESOLVED",
+      "2_shared_durable_registry_task_and_dispatch_id_uniqueness": "RESOLVED",
+      "3_mandatory_exact_approved_candidate_commit_binding": "RESOLVED",
+      "4_mandatory_intended_dispatch_id_without_lease_rewrite": "RESOLVED",
+      "5_normal_and_blocked_orca_lifecycle_transitions": "RESOLVED",
+      "6_dispatch_proves_complete_declared_task_lock_set": "RESOLVED",
+      "7_multi_unit_capacity_reserves_and_fences_every_slot": "RESOLVED",
+      "8_symmetric_partition_namespace_overlap_check": "RESOLVED",
+      "9_cumulative_renewal_enforces_declared_lease_policy": "RESOLVED",
+      "10_worker_done_releases_leases_before_review_state": "RESOLVED",
+      "11_harness_contradiction_rejection_and_state_machine_safety": "RESOLVED",
+      "12_blank_identities_and_integrated_reacquisition_fail_closed": "RESOLVED"
     }
   },
   "fixture_stats": {
-    "tests_run": 117,
+    "tests_run": 143,
     "failures": 0,
     "errors": 0,
     "passed": true
@@ -88,6 +102,10 @@
       "status": "PASS",
       "errors": []
     },
+    "secret_scan": {
+      "status": "PASS",
+      "errors": []
+    },
     "negative_fixtures_suite": {
       "status": "PASS",
       "errors": []
@@ -117,16 +135,16 @@
   ],
   "bundle_sha256": {
     "contract-registry.yaml": "417687b7520f9b0cfc26d7f5a2c0df098581f18ad87ef91c0452356cbb9bfc01",
-    "delivery_engine.py": "40f4b03f32138333459ffc14f712fd1e22a9ed880f61058b2bc0d971e0284ef0",
+    "delivery_engine.py": "b9806d9438c2c74ceb9b3bdaadf05b723eadb58b68188f4eed159b91d94a5df1",
     "merge-and-integration.md": "fe85a843f23057dbc4109eda8a2d40467ac5531d38cd92f6379a5f446318fa29",
-    "operating-model.md": "f1ea08c2c684114ede10f82fdde3f477dc7254f04a229c5b1a9bc3268f5550cf",
+    "operating-model.md": "c497989da8dcbdc096442dac48bc32eaf93d37a7c57aa385aa5d690d1861887b",
     "ownership-and-locks.yaml": "ca060cf8603f0d98370260dadc088d22e63850b7ae324280c2262008b14760c2",
-    "protocol.md": "3429f26966776540c5d0559cbdcb644dde233b8c8cf78e1b40c162b2ddf32033",
-    "README.md": "23196c8b8eea89ca206cd5272247ed0a11159669c2d2c36beb04a7b5b73066d4",
+    "protocol.md": "d758526708a9e1d6db09017151ebe9a7f61b5879f0dfa2aeb02b39a0924897d4",
+    "README.md": "f6b162d25b5390535528b2fde1fef327e8033670a593dd9b981192800c8b450c",
     "security-performance-recovery.md": "3508b41c995bf3b0d964ddab28da4ce5ad79ae33e1d14c5aa8b7f335ce7066f1",
     "task-dag.yaml": "9dbdaca04f8c186f2ff333a981605d6b4a45332dee487dd8d0fdf987fc605cb3",
-    "test_negative_fixtures.py": "6825074e70bce83de9a43ebe11650fb1b52f1c5d03f2f51077632e803b909c03",
+    "test_negative_fixtures.py": "8093d7b6db61ca7abee09ff2bc52c9699bcb0a553649eddd660db6bad5e8e8df",
     "traceability.md": "69caff38f6fe526253071bf8fe3c27d7a7064f4af771a8e88eeddc86ee5632cc",
-    "validate.py": "97096df2ad1a2eb8d3e7382a0eea50272f3db2ccb3d9fa0293ebc0428b0eaa77"
+    "validate.py": "fac7258fa4bf4301bd09f01f3fbf3749bcd0d34d3f6b18ac01e778b3a3578b00"
   }
 }

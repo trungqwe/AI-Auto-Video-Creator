@@ -224,6 +224,21 @@ orca orchestration send --from <worker_terminal> --dispatch-capability <dcap> --
 11. **Máy trạng thái thực thi Harness quan sát được**:
     - Harness tuân thủ chu trình: `IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_FALLBACK`.
     - Đối số trong `HarnessExecutionResult` được thẩm định kiểu dữ liệu nghiêm ngặt (`success: bool`, `execution_time_ms >= 0`, `status: PASS|STOP`).
+    - Từ chối các trường mâu thuẫn (`success=True` với `status="STOP"` hoặc `fallback_required=True`; `success=False` với `status="PASS"` hoặc `fallback_required=False`).
+12. **Durable Ledger/Registry dùng chung (`SharedOrcaExecutionRegistry`)**:
+    - Task ID và dispatch ID của Orca được lưu vết qua registry dùng chung giữa các adapter instance, bảo đảm tính duy nhất toàn cục và chống tái sử dụng ID trên toàn hệ thống.
+13. **Intended Dispatch bắt buộc không rewrite lease (`No Lease Rewrite`)**:
+    - Tham số `intended_dispatch_id` là bắt buộc khi tạo dispatch; bắt buộc phải khớp chính xác với `active_lease.dispatch_id`. Cấm tuyệt đối hành vi ghi đè lease dispatch ID.
+14. **Chứng minh đầy đủ tập hợp Lock đã khai báo (`declared_task_locks`)**:
+    - Khi tạo dispatch, worker bắt buộc phải chứng minh đầy đủ lease hợp lệ cho mọi lock trong `declared_task_locks` của task (qua `lease_ids`), cấm dùng một lease đại diện.
+15. **Slot Reservation và Fencing cho Capacity đa đơn vị (`units > 1`)**:
+    - Phân bổ, bảo lưu và cấp monotonic fencing token riêng cho từng slot trong mảng `allocated_slots`.
+16. **Kiểm tra va chạm phân vùng đối xứng (`Symmetric Namespace Overlap`)**:
+    - Va chạm phân vùng được kiểm tra đối xứng hai chiều: namespace cha chặn namespace con và namespace con chặn namespace cha (`namespaces_overlap`).
+17. **Giới hạn gia hạn tích lũy (`max_cumulative_seconds` và `max_renewals`)**:
+    - Gia hạn lease bị chặn nếu tổng thời gian gia hạn tích lũy vượt quá `max_cumulative_seconds` hoặc số lần gia hạn vượt quá `max_renewals`.
+18. **Cấm tái chiếm giữ lease cho task đã tích hợp và từ chối ID rỗng**:
+    - Task đã được đánh dấu tích hợp (`mark_task_integrated`) bị cấm vĩnh viễn không được tái chiếm giữ lease. Từ chối fail-closed mọi định danh rỗng/whitespace ở mọi thao tác lock/lease/dispatch.
 
 ## 8. Review/remediation protocol
 
@@ -242,10 +257,14 @@ Finding trong contract đi một remediation pass bởi original implementer v�
 - Sequence tăng đơn điệu theo dispatch.
 - Old lease/recovery epoch/fencing token không mutation.
 - Toàn bộ mutation lease phải được đóng ngay khi worker_done thành công, trước khi vào review.
-- Không tái sử dụng Orca task ID hoặc dispatch ID trên toàn hệ thống (kể cả settled attempts).
-- Candidate commit bắt buộc khớp tuyệt đối với HEAD hiện hành của repository Git.
-- Không nới rộng thời hạn lease vượt quá định nghĩa đã khai báo.
+- Không tái sử dụng Orca task ID hoặc dispatch ID trên toàn hệ thống (kể cả settled attempts) thông qua SharedOrcaExecutionRegistry.
+- Candidate commit bắt buộc khớp tuyệt đối với approved candidate và HEAD hiện hành của repository Git.
+- Intended dispatch ID là bắt buộc và không ghi đè active lease dispatch ID.
+- Dispatch bắt buộc chứng minh đầy đủ tập hợp lock đã khai báo cho task.
+- Không nới rộng thời hạn lease vượt quá định nghĩa đã khai báo và không gia hạn vượt quá max_cumulative_seconds hoặc max_renewals.
 - Không cho phép lock không khai báo trong lock registry hoặc task DAG.
+- Cấm tái chiếm giữ lease cho các task đã ở trạng thái integrated.
+- Cấm các trường mâu thuẫn trong HarnessExecutionResult và cấm gán trực tiếp trạng thái bất hợp pháp trong HarnessExecutionStateMachine.
 - Không heartbeat sau `worker_done`.
 - Không review cùng working tree khi worker đang mutation.
 - Không merge nếu candidate SHA khác SHA được review.

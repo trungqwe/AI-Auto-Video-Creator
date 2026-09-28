@@ -4,17 +4,20 @@
 
 - Authority hiện hành giữ nguyên: `M2-P1..P7B_ACCEPTED_CLOSED`; M2-P8/P9 `LOCKED`; M3/Phân hệ A `NOT AUTHORIZED`.
 - Đã thêm [kiến trúc triển khai song song](./docs/parallel-delivery/README.md) ở trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`. Bundle chỉ là docs/config và định nghĩa DAG, contract registry, ownership/lease, Orca worker protocol, merge queue, traceability, security/performance/recovery.
-- Đã khắc phục triệt để toàn bộ 21 bypass độc lập từ Sol review, 3 boundary probe, toàn bộ các phát hiện Sol Round 3, và toàn bộ 9 blocker Sol Round 4:
-  1. Per-live-allocation fencing cho capacity leases (`mode == "capacity"`): phân bổ từng slot độc lập (`LOCK:slot_N`) với monotonic fencing token riêng, cô lập token giữa các worker đồng thời và vô hiệu hóa token cũ khi tái cấp phát slot;
-  2. Global non-reuse của Orca task ID và dispatch ID trên toàn hệ thống kể cả các attempt đã hoàn tất (`settled`);
-  3. Từ chối ghi đè dispatch binding (`Duplicate dispatch binding overwrite`);
-  4. Ràng buộc candidate commit và approved candidate commit phải tồn tại trong Git DAG và khớp exact commit `HEAD` (`git rev-parse HEAD`);
-  5. Ràng buộc intended dispatch vô điều kiện (loại bỏ hoàn toàn bypass qua `ctx_init`);
-  6. Thực thi ma trận chuyển đổi trạng thái tác vụ nội bộ (`LEGAL_TASK_STATE_TRANSITIONS`);
-  7. Giải phóng toàn bộ mutation lease ngay sau khi `worker_done(succeeded)` được xác thực, chuyển tác vụ sang `review` và giữ candidate ở trạng thái read-only;
-  8. Từ chối lock không khai báo tại acquire, dispatch và toàn bộ DAG qua `validate.py:check_task_dag`; cấm nới rộng thời hạn `lease_seconds` vượt quá khai báo trong schema;
-  9. Thẩm định kiểu dữ liệu nghiêm ngặt đối số trong dataclass `HarnessExecutionResult`; máy trạng thái `HarnessExecutionStateMachine` tuân thủ nghiêm ngặt chu trình `IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_FALLBACK`.
-  10. Bộ kiểm thử tự động đạt 117/117 tests PASS; `validate.py --audit` PASS 100%.
+- Đã khắc phục triệt để toàn bộ 21 bypass độc lập từ Sol review, 3 boundary probe, toàn bộ các phát hiện Sol Round 3, toàn bộ 9 blocker Sol Round 4, và toàn bộ 12 blocker Sol Round 5:
+  1. Non-skippable fixtures & secret scan gate trong chế độ release/audit (`--skip-fixtures`, `VALIDATE_SKIP_FIXTURES` bị từ chối fail-closed; quét private keys, API tokens, URI credentials);
+  2. `SharedOrcaExecutionRegistry` đảm bảo task ID và dispatch ID duy nhất toàn cục giữa các adapter instances;
+  3. `approved_candidate_commit` bắt buộc và chính xác SHA-40 hexa;
+  4. `intended_dispatch_id` bắt buộc và không cho phép ghi đè lease (`no lease rewrite`);
+  5. Vòng đời tác vụ tuần tự (`acknowledged` -> `running` -> `worker_done`) và chặn các chuyển đổi trái phép;
+  6. Dispatch chứng minh đầy đủ tập hợp lock đã khai báo (`declared_task_locks`);
+  7. Multi-unit capacity (`units > 1`) cấp phát và fencing riêng từng slot trong `allocated_slots`;
+  8. Kiểm tra va chạm phân vùng đối xứng cha - con (`namespaces_overlap`);
+  9. Giới hạn gia hạn tích lũy (`max_cumulative_seconds` và `max_renewals`);
+  10. Giải phóng toàn bộ mutation lease trước khi phơi bày trạng thái review;
+  11. Từ chối trường mâu thuẫn trong `HarnessExecutionResult` và cấm trạng thái trực tiếp bất hợp pháp trong `HarnessExecutionStateMachine`;
+  12. Từ chối định danh rỗng fail-closed và cấm task đã `integrated` tái chiếm giữ lease;
+  13. Bộ kiểm thử tự động đạt 143/143 tests PASS; `validate.py --audit` PASS 100%.
 - Orca là execution/communication plane. Dely chỉ quản lý implement → independent review bên trong task đã có authority. Dely implement: Codex CLI / `ag/gemini-3.8-flash-high` / `high`; review: Claude Code / `cx/gpt-5.6-sol-high` / `high`. Supreme audit `cx/gpt-6-astra-medium` / `medium` nằm ngoài Dely và chỉ cho audit cực khó.
 - Rollback reference trước thí nghiệm: `D:/AI_SETUP/backups/AI-Auto-Video-Creator/20260928-175542`; đây không phải bằng chứng G05 PASS.
 
