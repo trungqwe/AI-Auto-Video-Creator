@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BUNDLE = ROOT / "docs" / "parallel-delivery"
 REPORT = BUNDLE / ".validation-report.json"
 TEXT_SUFFIXES = {".md", ".yaml", ".yml", ".json", ".py", ".toml", ".txt"}
+SHA_HEX_40_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 
 # Specific sequences produced by common UTF-8 double-decoding; ordinary Vietnamese
 # text may legitimately contain an isolated U+00C3, so single-character checks are invalid.
@@ -728,22 +729,77 @@ def check_attestation_report_freshness(root: Path, bundle: Path, report_path: Pa
     # is mathematically circular. Under parent-plus-wrapper semantics:
     # Either candidate_commit is actual HEAD, or parent_commit / candidate_commit matches HEAD~1 (parent)
     # with wrapper_commit at HEAD, and all bundle files match their recorded SHA-256 hashes.
-    cand = (att.get("candidate_commit") or "").lower()
-    parent_cand = (att.get("parent_commit") or "").lower()
+    cand = (att.get("candidate_commit") or "").strip().lower()
+    parent_cand = (att.get("parent_commit") or "").strip().lower()
+    wrapper_cand = (att.get("wrapper_commit") or "").strip().lower()
 
     # Determine git parent of HEAD
     parent_res = subprocess.run(["git", "rev-parse", "HEAD^"], cwd=root, capture_output=True, text=True)
     parent_sha = parent_res.stdout.strip().lower() if parent_res.returncode == 0 else ""
+    head_clean = head_sha.strip().lower()
 
-    head_clean = head_sha.lower()
-    is_direct_head = bool(head_clean) and (cand == head_clean)
-    is_parent_wrapper = bool(parent_sha) and (cand == parent_sha or (bool(parent_cand) and parent_cand == parent_sha))
+    # 1. Validate candidate_commit: must exist, 40-hex, not zero, exists in git
+    if not cand:
+        errors.append("Attestation report missing candidate_commit")
+    elif not SHA_HEX_40_RE.match(cand):
+        errors.append(f"Attestation candidate commit {cand!r} is not a valid 40-character SHA")
+    elif set(cand) == {"0"}:
+        errors.append(f"Attestation candidate commit {cand!r} is zero SHA; zero candidate values are forbidden")
+    else:
+        c_check = subprocess.run(["git", "cat-file", "-e", f"{cand}^{{commit}}"], cwd=root, capture_output=True)
+        if c_check.returncode != 0:
+            errors.append(f"Attestation candidate commit {cand} not found in Git DAG")
 
-    if not is_direct_head and not is_parent_wrapper:
-        errors.append(
-            f"Attestation report is stale: recorded candidate {cand} is neither current HEAD {head_clean} "
-            f"nor parent commit {parent_sha}. Regenerate report with --generate-report."
-        )
+    # 2. Validate wrapper_commit: must exist, 40-hex, not zero, exists in git
+    if not wrapper_cand:
+        errors.append("Attestation report missing wrapper_commit")
+    elif not SHA_HEX_40_RE.match(wrapper_cand):
+        errors.append(f"Attestation wrapper commit {wrapper_cand!r} is not a valid 40-character SHA")
+    elif set(wrapper_cand) == {"0"}:
+        errors.append(f"Attestation wrapper commit {wrapper_cand!r} is zero SHA; zero wrapper values are forbidden")
+    else:
+        w_check = subprocess.run(["git", "cat-file", "-e", f"{wrapper_cand}^{{commit}}"], cwd=root, capture_output=True)
+        if w_check.returncode != 0:
+            errors.append(f"Attestation wrapper commit {wrapper_cand} not found in Git DAG")
+
+    # 3. Validate parent_commit: must exist, 40-hex, not zero, exists in git
+    if not parent_cand:
+        errors.append("Attestation report missing parent_commit")
+    elif not SHA_HEX_40_RE.match(parent_cand):
+        errors.append(f"Attestation parent commit {parent_cand!r} is not a valid 40-character SHA")
+    elif set(parent_cand) == {"0"}:
+        errors.append(f"Attestation parent commit {parent_cand!r} is zero SHA; zero parent values are forbidden")
+    else:
+        p_check = subprocess.run(["git", "cat-file", "-e", f"{parent_cand}^{{commit}}"], cwd=root, capture_output=True)
+        if p_check.returncode != 0:
+            errors.append(f"Attestation parent commit {parent_cand} not found in Git DAG")
+
+    # 4. Verify freshness against current checkout (HEAD and HEAD^)
+    if bool(head_clean) and head_clean != "unknown":
+        is_direct_head = (cand == head_clean and (wrapper_cand == head_clean or wrapper_cand == cand))
+        is_parent_wrapper = bool(parent_sha) and (cand == parent_sha) and (wrapper_cand == head_clean or wrapper_cand == parent_sha)
+        if not is_direct_head and not is_parent_wrapper:
+            errors.append(
+                f"Attestation report is stale: recorded candidate {cand} and wrapper {wrapper_cand} are neither current HEAD {head_clean} "
+                f"nor parent commit {parent_sha}. Regenerate report with --generate-report."
+            )
+
+    # 5. Verify Git DAG topology: parent_commit must be parent of wrapper_commit in Git
+    if (
+        cand and wrapper_cand and parent_cand
+        and SHA_HEX_40_RE.match(cand) and SHA_HEX_40_RE.match(wrapper_cand) and SHA_HEX_40_RE.match(parent_cand)
+        and set(cand) != {"0"} and set(wrapper_cand) != {"0"} and set(parent_cand) != {"0"}
+    ):
+        target_child = wrapper_cand
+        topo_res = subprocess.run(["git", "rev-parse", f"{target_child}^"], cwd=root, capture_output=True, text=True)
+        if topo_res.returncode != 0:
+            errors.append(f"Attestation Git topology verification failed: commit {target_child} has no parent in Git")
+        else:
+            actual_parent = topo_res.stdout.strip().lower()
+            if actual_parent != parent_cand:
+                errors.append(
+                    f"Attestation Git topology mismatch: wrapper parent {actual_parent} does not match parent_commit {parent_cand}"
+                )
 
     if not att.get("overlay_clean", False) or att.get("dirty_overlay_count", 1) != 0:
         errors.append(

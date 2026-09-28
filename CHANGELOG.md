@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 7 (Registry Read-Modify-Write, Durability, Lifecycle & Fencing Hardening)
+
+- Khắc phục toàn diện 5 phát hiện/blockers từ `cx/gpt-5.6-sol-high` round 7 review cho bundle `docs/parallel-delivery/`:
+  - **(1) Giao Dịch Nguyên Tử Đọc-Sửa-Ghi và Chặn Trùng Lặp ID An Toàn Tiến Trình**: Tích hợp context manager `_transaction(write=True/False)` bảo vệ chu trình đọc, sửa đổi và ghi đĩa atomic (`_persist_atomic`) trên `SharedOrcaExecutionRegistry`; nâng cấp `_FileLock` hỗ trợ reentrancy theo canonical path trên cùng một tiến trình/thread, loại bỏ nguy cơ deadlock; từ chối fail-closed `ProtocolViolationError` đối với duplicate `orca_task_id` và `dispatch_id`.
+  - **(2) Shared Execution Registry Bền Vững Mặc Định khi `storage_path=None`**: Khi khởi tạo không truyền đường dẫn, registry tự động trỏ về `DEFAULT_PRODUCTION_REGISTRY_PATH` (`runtime/orca-execution-registry.json`), đảm bảo toàn bộ trạng thái task và dispatch binding được lưu vết bền vững trên đĩa và khôi phục nguyên vẹn.
+  - **(3) Cấm Tuyệt Đối Can Thiệp Vòng Đời Tác Vụ qua `set_task_state`**: Hạn chế `set_task_state` chỉ cho phép gán các trạng thái khởi tạo/phụ thuộc (`planned`, `ready`, v.v.); cấm tuyệt đối việc trực tiếp gán hoặc ghi đè các trạng thái vòng đời thực thi đang hoạt động (`dispatched`, `acknowledged`, `running`, `review`, `merge_queued`, `integrated`); thuộc tính `task_states` trả về bản sao read-only dictionary để ngăn đột biến trạng thái nội bộ.
+  - **(4) Xác Thực Fencing Từng Slot cho Multi-Slot Task**: `validate_fencing_token` kiểm tra toàn bộ danh sách `allocated_slots`, từ chối truy vấn slot không được cấp phát (`was not allocated`), đối chiếu chính xác token theo từng slot (`slot_fencing_tokens`), và phát hiện kịp thời các tái cấp phát bất đối xứng (`asymmetric slot reallocation detected`).
+  - **(5) Từ Chối Báo Cáo Attestation Có Commit Zero Hoặc Topology Sai Lệch Git DAG**: `check_attestation_report_freshness` từ chối các commit zero SHA, commit không tồn tại trong Git DAG, và xác thực tính nhất quán cấu trúc cây Git DAG (`wrapper_commit^ == parent_commit`).
+  - **(6) Fixture Suite Tự Động 162/162 PASS**: Bổ sung 9 bài kiểm tra phản ví dụ độc lập trong `TestSolRoundSevenCounterexamples` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 162/162 passed 100%.
+
 ## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 6 (Process-Durable Registry & Hardened Protocol Invariants)
 
 - Khắc phục toàn diện 7 phát hiện/blockers từ `cx/gpt-5.6-sol-high` round 6 review cho bundle `docs/parallel-delivery/`:

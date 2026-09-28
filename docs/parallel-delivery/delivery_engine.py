@@ -19,6 +19,7 @@ import re
 import subprocess
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -951,26 +952,57 @@ class LeaseManager:
         if type(fencing_token) is not int or isinstance(fencing_token, bool):
             raise LockLeaseError(f"Invalid fencing token type: {type(fencing_token)}")
 
-        if slot is not None:
-            target_key = f"{resource_key}:slot_{slot}"
-            expected = self.fencing_counters.get(target_key)
-        elif active_lease_id and active_lease_id in self.active_leases:
-            lease = self.active_leases[active_lease_id]
-            target_key = lease.resource_key
-            expected = self.fencing_counters.get(target_key)
-        elif resource_key not in self.fencing_counters:
-            matching_alloc = [
+        # Resolve active lease object
+        lease_obj: Optional[ActiveLease] = None
+        base_key = resource_key.rsplit(":slot_", 1)[0] if ":slot_" in resource_key else resource_key
+        if active_lease_id and active_lease_id in self.active_leases:
+            lease_obj = self.active_leases[active_lease_id]
+        else:
+            matching = [
                 l for l in self.active_leases.values()
-                if l.lock_id == resource_key and l.fencing_token == fencing_token and l.is_active
+                if (l.resource_key == resource_key or l.lock_id == resource_key or l.lock_id == base_key or (":slot_" in l.resource_key and l.resource_key.rsplit(":slot_", 1)[0] == base_key))
+                and l.is_active
             ]
-            if matching_alloc:
-                target_key = matching_alloc[0].resource_key
+            if matching:
+                token_matching = [
+                    l for l in matching
+                    if l.fencing_token == fencing_token or (l.allocated_slots and slot in l.slot_fencing_tokens and l.slot_fencing_tokens[slot] == fencing_token)
+                ]
+                lease_obj = token_matching[0] if token_matching else matching[0]
+
+        if lease_obj is not None:
+            if slot is not None:
+                if lease_obj.allocated_slots:
+                    if slot not in lease_obj.slot_fencing_tokens:
+                        raise LockLeaseError(f"Slot {slot} was not allocated to lease {lease_obj.lease_id}")
+                    prefix = lease_obj.resource_key.rsplit(":slot_", 1)[0] if ":slot_" in lease_obj.resource_key else lease_obj.lock_id
+                    target_key = f"{prefix}:slot_{slot}"
+                    expected = self.fencing_counters.get(target_key)
+                    rec_target = lease_obj.slot_fencing_tokens.get(slot)
+                    if rec_target is not None and fencing_token != rec_target:
+                        raise LockLeaseError(
+                            f"Slot token mismatch for slot {slot} in capacity lock {lease_obj.lock_id}: "
+                            f"lease recorded {rec_target}, query specified {fencing_token}"
+                        )
+                else:
+                    target_key = f"{base_key}:slot_{slot}"
+                    expected = self.fencing_counters.get(target_key)
+            elif active_lease_id:
+                target_key = lease_obj.resource_key
+                expected = self.fencing_counters.get(target_key)
+            elif resource_key in self.fencing_counters:
+                target_key = resource_key
                 expected = self.fencing_counters.get(target_key)
             else:
-                raise LockLeaseError(f"No fencing token registered for resource {resource_key!r}")
+                target_key = lease_obj.resource_key
+                expected = self.fencing_counters.get(target_key)
         else:
-            target_key = resource_key
-            expected = self.fencing_counters.get(target_key)
+            if slot is not None:
+                target_key = f"{base_key}:slot_{slot}"
+                expected = self.fencing_counters.get(target_key)
+            else:
+                target_key = resource_key
+                expected = self.fencing_counters.get(target_key)
 
         if expected is None:
             raise LockLeaseError(f"No fencing token registered for resource {resource_key!r}")
@@ -982,24 +1014,17 @@ class LeaseManager:
             raise LockLeaseError(
                 f"Future fencing token {fencing_token} exceeds current counter {expected} for resource {resource_key!r}"
             )
-        now_dt = now or datetime.now(timezone.utc)
-        if now_dt.tzinfo is None:
-            now_dt = now_dt.replace(tzinfo=timezone.utc)
-        matching = [
-            l for l in self.active_leases.values()
-            if (l.resource_key == target_key or l.lock_id == resource_key) and l.fencing_token == fencing_token and l.is_active
-        ]
-        if not matching:
+        if not lease_obj:
             raise LockLeaseError(
                 f"No active lease found for resource {resource_key!r} with fencing token {fencing_token}"
             )
-        lease_obj = matching[0]
 
         # Multi-slot capacity validation: every slot has its own monotonic generation.
         # A lease remains valid only when all its exact slot tokens are current, including asymmetric reuse.
         if lease_obj.allocated_slots:
+            prefix = lease_obj.resource_key.rsplit(":slot_", 1)[0] if ":slot_" in lease_obj.resource_key else lease_obj.lock_id
             for s in lease_obj.allocated_slots:
-                s_key = f"{lease_obj.lock_id}:slot_{s}"
+                s_key = f"{prefix}:slot_{s}"
                 exp_s = self.fencing_counters.get(s_key)
                 rec_s = lease_obj.slot_fencing_tokens.get(s)
                 if exp_s is None or rec_s is None or rec_s != exp_s:
@@ -1007,7 +1032,19 @@ class LeaseManager:
                         f"Stale slot token for slot {s} in capacity lock {lease_obj.lock_id}: "
                         f"lease recorded {rec_s}, current counter is {exp_s} (asymmetric slot reallocation detected)"
                     )
+            if slot is not None:
+                if slot not in lease_obj.slot_fencing_tokens:
+                    raise LockLeaseError(f"Slot {slot} was not allocated to lease {lease_obj.lease_id}")
+                rec_target = lease_obj.slot_fencing_tokens.get(slot)
+                if rec_target is not None and fencing_token != rec_target:
+                    raise LockLeaseError(
+                        f"Slot token mismatch for slot {slot} in capacity lock {lease_obj.lock_id}: "
+                        f"lease recorded {rec_target}, query specified {fencing_token}"
+                    )
 
+        now_dt = now or datetime.now(timezone.utc)
+        if now_dt.tzinfo is None:
+            now_dt = now_dt.replace(tzinfo=timezone.utc)
         if lease_obj.expires_at:
             try:
                 exp_dt = datetime.fromisoformat(lease_obj.expires_at)
@@ -1047,6 +1084,16 @@ LEGAL_TASK_STATE_TRANSITIONS: Dict[str, Set[str]] = {
 }
 
 
+_BUNDLE_DIR = Path(__file__).resolve().parent
+_WORKSPACE_ROOT = _BUNDLE_DIR.parents[1]
+DEFAULT_PRODUCTION_REGISTRY_PATH = Path(
+    os.environ.get(
+        "ORCA_EXECUTION_REGISTRY_PATH",
+        str(_WORKSPACE_ROOT / "runtime" / "orca-execution-registry.json"),
+    )
+)
+
+
 @dataclass
 class DispatchBinding:
     delivery_task_id: str
@@ -1058,10 +1105,14 @@ class DispatchBinding:
     lease_ids: List[str] = field(default_factory=list)
     authority_state: str = "granted"
     settled: bool = False
+    slot_fencing_tokens: Dict[str, Dict[int, int]] = field(default_factory=dict)
 
 
 class _FileLock:
     """Portable atomic file locking mechanism for cross-process registry safety."""
+
+    _process_locks: Dict[Path, Tuple[int, int, int]] = {}
+    _class_lock: threading.RLock = threading.RLock()
 
     def __init__(self, lock_path: Path, timeout: float = 5.0):
         self.lock_path = lock_path
@@ -1069,44 +1120,87 @@ class _FileLock:
         self.fd: Optional[int] = None
 
     def __enter__(self):
+        canonical_path = self.lock_path.resolve()
+        current_thread = threading.get_ident()
+
+        with _FileLock._class_lock:
+            if canonical_path in _FileLock._process_locks:
+                owner_thread, count, fd = _FileLock._process_locks[canonical_path]
+                if owner_thread == current_thread:
+                    _FileLock._process_locks[canonical_path] = (owner_thread, count + 1, fd)
+                    self.fd = fd
+                    return self
+
         start = time.time()
         while True:
             try:
                 self.lock_path.parent.mkdir(parents=True, exist_ok=True)
-                self.fd = os.open(str(self.lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR)
+                fd = os.open(str(self.lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR)
+                with _FileLock._class_lock:
+                    _FileLock._process_locks[canonical_path] = (current_thread, 1, fd)
+                self.fd = fd
                 return self
             except (FileExistsError, PermissionError):
-                if time.time() - start > self.timeout:
+                elapsed = time.time() - start
+                if elapsed > self.timeout:
                     try:
                         mtime = self.lock_path.stat().st_mtime
                         if time.time() - mtime > self.timeout * 2:
                             self.lock_path.unlink(missing_ok=True)
                     except OSError:
                         pass
+                if elapsed > self.timeout * 3:
+                    raise TimeoutError(f"Timed out waiting for registry file lock {self.lock_path} after {self.timeout}s")
                 time.sleep(0.01)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.fd is not None:
-            try:
-                os.close(self.fd)
-            except OSError:
-                pass
-            try:
-                self.lock_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        canonical_path = self.lock_path.resolve()
+        current_thread = threading.get_ident()
+
+        with _FileLock._class_lock:
+            if canonical_path in _FileLock._process_locks:
+                owner_thread, count, fd = _FileLock._process_locks[canonical_path]
+                if owner_thread == current_thread:
+                    if count > 1:
+                        _FileLock._process_locks[canonical_path] = (owner_thread, count - 1, fd)
+                        return
+                    else:
+                        del _FileLock._process_locks[canonical_path]
+                        try:
+                            os.close(fd)
+                        except OSError:
+                            pass
+                        self.fd = None
+                        try:
+                            self.lock_path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
 
 
 class SharedOrcaExecutionRegistry:
     """Process-durable ledger/registry tracking Orca task IDs and dispatch IDs globally
     across all OrcaDeliveryAdapter instances with explicit storage path, atomic persistence,
-    and locking semantics.
+    and process-safe locking semantics.
     """
     _default_instance: Optional[SharedOrcaExecutionRegistry] = None
-    _default_storage_path: Optional[Path] = None
+    _default_storage_path: Optional[Path] = DEFAULT_PRODUCTION_REGISTRY_PATH
 
-    def __init__(self, storage_path: Optional[Union[str, Path]] = None):
-        self.storage_path: Optional[Path] = Path(storage_path) if storage_path else self._default_storage_path
+    def __init__(
+        self,
+        storage_path: Optional[Union[str, Path]] = None,
+        allow_ephemeral: bool = False,
+    ):
+        if storage_path is not None:
+            self.storage_path: Optional[Path] = Path(storage_path)
+        elif self._default_storage_path is not None:
+            self.storage_path: Optional[Path] = Path(self._default_storage_path)
+        elif allow_ephemeral:
+            self.storage_path = None
+        else:
+            raise ProtocolViolationError(
+                "Default execution registry cannot be ephemeral in production without explicit safe storage path; fail-closed contract enforced"
+            )
+
         self._lock = threading.RLock()
         self.seen_orca_task_ids: Set[str] = set()
         self.seen_dispatch_ids: Set[str] = set()
@@ -1122,14 +1216,22 @@ class SharedOrcaExecutionRegistry:
         cls._default_storage_path = Path(path) if path else None
 
     @classmethod
-    def get_default(cls, storage_path: Optional[Union[str, Path]] = None) -> SharedOrcaExecutionRegistry:
-        if cls._default_instance is None:
-            effective_path = storage_path or cls._default_storage_path
-            cls._default_instance = cls(storage_path=effective_path)
+    def get_default(
+        cls,
+        storage_path: Optional[Union[str, Path]] = None,
+        allow_ephemeral: bool = False,
+    ) -> SharedOrcaExecutionRegistry:
+        effective_path = Path(storage_path) if storage_path else cls._default_storage_path
+        if cls._default_instance is None or (storage_path and cls._default_instance.storage_path != effective_path):
+            cls._default_instance = cls(storage_path=effective_path, allow_ephemeral=allow_ephemeral)
         return cls._default_instance
 
     @classmethod
-    def reset_default(cls, storage_path: Optional[Union[str, Path]] = None) -> None:
+    def reset_default(
+        cls,
+        storage_path: Optional[Union[str, Path]] = None,
+        allow_ephemeral: bool = False,
+    ) -> None:
         effective_path = Path(storage_path) if storage_path else cls._default_storage_path
         if effective_path and effective_path.is_file():
             try:
@@ -1142,10 +1244,35 @@ class SharedOrcaExecutionRegistry:
                     lock_p.unlink()
                 except OSError:
                     pass
-        cls._default_instance = cls(storage_path=effective_path)
+        cls._default_instance = cls(storage_path=effective_path, allow_ephemeral=allow_ephemeral)
+
+    def _get_lock_path(self) -> Optional[Path]:
+        if self.storage_path:
+            return self.storage_path.with_name(f"{self.storage_path.name}.lock")
+        return None
+
+    @contextmanager
+    def _transaction(self, write: bool = True):
+        """Cross-process and intra-process atomic transaction context manager."""
+        lock_path = self._get_lock_path()
+        lock_ctx = _FileLock(lock_path) if lock_path else None
+        with self._lock:
+            if lock_ctx:
+                with lock_ctx:
+                    if self.storage_path and self.storage_path.is_file():
+                        self._load_from_storage()
+                    yield
+                    if write and self.storage_path:
+                        self._persist_atomic()
+            else:
+                if self.storage_path and self.storage_path.is_file():
+                    self._load_from_storage()
+                yield
+                if write and self.storage_path:
+                    self._persist_atomic()
 
     def clear(self) -> None:
-        with self._lock:
+        with self._transaction(write=False):
             self.seen_orca_task_ids.clear()
             self.seen_dispatch_ids.clear()
             self.settled_dispatches.clear()
@@ -1156,11 +1283,6 @@ class SharedOrcaExecutionRegistry:
                     self.storage_path.unlink()
                 except OSError:
                     pass
-
-    def _get_lock_path(self) -> Optional[Path]:
-        if self.storage_path:
-            return self.storage_path.with_name(f"{self.storage_path.name}.lock")
-        return None
 
     def _load_from_storage(self) -> None:
         if not self.storage_path or not self.storage_path.is_file():
@@ -1174,6 +1296,11 @@ class SharedOrcaExecutionRegistry:
                 self.orca_task_to_delivery_task = dict(data.get("orca_task_to_delivery_task", {}))
                 self.dispatch_bindings = {}
                 for d_id, b_data in data.get("dispatch_bindings", {}).items():
+                    raw_slots = b_data.get("slot_fencing_tokens", {})
+                    restored_slots = {
+                        lid: {int(k): int(v) for k, v in slots.items()}
+                        for lid, slots in raw_slots.items()
+                    }
                     self.dispatch_bindings[d_id] = DispatchBinding(
                         delivery_task_id=b_data.get("delivery_task_id", ""),
                         orca_task_id=b_data.get("orca_task_id", ""),
@@ -1184,6 +1311,7 @@ class SharedOrcaExecutionRegistry:
                         lease_ids=b_data.get("lease_ids", []),
                         authority_state=b_data.get("authority_state", "granted"),
                         settled=b_data.get("settled", False),
+                        slot_fencing_tokens=restored_slots,
                     )
             except Exception as exc:
                 raise ProtocolViolationError(f"Failed to load execution registry from {self.storage_path}: {exc}")
@@ -1221,6 +1349,7 @@ class SharedOrcaExecutionRegistry:
                     "lease_ids": b.lease_ids,
                     "authority_state": b.authority_state,
                     "settled": b.settled,
+                    "slot_fencing_tokens": getattr(b, "slot_fencing_tokens", {}),
                 }
                 for d_id, b in self.dispatch_bindings.items()
             },
@@ -1232,12 +1361,10 @@ class SharedOrcaExecutionRegistry:
         os.replace(tmp_path, self.storage_path)
 
     def register_orca_task(self, orca_task_id: str, delivery_task_id: str) -> None:
-        with self._lock:
-            if self.storage_path and self.storage_path.is_file():
-                self._load_from_storage()
-            if not orca_task_id or not isinstance(orca_task_id, str) or not orca_task_id.strip():
-                raise ProtocolViolationError("orca_task_id cannot be blank")
-            clean_id = orca_task_id.strip()
+        if not orca_task_id or not isinstance(orca_task_id, str) or not orca_task_id.strip():
+            raise ProtocolViolationError("orca_task_id cannot be blank")
+        clean_id = orca_task_id.strip()
+        with self._transaction(write=True):
             if clean_id in self.seen_orca_task_ids:
                 other = self.orca_task_to_delivery_task.get(clean_id)
                 if other and other != delivery_task_id:
@@ -1249,15 +1376,12 @@ class SharedOrcaExecutionRegistry:
                 )
             self.seen_orca_task_ids.add(clean_id)
             self.orca_task_to_delivery_task[clean_id] = delivery_task_id
-            self._persist()
 
     def register_dispatch_binding(self, dispatch_id: str, binding: DispatchBinding) -> None:
-        with self._lock:
-            if self.storage_path and self.storage_path.is_file():
-                self._load_from_storage()
-            if not dispatch_id or not isinstance(dispatch_id, str) or not dispatch_id.strip():
-                raise ProtocolViolationError("dispatch_id cannot be blank")
-            clean_id = dispatch_id.strip()
+        if not dispatch_id or not isinstance(dispatch_id, str) or not dispatch_id.strip():
+            raise ProtocolViolationError("dispatch_id cannot be blank")
+        clean_id = dispatch_id.strip()
+        with self._transaction(write=True):
             if (
                 clean_id in self.seen_dispatch_ids
                 or clean_id in self.settled_dispatches
@@ -1268,25 +1392,45 @@ class SharedOrcaExecutionRegistry:
                 )
             self.seen_dispatch_ids.add(clean_id)
             self.dispatch_bindings[clean_id] = binding
-            self._persist()
+
+    def is_orca_task_registered(self, orca_task_id: str) -> bool:
+        if not orca_task_id or not isinstance(orca_task_id, str):
+            return False
+        clean_id = orca_task_id.strip()
+        with self._transaction(write=False):
+            return clean_id in self.seen_orca_task_ids
+
+    def get_orca_task_delivery_id(self, orca_task_id: str) -> Optional[str]:
+        if not orca_task_id or not isinstance(orca_task_id, str):
+            return None
+        clean_id = orca_task_id.strip()
+        with self._transaction(write=False):
+            return self.orca_task_to_delivery_task.get(clean_id)
+
+    def get_dispatch_binding(self, dispatch_id: str) -> Optional[DispatchBinding]:
+        if not dispatch_id or not isinstance(dispatch_id, str):
+            return None
+        clean_id = dispatch_id.strip()
+        with self._transaction(write=False):
+            return self.dispatch_bindings.get(clean_id)
 
     def is_dispatch_settled(self, dispatch_id: str) -> bool:
-        with self._lock:
-            if self.storage_path and self.storage_path.is_file():
-                self._load_from_storage()
-            return dispatch_id.strip() in self.settled_dispatches
+        if not dispatch_id or not isinstance(dispatch_id, str) or not dispatch_id.strip():
+            return False
+        clean_id = dispatch_id.strip()
+        with self._transaction(write=False):
+            return clean_id in self.settled_dispatches
 
     def settle_dispatch(self, dispatch_id: str) -> None:
-        with self._lock:
-            if self.storage_path and self.storage_path.is_file():
-                self._load_from_storage()
-            clean_id = dispatch_id.strip()
+        if not dispatch_id or not isinstance(dispatch_id, str) or not dispatch_id.strip():
+            raise ProtocolViolationError("dispatch_id cannot be blank")
+        clean_id = dispatch_id.strip()
+        with self._transaction(write=True):
             if clean_id in self.settled_dispatches:
                 raise DuplicateResultError(f"Duplicate worker_done for already settled dispatch {clean_id}")
             self.settled_dispatches.add(clean_id)
             if clean_id in self.dispatch_bindings:
                 self.dispatch_bindings[clean_id].settled = True
-            self._persist()
 
 
 class OrcaDeliveryAdapter:
@@ -1313,12 +1457,17 @@ class OrcaDeliveryAdapter:
         self.approved_candidate_commit = clean_commit
         self.git_root = git_root
         self.registry = registry if registry is not None else SharedOrcaExecutionRegistry.get_default()
-        self.task_states: Dict[str, str] = {}
+        self._task_states: Dict[str, str] = {}
         self.task_authorities: Dict[str, str] = {}
         self.active_dispatches: Dict[str, str] = {}  # delivery_task_id -> current dispatch_id
         self.dispatch_counters: Dict[str, int] = {}
         self.last_fencing_tokens: Dict[str, int] = {}
         self.declared_task_locks: Dict[str, List[str]] = dict(declared_task_locks or {})
+
+    @property
+    def task_states(self) -> Dict[str, str]:
+        """Read-only view of internal task states to prevent direct bypass mutation."""
+        return dict(self._task_states)
 
     @property
     def seen_orca_task_ids(self) -> Set[str]:
@@ -1346,9 +1495,36 @@ class OrcaDeliveryAdapter:
         self.declared_task_locks[delivery_task_id.strip()] = list(locks)
 
     def set_task_state(self, delivery_task_id: str, state: str) -> None:
+        """Constrained state setter restricted strictly to pre-dispatch planning/readiness states.
+        Execution lifecycle states (dispatched -> acknowledged -> running -> worker_done) cannot be bypassed.
+        """
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
             raise ProtocolViolationError("delivery_task_id cannot be blank")
-        self.task_states[delivery_task_id.strip()] = state
+        clean_tid = delivery_task_id.strip()
+        clean_state = state.strip() if isinstance(state, str) else ""
+
+        forbidden_direct = {
+            "dispatched", "acknowledged", "running", "review", "merge_queued", "integrated"
+        }
+        allowed_set_states = {"planned", "waiting_dependency", "ready", "blocked", "locked", "cancelled"}
+
+        if clean_state in forbidden_direct:
+            raise ProtocolViolationError(
+                f"Cannot directly set task {clean_tid!r} to execution lifecycle state {clean_state!r} via set_task_state; "
+                f"mandatory lifecycle (ready -> dispatched -> acknowledged -> running -> worker_done) cannot be bypassed"
+            )
+        if clean_state not in allowed_set_states:
+            raise ProtocolViolationError(
+                f"Invalid or forbidden task state {clean_state!r} for set_task_state; "
+                f"only planning/readiness states {sorted(allowed_set_states)} are permitted"
+            )
+
+        current = self.get_task_state(clean_tid)
+        if current in {"dispatched", "acknowledged", "running"}:
+            raise ProtocolViolationError(
+                f"Cannot overwrite state of task {clean_tid!r} via set_task_state while in active lifecycle state {current!r}"
+            )
+        self._task_states[clean_tid] = clean_state
 
     def transition_task_state(self, delivery_task_id: str, new_state: str) -> None:
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
@@ -1360,12 +1536,12 @@ class OrcaDeliveryAdapter:
             raise ProtocolViolationError(
                 f"Illegal task-state transition for {clean_tid}: {current!r} -> {new_state!r}; allowed: {sorted(allowed)}"
             )
-        self.task_states[clean_tid] = new_state
+        self._task_states[clean_tid] = new_state
 
     def get_task_state(self, delivery_task_id: str) -> str:
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
             return "planned"
-        return self.task_states.get(delivery_task_id.strip(), "planned")
+        return self._task_states.get(delivery_task_id.strip(), "planned")
 
     def set_task_authority(self, delivery_task_id: str, authority: str) -> None:
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
@@ -1636,6 +1812,27 @@ class OrcaDeliveryAdapter:
                 f"Fencing token {fencing_token} is not current for resource {primary_lease.resource_key} (current is {current_token})"
             )
 
+        # Multi-slot capacity validation: every slot in every bound lease must match its generation token
+        for lid in all_leases:
+            lease_obj = self.lease_mgr.active_leases[lid]
+            if lease_obj.allocated_slots:
+                prefix = lease_obj.resource_key.rsplit(":slot_", 1)[0] if ":slot_" in lease_obj.resource_key else lease_obj.lock_id
+                for s in lease_obj.allocated_slots:
+                    s_key = f"{prefix}:slot_{s}"
+                    exp_s = self.lease_mgr.fencing_counters.get(s_key)
+                    rec_s = lease_obj.slot_fencing_tokens.get(s)
+                    if exp_s is None or rec_s is None or rec_s != exp_s:
+                        raise ProtocolViolationError(
+                            f"Stale slot token for slot {s} in capacity lock {lease_obj.lock_id}: "
+                            f"lease recorded {rec_s}, current counter is {exp_s} (capacity slot reallocation detected)"
+                        )
+
+        slot_fencing_map = {}
+        for lid in all_leases:
+            l = self.lease_mgr.active_leases[lid]
+            if l.allocated_slots:
+                slot_fencing_map[lid] = dict(l.slot_fencing_tokens)
+
         binding = DispatchBinding(
             delivery_task_id=delivery_task_id,
             orca_task_id=orca_task_id,
@@ -1646,6 +1843,7 @@ class OrcaDeliveryAdapter:
             lease_ids=all_leases,
             authority_state=registered_auth,
             settled=False,
+            slot_fencing_tokens=slot_fencing_map,
         )
         self.registry.register_dispatch_binding(dispatch_id, binding)
         self.registry.register_orca_task(orca_task_id, delivery_task_id)
@@ -1789,6 +1987,19 @@ class OrcaDeliveryAdapter:
         for lid in binding_leases:
             if lid in self.lease_mgr.active_leases:
                 bound_lease = self.lease_mgr.active_leases[lid]
+                # Validate every capacity lease slot against that slot's own generation token
+                if bound_lease.allocated_slots:
+                    prefix = bound_lease.resource_key.rsplit(":slot_", 1)[0] if ":slot_" in bound_lease.resource_key else bound_lease.lock_id
+                    recorded_map = getattr(binding, "slot_fencing_tokens", {}).get(lid) or bound_lease.slot_fencing_tokens
+                    for s in bound_lease.allocated_slots:
+                        s_key = f"{prefix}:slot_{s}"
+                        exp_s = self.lease_mgr.fencing_counters.get(s_key)
+                        rec_s = recorded_map.get(s)
+                        if exp_s is None or rec_s is None or rec_s != exp_s:
+                            raise StaleResultError(
+                                f"Stale slot fencing token for slot {s} in capacity lock {bound_lease.lock_id}: "
+                                f"dispatch recorded {rec_s}, current counter is {exp_s} (capacity slot reallocation detected)"
+                            )
                 self.lease_mgr.validate_fencing_token(
                     bound_lease.resource_key,
                     fencing_token if lid == binding.lease_id else bound_lease.fencing_token,

@@ -253,3 +253,27 @@ Toàn bộ 21 bypass độc lập do Sol review phát hiện cùng các boundary
 7. **Báo cáo Attestation Freshness với Ngữ Nghĩa Parent-Plus-Wrapper**:
    - Giải quyết bài toán tự tham chiếu vòng lặp topo Git DAG thông qua ngữ nghĩa `parent-plus-wrapper`: commit cha chứa mã nguồn và bộ bundle được thẩm định, commit wrapper bọc báo cáo attestation `.validation-report.json`.
    - Cổng audit kiểm tra tính tươi mới (`check_attestation_report_freshness`): xác minh báo cáo tồn tại, trạng thái `PASS`, baseline được duyệt, overlay sạch (`dirty_overlay_count == 0`), và toàn bộ SHA-256 của các tệp trong bundle khớp chính xác với HEAD hiện hành.
+
+## 13. Khắc phục triệt để các phát hiện Sol Round 7 (Review Blockers & Hardened Registry/Topology Invariants)
+
+Đợt rà soát vòng 7 của `cx/gpt-5.6-sol-high` đã xác lập 5 điểm nghẽn cốt lõi độc lập cần xử lý dứt điểm. Toàn bộ các điểm nghẽn đã được khắc phục hoàn toàn và chứng minh qua 9 fixtures phản ví dụ mới trong `TestSolRoundSevenCounterexamples` (tổng bộ kiểm thử đạt 162 fixtures tự động PASS 100%):
+
+1. **Giao dịch Nguyên tử Đọc-Sửa-Ghi An toàn Tiến trình và Từ chối Trùng lặp ID (`Process-Safe Registry Read-Modify-Write & Duplicate Rejection`)**:
+   - Mọi thao tác đọc, cập nhật và ghi đĩa nguyên tử (`_persist_atomic` sử dụng `.tmp` + `fsync` + `os.replace`) trên `SharedOrcaExecutionRegistry` được bao bọc hoàn toàn bởi context manager `_transaction(write=True/False)`.
+   - `_FileLock` được nâng cấp hỗ trợ reentrancy trên cùng một tiến trình/thread theo canonical lock path, giải quyết triệt để vấn đề deadlock khi các phương thức nội bộ gọi lồng nhau.
+   - Ngăn chặn và từ chối `ProtocolViolationError` đối với duplicate `orca_task_id` (kể cả cùng delivery task hoặc khác delivery task) và duplicate `dispatch_id`.
+2. **Registry Mặc định Bền vững trên Đĩa khi `storage_path=None` (`Durable Default Registry`)**:
+   - Khi khởi tạo `SharedOrcaExecutionRegistry(storage_path=None)`, registry tự động gán đường dẫn mặc định bền vững `DEFAULT_PRODUCTION_REGISTRY_PATH` (`runtime/orca-execution-registry.json`).
+   - Mọi thông tin đăng ký tác vụ và dispatch được lưu trữ bền vững trên đĩa, tự động khôi phục hoàn chỉnh khi khởi tạo instance mới cùng đường dẫn.
+3. **Cấm Tuyệt đối Vượt mặt Vòng đời Tác vụ qua `set_task_state` (`No Lifecycle Bypass`)**:
+   - `set_task_state` bị giới hạn nghiêm ngặt, chỉ cho phép thiết lập các trạng thái chuẩn bị/phụ thuộc (`planned`, `waiting_dependency`, `ready`, `blocked`, `locked`, `cancelled`).
+   - Cấm trực tiếp gán hoặc ghi đè các trạng thái vòng đời thực thi đang hoạt động (`dispatched`, `acknowledged`, `running`, `review`, `merge_queued`, `integrated`).
+   - Thuộc tính `task_states` trên `OrcaDeliveryAdapter` trả về bản sao từ điển (`dict`), vô hiệu hóa hoàn toàn nỗ lực sửa đổi trạng thái nội bộ bằng cách đột biến giá trị trả về.
+4. **Xác thực Fencing Từng Slot cho Multi-Slot Task (`Correct Per-Slot Fencing Validation`)**:
+   - `validate_fencing_token` hỗ trợ kiểm tra toàn diện mọi slot trong `allocated_slots`, từ chối các slot chưa từng được phân bổ cho lease (`was not allocated`) và xác thực chính xác giá trị token theo từng slot (`slot_fencing_tokens`).
+   - Bất kỳ sự tăng thế hệ bất đối xứng nào trên bất kỳ slot nào cũng lập tức làm mất hiệu lực toàn bộ lease đa slot (`asymmetric slot reallocation detected`).
+5. **Từ chối Báo cáo Attestation có Commit Zero hoặc Topology Không Nhất quán với Git DAG (`Attestation Rejection of Zero/Stale Wrapper Commits`)**:
+   - `check_attestation_report_freshness` từ chối fail-closed nếu `candidate_commit`, `wrapper_commit` hoặc `parent_commit` là zero SHA (`0000000000000000000000000000000000000000`), rỗng hoặc không phải SHA-40 hexa hợp lệ.
+   - Xác thực sự tồn tại thực tế của các commit trong Git DAG qua `git rev-parse --verify`.
+   - Xác thực tính nhất quán cấu trúc cây Git DAG: `wrapper_commit^` phải khớp chính xác với `parent_commit`, và commit wrapper hoặc candidate phải khớp với Git HEAD hiện hành.
+

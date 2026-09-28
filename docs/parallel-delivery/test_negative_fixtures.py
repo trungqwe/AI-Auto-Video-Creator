@@ -31,6 +31,7 @@ from delivery_engine import (  # noqa: E402
     ContractBindingError,
     DispatchBinding,
     DuplicateResultError,
+    _FileLock,
     HarnessCompatibilityError,
     HarnessExecutionResult,
     HarnessExecutionStateMachine,
@@ -1466,7 +1467,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             intended_dispatch_id="ctx-a",
         )
         self.assertIsNotNone(disp1)
-        self.adapter.set_task_state("TASK-A", "ready")
+        self.adapter._task_states["TASK-A"] = "ready"
         with self.assertRaises(ProtocolViolationError) as ctx:
             self.adapter.create_dispatch(
                 "TASK-A",
@@ -1549,7 +1550,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
         """12. Dispatch rejects tasks in blocked, planned, dispatched, or review states (only 'ready' permitted)."""
         lease = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-a")
         for non_ready in ("blocked", "planned", "dispatched", "review", "integrated"):
-            self.adapter.set_task_state("TASK-A", non_ready)
+            self.adapter._task_states["TASK-A"] = non_ready
             with self.assertRaises(ProtocolViolationError) as ctx:
                 self.adapter.create_dispatch(
                     "TASK-A",
@@ -1970,13 +1971,14 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
         self.assertIn("Illegal task-state transition", str(ctx.exception))
 
         # Illegal: dispatched -> integrated (must go through review and merge_queued)
-        self.adapter.set_task_state("TASK-A", "dispatched")
+        self.adapter.set_task_state("TASK-A", "ready")
+        self.adapter.transition_task_state("TASK-A", "dispatched")
         with self.assertRaises(ProtocolViolationError) as ctx:
             self.adapter.transition_task_state("TASK-A", "integrated")
         self.assertIn("Illegal task-state transition", str(ctx.exception))
 
         # Legal progression
-        self.adapter.set_task_state("TASK-A", "ready")
+        self.adapter._task_states["TASK-A"] = "ready"
         self.adapter.transition_task_state("TASK-A", "dispatched")
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "dispatched")
         self.adapter.transition_task_state("TASK-A", "acknowledged")
@@ -2427,22 +2429,23 @@ class TestSolRoundFiveCounterexamples(unittest.TestCase):
     def test_r5_09_lifecycle_illegal_direct_transitions_blocked(self):
         """9. Counterexample: Illegal state transitions from lifecycle states are blocked."""
         # dispatched -> integrated is forbidden
-        self.adapter.set_task_state("TASK-A", "dispatched")
+        self.adapter.set_task_state("TASK-A", "ready")
+        self.adapter.transition_task_state("TASK-A", "dispatched")
         with self.assertRaises(ProtocolViolationError):
             self.adapter.transition_task_state("TASK-A", "integrated")
 
         # acknowledged -> integrated is forbidden
-        self.adapter.set_task_state("TASK-A", "acknowledged")
+        self.adapter.transition_task_state("TASK-A", "acknowledged")
         with self.assertRaises(ProtocolViolationError):
             self.adapter.transition_task_state("TASK-A", "integrated")
 
         # running -> ready is forbidden
-        self.adapter.set_task_state("TASK-A", "running")
+        self.adapter.transition_task_state("TASK-A", "running")
         with self.assertRaises(ProtocolViolationError):
             self.adapter.transition_task_state("TASK-A", "ready")
 
         # Cannot acknowledge or start running a task in ready state
-        self.adapter.set_task_state("TASK-A", "ready")
+        self.adapter._task_states["TASK-A"] = "ready"
         with self.assertRaises(ProtocolViolationError):
             self.adapter.acknowledge_dispatch("TASK-A", "ctx-none")
         with self.assertRaises(ProtocolViolationError):
@@ -3030,6 +3033,311 @@ class TestSolRoundSixCounterexamples(unittest.TestCase):
             rep_path.write_text(json.dumps(rep_data), encoding="utf-8")
             errs2 = check_freshness_fn(td_path, td_path, rep_path, "current_head_0000000000000000000000000000")
             self.assertTrue(any("stale" in e.lower() for e in errs2))
+
+
+class TestSolRoundSevenCounterexamples(unittest.TestCase):
+    """Counterexamples and regression fixtures for Sol Round 7 review blockers:
+    1. Process-safe registry read-modify-write and duplicate IDs.
+    2. Durable default registry when storage_path=None.
+    3. No lifecycle bypass through set_task_state.
+    4. Correct per-slot fencing validation for multi-slot tasks.
+    5. Attestation rejection of zero/stale wrapper commits inconsistent with actual Git topology.
+    """
+
+    def setUp(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        self.lock_defs = [
+            {
+                "id": "R7-LOCK-EXCL",
+                "mode": "exclusive",
+                "renewable": True,
+                "lease_seconds": 600,
+            },
+            {
+                "id": "R7-LOCK-CAP",
+                "mode": "capacity",
+                "capacity": 3,
+                "renewable": True,
+                "lease_seconds": 600,
+            },
+        ]
+        self.mgr = LeaseManager(self.lock_defs)
+        self.mgr.set_task_authority("TASK-A", "granted")
+        self.mgr.set_task_authority("TASK-B", "granted")
+        cmd_head = ["git", "rev-parse", "HEAD"]
+        self.candidate_commit = subprocess.run(
+            cmd_head, cwd=ROOT_DIR, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        cmd_parent = ["git", "rev-parse", "HEAD~1"]
+        self.parent_commit = subprocess.run(
+            cmd_parent, cwd=ROOT_DIR, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        self.adapter = OrcaDeliveryAdapter(
+            lease_manager=self.mgr,
+            approved_candidate_commit=self.candidate_commit,
+            git_root=ROOT_DIR,
+            declared_task_locks={"TASK-A": ["R7-LOCK-EXCL"], "TASK-B": ["R7-LOCK-CAP"]},
+        )
+        self.adapter.set_task_authority("TASK-A", "granted")
+        self.adapter.set_task_authority("TASK-B", "granted")
+
+    def test_r7_01_process_safe_registry_atomic_transaction_and_duplicate_rejection(self):
+        """1. Counterexample: Process-safe registry rejects duplicate IDs and supports atomic transactions."""
+        with tempfile.TemporaryDirectory() as td:
+            reg_file = Path(td) / "test-reg.json"
+            reg = SharedOrcaExecutionRegistry(storage_path=reg_file)
+
+            # FileLock reentrancy test on same thread
+            lock_p = reg_file.with_name("test.lock")
+            fl = _FileLock(lock_p)
+            with fl:
+                with fl:
+                    self.assertTrue(lock_p.exists())
+
+            # Register orca task
+            reg.register_orca_task("orca-task-1", "TASK-A")
+            self.assertTrue(reg.is_orca_task_registered("orca-task-1"))
+            self.assertEqual(reg.get_orca_task_delivery_id("orca-task-1"), "TASK-A")
+
+            # Duplicate orca task ID is rejected
+            with self.assertRaises(ProtocolViolationError) as ctx:
+                reg.register_orca_task("orca-task-1", "TASK-B")
+            self.assertIn("already assigned", str(ctx.exception))
+
+            with self.assertRaises(ProtocolViolationError) as ctx:
+                reg.register_orca_task("orca-task-1", "TASK-A")
+            self.assertIn("already been registered", str(ctx.exception))
+
+            # Blank orca task ID is rejected
+            with self.assertRaises(ProtocolViolationError):
+                reg.register_orca_task("", "TASK-A")
+
+            # Register dispatch binding
+            b1 = DispatchBinding(
+                delivery_task_id="TASK-A",
+                orca_task_id="orca-task-1",
+                dispatch_id="disp-1",
+                candidate_commit=self.candidate_commit,
+            )
+            reg.register_dispatch_binding("disp-1", b1)
+            self.assertIsNotNone(reg.get_dispatch_binding("disp-1"))
+
+            # Duplicate dispatch ID is rejected
+            b2 = DispatchBinding(
+                delivery_task_id="TASK-A",
+                orca_task_id="orca-task-1",
+                dispatch_id="disp-1",
+                candidate_commit=self.candidate_commit,
+            )
+            with self.assertRaises(ProtocolViolationError) as ctx:
+                reg.register_dispatch_binding("disp-1", b2)
+            self.assertIn("already bound or settled", str(ctx.exception))
+
+            # Settle dispatch and reject duplicate settle
+            reg.settle_dispatch("disp-1")
+            self.assertTrue(reg.is_dispatch_settled("disp-1"))
+            with self.assertRaises(DuplicateResultError) as ctx:
+                reg.settle_dispatch("disp-1")
+            self.assertIn("already settled", str(ctx.exception))
+
+    def test_r7_02_durable_default_registry_when_storage_path_none(self):
+        """2. Counterexample: Default registry is durable on disk when storage_path=None."""
+        reg = SharedOrcaExecutionRegistry(storage_path=None)
+        self.assertIsNotNone(reg.storage_path, "storage_path must not be None by default")
+        self.assertTrue(isinstance(reg.storage_path, Path))
+
+        # Register task and verify it is persisted to disk
+        reg.register_orca_task("orca-durable-1", "TASK-DURABLE")
+        self.assertTrue(reg.storage_path.is_file(), "Registry file must exist on disk")
+
+        # Open fresh instance with same path and verify recovery
+        reg2 = SharedOrcaExecutionRegistry(storage_path=reg.storage_path)
+        self.assertTrue(reg2.is_orca_task_registered("orca-durable-1"))
+        self.assertEqual(reg2.get_orca_task_delivery_id("orca-durable-1"), "TASK-DURABLE")
+
+        # get_default is also durable
+        def_reg = SharedOrcaExecutionRegistry.get_default()
+        self.assertIsNotNone(def_reg.storage_path)
+
+    def test_r7_03_no_lifecycle_bypass_through_set_task_state(self):
+        """3. Counterexample: Lifecycle states cannot be directly set via set_task_state, and active states cannot be overwritten."""
+        forbidden_states = ["dispatched", "acknowledged", "running", "review", "merge_queued", "integrated"]
+        for st in forbidden_states:
+            with self.assertRaises(ProtocolViolationError) as ctx:
+                self.adapter.set_task_state("TASK-A", st)
+            self.assertIn("Cannot directly set task", str(ctx.exception))
+
+        # Arbitrary / invalid state is rejected
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.set_task_state("TASK-A", "non_existent_state")
+        self.assertIn("Invalid or forbidden task state", str(ctx.exception))
+
+        # Blank delivery_task_id is rejected
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.set_task_state("", "ready")
+
+        # Overwriting active lifecycle state is rejected
+        self.adapter.set_task_state("TASK-A", "ready")
+        self.adapter.transition_task_state("TASK-A", "dispatched")
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.set_task_state("TASK-A", "ready")
+        self.assertIn("while in active lifecycle state 'dispatched'", str(ctx.exception))
+
+        # Task states property is read-only view
+        states = self.adapter.task_states
+        states["TASK-A"] = "integrated"
+        self.assertEqual(self.adapter.get_task_state("TASK-A"), "dispatched", "Mutating returned task_states dict must not alter internal adapter state")
+
+    def test_r7_04_correct_per_slot_fencing_validation_for_multi_slot_tasks(self):
+        """4. Counterexample: Per-slot fencing validates all allocated slots and rejects asymmetric reallocations."""
+        lease = self.mgr.acquire_lease("R7-LOCK-CAP", "TASK-B", "ctx-b", units=2)
+        self.assertEqual(len(lease.allocated_slots), 2)
+        self.assertIn(1, lease.slot_fencing_tokens)
+        self.assertIn(2, lease.slot_fencing_tokens)
+
+        # Querying unallocated slot raises error
+        with self.assertRaises(LockLeaseError) as ctx:
+            self.mgr.validate_fencing_token(lease.resource_key, lease.fencing_token, slot=99)
+        self.assertIn("was not allocated", str(ctx.exception))
+
+        # Querying with slot token mismatch raises error
+        with self.assertRaises(LockLeaseError) as ctx:
+            self.mgr.validate_fencing_token(lease.resource_key, 9999, slot=1)
+        self.assertIn("Slot token mismatch", str(ctx.exception))
+
+        # Simulate asymmetric slot 2 reallocation
+        prefix = lease.resource_key.rsplit(":slot_", 1)[0]
+        s2_key = f"{prefix}:slot_{lease.allocated_slots[1]}"
+        self.mgr.fencing_counters[s2_key] += 1
+
+        # validate_fencing_token detects asymmetric reallocation
+        with self.assertRaises(LockLeaseError) as ctx:
+            self.mgr.validate_fencing_token(lease.resource_key, lease.fencing_token)
+        self.assertIn("asymmetric slot reallocation detected", str(ctx.exception))
+
+        # create_dispatch detects stale slot token on multi-slot lease
+        self.adapter.set_task_state("TASK-B", "ready")
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.create_dispatch(
+                "TASK-B",
+                orca_task_id="orca-cap-fail",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease.fencing_token,
+                lease_id=lease.lease_id,
+                intended_dispatch_id="ctx-b",
+            )
+        self.assertIn("capacity slot reallocation detected", str(ctx.exception))
+
+    def test_r7_05_attestation_rejection_of_zero_wrapper_commit(self):
+        """5. Counterexample: Attestation rejects zero SHA wrapper_commit."""
+        import validate
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            rep_path = td_path / ".validation-report.json"
+            rep_data = {
+                "status": "PASS",
+                "attestation": {
+                    "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
+                    "candidate_commit": self.candidate_commit,
+                    "parent_commit": self.parent_commit,
+                    "wrapper_commit": "0" * 40,
+                    "overlay_clean": True,
+                    "dirty_overlay_count": 0,
+                },
+                "bundle_sha256": {}
+            }
+            rep_path.write_text(json.dumps(rep_data), encoding="utf-8")
+            errs = validate.check_attestation_report_freshness(ROOT_DIR, td_path, rep_path, self.candidate_commit)
+            self.assertTrue(any("zero wrapper" in e for e in errs), f"Expected zero wrapper error, got: {errs}")
+
+    def test_r7_06_attestation_rejection_of_zero_parent_commit(self):
+        """6. Counterexample: Attestation rejects zero SHA parent_commit."""
+        import validate
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            rep_path = td_path / ".validation-report.json"
+            rep_data = {
+                "status": "PASS",
+                "attestation": {
+                    "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
+                    "candidate_commit": self.candidate_commit,
+                    "parent_commit": "0" * 40,
+                    "wrapper_commit": self.candidate_commit,
+                    "overlay_clean": True,
+                    "dirty_overlay_count": 0,
+                },
+                "bundle_sha256": {}
+            }
+            rep_path.write_text(json.dumps(rep_data), encoding="utf-8")
+            errs = validate.check_attestation_report_freshness(ROOT_DIR, td_path, rep_path, self.candidate_commit)
+            self.assertTrue(any("zero parent" in e for e in errs), f"Expected zero parent error, got: {errs}")
+
+    def test_r7_07_attestation_rejection_of_zero_candidate_commit(self):
+        """7. Counterexample: Attestation rejects zero SHA candidate_commit."""
+        import validate
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            rep_path = td_path / ".validation-report.json"
+            rep_data = {
+                "status": "PASS",
+                "attestation": {
+                    "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
+                    "candidate_commit": "0" * 40,
+                    "parent_commit": self.parent_commit,
+                    "wrapper_commit": self.candidate_commit,
+                    "overlay_clean": True,
+                    "dirty_overlay_count": 0,
+                },
+                "bundle_sha256": {}
+            }
+            rep_path.write_text(json.dumps(rep_data), encoding="utf-8")
+            errs = validate.check_attestation_report_freshness(ROOT_DIR, td_path, rep_path, self.candidate_commit)
+            self.assertTrue(any("zero candidate" in e for e in errs), f"Expected zero candidate error, got: {errs}")
+
+    def test_r7_08_attestation_rejection_of_stale_wrapper_commit(self):
+        """8. Counterexample: Attestation rejects stale wrapper commit disconnected from current HEAD/parent."""
+        import validate
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            rep_path = td_path / ".validation-report.json"
+            rep_data = {
+                "status": "PASS",
+                "attestation": {
+                    "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
+                    "candidate_commit": self.candidate_commit,
+                    "parent_commit": self.parent_commit,
+                    "wrapper_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
+                    "overlay_clean": True,
+                    "dirty_overlay_count": 0,
+                },
+                "bundle_sha256": {}
+            }
+            rep_path.write_text(json.dumps(rep_data), encoding="utf-8")
+            errs = validate.check_attestation_report_freshness(ROOT_DIR, td_path, rep_path, self.candidate_commit)
+            self.assertTrue(any("stale" in e for e in errs), f"Expected stale error, got: {errs}")
+
+    def test_r7_09_attestation_rejection_of_inconsistent_git_topology(self):
+        """9. Counterexample: Attestation rejects report when wrapper parent does not match parent_commit in Git DAG."""
+        import validate
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            rep_path = td_path / ".validation-report.json"
+            # 3b7a618's parent is d0e1dd8, so claiming parent is 4a7c8c9 must fail topology check
+            rep_data = {
+                "status": "PASS",
+                "attestation": {
+                    "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
+                    "candidate_commit": self.candidate_commit,
+                    "parent_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
+                    "wrapper_commit": self.candidate_commit,
+                    "overlay_clean": True,
+                    "dirty_overlay_count": 0,
+                },
+                "bundle_sha256": {}
+            }
+            rep_path.write_text(json.dumps(rep_data), encoding="utf-8")
+            errs = validate.check_attestation_report_freshness(ROOT_DIR, td_path, rep_path, self.candidate_commit)
+            self.assertTrue(any("topology mismatch" in e for e in errs), f"Expected topology mismatch error, got: {errs}")
 
 
 if __name__ == "__main__":

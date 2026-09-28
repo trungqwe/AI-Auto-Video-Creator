@@ -254,6 +254,16 @@ orca orchestration send --from <worker_terminal> --dispatch-capability <dcap> --
 23. **Cấm gán trực tiếp trạng thái trên Harness Execution State Machine**:
     - Thuộc tính `@current_state.setter` từ chối mọi nỗ lực gán trạng thái trực tiếp bằng cách raise `HarnessCompatibilityError`.
     - Mọi chuyển dịch trạng thái bắt buộc thông qua phương thức hợp lệ `transition()` hoặc `reset()`.
+24. **Giao dịch nguyên tử đọc-sửa-ghi an toàn tiến trình trên Shared Execution Registry**:
+    - Mọi thao tác cập nhật registry được bảo vệ bằng `_transaction(write=True)` phối hợp cùng `_FileLock` reentrant và ghi đĩa atomic (`.tmp` + `fsync` + `os.replace`). Từ chối `ProtocolViolationError` đối với duplicate `orca_task_id` và `dispatch_id`.
+25. **Durable Default Registry**:
+    - Khi `storage_path=None`, registry tự động sử dụng đường dẫn mặc định bền vững `DEFAULT_PRODUCTION_REGISTRY_PATH` (`runtime/orca-execution-registry.json`), loại bỏ nguy cơ mất dữ liệu khi restart tiến trình.
+26. **Cấm vượt mặt vòng đời tác vụ qua `set_task_state`**:
+    - `set_task_state` chỉ cho phép gán các trạng thái khởi tạo/phụ thuộc (`planned`, `ready`, v.v.), nghiêm cấm trực tiếp gán hoặc ghi đè các trạng thái vòng đời đang hoạt động (`dispatched`, `acknowledged`, `running`, `review`, `merge_queued`, `integrated`). Thuộc tính `task_states` là bản sao read-only.
+27. **Xác thực Fencing từng Slot cho Multi-Slot Task**:
+    - Mọi slot trong `allocated_slots` được kiểm tra độc lập và toàn diện, từ chối các slot không được cấp phát (`was not allocated`) và phát hiện tái cấp phát bất đối xứng (`asymmetric slot reallocation detected`).
+28. **Từ chối báo cáo Attestation có commit Zero hoặc Topology sai lệch Git DAG**:
+    - `check_attestation_report_freshness` từ chối các commit zero SHA, commit không tồn tại trong Git DAG, hoặc khi `wrapper_commit^` không khớp `parent_commit` trong topology Git.
 
 ## 8. Review/remediation protocol
 
@@ -287,3 +297,8 @@ Finding trong contract đi một remediation pass bởi original implementer v�
 - Không merge nếu candidate SHA khác SHA được review.
 - Không chuyển task future/locked thành ready chỉ bằng message.
 - Route success không thay thế khả năng thực thi thực tế; bắt buộc vượt qua tool-execution smoke test trước mutation.
+- Toàn bộ cập nhật registry phải an toàn tiến trình và bền vững trên đĩa.
+- Vòng đời tác vụ không bị can thiệp qua `set_task_state`.
+- Fencing capacity đa slot kiểm tra toàn bộ slot và chống tái phân bổ bất đối xứng.
+- Attestation report bắt buộc có commit thực tế và topo Git nhất quán.
+

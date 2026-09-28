@@ -147,7 +147,10 @@ Dừng task và mọi descendant chưa dispatch khi:
 - RED không phân biệt đúng lỗi;
 - security/data-loss invariant có nguy cơ bị phá;
 - candidate identity thay đổi sau review;
-- tool-execution smoke test thất bại hoặc phát hiện harness làm sụp namespace công cụ (`functions.exec` -> `functions`).
+- tool-execution smoke test thất bại hoặc phát hiện harness làm sụp namespace công cụ (`functions.exec` -> `functions`);
+- phát hiện bất kỳ sự tăng thế hệ bất đối xứng nào trên capacity lock đa slot;
+- nỗ lực can thiệp hoặc ghi đè trạng thái vòng đời tác vụ đang hoạt động qua `set_task_state`;
+- báo cáo attestation chứa zero commit, commit không tồn tại hoặc topology không nhất quán với Git DAG.
 
 Task trả `blocked` nếu phụ thuộc có thể được giải quyết không đổi contract; trả `needs_replan` nếu scope/architecture/acceptance cần đổi; trả `stopped` khi authority hoặc safety yêu cầu kết thúc. Không giao phần còn lại cho worker khác dưới cùng lease.
 
