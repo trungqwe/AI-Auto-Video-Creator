@@ -140,3 +140,32 @@ Toàn bộ 21 bypass độc lập do Sol review phát hiện cùng các boundary
 22. **Boundary Probe 22**: Cổng tương thích harness: Phát hiện hiện tượng sụp namespace công cụ (`functions.exec` -> `functions`) và thất bại khói thực thi, kích hoạt `STOP condition` và cơ chế fallback.
 23. **Boundary Probe 23**: Cổng tương thích harness: Khác biệt namespace công cụ yêu cầu/thực tế kích hoạt `STOP condition`.
 24. **Boundary Probe 24**: Fencing token: Ranh giới kiểu dữ liệu nghiêm ngặt, từ chối bool, string, float, list.
+
+## 9. Khắc phục toàn diện các phát hiện Sol Round 3 (P1 Remediations)
+
+Đợt review vòng 3 của Sol chỉ ra các lỗ hổng ranh giới trong kiểm soát thẩm quyền, khởi tạo dispatch, xác thực vòng đời worker/review/integration, schema lock và máy trạng thái harness. Toàn bộ các vấn đề này đã được khắc phục triệt để và kiểm chứng bằng 24 bài kiểm tra bổ sung trong `TestSolRoundThreeCounterexamples` (tổng bộ suite đạt 103 tests PASS):
+
+1. **Khóa chặt thẩm quyền tác vụ (No Authority Override)**: Loại bỏ khả năng người gọi tự truyền `authority_state` để ghi đè thẩm quyền đã đăng ký tại `acquire_lease` và `create_dispatch`. Bắt buộc tác vụ phải được đăng ký trước; nếu người gọi truyền `authority_state` thì giá trị này phải khớp chính xác với trạng thái đã đăng ký trong `task_authorities` (`only 'granted' permitted`).
+2. **Xác thực khởi tạo dispatch toàn diện (Strict Dispatch Verification)**:
+   - Bắt buộc tác vụ phải ở trạng thái hợp lệ (`ready`); các trạng thái `blocked`, `locked`, `future_template`, `revoked` bị từ chối ngay lập tức.
+   - Bắt buộc định danh tác vụ Orca (`orca_task_id`) phải không rỗng và là duy nhất trên toàn bộ hệ thống; từ chối tái sử dụng ID tác vụ Orca.
+   - Bắt buộc commit candidate phải là SHA-40 hexa hợp lệ, tồn tại thực tế trong Git DAG và khớp chính xác với candidate đã phê duyệt / commit HEAD hiện hành.
+   - Bắt buộc lease đi kèm phải đang hoạt động, chưa hết hạn, thuộc quyền sở hữu của chính tác vụ đó, chưa bị gắn với dispatch khác và mang fencing token khớp tuyệt đối với counter hiện hành.
+3. **Kiểm tra đa tầng tại worker_done, review và integration (Strict Lifecycle Gates)**:
+   - `handle_worker_done` kiểm tra dispatch đã hoàn tất trước khi kiểm tra trạng thái (`DuplicateResultError`), ngăn chặn gửi kết quả lặp lại.
+   - Kiểm tra trạng thái tác vụ bắt buộc phải là `dispatched` trước khi chuyển sang `review`.
+   - Xác thực lại toàn bộ quyền sở hữu lease, dispatch binding, tính hợp lệ của fencing token và thời hạn lease (`now > expires_at`).
+   - Xác thực định danh tác vụ Orca và candidate commit của kết quả trả về khớp chính xác với dispatch ban đầu.
+   - Bảng chuyển trạng thái một chiều: từ chối các bước nhảy trạng thái trái phép (ví dụ: chuyển trực tiếp từ `ready` sang `integrated` hoặc hoàn tất dispatch khi đã qua review).
+4. **Phán quyết review nghiêm ngặt và cổng tích hợp boolean thuần túy**:
+   - `handle_review_verdict` từ chối mọi phán quyết lạ không nằm trong danh mục cho phép (`approved`, `rejected`), chuyển chính xác sang `ready_for_integration` hoặc `replan_required`.
+   - `handle_integration_gates` yêu cầu tham số `gates_pass` phải là kiểu boolean thuần túy (`isinstance(gates_pass, bool)`), nghiêm cấm mọi hình thức ép kiểu truthy (`1`, `"true"`, `["passed"]`).
+5. **Chuẩn hóa Lock Registry Schema và chống nới lỏng thời hạn lease**:
+   - Bổ sung `ALLOWED_LOCK_FIELDS` tại `LeaseManager.__init__`: từ chối mọi trường lạ hoặc không liên quan trong định nghĩa lock.
+   - Từ chối các kết hợp trường và chế độ bất hợp pháp: lock `immutable` không được phép có `lease_seconds` hoặc `renewable`; lock `exclusive` không được phép có `capacity`.
+   - Từ chối các giá trị boolean hoặc phân số cho dung lượng và thời hạn lease (`isinstance(val, bool)` bị từ chối trước kiểm tra `int`).
+   - Nghiêm cấm nới rộng thời hạn lease: tham số `lease_seconds` khi chiếm giữ (`acquire_lease`) hoặc `extend_seconds` khi gia hạn (`renew_lease`) không được vượt quá giá trị `lease_seconds` tối đa đã khai báo trong định nghĩa lock.
+6. **Máy trạng thái thực thi harness quan sát được (Observable Harness State Machine)**:
+   - Định nghĩa dataclass `HarnessExecutionResult` với thẩm định kiểu dữ liệu đối số chặt chẽ tại khởi tạo (`success: bool`, `execution_time_ms: int | float >= 0`).
+   - Máy trạng thái `HarnessExecutionStateMachine` quản lý chuyển đổi trạng thái thực thi (`IDLE` -> `RUNNING` -> `SUCCESS` | `FAILURE` | `STOP_FALLBACK`), lưu trữ toàn bộ lịch sử chuyển đổi và bảo đảm fallback Antigravity native minh bạch, có thể quan sát được khi gặp STOP condition.
+7. **Bộ kiểm thử tự động 103 fixtures**: Tích hợp 24 bài kiểm tra bổ sung trong `test_negative_fixtures.py` bao quát toàn bộ các ca đối chứng Sol Round 3 và các probe biên lân cận.

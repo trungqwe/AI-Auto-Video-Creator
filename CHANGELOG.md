@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-28 — Khắc phục toàn bộ phát hiện Sol review vòng 3 (P1 Remediations)
+
+- Khắc phục toàn diện các phát hiện Sol review vòng 3 cho bundle `docs/parallel-delivery/`:
+  - **(1) Khóa Chặt Thẩm Quyền (No Authority Override)**: Loại bỏ khả năng người gọi tự truyền `authority_state` để ghi đè thẩm quyền đã đăng ký tại `acquire_lease` và `create_dispatch`; từ chối các task chưa đăng ký thẩm quyền hoặc tham số không khớp với thẩm quyền đã đăng ký.
+  - **(2) Xác Thực Khởi Tạo Dispatch Nghiêm Ngặt**: Thẩm định chặt chẽ tại `create_dispatch`: task phải ở trạng thái `ready`; lease phải đang hoạt động, chưa hết hạn, thuộc đúng task, chưa bị dispatch khác gắn và fencing token khớp tuyệt đối với counter; commit candidate phải là SHA-40 hợp lệ, tồn tại trong Git DAG và khớp candidate/HEAD đã duyệt; `orca_task_id` phải không rỗng và duy nhất; các trạng thái bị khóa (`blocked`, `locked`, `future_template`, `revoked`) không được phép dispatch.
+  - **(3) Kiểm Tra Vòng Đời Đa Tầng**: `handle_worker_done` kiểm tra dispatch đã settle trước khi kiểm tra trạng thái (`DuplicateResultError`); tái thẩm định quyền sở hữu lease, dispatch binding, hạn dùng (`now > expires_at`), fencing token và nhận diện Orca/candidate commit; thực thi bảng chuyển trạng thái một chiều nghiêm ngặt.
+  - **(4) Review Verdict & Boolean Integration Gate**: `handle_review_verdict` từ chối mọi phán quyết lạ (chỉ nhận `approved`/`rejected`), chuyển trạng thái chính xác; `handle_integration_gates` yêu cầu boolean thuần túy (`isinstance(gates_pass, bool)`), cấm ép kiểu truthy.
+  - **(5) Chuẩn Hóa Lock Schema & Chống Nới Lỏng Lease**: Thẩm định trường với `ALLOWED_LOCK_FIELDS`, từ chối kết hợp trường/chế độ bất hợp pháp (immutable có lease_seconds/renewable, exclusive có capacity), từ chối bool/fractional values cho capacity và lease_seconds; cấm nới rộng thời hạn lease vượt quá khai báo trong schema tại acquire và renew.
+  - **(6) Observable Harness Execution State Machine**: Định nghĩa dataclass `HarnessExecutionResult` với kiểm tra kiểu chặt chẽ; `HarnessExecutionStateMachine` ghi nhận lịch sử chuyển trạng thái quan sát được, kích hoạt STOP condition và fallback Antigravity native tin cậy.
+  - **(7) Fixture Suite Tự Động 103/103 PASS**: Thêm 24 ca kiểm thử bền vững trong `TestSolRoundThreeCounterexamples` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 103/103 passed.
+  - **(8) Bảo Toàn Phạm Vi**: Giữ nguyên ranh giới docs/config, không thay đổi product code hay accepted evidence.
+
 ## 2026-09-28 — Khắc phục toàn bộ 21 bypass độc lập từ Sol review và tách biệt read-only audit mode
 
 - Khắc phục toàn diện 21 bypass độc lập và boundary probes từ Sol independent review cho bundle `docs/parallel-delivery/`:

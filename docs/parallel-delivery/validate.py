@@ -498,6 +498,52 @@ def check_lock_leases(ownership: dict[str, Any], dag: dict[str, Any]) -> list[st
     except Exception as exc:
         errors.append(f"Unexpected error on unregistered authority: {exc}")
 
+    # 10. Sol round 3: Lock schema rejects unknown/irrelevant fields
+    try:
+        LeaseManager([{"id": "L_UNKNOWN", "mode": "exclusive", "renewable": False, "extra_illegal_field": "bad"}])
+        errors.append("LeaseManager failed to reject unknown lock field at construction")
+    except LockLeaseError:
+        pass
+    except Exception as exc:
+        errors.append(f"Unexpected error on unknown lock field: {exc}")
+
+    # 11. Sol round 3: Lock schema rejects illegal combinations (e.g. immutable with lease_seconds or renewable)
+    try:
+        LeaseManager([{"id": "L_IMMUTABLE_BAD", "mode": "immutable", "renewable": True, "lease_seconds": 600}])
+        errors.append("LeaseManager failed to reject illegal combination on immutable lock")
+    except LockLeaseError:
+        pass
+    except Exception as exc:
+        errors.append(f"Unexpected error on illegal immutable combination: {exc}")
+
+    # 12. Sol round 3: Lock schema rejects boolean or non-strict integer values
+    try:
+        LeaseManager([{"id": "L_BOOL_CAP", "mode": "shared_capacity", "renewable": True, "capacity": True}])
+        errors.append("LeaseManager failed to reject bool value for capacity")
+    except LockLeaseError:
+        pass
+    except Exception as exc:
+        errors.append(f"Unexpected error on bool capacity: {exc}")
+
+    # 13. Sol round 3: Rejection of duration broadening beyond declared lock lease_seconds
+    try:
+        mgr.acquire_lease("LOCK-DOC-AUTHORITY", "T10", "ctx_broaden", lease_seconds=3600)
+        errors.append("LeaseManager failed to reject broadening lease_seconds beyond declared limit")
+    except LockLeaseError:
+        pass
+    except Exception as exc:
+        errors.append(f"Unexpected error on lease duration broadening: {exc}")
+
+    # 14. Sol round 3: Rejection of caller authority override
+    mgr.set_task_authority("T_REVOKED", "revoked")
+    try:
+        mgr.acquire_lease("LOCK-DOC-AUTHORITY", "T_REVOKED", "ctx_override", authority_state="granted")
+        errors.append("LeaseManager failed to reject caller authority override")
+    except LockLeaseError:
+        pass
+    except Exception as exc:
+        errors.append(f"Unexpected error on authority override: {exc}")
+
     return errors
 
 
@@ -671,7 +717,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "dirty_overlay_count": len(effective_dirty),
                 "overlay_clean": len(effective_dirty) == 0,
                 "renames_evaluated_both_ends": True,
-                "semantics": "Committed attestation generated via explicit --generate-report flag with immutable base and candidate SHAs matching actual HEAD.",
+                "semantics": "Committed attestation generated via explicit --generate-report flag with immutable base and candidate SHAs matching actual HEAD. In Git DAG topology, an artifact inside a commit tree cannot self-reference its own commit hash without circularity; candidate_commit identifies the verified candidate commit/tree baseline against approved base_commit, and bundle_sha256 attests to exact SHA-256 hashes of all bundle artifacts excluding this report.",
             },
             "remediations": {
                 "astra_round_1": {
@@ -689,6 +735,15 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "4_adversarial_sol_probes_suite": "RESOLVED",
                     "5_harness_compatibility_gate_recorded": "RESOLVED",
                     "6_no_product_code_containment": "RESOLVED",
+                },
+                "sol_round_3": {
+                    "1_no_caller_authority_override_at_acquire_and_dispatch": "RESOLVED",
+                    "2_strict_dispatch_verification_lease_fencing_candidate_orca_state": "RESOLVED",
+                    "3_strict_worker_done_and_review_integration_lifecycle_checks": "RESOLVED",
+                    "4_unknown_review_verdicts_reject_strict_bool_integration_gate": "RESOLVED",
+                    "5_lock_schema_rejects_unknown_fields_illegal_combinations_duration_broadening": "RESOLVED",
+                    "6_strict_harness_execution_results_and_observable_state_machine": "RESOLVED",
+                    "7_durable_tests_for_round_3_counterexamples": "RESOLVED",
                 },
             },
             "fixture_stats": fixture_stats,

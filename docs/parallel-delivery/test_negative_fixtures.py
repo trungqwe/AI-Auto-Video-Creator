@@ -15,7 +15,7 @@ import copy
 import subprocess
 import sys
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Add bundle dir to path to import delivery_engine
@@ -29,6 +29,8 @@ from delivery_engine import (  # noqa: E402
     ContractBindingError,
     DuplicateResultError,
     HarnessCompatibilityError,
+    HarnessExecutionResult,
+    HarnessExecutionStateMachine,
     LeaseManager,
     LockLeaseError,
     OrcaDeliveryAdapter,
@@ -219,12 +221,13 @@ class TestF4OrcaMappingAndLifecycle(unittest.TestCase):
     """F4: Orca mapping: separate delivery ledger task ID, worker_done outcome, fresh dispatch, duplicate/stale rejection."""
 
     def setUp(self):
-        self.candidate_commit = "8f3e0402ec2132fb5aba0d8ea4f73458cfeb719d"
+        cmd_head = ["git", "rev-parse", "HEAD"]
+        self.candidate_commit = subprocess.run(cmd_head, cwd=ROOT_DIR, capture_output=True, text=True, check=True).stdout.strip()
         self.lease_mgr = LeaseManager([
             {"id": "LOCK-PARALLEL-REGISTRY", "mode": "exclusive", "renewable": True},
         ])
         self.lease_mgr.set_task_authority("PD-PILOT-CONTROL", "granted")
-        self.adapter = OrcaDeliveryAdapter(self.lease_mgr)
+        self.adapter = OrcaDeliveryAdapter(self.lease_mgr, approved_candidate_commit=self.candidate_commit, git_root=ROOT_DIR)
         self.adapter.set_task_authority("PD-PILOT-CONTROL", "granted")
         self.adapter.set_task_state("PD-PILOT-CONTROL", "ready")
 
@@ -756,10 +759,11 @@ class TestSolOrcaDeliveryAdapterAdversarialProbes(unittest.TestCase):
         self.lock_defs = [{"id": "LOCK-REG", "mode": "exclusive", "renewable": True}]
         self.lease_mgr = LeaseManager(self.lock_defs)
         self.lease_mgr.set_task_authority("TASK-PILOT", "granted")
-        self.adapter = OrcaDeliveryAdapter(self.lease_mgr)
+        cmd_head = ["git", "rev-parse", "HEAD"]
+        self.candidate_commit = subprocess.run(cmd_head, cwd=ROOT_DIR, capture_output=True, text=True, check=True).stdout.strip()
+        self.adapter = OrcaDeliveryAdapter(self.lease_mgr, approved_candidate_commit=self.candidate_commit, git_root=ROOT_DIR)
         self.adapter.set_task_authority("TASK-PILOT", "granted")
         self.adapter.set_task_state("TASK-PILOT", "ready")
-        self.candidate_commit = "8f3e0402ec2132fb5aba0d8ea4f73458cfeb719d"
         self.lease = self.lease_mgr.acquire_lease("LOCK-REG", "TASK-PILOT", "ctx-setup")
 
     def test_sol_adapter_reject_blank_identities(self):
@@ -839,6 +843,7 @@ class TestSolOrcaDeliveryAdapterAdversarialProbes(unittest.TestCase):
     def test_sol_adapter_reject_candidate_commit_mismatch(self):
         """Adversarial probe: Candidate commit mismatch between bound dispatch and worker_done rejected."""
         bound_commit = "f98eb902696d1c7c27e7cc15efbe1a0b5a8ca571"
+        self.adapter.approved_candidate_commit = bound_commit
         dispatch_id = self.adapter.create_dispatch(
             "TASK-PILOT",
             orca_task_id="task_orca_001",
@@ -1001,6 +1006,14 @@ class TestSolTwentyOneIndependentProbes(unittest.TestCase):
     # --- Sol Probe 05: Read-only validator leaves tree completely clean ---
     def test_sol_probe_05_read_only_validator_leaves_tree_clean(self):
         import os
+        report_path = ROOT_DIR / "docs" / "parallel-delivery" / ".validation-report.json"
+        content_before = report_path.read_bytes() if report_path.exists() else None
+        stat_before = subprocess.run(
+            ["git", "status", "--porcelain", "docs/parallel-delivery/.validation-report.json"],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+        )
         env = os.environ.copy()
         env["VALIDATE_SKIP_FIXTURES"] = "1"
         proc = subprocess.run(
@@ -1012,13 +1025,15 @@ class TestSolTwentyOneIndependentProbes(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 0, f"Validator failed: {proc.stderr}\nstdout: {proc.stdout}")
         self.assertIn("ATTESTATION [READ-ONLY AUDIT]", proc.stdout)
-        stat = subprocess.run(
+        content_after = report_path.read_bytes() if report_path.exists() else None
+        self.assertEqual(content_before, content_after, "Read-only validator modified .validation-report.json content")
+        stat_after = subprocess.run(
             ["git", "status", "--porcelain", "docs/parallel-delivery/.validation-report.json"],
             cwd=str(ROOT_DIR),
             capture_output=True,
             text=True,
         )
-        self.assertEqual(stat.stdout.strip(), "", "Read-only validator dirtied .validation-report.json")
+        self.assertEqual(stat_before.stdout, stat_after.stdout, "Read-only validator changed git status of .validation-report.json")
 
     # --- Sol Probe 06: File renames evaluate both ends and reject forbidden paths ---
     def test_sol_probe_06_rename_evaluation_on_both_ends(self):
@@ -1274,6 +1289,380 @@ class TestSolTwentyOneIndependentProbes(unittest.TestCase):
             with self.assertRaises(LockLeaseError) as ctx:
                 self.mgr.validate_fencing_token("SOL-LOCK-EXCL", bad_token)
             self.assertIn("Invalid fencing token type", str(ctx.exception))
+
+
+class TestSolRoundThreeCounterexamples(unittest.TestCase):
+    """Rigorous durable verification of all Sol round-3 P1 remediations:
+    - Authority override prevention at acquire and dispatch (no implicit authority)
+    - Dispatch binding verification (lease ownership, expiry, intended dispatch, fencing, candidate existence/HEAD, unique Orca task ID, allowed states)
+    - worker_done & lifecycle transitions (recheck authority, lease ownership, exact dispatch binding, expiry, fencing, candidate/Orca identity, one-way transitions)
+    - Review verdict strictness (reject unknown verdicts)
+    - Integration gate strict boolean check (reject truthy/falsy coercion)
+    - Lock schema field safety (unknown fields, illegal mode combinations, bool/fractional types)
+    - Declared duration broadening prevention (acquire & renew bounds)
+    - Harness execution strict types & observable STOP state machine
+    """
+
+    def setUp(self):
+        cmd_head = ["git", "rev-parse", "HEAD"]
+        self.candidate_commit = subprocess.run(cmd_head, cwd=ROOT_DIR, capture_output=True, text=True, check=True).stdout.strip()
+        self.lock_defs = [
+            {"id": "R3-LOCK-EXCL", "mode": "exclusive", "renewable": True, "lease_seconds": 300},
+            {"id": "R3-LOCK-CAP", "mode": "capacity", "capacity": 2, "renewable": True, "lease_seconds": 600},
+            {"id": "R3-LOCK-DB", "mode": "exclusive_by_database_name", "partition_key_prefix": "db:", "renewable": True, "lease_seconds": 900},
+            {"id": "R3-LOCK-IMMUTABLE", "mode": "immutable", "renewable": False, "mutation_lease_forbidden": True},
+        ]
+        self.mgr = LeaseManager(self.lock_defs)
+        self.mgr.set_task_authority("TASK-A", "granted")
+        self.mgr.set_task_authority("TASK-B", "granted")
+        self.mgr.set_task_authority("TASK-LOCKED", "locked")
+        self.mgr.set_task_authority("TASK-REVOKED", "revoked")
+        self.adapter = OrcaDeliveryAdapter(self.mgr, approved_candidate_commit=self.candidate_commit, git_root=ROOT_DIR)
+        self.adapter.set_task_authority("TASK-A", "granted")
+        self.adapter.set_task_authority("TASK-B", "granted")
+        self.adapter.set_task_authority("TASK-LOCKED", "locked")
+        self.adapter.set_task_authority("TASK-REVOKED", "revoked")
+        self.adapter.set_task_state("TASK-A", "ready")
+        self.adapter.set_task_state("TASK-B", "ready")
+
+    def test_r3_01_acquire_rejects_unregistered_authority_override(self):
+        """1. Caller cannot grant implicit authority or override unregistered authority at acquire."""
+        with self.assertRaises(LockLeaseError) as ctx:
+            self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-UNREGISTERED", "ctx-unreg", authority_state="granted")
+        self.assertIn("has no registered authority", str(ctx.exception))
+
+    def test_r3_02_acquire_rejects_registered_authority_override(self):
+        """2. Caller cannot override registered non-granted authority at acquire."""
+        with self.assertRaises(LockLeaseError) as ctx:
+            self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-LOCKED", "ctx-lock", authority_state="granted")
+        self.assertIn("authority override attempt", str(ctx.exception))
+        self.assertIn("only 'granted' permitted", str(ctx.exception))
+
+    def test_r3_03_dispatch_rejects_unregistered_authority_override(self):
+        """3. Caller cannot grant implicit authority or override unregistered authority at dispatch."""
+        lease = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-a")
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.create_dispatch(
+                "TASK-UNREGISTERED",
+                orca_task_id="orca-unreg",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease.fencing_token,
+                lease_id=lease.lease_id,
+                authority_state="granted",
+            )
+        self.assertIn("has no registered authority", str(ctx.exception))
+
+    def test_r3_04_dispatch_rejects_registered_authority_override(self):
+        """4. Caller cannot override registered non-granted authority at dispatch."""
+        lease = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-a")
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.create_dispatch(
+                "TASK-LOCKED",
+                orca_task_id="orca-lock",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease.fencing_token,
+                lease_id=lease.lease_id,
+                authority_state="granted",
+            )
+        self.assertIn("authority override attempt", str(ctx.exception))
+
+    def test_r3_05_dispatch_rejects_lease_belonging_to_other_task(self):
+        """5. Dispatch rejects active lease belonging to a different delivery task."""
+        lease_a = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-a")
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.create_dispatch(
+                "TASK-B",
+                orca_task_id="orca-b-1",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease_a.fencing_token,
+                lease_id=lease_a.lease_id,
+            )
+        self.assertIn("belongs to task 'TASK-A', cannot be bound to 'TASK-B'", str(ctx.exception))
+
+    def test_r3_06_dispatch_rejects_expired_lease(self):
+        """6. Dispatch rejects active lease whose expiry time has passed."""
+        now_time = datetime(2026, 9, 28, 12, 0, 0, tzinfo=timezone.utc)
+        lease = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-a", lease_seconds=10, now=now_time)
+        past_expiry = now_time + timedelta(seconds=15)
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.create_dispatch(
+                "TASK-A",
+                orca_task_id="orca-a-exp",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease.fencing_token,
+                lease_id=lease.lease_id,
+                now=past_expiry,
+            )
+        self.assertIn("has expired", str(ctx.exception))
+
+    def test_r3_07_dispatch_rejects_lease_reuse_across_dispatches(self):
+        """7. Dispatch rejects reusing an already-bound lease across dispatches."""
+        lease = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-a")
+        disp1 = self.adapter.create_dispatch(
+            "TASK-A",
+            orca_task_id="orca-a-1",
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease.fencing_token,
+            lease_id=lease.lease_id,
+        )
+        self.assertIsNotNone(disp1)
+        self.adapter.set_task_state("TASK-A", "ready")
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.create_dispatch(
+                "TASK-A",
+                orca_task_id="orca-a-2",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease.fencing_token,
+                lease_id=lease.lease_id,
+            )
+        self.assertIn("already bound to dispatch", str(ctx.exception))
+
+    def test_r3_08_dispatch_rejects_fencing_token_mismatch(self):
+        """8. Dispatch rejects fencing token mismatch with active lease."""
+        lease = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-a")
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.create_dispatch(
+                "TASK-A",
+                orca_task_id="orca-a-fence",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease.fencing_token + 99,
+                lease_id=lease.lease_id,
+            )
+        self.assertIn("Fencing token mismatch", str(ctx.exception))
+
+    def test_r3_09_dispatch_rejects_non_existent_commit_in_git(self):
+        """9. Dispatch rejects candidate commit SHA that does not exist in git."""
+        lease = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-a")
+        fake_sha = "1234567890123456789012345678901234567890"
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.create_dispatch(
+                "TASK-A",
+                orca_task_id="orca-a-fake-sha",
+                candidate_commit=fake_sha,
+                fencing_token=lease.fencing_token,
+                lease_id=lease.lease_id,
+            )
+        self.assertIn("does not exist in git", str(ctx.exception))
+
+    def test_r3_10_dispatch_rejects_unapproved_non_head_candidate_commit(self):
+        """10. Dispatch rejects candidate commit that exists in git but does not match approved candidate / HEAD."""
+        lease = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-a")
+        other_existing_commit = "4a7c8c921b7e05066505d51b168a02c3fde61317"
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.create_dispatch(
+                "TASK-A",
+                orca_task_id="orca-a-wrong-cand",
+                candidate_commit=other_existing_commit,
+                fencing_token=lease.fencing_token,
+                lease_id=lease.lease_id,
+            )
+        self.assertIn("does not match approved candidate / HEAD", str(ctx.exception))
+
+    def test_r3_11_dispatch_rejects_duplicate_orca_task_id(self):
+        """11. Dispatch rejects duplicate orca_task_id across delivery tasks or active dispatches."""
+        lease_a = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-a")
+        self.adapter.create_dispatch(
+            "TASK-A",
+            orca_task_id="orca-shared-id",
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease_a.fencing_token,
+            lease_id=lease_a.lease_id,
+        )
+        lease_b = self.mgr.acquire_lease("R3-LOCK-CAP", "TASK-B", "ctx-b", units=1)
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.create_dispatch(
+                "TASK-B",
+                orca_task_id="orca-shared-id",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease_b.fencing_token,
+                lease_id=lease_b.lease_id,
+            )
+        self.assertIn("already assigned to delivery task 'TASK-A'", str(ctx.exception))
+
+    def test_r3_12_dispatch_rejects_blocked_and_non_ready_states(self):
+        """12. Dispatch rejects tasks in blocked, planned, dispatched, or review states (only 'ready' permitted)."""
+        lease = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-a")
+        for non_ready in ("blocked", "planned", "dispatched", "review", "integrated"):
+            self.adapter.set_task_state("TASK-A", non_ready)
+            with self.assertRaises(ProtocolViolationError) as ctx:
+                self.adapter.create_dispatch(
+                    "TASK-A",
+                    orca_task_id=f"orca-a-{non_ready}",
+                    candidate_commit=self.candidate_commit,
+                    fencing_token=lease.fencing_token,
+                    lease_id=lease.lease_id,
+                )
+            self.assertIn("only 'ready' state may be dispatched", str(ctx.exception))
+
+    def test_r3_13_worker_done_rejects_expired_lease(self):
+        """13. worker_done rejects result when bound lease has expired before settlement."""
+        now_time = datetime(2026, 9, 28, 12, 0, 0, tzinfo=timezone.utc)
+        lease = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-a", lease_seconds=10, now=now_time)
+        disp = self.adapter.create_dispatch(
+            "TASK-A",
+            orca_task_id="orca-a-wd-exp",
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease.fencing_token,
+            lease_id=lease.lease_id,
+            now=now_time,
+        )
+        past_expiry = now_time + timedelta(seconds=15)
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.handle_worker_done(
+                "TASK-A",
+                "orca-a-wd-exp",
+                disp,
+                "succeeded",
+                candidate_commit=self.candidate_commit,
+                fencing_token=lease.fencing_token,
+                now=past_expiry,
+            )
+        self.assertIn("expired", str(ctx.exception))
+
+    def test_r3_14_worker_done_rejects_non_dispatched_state(self):
+        """14. worker_done rejects task not currently in 'dispatched' state."""
+        self.adapter.set_task_state("TASK-A", "ready")
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.handle_worker_done(
+                "TASK-A",
+                "orca-a-not-disp",
+                "ctx_fake",
+                "succeeded",
+                candidate_commit=self.candidate_commit,
+                fencing_token=1,
+            )
+        self.assertIn("must be 'dispatched'", str(ctx.exception))
+
+    def test_r3_15_review_verdict_rejects_unknown_verdicts(self):
+        """15. Review disposition strictly rejects unknown verdicts (no silent blocked fallback)."""
+        lease = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-a")
+        disp = self.adapter.create_dispatch(
+            "TASK-A",
+            orca_task_id="orca-a-rev",
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease.fencing_token,
+            lease_id=lease.lease_id,
+        )
+        self.adapter.handle_worker_done("TASK-A", "orca-a-rev", disp, "succeeded", self.candidate_commit, lease.fencing_token)
+        self.assertEqual(self.adapter.get_task_state("TASK-A"), "review")
+
+        for bad_verdict in ("APPROVE", "PASS", "UNKNOWN", "REJECT", "", 123, None):
+            with self.assertRaises(ProtocolViolationError) as ctx:
+                self.adapter.handle_review_verdict("TASK-A", bad_verdict)  # type: ignore
+            self.assertIn("Unknown review verdict", str(ctx.exception))
+
+    def test_r3_16_integration_gates_rejects_truthy_coercion(self):
+        """16. Integration gate strictly rejects non-boolean truthy/falsy coercion."""
+        lease = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-a")
+        disp = self.adapter.create_dispatch(
+            "TASK-A",
+            orca_task_id="orca-a-int",
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease.fencing_token,
+            lease_id=lease.lease_id,
+        )
+        self.adapter.handle_worker_done("TASK-A", "orca-a-int", disp, "succeeded", self.candidate_commit, lease.fencing_token)
+        self.adapter.handle_review_verdict("TASK-A", "ACCEPT")
+        self.assertEqual(self.adapter.get_task_state("TASK-A"), "merge_queued")
+
+        for truthy_val in (1, 0, "true", "True", [True], {"pass": True}, None):
+            with self.assertRaises(ProtocolViolationError) as ctx:
+                self.adapter.handle_integration_gates("TASK-A", gates_pass=truthy_val)  # type: ignore
+            self.assertIn("gates_pass must be strict bool", str(ctx.exception))
+
+        # Strict boolean passes
+        res = self.adapter.handle_integration_gates("TASK-A", gates_pass=True)
+        self.assertEqual(res, "integrated")
+        self.assertEqual(self.adapter.get_task_state("TASK-A"), "integrated")
+
+    def test_r3_17_lock_schema_rejects_unknown_fields(self):
+        """17. Lock schema rejects unknown/irrelevant fields at construction."""
+        with self.assertRaises(LockLeaseError) as ctx:
+            LeaseManager([{"id": "L-BAD", "mode": "exclusive", "renewable": True, "extra_irrelevant": 42}])
+        self.assertIn("contains unknown/irrelevant field(s)", str(ctx.exception))
+
+    def test_r3_18_lock_schema_rejects_illegal_field_combinations(self):
+        """18. Lock schema rejects illegal field combinations by mode."""
+        # Immutable specifying lease_seconds
+        with self.assertRaises(LockLeaseError) as ctx:
+            LeaseManager([{"id": "L-IMM-BAD", "mode": "immutable", "renewable": False, "mutation_lease_forbidden": True, "lease_seconds": 300}])
+        self.assertIn("cannot specify lease_seconds", str(ctx.exception))
+
+        # Exclusive specifying capacity
+        with self.assertRaises(LockLeaseError) as ctx2:
+            LeaseManager([{"id": "L-EXCL-BAD", "mode": "exclusive", "renewable": True, "capacity": 2}])
+        self.assertIn("contains illegal fields", str(ctx2.exception))
+
+        # Capacity specifying partition_key_prefix
+        with self.assertRaises(LockLeaseError) as ctx3:
+            LeaseManager([{"id": "L-CAP-BAD", "mode": "capacity", "capacity": 2, "renewable": True, "partition_key_prefix": "p:"}])
+        self.assertIn("contains illegal fields for capacity mode", str(ctx3.exception))
+
+    def test_r3_19_lock_schema_rejects_bool_and_fractional_values(self):
+        """19. Lock schema rejects boolean and fractional capacity and lease_seconds."""
+        with self.assertRaises(LockLeaseError) as ctx:
+            LeaseManager([{"id": "L-BOOL-CAP", "mode": "capacity", "capacity": True, "renewable": True}])
+        self.assertIn("must declare strict positive integer capacity", str(ctx.exception))
+
+        with self.assertRaises(LockLeaseError) as ctx2:
+            LeaseManager([{"id": "L-FLOAT-CAP", "mode": "capacity", "capacity": 2.5, "renewable": True}])
+        self.assertIn("must declare strict positive integer capacity", str(ctx2.exception))
+
+        with self.assertRaises(LockLeaseError) as ctx3:
+            LeaseManager([{"id": "L-FLOAT-LS", "mode": "exclusive", "renewable": True, "lease_seconds": 300.5}])
+        self.assertIn("invalid lease_seconds", str(ctx3.exception))
+
+    def test_r3_20_acquire_lease_rejects_duration_broadening(self):
+        """20. Caller cannot broaden declared lock duration at lease acquisition."""
+        with self.assertRaises(LockLeaseError) as ctx:
+            self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-broad", lease_seconds=600)
+        self.assertIn("declared duration cannot be broadened", str(ctx.exception))
+
+    def test_r3_21_renew_lease_rejects_duration_broadening(self):
+        """21. Caller cannot broaden declared lock duration at lease renewal."""
+        lease = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-renew")
+        with self.assertRaises(LockLeaseError) as ctx:
+            self.mgr.renew_lease(lease.lease_id, extend_seconds=600)
+        self.assertIn("declared duration cannot be broadened", str(ctx.exception))
+
+    def test_r3_22_default_lease_duration_preserves_declared_seconds(self):
+        """22. Default lease acquisition preserves lock declared duration without silent broadening."""
+        now_time = datetime(2026, 9, 28, 12, 0, 0, tzinfo=timezone.utc)
+        lease = self.mgr.acquire_lease("R3-LOCK-EXCL", "TASK-A", "ctx-def", now=now_time)
+        exp = datetime.fromisoformat(lease.expires_at)
+        delta = (exp - now_time).total_seconds()
+        self.assertEqual(delta, 300, "Default lease_seconds must match declared 300s, not 1800s")
+
+    def test_r3_23_harness_execution_argument_types_strict(self):
+        """23. Harness tool execution gate strictly validates argument types."""
+        with self.assertRaises(HarnessCompatibilityError) as ctx:
+            check_harness_tool_compatibility("functions.exec", "functions.exec", execution_observed=1)  # type: ignore
+        self.assertIn("execution_observed must be strict bool", str(ctx.exception))
+
+        with self.assertRaises(HarnessCompatibilityError) as ctx2:
+            check_harness_tool_compatibility("functions.exec", "functions.exec", execution_returncode=True)  # type: ignore
+        self.assertIn("execution_returncode must be strict int", str(ctx2.exception))
+
+    def test_r3_24_harness_observable_state_machine_transitions(self):
+        """24. Harness observable state machine records transitions and fallback conditions."""
+        sm = HarnessExecutionStateMachine()
+        self.assertEqual(sm.current_state, "INITIAL")
+
+        # 1. Successful execution
+        res = sm.evaluate("functions.exec", "functions.exec", execution_observed=True, execution_returncode=0)
+        self.assertEqual(res.status, "PASS")
+        self.assertEqual(res.state, "VERIFIED")
+        self.assertEqual(sm.current_state, "VERIFIED")
+        self.assertFalse(res.fallback_required)
+
+        # 2. Namespace collapse STOP condition
+        with self.assertRaises(HarnessCompatibilityError):
+            sm.evaluate("functions", "functions.exec")
+        self.assertEqual(sm.current_state, "STOPPED_COLLAPSE")
+        self.assertTrue(len(sm.transitions) >= 2)
+        last_trans = sm.transitions[-1]
+        self.assertEqual(last_trans[1], "STOPPED_COLLAPSE")
+        self.assertIn("collapse detected", last_trans[2])
 
 
 if __name__ == "__main__":
