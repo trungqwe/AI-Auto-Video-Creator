@@ -45,5 +45,14 @@ delivery run.
 | Phase | Harness | Model | Effort |
 | --- | --- | --- | --- |
 | `implement` | Codex CLI | ag/gemini-3.8-flash-high | high |
-| `review` | Claude Code | cx/gpt-5.6-sol-high | high |
+| `review` | Claude Code | cx/gpt-5.6-sol | high |
+
+Routing is fail-closed:
+
+- Every delivery dispatch MUST go through `dely dispatch`; Control MUST NOT call Orca `worker-start` directly.
+- `implement` MUST use Codex CLI through provider `9router` and route `ag/gemini-3.8-flash-high`. Antigravity native is forbidden.
+- `review` MUST use a fresh Claude Code session through 9Router route `cx/gpt-5.6-sol`; the reviewer is read-only and MUST NOT edit the candidate.
+- Model and effort are separate fields. A combined slug such as `cx/gpt-5.6-sol-high` is invalid.
+- `launch.requested` and `launch.effective` are necessary but insufficient. A dispatch is valid only when the live terminal/archive identifies the expected harness/provider and the 9Router usage database records the expected backend request after dispatch.
+- Missing or contradictory routing evidence is a hard STOP. Do not fall back to another harness, provider, model, account pool, or direct vendor login.
 <!-- dely:end -->

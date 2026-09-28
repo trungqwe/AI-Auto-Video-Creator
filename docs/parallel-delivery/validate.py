@@ -385,6 +385,12 @@ def check_scope_and_deltas(
 
     base_commit = base_override or dag.get("approved_base_commit", DEFAULT_BASE_COMMIT)
     candidate_commit = candidate_override or actual_head
+    parent_res = subprocess.run(["git", "rev-parse", "HEAD^"], cwd=ROOT, capture_output=True, text=True)
+    parent_sha = parent_res.stdout.strip().lower() if parent_res.returncode == 0 else ""
+    is_allowed = (candidate_commit.lower() == actual_head.lower() or (bool(parent_sha) and candidate_commit.lower() == parent_sha))
+    if not is_allowed:
+        return [f"Candidate commit {candidate_commit} equals neither current HEAD {actual_head} nor parent {parent_sha}."]
+
     evidence_refs = dag.get("current_authority", {}).get("immutable_evidence_refs", [])
     try:
         return validate_scope_and_deltas(
@@ -393,7 +399,7 @@ def check_scope_and_deltas(
             ROOT,
             evidence_refs,
             approved_base=DEFAULT_BASE_COMMIT,
-            require_candidate_is_head=True,
+            require_candidate_is_head=(candidate_commit.lower() == actual_head.lower()),
         )
     except ScopeViolationError as exc:
         return [str(exc)]
@@ -640,7 +646,7 @@ def check_dely_block() -> list[str]:
     rows = re.findall(r"^\| `(implement|review)` \| ([^|]+) \| ([^|]+) \| ([^|]+) \|$", text, re.MULTILINE)
     expected = [
         ("implement", "Codex CLI", "ag/gemini-3.8-flash-high", "high"),
-        ("review", "Claude Code", "cx/gpt-5.6-sol-high", "high"),
+        ("review", "Claude Code", "cx/gpt-5.6-sol", "high"),
     ]
     normalized = [(a, b.strip(), c.strip(), d.strip()) for a, b, c, d in rows]
     if normalized != expected:
@@ -729,14 +735,17 @@ def check_attestation_report_freshness(root: Path, bundle: Path, report_path: Pa
     # is mathematically circular. Under parent-plus-wrapper semantics:
     # Either candidate_commit is actual HEAD, or parent_commit / candidate_commit matches HEAD~1 (parent)
     # with wrapper_commit at HEAD, and all bundle files match their recorded SHA-256 hashes.
+    # To avoid impossible circular self-reference, wrapper_commit can be declared symbolically as "HEAD"
+    # or "git:HEAD" (resolved by validator to current checkout HEAD) or as an explicit 40-hex SHA matching HEAD.
     cand = (att.get("candidate_commit") or "").strip().lower()
     parent_cand = (att.get("parent_commit") or "").strip().lower()
     wrapper_cand = (att.get("wrapper_commit") or "").strip().lower()
 
-    # Determine git parent of HEAD
-    parent_res = subprocess.run(["git", "rev-parse", "HEAD^"], cwd=root, capture_output=True, text=True)
-    parent_sha = parent_res.stdout.strip().lower() if parent_res.returncode == 0 else ""
+    # Determine git parent of target head
     head_clean = head_sha.strip().lower()
+    target_head_rev = f"{head_clean}^" if (head_clean and head_clean != "unknown" and SHA_HEX_40_RE.match(head_clean)) else "HEAD^"
+    parent_res = subprocess.run(["git", "rev-parse", target_head_rev], cwd=root, capture_output=True, text=True)
+    parent_sha = parent_res.stdout.strip().lower() if parent_res.returncode == 0 else ""
 
     # 1. Validate candidate_commit: must exist, 40-hex, not zero, exists in git
     if not cand:
@@ -750,14 +759,24 @@ def check_attestation_report_freshness(root: Path, bundle: Path, report_path: Pa
         if c_check.returncode != 0:
             errors.append(f"Attestation candidate commit {cand} not found in Git DAG")
 
-    # 2. Validate wrapper_commit: must exist, 40-hex, not zero, exists in git
+    # 2. Validate wrapper_commit: must exist; can be declared symbolic ref ("head", "git:head") or 40-hex SHA; not zero; exists in git
+    effective_wrapper = ""
     if not wrapper_cand:
         errors.append("Attestation report missing wrapper_commit")
+    elif wrapper_cand in {"head", "git:head"}:
+        if not head_clean or head_clean == "unknown":
+            errors.append("Attestation wrapper commit declared as HEAD but current Git HEAD is unavailable")
+        else:
+            effective_wrapper = head_clean
+            w_check = subprocess.run(["git", "cat-file", "-e", f"{effective_wrapper}^{{commit}}"], cwd=root, capture_output=True)
+            if w_check.returncode != 0:
+                errors.append(f"Attestation declared wrapper commit HEAD ({effective_wrapper}) not found in Git DAG")
     elif not SHA_HEX_40_RE.match(wrapper_cand):
-        errors.append(f"Attestation wrapper commit {wrapper_cand!r} is not a valid 40-character SHA")
+        errors.append(f"Attestation wrapper commit {wrapper_cand!r} is neither a valid 40-character SHA nor a recognized symbolic ref ('HEAD', 'git:HEAD')")
     elif set(wrapper_cand) == {"0"}:
         errors.append(f"Attestation wrapper commit {wrapper_cand!r} is zero SHA; zero wrapper values are forbidden")
     else:
+        effective_wrapper = wrapper_cand
         w_check = subprocess.run(["git", "cat-file", "-e", f"{wrapper_cand}^{{commit}}"], cwd=root, capture_output=True)
         if w_check.returncode != 0:
             errors.append(f"Attestation wrapper commit {wrapper_cand} not found in Git DAG")
@@ -776,21 +795,21 @@ def check_attestation_report_freshness(root: Path, bundle: Path, report_path: Pa
 
     # 4. Verify freshness against current checkout (exact allowed Git topology)
     # Exactly two topologies are permitted in Git DAG:
-    # Topology 1 (Direct HEAD): candidate_commit == HEAD, wrapper_commit == HEAD, parent_commit == HEAD^
-    # Topology 2 (Parent-plus-wrapper): candidate_commit == HEAD^, wrapper_commit in {HEAD, HEAD^}, parent_commit == HEAD^
-    # Any membership in {HEAD, HEAD^} that does not match these exact topologies
-    # (such as candidate/wrapper = HEAD^ and parent = HEAD^^ while Git HEAD is HEAD) is strictly rejected.
+    # Topology 1 (Direct HEAD): candidate_commit == HEAD, effective_wrapper == HEAD, parent_commit == HEAD^
+    # Topology 2 (Parent-plus-wrapper): candidate_commit == HEAD^, effective_wrapper == HEAD, parent_commit == HEAD^
+    # Any bypass where candidate_commit, wrapper_commit, and parent_commit all point to HEAD^ is strictly rejected fail-closed.
     if bool(head_clean) and head_clean != "unknown":
         is_direct_head = (
             cand == head_clean
-            and wrapper_cand == head_clean
+            and effective_wrapper == head_clean
             and (not parent_sha or parent_cand == parent_sha)
         )
         is_parent_wrapper = (
             bool(parent_sha)
             and cand == parent_sha
-            and (wrapper_cand == head_clean or wrapper_cand == parent_sha)
+            and effective_wrapper == head_clean
             and parent_cand == parent_sha
+            and wrapper_cand != parent_sha
         )
         if not is_direct_head and not is_parent_wrapper:
             errors.append(
@@ -800,13 +819,13 @@ def check_attestation_report_freshness(root: Path, bundle: Path, report_path: Pa
                 f"Regenerate report with --generate-report."
             )
 
-    # 5. Verify Git DAG topology: parent_commit must be parent of wrapper_commit in Git
+    # 5. Verify Git DAG topology: parent_commit must be parent of effective_wrapper in Git
     if (
-        cand and wrapper_cand and parent_cand
-        and SHA_HEX_40_RE.match(cand) and SHA_HEX_40_RE.match(wrapper_cand) and SHA_HEX_40_RE.match(parent_cand)
-        and set(cand) != {"0"} and set(wrapper_cand) != {"0"} and set(parent_cand) != {"0"}
+        cand and effective_wrapper and parent_cand
+        and SHA_HEX_40_RE.match(cand) and SHA_HEX_40_RE.match(effective_wrapper) and SHA_HEX_40_RE.match(parent_cand)
+        and set(cand) != {"0"} and set(effective_wrapper) != {"0"} and set(parent_cand) != {"0"}
     ):
-        target_child = head_clean if (bool(parent_sha) and cand == parent_sha and parent_cand == parent_sha) else wrapper_cand
+        target_child = effective_wrapper
         topo_res = subprocess.run(["git", "rev-parse", f"{target_child}^"], cwd=root, capture_output=True, text=True)
         if topo_res.returncode != 0:
             errors.append(f"Attestation Git topology verification failed: commit {target_child} has no parent in Git")
@@ -970,14 +989,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             "attestation": {
                 "base_commit": base_resolved,
                 "candidate_commit": candidate_resolved,
-                "parent_commit": parent_sha if candidate_resolved == head_sha else candidate_resolved,
-                "wrapper_commit": head_sha,
-                "candidate_is_actual_head": candidate_resolved == head_sha,
+                "parent_commit": candidate_resolved,
+                "wrapper_commit": "HEAD",
+                "candidate_is_actual_head": False,
                 "committed_changes_count": len(committed_entries),
                 "dirty_overlay_count": len(effective_dirty),
                 "overlay_clean": len(effective_dirty) == 0,
                 "renames_evaluated_both_ends": True,
-                "semantics": "Committed attestation generated via explicit --generate-report flag under documented parent-plus-wrapper semantics. In Git DAG topology, an artifact inside a commit tree cannot self-reference its own commit hash without circularity; candidate_commit identifies the verified candidate commit/tree baseline against approved base_commit, wrapper_commit identifies the containing HEAD wrapper commit, and bundle_sha256 attests to exact SHA-256 hashes of all bundle artifacts excluding this report.",
+                "semantics": "Committed attestation generated via explicit --generate-report flag under documented parent-plus-wrapper semantics. In Git DAG topology, an artifact inside a commit tree cannot self-reference its own commit hash without circularity; candidate_commit identifies the verified candidate commit/tree baseline against approved base_commit, wrapper_commit identifies the containing HEAD wrapper commit (symbolic 'HEAD' resolved at runtime to checkout HEAD object in Git DAG), and bundle_sha256 attests to exact SHA-256 hashes of all bundle artifacts excluding this report.",
             },
             "remediations": {
                 "astra_round_1": {
@@ -1050,6 +1069,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "1_set_task_state_terminal_and_rewind_rejection": "RESOLVED",
                     "2_exact_allowed_git_topology_attestation_freshness": "RESOLVED",
                     "3_compound_cross_process_atomic_dispatch_registry_mutation": "RESOLVED",
+                },
+                "sol_round_9": {
+                    "1_reject_all_head_parent_attestation_bypass": "RESOLVED",
+                    "2_declared_wrapper_head_semantics_no_circular_self_reference": "RESOLVED",
                 },
             },
             "fixture_stats": fixture_stats,

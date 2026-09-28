@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 9 (Declared Wrapper HEAD Semantics, Rejection of all-HEAD^ Bypass & Routing Separation)
+
+- Khắc phục toàn diện phát hiện/blocker từ `cx/gpt-5.6-sol` round 9 review cho bundle `docs/parallel-delivery/`:
+  - **(1) Loại Trừ Dứt Điểm Bypass Attestation Tuple `candidate=wrapper=parent=HEAD^`**: `check_attestation_report_freshness` từ chối fail-closed cấu trúc bypass khi cả 3 trường `candidate_commit`, `wrapper_commit` và `parent_commit` đều trỏ về `HEAD^`, bảo toàn nghiêm ngặt contract `parent-plus-wrapper` vốn đòi hỏi wrapper commit phải là exact current `HEAD`.
+  - **(2) Ngữ Nghĩa Declared Wrapper HEAD Không Tự Quy Chiếu SHA Vòng Lặp**: Trong `.validation-report.json`, trường `wrapper_commit` hỗ trợ khai báo tượng trưng `"HEAD"` (hoặc `"git:HEAD"`) hoặc exact 40-hex SHA khớp checkout HEAD; validator suy ra `effective_wrapper` từ runtime Git, kiểm chứng quan hệ cây `effective_wrapper^ == parent_commit` và khớp toàn bộ mã băm `bundle_sha256` mà không gặp nghịch lý tự tham chiếu SHA trong Git DAG.
+  - **(3) Phân Tách Rõ Ràng Model và Effort trong Dely và Tài Liệu**: Khóa route review thành Claude Code / `cx/gpt-5.6-sol` / `high`, tách riêng hai trường `model` và `effort`, loại bỏ slug gộp không hợp lệ `cx/gpt-5.6-sol-high`; đồng bộ `validate.py`, `task-dag.yaml`, `operating-model.md`, `protocol.md`, `README.md`, `CHANGELOG.md` và `HANDOFF.md`.
+  - **(4) Fixture Suite Tự Động 169/169 PASS**: Bổ sung 4 bài kiểm tra phản ví dụ độc lập trong `TestSolRoundNineCounterexamples` thuộc `test_negative_fixtures.py` (tái hiện chính xác bypass trên SHA `a7f5aca` và test trên current checkout), nâng tổng số test lên 169/169 passed 100%.
+
 ## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 8 (Atomic Terminal/Rewind Prevention, Exact Git Topology Freshness & Compound Mutation)
 
 - Khắc phục toàn diện 3 phát hiện/blockers từ `cx/gpt-5.6-sol-high` round 8 review cho bundle `docs/parallel-delivery/`:

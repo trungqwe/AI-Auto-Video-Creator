@@ -291,3 +291,16 @@ Toàn bộ 21 bypass độc lập do Sol review phát hiện cùng các boundary
    - `create_dispatch` thực hiện đột biến phức hợp đăng ký dispatch binding và Orca task ID thông qua `register_dispatch_and_orca_task` trong duy nhất một giao dịch nguyên tử có khóa tệp đa tiến trình `_transaction(write=True)`.
    - Cơ chế rollback snapshot tự động khôi phục hoàn toàn trạng thái in-memory và không ghi đĩa khi xảy ra lỗi/tranh chấp trùng lặp ID, bảo đảm không bao giờ để lại orphan dispatch binding tồn tại bền vững trên đĩa.
 
+## 15. Khắc phục triệt để các phát hiện Sol Round 9 (Declared Wrapper Semantics & Rejection of all-HEAD^ Bypass)
+
+Đợt rà soát vòng 9 của `cx/gpt-5.6-sol` đã xác lập các điểm nghẽn xung yếu liên quan đến topology attestation và phân tách routing model/effort. Toàn bộ các điểm nghẽn đã được khắc phục hoàn toàn và chứng minh qua 4 fixtures phản ví dụ mới trong `TestSolRoundNineCounterexamples` (tổng bộ kiểm thử đạt 169 fixtures tự động PASS 100%):
+
+1. **Từ chối Dứt điểm Bypass Tuple `candidate=wrapper=parent=HEAD^` (`Reject all-HEAD^ Attestation Bypass`)**:
+   - `check_attestation_report_freshness` từ chối fail-closed nếu `candidate_commit`, `wrapper_commit` và `parent_commit` đều trỏ tới `HEAD^`, bảo đảm tuân thủ nghiêm ngặt contract `parent-plus-wrapper` đòi hỏi wrapper commit phải là exact current `HEAD`.
+   - Bổ sung regression fixture `test_r9_01_attestation_freshness_rejection_of_all_head_parent_bypass` tái hiện chính xác bypass trên SHA `a7f5aca`.
+2. **Ngữ nghĩa Declared Wrapper HEAD không Tự Tham Chiếu Vòng Lặp (`Declared Wrapper HEAD Semantics without Circular Self-Reference`)**:
+   - Trong `.validation-report.json`, trường `wrapper_commit` được phép khai báo tượng trưng `"HEAD"` (hoặc `"git:HEAD"`) hoặc exact 40-hex SHA khớp checkout HEAD thực tế.
+   - Loại bỏ hoàn toàn sự tự tham chiếu SHA bất khả thi trong cấu trúc Git DAG; validator suy ra `effective_wrapper` từ runtime Git, kiểm chứng quan hệ `effective_wrapper^ == parent_commit` và toàn vẹn mã băm `bundle_sha256`.
+3. **Phân tách Rõ Ràng Trường `model` và `effort` trong Dely và Tài liệu**:
+   - Khóa route review thành Claude Code / `cx/gpt-5.6-sol` / `high` (tách riêng model và effort, nghiêm cấm slug gộp `cx/gpt-5.6-sol-high`).
+   - Cập nhật đồng bộ `validate.py`, `task-dag.yaml`, `operating-model.md`, `protocol.md`, `README.md`, `CHANGELOG.md` và `HANDOFF.md`.

@@ -202,14 +202,14 @@ tasks:
       preserves_accepted_evidence: true
     route:
       control:
-        model: cx/gpt-5.6-sol-high
+        model: cx/gpt-5.6-sol
       implement:
         harness: Codex CLI
         model: ag/gemini-3.8-flash-high
         effort: high
       review:
         harness: Claude Code
-        model: cx/gpt-5.6-sol-high
+        model: cx/gpt-5.6-sol
         effort: high
       supreme_audit:
         model: cx/gpt-6-astra-medium

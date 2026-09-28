@@ -3579,6 +3579,153 @@ class TestSolRoundEightCounterexamples(unittest.TestCase):
             self.assertNotIn("ctx-orphan-probe", shared_reg.dispatch_bindings)
 
 
+class TestSolRoundNineCounterexamples(unittest.TestCase):
+    """Sol Round 9 Counterexamples:
+    1. attestation freshness must reject bypass where candidate_commit, wrapper_commit,
+       and parent_commit all point to HEAD^; under parent-plus-wrapper semantics,
+       wrapper_commit must be exact current HEAD.
+    """
+
+    def test_r9_01_attestation_freshness_rejection_of_all_head_parent_bypass(self):
+        """1. Counterexample: Attestation freshness must reject invalid topology where
+        candidate_commit, wrapper_commit, and parent_commit all point to HEAD^.
+        Under parent-plus-wrapper semantics, wrapper_commit must be exact current HEAD.
+        """
+        import validate
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            rep_path = td_path / ".validation-report.json"
+            # Exactly reproduced bypass on exact SHA a7f5aca:
+            # candidate_commit, wrapper_commit, and parent_commit all set to 4366a59 (HEAD^)
+            # while validated against Git HEAD = a7f5aca
+            head_sha = "a7f5aca06a0a70487d624b68c4ebfccfee150542"
+            parent_sha = "4366a59d514f06665cc96c39fccfdb3c377174a8"
+            rep_data = {
+                "status": "PASS",
+                "attestation": {
+                    "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
+                    "candidate_commit": parent_sha,
+                    "parent_commit": parent_sha,
+                    "wrapper_commit": parent_sha,
+                    "candidate_is_actual_head": False,
+                    "overlay_clean": True,
+                    "dirty_overlay_count": 0,
+                },
+                "bundle_sha256": {}
+            }
+            rep_path.write_text(json.dumps(rep_data), encoding="utf-8")
+            errs = validate.check_attestation_report_freshness(
+                ROOT_DIR, td_path, rep_path, head_sha
+            )
+            self.assertTrue(
+                any("stale" in e.lower() or "topology" in e.lower() for e in errs),
+                f"Expected stale / topology mismatch rejection for all-HEAD^ bypass, got: {errs}"
+            )
+
+    def test_r9_02_attestation_freshness_accepts_valid_parent_plus_wrapper_declared_head(self):
+        """2. Positive control: Attestation freshness accepts valid parent-plus-wrapper topology
+        where candidate_commit == HEAD^, parent_commit == HEAD^, and wrapper_commit == "HEAD"
+        without impossible cryptographic self-reference in Git DAG.
+        """
+        import validate
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            rep_path = td_path / ".validation-report.json"
+            head_sha = "a7f5aca06a0a70487d624b68c4ebfccfee150542"
+            parent_sha = "4366a59d514f06665cc96c39fccfdb3c377174a8"
+            rep_data = {
+                "status": "PASS",
+                "attestation": {
+                    "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
+                    "candidate_commit": parent_sha,
+                    "parent_commit": parent_sha,
+                    "wrapper_commit": "HEAD",
+                    "candidate_is_actual_head": False,
+                    "overlay_clean": True,
+                    "dirty_overlay_count": 0,
+                },
+                "bundle_sha256": {}
+            }
+            rep_path.write_text(json.dumps(rep_data), encoding="utf-8")
+            errs = validate.check_attestation_report_freshness(
+                ROOT_DIR, td_path, rep_path, head_sha
+            )
+            self.assertFalse(
+                any("stale" in e.lower() or "topology" in e.lower() for e in errs),
+                f"Valid parent-plus-wrapper topology with declared HEAD was rejected: {errs}"
+            )
+
+    def test_r9_03_attestation_freshness_accepts_valid_parent_plus_wrapper_explicit_head_sha(self):
+        """3. Positive control: Attestation freshness accepts valid parent-plus-wrapper topology
+        where candidate_commit == HEAD^, parent_commit == HEAD^, and wrapper_commit == explicit HEAD SHA.
+        """
+        import validate
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            rep_path = td_path / ".validation-report.json"
+            head_sha = "a7f5aca06a0a70487d624b68c4ebfccfee150542"
+            parent_sha = "4366a59d514f06665cc96c39fccfdb3c377174a8"
+            rep_data = {
+                "status": "PASS",
+                "attestation": {
+                    "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
+                    "candidate_commit": parent_sha,
+                    "parent_commit": parent_sha,
+                    "wrapper_commit": head_sha,
+                    "candidate_is_actual_head": False,
+                    "overlay_clean": True,
+                    "dirty_overlay_count": 0,
+                },
+                "bundle_sha256": {}
+            }
+            rep_path.write_text(json.dumps(rep_data), encoding="utf-8")
+            errs = validate.check_attestation_report_freshness(
+                ROOT_DIR, td_path, rep_path, head_sha
+            )
+            self.assertFalse(
+                any("stale" in e.lower() or "topology" in e.lower() for e in errs),
+                f"Valid parent-plus-wrapper topology with explicit HEAD SHA was rejected: {errs}"
+            )
+
+    def test_r9_04_attestation_freshness_rejection_of_dynamic_checkout_all_head_parent_bypass(self):
+        """4. Counterexample: Attestation freshness must reject bypass when candidate, wrapper,
+        and parent all equal current checkout's HEAD^.
+        """
+        import validate
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            rep_path = td_path / ".validation-report.json"
+            cmd_head = ["git", "rev-parse", "HEAD"]
+            head_sha = subprocess.run(
+                cmd_head, cwd=ROOT_DIR, capture_output=True, text=True, check=True
+            ).stdout.strip()
+            cmd_parent = ["git", "rev-parse", "HEAD^"]
+            parent_sha = subprocess.run(
+                cmd_parent, cwd=ROOT_DIR, capture_output=True, text=True, check=True
+            ).stdout.strip()
+            rep_data = {
+                "status": "PASS",
+                "attestation": {
+                    "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
+                    "candidate_commit": parent_sha,
+                    "parent_commit": parent_sha,
+                    "wrapper_commit": parent_sha,
+                    "candidate_is_actual_head": False,
+                    "overlay_clean": True,
+                    "dirty_overlay_count": 0,
+                },
+                "bundle_sha256": {}
+            }
+            rep_path.write_text(json.dumps(rep_data), encoding="utf-8")
+            errs = validate.check_attestation_report_freshness(
+                ROOT_DIR, td_path, rep_path, head_sha
+            )
+            self.assertTrue(
+                any("stale" in e.lower() or "topology" in e.lower() for e in errs),
+                f"Expected stale / topology mismatch rejection for dynamic all-HEAD^ bypass, got: {errs}"
+            )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

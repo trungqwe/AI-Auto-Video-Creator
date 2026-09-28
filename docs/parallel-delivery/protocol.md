@@ -273,6 +273,9 @@ orca orchestration send --from <worker_terminal> --dispatch-capability <dcap> --
 31. **Đột biến Registry Phức hợp Nguyên tử Đa Tiến trình khi Tạo Dispatch**:
     - `create_dispatch` thực hiện đột biến phức hợp đăng ký dispatch binding và Orca task ID thông qua `register_dispatch_and_orca_task` trong duy nhất một giao dịch nguyên tử có khóa tệp đa tiến trình `_transaction(write=True)`.
     - Khi xảy ra xung đột (như tranh chấp trùng lặp `orca_task_id` giữa hai tiến trình), toàn bộ thay đổi được rollback sạch sẽ, tuyệt đối không để lại orphan dispatch binding tồn tại bền vững trên đĩa.
+32. **Ngữ nghĩa Khai báo Wrapper HEAD và Loại trừ Bypass Tất cả HEAD^**:
+    - `check_attestation_report_freshness` từ chối fail-closed nếu `candidate_commit`, `wrapper_commit` và `parent_commit` đều trỏ tới `HEAD^`, bảo toàn contract `parent-plus-wrapper` đòi hỏi wrapper phải là commit wrapper tại `HEAD`.
+    - Hỗ trợ `wrapper_commit` khai báo tượng trưng `"HEAD"` (hoặc `"git:HEAD"`) hoặc exact 40-hex SHA khớp current checkout HEAD; validator suy ra `effective_wrapper` từ Git DAG, kiểm tra `effective_wrapper^ == parent_commit` và đối chiếu `bundle_sha256` mà không gây vòng lặp tự tham chiếu SHA.
 
 ## 8. Review/remediation protocol
 

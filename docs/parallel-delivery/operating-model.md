@@ -16,9 +16,9 @@ Git là nguồn sự thật cho candidate; `docs/12-pre-code-checklist.md` là n
 
 | Vai trò | Harness/model/effort | Quyền |
 |---|---|---|
-| Control | phiên hiện hành / `cx/gpt-5.6-sol-high` | Giữ authority, scope, dependency, ngoại lệ, merge/release decision; không đóng vai implementer/reviewer của candidate |
+| Control | phiên hiện hành / `cx/gpt-5.6-sol` | Giữ authority, scope, dependency, ngoại lệ, merge/release decision; không đóng vai implementer/reviewer của candidate |
 | Dely implement | Codex CLI / `ag/gemini-3.8-flash-high` / `high` | Thực hiện đúng một task có owned paths và acceptance instruments |
-| Dely review | Claude Code / `cx/gpt-5.6-sol-high` / `high` | Phiên độc lập, tái chạy gate, không sửa candidate |
+| Dely review | Claude Code / `cx/gpt-5.6-sol` / `high` | Phiên độc lập, tái chạy gate, không sửa candidate |
 | Supreme independent audit | `cx/gpt-6-astra-medium` / `medium` | Gate bên ngoài Dely, chỉ dùng cho audit cực khó được Control/user định tuyến rõ |
 
 Bảng Dely được quản lý trong `AGENTS.md` và chỉ có hai dòng `implement`/`review`. Supreme audit không được thêm thành phase Dely. Model routing không trao thêm authority và không thay security boundary.
