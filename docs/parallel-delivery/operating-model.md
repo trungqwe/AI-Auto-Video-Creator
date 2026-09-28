@@ -23,6 +23,14 @@ Git là nguồn sự thật cho candidate; `docs/12-pre-code-checklist.md` là n
 
 Bảng Dely được quản lý trong `AGENTS.md` và chỉ có hai dòng `implement`/`review`. Supreme audit không được thêm thành phase Dely. Model routing không trao thêm authority và không thay security boundary.
 
+### Cổng tương thích Harness (Harness Compatibility Gate)
+
+- **Quan sát thực tế**: Codex CLI khi định tuyến sang `ag/gemini-3.8-flash-high` đã được ghi nhận hiện tượng làm sụp các công cụ có namespace (`functions.exec` -> `functions`), dẫn đến việc không thể thực thi tool call dù bước routing báo thành công. Trong khi đó, Antigravity native với effective model `ag/gemini-3.8-flash-high` đã thực thi toàn bộ công cụ thành công.
+- **Nguyên tắc**: Thành công định tuyến (route success) không đồng nghĩa với khả năng thực thi thực tế (executable).
+- **Yêu cầu cổng**: Trước khi worker tiến hành thực thi tác vụ, bắt buộc phải vượt qua bài kiểm tra khói thực thi công cụ (tool-execution smoke test).
+- **Cơ chế an toàn (Safe Fallback / STOP Condition)**: Nếu tool-execution smoke test thất bại (phát hiện sụp namespace hoặc lỗi thực thi công cụ), hệ thống kích hoạt điều kiện `STOP` / `blocked_harness` để Control can thiệp, re-route hoặc fallback an toàn sang harness tương thích đã kiểm chứng (Antigravity native). Tuyệt đối không tiếp tục mutation mù khi harness lỗi.
+- **Không tuyệt đối hóa vĩnh viễn (No Overgeneralizing Permanence)**: Coi đây là một dynamic runtime check cho phiên làm việc hiện hành; không kết luận hoặc giả định Codex CLI bị lỗi vĩnh viễn trong tương lai khi có bản cập nhật tooling/harness mới.
+
 ## 3. Đơn vị lập kế hoạch
 
 Một task chỉ được tách khi nó có thể có trọn một vòng test/evidence và reviewer có thể accept nó trong khi reject task lân cận. Task phải khai báo tối thiểu:
@@ -126,7 +134,8 @@ Dừng task và mọi descendant chưa dispatch khi:
 - external outcome không xác định;
 - RED không phân biệt đúng lỗi;
 - security/data-loss invariant có nguy cơ bị phá;
-- candidate identity thay đổi sau review.
+- candidate identity thay đổi sau review;
+- tool-execution smoke test thất bại hoặc phát hiện harness làm sụp namespace công cụ (`functions.exec` -> `functions`).
 
 Task trả `blocked` nếu phụ thuộc có thể được giải quyết không đổi contract; trả `needs_replan` nếu scope/architecture/acceptance cần đổi; trả `stopped` khi authority hoặc safety yêu cầu kết thúc. Không giao phần còn lại cho worker khác dưới cùng lease.
 

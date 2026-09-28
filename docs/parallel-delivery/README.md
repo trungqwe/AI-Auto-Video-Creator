@@ -51,7 +51,8 @@ Khi có mâu thuẫn, dừng node bị ảnh hưởng ở `needs_replan` hoặc 
 | [`traceability.md`](./traceability.md) | Mục tiêu → FR/QR → module → contract/invariant → gate | Một phần |
 | [`security-performance-recovery.md`](./security-performance-recovery.md) | Guardrail bảo mật, hiệu năng, evidence và phục hồi | Một phần |
 | [`validate.py`](./validate.py) | Công cụ thẩm định bundle, DAG, registry, locks, scope, fixtures | Có |
-| [`test_negative_fixtures.py`](./test_negative_fixtures.py) | Suite kiểm thử negative fixtures tự động cho 6 findings Astra round 1 | Có |
+| [`delivery_engine.py`](./delivery_engine.py) | Module thực thi lõi cho contract binding, lease manager, Orca adapter và harness compatibility | Có |
+| [`test_negative_fixtures.py`](./test_negative_fixtures.py) | Suite kiểm thử negative fixtures tự động cho 6 findings Astra round 1 và probes Sol review | Có |
 
 YAML dùng YAML 1.2, UTF-8 không BOM. Giá trị enum và identifier dùng tiếng Anh; mô tả cho người dùng dùng tiếng Việt.
 
@@ -91,3 +92,12 @@ Cần một user checkpoint riêng để:
 6. quyết định giữ, sửa hoặc loại bỏ thí nghiệm.
 
 Không điều nào ở trên đã được bundle này chứng minh runtime.
+
+## 8. Khắc phục toàn diện các phát hiện từ Sol review
+
+1. **Scope Validation & HEAD Candidate Attestation**: `validate.py` không còn silently pin `ac5bd30`; candidate/base là explicit validated git commit hoặc fail-closed. Validator attest exact new HEAD candidate, dirty overlay, và đánh giá rename ở cả hai đầu (old_path và new_path).
+2. **LeaseManager Hoàn Thiện**: Từ chối unknown locks, missing/invalid resource_key cho partitionable locks, non-positive units; tính toán và enforce `expires_at`, purge/deny expired leases; hỗ trợ renewal/release an toàn; duy trì monotonic fencing per resource; reject stale/absent fencing token trên result mutation; kiểm tra authority 'granted' cho mọi active state.
+3. **OrcaDeliveryAdapter Ràng Buộc Định Danh Chặt Chẽ**: Ràng buộc và xác thực `delivery_task_id`, exact `orca_task_id`, authoritative `dispatch_id`, `candidate_commit`, và fencing token; từ chối identity trống/sai, duplicate/stale attempts và candidate mismatch.
+4. **Adversarial Sol Fixtures Suite**: Bổ sung bộ probes đối kháng trong `test_negative_fixtures.py` kiểm chứng toàn diện mọi nhánh thất bại và góc cạnh Sol đã nêu.
+5. **Harness Compatibility Gate**: Ghi nhận cổng tương thích harness: Codex CLI định tuyến sang `ag/gemini-3.8-flash-high` có thể làm sụp namespace công cụ (`functions.exec` -> `functions`), do đó route success không đồng nghĩa với executable. Bắt buộc vượt qua tool-execution smoke test trước mutation; nếu fail, kích hoạt STOP condition và fallback sang Antigravity native mà không tuyệt đối hóa vĩnh viễn.
+6. **Bảo Toàn Phạm Vi Docs/Config & Containment**: Giữ nguyên toàn bộ ranh giới, không đụng vào product code hay accepted evidence.

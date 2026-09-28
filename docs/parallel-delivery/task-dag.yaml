@@ -4,7 +4,7 @@ status: proposed_experiment_no_new_implementation_authority
 as_of: "2026-09-28"
 authority_source: docs/12-pre-code-checklist.md
 approved_base_commit: 4a7c8c921b7e05066505d51b168a02c3fde61317
-candidate_commit: ac5bd304408bee6283b11bd271cf874101d119fa
+candidate_commit: HEAD
 rollback_reference: D:/AI_SETUP/backups/AI-Auto-Video-Creator/20260928-175542
 
 schema:

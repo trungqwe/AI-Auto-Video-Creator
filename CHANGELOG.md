@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-28 — Khắc phục toàn diện các phát hiện Sol review cho parallel delivery
+
+- Khắc phục toàn bộ các blocker từ Sol independent review cho bundle `docs/parallel-delivery/`:
+  - **(1) Scope validation & HEAD attestation**: Loại bỏ hoàn toàn silent pinning stale commit `ac5bd30`; yêu cầu `base` và `candidate` commit phải là đầu vào rõ ràng, hợp lệ trong Git hoặc fail-closed; cập nhật `validate.py` để chứng thực exact candidate HEAD, thống kê đầy đủ committed diff + dirty/untracked overlay, và kiểm tra rename ở cả hai đầu (old_path và new_path).
+  - **(2) LeaseManager hoàn thiện**: Bổ sung kiểm tra fail-closed từ chối unknown locks, thiếu hoặc sai định dạng `resource_key` cho partitionable locks (prefix `db:`), units không dương (<= 0); tính toán và thực thi `expires_at`, tự động thanh lọc (purge) và từ chối lease đã hết hạn; hỗ trợ gia hạn (renewal) và giải phóng (release) an toàn; duy trì fencing token tăng đơn điệu theo từng resource; từ chối mutation mang fencing token cũ hoặc thiếu token; thực thi kiểm tra authority 'granted' cho mọi active state.
+  - **(3) OrcaDeliveryAdapter ràng buộc định danh chặt chẽ**: Ràng buộc và xác thực nghiêm ngặt bộ nhận diện `delivery_task_id`, exact `orca_task_id`, authoritative `dispatch_id`, `candidate_commit`, và fencing token; từ chối định danh trống, không khớp, duplicate hoặc stale attempts; cấm dispatch task có authority không phải 'granted'.
+  - **(4) Adversarial Sol fixtures suite**: Bổ sung bộ test đối kháng trong `test_negative_fixtures.py` (nâng tổng suite lên 55 tests) tái hiện toàn bộ các góc cạnh Sol probes: fail-closed khi commit sha sai/rỗng, phát hiện stale ac5bd30, rename cả 2 đầu, unknown lock, invalid prefix, zero/negative units, lease expiry/purge/renewal, monotonic fencing, absent/stale token, blank/wrong identities, commit mismatch, authority enforcement.
+  - **(5) Harness Compatibility Gate**: Ghi nhận cổng tương thích harness vào `operating-model.md`, `protocol.md`, `security-performance-recovery.md` và `README.md`: quan sát thực tế Codex CLI định tuyến sang `ag/gemini-3.8-flash-high` có thể làm sụp namespace công cụ (`functions.exec` -> `functions`), do đó route success không đồng nghĩa với executable. Bắt buộc worker vượt qua tool-execution smoke test trước khi thực hiện mutation; nếu thất bại, kích hoạt STOP condition (`blocked_harness`) và fallback an toàn sang Antigravity native; coi đây là dynamic runtime gate mà không tuyệt đối hóa vĩnh viễn.
+  - **(6) Containment**: Giữ nguyên tuyệt đối phạm vi docs/config, không thay đổi product code, test source, SQL hay accepted evidence.
+
 ## 2026-09-28 — Khắc phục sáu findings Astra audit round 1 và bổ sung negative fixtures
 
 - Khắc phục toàn bộ 6 findings từ Astra audit round 1 cho bundle `docs/parallel-delivery/`:

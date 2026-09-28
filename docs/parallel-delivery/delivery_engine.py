@@ -17,7 +17,7 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -65,6 +65,10 @@ class ReadinessTraceabilityError(ParallelDeliveryError):
 
 class LockLeaseError(ParallelDeliveryError):
     """F6: Resource lock or active lease acquisition conflict."""
+
+
+class HarnessCompatibilityError(ProtocolViolationError):
+    """Harness tool execution failure or namespaced tool collapse."""
 
 
 # ---------------------------------------------------------------------------
@@ -345,15 +349,33 @@ def get_dirty_overlay_paths(root: Path) -> List[Tuple[str, str, Optional[str]]]:
     return entries
 
 
+def validate_commit_sha(sha: str, name: str, root: Path) -> str:
+    """Validate that sha is an explicit non-empty input and resolves to a commit in git."""
+    if not sha or not isinstance(sha, str) or not sha.strip():
+        raise ScopeViolationError(f"{name} commit must be an explicit, non-empty git commit reference")
+    sha_clean = sha.strip()
+    cmd = ["git", "rev-parse", "--verify", f"{sha_clean}^{{commit}}"]
+    res = subprocess.run(cmd, cwd=root, capture_output=True)
+    if res.returncode != 0:
+        err = res.stderr.decode("utf-8", errors="replace").strip()
+        raise ScopeViolationError(f"{name} commit {sha_clean!r} cannot be verified in git: {err}")
+    return res.stdout.decode("utf-8").strip()
+
+
 def validate_scope_and_deltas(
     base_sha: str,
     candidate_sha: str,
     root: Path,
     immutable_evidence_refs: Optional[List[str]] = None,
 ) -> List[str]:
-    """F3: Check committed diff + dirty overlay, rename both ends, and immutable evidence hashes."""
+    """F3: Check committed diff + dirty overlay, rename both ends, and immutable evidence hashes.
+    Both base_sha and candidate_sha must be exact explicit validated inputs or fail closed.
+    """
+    base_resolved = validate_commit_sha(base_sha, "Base", root)
+    candidate_resolved = validate_commit_sha(candidate_sha, "Candidate", root)
+
     errors = []
-    committed_entries = get_committed_diff_paths(base_sha, candidate_sha, root)
+    committed_entries = get_committed_diff_paths(base_resolved, candidate_resolved, root)
     dirty_entries = get_dirty_overlay_paths(root)
 
     for status, path1, path2 in committed_entries + dirty_entries:
@@ -395,17 +417,48 @@ class LeaseManager:
         self.active_leases: Dict[str, ActiveLease] = {}
         self.fencing_counters: Dict[str, int] = {}
         self.integrated_tasks: Set[str] = set()
+        self.task_authorities: Dict[str, str] = {}
+
+    def set_task_authority(self, delivery_task_id: str, authority: str) -> None:
+        self.task_authorities[delivery_task_id] = authority
+
+    def purge_expired_leases(self, now: Optional[datetime] = None) -> List[str]:
+        """Purge and expire active leases whose expiry time has passed."""
+        if now is None:
+            now_dt = datetime.now(timezone.utc)
+        else:
+            now_dt = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+        purged = []
+        for lease_id, lease in list(self.active_leases.items()):
+            if not lease.is_active:
+                purged.append(lease_id)
+                del self.active_leases[lease_id]
+                continue
+            if lease.expires_at:
+                try:
+                    exp_dt = datetime.fromisoformat(lease.expires_at)
+                    if exp_dt.tzinfo is None:
+                        exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                    if now_dt >= exp_dt:
+                        lease.is_active = False
+                        del self.active_leases[lease_id]
+                        purged.append(lease_id)
+                except (ValueError, TypeError):
+                    lease.is_active = False
+                    del self.active_leases[lease_id]
+                    purged.append(lease_id)
+        return purged
 
     def mark_task_integrated(self, delivery_task_id: str) -> None:
         """Mark a task integrated; release all its live leases."""
         self.integrated_tasks.add(delivery_task_id)
         to_release = [
             lease_id
-            for lease_id, lease in self.active_leases.items()
+            for lease_id, lease in list(self.active_leases.items())
             if lease.delivery_task_id == delivery_task_id
         ]
         for lease_id in to_release:
-            del self.active_leases[lease_id]
+            self.release_lease(lease_id)
 
     def acquire_lease(
         self,
@@ -415,10 +468,36 @@ class LeaseManager:
         resource_key: Optional[str] = None,
         units: int = 1,
         lease_seconds: int = 1800,
+        authority_state: Optional[str] = None,
+        now: Optional[datetime] = None,
     ) -> ActiveLease:
-        """Acquire an active lease. Rejects conflicts, over-capacity, and immutable leases."""
-        lock_def = self.lock_defs.get(lock_id, {})
-        # F2: Reject mutation leases on immutable evidence
+        """Acquire an active lease. Rejects unknown locks, invalid/missing resource_key,
+        zero/negative units, non-granted authority, and conflicting/over-capacity allocations.
+        Computes expires_at and monotonic fencing tokens.
+        """
+        self.purge_expired_leases(now=now)
+
+        # 1. Reject unknown locks
+        if lock_id not in self.lock_defs:
+            raise LockLeaseError(f"Unknown lock ID {lock_id!r}; lock must be declared in lock definitions")
+        lock_def = self.lock_defs[lock_id]
+
+        # 2. Enforce authority for every active state
+        auth = authority_state or self.task_authorities.get(delivery_task_id, "granted")
+        if auth != "granted":
+            raise LockLeaseError(
+                f"Task {delivery_task_id} has authority {auth!r}; cannot acquire active lease (only 'granted' permitted)"
+            )
+
+        # 3. Reject zero or negative units
+        if not isinstance(units, int) or units <= 0:
+            raise LockLeaseError(f"Invalid units {units}: units must be a positive integer (>= 1)")
+
+        # 4. Reject non-positive lease_seconds
+        if not isinstance(lease_seconds, int) or lease_seconds <= 0:
+            raise LockLeaseError(f"Invalid lease_seconds {lease_seconds}: must be positive integer")
+
+        # 5. Reject mutation leases on immutable evidence
         if (
             lock_id == "LOCK-ACCEPTED-EVIDENCE"
             or lock_def.get("mode") == "immutable"
@@ -426,10 +505,27 @@ class LeaseManager:
         ):
             raise LockLeaseError(f"Lock {lock_id} is immutable; mutation lease is strictly prohibited")
 
+        # 6. Validate resource_key
         mode = lock_def.get("mode", "exclusive")
-        actual_key = resource_key or lock_id
+        prefix = lock_def.get("partition_key_prefix")
+        if mode == "exclusive_by_database_name" or prefix is not None:
+            if resource_key is None or not isinstance(resource_key, str) or not resource_key.strip():
+                raise LockLeaseError(f"Missing resource_key for partitionable lock {lock_id}")
+            resource_key = resource_key.strip()
+            if prefix and not resource_key.startswith(prefix):
+                raise LockLeaseError(f"Invalid resource_key {resource_key!r}: must start with prefix {prefix!r}")
+            if prefix and len(resource_key) <= len(prefix):
+                raise LockLeaseError(f"Invalid resource_key {resource_key!r}: namespace after prefix {prefix!r} cannot be empty")
+            actual_key = resource_key
+        else:
+            if resource_key is not None:
+                if not isinstance(resource_key, str) or not resource_key.strip():
+                    raise LockLeaseError(f"Invalid resource_key for lock {lock_id}: cannot be empty string")
+                actual_key = resource_key.strip()
+            else:
+                actual_key = lock_id
 
-        # F6: Integrated tasks hold no lease and do not block
+        # 7. Check conflicts against active leases for this lock
         active_for_lock = [
             l for l in self.active_leases.values()
             if l.lock_id == lock_id and l.is_active
@@ -443,7 +539,6 @@ class LeaseManager:
                 )
 
         elif mode == "exclusive_by_database_name":
-            # Disjoint database namespaces grant concurrently; same namespace conflicts
             for l in active_for_lock:
                 if l.resource_key == actual_key:
                     raise LockLeaseError(
@@ -458,12 +553,18 @@ class LeaseManager:
                     f"Capacity lock {lock_id} over-capacity: requested {units} units, but only {total_capacity - allocated_units} of {total_capacity} available"
                 )
 
-        # Increment monotonic fencing token
+        # 8. Increment monotonic fencing token per resource key
         self.fencing_counters[actual_key] = self.fencing_counters.get(actual_key, 0) + 1
         token = self.fencing_counters[actual_key]
 
+        # 9. Compute acquired_at and expires_at
+        if now is None:
+            now_dt = datetime.now(timezone.utc)
+        else:
+            now_dt = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+        expires_dt = now_dt + timedelta(seconds=lease_seconds)
+
         lease_id = f"lease_{actual_key}_{token}"
-        now_str = datetime.now(timezone.utc).isoformat()
         lease = ActiveLease(
             lease_id=lease_id,
             lock_id=lock_id,
@@ -472,19 +573,90 @@ class LeaseManager:
             fencing_token=token,
             delivery_task_id=delivery_task_id,
             dispatch_id=dispatch_id,
-            acquired_at=now_str,
+            acquired_at=now_dt.isoformat(),
+            expires_at=expires_dt.isoformat(),
+            is_active=True,
         )
         self.active_leases[lease_id] = lease
         return lease
 
     def release_lease(self, lease_id: str) -> None:
+        """Release an active lease."""
         if lease_id in self.active_leases:
+            lease = self.active_leases[lease_id]
+            lease.is_active = False
             del self.active_leases[lease_id]
+
+    def renew_lease(
+        self, lease_id: str, extend_seconds: int = 1800, now: Optional[datetime] = None
+    ) -> ActiveLease:
+        """Renew an active lease. Rejects expired, inactive, or non-existent leases."""
+        if not isinstance(extend_seconds, int) or extend_seconds <= 0:
+            raise LockLeaseError(f"Invalid extend_seconds {extend_seconds}: must be positive integer")
+        if now is None:
+            now_dt = datetime.now(timezone.utc)
+        else:
+            now_dt = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+
+        if lease_id not in self.active_leases:
+            raise LockLeaseError(f"Cannot renew non-existent or purged lease {lease_id}")
+        lease = self.active_leases[lease_id]
+        if not lease.is_active:
+            raise LockLeaseError(f"Cannot renew inactive lease {lease_id}")
+
+        if lease.expires_at:
+            try:
+                exp_dt = datetime.fromisoformat(lease.expires_at)
+                if exp_dt.tzinfo is None:
+                    exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                if now_dt >= exp_dt:
+                    lease.is_active = False
+                    del self.active_leases[lease_id]
+                    raise LockLeaseError(f"Cannot renew expired lease {lease_id}")
+                new_exp_dt = exp_dt + timedelta(seconds=extend_seconds)
+            except (ValueError, TypeError):
+                lease.is_active = False
+                del self.active_leases[lease_id]
+                raise LockLeaseError(f"Invalid expires_at format in lease {lease_id}")
+        else:
+            new_exp_dt = now_dt + timedelta(seconds=extend_seconds)
+
+        lease.expires_at = new_exp_dt.isoformat()
+        return lease
+
+    def validate_fencing_token(self, resource_key: str, fencing_token: Optional[int]) -> None:
+        """Validate fencing token on result mutation; reject stale or absent tokens."""
+        if fencing_token is None:
+            raise LockLeaseError(f"Absent fencing token for resource {resource_key!r}")
+        if not isinstance(fencing_token, int):
+            raise LockLeaseError(f"Invalid fencing token type: {type(fencing_token)}")
+        expected = self.fencing_counters.get(resource_key)
+        if expected is None:
+            raise LockLeaseError(f"No fencing token registered for resource {resource_key!r}")
+        if fencing_token < expected:
+            raise LockLeaseError(
+                f"Stale fencing token {fencing_token} for resource {resource_key!r}; current is {expected}"
+            )
+        if fencing_token > expected:
+            raise LockLeaseError(
+                f"Fencing token {fencing_token} exceeds current counter {expected} for resource {resource_key!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
 # Orca Delivery Adapter & Lifecycle State Machine (F4)
 # ---------------------------------------------------------------------------
+
+@dataclass
+class DispatchBinding:
+    delivery_task_id: str
+    orca_task_id: str
+    dispatch_id: str
+    candidate_commit: Optional[str] = None
+    fencing_token: Optional[int] = None
+    authority_state: str = "granted"
+    settled: bool = False
+
 
 class OrcaDeliveryAdapter:
     """Translates Orca CLI events into delivery ledger state transitions."""
@@ -492,10 +664,12 @@ class OrcaDeliveryAdapter:
     def __init__(self, lease_manager: LeaseManager):
         self.lease_mgr = lease_manager
         self.task_states: Dict[str, str] = {}
+        self.task_authorities: Dict[str, str] = {}
         self.active_dispatches: Dict[str, str] = {}  # delivery_task_id -> current dispatch_id
         self.settled_dispatches: Set[str] = set()
         self.dispatch_counters: Dict[str, int] = {}
         self.last_fencing_tokens: Dict[str, int] = {}
+        self.dispatch_bindings: Dict[str, DispatchBinding] = {}
 
     def set_task_state(self, delivery_task_id: str, state: str) -> None:
         self.task_states[delivery_task_id] = state
@@ -503,17 +677,60 @@ class OrcaDeliveryAdapter:
     def get_task_state(self, delivery_task_id: str) -> str:
         return self.task_states.get(delivery_task_id, "planned")
 
-    def create_dispatch(self, delivery_task_id: str) -> str:
-        """Create a fresh dispatch attempt for a delivery task."""
+    def set_task_authority(self, delivery_task_id: str, authority: str) -> None:
+        self.task_authorities[delivery_task_id] = authority
+        self.lease_mgr.set_task_authority(delivery_task_id, authority)
+
+    def get_task_authority(self, delivery_task_id: str) -> str:
+        return self.task_authorities.get(delivery_task_id, "granted")
+
+    def create_dispatch(
+        self,
+        delivery_task_id: str,
+        orca_task_id: Optional[str] = None,
+        candidate_commit: Optional[str] = None,
+        fencing_token: Optional[int] = None,
+        authority_state: Optional[str] = None,
+    ) -> str:
+        """Create a fresh dispatch attempt for a delivery task and bind identities."""
+        if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
+            raise ProtocolViolationError("delivery_task_id cannot be blank")
+        delivery_task_id = delivery_task_id.strip()
+
+        if orca_task_id is not None:
+            if not isinstance(orca_task_id, str) or not orca_task_id.strip():
+                raise ProtocolViolationError("orca_task_id cannot be blank")
+            orca_task_id = orca_task_id.strip()
+
+        auth = authority_state or self.get_task_authority(delivery_task_id)
+        if auth != "granted":
+            raise ProtocolViolationError(
+                f"Cannot dispatch task {delivery_task_id} with authority {auth!r}; only 'granted' authority permitted"
+            )
+
         current_state = self.get_task_state(delivery_task_id)
         if current_state not in ("ready", "blocked", "needs_replan"):
             raise ProtocolViolationError(
                 f"Cannot dispatch task {delivery_task_id} from state {current_state!r}; must be ready/blocked/needs_replan"
             )
+
         self.dispatch_counters[delivery_task_id] = self.dispatch_counters.get(delivery_task_id, 0) + 1
         dispatch_id = f"ctx_{delivery_task_id}_{self.dispatch_counters[delivery_task_id]}"
+
+        binding = DispatchBinding(
+            delivery_task_id=delivery_task_id,
+            orca_task_id=orca_task_id,
+            dispatch_id=dispatch_id,
+            candidate_commit=candidate_commit,
+            fencing_token=fencing_token,
+            authority_state=auth,
+            settled=False,
+        )
+        self.dispatch_bindings[dispatch_id] = binding
         self.active_dispatches[delivery_task_id] = dispatch_id
         self.task_states[delivery_task_id] = "dispatched"
+        if fencing_token is not None:
+            self.last_fencing_tokens[delivery_task_id] = fencing_token
         return dispatch_id
 
     def handle_worker_done(
@@ -525,13 +742,19 @@ class OrcaDeliveryAdapter:
         candidate_commit: Optional[str] = None,
         fencing_token: Optional[int] = None,
     ) -> str:
-        """Handle worker_done from Orca CLI.
-        - outcome must be 'succeeded' or 'failed'.
-        - rejects duplicates and stale results.
-        - succeeded -> moves delivery task to 'review'.
-        - failed -> moves delivery task to 'blocked'.
-        """
-        # Orca CLI constraint: only 'succeeded' or 'failed'
+        """Handle worker_done from Orca CLI with full identity and binding validation."""
+        if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
+            raise ProtocolViolationError("delivery_task_id cannot be blank")
+        delivery_task_id = delivery_task_id.strip()
+
+        if not orca_task_id or not isinstance(orca_task_id, str) or not orca_task_id.strip():
+            raise ProtocolViolationError("orca_task_id cannot be blank")
+        orca_task_id = orca_task_id.strip()
+
+        if not dispatch_id or not isinstance(dispatch_id, str) or not dispatch_id.strip():
+            raise ProtocolViolationError("dispatch_id cannot be blank")
+        dispatch_id = dispatch_id.strip()
+
         if outcome not in ("succeeded", "failed"):
             raise ProtocolViolationError(
                 f"Invalid worker_done outcome {outcome!r}; Orca CLI only supports 'succeeded' or 'failed'"
@@ -546,15 +769,46 @@ class OrcaDeliveryAdapter:
                 f"Stale dispatch result: current active dispatch is {active_id!r}, received {dispatch_id!r}"
             )
 
-        if fencing_token is not None:
-            expected_token = self.last_fencing_tokens.get(delivery_task_id)
-            if expected_token is not None and fencing_token < expected_token:
+        binding = self.dispatch_bindings.get(dispatch_id)
+        if binding is not None:
+            if binding.orca_task_id is not None and binding.orca_task_id != orca_task_id:
+                raise ProtocolViolationError(
+                    f"orca_task_id mismatch: dispatch {dispatch_id} was bound to {binding.orca_task_id!r}, received {orca_task_id!r}"
+                )
+            if binding.authority_state != "granted":
+                raise ProtocolViolationError(
+                    f"Task {delivery_task_id} has non-granted authority {binding.authority_state!r}"
+                )
+            if binding.candidate_commit is not None:
+                if not candidate_commit or candidate_commit != binding.candidate_commit:
+                    raise ProtocolViolationError(
+                        f"Candidate commit mismatch: expected {binding.candidate_commit}, got {candidate_commit}"
+                    )
+            if binding.fencing_token is not None:
+                if fencing_token is None:
+                    raise ProtocolViolationError(
+                        f"Absent fencing token: dispatch {dispatch_id} was bound with fencing token {binding.fencing_token}"
+                    )
+                if fencing_token < binding.fencing_token:
+                    raise StaleResultError(
+                        f"Stale fencing token: expected at least {binding.fencing_token}, received {fencing_token}"
+                    )
+
+        expected_token = self.last_fencing_tokens.get(delivery_task_id)
+        if expected_token is not None:
+            if fencing_token is None:
+                raise ProtocolViolationError(
+                    f"Absent fencing token: expected {expected_token}"
+                )
+            if fencing_token < expected_token:
                 raise StaleResultError(
                     f"Stale fencing token: current token is {expected_token}, received {fencing_token}"
                 )
 
         # Settle the dispatch attempt
         self.settled_dispatches.add(dispatch_id)
+        if binding is not None:
+            binding.settled = True
 
         if outcome == "succeeded":
             self.task_states[delivery_task_id] = "review"
@@ -562,7 +816,6 @@ class OrcaDeliveryAdapter:
         else:
             # Failure / blocker -> task becomes blocked; releases live leases
             self.task_states[delivery_task_id] = "blocked"
-            # Release leases for this dispatch
             to_remove = [
                 lid for lid, l in self.lease_mgr.active_leases.items()
                 if l.dispatch_id == dispatch_id
@@ -681,3 +934,14 @@ def validate_task_traceability_and_readiness(
                 )
 
     return errors
+
+
+def check_harness_tool_compatibility(tool_name: str, requested_tool: str) -> None:
+    """Validate tool execution compatibility. Detects namespaced tool collapse
+    such as functions.exec collapsing to functions under certain CLI harnesses.
+    """
+    if "." in requested_tool and "." not in tool_name:
+        raise HarnessCompatibilityError(
+            f"Harness namespaced tool collapse detected: requested {requested_tool!r} collapsed to {tool_name!r}. "
+            "Route success does not imply executable harness. STOP condition triggered: fallback to verified native harness required."
+        )

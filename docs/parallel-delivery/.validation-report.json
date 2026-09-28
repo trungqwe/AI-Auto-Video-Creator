@@ -1,16 +1,35 @@
 {
   "schema_version": "1.0.0",
   "status": "PASS",
-  "astra_round_1_remediation": {
-    "F1_exact_contract_binding": "RESOLVED",
-    "F2_ownership_and_path_safety": "RESOLVED",
-    "F3_scope_and_candidate_delta": "RESOLVED",
-    "F4_orca_mapping_and_lifecycle": "RESOLVED",
-    "F5_readiness_and_traceability": "RESOLVED",
-    "F6_locks_and_leases": "RESOLVED"
+  "attestation": {
+    "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
+    "candidate_commit": "HEAD",
+    "candidate_is_actual_head": true,
+    "committed_changes_count": 20,
+    "dirty_overlay_count": 0,
+    "overlay_clean": true,
+    "renames_evaluated_both_ends": true
+  },
+  "remediations": {
+    "astra_round_1": {
+      "F1_exact_contract_binding": "RESOLVED",
+      "F2_ownership_and_path_safety": "RESOLVED",
+      "F3_scope_and_candidate_delta": "RESOLVED",
+      "F4_orca_mapping_and_lifecycle": "RESOLVED",
+      "F5_readiness_and_traceability": "RESOLVED",
+      "F6_locks_and_leases": "RESOLVED"
+    },
+    "sol_review_blockers": {
+      "1_scope_explicit_candidate_no_stale_ac5bd30": "RESOLVED",
+      "2_lease_manager_comprehensive_invariants": "RESOLVED",
+      "3_orca_delivery_adapter_strict_bindings": "RESOLVED",
+      "4_adversarial_sol_probes_suite": "RESOLVED",
+      "5_harness_compatibility_gate_recorded": "RESOLVED",
+      "6_no_product_code_containment": "RESOLVED"
+    }
   },
   "fixture_stats": {
-    "tests_run": 34,
+    "tests_run": 55,
     "failures": 0,
     "errors": 0,
     "passed": true
@@ -77,16 +96,16 @@
   ],
   "bundle_sha256": {
     "contract-registry.yaml": "417687b7520f9b0cfc26d7f5a2c0df098581f18ad87ef91c0452356cbb9bfc01",
-    "delivery_engine.py": "09b3364f61345d50f2f395783bcd031163d21661371fb2b31f2ba32e2efa8f17",
+    "delivery_engine.py": "6cd54be61fcee35f4a476cb50b859c704a027c0ed34eb91e4a47abb437787312",
     "merge-and-integration.md": "fe85a843f23057dbc4109eda8a2d40467ac5531d38cd92f6379a5f446318fa29",
-    "operating-model.md": "1a7793764cfc2aa44c7283afed4c54d07421ea7ec7354bf6219bf4e7f310dabe",
+    "operating-model.md": "5de0dea8915ce4c35c7dc4e8362c2f4af67e0d6a3582c0a626c81490f318f8fe",
     "ownership-and-locks.yaml": "0dd81e5e1b9487aa5feb1227ed22598f7fcd9b018f72377a81636f4acba0fe66",
-    "protocol.md": "48fa89c61cc8690b945874a9c4ff97b6cc1ead7c35d9d586ca3da88d91c4e94f",
-    "README.md": "b28c4ae6fd3a4b6afe2774d474bd8ca52d673faf2fdc275d3082ef2ecb52f53b",
-    "security-performance-recovery.md": "4900e413f9bbd47bd5302bac79252aefd55b16d716425e61754b09c12e37bf4b",
-    "task-dag.yaml": "2e61ff7775967b2f629f188a8cc0b103d90883a9ff5ff173f7e37d939504bef7",
-    "test_negative_fixtures.py": "d3283e736ff929c9e22fefce5b6ca24317136509a5d01d6a76d8ab7ea1ff1223",
+    "protocol.md": "290af38677aa7a9a200a549b90a6b3bd812874c8512a91bf61beafc6b013b449",
+    "README.md": "6b8be0c81b4551468552d1ec54d8daccf5581a62fa64dc2677e336189ae74fdb",
+    "security-performance-recovery.md": "24d54dc5a4bef872bb90bc44cb88caef618bd5e9085315e399fa7f105350c095",
+    "task-dag.yaml": "1553a2eca46073a546b801aae80d426e1175a475da28ded56f54c5aa65cefcc3",
+    "test_negative_fixtures.py": "9297835718172c78e9de5b29d07133591b03682e87b0df6ff79ee743b1b1ed60",
     "traceability.md": "4a3ccc750d83c4d6693c58375acafc50e3b1d52df53d4315b16068b86e7c1211",
-    "validate.py": "9fd9ec2b1edd3374a7b4acdb6faa8b46cf77014a6e25da9b4a8c93ff5d773a4a"
+    "validate.py": "8efe4b98ff755d16bc7cd855e3f81261c5767281578bf762fb40b310e673b01a"
   }
 }

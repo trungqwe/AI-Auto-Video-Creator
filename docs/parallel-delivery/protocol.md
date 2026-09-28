@@ -104,6 +104,13 @@ Trước dispatch, Control ghi execution envelope:
 
 Worker ACK đúng một lần, nêu exact `task_id`, `dispatch_id`, baseline và owned path digest. ACK không khớp làm dispatch `NO_ACK`; không cho worker sửa file.
 
+### Kiểm tra khói tương thích Harness (Tool-Execution Smoke Test)
+
+Trước khi tiến hành sửa đổi hoặc mutation dưới lease được cấp, worker hoặc harness thực thi bắt buộc phải vượt qua bài kiểm tra khói thực thi công cụ:
+- Xác nhận harness gọi đúng tên công cụ đầy đủ, không làm sụp tên công cụ có namespace (`functions.exec` -> `functions`). Hiện tượng này đã được quan sát thực tế trên Codex CLI kết hợp `ag/gemini-3.8-flash-high` trong khi Antigravity native với effective model `ag/gemini-3.8-flash-high` thực thi thành công.
+- Nếu smoke test thất bại: kích hoạt điều kiện `STOP` / `blocked_harness`, giải phóng lease, và fallback an toàn sang harness tương thích đã kiểm chứng (Antigravity native); không giả định route thành công là harness có thể thực thi.
+- Không xem lỗi này là vĩnh viễn đối với Codex CLI; đây là một cổng kiểm tra động tại runtime (dynamic compatibility gate).
+
 ## 4. Heartbeat, check và status
 
 ### Heartbeat
@@ -222,3 +229,4 @@ Finding trong contract đi một remediation pass bởi original implementer v�
 - Không review cùng working tree khi worker đang mutation.
 - Không merge nếu candidate SHA khác SHA được review.
 - Không chuyển task future/locked thành ready chỉ bằng message.
+- Route success không thay thế khả năng thực thi thực tế; bắt buộc vượt qua tool-execution smoke test trước mutation.
