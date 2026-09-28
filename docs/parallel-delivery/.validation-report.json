@@ -3,10 +3,10 @@
   "status": "PASS",
   "attestation": {
     "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
-    "candidate_commit": "df24a327317230d3b3b8d771133eb3b06dc57f09",
+    "candidate_commit": "ba700415e0096428427859ca882623357cbb1571",
     "candidate_is_actual_head": true,
     "committed_changes_count": 20,
-    "dirty_overlay_count": 6,
+    "dirty_overlay_count": 11,
     "overlay_clean": false,
     "renames_evaluated_both_ends": true,
     "semantics": "Committed attestation generated via explicit --generate-report flag with immutable base and candidate SHAs matching actual HEAD. In Git DAG topology, an artifact inside a commit tree cannot self-reference its own commit hash without circularity; candidate_commit identifies the verified candidate commit/tree baseline against approved base_commit, and bundle_sha256 attests to exact SHA-256 hashes of all bundle artifacts excluding this report."
@@ -36,10 +36,21 @@
       "5_lock_schema_rejects_unknown_fields_illegal_combinations_duration_broadening": "RESOLVED",
       "6_strict_harness_execution_results_and_observable_state_machine": "RESOLVED",
       "7_durable_tests_for_round_3_counterexamples": "RESOLVED"
+    },
+    "sol_round_4": {
+      "1_per_live_allocation_fencing_for_capacity_leases": "RESOLVED",
+      "2_global_non_reuse_orca_task_and_dispatch_ids_settled_included": "RESOLVED",
+      "3_reject_duplicate_dispatch_binding_overwrite": "RESOLVED",
+      "4_require_actual_head_and_exact_candidate_binding": "RESOLVED",
+      "5_require_intended_dispatch_binding_unconditionally": "RESOLVED",
+      "6_enforce_internal_legal_task_state_transitions": "RESOLVED",
+      "7_release_all_mutation_leases_after_worker_done_success": "RESOLVED",
+      "8_reject_undeclared_locks_and_enforce_declared_duration_bounds": "RESOLVED",
+      "9_validate_harness_execution_result_and_state_machine_transitions": "RESOLVED"
     }
   },
   "fixture_stats": {
-    "tests_run": 103,
+    "tests_run": 117,
     "failures": 0,
     "errors": 0,
     "passed": true
@@ -106,16 +117,16 @@
   ],
   "bundle_sha256": {
     "contract-registry.yaml": "417687b7520f9b0cfc26d7f5a2c0df098581f18ad87ef91c0452356cbb9bfc01",
-    "delivery_engine.py": "5c669b614cd6adfc4791577b765e463cf6647c85deadf5665d15339c030b0649",
+    "delivery_engine.py": "40f4b03f32138333459ffc14f712fd1e22a9ed880f61058b2bc0d971e0284ef0",
     "merge-and-integration.md": "fe85a843f23057dbc4109eda8a2d40467ac5531d38cd92f6379a5f446318fa29",
-    "operating-model.md": "5de0dea8915ce4c35c7dc4e8362c2f4af67e0d6a3582c0a626c81490f318f8fe",
-    "ownership-and-locks.yaml": "2aab02b151083810416c364090db53a14e4b7951cafaeedbbaab4a0c9da619f0",
-    "protocol.md": "290af38677aa7a9a200a549b90a6b3bd812874c8512a91bf61beafc6b013b449",
-    "README.md": "838421acf006340ebdeb607274fd5d6dc34ec34eb6127b83f0c53067f53b37cf",
-    "security-performance-recovery.md": "24d54dc5a4bef872bb90bc44cb88caef618bd5e9085315e399fa7f105350c095",
+    "operating-model.md": "f1ea08c2c684114ede10f82fdde3f477dc7254f04a229c5b1a9bc3268f5550cf",
+    "ownership-and-locks.yaml": "ca060cf8603f0d98370260dadc088d22e63850b7ae324280c2262008b14760c2",
+    "protocol.md": "3429f26966776540c5d0559cbdcb644dde233b8c8cf78e1b40c162b2ddf32033",
+    "README.md": "23196c8b8eea89ca206cd5272247ed0a11159669c2d2c36beb04a7b5b73066d4",
+    "security-performance-recovery.md": "3508b41c995bf3b0d964ddab28da4ce5ad79ae33e1d14c5aa8b7f335ce7066f1",
     "task-dag.yaml": "9dbdaca04f8c186f2ff333a981605d6b4a45332dee487dd8d0fdf987fc605cb3",
-    "test_negative_fixtures.py": "b5993c3f7438511712274e187905c16f0a0592d65bcb85dc3e0d0c634f197eba",
-    "traceability.md": "4a3ccc750d83c4d6693c58375acafc50e3b1d52df53d4315b16068b86e7c1211",
-    "validate.py": "b40ec68b6a17dd61a54c578715f01088cbacf97f1bbf4687679ad2441f9dc599"
+    "test_negative_fixtures.py": "6825074e70bce83de9a43ebe11650fb1b52f1c5d03f2f51077632e803b909c03",
+    "traceability.md": "69caff38f6fe526253071bf8fe3c27d7a7064f4af771a8e88eeddc86ee5632cc",
+    "validate.py": "97096df2ad1a2eb8d3e7382a0eea50272f3db2ccb3d9fa0293ebc0428b0eaa77"
   }
 }

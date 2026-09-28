@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-28 — Khắc phục toàn bộ phát hiện Sol review vòng 4 (P1 Remediations & Counterexamples)
+
+- Khắc phục toàn diện 9 phát hiện từ `cx/gpt-5.6-sol-high` round 4 review cho bundle `docs/parallel-delivery/`:
+  - **(1) Per-Live-Allocation Fencing Cho Capacity Leases**: Phân bổ từng slot độc lập (`LOCK:slot_N`) với bộ đếm monotonic fencing token riêng cho các lock có `mode == "capacity"`, đảm bảo các worker đồng thời giữ token hợp lệ song song, và khi slot được thu hồi/cấp phát lại sẽ tự động vô hiệu hóa token cũ của worker trước.
+  - **(2) Global Non-Reuse Của Orca Task ID và Dispatch ID**: Ngăn chặn tuyệt đối việc tái sử dụng `orca_task_id` và `dispatch_id` trên toàn hệ thống kể cả các attempt đã hoàn tất (`settled`).
+  - **(3) Chặn Ghi Đè Dispatch Binding (Reject Duplicate Dispatch Binding Overwrite)**: Phát hiện và từ chối hành vi ghi đè lên dispatch binding đã tồn tại trong `dispatch_bindings`.
+  - **(4) Ràng Buộc Candidate Commit Khớp Exact Git HEAD**: Bắt buộc candidate commit và approved candidate commit phải tồn tại trong Git DAG và khớp chính xác với `git rev-parse HEAD`.
+  - **(5) Khớp Intended Dispatch Vô Điều Kiện**: Bắt buộc lease liên kết phải khớp chính xác với `intended_dispatch_id` khi được truyền; loại bỏ hoàn toàn khả năng bypass qua `ctx_init`.
+  - **(6) Thực Thi Ma Trận Chuyển Đổi Trạng Thái Tác Vụ Nội Bộ (Legal Task-State Transitions)**: Xác lập bảng ma trận chuyển đổi hợp lệ `LEGAL_TASK_STATE_TRANSITIONS`, ngăn chặn mọi bước nhảy trạng thái trái phép.
+  - **(7) Giải Phóng Toàn Bộ Mutation Lease Ngay Sau Worker Done Thành Công**: Đóng ngay lập tức toàn bộ mutation lease đang hoạt động khi `worker_done(succeeded)` được xác thực, chuyển tác vụ sang `review` và giữ candidate ở trạng thái read-only.
+  - **(8) Từ Chối Lock Không Khai Báo và Chống Nới Rộng Thời Hạn Lease**: Thẩm định lock ID có mặt trong registry tại `acquire_lease`, `create_dispatch` và toàn bộ DAG qua `validate.py:check_task_dag`; cấm nới rộng thời hạn `lease_seconds` vượt quá định nghĩa schema.
+  - **(9) Chuẩn Hóa Đối Số HarnessExecutionResult và Quan Sát Chu Trình State Machine**: Dataclass `HarnessExecutionResult` kiểm tra kiểu dữ liệu nghiêm ngặt; `HarnessExecutionStateMachine` tuân thủ chu trình `IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_FALLBACK`.
+  - **(10) Fixture Suite Tự Động 117/117 PASS**: Tích hợp 14 ca kiểm thử mới trong `TestSolRoundFourCounterexamples` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 117/117 passed.
+
 ## 2026-09-28 — Khắc phục toàn bộ phát hiện Sol review vòng 3 (P1 Remediations)
 
 - Khắc phục toàn diện các phát hiện Sol review vòng 3 cho bundle `docs/parallel-delivery/`:

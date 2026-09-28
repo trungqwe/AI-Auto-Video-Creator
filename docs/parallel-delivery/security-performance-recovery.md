@@ -9,7 +9,9 @@ Mọi task fail closed và chỉ có quyền tối thiểu theo execution envelo
 - Worktree, branch, path allowlist và resource lease cô lập task.
 - An toàn đường dẫn: Đường dẫn trong `owned_paths`, `forbidden_paths` và lease bắt buộc là đường dẫn tương đối chuẩn tắc từ gốc repository. Nghiêm cấm đường dẫn tuyệt đối, path traversal (`..`), alias chuẩn tắc (`./`, `//`, `\`); vi phạm bị từ chối fail-closed.
 - Bất biến evidence lịch sử: Tệp trong `docs/milestones/**/evidence/**` là bất biến, không thể xin mutation lease; mọi sai lệch hash đều chặn merge.
-- Fencing token và hết hạn lease: Mọi lease cấp phát mang fencing token tăng đơn điệu; kết quả mang token cũ hoặc sau khi lease hết hạn bị chặn fail-closed.
+- Fencing token và hết hạn lease: Mọi lease cấp phát mang fencing token tăng đơn điệu; lock dạng capacity được phân tách theo từng live allocation slot độc lập (`LOCK_ID:slot_N`) để cô lập token giữa các worker đồng thời; kết quả mang token cũ hoặc sau khi lease hết hạn bị chặn fail-closed.
+- Đóng toàn bộ mutation lease sau `worker_done`: Khi worker hoàn tất thành công (`succeeded`), toàn bộ lease ghi/mutation bị đóng lập tức; reviewer kiểm tra candidate ở trạng thái read-only.
+- Bất biến định danh Orca và Dispatch: Cấm tái sử dụng Orca task ID hoặc dispatch ID trên toàn hệ thống; cấm ghi đè dispatch binding.
 - Browser/desktop/API giữ Host, Origin, CSRF và local HTTPS boundary theo contract hiện hành.
 - URL/path từ nguồn ngoài được xem là dữ liệu không tin cậy; chống SSRF, redirect abuse, path traversal và shell injection.
 - Nội dung web, metadata, OCR, prompt hoặc artifact không bao giờ là instruction hệ thống hay authority.
@@ -124,6 +126,8 @@ Retry không thay failure handling.
 | Contract đổi giữa task | Mark dependent `needs_replan`, issue exact revision mới |
 | Security incident | Stop descendants, preserve redacted forensic refs, rotate/contain bởi owner có quyền |
 | Harness tool namespace collapse | Kích hoạt STOP condition, đánh dấu `blocked_harness`, trả lease, fallback an toàn sang Antigravity native |
+| Duplicate dispatch / ID reuse | Fail-closed, từ chối ghi đè binding, bắt buộc cấp fresh dispatch ID và Orca task ID mới |
+| Capacity slot stale token | Bị fence bởi bộ đếm monotonic slot độc lập, thu hồi slot và cấp token mới |
 
 ## 7. Backup và rollback
 

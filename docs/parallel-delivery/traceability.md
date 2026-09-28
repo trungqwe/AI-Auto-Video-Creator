@@ -85,7 +85,10 @@ Validator phải từ chối:
 - evidence output trùng task khác;
 - gate PASS không có instrument đúng loại;
 - external gate dùng mock;
-- accepted evidence bị đổi hash hoặc xin mutation lease.
+- accepted evidence bị đổi hash hoặc xin mutation lease;
+- lock yêu cầu trong `resource_locks` không được khai báo trong lock registry;
+- nỗ lực tái sử dụng Orca task ID hoặc dispatch ID đã dùng;
+- chuyển trạng thái tác vụ vi phạm ma trận chuyển đổi hợp lệ.
 
 ## 5. Open thresholds giữ nguyên
 

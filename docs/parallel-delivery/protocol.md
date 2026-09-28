@@ -194,7 +194,7 @@ orca orchestration send --from <worker_terminal> --dispatch-capability <dcap> --
 1. **`worker_done` chỉ settle execution attempt (dispatch)**: Nó ghi nhận phiên làm việc của worker kết thúc. Nó KHÔNG tự động chuyển trạng thái delivery task sang `integrated`.
 2. **Chuyển đổi thành công (`--outcome succeeded`)**:
    - `OrcaDeliveryAdapter` kiểm tra execution envelope, candidate commit SHA, committed diff + dirty overlay scope, và evidence.
-   - Nếu hợp lệ, delivery task chuyển sang `review` (chưa phải `integrated`).
+   - Nếu hợp lệ, `OrcaDeliveryAdapter` lập tức giải phóng toàn bộ active mutation lease của dispatch đó (đảm bảo nguyên tắc Section 6: khi chờ review, implementer không giữ mutation lease), sau đó chuyển delivery task sang `review` (chưa phải `integrated`).
    - Sau khi reviewer độc lập xác nhận `ACCEPT`, task chuyển sang `merge_queued`.
    - Sau khi các integration gate tuần tự PASS trên exact candidate HEAD, task mới trở thành `integrated`.
 3. **Chuyển đổi thất bại hoặc blocker (`--outcome failed`)**:
@@ -208,6 +208,22 @@ orca orchestration send --from <worker_terminal> --dispatch-capability <dcap> --
    - Một dispatch đã settled chỉ nhận đúng một lần `worker_done`.
    - Kết quả gửi lại từ dispatch cũ, hoặc mang fencing token cũ hơn token hiện hành, bị từ chối fail-closed.
    - Dedupe key là `(run_id, delivery_task_id, dispatch_id, type=worker_done)`.
+6. **Không tái sử dụng Orca task ID và dispatch ID trên toàn hệ thống (Global Non-Reuse)**:
+   - Orca task ID và dispatch ID là duy nhất trên toàn bộ vòng đời hệ thống, bao gồm cả các attempt đã hoàn tất (`settled`).
+   - Nghiêm cấm ghi đè dispatch binding (`Duplicate dispatch binding overwrite`) hoặc tái sử dụng ID giữa các lần dispatch.
+7. **Ràng buộc Candidate Commit với actual HEAD Git**:
+   - Khởi tạo dispatch bắt buộc đối chiếu `candidate_commit` và `approved_candidate_commit` với commit `HEAD` thực tế trong Git DAG (`git rev-parse HEAD`). Sai lệch commit bị từ chối fail-closed.
+8. **Ràng buộc Intended Dispatch vô điều kiện**:
+   - Khi dispatch chỉ định `intended_dispatch_id`, lease liên kết bắt buộc phải khớp chính xác với `intended_dispatch_id` đó. Mọi nỗ lực bypass (như `ctx_init`) bị cấm triệt để.
+9. **Fencing theo từng Live Allocation Slot cho Capacity Lock**:
+   - Lock dạng `capacity` phân bổ vị trí theo từng slot riêng biệt (`LOCK_ID:slot_N`).
+   - Mỗi slot có bộ đếm monotonic fencing token độc lập. Các holder song song giữ token hợp lệ đồng thời mà không xung đột; khi slot được thu hồi và tái cấp phát, bộ đếm slot tăng lên ngăn chặn worker cũ gửi kết quả quá hạn.
+10. **Chống nới rộng thời hạn và từ chối lock không khai báo**:
+    - Không được vượt quá thời hạn `lease_seconds` đã công bố trong cấu hình lock tại thời điểm chiếm giữ hoặc gia hạn.
+    - Mọi lock chưa khai báo trong registry đều bị từ chối tại `acquire_lease`, `create_dispatch` và toàn bộ DAG.
+11. **Máy trạng thái thực thi Harness quan sát được**:
+    - Harness tuân thủ chu trình: `IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_FALLBACK`.
+    - Đối số trong `HarnessExecutionResult` được thẩm định kiểu dữ liệu nghiêm ngặt (`success: bool`, `execution_time_ms >= 0`, `status: PASS|STOP`).
 
 ## 8. Review/remediation protocol
 
@@ -225,6 +241,11 @@ Finding trong contract đi một remediation pass bởi original implementer v�
 - Một task không có hai state terminal.
 - Sequence tăng đơn điệu theo dispatch.
 - Old lease/recovery epoch/fencing token không mutation.
+- Toàn bộ mutation lease phải được đóng ngay khi worker_done thành công, trước khi vào review.
+- Không tái sử dụng Orca task ID hoặc dispatch ID trên toàn hệ thống (kể cả settled attempts).
+- Candidate commit bắt buộc khớp tuyệt đối với HEAD hiện hành của repository Git.
+- Không nới rộng thời hạn lease vượt quá định nghĩa đã khai báo.
+- Không cho phép lock không khai báo trong lock registry hoặc task DAG.
 - Không heartbeat sau `worker_done`.
 - Không review cùng working tree khi worker đang mutation.
 - Không merge nếu candidate SHA khác SHA được review.

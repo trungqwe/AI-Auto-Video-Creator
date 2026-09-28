@@ -152,6 +152,8 @@ def check_task_dag(
     known = set(ids)
     edges: dict[str, list[str]] = defaultdict(list)
 
+    lock_set = {item.get("id") for item in ownership.get("locks", [])}
+
     for task in tasks:
         task_id = task.get("id")
         missing = REQUIRED_TASK_FIELDS - set(task)
@@ -178,8 +180,10 @@ def check_task_dag(
         for err in intersection_errs:
             errors.append(f"{task_id}: {err}")
 
-        # F2: Check immutable evidence lease rejection
+        # F2: Check undeclared locks and immutable evidence lease rejection
         for lk in task.get("resource_locks", []):
+            if lk not in lock_set:
+                errors.append(f"{task_id}: unknown resource lock {lk}")
             if lk == "LOCK-ACCEPTED-EVIDENCE":
                 errors.append(f"{task_id}: cannot request mutation lease on LOCK-ACCEPTED-EVIDENCE")
         for op in task.get("owned_paths", []):
@@ -744,6 +748,17 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "5_lock_schema_rejects_unknown_fields_illegal_combinations_duration_broadening": "RESOLVED",
                     "6_strict_harness_execution_results_and_observable_state_machine": "RESOLVED",
                     "7_durable_tests_for_round_3_counterexamples": "RESOLVED",
+                },
+                "sol_round_4": {
+                    "1_per_live_allocation_fencing_for_capacity_leases": "RESOLVED",
+                    "2_global_non_reuse_orca_task_and_dispatch_ids_settled_included": "RESOLVED",
+                    "3_reject_duplicate_dispatch_binding_overwrite": "RESOLVED",
+                    "4_require_actual_head_and_exact_candidate_binding": "RESOLVED",
+                    "5_require_intended_dispatch_binding_unconditionally": "RESOLVED",
+                    "6_enforce_internal_legal_task_state_transitions": "RESOLVED",
+                    "7_release_all_mutation_leases_after_worker_done_success": "RESOLVED",
+                    "8_reject_undeclared_locks_and_enforce_declared_duration_bounds": "RESOLVED",
+                    "9_validate_harness_execution_result_and_state_machine_transitions": "RESOLVED",
                 },
             },
             "fixture_stats": fixture_stats,

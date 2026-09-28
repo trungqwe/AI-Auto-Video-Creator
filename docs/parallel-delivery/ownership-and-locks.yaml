@@ -274,10 +274,15 @@ active_lease_schema:
     dispatch_id: string_orca_dispatch_id
     acquired_at: timestamp_rfc3339
     expires_at: timestamp_rfc3339
+    allocation_slot: integer_optional_slot_for_capacity_locks
   rules:
     - declaration_in_dag_does_not_hold_resources
     - integrated_or_closed_tasks_hold_zero_active_leases
     - only_active_unexpired_leases_block_conflicting_acquisitions
+    - capacity_leases_allocate_isolated_slots_with_per_live_allocation_fencing_tokens
+    - declared_lease_duration_cannot_be_broadened_at_acquisition_or_renewal
+    - all_mutation_leases_released_immediately_upon_verified_worker_done_succeeded
+    - undeclared_locks_strictly_rejected_at_acquire_dispatch_and_dag
 
 lease_protocol:
   acquisition:
@@ -306,6 +311,10 @@ lease_protocol:
     - lease_reuse_by_replacement_worker
     - accepting_result_after_expiry
     - hidden_path_expansion
+    - global_reuse_of_orca_task_ids_or_dispatch_ids_including_settled_runs
+    - broadening_declared_lease_duration
+    - mutation_lease_retention_during_review
+    - duplicate_dispatch_binding_overwrite
 
 conflict_policy:
   deterministic_order:

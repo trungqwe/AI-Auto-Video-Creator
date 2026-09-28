@@ -100,7 +100,8 @@ eligible(task) =
   and all(required predecessors are accepted or integrated)
   and all(required contracts are frozen at exact revision and bound to defining source)
   and no active path/aggregate/evidence conflict
-  and all requested locks can be acquired atomically as active leases
+  and all requested locks are declared in ownership registry and can be acquired atomically
+  and candidate commit matches exact current git HEAD
   and runtime prerequisites are observed available
   and every deterministic acceptance row has a reviewed oracle
   and task.acceptance has no empty, missing or 'unknown' red_observation
@@ -130,6 +131,10 @@ Dừng task và mọi descendant chưa dispatch khi:
 - contract/requirement mâu thuẫn;
 - cần sửa ngoài owned scope;
 - lock/lease mất hiệu lực hoặc fencing token cũ;
+- phát hiện lock không khai báo trong lock registry hoặc task DAG;
+- nỗ lực tái sử dụng Orca task ID hoặc dispatch ID đã tồn tại/settled;
+- nới rộng thời hạn lease vượt quá giới hạn đã khai báo;
+- candidate commit không khớp với commit HEAD thực tế;
 - runtime bắt buộc không khả dụng;
 - external outcome không xác định;
 - RED không phân biệt đúng lỗi;
