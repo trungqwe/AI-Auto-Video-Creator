@@ -3,13 +3,15 @@
   "status": "PASS",
   "attestation": {
     "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
-    "candidate_commit": "6f6bb41a132486dd880397b95df94ed670f31f96",
+    "candidate_commit": "d0e1dd85776f4e970f9dce64776ccf3fcea6538c",
+    "parent_commit": "e13c960e71888b9a602117538756a5d02d97e6e9",
+    "wrapper_commit": "d0e1dd85776f4e970f9dce64776ccf3fcea6538c",
     "candidate_is_actual_head": true,
     "committed_changes_count": 20,
-    "dirty_overlay_count": 8,
-    "overlay_clean": false,
+    "dirty_overlay_count": 0,
+    "overlay_clean": true,
     "renames_evaluated_both_ends": true,
-    "semantics": "Committed attestation generated via explicit --generate-report flag with immutable base and candidate SHAs matching actual HEAD. In Git DAG topology, an artifact inside a commit tree cannot self-reference its own commit hash without circularity; candidate_commit identifies the verified candidate commit/tree baseline against approved base_commit, and bundle_sha256 attests to exact SHA-256 hashes of all bundle artifacts excluding this report."
+    "semantics": "Committed attestation generated via explicit --generate-report flag under documented parent-plus-wrapper semantics. In Git DAG topology, an artifact inside a commit tree cannot self-reference its own commit hash without circularity; candidate_commit identifies the verified candidate commit/tree baseline against approved base_commit, wrapper_commit identifies the containing HEAD wrapper commit, and bundle_sha256 attests to exact SHA-256 hashes of all bundle artifacts excluding this report."
   },
   "remediations": {
     "astra_round_1": {
@@ -61,10 +63,19 @@
       "10_worker_done_releases_leases_before_review_state": "RESOLVED",
       "11_harness_contradiction_rejection_and_state_machine_safety": "RESOLVED",
       "12_blank_identities_and_integrated_reacquisition_fail_closed": "RESOLVED"
+    },
+    "sol_round_6": {
+      "1_process_durable_shared_execution_registry": "RESOLVED",
+      "2_multi_slot_capacity_fencing_and_asymmetric_reuse": "RESOLVED",
+      "3_mandatory_ready_dispatched_acknowledged_running_worker_done": "RESOLVED",
+      "4_mandatory_declared_task_locks_and_exact_lock_set": "RESOLVED",
+      "5_forbid_direct_harness_state_assignment": "RESOLVED",
+      "6_broadened_secret_scan_anthropic_and_common_providers": "RESOLVED",
+      "7_exact_head_attestation_parent_plus_wrapper_semantics": "RESOLVED"
     }
   },
   "fixture_stats": {
-    "tests_run": 143,
+    "tests_run": 153,
     "failures": 0,
     "errors": 0,
     "passed": true
@@ -135,16 +146,16 @@
   ],
   "bundle_sha256": {
     "contract-registry.yaml": "417687b7520f9b0cfc26d7f5a2c0df098581f18ad87ef91c0452356cbb9bfc01",
-    "delivery_engine.py": "b9806d9438c2c74ceb9b3bdaadf05b723eadb58b68188f4eed159b91d94a5df1",
+    "delivery_engine.py": "140d2c91650e9e7d64d9dd62a8dd2c6dd5ff7f3757689511fca55f77966c43f2",
     "merge-and-integration.md": "fe85a843f23057dbc4109eda8a2d40467ac5531d38cd92f6379a5f446318fa29",
-    "operating-model.md": "c497989da8dcbdc096442dac48bc32eaf93d37a7c57aa385aa5d690d1861887b",
+    "operating-model.md": "0e414698e064d43ee434f223cd7125834e2b8757f02732f7be12be4a9a0b0232",
     "ownership-and-locks.yaml": "ca060cf8603f0d98370260dadc088d22e63850b7ae324280c2262008b14760c2",
-    "protocol.md": "d758526708a9e1d6db09017151ebe9a7f61b5879f0dfa2aeb02b39a0924897d4",
-    "README.md": "f6b162d25b5390535528b2fde1fef327e8033670a593dd9b981192800c8b450c",
+    "protocol.md": "45176498abb69a94a8a8720ec5983ab07cc0bf27b30121c378ac930837465f92",
+    "README.md": "938572435c19dcb6180dd8fd168df0d990436b39f26043a8767d6f29494f06eb",
     "security-performance-recovery.md": "3508b41c995bf3b0d964ddab28da4ce5ad79ae33e1d14c5aa8b7f335ce7066f1",
     "task-dag.yaml": "9dbdaca04f8c186f2ff333a981605d6b4a45332dee487dd8d0fdf987fc605cb3",
-    "test_negative_fixtures.py": "8093d7b6db61ca7abee09ff2bc52c9699bcb0a553649eddd660db6bad5e8e8df",
+    "test_negative_fixtures.py": "1bd18710a35da434018dbda22ac1a747af3c7c04d3ea35ce87ba8f6fd3cc1550",
     "traceability.md": "69caff38f6fe526253071bf8fe3c27d7a7064f4af771a8e88eeddc86ee5632cc",
-    "validate.py": "fac7258fa4bf4301bd09f01f3fbf3749bcd0d34d3f6b18ac01e778b3a3578b00"
+    "validate.py": "b00152e7ce5d36f1745f6cf637799afda2f512bc6586cad221e5d973ffd598ef"
   }
 }
