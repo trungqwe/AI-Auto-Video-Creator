@@ -23,6 +23,7 @@ import threading
 import sys
 import time
 import uuid
+import weakref
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -1221,6 +1222,54 @@ class _TransitionAuthToken:
     def to_state(self) -> str:
         return self.new_state
 
+@dataclass(frozen=True)
+class ReviewerCapability:
+    capability_id: str
+    delivery_task_id: str
+    review_dispatch_id: str
+    candidate_commit: str
+    reviewer_route: str
+    reviewer_harness: str
+    authority_id: int
+    created_at: float
+    signature: str = ""
+
+    def __post_init__(self):
+        for field_name in (
+            "capability_id",
+            "delivery_task_id",
+            "review_dispatch_id",
+            "candidate_commit",
+            "reviewer_route",
+            "reviewer_harness",
+            "signature",
+        ):
+            val = getattr(self, field_name, None)
+            if not isinstance(val, str) or not val.strip() or val != val.strip():
+                raise ProtocolViolationError(f"ReviewerCapability field {field_name!r} must be non-empty unpadded string")
+
+
+@dataclass(frozen=True)
+class ControlCapability:
+    capability_id: str
+    role: str  # "Control"
+    delivery_task_id: Optional[str]
+    authority_id: int
+    created_at: float
+    signature: str = ""
+
+    def __post_init__(self):
+        if not isinstance(self.capability_id, str) or not self.capability_id.strip() or self.capability_id != self.capability_id.strip():
+            raise ProtocolViolationError("ControlCapability capability_id must be non-empty unpadded string")
+        if self.role != "Control":
+            raise ProtocolViolationError(f"ControlCapability role must be 'Control'; got {self.role!r}")
+        if self.delivery_task_id is not None:
+            if not isinstance(self.delivery_task_id, str) or not self.delivery_task_id.strip() or self.delivery_task_id != self.delivery_task_id.strip():
+                raise ProtocolViolationError("ControlCapability delivery_task_id must be non-empty unpadded string when provided")
+        if not isinstance(self.signature, str) or not self.signature.strip() or self.signature != self.signature.strip():
+            raise ProtocolViolationError("ControlCapability signature must be non-empty unpadded string")
+
+
 
 MANDATORY_INTEGRATION_GATES: Tuple[str, ...] = (
     "authority",
@@ -1245,12 +1294,141 @@ class EvidenceAuthority:
     MAX_EVIDENCE_AGE_SECONDS: float = 300.0  # 5 minutes freshness window
     MAX_FUTURE_SKEW_SECONDS: float = 10.0
 
-    def __init__(self, adapter: Optional[Any] = None) -> None:
+    def __init__(self, adapter: Optional[Any] = None, control_secret: Optional[str] = None) -> None:
         self._secret: bytes = secrets.token_bytes(32)
+        self._control_secret: bytes = control_secret.encode("utf-8") if control_secret else secrets.token_bytes(32)
         self._issued_evidence_ids: Set[str] = set()
         self._consumed_evidence_ids: Set[str] = set()
+        self._issued_capabilities: Set[str] = set()
+        self._consumed_capabilities: Set[str] = set()
+        self._internal_capabilities: Set[str] = set()
         self.adapter = adapter
         self._lock = threading.Lock()
+
+    def _sign_control_capability(self, cap_id: str, role: str, tid: str, created_at: float) -> str:
+        payload = f"CONTROL_CAPABILITY:{cap_id}:{tid}:{role}:{id(self)}:{created_at}".encode("utf-8")
+        return hmac.new(self._secret, payload, hashlib.sha256).hexdigest()
+
+    def _sign_reviewer_capability(
+        self, cap_id: str, tid: str, disp_id: str, commit: str, route: str, harness: str, created_at: float
+    ) -> str:
+        payload = f"REVIEWER_CAPABILITY:{cap_id}:{tid}:{disp_id}:{commit}:{route}:{harness}:{id(self)}:{created_at}".encode("utf-8")
+        return hmac.new(self._secret, payload, hashlib.sha256).hexdigest()
+
+    def _mint_internal_control_capability(self) -> ControlCapability:
+        cap_id = f"adapter_internal_ctrl_{uuid.uuid4().hex}"
+        created_at = time.time()
+        sig = self._sign_control_capability(cap_id, "Control", "*", created_at)
+        cap = ControlCapability(
+            capability_id=cap_id,
+            role="Control",
+            delivery_task_id=None,
+            authority_id=id(self),
+            created_at=created_at,
+            signature=sig,
+        )
+        with self._lock:
+            self._issued_capabilities.add(cap_id)
+            self._internal_capabilities.add(cap_id)
+        return cap
+
+    def _mint_reviewer_capability_internal(
+        self, delivery_task_id: str, review_dispatch_id: str, candidate_commit: str,
+        reviewer_route: str = "cx/gpt-5.6-sol", reviewer_harness: str = "Claude Code"
+    ) -> ReviewerCapability:
+        cap_id = f"rev_cap_{uuid.uuid4().hex}"
+        created_at = time.time()
+        sig = self._sign_reviewer_capability(
+            cap_id, delivery_task_id.strip(), review_dispatch_id.strip(),
+            candidate_commit.strip(), reviewer_route.strip(), reviewer_harness.strip(), created_at
+        )
+        cap = ReviewerCapability(
+            capability_id=cap_id,
+            delivery_task_id=delivery_task_id.strip(),
+            review_dispatch_id=review_dispatch_id.strip(),
+            candidate_commit=candidate_commit.strip(),
+            reviewer_route=reviewer_route.strip(),
+            reviewer_harness=reviewer_harness.strip(),
+            authority_id=id(self),
+            created_at=created_at,
+            signature=sig,
+        )
+        with self._lock:
+            self._issued_capabilities.add(cap_id)
+        return cap
+
+    def issue_control_capability(
+        self, control_secret: str, delivery_task_id: Optional[str] = None
+    ) -> ControlCapability:
+        if not control_secret or not isinstance(control_secret, str):
+            raise ProtocolViolationError("control_secret is required to issue ControlCapability")
+        if not hmac.compare_digest(control_secret.encode("utf-8"), self._control_secret):
+            raise ProtocolViolationError("Invalid control secret; cannot issue ControlCapability")
+
+        cap_id = f"ctrl_cap_{uuid.uuid4().hex}"
+        created_at = time.time()
+        tid = delivery_task_id.strip() if (delivery_task_id and isinstance(delivery_task_id, str)) else "*"
+        sig = self._sign_control_capability(cap_id, "Control", tid, created_at)
+        cap = ControlCapability(
+            capability_id=cap_id,
+            role="Control",
+            delivery_task_id=delivery_task_id.strip() if delivery_task_id else None,
+            authority_id=id(self),
+            created_at=created_at,
+            signature=sig,
+        )
+        with self._lock:
+            self._issued_capabilities.add(cap_id)
+        return cap
+
+    def issue_reviewer_capability(
+        self,
+        delivery_task_id: str,
+        review_dispatch_id: str,
+        candidate_commit: str,
+        reviewer_route: str = "cx/gpt-5.6-sol",
+        reviewer_harness: str = "Claude Code",
+        control_capability: Optional[ControlCapability] = None,
+        control_secret: Optional[str] = None,
+    ) -> ReviewerCapability:
+        if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
+            raise ProtocolViolationError("delivery_task_id cannot be blank")
+        if not review_dispatch_id or not isinstance(review_dispatch_id, str) or not review_dispatch_id.strip():
+            raise ProtocolViolationError("review_dispatch_id cannot be blank")
+        if not candidate_commit or not isinstance(candidate_commit, str) or not candidate_commit.strip():
+            raise ProtocolViolationError("candidate_commit cannot be blank")
+        if reviewer_route != "cx/gpt-5.6-sol":
+            raise ProtocolViolationError(f"Invalid reviewer route {reviewer_route!r}; expected 'cx/gpt-5.6-sol'")
+        if reviewer_harness != "Claude Code":
+            raise ProtocolViolationError(f"Invalid reviewer harness {reviewer_harness!r}; expected 'Claude Code'")
+
+        authenticated = False
+        if control_secret and isinstance(control_secret, str):
+            if hmac.compare_digest(control_secret.encode("utf-8"), self._control_secret):
+                authenticated = True
+        if not authenticated and control_capability is not None:
+            self.verify_capability(control_capability, expected_role="Control", expected_task_id=delivery_task_id.strip())
+            authenticated = True
+
+        if not authenticated:
+            raise ProtocolViolationError(
+                "Unauthorized: issuing ReviewerCapability requires authenticated Control authority (valid ControlCapability or control_secret)"
+            )
+
+        return self._mint_reviewer_capability_internal(
+            delivery_task_id=delivery_task_id,
+            review_dispatch_id=review_dispatch_id,
+            candidate_commit=candidate_commit,
+            reviewer_route=reviewer_route,
+            reviewer_harness=reviewer_harness,
+        )
+
+    def get_reviewer_capability(
+        self, review_dispatch_id: str, control_capability: Optional[ControlCapability] = None, control_secret: Optional[str] = None
+    ) -> ReviewerCapability:
+        if self.adapter is None:
+            raise ProtocolViolationError("No adapter attached to evidence authority")
+        return self.adapter.get_reviewer_capability(review_dispatch_id, control_capability=control_capability, control_secret=control_secret)
 
     def issue_review_evidence(
         self,
@@ -1262,7 +1440,25 @@ class EvidenceAuthority:
         reviewer_harness: str = "Claude Code",
         summary: str = "Independent review accepted on exact candidate HEAD",
         now: Optional[datetime] = None,
+        capability: Optional[Union[ReviewerCapability, ControlCapability]] = None,
+        reviewer_capability: Optional[ReviewerCapability] = None,
     ) -> ReviewEvidence:
+        effective_cap = reviewer_capability if reviewer_capability is not None else capability
+        if effective_cap is None:
+            raise ProtocolViolationError(
+                "Review evidence issuance requires an independently authenticated Reviewer or Control capability; "
+                "unprivileged callers cannot obtain authoritative review evidence"
+            )
+        self.verify_capability(
+            effective_cap,
+            expected_task_id=delivery_task_id.strip() if delivery_task_id else "",
+            expected_dispatch_id=review_dispatch_id.strip() if review_dispatch_id else "",
+            expected_commit=candidate_commit.strip() if candidate_commit else "",
+        )
+
+        with self._lock:
+            if effective_cap.capability_id not in self._internal_capabilities:
+                self._consumed_capabilities.add(effective_cap.capability_id)
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
             raise ProtocolViolationError("delivery_task_id cannot be blank")
         if not review_dispatch_id or not isinstance(review_dispatch_id, str) or not review_dispatch_id.strip():
@@ -1312,7 +1508,20 @@ class EvidenceAuthority:
         gate_results: Optional[Dict[str, bool]] = None,
         integrated_by: str = "Control",
         now: Optional[datetime] = None,
+        capability: Optional[ControlCapability] = None,
+        control_capability: Optional[ControlCapability] = None,
     ) -> IntegrationEvidence:
+        effective_cap = control_capability if control_capability is not None else capability
+        if effective_cap is None:
+            raise ProtocolViolationError(
+                "Integration evidence issuance requires an independently authenticated Control capability; "
+                "unprivileged callers cannot obtain authoritative integration evidence"
+            )
+        self.verify_capability(effective_cap, expected_role="Control", expected_task_id=delivery_task_id.strip() if delivery_task_id else "")
+
+        with self._lock:
+            if effective_cap.capability_id not in self._internal_capabilities:
+                self._consumed_capabilities.add(effective_cap.capability_id)
         if type(gates_pass) is not bool:
             raise ProtocolViolationError("gates_pass must be strict bool")
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
@@ -1358,6 +1567,71 @@ class EvidenceAuthority:
             evidence_id=ev_id,
             authority_id=id(self),
         )
+
+    def verify_capability(
+        self,
+        capability: Any,
+        expected_role: Optional[str] = None,
+        expected_task_id: Optional[str] = None,
+        expected_dispatch_id: Optional[str] = None,
+        expected_commit: Optional[str] = None,
+    ) -> None:
+        if capability is None:
+            raise ProtocolViolationError("Capability cannot be None")
+
+        if isinstance(capability, ControlCapability):
+            if expected_role is not None and expected_role != "Control":
+                raise ProtocolViolationError(f"Expected role {expected_role!r}, got ControlCapability")
+            with self._lock:
+                if capability.capability_id in self._consumed_capabilities:
+                    raise ProtocolViolationError(f"ControlCapability {capability.capability_id!r} has already been consumed")
+                if capability.capability_id not in self._issued_capabilities:
+                    raise ProtocolViolationError(f"ControlCapability {capability.capability_id!r} was not issued by internal evidence authority")
+            if capability.authority_id != id(self):
+                raise ProtocolViolationError("ControlCapability authority_id mismatch")
+            tid_for_sig = capability.delivery_task_id.strip() if capability.delivery_task_id else "*"
+            expected_sig = self._sign_control_capability(
+                capability.capability_id, capability.role, tid_for_sig, capability.created_at
+            )
+            if not hmac.compare_digest(capability.signature, expected_sig):
+                raise ProtocolViolationError("ControlCapability cryptographic signature mismatch; tampered or forged capability rejected")
+            if capability.delivery_task_id is not None and expected_task_id is not None and expected_task_id != "*":
+                if capability.delivery_task_id != expected_task_id:
+                    raise ProtocolViolationError(
+                        f"ControlCapability delivery_task_id mismatch: expected {expected_task_id!r}, got {capability.delivery_task_id!r}"
+                    )
+            return
+
+        elif isinstance(capability, ReviewerCapability):
+            if expected_role is not None and expected_role != "Reviewer":
+                raise ProtocolViolationError(f"Expected role {expected_role!r}, got ReviewerCapability")
+            with self._lock:
+                if capability.capability_id in self._consumed_capabilities:
+                    raise ProtocolViolationError(f"ReviewerCapability {capability.capability_id!r} has already been consumed")
+                if capability.capability_id not in self._issued_capabilities:
+                    raise ProtocolViolationError(f"ReviewerCapability {capability.capability_id!r} was not issued by internal evidence authority")
+            if capability.authority_id != id(self):
+                raise ProtocolViolationError("ReviewerCapability authority_id mismatch")
+            expected_sig = self._sign_reviewer_capability(
+                capability.capability_id,
+                capability.delivery_task_id,
+                capability.review_dispatch_id,
+                capability.candidate_commit,
+                capability.reviewer_route,
+                capability.reviewer_harness,
+                capability.created_at,
+            )
+            if not hmac.compare_digest(capability.signature, expected_sig):
+                raise ProtocolViolationError("ReviewerCapability cryptographic signature mismatch; tampered or forged capability rejected")
+            if expected_task_id is not None and capability.delivery_task_id != expected_task_id:
+                raise ProtocolViolationError(f"ReviewerCapability delivery_task_id mismatch: expected {expected_task_id!r}, got {capability.delivery_task_id!r}")
+            if expected_dispatch_id is not None and capability.review_dispatch_id != expected_dispatch_id:
+                raise ProtocolViolationError(f"ReviewerCapability review_dispatch_id mismatch: expected {expected_dispatch_id!r}, got {capability.review_dispatch_id!r}")
+            if expected_commit is not None and capability.candidate_commit.lower() != expected_commit.lower():
+                raise ProtocolViolationError(f"ReviewerCapability candidate_commit mismatch: expected {expected_commit!r}, got {capability.candidate_commit!r}")
+            return
+
+        raise ProtocolViolationError(f"Invalid capability type: expected ControlCapability or ReviewerCapability, got {type(capability).__name__}")
 
     def verify_and_consume_review_evidence(
         self,
@@ -1522,6 +1796,8 @@ def make_review_evidence(
     summary: str = "Independent review accepted on exact candidate HEAD",
     now: Optional[datetime] = None,
     authority: Optional[Any] = None,
+    capability: Optional[Any] = None,
+    reviewer_capability: Optional[Any] = None,
 ) -> ReviewEvidence:
     """Public review evidence factory. When called without an internal authority component,
     it produces unauthenticated evidence that cannot confer lifecycle transition authority."""
@@ -1537,6 +1813,8 @@ def make_review_evidence(
             reviewer_harness=reviewer_harness,
             summary=summary,
             now=now,
+            capability=capability,
+            reviewer_capability=reviewer_capability,
         )
     now_dt = now or datetime.now(timezone.utc)
     if now_dt.tzinfo is None:
@@ -1567,6 +1845,8 @@ def make_integration_evidence(
     integrated_by: str = "Control",
     now: Optional[datetime] = None,
     authority: Optional[Any] = None,
+    capability: Optional[Any] = None,
+    control_capability: Optional[Any] = None,
 ) -> IntegrationEvidence:
     """Public integration evidence factory. When called without an internal authority component,
     it produces unauthenticated evidence that cannot confer lifecycle transition authority."""
@@ -1581,6 +1861,8 @@ def make_integration_evidence(
             gate_results=gate_results,
             integrated_by=integrated_by,
             now=now,
+            capability=capability,
+            control_capability=control_capability,
         )
     if gate_results is None:
         gate_results = {
@@ -2243,8 +2525,8 @@ def validate_execution_envelope(
         )
 
     # 8. Usage evidence validation
-    allowed_u_providers = ("google", "9router/google") if clean_phase == "implement" else ("openai", "9router/openai")
-    allowed_u_models = ("ag/gemini-3.8-flash-high", "gemini-3.8-flash-high") if clean_phase == "implement" else ("cx/gpt-5.6-sol", "gpt-5.6-sol")
+    allowed_u_providers = ("google",) if clean_phase == "implement" else ("openai",)
+    allowed_u_models = ("ag/gemini-3.8-flash-high",) if clean_phase == "implement" else ("cx/gpt-5.6-sol",)
 
     if isinstance(usage_ev, UsageEvidence):
         _validate_unpadded_identity(usage_ev.backend_provider, "backend_provider", "9Router usage evidence", required=True, allowed_values=allowed_u_providers)
@@ -2361,26 +2643,24 @@ def validate_execution_envelope(
     clean_u_m = (u_m or "").strip()
 
     if clean_phase == "implement":
-        if clean_u_p not in ("google", "9router/google"):
+        if clean_u_p != "google":
             raise RoutingEvidenceError(
                 f"9Router usage backend_provider {u_p!r} invalid for phase 'implement'; expected 'google'"
             )
-        allowed_implement_backend_models = {"ag/gemini-3.8-flash-high", "gemini-3.8-flash-high"}
-        if clean_u_m not in allowed_implement_backend_models:
+        if clean_u_m != "ag/gemini-3.8-flash-high":
             raise RoutingEvidenceError(
                 f"9Router usage backend_model {u_m!r} does not match expected model {expected_model!r}; "
-                f"exact routed or canonical backend identity required, got {u_m!r}"
+                f"exact canonical backend identity required, got {u_m!r}"
             )
     elif clean_phase == "review":
-        if clean_u_p not in ("openai", "9router/openai"):
+        if clean_u_p != "openai":
             raise RoutingEvidenceError(
                 f"9Router usage backend_provider {u_p!r} invalid for phase 'review'; expected 'openai'"
             )
-        allowed_review_backend_models = {"cx/gpt-5.6-sol", "gpt-5.6-sol"}
-        if clean_u_m not in allowed_review_backend_models:
+        if clean_u_m != "cx/gpt-5.6-sol":
             raise RoutingEvidenceError(
                 f"9Router usage backend_model {u_m!r} does not match expected model {expected_model!r}; "
-                f"exact routed or canonical backend identity required, got {u_m!r}"
+                f"exact canonical backend identity required, got {u_m!r}"
             )
 
     clean_u_disp = (u_disp or "").strip() if isinstance(u_disp, str) else ""
@@ -2880,6 +3160,9 @@ class SharedOrcaExecutionRegistry:
                 self.dispatch_bindings[clean_id].settled = True
 
 
+_ADAPTER_INTERNAL_CAPABILITIES: "weakref.WeakKeyDictionary[OrcaDeliveryAdapter, ControlCapability]" = weakref.WeakKeyDictionary()
+
+
 class OrcaDeliveryAdapter:
     """Translates Orca CLI events into delivery ledger state transitions."""
 
@@ -2891,6 +3174,7 @@ class OrcaDeliveryAdapter:
         registry: Optional[SharedOrcaExecutionRegistry] = None,
         declared_task_locks: Optional[Dict[str, List[str]]] = None,
         approved_base_commit: str = DEFAULT_APPROVED_BASE_COMMIT,
+        control_secret: Optional[str] = None,
     ):
         if approved_candidate_commit is None:
             raise ProtocolViolationError("approved_candidate_commit is mandatory; cannot be None")
@@ -2930,7 +3214,13 @@ class OrcaDeliveryAdapter:
         self._verified_review_evidence: Dict[str, Any] = {}
         self._verified_integration_evidence: Dict[str, Any] = {}
         self._active_transition_tokens: Dict[str, _TransitionAuthToken] = {}
-        self.evidence_authority = EvidenceAuthority(adapter=self)
+        self.evidence_authority = EvidenceAuthority(adapter=self, control_secret=control_secret)
+        self._dispatch_reviewer_capabilities: Dict[str, ReviewerCapability] = {}
+
+        # Internal Control capability for adapter's own authoritative operations
+        internal_cap = self.evidence_authority._mint_internal_control_capability()
+        _ADAPTER_INTERNAL_CAPABILITIES[self] = internal_cap
+
         self._executing_lifecycle_handler: Optional[str] = None
         self._executing_lifecycle_task_id: Optional[str] = None
         self._authoritatively_settled_dispatches: Set[str] = set()
@@ -2938,11 +3228,23 @@ class OrcaDeliveryAdapter:
         self._consumed_transition_tokens: Set[str] = set()
 
     @contextmanager
-    def _internal_lifecycle_execution(self, handler: str, task_id: str):
+    def _internal_lifecycle_execution(
+        self,
+        handler: str,
+        task_id: str,
+        capability: Optional[Union[ControlCapability, ReviewerCapability]] = None,
+    ):
         """Internal execution boundary for authoritative lifecycle handlers.
-        External callers cannot mint transition tokens or enter authorized transition scopes.
+        External callers without an independently authenticated Control or Reviewer capability cannot enter.
         """
+        if capability is None:
+            raise ProtocolViolationError(
+                "Lifecycle context entry requires an independently authenticated Control or Reviewer capability; "
+                "ordinary callers cannot enter lifecycle execution boundary"
+            )
         clean_tid = task_id.strip() if isinstance(task_id, str) else ""
+        self._verify_lifecycle_capability(capability, handler, clean_tid)
+
         prev_handler = self._executing_lifecycle_handler
         prev_task = self._executing_lifecycle_task_id
         self._executing_lifecycle_handler = handler
@@ -2952,6 +3254,27 @@ class OrcaDeliveryAdapter:
         finally:
             self._executing_lifecycle_handler = prev_handler
             self._executing_lifecycle_task_id = prev_task
+
+    def _verify_lifecycle_capability(
+        self,
+        capability: Any,
+        handler: str,
+        clean_tid: str,
+    ) -> None:
+        if not capability or not isinstance(capability, (ControlCapability, ReviewerCapability)):
+            raise ProtocolViolationError(
+                f"Invalid lifecycle execution capability: expected ControlCapability or ReviewerCapability, got {type(capability).__name__}"
+            )
+        if isinstance(capability, ReviewerCapability):
+            if handler != "handle_review_verdict":
+                raise ProtocolViolationError(
+                    f"ReviewerCapability cannot authorize handler {handler!r}; Reviewer is restricted to review verdict handling"
+                )
+            self.evidence_authority.verify_capability(capability, expected_task_id=clean_tid)
+        elif isinstance(capability, ControlCapability):
+            self.evidence_authority.verify_capability(
+                capability, expected_role="Control", expected_task_id=clean_tid
+            )
 
     def issue_review_evidence(
         self,
@@ -2963,6 +3286,8 @@ class OrcaDeliveryAdapter:
         reviewer_harness: str = "Claude Code",
         summary: str = "Independent review accepted on exact candidate HEAD",
         now: Optional[datetime] = None,
+        capability: Optional[Union[ReviewerCapability, ControlCapability]] = None,
+        reviewer_capability: Optional[ReviewerCapability] = None,
     ) -> ReviewEvidence:
         return self.evidence_authority.issue_review_evidence(
             delivery_task_id=delivery_task_id,
@@ -2973,6 +3298,8 @@ class OrcaDeliveryAdapter:
             reviewer_harness=reviewer_harness,
             summary=summary,
             now=now,
+            capability=capability,
+            reviewer_capability=reviewer_capability,
         )
 
     def issue_integration_evidence(
@@ -2984,6 +3311,8 @@ class OrcaDeliveryAdapter:
         gate_results: Optional[Dict[str, bool]] = None,
         integrated_by: str = "Control",
         now: Optional[datetime] = None,
+        capability: Optional[ControlCapability] = None,
+        control_capability: Optional[ControlCapability] = None,
     ) -> IntegrationEvidence:
         return self.evidence_authority.issue_integration_evidence(
             delivery_task_id=delivery_task_id,
@@ -2993,7 +3322,58 @@ class OrcaDeliveryAdapter:
             gate_results=gate_results,
             integrated_by=integrated_by,
             now=now,
+            capability=capability,
+            control_capability=control_capability,
         )
+
+    def issue_control_capability(
+        self, control_secret: str, delivery_task_id: Optional[str] = None
+    ) -> ControlCapability:
+        return self.evidence_authority.issue_control_capability(
+            control_secret=control_secret,
+            delivery_task_id=delivery_task_id,
+        )
+
+    def issue_reviewer_capability(
+        self,
+        delivery_task_id: str,
+        review_dispatch_id: str,
+        candidate_commit: str,
+        reviewer_route: str = "cx/gpt-5.6-sol",
+        reviewer_harness: str = "Claude Code",
+        control_capability: Optional[ControlCapability] = None,
+        control_secret: Optional[str] = None,
+    ) -> ReviewerCapability:
+        return self.evidence_authority.issue_reviewer_capability(
+            delivery_task_id=delivery_task_id,
+            review_dispatch_id=review_dispatch_id,
+            candidate_commit=candidate_commit,
+            reviewer_route=reviewer_route,
+            reviewer_harness=reviewer_harness,
+            control_capability=control_capability,
+            control_secret=control_secret,
+        )
+
+    def get_reviewer_capability(
+        self,
+        review_dispatch_id: str,
+        control_capability: Optional[ControlCapability] = None,
+        control_secret: Optional[str] = None,
+    ) -> ReviewerCapability:
+        clean_did = review_dispatch_id.strip() if isinstance(review_dispatch_id, str) else ""
+        if clean_did not in self._dispatch_reviewer_capabilities:
+            raise ProtocolViolationError(f"No ReviewerCapability registered for review dispatch {clean_did!r}")
+        cap = self._dispatch_reviewer_capabilities[clean_did]
+        authenticated = False
+        if control_secret and isinstance(control_secret, str):
+            if hmac.compare_digest(control_secret.encode("utf-8"), self.evidence_authority._control_secret):
+                authenticated = True
+        if not authenticated and control_capability is not None:
+            self.evidence_authority.verify_capability(control_capability, expected_role="Control", expected_task_id=cap.delivery_task_id)
+            authenticated = True
+        if not authenticated:
+            raise ProtocolViolationError("Unauthorized: retrieving ReviewerCapability requires authenticated Control authority")
+        return cap
 
     def _mint_transition_token(self, handler: str, task_id: str, new_state: str) -> _TransitionAuthToken:
         if not task_id or not isinstance(task_id, str) or not task_id.strip():
@@ -3444,7 +3824,7 @@ class OrcaDeliveryAdapter:
             raise ProtocolViolationError(
                 f"Cannot acknowledge dispatch for {clean_tid} in state {current!r}; must be 'dispatched'"
             )
-        with self._internal_lifecycle_execution("acknowledge_dispatch", clean_tid):
+        with self._internal_lifecycle_execution("acknowledge_dispatch", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
             token = self._mint_transition_token("acknowledge_dispatch", clean_tid, "acknowledged")
             with self._authorized_transition_scope(clean_tid, "acknowledged", handler="acknowledge_dispatch", _token=token, dispatch_id=clean_disp):
                 self.transition_task_state(clean_tid, "acknowledged")
@@ -3467,7 +3847,7 @@ class OrcaDeliveryAdapter:
                 f"Cannot start running task {clean_tid} in state {current!r}; "
                 f"mandatory lifecycle requires state 'acknowledged' (cannot skip acknowledged stage)"
             )
-        with self._internal_lifecycle_execution("start_running", clean_tid):
+        with self._internal_lifecycle_execution("start_running", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
             token = self._mint_transition_token("start_running", clean_tid, "running")
             with self._authorized_transition_scope(clean_tid, "running", handler="start_running", _token=token, dispatch_id=clean_disp):
                 self.transition_task_state(clean_tid, "running")
@@ -3767,7 +4147,7 @@ class OrcaDeliveryAdapter:
         )
         with self._task_state_lock:
             self.active_dispatches[delivery_task_id] = dispatch_id
-            with self._internal_lifecycle_execution("create_dispatch", delivery_task_id):
+            with self._internal_lifecycle_execution("create_dispatch", delivery_task_id, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
                 token = self._mint_transition_token("create_dispatch", delivery_task_id, "dispatched")
                 with self._authorized_transition_scope(
                     delivery_task_id, "dispatched", handler="create_dispatch", _token=token,
@@ -3923,6 +4303,14 @@ class OrcaDeliveryAdapter:
         )
         self.active_review_dispatches[delivery_task_id] = dispatch_id
         self.review_dispatch_bindings[dispatch_id] = binding
+
+        # Mint ReviewerCapability bound to this dispatch
+        rev_cap = self.evidence_authority._mint_reviewer_capability_internal(
+            delivery_task_id=delivery_task_id,
+            review_dispatch_id=dispatch_id,
+            candidate_commit=candidate_commit,
+        )
+        self._dispatch_reviewer_capabilities[dispatch_id] = rev_cap
         return dispatch_id
 
     def handle_worker_done(
@@ -4093,7 +4481,7 @@ class OrcaDeliveryAdapter:
             for lid in to_remove:
                 self.lease_mgr.release_lease(lid)
             self._authoritatively_released_tasks.add(delivery_task_id)
-            with self._internal_lifecycle_execution("handle_worker_done", delivery_task_id):
+            with self._internal_lifecycle_execution("handle_worker_done", delivery_task_id, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
                 token = self._mint_transition_token("handle_worker_done", delivery_task_id, "review")
                 with self._authorized_transition_scope(
                     delivery_task_id, "review", handler="handle_worker_done", _token=token,
@@ -4110,7 +4498,7 @@ class OrcaDeliveryAdapter:
             for lid in to_remove:
                 self.lease_mgr.release_lease(lid)
             self._authoritatively_released_tasks.add(delivery_task_id)
-            with self._internal_lifecycle_execution("handle_worker_done", delivery_task_id):
+            with self._internal_lifecycle_execution("handle_worker_done", delivery_task_id, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
                 token = self._mint_transition_token("handle_worker_done", delivery_task_id, "blocked")
                 with self._authorized_transition_scope(
                     delivery_task_id, "blocked", handler="handle_worker_done", _token=token,
@@ -4190,7 +4578,7 @@ class OrcaDeliveryAdapter:
                 self.lease_mgr.release_lease(lid)
 
         # 8. Transition task state to blocked
-        with self._internal_lifecycle_execution("handle_harness_failure", clean_tid):
+        with self._internal_lifecycle_execution("handle_harness_failure", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
             token = self._mint_transition_token("handle_harness_failure", clean_tid, "blocked")
             with self._authorized_transition_scope(
                 clean_tid, "blocked", handler="handle_harness_failure", _token=token,
@@ -4325,7 +4713,7 @@ class OrcaDeliveryAdapter:
 
         if verdict == "ACCEPT":
             self._verified_review_evidence[clean_tid] = review_evidence
-            with self._internal_lifecycle_execution("handle_review_verdict", clean_tid):
+            with self._internal_lifecycle_execution("handle_review_verdict", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
                 token = self._mint_transition_token("handle_review_verdict", clean_tid, "merge_queued")
                 with self._authorized_transition_scope(
                     clean_tid, "merge_queued", handler="handle_review_verdict", _token=token,
@@ -4334,7 +4722,7 @@ class OrcaDeliveryAdapter:
                     self.transition_task_state(clean_tid, "merge_queued")
             return "merge_queued"
         elif verdict == "CHANGES_REQUESTED":
-            with self._internal_lifecycle_execution("handle_review_verdict", clean_tid):
+            with self._internal_lifecycle_execution("handle_review_verdict", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
                 token = self._mint_transition_token("handle_review_verdict", clean_tid, "remediation")
                 with self._authorized_transition_scope(
                     clean_tid, "remediation", handler="handle_review_verdict", _token=token,
@@ -4343,7 +4731,7 @@ class OrcaDeliveryAdapter:
                     self.transition_task_state(clean_tid, "remediation")
             return "remediation"
         elif verdict == "BLOCKED":
-            with self._internal_lifecycle_execution("handle_review_verdict", clean_tid):
+            with self._internal_lifecycle_execution("handle_review_verdict", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
                 token = self._mint_transition_token("handle_review_verdict", clean_tid, "blocked")
                 with self._authorized_transition_scope(
                     clean_tid, "blocked", handler="handle_review_verdict", _token=token,
@@ -4463,7 +4851,7 @@ class OrcaDeliveryAdapter:
                 now=now,
             )
             self._verified_integration_evidence[clean_tid] = integration_evidence
-            with self._internal_lifecycle_execution("handle_integration_gates", clean_tid):
+            with self._internal_lifecycle_execution("handle_integration_gates", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
                 token = self._mint_transition_token("handle_integration_gates", clean_tid, "integrated")
                 with self._authorized_transition_scope(
                     clean_tid, "integrated", handler="handle_integration_gates", _token=token, gates_pass=True
@@ -4472,7 +4860,7 @@ class OrcaDeliveryAdapter:
             self.lease_mgr.mark_task_integrated(clean_tid)
             return "integrated"
         else:
-            with self._internal_lifecycle_execution("handle_integration_gates", clean_tid):
+            with self._internal_lifecycle_execution("handle_integration_gates", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
                 token = self._mint_transition_token("handle_integration_gates", clean_tid, "blocked")
                 with self._authorized_transition_scope(
                     clean_tid, "blocked", handler="handle_integration_gates", _token=token, gates_pass=False
@@ -4497,14 +4885,14 @@ class OrcaDeliveryAdapter:
         if state not in ("blocked", "needs_replan"):
             raise ProtocolViolationError(f"Cannot resolve blocker for task in state {state!r}")
         if state == "blocked":
-            with self._internal_lifecycle_execution("resolve_blocker_and_replan", delivery_task_id):
+            with self._internal_lifecycle_execution("resolve_blocker_and_replan", delivery_task_id, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
                 token = self._mint_transition_token("resolve_blocker_and_replan", delivery_task_id, "ready")
                 with self._authorized_transition_scope(
                     delivery_task_id, "ready", handler="resolve_blocker_and_replan", _token=token
                 ):
                     self.transition_task_state(delivery_task_id, "ready")
         elif state == "needs_replan":
-            with self._internal_lifecycle_execution("resolve_blocker_and_replan", delivery_task_id):
+            with self._internal_lifecycle_execution("resolve_blocker_and_replan", delivery_task_id, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
                 token = self._mint_transition_token("resolve_blocker_and_replan", delivery_task_id, "planned")
                 with self._authorized_transition_scope(
                     delivery_task_id, "planned", handler="resolve_blocker_and_replan", _token=token

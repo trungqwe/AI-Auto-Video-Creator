@@ -1191,6 +1191,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "2_unforgeable_internal_lifecycle_capability_and_authoritative_settlement": "RESOLVED",
                     "3_raw_canonical_spelling_across_all_identity_positions": "RESOLVED",
                 },
+                "sol_lead_review_36092d0": {
+                    "1_public_evidence_issuers_restricted_to_authenticated_capabilities": "RESOLVED",
+                    "2_internal_lifecycle_execution_boundary_restricted_to_authenticated_capabilities": "RESOLVED",
+                    "3_exact_canonical_backend_provider_and_model_spelling_no_aliases": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead review sau 36092d0 (Evidence Capabilities Restriction, Lifecycle Boundary Protection, Exact Canonical Backend Identities)
+
+- Khắc phục triệt để 3 phát hiện blocker từ Sol-Lead review trên exact candidate `36092d099fea4938764b05ff78eb9596a14ad6bc` cho bundle `docs/parallel-delivery/`:
+  - **(1) Hạn Chế Quyền Phát Hành Bằng Chứng Độc Lập Qua Capability Xác Thực (Restricted Evidence Issuers via Authenticated Capabilities)**: Các hàm phát hành bằng chứng `issue_review_evidence()` và `issue_integration_evidence()` trên cả `EvidenceAuthority` và `OrcaDeliveryAdapter` bắt buộc caller phải cung cấp capability hợp lệ (`ReviewerCapability` hoặc `ControlCapability`) mang chữ ký HMAC bí mật nội bộ (`_secret`). Caller thông thường không có capability không thể lấy được bằng chứng có chữ ký để chuyển tác vụ sang `merge_queued` hay `integrated`. Bằng chứng và capability được theo dõi single-use (`_consumed_capabilities`), chống giả mạo hoặc tái sử dụng.
+  - **(2) Bảo Vệ Ranh Giới Thực Thi Vòng Đời Bằng Capability Độc Lập (Lifecycle Context Boundary Protection)**: Contextmanager `_internal_lifecycle_execution` yêu cầu capability xác thực độc lập (`ControlCapability` cho các thao tác quản trị / integration / settlement và `ReviewerCapability` cho review verdict). Caller thông thường tuyệt đối không thể xâm nhập ranh giới nội bộ, mint transition token giả mạo hay chuyển đổi trạng thái ngoài luồng từ `blocked` sang `ready`.
+  - **(3) Bắt Buộc Một Định Danh Backend Provider và Model Canonical Duy Nhất Không Alias (Exact Canonical Backend Provider & Model Spelling)**: Loại bỏ toàn bộ alias phi chính tắc trong xác thực `UsageEvidence`: `implement` chỉ chấp nhận duy nhất backend_provider `"google"` và backend_model `"ag/gemini-3.8-flash-high"`; `review` chỉ chấp nhận duy nhất backend_provider `"openai"` và backend_model `"cx/gpt-5.6-sol"`. Toàn bộ các biến thể như `"9router/google"`, `"9router/openai"`, `"gemini-3.8-flash-high"`, `"gpt-5.6-sol"` đều bị từ chối fail-closed với `RoutingEvidenceError`.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 321/321 Tests PASS**: Bổ sung lớp kiểm thử `TestSolLeadReview36092d0Remediation` với 8 bài test độc lập (5 counterexamples tái hiện chính xác lỗi trên 36092d0 và 3 test positive/negative controls cho capability validation, signature mismatch, single-use replay protection và boundary checks), nâng tổng số test lên 321/321 passed 100%.
+
 ## 2026-09-29 — Khắc phục phát hiện Sol-Lead review sau 43c96aa (Evidence Authority, Frame-Name Spoofing, Padded Dataclass Identities)
 
 - Khắc phục triệt để 3 phát hiện blocker từ Sol-Lead review sau `43c96aa` cho bundle `docs/parallel-delivery/`:
