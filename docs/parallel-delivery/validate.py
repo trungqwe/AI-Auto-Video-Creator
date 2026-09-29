@@ -1147,6 +1147,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "2_exact_phase_harness_provider_model_effort_validation": "RESOLVED",
                     "3_requested_effective_route_terminal_usage_mutual_binding": "RESOLVED",
                 },
+                "sol_round_17": {
+                    "1_mandatory_explicit_usage_router_evidence_no_implicit_fallback": "RESOLVED",
+                    "2_usage_router_exact_9router_and_mutual_binding": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

@@ -5949,6 +5949,278 @@ class TestAstraRound16LaunchEvidenceValidation(unittest.TestCase):
         self._assert_zero_side_effects()
 
 
+class TestSolRound17UsageRouterEvidenceValidation(unittest.TestCase):
+    """Round 17 remediation fixtures:
+    1. Mandatory explicit, non-blank router/provider-route identity in usage-evidence mappings (no implicit default).
+    2. Accept only exact declared router identity '9router' for implement and review phases.
+    3. Reject missing, blank, malformed, contradictory, or foreign router/source aliases fail-closed with RoutingEvidenceError.
+    4. Mutual binding of explicit usage router to route.provider, launch mappings, live-terminal provider, and phase.
+    5. Zero side effects on lease/task/dispatch state when usage router evidence is invalid preceding expired lease checks.
+    """
+
+    def setUp(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        self.lock_defs = [{"id": "LOCK-R17", "mode": "exclusive", "renewable": True, "lease_seconds": 10}]
+        self.mgr = LeaseManager(self.lock_defs)
+        self.delivery_id = "TASK-R17-PROBE"
+        self.mgr.set_task_authority(self.delivery_id, "granted")
+        self.candidate_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT_DIR, text=True
+        ).strip()
+        self.adapter = OrcaDeliveryAdapter(
+            self.mgr,
+            approved_candidate_commit=self.candidate_commit,
+            git_root=ROOT_DIR,
+        )
+        self.adapter.register_task_locks(self.delivery_id, ["LOCK-R17"])
+        self.adapter.set_task_authority(self.delivery_id, "granted")
+        self.adapter.set_task_state(self.delivery_id, "ready")
+        self.intended_disp = "ctx-r17-probe"
+        self.orca_task_id = "orca-r17-task"
+        self.t0 = datetime(2026, 9, 29, 11, 0, 0, tzinfo=timezone.utc)
+        self.lease = self.mgr.acquire_lease("LOCK-R17", self.delivery_id, self.intended_disp, lease_seconds=10, now=self.t0)
+        self.past_expiry = self.t0 + timedelta(seconds=30)
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+
+    def _assert_zero_side_effects(self):
+        """Assert zero side effects on lease state, task state, active dispatches, and bindings."""
+        self.assertIn(self.lease.lease_id, self.mgr.active_leases)
+        self.assertTrue(self.lease.is_active)
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "ready")
+        self.assertNotIn(self.delivery_id, self.adapter.active_dispatches)
+        self.assertNotIn(self.intended_disp, self.adapter.dispatch_bindings)
+        self.assertNotIn(self.intended_disp, self.adapter.seen_dispatch_ids)
+
+    def _base_usage_dict(self, phase="implement"):
+        if phase == "implement":
+            return {
+                "backend_provider": "google",
+                "backend_model": "ag/gemini-3.8-flash-high",
+                "recorded_after_dispatch": True,
+                "timestamp": (self.t0 + timedelta(seconds=1)).isoformat(),
+                "request_id": "req-r17-01",
+                "delivery_task_id": self.delivery_id,
+                "dispatch_id": self.intended_disp,
+            }
+        else:
+            return {
+                "backend_provider": "openai",
+                "backend_model": "cx/gpt-5.6-sol",
+                "recorded_after_dispatch": True,
+                "timestamp": (self.t0 + timedelta(seconds=1)).isoformat(),
+                "request_id": "req-r17-02",
+                "delivery_task_id": self.delivery_id,
+                "dispatch_id": self.intended_disp,
+            }
+
+    def test_r17_01_missing_all_router_aliases_fails_closed(self):
+        """1. Counterexample: Missing all router aliases (router, route_provider, source) in usage evidence fails closed."""
+        # Case A: Dict usage evidence omitting router/route_provider/source (Sol's exact counterexample)
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env.usage_evidence = self._base_usage_dict("implement")
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            validate_execution_envelope(env)
+        self.assertTrue("router" in str(ctx1.exception).lower() or "missing" in str(ctx1.exception).lower())
+
+        # Case B: UsageEvidence dataclass instance with router=None
+        env_obj = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env_obj.usage_evidence.router = None
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            validate_execution_envelope(env_obj)
+        self.assertTrue("router" in str(ctx2.exception).lower() or "missing" in str(ctx2.exception).lower())
+
+    def test_r17_02_blank_router_values_fail_closed(self):
+        """2. Counterexample: Blank router values for any alias fail closed."""
+        for alias in ("router", "route_provider", "source"):
+            for blank_val in ("", "   ", None):
+                env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+                u = self._base_usage_dict("implement")
+                u[alias] = blank_val
+                env.usage_evidence = u
+                with self.assertRaises(RoutingEvidenceError) as ctx:
+                    validate_execution_envelope(env)
+                self.assertTrue("non-blank" in str(ctx.exception).lower() or "router" in str(ctx.exception).lower())
+
+    def test_r17_03_malformed_router_values_fail_closed(self):
+        """3. Counterexample: Malformed (non-string) router values fail closed."""
+        for bad_val in (123, True, False, ["9router"], {"router": "9router"}):
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+            u = self._base_usage_dict("implement")
+            u["router"] = bad_val
+            env.usage_evidence = u
+            with self.assertRaises(RoutingEvidenceError) as ctx:
+                validate_execution_envelope(env)
+            self.assertTrue("string" in str(ctx.exception).lower() or "router" in str(ctx.exception).lower())
+
+    def test_r17_04_wrong_or_foreign_router_fails_closed(self):
+        """4. Counterexample: Wrong or foreign router/source (direct-vendor, antigravity, openai, etc.) fails closed."""
+        for bad_router in ("direct-vendor", "direct", "antigravity", "Antigravity native", "openai", "google", "foreign_source"):
+            for alias in ("router", "route_provider", "source"):
+                env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+                u = self._base_usage_dict("implement")
+                u[alias] = bad_router
+                env.usage_evidence = u
+                with self.assertRaises(RoutingEvidenceError) as ctx:
+                    validate_execution_envelope(env)
+                self.assertTrue("9router" in str(ctx.exception).lower() or "forbidden" in str(ctx.exception).lower() or "invalid" in str(ctx.exception).lower())
+
+    def test_r17_05_conflicting_router_aliases_fail_closed(self):
+        """5. Counterexample: Conflicting router aliases within usage evidence fail closed."""
+        conflict_cases = [
+            {"router": "9router", "route_provider": "direct-vendor"},
+            {"router": "9router", "source": "antigravity"},
+            {"route_provider": "9router", "source": "other_router"},
+            {"router": "9router", "route_provider": "9router", "source": "direct-vendor"},
+        ]
+        for conf in conflict_cases:
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+            u = self._base_usage_dict("implement")
+            u.update(conf)
+            env.usage_evidence = u
+            with self.assertRaises(RoutingEvidenceError) as ctx:
+                validate_execution_envelope(env)
+            self.assertTrue("contradictory" in str(ctx.exception).lower() or "router" in str(ctx.exception).lower())
+
+    def test_r17_06_unrecognized_foreign_router_alias_keys_fail_closed(self):
+        """6. Counterexample: Foreign or unrecognized router alias keys fail closed."""
+        foreign_keys = ["foreign_router", "custom_router", "route_source", "router_proxy"]
+        for fk in foreign_keys:
+            # Foreign key alone
+            env1 = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+            u1 = self._base_usage_dict("implement")
+            u1[fk] = "9router"
+            env1.usage_evidence = u1
+            with self.assertRaises(RoutingEvidenceError) as ctx1:
+                validate_execution_envelope(env1)
+            self.assertTrue("foreign" in str(ctx1.exception).lower() or "router" in str(ctx1.exception).lower())
+
+            # Foreign key alongside valid router="9router"
+            env2 = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+            u2 = self._base_usage_dict("implement")
+            u2["router"] = "9router"
+            u2[fk] = "9router"
+            env2.usage_evidence = u2
+            with self.assertRaises(RoutingEvidenceError) as ctx2:
+                validate_execution_envelope(env2)
+            self.assertTrue("foreign" in str(ctx2.exception).lower() or "unrecognized" in str(ctx2.exception).lower())
+
+    def test_r17_07_mutual_binding_usage_router_to_route_and_launch_and_terminal_and_phase(self):
+        """7. Mutual binding: Usage router bound to route.provider, launch mappings, live-terminal provider, and phase."""
+        # Route provider mismatch with usage router
+        env_r = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env_r.route["provider"] = "direct-vendor"
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            validate_execution_envelope(env_r)
+        self.assertTrue("provider" in str(ctx1.exception).lower() or "9router" in str(ctx1.exception).lower())
+
+        # Live terminal provider mismatch with usage router
+        env_l = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env_l.live_terminal_evidence.provider = "direct-vendor"
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            validate_execution_envelope(env_l)
+        self.assertTrue("provider" in str(ctx2.exception).lower() or "live terminal" in str(ctx2.exception).lower())
+
+    def test_r17_08_exact_valid_9router_evidence_succeeds_all_aliases_and_both_phases(self):
+        """8. Positive control: Exact valid 9router evidence succeeds across all aliases and both phases."""
+        for phase in ("implement", "review"):
+            # Subcase A: 'router' alias
+            env_a = make_execution_envelope(self.delivery_id, self.intended_disp, phase=phase, orca_task_id=self.orca_task_id)
+            u_a = self._base_usage_dict(phase)
+            u_a["router"] = "9router"
+            env_a.usage_evidence = u_a
+            self.assertEqual(validate_execution_envelope(env_a, expected_phase=phase), [])
+
+            # Subcase B: 'route_provider' alias
+            env_b = make_execution_envelope(self.delivery_id, self.intended_disp, phase=phase, orca_task_id=self.orca_task_id)
+            u_b = self._base_usage_dict(phase)
+            u_b["route_provider"] = "9router"
+            env_b.usage_evidence = u_b
+            self.assertEqual(validate_execution_envelope(env_b, expected_phase=phase), [])
+
+            # Subcase C: 'source' alias
+            env_c = make_execution_envelope(self.delivery_id, self.intended_disp, phase=phase, orca_task_id=self.orca_task_id)
+            u_c = self._base_usage_dict(phase)
+            u_c["source"] = "9router"
+            env_c.usage_evidence = u_c
+            self.assertEqual(validate_execution_envelope(env_c, expected_phase=phase), [])
+
+            # Subcase D: multiple agreeing aliases
+            env_d = make_execution_envelope(self.delivery_id, self.intended_disp, phase=phase, orca_task_id=self.orca_task_id)
+            u_d = self._base_usage_dict(phase)
+            u_d["router"] = "9router"
+            u_d["route_provider"] = "9router"
+            u_d["source"] = "9router"
+            env_d.usage_evidence = u_d
+            self.assertEqual(validate_execution_envelope(env_d, expected_phase=phase), [])
+
+            # Subcase E: UsageEvidence dataclass instance with explicit router
+            env_e = make_execution_envelope(self.delivery_id, self.intended_disp, phase=phase, orca_task_id=self.orca_task_id)
+            self.assertEqual(validate_execution_envelope(env_e, expected_phase=phase), [])
+
+    def test_r17_09_fail_before_side_effects_on_missing_or_invalid_usage_router_with_expired_lease(self):
+        """9. Counterexample: Missing or invalid usage router with expired lease raises RoutingEvidenceError with zero side effects."""
+        # Subcase A: Missing all router aliases + expired active lease
+        env_missing = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env_missing.usage_evidence = self._base_usage_dict("implement")
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=self.past_expiry,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_missing,
+            )
+        self.assertTrue("router" in str(ctx1.exception).lower() or "missing" in str(ctx1.exception).lower())
+        self._assert_zero_side_effects()
+
+        # Subcase B: Foreign router + expired active lease
+        env_foreign = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        u_foreign = self._base_usage_dict("implement")
+        u_foreign["router"] = "antigravity"
+        env_foreign.usage_evidence = u_foreign
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=self.past_expiry,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_foreign,
+            )
+        self.assertTrue("antigravity" in str(ctx2.exception).lower() or "router" in str(ctx2.exception).lower())
+        self._assert_zero_side_effects()
+
+        # Subcase C: Contradictory router aliases + expired active lease
+        env_conf = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        u_conf = self._base_usage_dict("implement")
+        u_conf["router"] = "9router"
+        u_conf["route_provider"] = "direct-vendor"
+        env_conf.usage_evidence = u_conf
+        with self.assertRaises(RoutingEvidenceError) as ctx3:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=self.past_expiry,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_conf,
+            )
+        self.assertTrue("contradictory" in str(ctx3.exception).lower() or "router" in str(ctx3.exception).lower())
+        self._assert_zero_side_effects()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

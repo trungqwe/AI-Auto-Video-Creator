@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-29 — Khắc phục phát hiện Sol review dispatch vòng 17 (Mandatory Explicit Usage Router Evidence & Mutual Binding)
+
+- Khắc phục triệt để phát hiện blocker từ Sol review dispatch `ctx_91fdbd7c4e2b` trên HEAD `5297a42747ded46644ef277e6c337a39cfedaad0` cho bundle `docs/parallel-delivery/`:
+  - **(1) Bắt Buộc Khai Báo Rõ Ràng Định Danh Router trong Bằng Chứng Sử Dụng (Explicit Usage Router Identity)**: Mọi mapping `usage_evidence` bắt buộc phải khai báo rõ ràng, không để trống (non-blank string) định danh router qua một trong các alias hợp lệ (`router`, `route_provider`, `source`). Xóa bỏ hoàn toàn cơ chế fallback ngầm định tự gán `"9router"` khi vắng mặt các khóa này, loại bỏ triệt để sơ hở fail-open chấp nhận bản ghi sử dụng không chứng minh được router.
+  - **(2) Khóa Chặt Định Danh `9router` Duy Nhất Cho Implement và Review**: Chỉ chấp nhận định danh router chính xác `9router` cho cả hai phase implement và review; cấm tuyệt đối router `Antigravity native`, cấm nhà cung cấp trực tiếp `direct-vendor`, cấm nhà cung cấp backend/ngoại lai (`openai`, `google`, `custom_router`).
+  - **(3) Từ Chối Tuyệt Đối Giá Trị Rỗng, Sai Kiểu, Mâu Thuẫn Hoặc Khóa Ngoại Lai (Fail-Closed with RoutingEvidenceError)**: Ném `RoutingEvidenceError` fail-closed ngay lập tức khi phát hiện trường router bị thiếu, rỗng (`""`, `"   "`, `None`), sai kiểu dữ liệu (số nguyên, boolean, danh sách, dict), mâu thuẫn giữa các alias hiện diện (ví dụ `router="9router"` cùng `route_provider="direct-vendor"`), hoặc chứa khóa router lạ/ngoại lai (`foreign_router`, `custom_router`, `route_source`).
+  - **(4) Ràng Buộc Tương Hỗ Chặt Chẽ (Mutual Binding)**: Ràng buộc chặt chẽ định danh usage router rõ ràng với `route.provider`, `launch_requested.provider`, `launch_effective.provider`, `live_terminal_evidence.provider` và phase tương ứng.
+  - **(5) Bộ Fixture Phân Biệt Tự Động 244/244 PASS**: Bổ sung lớp kiểm thử `TestSolRound17UsageRouterEvidenceValidation` với 9 bài test discriminating RED/GREEN và kiểm chứng đối chứng độc lập trong `test_negative_fixtures.py`, nâng tổng số test lên 244/244 passed 100%.
+  - **(6) Bảo Toàn Toàn Bộ Invariants**: Bảo toàn trọn vẹn toàn bộ 235 fixture hiện hữu, các bất biến launch-evidence của vòng 16, định danh tác vụ, backend model, lease/fencing và cơ chế fail-before-side-effect trước mọi tác động phụ.
+
 ## 2026-09-29 — Khắc phục phát hiện Astra supreme audit dispatch vòng 16 (Mandatory Launch Evidence Validation & Mutual Binding)
 
 - Khắc phục triệt để phát hiện blocker từ Astra supreme audit dispatch `ctx_f3936df94ecf` trên HEAD `34f9af5ade2b8991912f622a6b45b39a57cf6d91` cho bundle `docs/parallel-delivery/`:

@@ -1682,7 +1682,21 @@ def validate_execution_envelope(
         u_disp = usage_ev.dispatch_id
         u_task = usage_ev.delivery_task_id
         u_router = usage_ev.router
-    elif isinstance(usage_ev, dict):
+
+        if u_router is None or not isinstance(u_router, str) or not u_router.strip():
+            raise RoutingEvidenceError(
+                f"9Router usage evidence missing required non-blank field 'router'; got {u_router!r}"
+            )
+        clean_u_router = u_router.strip()
+        if "antigravity" in clean_u_router.lower():
+            raise RoutingEvidenceError(
+                f"Antigravity native router {u_router!r} in usage evidence is strictly forbidden; fails closed"
+            )
+        if clean_u_router != "9router":
+            raise RoutingEvidenceError(
+                f"9Router usage evidence route source {u_router!r} is invalid; route MUST be via '9router'"
+            )
+    elif isinstance(usage_ev, Mapping):
         if not usage_ev:
             raise RoutingEvidenceError("Usage evidence is empty; fails closed")
         u_p = usage_ev.get("backend_provider") or usage_ev.get("provider")
@@ -1691,18 +1705,77 @@ def validate_execution_envelope(
         u_ts = usage_ev.get("timestamp")
         u_disp = usage_ev.get("dispatch_id")
         u_task = usage_ev.get("delivery_task_id") or usage_ev.get("task_id")
-        u_router = usage_ev.get("router", usage_ev.get("route_provider", usage_ev.get("source", "9router")))
+
+        # Explicit router identity in mapping: no implicit default allowed!
+        # Valid router aliases: "router", "route_provider", "source"
+        valid_router_aliases = ("router", "route_provider", "source")
+
+        # Reject any foreign or unrecognized keys purporting to define router/route
+        for k in usage_ev.keys():
+            if isinstance(k, str):
+                k_lower = k.strip().lower()
+                if ("router" in k_lower or "route" in k_lower or "source" in k_lower) and k not in valid_router_aliases:
+                    raise RoutingEvidenceError(
+                        f"Foreign or unrecognized router alias {k!r} in usage evidence; fails closed"
+                    )
+
+        present_aliases = {k: usage_ev[k] for k in valid_router_aliases if k in usage_ev}
+        if not present_aliases:
+            raise RoutingEvidenceError(
+                "9Router usage evidence missing explicit router identity "
+                "(must explicitly specify non-blank 'router', 'route_provider', or 'source'); "
+                "implicit default is strictly forbidden and fails closed"
+            )
+
+        cleaned_aliases = {}
+        for k, val in present_aliases.items():
+            if val is None or not isinstance(val, str) or not val.strip():
+                raise RoutingEvidenceError(
+                    f"9Router usage evidence field {k!r} must be a non-blank string; got {val!r}"
+                )
+            clean_val = val.strip()
+            cleaned_aliases[k] = clean_val
+
+        # Check for contradictory aliases among present router keys
+        unique_aliases = set(cleaned_aliases.values())
+        if len(unique_aliases) > 1:
+            conflicts = ", ".join(f"{k}={present_aliases[k]!r}" for k in sorted(cleaned_aliases.keys()))
+            raise RoutingEvidenceError(
+                f"Contradictory router aliases in usage evidence: {conflicts}"
+            )
+
+        clean_u_router = next(iter(cleaned_aliases.values()))
+        if "antigravity" in clean_u_router.lower():
+            raise RoutingEvidenceError(
+                f"Antigravity native router {clean_u_router!r} in usage evidence is strictly forbidden; fails closed"
+            )
+        if clean_u_router != "9router":
+            raise RoutingEvidenceError(
+                f"9Router usage evidence route source {clean_u_router!r} is invalid; route MUST be via '9router'"
+            )
     else:
         raise RoutingEvidenceError(f"Invalid usage_evidence type: {type(usage_ev).__name__}")
 
-    clean_u_router = (u_router or "").strip() if isinstance(u_router, str) else ""
-    if clean_u_router != "9router":
+    # Mutual bindings for explicit usage router to route.provider, launch mappings, live-terminal provider, and phase
+    if clean_u_router != clean_p:
         raise RoutingEvidenceError(
-            f"9Router usage evidence route source {u_router!r} is invalid; route MUST be via '9router'"
+            f"Contradictory evidence: usage router {clean_u_router!r} does not match route provider {clean_p!r}"
         )
     if clean_u_router != req_p:
         raise RoutingEvidenceError(
-            f"Contradictory evidence: usage router {clean_u_router!r} does not match launch provider {req_p!r}"
+            f"Contradictory evidence: usage router {clean_u_router!r} does not match launch_requested provider {req_p!r}"
+        )
+    if clean_u_router != eff_p:
+        raise RoutingEvidenceError(
+            f"Contradictory evidence: usage router {clean_u_router!r} does not match launch_effective provider {eff_p!r}"
+        )
+    if clean_u_router != live_p:
+        raise RoutingEvidenceError(
+            f"Contradictory evidence: usage router {clean_u_router!r} does not match live terminal provider {live_p!r}"
+        )
+    if clean_phase not in ("implement", "review") or clean_u_router != "9router":
+        raise RoutingEvidenceError(
+            f"Usage evidence router {clean_u_router!r} invalid for phase {clean_phase!r}; expected '9router'"
         )
 
     if u_after is not True:
