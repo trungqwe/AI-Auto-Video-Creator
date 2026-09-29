@@ -35,6 +35,11 @@ Mọi task fail closed và chỉ có quyền tối thiểu theo execution envelo
 
 Finding về secret, path escape, SSRF, authorization hoặc data loss chặn merge và descendant.
 
+### Phân biệt Fallback Sản Phẩm và Delivery Control Plane
+
+- **Sản phẩm (Product Roadmap)**: Việc chuyển đổi/fallback giữa các AI provider (ví dụ Deepgram/Whisper/Google Cloud) trong pipeline sản xuất video là tính năng sản phẩm được thiết kế có kiểm soát.
+- **Delivery Control Plane**: Trong hệ thống điều phối phát triển song song (Dely / Orca), chính sách định tuyến fail-closed tại `AGENTS.md` NGHIÊM CẤM TUYỆT ĐỐI mọi hình thức fallback giữa các agent-harness, provider, model hay account pool (đặc biệt cấm Antigravity native). Thiếu hoặc có mâu thuẫn bằng chứng định tuyến/thực thi là điều kiện hard STOP, không được phép fallback.
+
 ## 2. Hiệu năng và capacity
 
 Mục tiêu sản phẩm giữ nguyên:

@@ -75,6 +75,10 @@ class HarnessCompatibilityError(ProtocolViolationError):
     """Harness tool execution failure or namespaced tool collapse."""
 
 
+class RoutingEvidenceError(ProtocolViolationError):
+    """F2: Provider routing policy or execution envelope validation failure."""
+
+
 # ---------------------------------------------------------------------------
 # Data Models
 # ---------------------------------------------------------------------------
@@ -1095,6 +1099,278 @@ DEFAULT_PRODUCTION_REGISTRY_PATH = Path(
 
 
 @dataclass
+class LiveTerminalEvidence:
+    harness: str
+    provider: str
+    route: str
+    archive_reference: Optional[str] = None
+    verified: bool = True
+
+
+@dataclass
+class UsageEvidence:
+    backend_provider: str
+    backend_model: str
+    recorded_after_dispatch: bool = True
+    timestamp: Optional[str] = None
+    request_id: Optional[str] = None
+
+
+@dataclass
+class ExecutionEnvelope:
+    delivery_task_id: str
+    dispatch_id: str
+    dispatch_origin: str
+    phase: str
+    route: Dict[str, Any]
+    live_terminal_evidence: Optional[Union[Dict[str, Any], LiveTerminalEvidence]] = None
+    usage_evidence: Optional[Union[Dict[str, Any], UsageEvidence]] = None
+    launch_requested: Optional[Any] = None
+    launch_effective: Optional[Any] = None
+
+
+_SECRET_PATTERNS = [
+    (re.compile(r"-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----"), "Private key header"),
+    (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), "AWS access key"),
+    (re.compile(r"\bgh[pous]_[A-Za-z0-9_]{36,}\b"), "GitHub token"),
+    (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{82}\b"), "GitHub fine-grained PAT"),
+    (re.compile(r"\bsk-[a-zA-Z0-9]{20,}\b"), "OpenAI/API secret key"),
+    (re.compile(r"\bsk-ant-(?:api\d{2}-)?[a-zA-Z0-9_\-]{20,}\b"), "Anthropic API secret key"),
+    (re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b"), "Google / Gemini API key"),
+    (re.compile(r"\bxox[baprs]-[0-9a-zA-Z]{10,48}\b"), "Slack token"),
+    (re.compile(r"\bhf_[a-zA-Z0-9]{34,}\b"), "HuggingFace token"),
+    (re.compile(r"\b[rs]k_(?:test|live)_[0-9a-zA-Z]{24,}\b"), "Stripe API key"),
+    (re.compile(r"https?://[^:\s@]+:[^@\s/]+@[^\s/]+"), "URI with embedded credentials"),
+]
+_MUTABLE_DB_PATH_RE = re.compile(
+    r"(\b[A-Za-z]:[/\\]|\b/(?:var|tmp|home|etc|usr)/)[^\s]+\.(?:db|sqlite|sqlite3)\b",
+    re.IGNORECASE,
+)
+
+
+def validate_execution_envelope(
+    envelope: Union[ExecutionEnvelope, Dict[str, Any]],
+    expected_phase: Optional[str] = None,
+) -> List[str]:
+    """Validate a dispatch execution envelope machine-readably according to repository
+    routing authority policy in AGENTS.md:
+    - dispatch origin MUST be 'dely dispatch', never direct Orca worker-start;
+    - route provider MUST be '9router' for implement and review routes;
+    - expected harness, model, and effort MUST be separate fields;
+    - combined slugs (such as 'cx/gpt-5.6-sol-high') are strictly invalid;
+    - launch requested and effective evidence alone are insufficient;
+    - live terminal/archive evidence MUST identify the expected harness/provider route;
+    - 9Router usage evidence MUST identify the expected backend provider/model after dispatch;
+    - evidence references MUST NOT contain raw secrets, credentials, or mutable local db paths;
+    - missing or contradictory evidence fails closed.
+    """
+    if isinstance(envelope, ExecutionEnvelope):
+        data = {
+            "delivery_task_id": envelope.delivery_task_id,
+            "dispatch_id": envelope.dispatch_id,
+            "dispatch_origin": envelope.dispatch_origin,
+            "phase": envelope.phase,
+            "route": envelope.route,
+            "live_terminal_evidence": envelope.live_terminal_evidence,
+            "usage_evidence": envelope.usage_evidence,
+            "launch_requested": envelope.launch_requested,
+            "launch_effective": envelope.launch_effective,
+        }
+    elif isinstance(envelope, dict):
+        data = envelope
+    else:
+        raise RoutingEvidenceError(
+            f"Execution envelope must be dict or ExecutionEnvelope; got {type(envelope).__name__}"
+        )
+
+    # 1. Dispatch origin: MUST be 'dely dispatch'
+    origin = data.get("dispatch_origin")
+    clean_origin = (origin or "").strip() if isinstance(origin, str) else ""
+    if clean_origin != "dely dispatch":
+        clean_lower = clean_origin.lower()
+        if "worker-start" in clean_lower or clean_lower in ("worker-start", "orca worker-start", "direct worker-start", "orca"):
+            raise RoutingEvidenceError(
+                f"Direct Orca worker-start dispatch origin {origin!r} is strictly forbidden; "
+                f"every delivery dispatch MUST go through 'dely dispatch'"
+            )
+        raise RoutingEvidenceError(
+            f"Invalid dispatch origin {origin!r}; every delivery dispatch MUST go through 'dely dispatch'"
+        )
+
+    # 2. Phase
+    phase = data.get("phase")
+    if phase not in ("implement", "review"):
+        raise RoutingEvidenceError(f"Invalid execution envelope phase {phase!r}; must be 'implement' or 'review'")
+    if expected_phase is not None and phase != expected_phase:
+        raise RoutingEvidenceError(f"Phase mismatch: expected {expected_phase!r}, got {phase!r}")
+
+    # 3. Route
+    route = data.get("route")
+    if not isinstance(route, dict):
+        raise RoutingEvidenceError(f"Execution envelope route must be a dict; got {type(route).__name__}")
+
+    # Provider check: must be 9router
+    provider = route.get("provider")
+    clean_p = (provider or "").strip() if isinstance(provider, str) else ""
+    if clean_p != "9router":
+        if "antigravity" in clean_p.lower():
+            raise RoutingEvidenceError(
+                f"Antigravity native provider {provider!r} is strictly forbidden; "
+                f"implement and review routes MUST use provider '9router'"
+            )
+        raise RoutingEvidenceError(
+            f"Provider must be '9router' for phase {phase!r}; got {provider!r}. "
+            f"Missing or foreign providers fail closed."
+        )
+
+    # Harness check: separate field
+    harness = route.get("harness")
+    clean_h = (harness or "").strip() if isinstance(harness, str) else ""
+    if not clean_h:
+        raise RoutingEvidenceError("Harness must be present as a separate non-blank field")
+    if "antigravity" in clean_h.lower():
+        raise RoutingEvidenceError(
+            f"Antigravity native harness {harness!r} is strictly forbidden; "
+            f"repository routing policy requires fail-closed delivery without native fallback"
+        )
+    expected_harness = "Codex CLI" if phase == "implement" else "Claude Code"
+    if clean_h != expected_harness:
+        raise RoutingEvidenceError(
+            f"Harness mismatch for phase {phase!r}: expected {expected_harness!r}, got {clean_h!r}"
+        )
+
+    # Model check: separate field
+    model = route.get("model")
+    clean_m = (model or "").strip() if isinstance(model, str) else ""
+    if not clean_m:
+        raise RoutingEvidenceError("Model must be present as a separate non-blank field")
+
+    # Effort check: separate field
+    effort = route.get("effort")
+    clean_e = (effort or "").strip().lower() if isinstance(effort, str) else ""
+    if not clean_e:
+        raise RoutingEvidenceError(
+            "Effort must be present as a separate non-blank field; "
+            "model and effort cannot be combined into a single slug"
+        )
+    if clean_e != "high":
+        raise RoutingEvidenceError(f"Expected effort 'high' for phase {phase!r}; got {effort!r}")
+
+    # Combined slug check
+    if clean_m in ("cx/gpt-5.6-sol-high", "cx/gpt-5.6-sol:high", "ag/gemini-3.8-flash-high-high"):
+        raise RoutingEvidenceError(
+            f"Combined model/effort slug {clean_m!r} is invalid; "
+            f"model and effort MUST be separate fields (e.g. model='cx/gpt-5.6-sol', effort='high')"
+        )
+    expected_model = "ag/gemini-3.8-flash-high" if phase == "implement" else "cx/gpt-5.6-sol"
+    if clean_m != expected_model:
+        raise RoutingEvidenceError(
+            f"Model mismatch for phase {phase!r}: expected {expected_model!r}, got {clean_m!r}"
+        )
+
+    # 4. Evidence sufficiency
+    has_launch_req = data.get("launch_requested") is not None
+    has_launch_eff = data.get("launch_effective") is not None
+    live_terminal = data.get("live_terminal_evidence")
+    usage_ev = data.get("usage_evidence")
+
+    if (has_launch_req or has_launch_eff) and (not live_terminal or not usage_ev):
+        raise RoutingEvidenceError(
+            "launch.requested and launch.effective are necessary but insufficient; "
+            "dispatch is valid only when live terminal/archive evidence identifies the expected harness/provider "
+            "and 9Router usage evidence records the backend request after dispatch"
+        )
+
+    if not live_terminal:
+        raise RoutingEvidenceError("Missing live terminal/archive evidence; routing validation fails closed")
+    if not usage_ev:
+        raise RoutingEvidenceError("Missing 9Router usage evidence; routing validation fails closed")
+
+    # Live terminal evidence validation
+    if isinstance(live_terminal, LiveTerminalEvidence):
+        live_h = live_terminal.harness
+        live_p = live_terminal.provider
+        live_r = live_terminal.route
+    elif isinstance(live_terminal, dict):
+        if not live_terminal:
+            raise RoutingEvidenceError("Live terminal evidence is empty; fails closed")
+        live_h = live_terminal.get("harness")
+        live_p = live_terminal.get("provider")
+        live_r = live_terminal.get("route") or live_terminal.get("model")
+    else:
+        raise RoutingEvidenceError(f"Invalid live_terminal_evidence type: {type(live_terminal).__name__}")
+
+    if not live_h or live_h != expected_harness:
+        raise RoutingEvidenceError(
+            f"Live terminal evidence identifies harness {live_h!r}, expected {expected_harness!r}"
+        )
+    if not live_p or live_p != "9router":
+        raise RoutingEvidenceError(
+            f"Live terminal evidence identifies provider {live_p!r}, expected '9router'"
+        )
+    if not live_r or live_r != expected_model:
+        raise RoutingEvidenceError(
+            f"Live terminal evidence identifies route {live_r!r}, expected {expected_model!r}"
+        )
+
+    # Usage evidence validation
+    if isinstance(usage_ev, UsageEvidence):
+        u_p = usage_ev.backend_provider
+        u_m = usage_ev.backend_model
+        u_after = usage_ev.recorded_after_dispatch
+    elif isinstance(usage_ev, dict):
+        if not usage_ev:
+            raise RoutingEvidenceError("Usage evidence is empty; fails closed")
+        u_p = usage_ev.get("backend_provider") or usage_ev.get("provider")
+        u_m = usage_ev.get("backend_model") or usage_ev.get("model")
+        u_after = usage_ev.get("recorded_after_dispatch", False)
+    else:
+        raise RoutingEvidenceError(f"Invalid usage_evidence type: {type(usage_ev).__name__}")
+
+    if u_after is not True:
+        raise RoutingEvidenceError(
+            "9Router usage evidence must record backend request after dispatch (recorded_after_dispatch=True); "
+            "pre-dispatch or stale usage records are insufficient"
+        )
+    if not u_p:
+        raise RoutingEvidenceError("9Router usage evidence missing backend_provider")
+    if not u_m:
+        raise RoutingEvidenceError("9Router usage evidence missing backend_model")
+
+    if phase == "implement" and "gemini-3.8" not in str(u_m).lower() and "flash" not in str(u_m).lower() and "ag/gemini-3.8-flash-high" not in str(u_m):
+        raise RoutingEvidenceError(
+            f"9Router usage evidence backend_model {u_m!r} does not match expected model {expected_model!r}"
+        )
+    if phase == "review" and "gpt-5.6-sol" not in str(u_m).lower() and "cx/gpt-5.6-sol" not in str(u_m):
+        raise RoutingEvidenceError(
+            f"9Router usage evidence backend_model {u_m!r} does not match expected model {expected_model!r}"
+        )
+
+    # Credential and mutable path safety
+    all_strings = []
+    for item in (live_terminal, usage_ev, data.get("evidence_outputs", [])):
+        if isinstance(item, dict):
+            all_strings.extend(str(v) for v in item.values())
+        elif hasattr(item, "__dict__"):
+            all_strings.extend(str(v) for v in item.__dict__.values())
+        elif isinstance(item, (list, tuple)):
+            all_strings.extend(str(v) for v in item)
+
+    for s in all_strings:
+        for pat, desc in _SECRET_PATTERNS:
+            if pat.search(s):
+                raise RoutingEvidenceError(
+                    f"Evidence reference contains forbidden potential secret ({desc}): {s!r}"
+                )
+        if _MUTABLE_DB_PATH_RE.search(s) or ((".db" in s.lower() or ".sqlite" in s.lower()) and (":\\" in s or s.startswith("/"))):
+            raise RoutingEvidenceError(
+                f"Evidence reference contains forbidden mutable local database path: {s!r}"
+            )
+
+    return []
+
+
+@dataclass
 class DispatchBinding:
     delivery_task_id: str
     orca_task_id: str
@@ -1705,6 +1981,8 @@ class OrcaDeliveryAdapter:
         authority_state: Optional[str] = None,
         intended_dispatch_id: Optional[str] = None,
         now: Optional[datetime] = None,
+        dispatch_origin: Optional[str] = None,
+        execution_envelope: Optional[Union[ExecutionEnvelope, Dict[str, Any]]] = None,
     ) -> str:
         """Create a fresh dispatch attempt for a delivery task and bind identities.
         Requires exact nonblank and globally unique Orca task ID, candidate commit existing in git
@@ -1887,6 +2165,15 @@ class OrcaDeliveryAdapter:
                 f"Task {delivery_task_id} declared locks {sorted(declared_locks)} but dispatch proved {sorted(leased_locks)}; "
                 f"{'; '.join(err_parts)}. Dispatch must prove the complete declared task lock set."
             )
+
+        if dispatch_origin is not None:
+            clean_orig = dispatch_origin.strip() if isinstance(dispatch_origin, str) else ""
+            if clean_orig != "dely dispatch":
+                raise ProtocolViolationError(
+                    f"Illegal dispatch origin {dispatch_origin!r}: every delivery dispatch MUST go through 'dely dispatch'; direct Orca worker-start is forbidden"
+                )
+        if execution_envelope is not None:
+            validate_execution_envelope(execution_envelope)
 
         dispatch_id = intended_dispatch_id
 
@@ -2143,8 +2430,11 @@ class OrcaDeliveryAdapter:
         reason: str = "Harness compatibility failure",
     ) -> str:
         """Handle harness compatibility or execution failure fail-closed:
-        stops/blocks task, safely releases all held mutation leases, settles dispatch,
-        and halts execution without candidate mutation or harness switching.
+        identity-first fail-closed validation with no side effects until all
+        dispatch/task/binding/active-state checks succeed.
+        Stops/blocks task, safely releases ONLY leases exactly bound to the verified dispatch,
+        settles dispatch in durable registry, and halts execution without candidate mutation
+        or harness switching.
         Requires external recovery or human intervention to resolve.
         """
         clean_tid = delivery_task_id.strip() if isinstance(delivery_task_id, str) else ""
@@ -2152,15 +2442,58 @@ class OrcaDeliveryAdapter:
         if not clean_tid or not clean_did:
             raise ProtocolViolationError("delivery_task_id and dispatch_id cannot be blank")
 
+        # 1. Identity check: dispatch must exist in durable registry
+        binding = self.registry.get_dispatch_binding(clean_did)
+        if binding is None:
+            raise ProtocolViolationError(f"Unknown dispatch ID {clean_did!r}")
+
+        # 2. Task binding check: dispatch must belong to the specified delivery task
+        if binding.delivery_task_id != clean_tid:
+            raise ProtocolViolationError(
+                f"Dispatch {clean_did!r} is bound to delivery task {binding.delivery_task_id!r}, not {clean_tid!r}"
+            )
+
+        # 3. Settlement check: reject already settled / duplicate dispatch
+        if self.registry.is_dispatch_settled(clean_did) or getattr(binding, "settled", False):
+            raise DuplicateResultError(
+                f"Duplicate harness failure for already settled dispatch {clean_did!r}"
+            )
+
+        # 4. Active dispatch check: must be current active dispatch for this delivery task
+        active_disp = self.active_dispatches.get(clean_tid)
+        if active_disp != clean_did:
+            raise StaleResultError(
+                f"Stale dispatch failure: current active dispatch for {clean_tid!r} is {active_disp!r}, received {clean_did!r}"
+            )
+
+        # 5. Task state check: task must be in an active execution lifecycle state
+        current_state = self.get_task_state(clean_tid)
+        if current_state not in ("dispatched", "acknowledged", "running"):
+            raise ProtocolViolationError(
+                f"Cannot handle harness failure for task {clean_tid} in state {current_state!r}; "
+                f"task must be in an active execution state ('dispatched', 'acknowledged', 'running')"
+            )
+        allowed_transitions = LEGAL_TASK_STATE_TRANSITIONS.get(current_state, set())
+        if "blocked" not in allowed_transitions:
+            raise ProtocolViolationError(
+                f"Illegal task-state transition for {clean_tid}: {current_state!r} -> 'blocked'"
+            )
+
+        # All identity, binding, settled, and active-state validations passed.
+        # 6. Settle dispatch in durable registry FIRST (transactional rollback on persistence failure)
+        self.registry.settle_dispatch(clean_did)
+
+        # 7. Release ONLY leases exactly bound to the verified dispatch
+        binding_leases = getattr(binding, "lease_ids", None) or ([binding.lease_id] if binding.lease_id else [])
         if self.lease_mgr is not None:
             to_remove = [
                 lid for lid, l in list(self.lease_mgr.active_leases.items())
-                if l.dispatch_id == clean_did or l.delivery_task_id == clean_tid
+                if l.dispatch_id == clean_did and (lid in binding_leases if binding_leases else True)
             ]
             for lid in to_remove:
                 self.lease_mgr.release_lease(lid)
 
-        self.registry.settle_dispatch(clean_did)
+        # 8. Transition task state to blocked
         self.transition_task_state(clean_tid, "blocked")
         return "blocked"
 

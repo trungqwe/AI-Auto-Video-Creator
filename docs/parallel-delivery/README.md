@@ -304,3 +304,21 @@ Toàn bộ 21 bypass độc lập do Sol review phát hiện cùng các boundary
 3. **Phân tách Rõ Ràng Trường `model` và `effort` trong Dely và Tài liệu**:
    - Khóa route review thành Claude Code / `cx/gpt-5.6-sol` / `high` (tách riêng model và effort, nghiêm cấm slug gộp `cx/gpt-5.6-sol-high`).
    - Cập nhật đồng bộ `validate.py`, `task-dag.yaml`, `operating-model.md`, `protocol.md`, `README.md`, `CHANGELOG.md` và `HANDOFF.md`.
+
+
+## 17. Khắc phục triệt để các phát hiện Sol Round 11 (Identity-First Fail-Closed Harness Failure & Machine-Readable Routing Authority Policy)
+
+Đợt rà soát vòng 11 của `cx/gpt-5.6-sol` đã chỉ rõ hai điểm nghẽn kiến trúc quan trọng: xử lý harness failure thiếu kiểm tra định danh trước dẫn đến nguy cơ thu hồi nhầm lease của dispatch mới, và bằng chứng định tuyến provider/routing còn mang tính văn xuôi chưa được kiểm chứng máy đọc. Toàn bộ hai phát hiện đã được khắc phục hoàn toàn và chứng minh qua 14 fixtures mới trong `test_negative_fixtures.py` (tổng bộ kiểm thử đạt 190 fixtures tự động PASS 100%):
+
+1. **Xử lý Harness Failure theo Định danh Trước, Không Tác động Phụ (`Identity-First Fail-Closed Harness Failure`)**:
+   - `OrcaDeliveryAdapter.handle_harness_failure()` thực hiện kiểm tra định danh trước fail-closed: kiểm tra dispatch tồn tại, thuộc đúng task, chưa settled, là active dispatch hiện hành, và task đang trong vòng đời thực thi hợp lệ (`dispatched`, `acknowledged`, `running`) trước khi có bất kỳ tác động phụ nào.
+   - Chỉ giải phóng đúng các lease được gán trực tiếp cho dispatch đã xác thực (`clean_did`), tuyệt đối không giải phóng nhầm lease của dispatch khác hoặc của task theo `delivery_task_id`.
+   - Bất kỳ lỗi kiểm tra nào (spoof dispatch ID, cross-task dispatch, settled/duplicate dispatch, stale dispatch sau khi replan/redispatch) hoặc lỗi lưu trữ đĩa (persistence failure) đều bị từ chối fail-closed và bảo đảm không để lại tác động phụ một phần; lease của active dispatch mới hoàn toàn được giữ nguyên vẹn.
+   - Khi harness failure hợp lệ được xác thực: dispatch được settle, task chuyển sang `blocked`, các tài nguyên thuộc dispatch đó được giải phóng/fence an toàn, và nội dung commit candidate được bảo toàn nguyên vẹn.
+2. **Chính sách Bằng chứng Định tuyến Machine-Readable và Execution Envelope (`Machine-Readable Routing Authority & Execution Envelope Policy`)**:
+   - Mọi dispatch bắt buộc xuất phát từ `dely dispatch`, nghiêm cấm direct Orca `worker-start`.
+   - Route `implement` và `review` bắt buộc dùng `provider: 9router`. Nghiêm cấm Antigravity native và các provider không khai báo.
+   - `harness`, `model`, và `effort` bắt buộc là các trường riêng biệt. Nghiêm cấm các slug gộp như `cx/gpt-5.6-sol-high`.
+   - Bằng chứng `launch.requested` và `launch.effective` đơn lẻ là KHÔNG ĐỦ; dispatch chỉ hợp lệ khi có bằng chứng terminal/archive trực tiếp xác nhận đúng route harness/provider, và cơ sở dữ liệu sử dụng 9Router ghi nhận đúng request backend (`google` / `openai` qua 9Router) sau khi dispatch được tạo (`recorded_after_dispatch: true`).
+   - Bằng chứng phải ở dạng machine-readable và tuyệt đối không commit secret, token, credential hoặc đường dẫn cơ sở dữ liệu cục bộ khả biến.
+   - Duy trì sự phân biệt rõ ràng giữa cơ chế fallback AI provider của sản phẩm (theo product roadmap) và việc nghiêm cấm fallback agent-harness/provider trong delivery control plane này.

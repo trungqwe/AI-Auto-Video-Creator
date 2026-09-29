@@ -44,6 +44,11 @@ from delivery_engine import (  # noqa: E402
     ScopeViolationError,
     SharedOrcaExecutionRegistry,
     StaleResultError,
+    RoutingEvidenceError,
+    LiveTerminalEvidence,
+    UsageEvidence,
+    ExecutionEnvelope,
+    validate_execution_envelope,
     build_contract_catalog,
     check_harness_tool_compatibility,
     check_owned_vs_forbidden,
@@ -3859,6 +3864,374 @@ class TestSolRoundTenCounterexamples(unittest.TestCase):
                     f"Forbidden native-fallback phrase {phrase!r} found in {doc_path.name}",
                 )
 
+
+
+
+class TestSolRound11HarnessFailureLeaseSafety(unittest.TestCase):
+    """Sol Round 11 Finding F1: Identity-first fail-closed harness failure handling.
+    Rejects spoof, cross-task, settled, and stale dispatches without side effects;
+    leases of fresh active dispatches remain completely intact.
+    """
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.temp_reg_path = Path(self.temp_dir.name) / "reg.json"
+        SharedOrcaExecutionRegistry.reset_default(storage_path=self.temp_reg_path)
+        res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT_DIR, capture_output=True, text=True)
+        self.candidate_commit = res.stdout.strip() if res.returncode == 0 else "a56e34b630977bb2a3087938fed594ef15f89124"
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        try:
+            self.temp_dir.cleanup()
+        except OSError:
+            pass
+
+    def test_r11_01_unknown_spoof_dispatch_id_rejected_fail_closed_leases_intact(self):
+        """1. Unknown/spoof dispatch ID rejected fail-closed; active task lease remains intact."""
+        mgr = LeaseManager([{"id": "R11-LOCK-1", "mode": "exclusive", "renewable": True, "lease_seconds": 600}])
+        mgr.set_task_authority("TASK-R11-1", "granted")
+        adapter = OrcaDeliveryAdapter(mgr, approved_candidate_commit=self.candidate_commit, git_root=ROOT_DIR)
+        adapter.register_task_locks("TASK-R11-1", ["R11-LOCK-1"])
+        adapter.set_task_authority("TASK-R11-1", "granted")
+        adapter.set_task_state("TASK-R11-1", "ready")
+        lease = mgr.acquire_lease("R11-LOCK-1", "TASK-R11-1", "ctx_real")
+        disp_id = adapter.create_dispatch(
+            "TASK-R11-1", "orca_r11_1", self.candidate_commit,
+            lease_id=lease.lease_id, intended_dispatch_id="ctx_real", fencing_token=lease.fencing_token
+        )
+        adapter.acknowledge_dispatch("TASK-R11-1", disp_id)
+        adapter.start_running("TASK-R11-1", disp_id)
+
+        # Attempt harness failure with completely unknown/spoof dispatch ID
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            adapter.handle_harness_failure("TASK-R11-1", "ctx_spoof_unknown", "Harness crashed")
+        self.assertIn("Unknown dispatch ID", str(ctx.exception))
+        # Lease must remain 100% active and task state must remain running
+        self.assertIn(lease.lease_id, mgr.active_leases, "Live lease must remain intact after rejected spoof failure")
+        self.assertEqual(adapter.get_task_state("TASK-R11-1"), "running")
+
+    def test_r11_02_dispatch_bound_to_another_task_rejected_fail_closed_leases_intact(self):
+        """2. Dispatch bound to another task rejected fail-closed; both tasks retain their leases."""
+        mgr = LeaseManager([
+            {"id": "R11-LOCK-A", "mode": "exclusive", "renewable": True, "lease_seconds": 600},
+            {"id": "R11-LOCK-B", "mode": "exclusive", "renewable": True, "lease_seconds": 600},
+        ])
+        mgr.set_task_authority("TASK-A", "granted")
+        mgr.set_task_authority("TASK-B", "granted")
+        adapter = OrcaDeliveryAdapter(mgr, approved_candidate_commit=self.candidate_commit, git_root=ROOT_DIR)
+        adapter.register_task_locks("TASK-A", ["R11-LOCK-A"])
+        adapter.register_task_locks("TASK-B", ["R11-LOCK-B"])
+        adapter.set_task_authority("TASK-A", "granted")
+        adapter.set_task_authority("TASK-B", "granted")
+        adapter.set_task_state("TASK-A", "ready")
+        adapter.set_task_state("TASK-B", "ready")
+
+        lease_a = mgr.acquire_lease("R11-LOCK-A", "TASK-A", "ctx_a")
+        disp_a = adapter.create_dispatch(
+            "TASK-A", "orca_a", self.candidate_commit,
+            lease_id=lease_a.lease_id, intended_dispatch_id="ctx_a", fencing_token=lease_a.fencing_token
+        )
+        adapter.acknowledge_dispatch("TASK-A", disp_a)
+        adapter.start_running("TASK-A", disp_a)
+
+        lease_b = mgr.acquire_lease("R11-LOCK-B", "TASK-B", "ctx_b")
+        disp_b = adapter.create_dispatch(
+            "TASK-B", "orca_b", self.candidate_commit,
+            lease_id=lease_b.lease_id, intended_dispatch_id="ctx_b", fencing_token=lease_b.fencing_token
+        )
+        adapter.acknowledge_dispatch("TASK-B", disp_b)
+        adapter.start_running("TASK-B", disp_b)
+
+        # Cross-task failure spoof: report failure for TASK-A using dispatch ctx_b
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            adapter.handle_harness_failure("TASK-A", "ctx_b", "Cross-task failure")
+        self.assertIn("bound to delivery task 'TASK-B'", str(ctx.exception))
+
+        # Both leases and task states must be untouched
+        self.assertIn(lease_a.lease_id, mgr.active_leases)
+        self.assertIn(lease_b.lease_id, mgr.active_leases)
+        self.assertEqual(adapter.get_task_state("TASK-A"), "running")
+        self.assertEqual(adapter.get_task_state("TASK-B"), "running")
+
+    def test_r11_03_already_settled_duplicate_dispatch_rejected_fail_closed_leases_intact(self):
+        """3. Already settled/duplicate dispatch rejected fail-closed without side effects."""
+        mgr = LeaseManager([{"id": "R11-LOCK-DUP", "mode": "exclusive", "renewable": True, "lease_seconds": 600}])
+        mgr.set_task_authority("TASK-DUP", "granted")
+        adapter = OrcaDeliveryAdapter(mgr, approved_candidate_commit=self.candidate_commit, git_root=ROOT_DIR)
+        adapter.register_task_locks("TASK-DUP", ["R11-LOCK-DUP"])
+        adapter.set_task_authority("TASK-DUP", "granted")
+        adapter.set_task_state("TASK-DUP", "ready")
+        lease1 = mgr.acquire_lease("R11-LOCK-DUP", "TASK-DUP", "ctx_dup1")
+        disp1 = adapter.create_dispatch(
+            "TASK-DUP", "orca_dup1", self.candidate_commit,
+            lease_id=lease1.lease_id, intended_dispatch_id="ctx_dup1", fencing_token=lease1.fencing_token
+        )
+        adapter.acknowledge_dispatch("TASK-DUP", disp1)
+        adapter.start_running("TASK-DUP", disp1)
+
+        # Complete first dispatch via worker_done failed -> settles ctx_dup1
+        adapter.handle_worker_done("TASK-DUP", "orca_dup1", disp1, "failed", candidate_commit=self.candidate_commit, fencing_token=lease1.fencing_token)
+        self.assertTrue(adapter.registry.is_dispatch_settled(disp1))
+
+        # Late harness failure arriving for the already settled dispatch
+        with self.assertRaises(DuplicateResultError) as ctx:
+            adapter.handle_harness_failure("TASK-DUP", disp1, "Late failure for settled dispatch")
+        self.assertIn("already settled", str(ctx.exception))
+
+    def test_r11_04_stale_failure_after_replan_and_redispatch_rejected_fresh_lease_intact(self):
+        """4. Stale failure arriving after task is replanned and redispatched leaves fresh lease intact."""
+        mgr = LeaseManager([{"id": "R11-LOCK-REPLAN", "mode": "exclusive", "renewable": True, "lease_seconds": 600}])
+        mgr.set_task_authority("TASK-REPLAN", "granted")
+        adapter = OrcaDeliveryAdapter(mgr, approved_candidate_commit=self.candidate_commit, git_root=ROOT_DIR)
+        adapter.register_task_locks("TASK-REPLAN", ["R11-LOCK-REPLAN"])
+        adapter.set_task_authority("TASK-REPLAN", "granted")
+        adapter.set_task_state("TASK-REPLAN", "ready")
+
+        # Dispatch 1
+        lease1 = mgr.acquire_lease("R11-LOCK-REPLAN", "TASK-REPLAN", "ctx_first")
+        disp1 = adapter.create_dispatch(
+            "TASK-REPLAN", "orca_first", self.candidate_commit,
+            lease_id=lease1.lease_id, intended_dispatch_id="ctx_first", fencing_token=lease1.fencing_token
+        )
+        adapter.acknowledge_dispatch("TASK-REPLAN", disp1)
+        adapter.start_running("TASK-REPLAN", disp1)
+        adapter.handle_worker_done("TASK-REPLAN", "orca_first", disp1, "failed", candidate_commit=self.candidate_commit, fencing_token=lease1.fencing_token)
+        self.assertEqual(adapter.get_task_state("TASK-REPLAN"), "blocked")
+
+        # Replan and redispatch as Dispatch 2
+        adapter.resolve_blocker_and_replan("TASK-REPLAN")
+        self.assertEqual(adapter.get_task_state("TASK-REPLAN"), "ready")
+        lease2 = mgr.acquire_lease("R11-LOCK-REPLAN", "TASK-REPLAN", "ctx_second")
+        disp2 = adapter.create_dispatch(
+            "TASK-REPLAN", "orca_second", self.candidate_commit,
+            lease_id=lease2.lease_id, intended_dispatch_id="ctx_second", fencing_token=lease2.fencing_token
+        )
+        adapter.acknowledge_dispatch("TASK-REPLAN", disp2)
+        adapter.start_running("TASK-REPLAN", disp2)
+
+        # Stale failure for disp1 arrives while disp2 is actively running
+        with self.assertRaises((DuplicateResultError, StaleResultError)) as ctx:
+            adapter.handle_harness_failure("TASK-REPLAN", disp1, "Stale failure from first run")
+
+        # Fresh active dispatch lease2 MUST remain active and untouched
+        self.assertIn(lease2.lease_id, mgr.active_leases, "Fresh lease2 must remain active after rejected stale failure")
+        self.assertEqual(adapter.get_task_state("TASK-REPLAN"), "running")
+
+    def test_r11_05_valid_active_harness_failure_settles_blocks_releases_and_preserves_candidate(self):
+        """5. Valid active harness failure settles dispatch, blocks task, releases only own lease, preserves candidate."""
+        mgr = LeaseManager([{"id": "R11-LOCK-VALID", "mode": "exclusive", "renewable": True, "lease_seconds": 600}])
+        mgr.set_task_authority("TASK-VALID", "granted")
+        adapter = OrcaDeliveryAdapter(mgr, approved_candidate_commit=self.candidate_commit, git_root=ROOT_DIR)
+        adapter.register_task_locks("TASK-VALID", ["R11-LOCK-VALID"])
+        adapter.set_task_authority("TASK-VALID", "granted")
+        adapter.set_task_state("TASK-VALID", "ready")
+        lease = mgr.acquire_lease("R11-LOCK-VALID", "TASK-VALID", "ctx_valid")
+        disp_id = adapter.create_dispatch(
+            "TASK-VALID", "orca_valid", self.candidate_commit,
+            lease_id=lease.lease_id, intended_dispatch_id="ctx_valid", fencing_token=lease.fencing_token
+        )
+        adapter.acknowledge_dispatch("TASK-VALID", disp_id)
+        adapter.start_running("TASK-VALID", disp_id)
+
+        # Valid failure
+        res = adapter.handle_harness_failure("TASK-VALID", disp_id, "Harness crash")
+        self.assertEqual(res, "blocked")
+        self.assertEqual(adapter.get_task_state("TASK-VALID"), "blocked")
+        self.assertTrue(adapter.registry.is_dispatch_settled(disp_id))
+        self.assertEqual(len(mgr.active_leases), 0, "Own lease must be safely released")
+
+        # Git candidate commit remains preserved
+        head_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT_DIR, capture_output=True, text=True)
+        self.assertEqual(head_res.stdout.strip(), self.candidate_commit)
+
+    def test_r11_06_persistence_failure_leaves_no_partial_effects(self):
+        """6. Failure during registry persistence/settlement rolls back and leaves no partial lease release."""
+        mgr = LeaseManager([{"id": "R11-LOCK-TX", "mode": "exclusive", "renewable": True, "lease_seconds": 600}])
+        mgr.set_task_authority("TASK-TX", "granted")
+        adapter = OrcaDeliveryAdapter(mgr, approved_candidate_commit=self.candidate_commit, git_root=ROOT_DIR)
+        adapter.register_task_locks("TASK-TX", ["R11-LOCK-TX"])
+        adapter.set_task_authority("TASK-TX", "granted")
+        adapter.set_task_state("TASK-TX", "ready")
+        lease = mgr.acquire_lease("R11-LOCK-TX", "TASK-TX", "ctx_tx")
+        disp_id = adapter.create_dispatch(
+            "TASK-TX", "orca_tx", self.candidate_commit,
+            lease_id=lease.lease_id, intended_dispatch_id="ctx_tx", fencing_token=lease.fencing_token
+        )
+        adapter.acknowledge_dispatch("TASK-TX", disp_id)
+        adapter.start_running("TASK-TX", disp_id)
+
+        # Monkeypatch settle_dispatch to simulate I/O or transaction abort
+        def broken_settle(did):
+            raise IOError("Simulated disk persistence failure")
+        orig_settle = adapter.registry.settle_dispatch
+        adapter.registry.settle_dispatch = broken_settle
+
+        try:
+            with self.assertRaises(IOError):
+                adapter.handle_harness_failure("TASK-TX", disp_id, "Failure with disk crash")
+        finally:
+            adapter.registry.settle_dispatch = orig_settle
+
+        # Leases and task state must not be partially modified
+        self.assertIn(lease.lease_id, mgr.active_leases, "Lease must remain active if persistence failed")
+        self.assertEqual(adapter.get_task_state("TASK-TX"), "running")
+
+
+class TestSolRound11RoutingEvidencePolicy(unittest.TestCase):
+    """Sol Round 11 Finding F2: Machine-readable routing evidence and execution envelope validation.
+    Enforces fail-closed rules: provider == 9router, dely dispatch origin, separate harness/model/effort,
+    mandatory live terminal/archive evidence, mandatory 9Router usage evidence after dispatch,
+    and secret/mutable path avoidance.
+    """
+
+    def setUp(self):
+        self.valid_implement_envelope = {
+            "delivery_task_id": "PD-PILOT-CONTROL",
+            "dispatch_id": "ctx_impl_001",
+            "dispatch_origin": "dely dispatch",
+            "phase": "implement",
+            "route": {
+                "provider": "9router",
+                "harness": "Codex CLI",
+                "model": "ag/gemini-3.8-flash-high",
+                "effort": "high",
+            },
+            "live_terminal_evidence": {
+                "harness": "Codex CLI",
+                "provider": "9router",
+                "route": "ag/gemini-3.8-flash-high",
+                "archive_reference": "term_archive_test_01",
+                "verified": True,
+            },
+            "usage_evidence": {
+                "backend_provider": "google",
+                "backend_model": "ag/gemini-3.8-flash-high",
+                "recorded_after_dispatch": True,
+                "timestamp": "2026-09-29T00:05:00Z",
+                "request_id": "req_test_01",
+            },
+            "launch_requested": {"harness": "Codex CLI", "route": "ag/gemini-3.8-flash-high"},
+            "launch_effective": {"harness": "Codex CLI", "route": "ag/gemini-3.8-flash-high"},
+        }
+        self.valid_review_envelope = {
+            "delivery_task_id": "PD-PILOT-CONTROL",
+            "dispatch_id": "ctx_rev_001",
+            "dispatch_origin": "dely dispatch",
+            "phase": "review",
+            "route": {
+                "provider": "9router",
+                "harness": "Claude Code",
+                "model": "cx/gpt-5.6-sol",
+                "effort": "high",
+            },
+            "live_terminal_evidence": {
+                "harness": "Claude Code",
+                "provider": "9router",
+                "route": "cx/gpt-5.6-sol",
+                "archive_reference": "term_archive_rev_01",
+                "verified": True,
+            },
+            "usage_evidence": {
+                "backend_provider": "openai",
+                "backend_model": "cx/gpt-5.6-sol",
+                "recorded_after_dispatch": True,
+                "timestamp": "2026-09-29T00:06:00Z",
+                "request_id": "req_rev_01",
+            },
+            "launch_requested": {"harness": "Claude Code", "route": "cx/gpt-5.6-sol"},
+            "launch_effective": {"harness": "Claude Code", "route": "cx/gpt-5.6-sol"},
+        }
+
+    def test_r11_07_valid_routing_envelope_passes(self):
+        """7. Valid execution envelope with 9router, dely dispatch, live and usage evidence passes."""
+        errors_impl = validate_execution_envelope(self.valid_implement_envelope)
+        self.assertEqual(errors_impl, [])
+        errors_rev = validate_execution_envelope(self.valid_review_envelope)
+        self.assertEqual(errors_rev, [])
+
+    def test_r11_08_provider_not_9router_fails_closed(self):
+        """8. Counterexample: Provider != 9router (e.g. antigravity, openai, direct) fails closed."""
+        for bad_p in ("antigravity", "antigravity_native", "openai", "google", "direct", "", None):
+            env = copy.deepcopy(self.valid_implement_envelope)
+            env["route"]["provider"] = bad_p
+            with self.assertRaises(RoutingEvidenceError) as ctx:
+                validate_execution_envelope(env)
+            self.assertTrue("provider" in str(ctx.exception).lower() or "9router" in str(ctx.exception).lower())
+
+    def test_r11_09_direct_worker_start_origin_fails_closed(self):
+        """9. Counterexample: Dispatch origin direct worker-start fails closed."""
+        for bad_origin in ("worker-start", "orca worker-start", "direct worker-start", "orca", "", None):
+            env = copy.deepcopy(self.valid_implement_envelope)
+            env["dispatch_origin"] = bad_origin
+            with self.assertRaises(RoutingEvidenceError) as ctx:
+                validate_execution_envelope(env)
+            self.assertIn("dely dispatch", str(ctx.exception).lower())
+
+    def test_r11_10_combined_model_effort_slug_fails_closed(self):
+        """10. Counterexample: Combined slug (e.g. cx/gpt-5.6-sol-high) or missing effort fails closed."""
+        env = copy.deepcopy(self.valid_review_envelope)
+        env["route"]["model"] = "cx/gpt-5.6-sol-high"
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env)
+        self.assertIn("combined", str(ctx.exception).lower())
+
+        env2 = copy.deepcopy(self.valid_review_envelope)
+        env2["route"]["effort"] = ""
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env2)
+        self.assertIn("effort", str(ctx.exception).lower())
+
+    def test_r11_11_launch_evidence_alone_without_live_and_usage_fails_closed(self):
+        """11. Counterexample: launch.requested/effective alone without live/usage evidence fails closed."""
+        env = copy.deepcopy(self.valid_implement_envelope)
+        env["live_terminal_evidence"] = None
+        env["usage_evidence"] = None
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env)
+        self.assertIn("insufficient", str(ctx.exception).lower())
+
+    def test_r11_12_missing_or_contradictory_live_evidence_fails_closed(self):
+        """12. Counterexample: Missing or contradictory live terminal evidence fails closed."""
+        # Missing
+        env = copy.deepcopy(self.valid_implement_envelope)
+        env["live_terminal_evidence"] = {}
+        with self.assertRaises(RoutingEvidenceError):
+            validate_execution_envelope(env)
+
+        # Contradictory harness/route
+        env2 = copy.deepcopy(self.valid_implement_envelope)
+        env2["live_terminal_evidence"]["harness"] = "Claude Code"
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env2)
+        self.assertIn("live terminal", str(ctx.exception).lower())
+
+    def test_r11_13_missing_or_stale_usage_evidence_fails_closed(self):
+        """13. Counterexample: 9Router usage evidence not recorded after dispatch fails closed."""
+        env = copy.deepcopy(self.valid_implement_envelope)
+        env["usage_evidence"]["recorded_after_dispatch"] = False
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env)
+        self.assertIn("after dispatch", str(ctx.exception).lower())
+
+        env2 = copy.deepcopy(self.valid_implement_envelope)
+        env2["usage_evidence"] = None
+        with self.assertRaises(RoutingEvidenceError):
+            validate_execution_envelope(env2)
+
+    def test_r11_14_evidence_containing_secrets_or_mutable_db_paths_fails_closed(self):
+        """14. Counterexample: Evidence containing raw secrets or mutable DB paths fails closed."""
+        env = copy.deepcopy(self.valid_implement_envelope)
+        env["live_terminal_evidence"]["archive_reference"] = f"bearer {'sk-'}{'1234567890abcdef12345678'}"
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env)
+        self.assertIn("secret", str(ctx.exception).lower())
+
+        env2 = copy.deepcopy(self.valid_implement_envelope)
+        env2["usage_evidence"]["request_id"] = "C:\\Users\\Admin\\AppData\\local.db"
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env2)
+        self.assertIn("mutable local database path", str(ctx.exception).lower())
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

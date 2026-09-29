@@ -228,6 +228,18 @@ orca orchestration send --from <worker_terminal> --dispatch-capability <dcap> --
 12. **Durable Ledger/Registry dùng chung (`SharedOrcaExecutionRegistry`)**:
     - Task ID và dispatch ID của Orca được lưu vết qua registry dùng chung giữa các adapter instance, bảo đảm tính duy nhất toàn cục và chống tái sử dụng ID trên toàn hệ thống.
 13. **Intended Dispatch bắt buộc không rewrite lease (`No Lease Rewrite`)**:
+    - Khi dispatch chỉ định `intended_dispatch_id`, lease liên kết bắt buộc phải khớp chính xác với `intended_dispatch_id` đó. Mọi nỗ lực bypass bị cấm triệt để.
+14. **Xử lý Harness Failure theo Định danh Trước, Thu Hồi Đúng Lease Đã Ràng Buộc (`Identity-First Fail-Closed Harness Failure`)**:
+    - `OrcaDeliveryAdapter.handle_harness_failure()` thực hiện kiểm tra định danh trước fail-closed: kiểm tra dispatch tồn tại trong registry bền vững, thuộc đúng delivery task, chưa bị settle, là active dispatch hiện hành của task, và task đang trong vòng đời thực thi hợp lệ (`dispatched`, `acknowledged`, `running`) trước khi có bất kỳ tác động phụ nào.
+    - Chỉ giải phóng đúng các lease được gán trực tiếp cho dispatch đã xác thực (`clean_did`), tuyệt đối không giải phóng nhầm lease của dispatch khác hoặc của task theo `delivery_task_id`.
+    - Bất kỳ lỗi kiểm tra nào (spoof dispatch ID, cross-task dispatch, settled/duplicate dispatch, stale dispatch sau khi replan/redispatch) hoặc lỗi lưu trữ đĩa (persistence failure) đều bị từ chối fail-closed và bảo đảm không để lại tác động phụ một phần; lease của active dispatch mới hoàn toàn được giữ nguyên vẹn.
+    - Khi harness failure hợp lệ được xác thực: dispatch được settle trong registry bền vững, task chuyển sang `blocked`, các tài nguyên thuộc dispatch đó được giải phóng/fence an toàn, và nội dung commit candidate được bảo toàn nguyên vẹn.
+15. **Chính sách Bằng chứng Định tuyến Machine-Readable và Execution Envelope Policy**:
+    - Mọi dispatch bắt buộc xuất phát từ `dely dispatch`, nghiêm cấm direct Orca `worker-start`.
+    - Route `implement` và `review` bắt buộc dùng `provider: 9router`. Nghiêm cấm Antigravity native và các provider không khai báo.
+    - `harness`, `model`, và `effort` bắt buộc là các trường riêng biệt. Nghiêm cấm các slug gộp như `cx/gpt-5.6-sol-high`.
+    - Bằng chứng `launch.requested` và `launch.effective` đơn lẻ là KHÔNG ĐỦ; dispatch chỉ hợp lệ khi có bằng chứng terminal/archive trực tiếp xác nhận đúng route harness/provider, và cơ sở dữ liệu sử dụng 9Router ghi nhận đúng request backend (`google` / `openai` qua 9Router) sau khi dispatch được tạo (`recorded_after_dispatch: true`).
+    - Bằng chứng phải ở dạng machine-readable và tuyệt đối không commit secret, token, credential hoặc đường dẫn cơ sở dữ liệu cục bộ khả biến.
     - Tham số `intended_dispatch_id` là bắt buộc khi tạo dispatch; bắt buộc phải khớp chính xác với `active_lease.dispatch_id`. Cấm tuyệt đối hành vi ghi đè lease dispatch ID.
 14. **Chứng minh đầy đủ tập hợp Lock đã khai báo (`declared_task_locks`)**:
     - Khi tạo dispatch, worker bắt buộc phải chứng minh đầy đủ lease hợp lệ cho mọi lock trong `declared_task_locks` của task (qua `lease_ids`), cấm dùng một lease đại diện.

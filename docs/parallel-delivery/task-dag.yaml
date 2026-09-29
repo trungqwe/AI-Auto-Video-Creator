@@ -59,6 +59,31 @@ schema:
     - counterexample
     - red_observation
     - limitations
+  execution_envelope:
+    required_fields:
+      - delivery_task_id
+      - dispatch_id
+      - dispatch_origin
+      - phase
+      - route
+      - live_terminal_evidence
+      - usage_evidence
+    dispatch_origin_enum:
+      - "dely dispatch"
+    forbidden_origins:
+      - "worker-start"
+      - "orca worker-start"
+      - "direct worker-start"
+    required_provider: "9router"
+    forbidden_providers:
+      - "antigravity"
+      - "antigravity_native"
+    harness_field_separate: true
+    model_field_separate: true
+    effort_field_separate: true
+    launch_evidence_insufficient_alone: true
+    live_terminal_evidence_required: true
+    usage_evidence_required_after_dispatch: true
   eligibility:
     all:
       - authority_granted
@@ -204,10 +229,12 @@ tasks:
       control:
         model: cx/gpt-5.6-sol
       implement:
+        provider: 9router
         harness: Codex CLI
         model: ag/gemini-3.8-flash-high
         effort: high
       review:
+        provider: 9router
         harness: Claude Code
         model: cx/gpt-5.6-sol
         effort: high

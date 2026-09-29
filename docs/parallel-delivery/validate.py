@@ -83,6 +83,8 @@ try:
         validate_path_syntax,
         validate_scope_and_deltas,
         validate_task_traceability_and_readiness,
+        RoutingEvidenceError,
+        validate_execution_envelope,
     )
 except ImportError as exc:
     raise RuntimeError(f"Failed to import delivery_engine from {BUNDLE}") from exc
@@ -238,6 +240,33 @@ def check_task_dag(
             missing = acceptance_fields - set(row)
             if missing:
                 errors.append(f"{task_id}: acceptance row missing {sorted(missing)}")
+
+        # F2: Machine-readable routing authority policy validation
+        task_route = task.get("route")
+        if isinstance(task_route, dict):
+            for phase_name in ("implement", "review"):
+                phase_cfg = task_route.get(phase_name)
+                if isinstance(phase_cfg, dict):
+                    # Provider must be 9router
+                    prov = phase_cfg.get("provider")
+                    if prov != "9router":
+                        errors.append(f"{task_id}: route {phase_name} must use provider '9router'; got {prov!r}")
+                    # Harness must be separate field, non-antigravity
+                    h = phase_cfg.get("harness")
+                    if not h or not isinstance(h, str) or not h.strip():
+                        errors.append(f"{task_id}: route {phase_name} missing separate harness field")
+                    elif "antigravity" in h.lower():
+                        errors.append(f"{task_id}: route {phase_name} specifies forbidden Antigravity native harness")
+                    # Model must be separate field, no combined slug
+                    m = phase_cfg.get("model")
+                    if not m or not isinstance(m, str) or not m.strip():
+                        errors.append(f"{task_id}: route {phase_name} missing separate model field")
+                    elif m in ("cx/gpt-5.6-sol-high", "cx/gpt-5.6-sol:high"):
+                        errors.append(f"{task_id}: route {phase_name} uses invalid combined model slug {m!r}")
+                    # Effort must be separate field
+                    e = phase_cfg.get("effort")
+                    if not e or not isinstance(e, str) or e.strip() != "high":
+                        errors.append(f"{task_id}: route {phase_name} must specify separate effort 'high'")
 
     task_set = {task.get("id") for task in tasks}
     for wave in data.get("waves", []):
@@ -653,6 +682,24 @@ def check_dely_block() -> list[str]:
         errors.append(f"unexpected Dely rows: {normalized}")
     if (ROOT / "CLAUDE.md").read_text(encoding="utf-8") != "@AGENTS.md\n":
         errors.append("CLAUDE.md must contain only @AGENTS.md")
+
+    # Sol Round 11: Machine-readable routing authority rules must be present in AGENTS.md
+    required_phrases = [
+        "Every delivery dispatch MUST go through `dely dispatch`",
+        "Control MUST NOT call Orca `worker-start` directly",
+        "provider `9router`",
+        "Antigravity native is forbidden",
+        "Model and effort are separate fields",
+        "A combined slug such as `cx/gpt-5.6-sol-high` is invalid",
+        "`launch.requested` and `launch.effective` are necessary but insufficient",
+        "live terminal/archive identifies the expected harness/provider",
+        "9Router usage database records the expected backend request after dispatch",
+        "Missing or contradictory routing evidence is a hard STOP",
+    ]
+    for phrase in required_phrases:
+        if phrase not in text:
+            errors.append(f"AGENTS.md missing mandatory routing authority policy: {phrase!r}")
+
     return errors
 
 
@@ -1078,6 +1125,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "1_forbid_antigravity_native_fallback_fail_closed": "RESOLVED",
                     "2_harness_state_machine_transitions_to_stop_blocked": "RESOLVED",
                     "3_safe_release_and_fencing_without_candidate_mutation": "RESOLVED",
+                },
+                "sol_round_11": {
+                    "1_identity_first_fail_closed_harness_failure_release_bound_leases_only": "RESOLVED",
+                    "2_machine_readable_routing_evidence_9router_and_execution_envelope": "RESOLVED",
                 },
             },
             "fixture_stats": fixture_stats,

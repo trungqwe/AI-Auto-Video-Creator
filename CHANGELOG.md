@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 11 (Identity-First Fail-Closed Harness Failure & Machine-Readable Routing Authority Policy)
+
+- Khắc phục toàn diện phát hiện/blocker từ independent Sol round 11 review cho bundle `docs/parallel-delivery/`:
+  - **(1) Xử lý Harness Failure theo Định danh Trước, Không Tác động Phụ (Finding F1)**: `OrcaDeliveryAdapter.handle_harness_failure()` thực hiện kiểm tra định danh trước fail-closed (xác minh dispatch tồn tại, thuộc đúng task, chưa settled, là active dispatch hiện hành, và task đang trong trạng thái thực thi hợp lệ) trước khi có bất kỳ tác động phụ nào; chỉ thu hồi các lease được gán trực tiếp cho dispatch đã xác thực, tuyệt đối không thu hồi lease của dispatch khác hoặc của task; lỗi kiểm tra hoặc lỗi lưu trữ đĩa (persistence failure) không để lại tác động phụ một phần, bảo toàn 100% lease của active dispatch mới; harness failure hợp lệ chuyển task sang `blocked`, giải phóng và fence tài nguyên an toàn mà không làm đột biến commit candidate.
+  - **(2) Bằng chứng Định tuyến Machine-Readable và Execution Envelope Policy (Finding F2)**: Thiết lập schema và validator cho execution envelope (`validate_execution_envelope`, `ExecutionEnvelope`, `LiveTerminalEvidence`, `UsageEvidence`, `RoutingEvidenceError`); bắt buộc dispatch xuất phát từ `dely dispatch` (nghiêm cấm direct Orca `worker-start`); bắt buộc route `implement` và `review` dùng `provider: 9router`; tách riêng các trường `harness`, `model`, `effort` (nghiêm cấm slug gộp như `cx/gpt-5.6-sol-high`); yêu cầu bắt buộc bằng chứng terminal/archive trực tiếp và bằng chứng log 9Router ghi nhận request sau dispatch (`recorded_after_dispatch: true`); cấm commit credential/secret hoặc đường dẫn DB cục bộ khả biến; bảo toàn sự phân biệt giữa cơ chế fallback provider sản phẩm trong roadmap và cấm fallback agent-harness/provider trong delivery control plane.
+  - **(3) Fixture Suite Tự Động 190/190 PASS**: Bổ sung 14 bài kiểm tra phản ví dụ và kiểm chứng độc lập trong `TestSolRound11HarnessFailureLeaseSafety` (6 test) và `TestSolRound11RoutingEvidencePolicy` (8 test) thuộc `test_negative_fixtures.py`, nâng tổng số test lên 190/190 passed 100%.
+
 ## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 10 / 11 (Fail-Closed Harness Compatibility, Loại Bỏ Mâu Thuẫn Antigravity Native Fallback)
 
 - Khắc phục toàn diện phát hiện/blocker từ independent Sol review trên HEAD `3f3e6f626455007001f5af6dd2f85bdfd0b5cbd3` cho bundle `docs/parallel-delivery/`:
