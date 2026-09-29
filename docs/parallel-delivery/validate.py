@@ -1186,6 +1186,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "3_raw_router_identity_strict_end_to_end": "RESOLVED",
                     "4_exact_head_attestation_reproducible_canonical_bytes": "RESOLVED",
                 },
+                "sol_lead_review_da26686": {
+                    "1_evidence_provenance_internal_authority_freshness_replay_protection": "RESOLVED",
+                    "2_unforgeable_internal_lifecycle_capability_and_authoritative_settlement": "RESOLVED",
+                    "3_raw_canonical_spelling_across_all_identity_positions": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

@@ -54,6 +54,7 @@ from delivery_engine import (  # noqa: E402
     IntegrationEvidence,
     make_review_evidence,
     make_integration_evidence,
+    MANDATORY_INTEGRATION_GATES,
     build_contract_catalog,
     check_harness_tool_compatibility,
     check_owned_vs_forbidden,
@@ -325,12 +326,12 @@ class TestF4OrcaMappingAndLifecycle(unittest.TestCase):
             dispatch_origin="dely dispatch",
             execution_envelope=rev_env,
         )
-        rev_ev = make_review_evidence(delivery_id, rev_disp, self.candidate_commit, "ACCEPT")
+        rev_ev = self.adapter.issue_review_evidence(delivery_id, rev_disp, self.candidate_commit, "ACCEPT")
         state = self.adapter.handle_review_verdict(delivery_id, "ACCEPT", review_dispatch_id=rev_disp, review_evidence=rev_ev)
         self.assertEqual(state, "merge_queued")
 
         # 3. Integration gates pass moves task to integrated
-        int_ev = make_integration_evidence(delivery_id, self.candidate_commit, "4a7c8c921b7e05066505d51b168a02c3fde61317", gates_pass=True)
+        int_ev = self.adapter.issue_integration_evidence(delivery_id, self.candidate_commit, "4a7c8c921b7e05066505d51b168a02c3fde61317", gates_pass=True)
         state = self.adapter.handle_integration_gates(delivery_id, gates_pass=True, integration_evidence=int_ev)
         self.assertEqual(state, "integrated")
 
@@ -1707,11 +1708,11 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             dispatch_origin="dely dispatch",
             execution_envelope=rev_env,
         )
-        rev_ev = make_review_evidence("TASK-A", rev_disp, self.candidate_commit, "ACCEPT")
+        rev_ev = self.adapter.issue_review_evidence("TASK-A", rev_disp, self.candidate_commit, "ACCEPT")
         self.adapter.handle_review_verdict("TASK-A", "ACCEPT", review_dispatch_id=rev_disp, review_evidence=rev_ev)
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "merge_queued")
 
-        int_ev = make_integration_evidence("TASK-A", self.candidate_commit, "4a7c8c921b7e05066505d51b168a02c3fde61317", gates_pass=True)
+        int_ev = self.adapter.issue_integration_evidence("TASK-A", self.candidate_commit, "4a7c8c921b7e05066505d51b168a02c3fde61317", gates_pass=True)
         for truthy_val in (1, 0, "true", "True", [True], {"pass": True}, None):
             with self.assertRaises(ProtocolViolationError) as ctx:
                 self.adapter.handle_integration_gates("TASK-A", gates_pass=truthy_val, integration_evidence=int_ev)  # type: ignore
@@ -2095,10 +2096,10 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
             dispatch_origin="dely dispatch",
             execution_envelope=rev_env,
         )
-        rev_ev = make_review_evidence("TASK-A", rev_disp, self.candidate_commit, "ACCEPT")
+        rev_ev = self.adapter.issue_review_evidence("TASK-A", rev_disp, self.candidate_commit, "ACCEPT")
         self.adapter.handle_review_verdict("TASK-A", "ACCEPT", review_dispatch_id=rev_disp, review_evidence=rev_ev)
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "merge_queued")
-        int_ev = make_integration_evidence("TASK-A", self.candidate_commit, "4a7c8c921b7e05066505d51b168a02c3fde61317", gates_pass=True)
+        int_ev = self.adapter.issue_integration_evidence("TASK-A", self.candidate_commit, "4a7c8c921b7e05066505d51b168a02c3fde61317", gates_pass=True)
         self.adapter.handle_integration_gates("TASK-A", True, integration_evidence=int_ev)
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "integrated")
 
@@ -5371,7 +5372,7 @@ class TestSolRound15FailBeforeSideEffect(unittest.TestCase):
         self.adapter.set_task_state(self.delivery_id, "ready")
         self.intended_disp = "ctx-r15-probe"
         self.orca_task_id = "orca-r15-task"
-        self.t0 = datetime(2026, 9, 29, 10, 0, 0, tzinfo=timezone.utc)
+        self.t0 = datetime.now(timezone.utc)
         self.lease = self.mgr.acquire_lease("LOCK-R15", self.delivery_id, self.intended_disp, lease_seconds=10, now=self.t0)
         self.past_expiry = self.t0 + timedelta(seconds=30)
 
@@ -6656,12 +6657,12 @@ class TestAstraRound18Remediation(unittest.TestCase):
             dispatch_origin="dely dispatch",
             execution_envelope=rev_env,
         )
-        rev_ev = make_review_evidence(self.delivery_id, rev_disp, self.candidate_commit, "ACCEPT")
+        rev_ev = self.adapter.issue_review_evidence(self.delivery_id, rev_disp, self.candidate_commit, "ACCEPT")
         st_rev = self.adapter.handle_review_verdict(self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp, review_evidence=rev_ev)
         self.assertEqual(st_rev, "merge_queued")
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "merge_queued")
 
-        int_ev = make_integration_evidence(self.delivery_id, self.candidate_commit, "4a7c8c921b7e05066505d51b168a02c3fde61317", gates_pass=True)
+        int_ev = self.adapter.issue_integration_evidence(self.delivery_id, self.candidate_commit, "4a7c8c921b7e05066505d51b168a02c3fde61317", gates_pass=True)
         st_int = self.adapter.handle_integration_gates(self.delivery_id, True, integration_evidence=int_ev)
         self.assertEqual(st_int, "integrated")
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
@@ -7145,6 +7146,7 @@ class TestSolRound18Remediation(unittest.TestCase):
         with self.assertRaises(RoutingEvidenceError):
             validate_execution_envelope(env3, expected_phase="implement")
 
+
         # Usage evidence with None
         env4 = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
         u4 = env4.usage_evidence.__dict__.copy()
@@ -7204,7 +7206,7 @@ class TestSolRound18Remediation(unittest.TestCase):
         )
 
         # 2. Independent review evidence ACCEPT
-        rev_ev = make_review_evidence(
+        rev_ev = self.adapter.issue_review_evidence(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=self.candidate_commit,
@@ -7215,7 +7217,7 @@ class TestSolRound18Remediation(unittest.TestCase):
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "merge_queued")
 
         # 3. Verified integration gates pass
-        int_ev = make_integration_evidence(
+        int_ev = self.adapter.issue_integration_evidence(
             delivery_task_id=self.delivery_id,
             candidate_commit=self.candidate_commit,
             base_commit="4a7c8c921b7e05066505d51b168a02c3fde61317",
@@ -7242,7 +7244,7 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
         self.delivery_id = "TASK-SOL-LEAD-001"
         self.orca_task_id = "orca_sol_lead_001"
         self.intended_disp = "ctx_sol_lead_001"
-        self.t0 = datetime(2026, 9, 29, 10, 0, 0, tzinfo=timezone.utc)
+        self.t0 = datetime.now(timezone.utc)
         self.candidate_commit = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=ROOT_DIR, capture_output=True, text=True, check=True
         ).stdout.strip()
@@ -7348,7 +7350,7 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
             execution_envelope=rev_env,
             now=self.t0 + timedelta(seconds=5),
         )
-        rev_ev = make_review_evidence(self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT")
+        rev_ev = self.adapter.issue_review_evidence(self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT", now=self.t0 + timedelta(seconds=6))
         self.adapter.handle_review_verdict(self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp_id, review_evidence=rev_ev)
 
         wrong_base = "0000000000000000000000000000000000000000"
@@ -7378,7 +7380,7 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
             execution_envelope=rev_env,
             now=self.t0 + timedelta(seconds=5),
         )
-        rev_ev = make_review_evidence(self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT")
+        rev_ev = self.adapter.issue_review_evidence(self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT", now=self.t0 + timedelta(seconds=6))
         self.adapter.handle_review_verdict(self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp_id, review_evidence=rev_ev)
 
         bad_base_ev = make_integration_evidence(
@@ -7406,7 +7408,7 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
             execution_envelope=rev_env,
             now=self.t0 + timedelta(seconds=5),
         )
-        rev_ev = make_review_evidence(self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT")
+        rev_ev = self.adapter.issue_review_evidence(self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT", now=self.t0 + timedelta(seconds=6))
         self.adapter.handle_review_verdict(self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp_id, review_evidence=rev_ev)
 
         empty_gates_ev = IntegrationEvidence(
@@ -7523,14 +7525,355 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
             execution_envelope=rev_env,
             now=self.t0 + timedelta(seconds=5),
         )
-        rev_ev = make_review_evidence(self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT")
+        rev_ev = self.adapter.issue_review_evidence(self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT", now=self.t0 + timedelta(seconds=6))
         st_rev = self.adapter.handle_review_verdict(self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp_id, review_evidence=rev_ev)
         self.assertEqual(st_rev, "merge_queued")
 
-        int_ev = make_integration_evidence(self.delivery_id, self.candidate_commit, self.approved_base, gates_pass=True)
+        int_ev = self.adapter.issue_integration_evidence(self.delivery_id, self.candidate_commit, self.approved_base, gates_pass=True)
         st_int = self.adapter.handle_integration_gates(self.delivery_id, True, integration_evidence=int_ev)
         self.assertEqual(st_int, "integrated")
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
+
+
+
+# =============================================================================
+# Sol-Lead Review Remediation Fixtures (after da26686)
+# =============================================================================
+
+class TestSolLeadReviewDa26686Remediation(unittest.TestCase):
+    """Independent counterexamples and regression fixtures for Sol-Lead review findings on da26686:
+    1. Evidence provenance is caller-controlled and stale year-2000 evidence is accepted.
+    2. Callers can mint a valid lifecycle capability (CALLER_MINTED_TOKEN_ACCEPTED state=review).
+    3. Noncanonical case aliases are accepted (effort 'HIGH', usage backend_provider 'Google').
+    """
+
+    def setUp(self):
+        self.delivery_id = "TASK-DA26686-001"
+        self.orca_task_id = "orca_da26686_001"
+        self.intended_disp = "ctx_da26686_001"
+        self.t0 = datetime.now(timezone.utc)
+        self.candidate_commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT_DIR, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        self.approved_base = "4a7c8c921b7e05066505d51b168a02c3fde61317"
+        self.lock_defs = [
+            {"id": "LOCK-PARALLEL-REGISTRY", "mode": "exclusive", "renewable": True, "lease_seconds": 1800},
+        ]
+        self.mgr = LeaseManager(self.lock_defs)
+        self.mgr.set_task_authority(self.delivery_id, "granted")
+        self.lease = self.mgr.acquire_lease("LOCK-PARALLEL-REGISTRY", self.delivery_id, self.intended_disp, now=self.t0)
+        self.tmp_storage = tempfile.mktemp(suffix=".json")
+        self.registry = SharedOrcaExecutionRegistry(storage_path=self.tmp_storage)
+        self.adapter = OrcaDeliveryAdapter(
+            self.mgr,
+            approved_candidate_commit=self.candidate_commit,
+            registry=self.registry,
+            declared_task_locks={self.delivery_id: ["LOCK-PARALLEL-REGISTRY"]},
+        )
+        self.adapter.set_task_authority(self.delivery_id, "granted")
+        self.adapter.set_task_state(self.delivery_id, "ready")
+
+    def tearDown(self):
+        p = Path(self.tmp_storage)
+        if p.exists():
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+    def _advance_to_running(self):
+        """Helper to advance task to running state with active dispatch and active lease."""
+        disp_id = self.adapter.create_dispatch(
+            self.delivery_id,
+            orca_task_id=self.orca_task_id,
+            candidate_commit=self.candidate_commit,
+            fencing_token=self.lease.fencing_token,
+            lease_id=self.lease.lease_id,
+            intended_dispatch_id=self.intended_disp,
+            now=self.t0,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id, now=self.t0),
+        )
+        self.adapter.acknowledge_dispatch(self.delivery_id, disp_id)
+        self.adapter.start_running(self.delivery_id, disp_id)
+        return disp_id
+
+    def _advance_to_review(self):
+        """Helper to advance task through legitimate implement dispatch to review state."""
+        disp_id = self._advance_to_running()
+        self.adapter.handle_worker_done(
+            self.delivery_id,
+            self.orca_task_id,
+            disp_id,
+            "succeeded",
+            candidate_commit=self.candidate_commit,
+            fencing_token=self.lease.fencing_token,
+            now=self.t0,
+        )
+
+    def _create_review_dispatch(self):
+        """Helper to create legitimate review dispatch."""
+        rev_disp_id = "ctx_da26686_rev_001"
+        rev_orca_id = "task_da26686_rev_001"
+        rev_env = make_execution_envelope(
+            self.delivery_id, rev_disp_id, phase="review",
+            orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=5)
+        )
+        self.adapter.create_review_dispatch(
+            self.delivery_id,
+            orca_task_id=rev_orca_id,
+            candidate_commit=self.candidate_commit,
+            intended_dispatch_id=rev_disp_id,
+            dispatch_origin="dely dispatch",
+            execution_envelope=rev_env,
+            now=self.t0 + timedelta(seconds=5),
+        )
+        return rev_disp_id
+
+    # -------------------------------------------------------------------------
+    # Finding 1: Evidence provenance caller-controlled and stale evidence accepted
+    # -------------------------------------------------------------------------
+
+    def test_da26686_01_stale_year_2000_review_evidence_rejected(self):
+        """1. Counterexample: Stale year-2000 ReviewEvidence must be rejected fail closed with zero side effects."""
+        self._advance_to_review()
+        rev_disp_id = self._create_review_dispatch()
+
+        # Caller constructs ReviewEvidence with year-2000 timestamp
+        stale_rev_ev = ReviewEvidence(
+            review_dispatch_id=rev_disp_id,
+            delivery_task_id=self.delivery_id,
+            candidate_commit=self.candidate_commit,
+            verdict="ACCEPT",
+            reviewer_route="cx/gpt-5.6-sol",
+            reviewer_harness="Claude Code",
+            evidence_hash=None,
+            summary="Sol year 2000 review exploit",
+            timestamp="2000-01-01T00:00:00Z",
+        )
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.handle_review_verdict(
+                self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp_id, review_evidence=stale_rev_ev
+            )
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "review")
+        self.assertNotIn(rev_disp_id, self.registry.settled_dispatches)
+
+    def test_da26686_02_caller_constructed_review_evidence_without_authority_rejected(self):
+        """2. Counterexample: Caller-constructed ReviewEvidence without internal authority signature is rejected."""
+        self._advance_to_review()
+        rev_disp_id = self._create_review_dispatch()
+
+        # Caller constructs ReviewEvidence directly or via public make_review_evidence without authority
+        caller_ev = make_review_evidence(
+            delivery_task_id=self.delivery_id,
+            review_dispatch_id=rev_disp_id,
+            candidate_commit=self.candidate_commit,
+            verdict="ACCEPT",
+            now=self.t0,
+        )
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.handle_review_verdict(
+                self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp_id, review_evidence=caller_ev
+            )
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "review")
+        self.assertNotIn(rev_disp_id, self.registry.settled_dispatches)
+
+    def test_da26686_03_stale_year_2000_integration_evidence_rejected(self):
+        """3. Counterexample: Stale year-2000 IntegrationEvidence must be rejected fail closed with zero side effects."""
+        self._advance_to_review()
+        rev_disp_id = self._create_review_dispatch()
+        rev_ev = self.adapter.issue_review_evidence(self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT", now=self.t0 + timedelta(seconds=6))
+        self.adapter.handle_review_verdict(
+            self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp_id, review_evidence=rev_ev
+        )
+
+        # Caller constructs IntegrationEvidence with year-2000 timestamp
+        stale_int_ev = IntegrationEvidence(
+            delivery_task_id=self.delivery_id,
+            candidate_commit=self.candidate_commit,
+            base_commit=self.approved_base,
+            gates_pass=True,
+            gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+            timestamp="2000-01-01T00:00:00Z",
+        )
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.handle_integration_gates(
+                self.delivery_id, True, integration_evidence=stale_int_ev
+            )
+        self.assertNotEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
+
+    def test_da26686_04_caller_constructed_integration_evidence_without_authority_rejected(self):
+        """4. Counterexample: Caller-constructed IntegrationEvidence without internal authority signature is rejected."""
+        self._advance_to_review()
+        rev_disp_id = self._create_review_dispatch()
+        rev_ev = self.adapter.issue_review_evidence(self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT", now=self.t0 + timedelta(seconds=6))
+        self.adapter.handle_review_verdict(
+            self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp_id, review_evidence=rev_ev
+        )
+
+        # Caller constructs IntegrationEvidence directly
+        caller_int_ev = make_integration_evidence(
+            delivery_task_id=self.delivery_id,
+            candidate_commit=self.candidate_commit,
+            base_commit=self.approved_base,
+            gates_pass=True,
+            now=self.t0 + timedelta(seconds=12),
+        )
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.handle_integration_gates(
+                self.delivery_id, True, integration_evidence=caller_int_ev
+            )
+        self.assertNotEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
+
+    def test_da26686_05_replayed_review_and_integration_evidence_rejected(self):
+        """5. Counterexample: Replaying consumed review or integration evidence fails closed."""
+        self._advance_to_review()
+        rev_disp_id = self._create_review_dispatch()
+        rev_ev = self.adapter.issue_review_evidence(self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT", now=self.t0 + timedelta(seconds=6))
+        self.adapter.handle_review_verdict(
+            self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp_id, review_evidence=rev_ev
+        )
+
+        # Second attempt to consume same review evidence must fail
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.handle_review_verdict(
+                self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp_id, review_evidence=rev_ev
+            )
+
+        # Test integration evidence replay as well
+        int_ev = self.adapter.issue_integration_evidence(
+            self.delivery_id, self.candidate_commit, self.approved_base, gates_pass=True
+        )
+        self.adapter.handle_integration_gates(self.delivery_id, True, integration_evidence=int_ev)
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.handle_integration_gates(self.delivery_id, True, integration_evidence=int_ev)
+
+    # -------------------------------------------------------------------------
+    # Finding 2: Caller-minted lifecycle capabilities and manipulated settlement/lease
+    # -------------------------------------------------------------------------
+
+    def test_da26686_06_caller_minted_transition_token_rejected_exact_counterexample(self):
+        """6. Exact Sol Counterexample: CALLER_MINTED_TOKEN_ACCEPTED state=review must fail closed."""
+        disp_id = self._advance_to_running()
+
+        # Sol manipulated settlement and release surfaces:
+        self.registry.settle_dispatch(disp_id)
+        self.mgr.release_lease(self.lease.lease_id)
+
+        # Sol called _mint_transition_token directly to obtain a valid capability
+        with self.assertRaises(ProtocolViolationError):
+            tok = self.adapter._mint_transition_token("handle_worker_done", self.delivery_id, "review")
+            with self.adapter._authorized_transition_scope(
+                self.delivery_id, "review", handler="handle_worker_done", _token=tok,
+                outcome="succeeded", dispatch_id=disp_id
+            ):
+                self.adapter.transition_task_state(self.delivery_id, "review")
+
+        self.assertNotEqual(self.adapter.get_task_state(self.delivery_id), "review")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "running")
+
+    def test_da26686_07_external_caller_cannot_mint_transition_token(self):
+        """7. Counterexample: External callers calling _mint_transition_token fail closed."""
+        disp_id = self._advance_to_running()
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter._mint_transition_token("handle_worker_done", self.delivery_id, "review")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "running")
+
+    def test_da26686_08_external_caller_cannot_enter_authorized_transition_scope(self):
+        """8. Counterexample: External callers cannot enter _authorized_transition_scope."""
+        self._advance_to_running()
+        with self.assertRaises(ProtocolViolationError):
+            with self.adapter._authorized_transition_scope(self.delivery_id, "review", handler="handle_worker_done"):
+                self.adapter.transition_task_state(self.delivery_id, "review")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "running")
+
+    def test_da26686_09_out_of_band_settlement_cannot_satisfy_transition_preconditions(self):
+        """9. Counterexample: Out-of-band settlement without authoritative handler does not satisfy preconditions."""
+        disp_id = self._advance_to_running()
+        self.registry.settle_dispatch(disp_id)
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.transition_task_state(self.delivery_id, "review")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "running")
+
+    # -------------------------------------------------------------------------
+    # Finding 3: Noncanonical case aliases accepted in effort and backend_provider
+    # -------------------------------------------------------------------------
+
+    def test_da26686_10_noncanonical_case_effort_high_in_route_rejected(self):
+        """10. Counterexample: Envelope with uppercase effort 'HIGH' in route fails closed."""
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env.route["effort"] = "HIGH"
+        with self.assertRaises(RoutingEvidenceError):
+            validate_execution_envelope(env, expected_phase="implement", expected_delivery_task_id=self.delivery_id, expected_dispatch_id=self.intended_disp)
+
+    def test_da26686_11_noncanonical_case_effort_high_in_launch_requested_and_effective_rejected(self):
+        """11. Counterexample: Envelope with uppercase effort 'HIGH' in launch evidence fails closed."""
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env.launch_requested["effort"] = "HIGH"
+        env.launch_effective["effort"] = "HIGH"
+        with self.assertRaises(RoutingEvidenceError):
+            validate_execution_envelope(env, expected_phase="implement", expected_delivery_task_id=self.delivery_id, expected_dispatch_id=self.intended_disp)
+
+    def test_da26686_12_noncanonical_case_effort_high_in_live_terminal_rejected(self):
+        """12. Counterexample: Live terminal evidence with uppercase effort 'HIGH' fails closed."""
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env.live_terminal_evidence.effort = "HIGH"
+        with self.assertRaises(RoutingEvidenceError):
+            validate_execution_envelope(env, expected_phase="implement", expected_delivery_task_id=self.delivery_id, expected_dispatch_id=self.intended_disp)
+
+    def test_da26686_13_noncanonical_case_backend_provider_google_rejected(self):
+        """13. Counterexample: Usage evidence with titlecase 'Google' in implement phase fails closed."""
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env.usage_evidence.backend_provider = "Google"
+        with self.assertRaises(RoutingEvidenceError):
+            validate_execution_envelope(env, expected_phase="implement", expected_delivery_task_id=self.delivery_id, expected_dispatch_id=self.intended_disp)
+
+    def test_da26686_14_noncanonical_case_backend_provider_openai_rejected(self):
+        """14. Counterexample: Usage evidence with noncanonical case 'OpenAI' in review phase fails closed."""
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="review", orca_task_id=self.orca_task_id)
+        env.usage_evidence.backend_provider = "OpenAI"
+        with self.assertRaises(RoutingEvidenceError):
+            validate_execution_envelope(env, expected_phase="review", expected_delivery_task_id=self.delivery_id, expected_dispatch_id=self.intended_disp)
+
+    def test_da26686_15_noncanonical_case_provider_harness_model_rejected(self):
+        """15. Counterexample: Case-variant provider '9Router', harness 'codex cli', model 'AG/GEMINI-3.8-FLASH-HIGH' fail closed."""
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env.route["provider"] = "9Router"
+        with self.assertRaises(RoutingEvidenceError):
+            validate_execution_envelope(env, expected_phase="implement")
+
+        env2 = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env2.route["harness"] = "codex cli"
+        with self.assertRaises(RoutingEvidenceError):
+            validate_execution_envelope(env2, expected_phase="implement")
+
+        env3 = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env3.route["model"] = "AG/GEMINI-3.8-FLASH-HIGH"
+        with self.assertRaises(RoutingEvidenceError):
+            validate_execution_envelope(env3, expected_phase="implement")
+
+
+    def test_da26686_16_positive_control_valid_end_to_end_lifecycle_with_internal_authority(self):
+        """16. Positive control: Full lifecycle with legitimate internal authority evidence reaches integrated."""
+        self._advance_to_review()
+        rev_disp_id = self._create_review_dispatch()
+        rev_ev = self.adapter.issue_review_evidence(
+            self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT"
+        )
+        res_review = self.adapter.handle_review_verdict(
+            self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp_id, review_evidence=rev_ev
+        )
+        self.assertEqual(res_review, "merge_queued")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "merge_queued")
+
+        int_ev = self.adapter.issue_integration_evidence(
+            self.delivery_id, self.candidate_commit, self.approved_base, gates_pass=True
+        )
+        res_int = self.adapter.handle_integration_gates(self.delivery_id, True, integration_evidence=int_ev)
+        self.assertEqual(res_int, "integrated")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
