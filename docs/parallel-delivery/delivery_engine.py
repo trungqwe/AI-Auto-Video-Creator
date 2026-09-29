@@ -1160,6 +1160,68 @@ _MUTABLE_DB_PATH_RE = re.compile(
 _DEFAULT_LAUNCH = object()
 
 
+
+def _extract_and_validate_alias(
+    mapping: Mapping[str, Any],
+    aliases: Sequence[str],
+    field_label: str,
+    container_label: str,
+    required: bool = True,
+    exact_raw: Optional[str] = None,
+    disallowed_substrings: Optional[Sequence[str]] = None,
+    blank_or_missing_hint: Optional[str] = None,
+) -> Optional[str]:
+    """Validate all present aliases for type (must be non-blank string), exactness,
+    disallowed substrings, and mutual semantic consistency before choosing a canonical value."""
+    present_keys = [k for k in aliases if k in mapping and mapping[k] is not None]
+    if not present_keys:
+        if required:
+            msg = f"{container_label} missing required field {field_label!r}; fails closed"
+            if blank_or_missing_hint:
+                msg += f"; {blank_or_missing_hint}"
+            raise RoutingEvidenceError(msg)
+        return None
+
+    # Check each present alias for type and non-blank form
+    for k in present_keys:
+        val = mapping[k]
+        if val is None or not isinstance(val, str):
+            raise RoutingEvidenceError(
+                f"{container_label} field {k!r} must be a non-blank string; got {type(val).__name__}: {val!r}"
+            )
+        if not val.strip():
+            msg = f"{container_label} field {k!r} must be a non-blank string; cannot be blank; fails closed"
+            if blank_or_missing_hint:
+                msg += f"; {blank_or_missing_hint}"
+            raise RoutingEvidenceError(msg)
+
+    # Check mutual semantic consistency across all present aliases before checking exact_raw
+    cleaned_values = {mapping[k].strip() for k in present_keys}
+    if len(cleaned_values) > 1:
+        conflicts = ", ".join(f"{k}={mapping[k]!r}" for k in sorted(present_keys))
+        raise RoutingEvidenceError(
+            f"Contradictory {field_label} aliases in {container_label}: {conflicts}"
+        )
+
+    if exact_raw is not None:
+        for k in present_keys:
+            if mapping[k] != exact_raw:
+                raise RoutingEvidenceError(
+                    f"{container_label} field {k!r} {mapping[k]!r} is invalid; must be exact raw {exact_raw!r}"
+                )
+
+    if disallowed_substrings:
+        for k in present_keys:
+            for sub in disallowed_substrings:
+                if sub.lower() in mapping[k].lower():
+                    raise RoutingEvidenceError(
+                        f"Forbidden {sub!r} in {container_label} field {k!r}: {mapping[k]!r}"
+                    )
+
+    if exact_raw is not None:
+        return exact_raw
+    return mapping[present_keys[0]].strip()
+
 def _validate_launch_mapping(
     mapping: Any,
     label: str,
@@ -1176,67 +1238,32 @@ def _validate_launch_mapping(
         raise RoutingEvidenceError(f"Execution envelope {label!r} is empty; fails closed")
 
     # 1. Harness check
-    h = mapping.get("harness")
-    if not isinstance(h, str) or not h.strip():
-        raise RoutingEvidenceError(f"{label} missing required non-blank field 'harness'")
-    clean_h = h.strip()
-    if "antigravity" in clean_h.lower():
-        raise RoutingEvidenceError(
-            f"Antigravity native harness {h!r} in {label} is strictly forbidden; fails closed"
-        )
+    clean_h = _extract_and_validate_alias(
+        mapping, ("harness",), "harness", label, required=True, disallowed_substrings=["antigravity"]
+    )
 
-    # 2. Provider / Router check
-    has_provider = "provider" in mapping
-    has_router = "router" in mapping
-    if not has_provider and not has_router:
-        raise RoutingEvidenceError(f"{label} missing required non-blank field 'provider'")
-    p = mapping.get("provider") if has_provider else mapping.get("router")
-    if not isinstance(p, str) or not p.strip():
-        raise RoutingEvidenceError(f"{label} missing required non-blank field 'provider'")
-    clean_p = p.strip()
-    if "antigravity" in clean_p.lower():
-        raise RoutingEvidenceError(
-            f"Antigravity native provider {p!r} in {label} is strictly forbidden; fails closed"
-        )
-    if clean_p != "9router":
-        raise RoutingEvidenceError(
-            f"{label} provider {clean_p!r} is invalid; route provider MUST be '9router'"
-        )
-    if has_provider and has_router:
-        r_val = str(mapping["router"]).strip() if mapping["router"] is not None else ""
-        if clean_p != r_val:
-            raise RoutingEvidenceError(
-                f"Contradictory provider and router in {label}: provider={mapping['provider']!r}, router={mapping['router']!r}"
-            )
+    # 2. Provider / Router check: exact raw '9router'
+    clean_p = _extract_and_validate_alias(
+        mapping, ("provider", "router", "route_provider", "source"), "provider", label,
+        required=True, exact_raw="9router", disallowed_substrings=["antigravity"]
+    )
 
     # 3. Model / Route check
-    has_model = "model" in mapping
-    has_route = "route" in mapping
-    if not has_model and not has_route:
-        raise RoutingEvidenceError(f"{label} missing required non-blank field 'model'/'route'")
-    m = mapping.get("model") if has_model else mapping.get("route")
-    if not isinstance(m, str) or not m.strip():
-        raise RoutingEvidenceError(f"{label} missing required non-blank field 'model'/'route'")
-    clean_m = m.strip()
+    clean_m = _extract_and_validate_alias(
+        mapping, ("model", "route"), "model", label, required=True
+    )
     if clean_m in ("cx/gpt-5.6-sol-high", "cx/gpt-5.6-sol:high", "ag/gemini-3.8-flash-high-high"):
         raise RoutingEvidenceError(
             f"Combined model/effort slug {clean_m!r} in {label} is invalid; model and effort MUST be separate fields"
         )
-    if has_model and has_route:
-        route_val = str(mapping["route"]).strip() if mapping["route"] is not None else ""
-        if clean_m != route_val:
-            raise RoutingEvidenceError(
-                f"Contradictory model and route in {label}: model={mapping['model']!r}, route={mapping['route']!r}"
-            )
 
     # 4. Effort check
-    e = mapping.get("effort")
-    if not isinstance(e, str) or not e.strip():
-        raise RoutingEvidenceError(f"{label} missing required non-blank field 'effort'")
-    clean_e = e.strip().lower()
+    clean_e = _extract_and_validate_alias(
+        mapping, ("effort",), "effort", label, required=True
+    ).lower()
     if clean_e != "high":
         raise RoutingEvidenceError(
-            f"{label} effort {e!r} is invalid; expected 'high'"
+            f"{label} effort {clean_e!r} is invalid; expected 'high'"
         )
 
     return clean_h, clean_p, clean_m, clean_e
@@ -1389,10 +1416,10 @@ def validate_execution_envelope(
         )
 
     # 1. Delivery Task ID: mandatory and non-blank
-    dtid = data.get("delivery_task_id")
-    clean_dtid = (dtid or "").strip() if isinstance(dtid, str) else ""
-    if not clean_dtid:
-        raise RoutingEvidenceError("Execution envelope missing required field 'delivery_task_id'")
+    clean_dtid = _extract_and_validate_alias(
+        data, ("delivery_task_id", "task_id", "delivery_task"), "delivery_task_id",
+        "Execution envelope", required=True
+    )
     if expected_delivery_task_id is not None:
         clean_exp_dtid = expected_delivery_task_id.strip()
         if clean_dtid != clean_exp_dtid:
@@ -1401,10 +1428,10 @@ def validate_execution_envelope(
             )
 
     # 2. Dispatch ID: mandatory and non-blank
-    disp_id = data.get("dispatch_id")
-    clean_disp_id = (disp_id or "").strip() if isinstance(disp_id, str) else ""
-    if not clean_disp_id:
-        raise RoutingEvidenceError("Execution envelope missing required field 'dispatch_id'")
+    clean_disp_id = _extract_and_validate_alias(
+        data, ("dispatch_id", "dispatch"), "dispatch_id",
+        "Execution envelope", required=True
+    )
     if expected_dispatch_id is not None:
         clean_exp_disp = expected_dispatch_id.strip()
         if clean_disp_id != clean_exp_disp:
@@ -1413,10 +1440,10 @@ def validate_execution_envelope(
             )
 
     # 3. Orca Task ID: mandatory and non-blank
-    otid = data.get("orca_task_id")
-    clean_otid = (otid or "").strip() if isinstance(otid, str) else ""
-    if not clean_otid:
-        raise RoutingEvidenceError("Execution envelope missing required field 'orca_task_id'")
+    clean_otid = _extract_and_validate_alias(
+        data, ("orca_task_id",), "orca_task_id",
+        "Execution envelope", required=True
+    )
     if expected_orca_task_id is not None:
         clean_exp_otid = expected_orca_task_id.strip()
         if clean_otid != clean_exp_otid:
@@ -1425,17 +1452,19 @@ def validate_execution_envelope(
             )
 
     # 4. Dispatch origin: MUST be 'dely dispatch'
-    origin = data.get("dispatch_origin")
-    clean_origin = (origin or "").strip() if isinstance(origin, str) else ""
+    clean_origin = _extract_and_validate_alias(
+        data, ("dispatch_origin", "origin"), "dispatch_origin",
+        "Execution envelope", required=True, blank_or_missing_hint="every delivery dispatch MUST go through 'dely dispatch'"
+    )
     if clean_origin != "dely dispatch":
         clean_lower = clean_origin.lower()
         if "worker-start" in clean_lower or clean_lower in ("worker-start", "orca worker-start", "direct worker-start", "orca"):
             raise RoutingEvidenceError(
-                f"Direct Orca worker-start dispatch origin {origin!r} is strictly forbidden; "
+                f"Direct Orca worker-start dispatch origin {clean_origin!r} is strictly forbidden; "
                 f"every delivery dispatch MUST go through 'dely dispatch'"
             )
         raise RoutingEvidenceError(
-            f"Invalid dispatch origin {origin!r}; every delivery dispatch MUST go through 'dely dispatch'"
+            f"Invalid dispatch origin {clean_origin!r}; every delivery dispatch MUST go through 'dely dispatch'"
         )
 
     # 4. Phase: must be 'implement' or 'review'
@@ -1451,30 +1480,16 @@ def validate_execution_envelope(
     if not isinstance(route, dict):
         raise RoutingEvidenceError(f"Execution envelope route must be a dict; got {type(route).__name__}")
 
-    # Provider check: must be 9router
-    provider = route.get("provider")
-    clean_p = (provider or "").strip() if isinstance(provider, str) else ""
-    if clean_p != "9router":
-        if "antigravity" in clean_p.lower():
-            raise RoutingEvidenceError(
-                f"Antigravity native provider {provider!r} is strictly forbidden; "
-                f"implement and review routes MUST use provider '9router'"
-            )
-        raise RoutingEvidenceError(
-            f"Provider must be '9router' for phase {clean_phase!r}; got {provider!r}. "
-            f"Missing or foreign providers fail closed."
-        )
+    # Provider check: must be exact raw '9router'
+    clean_p = _extract_and_validate_alias(
+        route, ("provider", "router", "route_provider", "source"), "provider",
+        "Execution envelope route", required=True, exact_raw="9router", disallowed_substrings=["antigravity"]
+    )
 
     # Harness check: separate field
-    harness = route.get("harness")
-    clean_h = (harness or "").strip() if isinstance(harness, str) else ""
-    if not clean_h:
-        raise RoutingEvidenceError("Harness must be present as a separate non-blank field")
-    if "antigravity" in clean_h.lower():
-        raise RoutingEvidenceError(
-            f"Antigravity native harness {harness!r} is strictly forbidden; "
-            f"repository routing policy requires fail-closed delivery without native fallback"
-        )
+    clean_h = _extract_and_validate_alias(
+        route, ("harness",), "harness", "Execution envelope route", required=True, disallowed_substrings=["antigravity"]
+    )
     expected_harness = "Codex CLI" if clean_phase == "implement" else "Claude Code"
     if clean_h != expected_harness:
         raise RoutingEvidenceError(
@@ -1482,23 +1497,9 @@ def validate_execution_envelope(
         )
 
     # Model check: separate field
-    model = route.get("model")
-    clean_m = (model or "").strip() if isinstance(model, str) else ""
-    if not clean_m:
-        raise RoutingEvidenceError("Model must be present as a separate non-blank field")
-
-    # Effort check: separate field
-    effort = route.get("effort")
-    clean_e = (effort or "").strip().lower() if isinstance(effort, str) else ""
-    if not clean_e:
-        raise RoutingEvidenceError(
-            "Effort must be present as a separate non-blank field; "
-            "model and effort cannot be combined into a single slug"
-        )
-    if clean_e != "high":
-        raise RoutingEvidenceError(f"Expected effort 'high' for phase {clean_phase!r}; got {effort!r}")
-
-    # Combined slug check
+    clean_m = _extract_and_validate_alias(
+        route, ("model", "route"), "model", "Execution envelope route", required=True
+    )
     if clean_m in ("cx/gpt-5.6-sol-high", "cx/gpt-5.6-sol:high", "ag/gemini-3.8-flash-high-high"):
         raise RoutingEvidenceError(
             f"Combined model/effort slug {clean_m!r} is invalid; "
@@ -1509,6 +1510,13 @@ def validate_execution_envelope(
         raise RoutingEvidenceError(
             f"Model mismatch for phase {clean_phase!r}: expected {expected_model!r}, got {clean_m!r}"
         )
+
+    # Effort check: separate field
+    clean_e = _extract_and_validate_alias(
+        route, ("effort",), "effort", "Execution envelope route", required=True
+    ).lower()
+    if clean_e != "high":
+        raise RoutingEvidenceError(f"Expected effort 'high' for phase {clean_phase!r}; got {clean_e!r}")
 
     # 6. Launch requested and launch effective validation & mutual binding
     launch_req = data.get("launch_requested")
@@ -1585,6 +1593,10 @@ def validate_execution_envelope(
 
     # 7. Live terminal evidence validation
     if isinstance(live_terminal, LiveTerminalEvidence):
+        if live_terminal.provider != "9router":
+            raise RoutingEvidenceError(
+                f"Live terminal evidence identifies provider {live_terminal.provider!r}, expected '9router'"
+            )
         live_h = live_terminal.harness
         live_p = live_terminal.provider
         live_r = live_terminal.route
@@ -1596,14 +1608,31 @@ def validate_execution_envelope(
     elif isinstance(live_terminal, dict):
         if not live_terminal:
             raise RoutingEvidenceError("Live terminal evidence is empty; fails closed")
-        live_h = live_terminal.get("harness")
-        live_p = live_terminal.get("provider")
-        live_r = live_terminal.get("route") or live_terminal.get("model")
+        live_p = _extract_and_validate_alias(
+            live_terminal, ("provider", "router", "route_provider", "source"), "provider",
+            "Live terminal evidence", required=True, exact_raw="9router", disallowed_substrings=["antigravity"]
+        )
+        live_h = _extract_and_validate_alias(
+            live_terminal, ("harness",), "harness", "Live terminal evidence", required=True, disallowed_substrings=["antigravity"]
+        )
+        live_r = _extract_and_validate_alias(
+            live_terminal, ("route", "model"), "route", "Live terminal evidence", required=True
+        )
+        live_ref = _extract_and_validate_alias(
+            live_terminal, ("archive_reference", "terminal_id", "archive"), "archive_reference",
+            "Live terminal evidence", required=True
+        )
+        live_disp = _extract_and_validate_alias(
+            live_terminal, ("dispatch_id", "dispatch"), "dispatch_id", "Live terminal evidence", required=True
+        )
+        live_task = _extract_and_validate_alias(
+            live_terminal, ("delivery_task_id", "task_id", "delivery_task"), "delivery_task_id",
+            "Live terminal evidence", required=True
+        )
+        live_eff = _extract_and_validate_alias(
+            live_terminal, ("effort",), "effort", "Live terminal evidence", required=True
+        )
         live_ver = live_terminal.get("verified")
-        live_ref = live_terminal.get("archive_reference") or live_terminal.get("terminal_id")
-        live_disp = live_terminal.get("dispatch_id")
-        live_task = live_terminal.get("delivery_task_id") or live_terminal.get("task_id")
-        live_eff = live_terminal.get("effort")
     else:
         raise RoutingEvidenceError(f"Invalid live_terminal_evidence type: {type(live_terminal).__name__}")
 
@@ -1700,14 +1729,7 @@ def validate_execution_envelope(
     elif isinstance(usage_ev, Mapping):
         if not usage_ev:
             raise RoutingEvidenceError("Usage evidence is empty; fails closed")
-        u_p = usage_ev.get("backend_provider") or usage_ev.get("provider")
-        u_m = usage_ev.get("backend_model") or usage_ev.get("model")
-        u_after = usage_ev.get("recorded_after_dispatch")
-        u_ts = usage_ev.get("timestamp")
-        u_disp = usage_ev.get("dispatch_id")
-        u_task = usage_ev.get("delivery_task_id") or usage_ev.get("task_id")
 
-        # Explicit router identity in mapping: no implicit default allowed!
         # Valid router aliases: "router", "route_provider", "source"
         valid_router_aliases = ("router", "route_provider", "source")
 
@@ -1720,40 +1742,36 @@ def validate_execution_envelope(
                         f"Foreign or unrecognized router alias {k!r} in usage evidence; fails closed"
                     )
 
-        present_aliases = {k: usage_ev[k] for k in valid_router_aliases if k in usage_ev}
-        if not present_aliases:
-            raise RoutingEvidenceError(
-                "9Router usage evidence missing explicit router identity "
-                "(must explicitly specify non-blank 'router', 'route_provider', or 'source'); "
-                "implicit default is strictly forbidden and fails closed"
-            )
+        # Explicit router identity in mapping: no implicit default allowed! Exact raw '9router'.
+        clean_u_router = _extract_and_validate_alias(
+            usage_ev, valid_router_aliases, "router", "Usage evidence",
+            required=True, exact_raw="9router", disallowed_substrings=["antigravity"]
+        )
 
-        for k, val in present_aliases.items():
-            if val is None or not isinstance(val, str) or not val.strip():
-                raise RoutingEvidenceError(
-                    f"9Router usage evidence field {k!r} must be a non-blank string; got {val!r}"
-                )
+        clean_u_p_raw = _extract_and_validate_alias(
+            usage_ev, ("backend_provider", "provider"), "backend_provider", "Usage evidence", required=True
+        )
+        u_p = clean_u_p_raw
 
-        # Check for contradictory aliases among present router keys using exact raw values
-        unique_aliases = set(present_aliases.values())
-        if len(unique_aliases) > 1:
-            conflicts = ", ".join(f"{k}={present_aliases[k]!r}" for k in sorted(present_aliases.keys()))
-            raise RoutingEvidenceError(
-                f"Contradictory router aliases in usage evidence: {conflicts}"
-            )
+        clean_u_m = _extract_and_validate_alias(
+            usage_ev, ("backend_model", "model"), "backend_model", "Usage evidence", required=True
+        )
+        u_m = clean_u_m
 
-        # Exact raw router identity for every supplied alias value: do not normalize whitespace into validity
-        for k, val in present_aliases.items():
-            if "antigravity" in val.lower():
-                raise RoutingEvidenceError(
-                    f"Antigravity native router {val!r} in usage evidence is strictly forbidden; fails closed"
-                )
-            if val != "9router":
-                raise RoutingEvidenceError(
-                    f"9Router usage evidence route source {val!r} is invalid; route MUST be via '9router'"
-                )
+        clean_u_task = _extract_and_validate_alias(
+            usage_ev, ("delivery_task_id", "task_id", "delivery_task"), "delivery_task_id", "Usage evidence", required=True
+        )
+        u_task = clean_u_task
 
-        clean_u_router = next(iter(present_aliases.values()))
+        clean_u_disp = _extract_and_validate_alias(
+            usage_ev, ("dispatch_id", "dispatch"), "dispatch_id", "Usage evidence", required=True
+        )
+        u_disp = clean_u_disp
+
+        u_ts = _extract_and_validate_alias(
+            usage_ev, ("timestamp", "ts"), "timestamp", "Usage evidence", required=True
+        )
+        u_after = usage_ev.get("recorded_after_dispatch")
     else:
         raise RoutingEvidenceError(f"Invalid usage_evidence type: {type(usage_ev).__name__}")
 
@@ -2344,6 +2362,21 @@ class OrcaDeliveryAdapter:
         self.last_fencing_tokens: Dict[str, int] = {}
         self.declared_task_locks: Dict[str, List[str]] = dict(declared_task_locks or {})
         self.task_phases: Dict[str, str] = {}
+        self._lifecycle_handler_context: Optional[Dict[str, Any]] = None
+
+    @contextmanager
+    def _authorized_transition_scope(self, task_id: str, new_state: str, handler: str, **evidence):
+        prev = self._lifecycle_handler_context
+        self._lifecycle_handler_context = {
+            "task_id": task_id,
+            "new_state": new_state,
+            "handler": handler,
+            "evidence": evidence,
+        }
+        try:
+            yield
+        finally:
+            self._lifecycle_handler_context = prev
 
     def register_task_phase(self, delivery_task_id: str, phase: str) -> None:
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
@@ -2438,6 +2471,97 @@ class OrcaDeliveryAdapter:
                 raise ProtocolViolationError(
                     f"Illegal task-state transition for {clean_tid}: {current!r} -> {new_state!r}; allowed: {sorted(allowed)}"
                 )
+
+            # 1. Authority validation: task authority must be explicitly 'granted'
+            auth = self.get_task_authority(clean_tid)
+            if auth != "granted":
+                raise ProtocolViolationError(
+                    f"Task {clean_tid} authority is {auth!r}; lifecycle transition to {new_state!r} forbidden (only 'granted' permitted)"
+                )
+
+            # 2. Handler authorization check: every public lifecycle transition must be authorized by the appropriate handler
+            ctx = self._lifecycle_handler_context
+            if not ctx or ctx.get("task_id") != clean_tid or ctx.get("new_state") != new_state:
+                raise ProtocolViolationError(
+                    f"Direct lifecycle transition for task {clean_tid} to {new_state!r} is forbidden; "
+                    f"all transitions must be invoked through authorized handlers with verified dispatch, lease, and evidence"
+                )
+
+            handler = ctx.get("handler")
+            evidence = ctx.get("evidence", {})
+
+            # 3. Transition-specific evidence verification:
+            if new_state == "dispatched":
+                if handler != "create_dispatch":
+                    raise ProtocolViolationError(f"Transition to 'dispatched' must be authorized by create_dispatch; got {handler!r}")
+                disp_id = evidence.get("dispatch_id") or self.active_dispatches.get(clean_tid)
+                if not disp_id:
+                    raise ProtocolViolationError(f"Cannot transition task {clean_tid} to 'dispatched' without verified active dispatch")
+                binding = self.dispatch_bindings.get(disp_id)
+                if not binding:
+                    raise ProtocolViolationError(f"No dispatch binding found for dispatch {disp_id!r}")
+                leases = getattr(binding, "lease_ids", None) or ([binding.lease_id] if binding.lease_id else [])
+                if not leases:
+                    raise ProtocolViolationError(f"Dispatch {disp_id} has no bound leases")
+                for lid in leases:
+                    if lid not in self.lease_mgr.active_leases:
+                        raise ProtocolViolationError(f"Bound lease {lid} is missing or has expired from active leases")
+                    al = self.lease_mgr.active_leases[lid]
+                    if not al.is_active:
+                        raise ProtocolViolationError(f"Bound lease {lid} is inactive")
+
+            elif new_state == "acknowledged":
+                if handler != "acknowledge_dispatch":
+                    raise ProtocolViolationError(f"Transition to 'acknowledged' must be authorized by acknowledge_dispatch; got {handler!r}")
+                disp_id = evidence.get("dispatch_id") or self.active_dispatches.get(clean_tid)
+                if not disp_id:
+                    raise ProtocolViolationError(f"Cannot transition task {clean_tid} to 'acknowledged' without verified active dispatch")
+                binding = self.dispatch_bindings.get(disp_id)
+                if not binding:
+                    raise ProtocolViolationError(f"No dispatch binding found for dispatch {disp_id!r}")
+                leases = getattr(binding, "lease_ids", None) or ([binding.lease_id] if binding.lease_id else [])
+                for lid in leases:
+                    if lid not in self.lease_mgr.active_leases or not self.lease_mgr.active_leases[lid].is_active:
+                        raise ProtocolViolationError(f"Bound lease {lid} is inactive or missing for transition to 'acknowledged'")
+
+            elif new_state == "running":
+                if handler != "start_running":
+                    raise ProtocolViolationError(f"Transition to 'running' must be authorized by start_running; got {handler!r}")
+                disp_id = evidence.get("dispatch_id") or self.active_dispatches.get(clean_tid)
+                if not disp_id:
+                    raise ProtocolViolationError(f"Cannot transition task {clean_tid} to 'running' without verified active dispatch")
+                binding = self.dispatch_bindings.get(disp_id)
+                if not binding:
+                    raise ProtocolViolationError(f"No dispatch binding found for dispatch {disp_id!r}")
+                leases = getattr(binding, "lease_ids", None) or ([binding.lease_id] if binding.lease_id else [])
+                for lid in leases:
+                    if lid not in self.lease_mgr.active_leases or not self.lease_mgr.active_leases[lid].is_active:
+                        raise ProtocolViolationError(f"Bound lease {lid} is inactive or missing for transition to 'running'")
+
+            elif new_state == "review":
+                if handler != "handle_worker_done" or evidence.get("outcome") != "succeeded":
+                    raise ProtocolViolationError(f"Transition to 'review' must be authorized by handle_worker_done with outcome='succeeded'; got {handler!r}")
+
+            elif new_state == "merge_queued":
+                if handler != "handle_review_verdict" or evidence.get("verdict") != "ACCEPT":
+                    raise ProtocolViolationError(f"Transition to 'merge_queued' must be authorized by handle_review_verdict with verdict='ACCEPT'; got {handler!r}")
+
+            elif new_state == "remediation":
+                if handler != "handle_review_verdict" or evidence.get("verdict") != "CHANGES_REQUESTED":
+                    raise ProtocolViolationError(f"Transition to 'remediation' must be authorized by handle_review_verdict with verdict='CHANGES_REQUESTED'; got {handler!r}")
+
+            elif new_state == "integrated":
+                if handler != "handle_integration_gates" or evidence.get("gates_pass") is not True:
+                    raise ProtocolViolationError(f"Transition to 'integrated' must be authorized by handle_integration_gates with gates_pass=True; got {handler!r}")
+
+            elif new_state == "blocked":
+                if handler not in ("handle_worker_done", "handle_harness_failure", "handle_review_verdict", "handle_integration_gates"):
+                    raise ProtocolViolationError(f"Transition to 'blocked' must be authorized by an authorized failure handler; got {handler!r}")
+
+            elif new_state in ("ready", "planned"):
+                if handler != "resolve_blocker_and_replan":
+                    raise ProtocolViolationError(f"Transition to {new_state!r} must be authorized by resolve_blocker_and_replan; got {handler!r}")
+
             self._task_states[clean_tid] = new_state
 
     def get_task_state(self, delivery_task_id: str) -> str:
@@ -2475,7 +2599,8 @@ class OrcaDeliveryAdapter:
             raise ProtocolViolationError(
                 f"Cannot acknowledge dispatch for {clean_tid} in state {current!r}; must be 'dispatched'"
             )
-        self.transition_task_state(clean_tid, "acknowledged")
+        with self._authorized_transition_scope(clean_tid, "acknowledged", handler="acknowledge_dispatch", dispatch_id=clean_disp):
+            self.transition_task_state(clean_tid, "acknowledged")
 
     def start_running(self, delivery_task_id: str, dispatch_id: str) -> None:
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
@@ -2495,7 +2620,8 @@ class OrcaDeliveryAdapter:
                 f"Cannot start running task {clean_tid} in state {current!r}; "
                 f"mandatory lifecycle requires state 'acknowledged' (cannot skip acknowledged stage)"
             )
-        self.transition_task_state(clean_tid, "running")
+        with self._authorized_transition_scope(clean_tid, "running", handler="start_running", dispatch_id=clean_disp):
+            self.transition_task_state(clean_tid, "running")
 
     def create_dispatch(
         self,
@@ -2792,7 +2918,11 @@ class OrcaDeliveryAdapter:
         )
         with self._task_state_lock:
             self.active_dispatches[delivery_task_id] = dispatch_id
-            self.transition_task_state(delivery_task_id, "dispatched")
+            with self._authorized_transition_scope(
+                delivery_task_id, "dispatched", handler="create_dispatch",
+                dispatch_id=dispatch_id, lease_ids=all_leases, fencing_token=fencing_token
+            ):
+                self.transition_task_state(delivery_task_id, "dispatched")
             self.last_fencing_tokens[delivery_task_id] = fencing_token
         return dispatch_id
 
@@ -2962,7 +3092,11 @@ class OrcaDeliveryAdapter:
             ]
             for lid in to_remove:
                 self.lease_mgr.release_lease(lid)
-            self.transition_task_state(delivery_task_id, "review")
+            with self._authorized_transition_scope(
+                delivery_task_id, "review", handler="handle_worker_done",
+                dispatch_id=dispatch_id, outcome="succeeded", candidate_commit=candidate_commit
+            ):
+                self.transition_task_state(delivery_task_id, "review")
             return "review"
         else:
             # Failure / blocker -> task becomes blocked; releases live leases
@@ -2972,7 +3106,11 @@ class OrcaDeliveryAdapter:
             ]
             for lid in to_remove:
                 self.lease_mgr.release_lease(lid)
-            self.transition_task_state(delivery_task_id, "blocked")
+            with self._authorized_transition_scope(
+                delivery_task_id, "blocked", handler="handle_worker_done",
+                dispatch_id=dispatch_id, outcome="failed"
+            ):
+                self.transition_task_state(delivery_task_id, "blocked")
             return "blocked"
 
     def handle_harness_failure(
@@ -3046,7 +3184,11 @@ class OrcaDeliveryAdapter:
                 self.lease_mgr.release_lease(lid)
 
         # 8. Transition task state to blocked
-        self.transition_task_state(clean_tid, "blocked")
+        with self._authorized_transition_scope(
+            clean_tid, "blocked", handler="handle_harness_failure",
+            dispatch_id=clean_did
+        ):
+            self.transition_task_state(clean_tid, "blocked")
         return "blocked"
 
     def handle_review_verdict(self, delivery_task_id: str, verdict: str) -> str:
@@ -3063,13 +3205,22 @@ class OrcaDeliveryAdapter:
             raise ProtocolViolationError(f"Cannot review task {delivery_task_id} in state {current_state!r}; must be 'review'")
 
         if verdict == "ACCEPT":
-            self.transition_task_state(delivery_task_id, "merge_queued")
+            with self._authorized_transition_scope(
+                delivery_task_id, "merge_queued", handler="handle_review_verdict", verdict="ACCEPT"
+            ):
+                self.transition_task_state(delivery_task_id, "merge_queued")
             return "merge_queued"
         elif verdict == "CHANGES_REQUESTED":
-            self.transition_task_state(delivery_task_id, "remediation")
+            with self._authorized_transition_scope(
+                delivery_task_id, "remediation", handler="handle_review_verdict", verdict="CHANGES_REQUESTED"
+            ):
+                self.transition_task_state(delivery_task_id, "remediation")
             return "remediation"
         elif verdict == "BLOCKED":
-            self.transition_task_state(delivery_task_id, "blocked")
+            with self._authorized_transition_scope(
+                delivery_task_id, "blocked", handler="handle_review_verdict", verdict="BLOCKED"
+            ):
+                self.transition_task_state(delivery_task_id, "blocked")
             return "blocked"
         else:
             raise ProtocolViolationError(
@@ -3093,11 +3244,17 @@ class OrcaDeliveryAdapter:
         if current_state != "merge_queued":
             raise ProtocolViolationError(f"Cannot integrate task {delivery_task_id} in state {current_state!r}; must be 'merge_queued'")
         if gates_pass:
-            self.transition_task_state(delivery_task_id, "integrated")
+            with self._authorized_transition_scope(
+                delivery_task_id, "integrated", handler="handle_integration_gates", gates_pass=True
+            ):
+                self.transition_task_state(delivery_task_id, "integrated")
             self.lease_mgr.mark_task_integrated(delivery_task_id)
             return "integrated"
         else:
-            self.transition_task_state(delivery_task_id, "blocked")
+            with self._authorized_transition_scope(
+                delivery_task_id, "blocked", handler="handle_integration_gates", gates_pass=False
+            ):
+                self.transition_task_state(delivery_task_id, "blocked")
             to_remove = [
                 lid for lid, l in list(self.lease_mgr.active_leases.items())
                 if l.delivery_task_id == delivery_task_id
@@ -3117,9 +3274,15 @@ class OrcaDeliveryAdapter:
         if state not in ("blocked", "needs_replan"):
             raise ProtocolViolationError(f"Cannot resolve blocker for task in state {state!r}")
         if state == "blocked":
-            self.transition_task_state(delivery_task_id, "ready")
+            with self._authorized_transition_scope(
+                delivery_task_id, "ready", handler="resolve_blocker_and_replan"
+            ):
+                self.transition_task_state(delivery_task_id, "ready")
         elif state == "needs_replan":
-            self.transition_task_state(delivery_task_id, "planned")
+            with self._authorized_transition_scope(
+                delivery_task_id, "planned", handler="resolve_blocker_and_replan"
+            ):
+                self.transition_task_state(delivery_task_id, "planned")
 
 
 # ---------------------------------------------------------------------------

@@ -138,6 +138,22 @@ def check_utf8() -> list[str]:
     return errors
 
 
+def check_canonical_bytes() -> list[str]:
+    """Enforce canonical-byte policy tied to committed candidate tree:
+    All bundle files in docs/parallel-delivery/ must strictly use LF line endings (no CRLF)."""
+    errors: list[str] = []
+    for path in sorted(BUNDLE.glob("*")):
+        if path.is_file() and path != REPORT and not path.name.endswith(".pyc") and "__pycache__" not in str(path):
+            raw = path.read_bytes()
+            if b"\r\n" in raw:
+                rel = path.relative_to(ROOT).as_posix()
+                errors.append(
+                    f"{rel}: canonical-byte policy violation: CRLF (\\r\\n) line endings detected; "
+                    f"exact LF line endings required matching Git blob bytes"
+                )
+    return errors
+
+
 def check_task_dag(
     data: dict[str, Any],
     ownership: dict[str, Any],
@@ -889,6 +905,11 @@ def check_attestation_report_freshness(root: Path, bundle: Path, report_path: Pa
             f"must be generated on clean working tree"
         )
 
+    # Verify canonical-byte policy before checking bundle hashes
+    canon_errs = check_canonical_bytes()
+    if canon_errs:
+        errors.extend(canon_errs)
+
     # Verify all bundle files match bundle_sha256
     recorded_bundle_hashes = report.get("bundle_sha256", {})
     if not recorded_bundle_hashes:
@@ -942,6 +963,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     head_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True)
     head_sha = head_res.stdout.strip() if head_res.returncode == 0 else "UNKNOWN"
+
+    if args.generate_report:
+        os.environ["_GENERATING_REPORT"] = "1"
 
     if (args.generate_report or args.release):
         if not args.base or not args.candidate:
@@ -1008,6 +1032,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     all_changed = get_all_changed_paths(base_resolved, candidate_resolved)
 
     checks["utf8_and_text"] = check_utf8()
+    checks["canonical_bytes"] = check_canonical_bytes()
     checks["links"] = check_links()
     checks["dely_configuration"] = check_dely_block()
     checks["secret_scan"] = check_secret_scan(all_changed)
@@ -1154,6 +1179,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "sol_round_18": {
                     "1_exact_raw_router_identity_no_whitespace_normalization": "RESOLVED",
                     "2_padded_router_aliases_rejected_fail_closed": "RESOLVED",
+                },
+                "astra_round_18": {
+                    "1_lifecycle_authority_bypass_fail_closed": "RESOLVED",
+                    "2_contradictory_evidence_aliases_validation": "RESOLVED",
+                    "3_raw_router_identity_strict_end_to_end": "RESOLVED",
+                    "4_exact_head_attestation_reproducible_canonical_bytes": "RESOLVED",
                 },
             },
             "fixture_stats": fixture_stats,

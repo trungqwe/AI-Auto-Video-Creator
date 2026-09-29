@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-29 — Khắc phục phát hiện Astra Lead round 18 (Lifecycle Authority Bypass, Contradictory Aliases, Raw Router Identity, Canonical Bytes)
+
+- Khắc phục triệt để 4 phát hiện blocker từ Astra Lead review round 18 trên HEAD `4c95c1d7914772d6311b44aa482fb3eeff5b4912` cho bundle `docs/parallel-delivery/`:
+  - **(1) Chống Vượt Rào Thẩm Quyền Vòng Đời Tác Vụ (Lifecycle & Authority Fail-Closed)**: Khóa chặt phương thức công khai `transition_task_state()`, từ chối fail-closed mọi chuyển đổi trạng thái vòng đời trừ khi được gọi từ handler hợp lệ (`create_dispatch`, `acknowledge_dispatch`, `start_running`, `handle_worker_done`, `handle_review_verdict`, `handle_integration_gates`, `resolve_blocker_and_replan`), thẩm quyền tác vụ là `granted` và có đầy đủ bằng chứng dispatch, lease đang active và fencing token đã xác thực.
+  - **(2) Xác Thực Nghiêm Ngặt Mọi Alias Bằng Chứng (Contradictory Evidence Aliases Validation)**: Hàm `_extract_and_validate_alias()` kiểm tra mọi alias hiện diện phải đúng kiểu chuỗi, không rỗng và đồng nhất về mặt ngữ nghĩa trước khi trích xuất giá trị chính tắc; từ chối fail-closed khi phát hiện mâu thuẫn alias giữa `route`/`model`, `provider`/`router`, `archive_reference`/`terminal_id`, `delivery_task_id`/`task_id`, `dispatch_id`/`dispatch` trên cả phase implement và review.
+  - **(3) Bắt Buộc Định Danh Router Raw Chuỗi Chính Xác Tuyệt Đối (Strict End-to-End Raw Router Identity)**: Yêu cầu chuỗi raw chính xác `"9router"` tại toàn bộ các vị trí định tuyến (`route.provider`, `launch_requested.provider`, `launch_effective.provider`, `live_terminal_evidence.provider`, `usage_evidence.router`) mà không dùng chuẩn hóa `.strip()` để biến chuỗi đệm thành hợp lệ; từ chối mọi biến thể có khoảng trắng đệm fail-closed.
+  - **(4) Chính Sách Byte Chính Tắc và Tính Tái Lập Băm Attestation (Canonical-Byte Policy & Reproducible Git Blobs)**: Thiết lập và thực thi chính sách byte chính tắc buộc toàn bộ tệp trong bundle dùng ký tự xuống dòng LF đồng nhất với Git blob; loại bỏ triệt để sai lệch băm trên Windows do CRLF; đảm bảo băm attestation trong báo cáo khớp 100% với Git blob khi clone mới.
+  - **(5) Bộ Fixture Phân Biệt Tự Động 274 Fixtures**: Bổ sung lớp kiểm thử `TestAstraRound18Remediation` với 22 bài test counterexample và positive control, nâng tổng số kiểm thử lên 274 fixtures.
+
 ## 2026-09-29 — Khắc phục phát hiện Sol review dispatch vòng 18 (Exact Raw Router Identity & No Whitespace Normalization)
 
 - Khắc phục triệt để phát hiện blocker từ Sol re-review dispatch `ctx_0685621e5af0` trên HEAD `38f3da2e96e0b2404662d08a82a1594c16c2263d` cho bundle `docs/parallel-delivery/`:

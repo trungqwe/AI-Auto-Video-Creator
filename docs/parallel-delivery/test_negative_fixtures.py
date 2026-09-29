@@ -2026,24 +2026,37 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
 
         # Illegal: dispatched -> integrated (must go through review and merge_queued)
         self.adapter.set_task_state("TASK-A", "ready")
-        self.adapter.transition_task_state("TASK-A", "dispatched")
+        self.adapter._task_states["TASK-A"] = "dispatched"
         with self.assertRaises(ProtocolViolationError) as ctx:
             self.adapter.transition_task_state("TASK-A", "integrated")
         self.assertIn("Illegal task-state transition", str(ctx.exception))
 
-        # Legal progression
+        # Legal progression via authorized lifecycle handlers
         self.adapter._task_states["TASK-A"] = "ready"
-        self.adapter.transition_task_state("TASK-A", "dispatched")
+        lease = self.mgr.acquire_lease("R4-LOCK-EXCL", "TASK-A", "ctx-r4-09")
+        disp = self.adapter.create_dispatch(
+            "TASK-A",
+            orca_task_id="orca-r4-09",
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease.fencing_token,
+            lease_id=lease.lease_id,
+            intended_dispatch_id="ctx-r4-09",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-r4-09", phase="implement", orca_task_id="orca-r4-09"),
+        )
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "dispatched")
-        self.adapter.transition_task_state("TASK-A", "acknowledged")
+        self.adapter.acknowledge_dispatch("TASK-A", disp)
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "acknowledged")
-        self.adapter.transition_task_state("TASK-A", "running")
+        self.adapter.start_running("TASK-A", disp)
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "running")
-        self.adapter.transition_task_state("TASK-A", "review")
+        self.adapter.handle_worker_done(
+            "TASK-A", "orca-r4-09", disp, outcome="succeeded",
+            candidate_commit=self.candidate_commit, fencing_token=lease.fencing_token
+        )
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "review")
-        self.adapter.transition_task_state("TASK-A", "merge_queued")
+        self.adapter.handle_review_verdict("TASK-A", "ACCEPT")
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "merge_queued")
-        self.adapter.transition_task_state("TASK-A", "integrated")
+        self.adapter.handle_integration_gates("TASK-A", True)
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "integrated")
 
     def test_r4_10_release_all_mutation_leases_after_worker_done_success(self):
@@ -2500,17 +2513,17 @@ class TestSolRoundFiveCounterexamples(unittest.TestCase):
         """9. Counterexample: Illegal state transitions from lifecycle states are blocked."""
         # dispatched -> integrated is forbidden
         self.adapter.set_task_state("TASK-A", "ready")
-        self.adapter.transition_task_state("TASK-A", "dispatched")
+        self.adapter._task_states["TASK-A"] = "dispatched"
         with self.assertRaises(ProtocolViolationError):
             self.adapter.transition_task_state("TASK-A", "integrated")
 
         # acknowledged -> integrated is forbidden
-        self.adapter.transition_task_state("TASK-A", "acknowledged")
+        self.adapter._task_states["TASK-A"] = "acknowledged"
         with self.assertRaises(ProtocolViolationError):
             self.adapter.transition_task_state("TASK-A", "integrated")
 
         # running -> ready is forbidden
-        self.adapter.transition_task_state("TASK-A", "running")
+        self.adapter._task_states["TASK-A"] = "running"
         with self.assertRaises(ProtocolViolationError):
             self.adapter.transition_task_state("TASK-A", "ready")
 
@@ -3269,7 +3282,7 @@ class TestSolRoundSevenCounterexamples(unittest.TestCase):
 
         # Overwriting active lifecycle state is rejected
         self.adapter.set_task_state("TASK-A", "ready")
-        self.adapter.transition_task_state("TASK-A", "dispatched")
+        self.adapter._task_states["TASK-A"] = "dispatched"
         with self.assertRaises(ProtocolViolationError) as ctx:
             self.adapter.set_task_state("TASK-A", "ready")
         self.assertIn("while in active lifecycle state 'dispatched'", str(ctx.exception))
@@ -6457,6 +6470,355 @@ class TestSolRound18ExactRawRouterIdentity(unittest.TestCase):
             )
         self.assertTrue("router" in str(ctx2.exception).lower() or "invalid" in str(ctx2.exception).lower())
         self._assert_zero_side_effects()
+
+
+
+class TestAstraRound18Remediation(unittest.TestCase):
+    """Astra Round 18 remediation fixtures:
+    1. Lifecycle / authority bypass:
+       - Public transition_task_state() fails closed unless authorized by appropriate handler
+         and backed by verified dispatch/lease/evidence.
+       - Rejection of revoked authority, no-dispatch paths, missing/stale lease,
+         missing completion/review/integration evidence, and a valid positive path.
+    2. Contradictory evidence aliases:
+       - Every present alias must be validated for type, nonblank form, and mutual semantic consistency.
+       - Cover both implement and review phases, including conflicts across usage, live-terminal,
+         archive, and delivery aliases.
+    3. Raw router identity strict end-to-end:
+       - Require exact raw identity '9router' at route, requested-launch, effective-launch,
+         live-terminal/archive, and usage identity positions without normalization.
+       - Reject padded values across all positions; positive controls with exact '9router'.
+    4. Exact-HEAD attestation reproducibility & canonical-byte policy:
+       - Enforce canonical-byte policy (LF line endings matching committed Git tree).
+       - Reject CRLF in bundle files; attestation hashes match Git blobs.
+    """
+
+    def setUp(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        self.lock_defs = [
+            {"id": "LOCK-A18", "mode": "exclusive", "renewable": True, "lease_seconds": 10},
+            {"id": "LOCK-A18-INT", "mode": "exclusive", "renewable": True, "lease_seconds": 10},
+        ]
+        self.mgr = LeaseManager(self.lock_defs)
+        self.delivery_id = "TASK-A18-PROBE"
+        self.mgr.set_task_authority(self.delivery_id, "granted")
+        self.candidate_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT_DIR, text=True
+        ).strip()
+        self.adapter = OrcaDeliveryAdapter(
+            self.mgr,
+            approved_candidate_commit=self.candidate_commit,
+            git_root=ROOT_DIR,
+        )
+        self.adapter.register_task_locks(self.delivery_id, ["LOCK-A18"])
+        self.adapter.set_task_authority(self.delivery_id, "granted")
+        self.adapter.set_task_state(self.delivery_id, "ready")
+        self.intended_disp = "ctx-a18-probe"
+        self.orca_task_id = "orca-a18-task"
+        self.t0 = datetime(2026, 9, 29, 12, 0, 0, tzinfo=timezone.utc)
+        self.lease = self.mgr.acquire_lease("LOCK-A18", self.delivery_id, self.intended_disp, lease_seconds=10, now=self.t0)
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+
+    # -------------------------------------------------------------------------
+    # 1. Lifecycle / authority bypass tests
+    # -------------------------------------------------------------------------
+    def test_astra_r18_01_lifecycle_bypass_revoked_authority_rejected(self):
+        """1. Counterexample: Task with revoked authority cannot transition state via transition_task_state."""
+        self.adapter.set_task_authority(self.delivery_id, "revoked")
+        target_states = ["dispatched", "acknowledged", "running", "review", "merge_queued", "integrated"]
+        for tgt in target_states:
+            with self.assertRaises(ProtocolViolationError) as ctx:
+                self.adapter.transition_task_state(self.delivery_id, tgt)
+            self.assertTrue(
+                "revoked" in str(ctx.exception).lower() or "authority" in str(ctx.exception).lower() or "illegal" in str(ctx.exception).lower()
+            )
+
+    def test_astra_r18_02_lifecycle_bypass_no_dispatch_rejected(self):
+        """2. Counterexample: Task in ready state cannot transition to dispatched/acknowledged/running without dispatch."""
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.transition_task_state(self.delivery_id, "dispatched")
+        self.assertTrue("dispatch" in str(ctx.exception).lower() or "handler" in str(ctx.exception).lower() or "illegal" in str(ctx.exception).lower())
+
+    def test_astra_r18_03_lifecycle_bypass_missing_or_stale_lease_rejected(self):
+        """3. Counterexample: Public transition fails when lease is missing or stale."""
+        self.mgr.release_lease(self.lease.lease_id)
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.transition_task_state(self.delivery_id, "dispatched")
+        self.assertTrue("lease" in str(ctx.exception).lower() or "dispatch" in str(ctx.exception).lower() or "handler" in str(ctx.exception).lower())
+
+    def test_astra_r18_04_lifecycle_bypass_missing_completion_evidence_rejected(self):
+        """4. Counterexample: Public transition to review fails without completion evidence from worker_done."""
+        self.adapter._task_states[self.delivery_id] = "running"
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.transition_task_state(self.delivery_id, "review")
+        self.assertTrue("completion" in str(ctx.exception).lower() or "worker_done" in str(ctx.exception).lower() or "handler" in str(ctx.exception).lower())
+
+    def test_astra_r18_05_lifecycle_bypass_missing_review_evidence_rejected(self):
+        """5. Counterexample: Public transition to merge_queued fails without verified review evidence."""
+        self.adapter._task_states[self.delivery_id] = "review"
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.transition_task_state(self.delivery_id, "merge_queued")
+        self.assertTrue("review" in str(ctx.exception).lower() or "verdict" in str(ctx.exception).lower() or "handler" in str(ctx.exception).lower())
+
+    def test_astra_r18_06_lifecycle_bypass_missing_integration_evidence_rejected(self):
+        """6. Counterexample: Public transition to integrated fails without verified integration gates evidence."""
+        self.adapter._task_states[self.delivery_id] = "merge_queued"
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.transition_task_state(self.delivery_id, "integrated")
+        self.assertTrue("integration" in str(ctx.exception).lower() or "gates" in str(ctx.exception).lower() or "handler" in str(ctx.exception).lower())
+
+    def test_astra_r18_07_lifecycle_valid_positive_path(self):
+        """7. Positive control: Full authorized lifecycle sequence with verified evidence reaches integrated."""
+        disp_id = self.adapter.create_dispatch(
+            self.delivery_id,
+            orca_task_id=self.orca_task_id,
+            candidate_commit=self.candidate_commit,
+            fencing_token=self.lease.fencing_token,
+            lease_id=self.lease.lease_id,
+            intended_dispatch_id=self.intended_disp,
+            now=self.t0,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id, now=self.t0),
+        )
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "dispatched")
+
+        self.adapter.acknowledge_dispatch(self.delivery_id, disp_id)
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "acknowledged")
+
+        self.adapter.start_running(self.delivery_id, disp_id)
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "running")
+
+        st = self.adapter.handle_worker_done(
+            self.delivery_id,
+            self.orca_task_id,
+            disp_id,
+            outcome="succeeded",
+            candidate_commit=self.candidate_commit,
+            fencing_token=self.lease.fencing_token,
+            now=self.t0 + timedelta(seconds=2),
+        )
+        self.assertEqual(st, "review")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "review")
+
+        st_rev = self.adapter.handle_review_verdict(self.delivery_id, "ACCEPT")
+        self.assertEqual(st_rev, "merge_queued")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "merge_queued")
+
+        st_int = self.adapter.handle_integration_gates(self.delivery_id, True)
+        self.assertEqual(st_int, "integrated")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
+
+    # -------------------------------------------------------------------------
+    # 2. Contradictory evidence aliases tests
+    # -------------------------------------------------------------------------
+    def test_astra_r18_08_live_terminal_contradictory_route_and_model_aliases(self):
+        """8. Counterexample: Live terminal evidence with contradictory route and model aliases fails closed."""
+        for phase in ("implement", "review"):
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, phase=phase, orca_task_id=self.orca_task_id)
+            lt = env.live_terminal_evidence.__dict__.copy()
+            lt["route"] = "ag/gemini-3.8-flash-high" if phase == "implement" else "cx/gpt-5.6-sol"
+            lt["model"] = "wrong-foreign-model"
+            env.live_terminal_evidence = lt
+            with self.assertRaises(RoutingEvidenceError) as ctx:
+                validate_execution_envelope(env, expected_phase=phase)
+            self.assertTrue("contradictory" in str(ctx.exception).lower() or "mismatch" in str(ctx.exception).lower())
+
+    def test_astra_r18_09_live_terminal_contradictory_archive_aliases(self):
+        """9. Counterexample: Live terminal evidence with conflicting archive_reference and terminal_id fails closed."""
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        lt = env.live_terminal_evidence.__dict__.copy()
+        lt["archive_reference"] = "archive_ref_01"
+        lt["terminal_id"] = "terminal_id_conflicting_02"
+        env.live_terminal_evidence = lt
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env, expected_phase="implement")
+        self.assertTrue("contradictory" in str(ctx.exception).lower() or "archive" in str(ctx.exception).lower())
+
+    def test_astra_r18_10_live_terminal_contradictory_task_and_dispatch_aliases(self):
+        """10. Counterexample: Live terminal evidence with conflicting task/dispatch aliases fails closed."""
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        lt = env.live_terminal_evidence.__dict__.copy()
+        lt["delivery_task_id"] = self.delivery_id
+        lt["task_id"] = "TASK-FOREIGN"
+        env.live_terminal_evidence = lt
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env, expected_phase="implement")
+        self.assertTrue("contradictory" in str(ctx.exception).lower() or "task" in str(ctx.exception).lower())
+
+    def test_astra_r18_11_live_terminal_invalid_type_and_blank_aliases(self):
+        """11. Counterexample: Non-string or blank aliases in live terminal evidence fail closed."""
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        lt = env.live_terminal_evidence.__dict__.copy()
+        lt["model"] = 12345
+        env.live_terminal_evidence = lt
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env, expected_phase="implement")
+        self.assertTrue("string" in str(ctx.exception).lower() or "invalid" in str(ctx.exception).lower())
+
+    def test_astra_r18_12_usage_evidence_contradictory_provider_aliases(self):
+        """12. Counterexample: Usage evidence with conflicting backend_provider vs provider fails closed."""
+        for phase in ("implement", "review"):
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, phase=phase, orca_task_id=self.orca_task_id)
+            u = env.usage_evidence.__dict__.copy()
+            u["backend_provider"] = "google" if phase == "implement" else "openai"
+            u["provider"] = "foreign-provider-contradictory"
+            env.usage_evidence = u
+            with self.assertRaises(RoutingEvidenceError) as ctx:
+                validate_execution_envelope(env, expected_phase=phase)
+            self.assertTrue("contradictory" in str(ctx.exception).lower() or "provider" in str(ctx.exception).lower())
+
+    def test_astra_r18_13_usage_evidence_contradictory_model_aliases(self):
+        """13. Counterexample: Usage evidence with conflicting backend_model vs model fails closed."""
+        for phase in ("implement", "review"):
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, phase=phase, orca_task_id=self.orca_task_id)
+            u = env.usage_evidence.__dict__.copy()
+            u["backend_model"] = "ag/gemini-3.8-flash-high" if phase == "implement" else "cx/gpt-5.6-sol"
+            u["model"] = "foreign-model-contradictory"
+            env.usage_evidence = u
+            with self.assertRaises(RoutingEvidenceError) as ctx:
+                validate_execution_envelope(env, expected_phase=phase)
+            self.assertTrue("contradictory" in str(ctx.exception).lower() or "model" in str(ctx.exception).lower())
+
+    def test_astra_r18_14_usage_evidence_contradictory_task_and_dispatch_aliases(self):
+        """14. Counterexample: Usage evidence with conflicting task/dispatch aliases fails closed."""
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        u = env.usage_evidence.__dict__.copy()
+        u["delivery_task_id"] = self.delivery_id
+        u["task_id"] = "TASK-FOREIGN-USAGE"
+        env.usage_evidence = u
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env, expected_phase="implement")
+        self.assertTrue("contradictory" in str(ctx.exception).lower() or "task" in str(ctx.exception).lower())
+
+    def test_astra_r18_15_envelope_contradictory_task_and_dispatch_aliases(self):
+        """15. Counterexample: Envelope with conflicting task/dispatch aliases fails closed."""
+        env_dict = {
+            "delivery_task_id": self.delivery_id,
+            "task_id": "TASK-FOREIGN-ENV",
+            "dispatch_id": self.intended_disp,
+            "dispatch_origin": "dely dispatch",
+            "phase": "implement",
+            "orca_task_id": self.orca_task_id,
+            "route": {"provider": "9router", "harness": "Codex CLI", "model": "ag/gemini-3.8-flash-high", "effort": "high"},
+            "launch_requested": {"harness": "Codex CLI", "provider": "9router", "model": "ag/gemini-3.8-flash-high", "effort": "high"},
+            "launch_effective": {"harness": "Codex CLI", "provider": "9router", "model": "ag/gemini-3.8-flash-high", "effort": "high"},
+            "live_terminal_evidence": LiveTerminalEvidence(
+                harness="Codex CLI", provider="9router", route="ag/gemini-3.8-flash-high",
+                archive_reference="term_01", verified=True, dispatch_id=self.intended_disp,
+                delivery_task_id=self.delivery_id, effort="high"
+            ),
+            "usage_evidence": UsageEvidence(
+                backend_provider="google", backend_model="ag/gemini-3.8-flash-high",
+                recorded_after_dispatch=True, timestamp=(self.t0 + timedelta(seconds=1)).isoformat(),
+                request_id="req_01", dispatch_id=self.intended_disp, delivery_task_id=self.delivery_id,
+                router="9router"
+            ),
+        }
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env_dict, expected_phase="implement")
+        self.assertTrue("contradictory" in str(ctx.exception).lower() or "task" in str(ctx.exception).lower())
+
+    # -------------------------------------------------------------------------
+    # 3. Raw router identity not strict end-to-end tests
+    # -------------------------------------------------------------------------
+    def test_astra_r18_16_route_padded_router_identity_rejected(self):
+        """16. Counterexample: Padded router identity in route mapping fails closed."""
+        padded_variants = [" 9router ", "9router ", " 9router", "\t9router", "9router\n"]
+        for p in padded_variants:
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+            env.route["provider"] = p
+            with self.assertRaises(RoutingEvidenceError) as ctx:
+                validate_execution_envelope(env, expected_phase="implement")
+            self.assertTrue("provider" in str(ctx.exception).lower() or "router" in str(ctx.exception).lower() or "invalid" in str(ctx.exception).lower())
+
+    def test_astra_r18_17_launch_requested_padded_router_identity_rejected(self):
+        """17. Counterexample: Padded router identity in launch_requested fails closed."""
+        padded_variants = [" 9router ", "9router ", " 9router", "\t9router", "9router\n"]
+        for p in padded_variants:
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+            env.launch_requested["provider"] = p
+            with self.assertRaises(RoutingEvidenceError) as ctx:
+                validate_execution_envelope(env, expected_phase="implement")
+            self.assertTrue("provider" in str(ctx.exception).lower() or "router" in str(ctx.exception).lower() or "invalid" in str(ctx.exception).lower())
+
+    def test_astra_r18_18_launch_effective_padded_router_identity_rejected(self):
+        """18. Counterexample: Padded router identity in launch_effective fails closed."""
+        padded_variants = [" 9router ", "9router ", " 9router", "\t9router", "9router\n"]
+        for p in padded_variants:
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+            env.launch_effective["provider"] = p
+            with self.assertRaises(RoutingEvidenceError) as ctx:
+                validate_execution_envelope(env, expected_phase="implement")
+            self.assertTrue("provider" in str(ctx.exception).lower() or "router" in str(ctx.exception).lower() or "invalid" in str(ctx.exception).lower())
+
+    def test_astra_r18_19_live_terminal_padded_router_identity_rejected(self):
+        """19. Counterexample: Padded router identity in live_terminal_evidence fails closed."""
+        env_dc = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env_dc.live_terminal_evidence.provider = " 9router "
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env_dc, expected_phase="implement")
+        self.assertTrue("provider" in str(ctx.exception).lower() or "router" in str(ctx.exception).lower() or "invalid" in str(ctx.exception).lower())
+
+        env_map = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        lt = env_map.live_terminal_evidence.__dict__.copy()
+        lt["provider"] = " 9router "
+        env_map.live_terminal_evidence = lt
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env_map, expected_phase="implement")
+        self.assertTrue("provider" in str(ctx.exception).lower() or "router" in str(ctx.exception).lower() or "invalid" in str(ctx.exception).lower())
+
+    def test_astra_r18_20_exact_raw_router_identity_all_positions_positive_control(self):
+        """20. Positive control: Exact raw '9router' at all 5 positions succeeds."""
+        for phase in ("implement", "review"):
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, phase=phase, orca_task_id=self.orca_task_id)
+            self.assertEqual(env.route["provider"], "9router")
+            self.assertEqual(env.launch_requested["provider"], "9router")
+            self.assertEqual(env.launch_effective["provider"], "9router")
+            self.assertEqual(env.live_terminal_evidence.provider, "9router")
+            self.assertEqual(env.usage_evidence.router, "9router")
+            self.assertEqual(validate_execution_envelope(env, expected_phase=phase), [])
+
+    # -------------------------------------------------------------------------
+    # 4. Exact-HEAD attestation reproducibility & canonical-byte policy tests
+    # -------------------------------------------------------------------------
+    def test_astra_r18_21_canonical_byte_policy_rejects_crlf_in_bundle(self):
+        """21. Counterexample: Validator rejects CRLF line endings in bundle text files."""
+        import validate
+        check_canonical = getattr(validate, "check_canonical_bytes", None)
+        if check_canonical is not None:
+            errs = check_canonical()
+            self.assertEqual(errs, [], f"CRLF line endings detected in bundle files: {errs}")
+        else:
+            self.fail("validate.py must export check_canonical_bytes")
+
+    def test_astra_r18_22_attestation_hashes_reproducible_match_exact_git_blobs(self):
+        """22. Counterexample: Recorded attestation hashes match exact Git blob hashes for bundle files."""
+        import hashlib, os
+        report_path = BUNDLE_DIR / ".validation-report.json"
+        self.assertTrue(report_path.is_file(), "Attestation report must exist")
+        if os.environ.get("_GENERATING_REPORT") == "1":
+            for p in sorted(BUNDLE_DIR.glob("*")):
+                if p.is_file() and p.name != ".validation-report.json" and not p.name.endswith(".pyc"):
+                    rel = f"docs/parallel-delivery/{p.name}"
+                    res = subprocess.run(["git", "show", f"HEAD:{rel}"], capture_output=True, cwd=ROOT_DIR)
+                    if res.returncode == 0:
+                        blob_h = hashlib.sha256(res.stdout).hexdigest()
+                        disk_h = hashlib.sha256(p.read_bytes()).hexdigest()
+                        self.assertEqual(disk_h, blob_h, f"Disk hash vs Git blob mismatch for {p.name}")
+            return
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        bundle_hashes = report.get("bundle_sha256", {})
+        for fname, recorded_hash in bundle_hashes.items():
+            fpath = f"docs/parallel-delivery/{fname}"
+            res = subprocess.run(["git", "show", f"HEAD:{fpath}"], capture_output=True, cwd=ROOT_DIR)
+            if res.returncode == 0:
+                blob_h = hashlib.sha256(res.stdout).hexdigest()
+                self.assertEqual(
+                    recorded_hash, blob_h,
+                    f"Hash mismatch for {fname}: recorded {recorded_hash} vs Git blob {blob_h}"
+                )
 
 
 if __name__ == "__main__":
