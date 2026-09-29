@@ -4,13 +4,14 @@
 
 - Authority hiện hành giữ nguyên: `M2-P1..P7B_ACCEPTED_CLOSED`; M2-P8/P9 `LOCKED`; M3/Phân hệ A `NOT AUTHORIZED`.
 - Đã thêm [kiến trúc triển khai song song](./docs/parallel-delivery/README.md) ở trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`. Bundle chỉ là docs/config và định nghĩa DAG, contract registry, ownership/lease, Orca worker protocol, merge queue, traceability, security/performance/recovery.
-- Đã khắc phục triệt để toàn bộ các phát hiện từ Astra audit và các vòng Sol review (Round 3 đến Round 14):
-  1. Bắt buộc định danh `orca_task_id` trong `ExecutionEnvelope` và ràng buộc với đối số `create_dispatch()` trước mọi tác động phụ;
-  2. Yêu cầu bắt buộc các neo định danh `delivery_task_id`, `dispatch_id` trên cả `LiveTerminalEvidence` và `UsageEvidence`, và trường `effort == "high"` trên `LiveTerminalEvidence`, từ chối fail-closed khi thiếu trường;
-  3. Khóa chính xác định danh backend model theo phase (`ag/gemini-3.8-flash-high` / `gemini-3.8-flash-high` cho implement, `cx/gpt-5.6-sol` / `gpt-5.6-sol` cho review), loại bỏ hoàn toàn kiểm tra substring và từ chối mọi foreign alias;
-  4. Thực thi fail-closed dispatch origin và execution envelope trước mọi tác động phụ; bắt buộc origin "dely dispatch", loại bỏ counterexample dispatch_without_origin_or_envelope_accepted = ctx-probe;
-  5. Xử lý harness failure theo định danh trước (identity-first fail-closed), chỉ thu hồi lease của dispatch đã xác thực;
-  6. Bộ kiểm thử tự động đạt 208/208 tests PASS; toàn bộ gates kiểm tra độc lập sẵn sàng.
+- Đã khắc phục triệt để toàn bộ các phát hiện từ Astra audit và các vòng Sol review (Round 3 đến Round 15):
+  1. Tái cấu trúc thứ tự kiểm tra fail-before-side-effect: toàn bộ kiểm tra pure `dispatch_origin` và `execution_envelope` chạy trước bất kỳ side effect hay purge/deactivate lease nào trong `create_dispatch()`, bảo đảm `RoutingEvidenceError` thắng và zero side effects khi envelope sai kết hợp lease hết hạn;
+  2. Bắt buộc định danh `orca_task_id` trong `ExecutionEnvelope` và ràng buộc với đối số `create_dispatch()` trước mọi tác động phụ;
+  3. Yêu cầu bắt buộc các neo định danh `delivery_task_id`, `dispatch_id` trên cả `LiveTerminalEvidence` và `UsageEvidence`, và trường `effort == "high"` trên `LiveTerminalEvidence`, từ chối fail-closed khi thiếu trường;
+  4. Khóa chính xác định danh backend model theo phase (`ag/gemini-3.8-flash-high` / `gemini-3.8-flash-high` cho implement, `cx/gpt-5.6-sol` / `gpt-5.6-sol` cho review), loại bỏ hoàn toàn kiểm tra substring và từ chối mọi foreign alias;
+  5. Thực thi fail-closed dispatch origin và execution envelope trước mọi tác động phụ; bắt buộc origin "dely dispatch", loại bỏ counterexample dispatch_without_origin_or_envelope_accepted = ctx-probe;
+  6. Xử lý harness failure theo định danh trước (identity-first fail-closed), chỉ thu hồi lease của dispatch đã xác thực;
+  7. Bộ kiểm thử tự động đạt 219/219 tests PASS; toàn bộ gates kiểm tra độc lập sẵn sàng.
 - Orca là execution/communication plane. Dely chỉ quản lý implement → independent review bên trong task đã có authority. Dely implement: Codex CLI / `ag/gemini-3.8-flash-high` / `high`; review: Claude Code / `cx/gpt-5.6-sol` / `high`. Supreme audit `cx/gpt-6-astra-medium` / `medium` nằm ngoài Dely và chỉ cho audit cực khó.
 - Rollback reference trước thí nghiệm: `D:/AI_SETUP/backups/AI-Auto-Video-Creator/20260928-175542`; đây không phải bằng chứng G05 PASS.
 

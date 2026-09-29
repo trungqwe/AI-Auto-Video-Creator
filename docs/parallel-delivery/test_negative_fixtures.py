@@ -1453,6 +1453,8 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
                 fencing_token=lease_a.fencing_token,
                 lease_id=lease_a.lease_id,
                 intended_dispatch_id="ctx-a",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-B", "ctx-a", orca_task_id="orca-b-1"),
             )
         self.assertIn("belongs to task 'TASK-A', cannot be bound to 'TASK-B'", str(ctx.exception))
 
@@ -1514,6 +1516,8 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
                 fencing_token=lease.fencing_token + 99,
                 lease_id=lease.lease_id,
                 intended_dispatch_id="ctx-a",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-A", "ctx-a", orca_task_id="orca-a-fence"),
             )
         self.assertIn("Fencing token mismatch", str(ctx.exception))
 
@@ -1925,6 +1929,8 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
                 fencing_token=lease_b.fencing_token,
                 lease_id=lease_b.lease_id,
                 intended_dispatch_id="ctx-disp-reuse",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-B", "ctx-disp-reuse", orca_task_id="orca-task-unique-2"),
             )
         self.assertIn("Duplicate dispatch binding overwrite", str(ctx.exception))
 
@@ -1999,6 +2005,8 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
                 fencing_token=lease.fencing_token,
                 lease_id=lease.lease_id,
                 intended_dispatch_id="ctx_different_target",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-A", "ctx_different_target", orca_task_id="orca-intended-test"),
             )
         self.assertIn("does not match requested", str(ctx.exception))
 
@@ -2420,6 +2428,8 @@ class TestSolRoundFiveCounterexamples(unittest.TestCase):
                 fencing_token=lease.fencing_token,
                 lease_id=lease.lease_id,
                 intended_dispatch_id="ctx-hijack-attempt",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-A", "ctx-hijack-attempt", orca_task_id="orca-mismatch-disp"),
             )
         self.assertIn("does not match requested", str(ctx2.exception))
         self.assertEqual(lease.dispatch_id, "ctx-original-target")  # No rewrite!
@@ -2526,6 +2536,8 @@ class TestSolRoundFiveCounterexamples(unittest.TestCase):
                 fencing_token=lease_excl.fencing_token,
                 lease_id=lease_excl.lease_id,
                 intended_dispatch_id="ctx-lock-set",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-A", "ctx-lock-set", orca_task_id="orca-lock-set-fail"),
             )
         self.assertIn("Dispatch must prove the complete declared task lock set", str(ctx.exception))
         self.assertIn("R5-LOCK-EXTRA", str(ctx.exception))
@@ -3008,6 +3020,8 @@ class TestSolRoundSixCounterexamples(unittest.TestCase):
                 fencing_token=lease.fencing_token,
                 lease_id=lease.lease_id,
                 intended_dispatch_id="ctx-unreg-locks",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-UNREG", "ctx-unreg-locks", orca_task_id="orca-unreg-locks"),
             )
         self.assertIn("declared_task_locks", str(ctx.exception))
 
@@ -3026,6 +3040,8 @@ class TestSolRoundSixCounterexamples(unittest.TestCase):
                 fencing_token=l_excl.fencing_token,
                 lease_id=l_excl.lease_id,
                 intended_dispatch_id="ctx-exact-1",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-A", "ctx-exact-1", orca_task_id="orca-missing-lock"),
             )
         self.assertIn("missing", str(ctx1.exception))
 
@@ -3039,6 +3055,8 @@ class TestSolRoundSixCounterexamples(unittest.TestCase):
                 fencing_token=l_excl.fencing_token,
                 lease_ids=[l_excl.lease_id, l_extra.lease_id],
                 intended_dispatch_id="ctx-exact-1",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-A", "ctx-exact-1", orca_task_id="orca-extraneous-lock"),
             )
         self.assertIn("extraneous", str(ctx2.exception))
 
@@ -3298,6 +3316,8 @@ class TestSolRoundSevenCounterexamples(unittest.TestCase):
                 fencing_token=lease.fencing_token,
                 lease_id=lease.lease_id,
                 intended_dispatch_id="ctx-b",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-B", "ctx-b", orca_task_id="orca-cap-fail"),
             )
         self.assertIn("capacity slot reallocation detected", str(ctx.exception))
 
@@ -5225,6 +5245,300 @@ class TestSolRound14IdentityAnchorsAndBackendValidation(unittest.TestCase):
         self.assertTrue(self.lease.is_active)
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "dispatched")
 
+
+
+
+class TestSolRound15FailBeforeSideEffect(unittest.TestCase):
+    """Sol Round 15 remediation: fail-before-side-effect validation ordering in OrcaDeliveryAdapter.create_dispatch().
+    All pure, non-mutating checks for dispatch_origin and execution_envelope (including exact delivery task, Orca task,
+    dispatch, phase, harness/model/effort, and evidence anchors) MUST occur before any call that can purge, deactivate,
+    rewrite, or persist lease/registry/task state.
+    When an invalid or mismatched envelope is combined with an expired or malformed active lease:
+    1. RoutingEvidenceError wins fail-closed.
+    2. Zero side effects: the active lease is not purged or deactivated (is_active remains True and lease remains in active_leases).
+    3. All task state, dispatch bindings, and registry state remain byte-for-byte / field-for-field unchanged.
+    Positive controls: Valid envelope with expired/malformed lease purges authoritatively and raises ProtocolViolationError.
+    """
+
+    def setUp(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        self.lock_defs = [{"id": "LOCK-R15", "mode": "exclusive", "renewable": True, "lease_seconds": 10}]
+        self.mgr = LeaseManager(self.lock_defs)
+        self.delivery_id = "TASK-R15-PROBE"
+        self.mgr.set_task_authority(self.delivery_id, "granted")
+        self.candidate_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT_DIR, text=True
+        ).strip()
+        self.adapter = OrcaDeliveryAdapter(
+            self.mgr,
+            approved_candidate_commit=self.candidate_commit,
+            git_root=ROOT_DIR,
+        )
+        self.adapter.register_task_locks(self.delivery_id, ["LOCK-R15"])
+        self.adapter.set_task_authority(self.delivery_id, "granted")
+        self.adapter.set_task_state(self.delivery_id, "ready")
+        self.intended_disp = "ctx-r15-probe"
+        self.orca_task_id = "orca-r15-task"
+        self.t0 = datetime(2026, 9, 29, 10, 0, 0, tzinfo=timezone.utc)
+        self.lease = self.mgr.acquire_lease("LOCK-R15", self.delivery_id, self.intended_disp, lease_seconds=10, now=self.t0)
+        self.past_expiry = self.t0 + timedelta(seconds=30)
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+
+    def _snapshot_lease_and_adapter_state(self):
+        """Capture deep snapshot of lease fields, active lease registry, adapter state, and execution registry."""
+        lease_obj = self.mgr.active_leases.get(self.lease.lease_id)
+        lease_snapshot = {
+            "lease_id": lease_obj.lease_id if lease_obj else None,
+            "lock_id": lease_obj.lock_id if lease_obj else None,
+            "delivery_task_id": lease_obj.delivery_task_id if lease_obj else None,
+            "dispatch_id": lease_obj.dispatch_id if lease_obj else None,
+            "fencing_token": lease_obj.fencing_token if lease_obj else None,
+            "is_active": lease_obj.is_active if lease_obj else None,
+            "expires_at": lease_obj.expires_at if lease_obj else None,
+            "resource_key": lease_obj.resource_key if lease_obj else None,
+            "units": lease_obj.units if lease_obj else None,
+        }
+        active_lease_keys = set(self.mgr.active_leases.keys())
+        adapter_state = {
+            "task_state": self.adapter.get_task_state(self.delivery_id),
+            "active_dispatches": dict(self.adapter.active_dispatches),
+            "dispatch_bindings": dict(self.adapter.dispatch_bindings),
+            "seen_dispatch_ids": set(self.adapter.seen_dispatch_ids),
+            "seen_orca_task_ids": set(self.adapter.seen_orca_task_ids),
+        }
+        return lease_snapshot, active_lease_keys, adapter_state
+
+    def _assert_zero_side_effects(self, lease_snapshot, active_lease_keys, adapter_state):
+        """Assert byte-for-byte and field-for-field unchanged state."""
+        self.assertIn(self.lease.lease_id, self.mgr.active_leases)
+        current_lease = self.mgr.active_leases[self.lease.lease_id]
+        self.assertTrue(current_lease.is_active)
+        for k, v in lease_snapshot.items():
+            self.assertEqual(getattr(current_lease, k), v, f"Field {k} mutated!")
+        self.assertEqual(set(self.mgr.active_leases.keys()), active_lease_keys)
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), adapter_state["task_state"])
+        self.assertEqual(dict(self.adapter.active_dispatches), adapter_state["active_dispatches"])
+        self.assertEqual(dict(self.adapter.dispatch_bindings), adapter_state["dispatch_bindings"])
+        self.assertEqual(set(self.adapter.seen_dispatch_ids), adapter_state["seen_dispatch_ids"])
+        self.assertEqual(set(self.adapter.seen_orca_task_ids), adapter_state["seen_orca_task_ids"])
+
+    def test_r15_01_sol_counterexample_mismatched_envelope_task_id_with_expired_lease_routing_wins_zero_side_effects(self):
+        """1. Counterexample: Mismatched envelope delivery_task_id with expired lease raises RoutingEvidenceError with zero side effects."""
+        lease_snapshot, active_keys, adapter_state = self._snapshot_lease_and_adapter_state()
+        env = make_execution_envelope("TASK-OTHER-ID", self.intended_disp, orca_task_id=self.orca_task_id)
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=self.past_expiry,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env,
+            )
+        self.assertIn("delivery_task_id mismatch", str(ctx.exception).lower())
+        self._assert_zero_side_effects(lease_snapshot, active_keys, adapter_state)
+
+    def test_r15_02_sol_counterexample_mismatched_envelope_dispatch_id_with_expired_lease_routing_wins_zero_side_effects(self):
+        """2. Counterexample: Mismatched envelope dispatch_id with expired lease raises RoutingEvidenceError with zero side effects."""
+        lease_snapshot, active_keys, adapter_state = self._snapshot_lease_and_adapter_state()
+        env = make_execution_envelope(self.delivery_id, "ctx-mismatched-disp", orca_task_id=self.orca_task_id)
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=self.past_expiry,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env,
+            )
+        self.assertIn("dispatch_id mismatch", str(ctx.exception).lower())
+        self._assert_zero_side_effects(lease_snapshot, active_keys, adapter_state)
+
+    def test_r15_03_sol_counterexample_mismatched_envelope_orca_task_id_with_expired_lease_routing_wins_zero_side_effects(self):
+        """3. Counterexample: Mismatched envelope orca_task_id with expired lease raises RoutingEvidenceError with zero side effects."""
+        lease_snapshot, active_keys, adapter_state = self._snapshot_lease_and_adapter_state()
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id="orca-mismatched-task")
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=self.past_expiry,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env,
+            )
+        self.assertIn("orca_task_id mismatch", str(ctx.exception).lower())
+        self._assert_zero_side_effects(lease_snapshot, active_keys, adapter_state)
+
+    def test_r15_04_missing_origin_and_envelope_with_expired_lease_routing_wins_zero_side_effects(self):
+        """4. Counterexample: Missing origin and envelope with expired lease raises RoutingEvidenceError with zero side effects."""
+        lease_snapshot, active_keys, adapter_state = self._snapshot_lease_and_adapter_state()
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=self.past_expiry,
+            )
+        self.assertIn("dispatch origin", str(ctx.exception).lower())
+        self._assert_zero_side_effects(lease_snapshot, active_keys, adapter_state)
+
+    def test_r15_05_forbidden_direct_origin_with_expired_lease_routing_wins_zero_side_effects(self):
+        """5. Counterexample: Forbidden direct worker-start origin with expired lease raises RoutingEvidenceError with zero side effects."""
+        lease_snapshot, active_keys, adapter_state = self._snapshot_lease_and_adapter_state()
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id)
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=self.past_expiry,
+                dispatch_origin="worker-start",
+                execution_envelope=env,
+            )
+        self.assertIn("strictly forbidden", str(ctx.exception).lower())
+        self._assert_zero_side_effects(lease_snapshot, active_keys, adapter_state)
+
+    def test_r15_06_unverified_terminal_evidence_with_expired_lease_routing_wins_zero_side_effects(self):
+        """6. Counterexample: Unverified live terminal evidence with expired lease raises RoutingEvidenceError with zero side effects."""
+        lease_snapshot, active_keys, adapter_state = self._snapshot_lease_and_adapter_state()
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id)
+        env.live_terminal_evidence.verified = False
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=self.past_expiry,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env,
+            )
+        self.assertIn("unverified", str(ctx.exception).lower())
+        self._assert_zero_side_effects(lease_snapshot, active_keys, adapter_state)
+
+    def test_r15_07_invalid_backend_model_with_expired_lease_routing_wins_zero_side_effects(self):
+        """7. Counterexample: Foreign backend model with expired lease raises RoutingEvidenceError with zero side effects."""
+        lease_snapshot, active_keys, adapter_state = self._snapshot_lease_and_adapter_state()
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id)
+        env.usage_evidence.backend_model = "foreign/model-v1"
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=self.past_expiry,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env,
+            )
+        self.assertIn("does not match expected model", str(ctx.exception).lower())
+        self._assert_zero_side_effects(lease_snapshot, active_keys, adapter_state)
+
+    def test_r15_08_malformed_lease_expires_at_with_mismatched_envelope_routing_wins_zero_side_effects(self):
+        """8. Counterexample: Malformed active lease expires_at with mismatched envelope raises RoutingEvidenceError without purge."""
+        # Corrupt lease expires_at in active leases
+        self.lease.expires_at = "corrupt-unparseable-timestamp"
+        lease_snapshot, active_keys, adapter_state = self._snapshot_lease_and_adapter_state()
+        env = make_execution_envelope("TASK-MISMATCH", self.intended_disp, orca_task_id=self.orca_task_id)
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env,
+            )
+        self.assertIn("delivery_task_id mismatch", str(ctx.exception).lower())
+        self._assert_zero_side_effects(lease_snapshot, active_keys, adapter_state)
+
+    def test_r15_09_positive_control_valid_envelope_with_expired_lease_purges_authoritatively(self):
+        """9. Positive control: Valid envelope with expired lease passes envelope validation and purges on lease expiry check."""
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id, now=self.past_expiry)
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=self.past_expiry,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env,
+            )
+        self.assertIn("has expired", str(ctx.exception).lower())
+        self.assertNotIn(self.lease.lease_id, self.mgr.active_leases)
+        self.assertFalse(self.lease.is_active)
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "ready")
+
+    def test_r15_10_positive_control_valid_envelope_with_malformed_lease_purges_authoritatively(self):
+        """10. Positive control: Valid envelope with malformed lease expires_at purges authoritatively."""
+        self.lease.expires_at = "invalid-timestamp-format"
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id, now=self.t0)
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env,
+            )
+        self.assertIn("invalid expires_at format", str(ctx.exception).lower())
+        self.assertNotIn(self.lease.lease_id, self.mgr.active_leases)
+        self.assertFalse(self.lease.is_active)
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "ready")
+
+    def test_r15_11_positive_control_valid_envelope_with_valid_lease_succeeds_and_binds(self):
+        """11. Positive control: Valid envelope with valid unexpired lease succeeds and binds identities."""
+        now_disp = self.t0 + timedelta(seconds=2)
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id, now=now_disp)
+        disp_id = self.adapter.create_dispatch(
+            self.delivery_id,
+            orca_task_id=self.orca_task_id,
+            candidate_commit=self.candidate_commit,
+            fencing_token=self.lease.fencing_token,
+            lease_id=self.lease.lease_id,
+            intended_dispatch_id=self.intended_disp,
+            now=now_disp,
+            dispatch_origin="dely dispatch",
+            execution_envelope=env,
+        )
+        self.assertEqual(disp_id, self.intended_disp)
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "dispatched")
+        self.assertIn(self.intended_disp, self.adapter.dispatch_bindings)
+        binding = self.adapter.dispatch_bindings[self.intended_disp]
+        self.assertEqual(binding.delivery_task_id, self.delivery_id)
+        self.assertEqual(binding.orca_task_id, self.orca_task_id)
+        self.assertEqual(binding.dispatch_id, self.intended_disp)
+        self.assertTrue(self.lease.is_active)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

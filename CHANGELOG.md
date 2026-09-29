@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-29 — Khắc phục phát hiện Sol re-review vòng 15 (Fail-Before-Side-Effect Validation Ordering Preceding Lease Purge)
+
+- Khắc phục triệt để phát hiện blocking từ Sol review dispatch `ctx_0ece9399b481` trên HEAD `8f27b701efb452cbe6c9acdd1a028160e776ba7a` cho bundle `docs/parallel-delivery/`:
+  - **(1) Tái Cấu Trúc Thứ Tự Xác Thực Fail-Before-Side-Effect trong `create_dispatch()`**: Toàn bộ các kiểm tra thuần túy không gây đột biến (pure, non-mutating checks) cho `dispatch_origin` và `execution_envelope` — bao gồm exact delivery task, Orca task, dispatch, phase, harness/model/effort và evidence anchors — bắt buộc được thực thi trước bất kỳ thao tác nào có thể purge, vô hiệu hóa, ghi đè hoặc lưu trữ trạng thái lease, task hay registry.
+  - **(2) Lỗi Định Tuyến Thắng Tuyệt Đối Khi Gặp Lease Hết Hạn/Sai Định Dạng Với Envelope Lỗi**: Khi envelope không khớp hoặc dispatch origin không hợp lệ kết hợp với lease đang active bị hết hạn hoặc malformed `expires_at`, hệ thống ném `RoutingEvidenceError` fail-closed ngay lập tức; lease không bị xóa khỏi `active_leases`, không bị đặt `is_active = False`, và toàn bộ trạng thái task/dispatch/registry được giữ nguyên byte-for-byte / field-for-field không có bất kỳ tác động phụ nào (zero side effects).
+  - **(3) Bảo Toàn Thẩm Quyền Xử Lý Lease Hợp Lệ (Positive Control)**: Khi envelope và routing input hoàn toàn hợp lệ, các kiểm tra authoritative lease/fencing và cơ chế purge lease hết hạn/malformed tiếp tục hoạt động chính xác như thiết kế ban đầu.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 219/219 PASS**: Bổ sung lớp kiểm thử `TestSolRound15FailBeforeSideEffect` với 11 bài test phân biệt và đối chứng độc lập trong `test_negative_fixtures.py`, nâng tổng số test lên 219/219 passed 100%.
+  - **(5) Bảo Toàn Toàn Bộ Invariants**: Bảo toàn trọn vẹn toàn bộ 208 test hiện hữu cùng các bất biến kiến trúc đã thiết lập từ các vòng trước.
+
 ## 2026-09-29 — Khắc phục phát hiện Sol re-review vòng 14 (Mandatory Envelope Orca Task Identity, Anchored Evidence, Exact Backend Models)
 
 - Khắc phục toàn diện các phát hiện blocking từ scoped review của Sol trên HEAD `5663c68a2628ca934604b9e71cea536a3c5226ee` cho bundle `docs/parallel-delivery/`:

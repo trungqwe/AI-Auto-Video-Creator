@@ -2350,6 +2350,42 @@ class OrcaDeliveryAdapter:
             raise ProtocolViolationError("intended_dispatch_id is mandatory and cannot be blank")
         intended_dispatch_id = intended_dispatch_id.strip()
 
+        # Mandatory fail-closed dispatch origin and execution envelope validation:
+        # Every dispatch MUST go through 'dely dispatch' and provide a valid execution envelope.
+        # Validation occurs BEFORE ANY side effects on task state, leases, or registry,
+        # and specifically BEFORE any call that can purge, deactivate, rewrite, or persist lease/registry/task state.
+        clean_orig = (dispatch_origin or "").strip() if isinstance(dispatch_origin, str) else ""
+        if clean_orig != "dely dispatch":
+            clean_lower = clean_orig.lower()
+            if "worker-start" in clean_lower or clean_lower in ("worker-start", "orca worker-start", "direct worker-start", "orca"):
+                raise RoutingEvidenceError(
+                    f"Direct Orca worker-start dispatch origin {dispatch_origin!r} is strictly forbidden; "
+                    f"every delivery dispatch MUST go through 'dely dispatch'"
+                )
+            raise RoutingEvidenceError(
+                f"Invalid dispatch origin {dispatch_origin!r}; every delivery dispatch MUST go through 'dely dispatch'"
+            )
+
+        if execution_envelope is None:
+            raise RoutingEvidenceError(
+                "Missing execution_envelope; every delivery dispatch MUST provide an execution envelope"
+            )
+
+        now_dt = now or datetime.now(timezone.utc)
+        if now_dt.tzinfo is None:
+            now_dt = now_dt.replace(tzinfo=timezone.utc)
+
+        expected_task_phase = phase or getattr(self, "task_phases", {}).get(delivery_task_id)
+
+        validate_execution_envelope(
+            envelope=execution_envelope,
+            expected_phase=expected_task_phase,
+            expected_delivery_task_id=delivery_task_id,
+            expected_dispatch_id=intended_dispatch_id.strip(),
+            expected_orca_task_id=orca_task_id,
+            dispatch_time=now_dt,
+        )
+
         # Collect all provided lease IDs
         all_leases: List[str] = []
         if lease_ids:
@@ -2360,10 +2396,6 @@ class OrcaDeliveryAdapter:
                 all_leases.append(clean_lid)
         if not all_leases:
             raise ProtocolViolationError("lease_id is required and cannot be blank")
-
-        now_dt = now or datetime.now(timezone.utc)
-        if now_dt.tzinfo is None:
-            now_dt = now_dt.replace(tzinfo=timezone.utc)
 
         # Validate each lease
         for lid in all_leases:
@@ -2479,40 +2511,6 @@ class OrcaDeliveryAdapter:
                             f"lease recorded {rec_s}, current counter is {exp_s} (capacity slot reallocation detected)"
                         )
 
-        # Mandatory fail-closed dispatch origin and execution envelope validation:
-        # Every dispatch MUST go through 'dely dispatch' and provide a valid execution envelope.
-        # Validation occurs BEFORE ANY side effects on task state, leases, or registry.
-        clean_orig = (dispatch_origin or "").strip() if isinstance(dispatch_origin, str) else ""
-        if clean_orig != "dely dispatch":
-            clean_lower = clean_orig.lower()
-            if "worker-start" in clean_lower or clean_lower in ("worker-start", "orca worker-start", "direct worker-start", "orca"):
-                raise RoutingEvidenceError(
-                    f"Direct Orca worker-start dispatch origin {dispatch_origin!r} is strictly forbidden; "
-                    f"every delivery dispatch MUST go through 'dely dispatch'"
-                )
-            raise RoutingEvidenceError(
-                f"Invalid dispatch origin {dispatch_origin!r}; every delivery dispatch MUST go through 'dely dispatch'"
-            )
-
-        if execution_envelope is None:
-            raise RoutingEvidenceError(
-                "Missing execution_envelope; every delivery dispatch MUST provide an execution envelope"
-            )
-
-        now_dt = now or datetime.now(timezone.utc)
-        if now_dt.tzinfo is None:
-            now_dt = now_dt.replace(tzinfo=timezone.utc)
-
-        expected_task_phase = phase or getattr(self, "task_phases", {}).get(delivery_task_id)
-
-        validate_execution_envelope(
-            envelope=execution_envelope,
-            expected_phase=expected_task_phase,
-            expected_delivery_task_id=delivery_task_id,
-            expected_dispatch_id=intended_dispatch_id.strip(),
-            expected_orca_task_id=orca_task_id,
-            dispatch_time=now_dt,
-        )
         slot_fencing_map = {}
         for lid in all_leases:
             l = self.lease_mgr.active_leases[lid]

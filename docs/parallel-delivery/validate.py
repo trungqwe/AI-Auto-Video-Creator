@@ -1139,6 +1139,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "2_anchored_live_terminal_and_usage_evidence_identity_and_effort": "RESOLVED",
                     "3_exact_phase_specific_backend_model_identities_no_foreign_substring_aliases": "RESOLVED",
                 },
+                "sol_round_15": {
+                    "1_fail_before_side_effect_execution_envelope_validation_precedes_lease_purge": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},
