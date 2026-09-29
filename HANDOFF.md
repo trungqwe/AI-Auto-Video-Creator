@@ -4,6 +4,11 @@
 
 - Authority hiện hành giữ nguyên: `M2-P1..P7B_ACCEPTED_CLOSED`; M2-P8/P9 `LOCKED`; M3/Phân hệ A `NOT AUTHORIZED`.
 - Đã thêm [kiến trúc triển khai song song](./docs/parallel-delivery/README.md) ở trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`. Bundle chỉ là docs/config và định nghĩa DAG, contract registry, ownership/lease, Orca worker protocol, merge queue, traceability, security/performance/recovery.
+- Đã khắc phục triệt để toàn bộ 3 phát hiện blocker từ Sol-Lead review sau 43c96aa:
+  1. Thẩm quyền bằng chứng review & integration fail-closed: Từ chối plain caller dicts/strings/booleans; bắt buộc `ReviewEvidence` và `IntegrationEvidence` có xuất xứ kiểm chứng, băm SHA-256; bắt buộc `base_commit` khớp chính xác `approved_base_commit`; bắt buộc `gate_results` không rỗng và có đầy đủ 11 cổng bắt buộc thuộc `MANDATORY_INTEGRATION_GATES`.
+  2. Token capability không thể giả mạo & xóa bỏ hoàn toàn stack frame inspection: Loại bỏ toàn bộ `sys._getframe()`; triển khai capability token mang chữ ký HMAC nội bộ ràng buộc `task_id`, `from_state`, `to_state`, `handler`; bắt buộc dispatch phải settle trong registry và toàn bộ lease phải release trước khi chuyển sang `review`; bảo đảm zero side effects khi chuyển đổi thất bại.
+  3. Xác thực unpadded cho dataclass identities: Kiểm tra trực tiếp các trường raw trên `LiveTerminalEvidence` và `UsageEvidence` trước bất kỳ bước chuẩn hóa hay so sánh nào; từ chối fail-closed mọi khoảng trắng đệm.
+  4. Bộ kiểm thử tự động đạt 297/297 tests PASS (100%); toàn bộ gates kiểm tra độc lập sẵn sàng.
 - Đã khắc phục triệt để toàn bộ 3 phát hiện blocker từ Sol review sau Astra round 18:
   1. Thẩm quyền chuyển đổi review & integration fail-closed: Bắt buộc review dispatch và review evidence đã xác thực (route cx/gpt-5.6-sol, harness Claude Code, exact HEAD) trước khi chuyển sang merge_queued; bắt buộc integration evidence với tất cả gates PASS và bằng chứng ACCEPT trước khi chuyển sang integrated; caller-supplied strings/booleans đơn lẻ không cấu thành thẩm quyền.
   2. Token chuyển đổi trạng thái không thể giả mạo (Unforgeable Transition Tokens): Triển khai _TransitionAuthToken với single-use consumption và kiểm tra frame nội bộ cho _authorized_transition_scope; ngăn chặn caller bên ngoài giả mạo context chuyển đổi trạng thái.

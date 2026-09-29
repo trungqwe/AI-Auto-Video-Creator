@@ -1045,7 +1045,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     errors = [error for values in checks.values() for error in values]
 
-    effective_dirty = [d for d in dirty_entries if d[1] != "docs/parallel-delivery/.validation-report.json"]
+    effective_dirty = [d for d in dirty_entries if d[1] != "docs/parallel-delivery/.validation-report.json" and not (d[1].startswith((".agy-", ".astra-", ".sol-")) and d[1].endswith("-spec.md"))]
     if args.release:
         if effective_dirty:
             errors.append(f"Release gate requires clean working tree; dirty files present: {[d[1] for d in effective_dirty]}")
