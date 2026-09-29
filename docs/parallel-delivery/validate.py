@@ -1134,6 +1134,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "1_fail_closed_execution_envelope_and_dispatch_origin": "RESOLVED",
                     "2_anchored_identity_binding_live_terminal_and_usage_evidence_freshness": "RESOLVED",
                 },
+                "sol_round_14": {
+                    "1_mandatory_execution_envelope_orca_task_identity_binding": "RESOLVED",
+                    "2_anchored_live_terminal_and_usage_evidence_identity_and_effort": "RESOLVED",
+                    "3_exact_phase_specific_backend_model_identities_no_foreign_substring_aliases": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

@@ -1130,6 +1130,7 @@ class ExecutionEnvelope:
     dispatch_origin: str
     phase: str
     route: Dict[str, Any]
+    orca_task_id: Optional[str] = None
     live_terminal_evidence: Optional[Union[Dict[str, Any], LiveTerminalEvidence]] = None
     usage_evidence: Optional[Union[Dict[str, Any], UsageEvidence]] = None
     launch_requested: Optional[Any] = None
@@ -1169,6 +1170,7 @@ def make_execution_envelope(
     verified: bool = True,
     recorded_after_dispatch: bool = True,
     now: Optional[datetime] = None,
+    orca_task_id: Optional[str] = None,
 ) -> ExecutionEnvelope:
     """Factory to build a valid, machine-readable execution envelope anchored to
     exact delivery_task_id, dispatch_id, and phase."""
@@ -1218,12 +1220,18 @@ def make_execution_envelope(
         delivery_task_id=delivery_task_id,
         router="9router",
     )
+    clean_orca_tid = (
+        orca_task_id.strip()
+        if (orca_task_id is not None and isinstance(orca_task_id, str))
+        else (orca_task_id if orca_task_id is not None else f"orca-{delivery_task_id.lower()}")
+    )
     return ExecutionEnvelope(
         delivery_task_id=delivery_task_id,
         dispatch_id=dispatch_id,
         dispatch_origin="dely dispatch",
         phase=clean_phase,
         route=route,
+        orca_task_id=clean_orca_tid,
         live_terminal_evidence=live_ev,
         usage_evidence=usage_ev,
         launch_requested={"harness": harness, "route": model},
@@ -1236,6 +1244,7 @@ def validate_execution_envelope(
     expected_phase: Optional[str] = None,
     expected_delivery_task_id: Optional[str] = None,
     expected_dispatch_id: Optional[str] = None,
+    expected_orca_task_id: Optional[str] = None,
     dispatch_time: Optional[datetime] = None,
 ) -> List[str]:
     """Validate a dispatch execution envelope machine-readably according to repository
@@ -1262,6 +1271,7 @@ def validate_execution_envelope(
             "dispatch_origin": envelope.dispatch_origin,
             "phase": envelope.phase,
             "route": envelope.route,
+            "orca_task_id": envelope.orca_task_id,
             "live_terminal_evidence": envelope.live_terminal_evidence,
             "usage_evidence": envelope.usage_evidence,
             "launch_requested": envelope.launch_requested,
@@ -1298,7 +1308,19 @@ def validate_execution_envelope(
                 f"Envelope dispatch_id mismatch: expected {clean_exp_disp!r}, got {clean_disp_id!r}"
             )
 
-    # 3. Dispatch origin: MUST be 'dely dispatch'
+    # 3. Orca Task ID: mandatory and non-blank
+    otid = data.get("orca_task_id")
+    clean_otid = (otid or "").strip() if isinstance(otid, str) else ""
+    if not clean_otid:
+        raise RoutingEvidenceError("Execution envelope missing required field 'orca_task_id'")
+    if expected_orca_task_id is not None:
+        clean_exp_otid = expected_orca_task_id.strip()
+        if clean_otid != clean_exp_otid:
+            raise RoutingEvidenceError(
+                f"Envelope orca_task_id mismatch: expected {clean_exp_otid!r}, got {clean_otid!r}"
+            )
+
+    # 4. Dispatch origin: MUST be 'dely dispatch'
     origin = data.get("dispatch_origin")
     clean_origin = (origin or "").strip() if isinstance(origin, str) else ""
     if clean_origin != "dely dispatch":
@@ -1442,17 +1464,34 @@ def validate_execution_envelope(
         raise RoutingEvidenceError(
             f"Live terminal evidence identifies route {live_r!r}, expected {expected_model!r}"
         )
-    if live_eff and str(live_eff).strip().lower() != "high":
+    clean_live_eff = (live_eff or "").strip().lower() if isinstance(live_eff, str) else ""
+    if not clean_live_eff:
+        raise RoutingEvidenceError(
+            "Live terminal evidence missing required effort field; fails closed"
+        )
+    if clean_live_eff != "high":
         raise RoutingEvidenceError(
             f"Live terminal evidence identifies effort {live_eff!r}, expected 'high'"
         )
     if not live_ref or not str(live_ref).strip():
         raise RoutingEvidenceError("Live terminal evidence missing terminal/archive reference")
-    if live_disp is not None and str(live_disp).strip() != clean_disp_id:
+
+    clean_live_disp = (live_disp or "").strip() if isinstance(live_disp, str) else ""
+    if not clean_live_disp:
+        raise RoutingEvidenceError(
+            "Live terminal evidence missing required dispatch_id anchor; fails closed"
+        )
+    if clean_live_disp != clean_disp_id:
         raise RoutingEvidenceError(
             f"Live terminal evidence dispatch ID {live_disp!r} does not match dispatch {clean_disp_id!r}"
         )
-    if live_task is not None and str(live_task).strip() != clean_dtid:
+
+    clean_live_task = (live_task or "").strip() if isinstance(live_task, str) else ""
+    if not clean_live_task:
+        raise RoutingEvidenceError(
+            "Live terminal evidence missing required delivery_task_id anchor; fails closed"
+        )
+    if clean_live_task != clean_dtid:
         raise RoutingEvidenceError(
             f"Live terminal evidence task ID {live_task!r} does not match task {clean_dtid!r}"
         )
@@ -1503,25 +1542,40 @@ def validate_execution_envelope(
             raise RoutingEvidenceError(
                 f"9Router usage backend_provider {u_p!r} invalid for phase 'implement'; expected 'google'"
             )
-        if clean_u_m not in ("ag/gemini-3.8-flash-high", "gemini-3.8-flash-high") and ("gemini-3.8" not in clean_u_m.lower() or "flash" not in clean_u_m.lower()):
+        allowed_implement_backend_models = {"ag/gemini-3.8-flash-high", "gemini-3.8-flash-high"}
+        if clean_u_m not in allowed_implement_backend_models:
             raise RoutingEvidenceError(
-                f"9Router usage backend_model {u_m!r} does not match expected model {expected_model!r}"
+                f"9Router usage backend_model {u_m!r} does not match expected model {expected_model!r}; "
+                f"exact routed or canonical backend identity required, got {u_m!r}"
             )
     elif clean_phase == "review":
         if clean_u_p not in ("openai", "9router/openai"):
             raise RoutingEvidenceError(
                 f"9Router usage backend_provider {u_p!r} invalid for phase 'review'; expected 'openai'"
             )
-        if clean_u_m not in ("cx/gpt-5.6-sol", "gpt-5.6-sol") and "gpt-5.6-sol" not in clean_u_m.lower():
+        allowed_review_backend_models = {"cx/gpt-5.6-sol", "gpt-5.6-sol"}
+        if clean_u_m not in allowed_review_backend_models:
             raise RoutingEvidenceError(
-                f"9Router usage backend_model {u_m!r} does not match expected model {expected_model!r}"
+                f"9Router usage backend_model {u_m!r} does not match expected model {expected_model!r}; "
+                f"exact routed or canonical backend identity required, got {u_m!r}"
             )
 
-    if u_disp is not None and str(u_disp).strip() != clean_disp_id:
+    clean_u_disp = (u_disp or "").strip() if isinstance(u_disp, str) else ""
+    if not clean_u_disp:
+        raise RoutingEvidenceError(
+            "9Router usage evidence missing required dispatch_id anchor; fails closed"
+        )
+    if clean_u_disp != clean_disp_id:
         raise RoutingEvidenceError(
             f"Usage evidence dispatch ID {u_disp!r} does not match dispatch {clean_disp_id!r}"
         )
-    if u_task is not None and str(u_task).strip() != clean_dtid:
+
+    clean_u_task = (u_task or "").strip() if isinstance(u_task, str) else ""
+    if not clean_u_task:
+        raise RoutingEvidenceError(
+            "9Router usage evidence missing required delivery_task_id anchor; fails closed"
+        )
+    if clean_u_task != clean_dtid:
         raise RoutingEvidenceError(
             f"Usage evidence task ID {u_task!r} does not match task {clean_dtid!r}"
         )
@@ -2456,6 +2510,7 @@ class OrcaDeliveryAdapter:
             expected_phase=expected_task_phase,
             expected_delivery_task_id=delivery_task_id,
             expected_dispatch_id=intended_dispatch_id.strip(),
+            expected_orca_task_id=orca_task_id,
             dispatch_time=now_dt,
         )
         slot_fencing_map = {}

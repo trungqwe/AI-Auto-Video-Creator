@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-29 — Khắc phục phát hiện Sol re-review vòng 14 (Mandatory Envelope Orca Task Identity, Anchored Evidence, Exact Backend Models)
+
+- Khắc phục toàn diện các phát hiện blocking từ scoped review của Sol trên HEAD `5663c68a2628ca934604b9e71cea536a3c5226ee` cho bundle `docs/parallel-delivery/`:
+  - **(1) Bắt Buộc Trường Định Danh Orca Task trong ExecutionEnvelope**: Bổ sung trường bắt buộc `orca_task_id` vào `ExecutionEnvelope` và `make_execution_envelope()`; kiểm tra và ràng buộc chính xác với tham số `orca_task_id` của `create_dispatch()` ngay trước khi có bất kỳ tác động phụ nào lên task state, lease, dispatch registry hay binding; loại bỏ hoàn toàn khả năng bỏ trống hoặc sai lệch định danh tác vụ Orca.
+  - **(2) Bắt Buộc Neo Định Danh và Trường Effort trên Bằng Chứng Thực Thi**: `LiveTerminalEvidence` và `UsageEvidence` bắt buộc phải có đầy đủ các trường `delivery_task_id` và `dispatch_id` không rỗng; `LiveTerminalEvidence` bắt buộc phải có trường `effort == "high"`; từ chối fail-closed đối với trường bị thiếu hoặc rỗng, không chỉ từ chối giá trị mâu thuẫn.
+  - **(3) Khớp Chính Xác Định Danh Backend Model theo Phase (Loại Bỏ Substring/Foreign Aliases)**: Kiểm tra backend model theo danh sách định danh chính xác, loại bỏ hoàn toàn cơ chế kiểm tra substring; phase `implement` chỉ chấp nhận dạng routed hoặc canonical backend chính xác của `gemini-3.8-flash-high` (`{"ag/gemini-3.8-flash-high", "gemini-3.8-flash-high"}`); phase `review` chỉ chấp nhận dạng routed hoặc canonical backend chính xác của `gpt-5.6-sol` (`{"cx/gpt-5.6-sol", "gpt-5.6-sol"}`); từ chối mọi tiền tố, hậu tố và foreign alias như `prefix-gpt-5.6-sol-foreign`.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 208/208 PASS**: Bổ sung 10 bài kiểm tra phản ví dụ và kiểm chứng độc lập trong `TestSolRound14IdentityAnchorsAndBackendValidation` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 208/208 passed 100%.
+  - **(5) Bảo Toàn Toàn Bộ Invariants**: Bảo toàn trọn vẹn toàn bộ các quy tắc bất biến về lease, fencing, fail-before-side-effect, harness-failure, exact-HEAD và release gate đã thiết lập từ các vòng trước.
+
 ## 2026-09-29 — Khắc phục phát hiện Sol re-review vòng 13 (Fail-Closed Execution Envelope & Anchored Routing Evidence)
 
 - Khắc phục toàn diện phát hiện F2 từ scoped re-review của Sol trên HEAD wrapper `b2cd8d177a6048d7385dd551190dd5808ba39739` cho bundle `docs/parallel-delivery/`:
