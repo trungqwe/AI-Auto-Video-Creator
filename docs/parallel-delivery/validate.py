@@ -1151,6 +1151,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "1_mandatory_explicit_usage_router_evidence_no_implicit_fallback": "RESOLVED",
                     "2_usage_router_exact_9router_and_mutual_binding": "RESOLVED",
                 },
+                "sol_round_18": {
+                    "1_exact_raw_router_identity_no_whitespace_normalization": "RESOLVED",
+                    "2_padded_router_aliases_rejected_fail_closed": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

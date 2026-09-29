@@ -1687,15 +1687,16 @@ def validate_execution_envelope(
             raise RoutingEvidenceError(
                 f"9Router usage evidence missing required non-blank field 'router'; got {u_router!r}"
             )
-        clean_u_router = u_router.strip()
-        if "antigravity" in clean_u_router.lower():
+        if "antigravity" in u_router.lower():
             raise RoutingEvidenceError(
                 f"Antigravity native router {u_router!r} in usage evidence is strictly forbidden; fails closed"
             )
-        if clean_u_router != "9router":
+        # Exact raw router identity: do not normalize whitespace into validity
+        if u_router != "9router":
             raise RoutingEvidenceError(
                 f"9Router usage evidence route source {u_router!r} is invalid; route MUST be via '9router'"
             )
+        clean_u_router = u_router
     elif isinstance(usage_ev, Mapping):
         if not usage_ev:
             raise RoutingEvidenceError("Usage evidence is empty; fails closed")
@@ -1727,32 +1728,32 @@ def validate_execution_envelope(
                 "implicit default is strictly forbidden and fails closed"
             )
 
-        cleaned_aliases = {}
         for k, val in present_aliases.items():
             if val is None or not isinstance(val, str) or not val.strip():
                 raise RoutingEvidenceError(
                     f"9Router usage evidence field {k!r} must be a non-blank string; got {val!r}"
                 )
-            clean_val = val.strip()
-            cleaned_aliases[k] = clean_val
 
-        # Check for contradictory aliases among present router keys
-        unique_aliases = set(cleaned_aliases.values())
+        # Check for contradictory aliases among present router keys using exact raw values
+        unique_aliases = set(present_aliases.values())
         if len(unique_aliases) > 1:
-            conflicts = ", ".join(f"{k}={present_aliases[k]!r}" for k in sorted(cleaned_aliases.keys()))
+            conflicts = ", ".join(f"{k}={present_aliases[k]!r}" for k in sorted(present_aliases.keys()))
             raise RoutingEvidenceError(
                 f"Contradictory router aliases in usage evidence: {conflicts}"
             )
 
-        clean_u_router = next(iter(cleaned_aliases.values()))
-        if "antigravity" in clean_u_router.lower():
-            raise RoutingEvidenceError(
-                f"Antigravity native router {clean_u_router!r} in usage evidence is strictly forbidden; fails closed"
-            )
-        if clean_u_router != "9router":
-            raise RoutingEvidenceError(
-                f"9Router usage evidence route source {clean_u_router!r} is invalid; route MUST be via '9router'"
-            )
+        # Exact raw router identity for every supplied alias value: do not normalize whitespace into validity
+        for k, val in present_aliases.items():
+            if "antigravity" in val.lower():
+                raise RoutingEvidenceError(
+                    f"Antigravity native router {val!r} in usage evidence is strictly forbidden; fails closed"
+                )
+            if val != "9router":
+                raise RoutingEvidenceError(
+                    f"9Router usage evidence route source {val!r} is invalid; route MUST be via '9router'"
+                )
+
+        clean_u_router = next(iter(present_aliases.values()))
     else:
         raise RoutingEvidenceError(f"Invalid usage_evidence type: {type(usage_ev).__name__}")
 

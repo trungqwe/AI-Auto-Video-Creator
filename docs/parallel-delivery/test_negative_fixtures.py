@@ -6221,6 +6221,244 @@ class TestSolRound17UsageRouterEvidenceValidation(unittest.TestCase):
         self._assert_zero_side_effects()
 
 
+class TestSolRound18ExactRawRouterIdentity(unittest.TestCase):
+    """Round 18 remediation fixtures:
+    1. Require every raw supplied router/source alias value to be exactly the string '9router';
+       do not normalize whitespace into validity.
+    2. Apply exact raw comparison to dataclass-form UsageEvidence.router and mapping aliases
+       'router', 'route_provider', and 'source'.
+    3. Discriminating RED/GREEN tests for leading whitespace, trailing whitespace, both-sided padding,
+       tabs/newlines, and agreeing padded aliases across dataclass and mapping forms.
+    4. Reject conflicting/mixed padded aliases fail-closed.
+    5. Positive controls: exact raw '9router' succeeds for all aliases and dataclass in both phases.
+    6. Fail-before-side-effects: zero side effects on lease/task/dispatch state with padded router
+       and expired active lease.
+    """
+
+    def setUp(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        self.lock_defs = [{"id": "LOCK-R18", "mode": "exclusive", "renewable": True, "lease_seconds": 10}]
+        self.mgr = LeaseManager(self.lock_defs)
+        self.delivery_id = "TASK-R18-PROBE"
+        self.mgr.set_task_authority(self.delivery_id, "granted")
+        self.candidate_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT_DIR, text=True
+        ).strip()
+        self.adapter = OrcaDeliveryAdapter(
+            self.mgr,
+            approved_candidate_commit=self.candidate_commit,
+            git_root=ROOT_DIR,
+        )
+        self.adapter.register_task_locks(self.delivery_id, ["LOCK-R18"])
+        self.adapter.set_task_authority(self.delivery_id, "granted")
+        self.adapter.set_task_state(self.delivery_id, "ready")
+        self.intended_disp = "ctx-r18-probe"
+        self.orca_task_id = "orca-r18-task"
+        self.t0 = datetime(2026, 9, 29, 11, 0, 0, tzinfo=timezone.utc)
+        self.lease = self.mgr.acquire_lease("LOCK-R18", self.delivery_id, self.intended_disp, lease_seconds=10, now=self.t0)
+        self.past_expiry = self.t0 + timedelta(seconds=30)
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+
+    def _assert_zero_side_effects(self):
+        """Assert zero side effects on lease state, task state, active dispatches, and bindings."""
+        self.assertIn(self.lease.lease_id, self.mgr.active_leases)
+        self.assertTrue(self.lease.is_active)
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "ready")
+        self.assertNotIn(self.delivery_id, self.adapter.active_dispatches)
+        self.assertNotIn(self.intended_disp, self.adapter.dispatch_bindings)
+        self.assertNotIn(self.intended_disp, self.adapter.seen_dispatch_ids)
+
+    def _base_usage_dict(self, phase="implement"):
+        if phase == "implement":
+            return {
+                "backend_provider": "google",
+                "backend_model": "ag/gemini-3.8-flash-high",
+                "recorded_after_dispatch": True,
+                "timestamp": (self.t0 + timedelta(seconds=1)).isoformat(),
+                "request_id": "req-r18-01",
+                "delivery_task_id": self.delivery_id,
+                "dispatch_id": self.intended_disp,
+            }
+        else:
+            return {
+                "backend_provider": "openai",
+                "backend_model": "cx/gpt-5.6-sol",
+                "recorded_after_dispatch": True,
+                "timestamp": (self.t0 + timedelta(seconds=1)).isoformat(),
+                "request_id": "req-r18-02",
+                "delivery_task_id": self.delivery_id,
+                "dispatch_id": self.intended_disp,
+            }
+
+    def test_r18_01_leading_whitespace_router_fails_closed(self):
+        """1. Counterexample: Leading whitespace in router alias fails closed."""
+        leading_padded_values = [" 9router", "  9router", "\t9router", "\n9router"]
+        for alias in ("router", "route_provider", "source"):
+            for bad_val in leading_padded_values:
+                env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+                u = self._base_usage_dict("implement")
+                u[alias] = bad_val
+                env.usage_evidence = u
+                with self.assertRaises(RoutingEvidenceError, msg=f"Expected failure for {alias}={bad_val!r}") as ctx:
+                    validate_execution_envelope(env)
+                self.assertTrue("9router" in str(ctx.exception).lower() or "invalid" in str(ctx.exception).lower())
+
+    def test_r18_02_trailing_whitespace_router_fails_closed(self):
+        """2. Counterexample: Trailing whitespace in router alias fails closed."""
+        trailing_padded_values = ["9router ", "9router  ", "9router\t", "9router\n"]
+        for alias in ("router", "route_provider", "source"):
+            for bad_val in trailing_padded_values:
+                env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+                u = self._base_usage_dict("implement")
+                u[alias] = bad_val
+                env.usage_evidence = u
+                with self.assertRaises(RoutingEvidenceError, msg=f"Expected failure for {alias}={bad_val!r}") as ctx:
+                    validate_execution_envelope(env)
+                self.assertTrue("9router" in str(ctx.exception).lower() or "invalid" in str(ctx.exception).lower())
+
+    def test_r18_03_both_sided_whitespace_router_fails_closed(self):
+        """3. Counterexample: Both-sided whitespace in router alias fails closed (Sol's exact finding)."""
+        both_padded_values = [" 9router ", "  9router  ", "\t9router\t", "\n9router\n", "\r\n9router\r\n"]
+        for alias in ("router", "route_provider", "source"):
+            for bad_val in both_padded_values:
+                env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+                u = self._base_usage_dict("implement")
+                u[alias] = bad_val
+                env.usage_evidence = u
+                with self.assertRaises(RoutingEvidenceError, msg=f"Expected failure for {alias}={bad_val!r}") as ctx:
+                    validate_execution_envelope(env)
+                self.assertTrue("9router" in str(ctx.exception).lower() or "invalid" in str(ctx.exception).lower())
+
+    def test_r18_04_agreeing_padded_aliases_in_mapping_fail_closed(self):
+        """4. Counterexample: Agreeing padded router aliases across mapping forms fail closed."""
+        padded_agreeing_sets = [
+            {"router": " 9router ", "route_provider": " 9router "},
+            {"router": " 9router", "source": " 9router"},
+            {"route_provider": "9router ", "source": "9router "},
+            {"router": "\t9router\t", "route_provider": "\t9router\t", "source": "\t9router\t"},
+            {"router": "\n9router\n", "source": "\n9router\n"},
+        ]
+        for conf in padded_agreeing_sets:
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+            u = self._base_usage_dict("implement")
+            u.update(conf)
+            env.usage_evidence = u
+            with self.assertRaises(RoutingEvidenceError, msg=f"Expected failure for agreeing padded aliases {conf}") as ctx:
+                validate_execution_envelope(env)
+            self.assertTrue("9router" in str(ctx.exception).lower() or "invalid" in str(ctx.exception).lower())
+
+    def test_r18_05_disagreeing_padded_or_mixed_aliases_fail_closed(self):
+        """5. Counterexample: Disagreeing padded/exact router aliases in mapping fail closed."""
+        mixed_sets = [
+            {"router": "9router", "route_provider": " 9router "},
+            {"router": " 9router", "source": "9router "},
+            {"route_provider": "\t9router", "source": "9router\t"},
+            {"router": "9router", "route_provider": " 9router", "source": "9router "},
+        ]
+        for conf in mixed_sets:
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+            u = self._base_usage_dict("implement")
+            u.update(conf)
+            env.usage_evidence = u
+            with self.assertRaises(RoutingEvidenceError, msg=f"Expected failure for mixed aliases {conf}") as ctx:
+                validate_execution_envelope(env)
+            self.assertTrue("contradictory" in str(ctx.exception).lower() or "9router" in str(ctx.exception).lower() or "invalid" in str(ctx.exception).lower())
+
+    def test_r18_06_dataclass_form_padded_router_fails_closed(self):
+        """6. Counterexample: Dataclass UsageEvidence.router with whitespace padding fails closed."""
+        padded_values = [" 9router", "9router ", " 9router ", "\t9router\t", "\n9router\n", "\r\n9router\r\n"]
+        for bad_val in padded_values:
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+            env.usage_evidence.router = bad_val
+            with self.assertRaises(RoutingEvidenceError, msg=f"Expected failure for dataclass router={bad_val!r}") as ctx:
+                validate_execution_envelope(env)
+            self.assertTrue("9router" in str(ctx.exception).lower() or "invalid" in str(ctx.exception).lower())
+
+    def test_r18_07_positive_exact_raw_router_succeeds_all_forms_and_phases(self):
+        """7. Positive control: Exact raw '9router' succeeds for dataclass and all mapping aliases in both phases."""
+        for phase in ("implement", "review"):
+            # Subcase A: 'router'
+            env_a = make_execution_envelope(self.delivery_id, self.intended_disp, phase=phase, orca_task_id=self.orca_task_id)
+            u_a = self._base_usage_dict(phase)
+            u_a["router"] = "9router"
+            env_a.usage_evidence = u_a
+            self.assertEqual(validate_execution_envelope(env_a, expected_phase=phase), [])
+
+            # Subcase B: 'route_provider'
+            env_b = make_execution_envelope(self.delivery_id, self.intended_disp, phase=phase, orca_task_id=self.orca_task_id)
+            u_b = self._base_usage_dict(phase)
+            u_b["route_provider"] = "9router"
+            env_b.usage_evidence = u_b
+            self.assertEqual(validate_execution_envelope(env_b, expected_phase=phase), [])
+
+            # Subcase C: 'source'
+            env_c = make_execution_envelope(self.delivery_id, self.intended_disp, phase=phase, orca_task_id=self.orca_task_id)
+            u_c = self._base_usage_dict(phase)
+            u_c["source"] = "9router"
+            env_c.usage_evidence = u_c
+            self.assertEqual(validate_execution_envelope(env_c, expected_phase=phase), [])
+
+            # Subcase D: all aliases agreeing on exact '9router'
+            env_d = make_execution_envelope(self.delivery_id, self.intended_disp, phase=phase, orca_task_id=self.orca_task_id)
+            u_d = self._base_usage_dict(phase)
+            u_d["router"] = "9router"
+            u_d["route_provider"] = "9router"
+            u_d["source"] = "9router"
+            env_d.usage_evidence = u_d
+            self.assertEqual(validate_execution_envelope(env_d, expected_phase=phase), [])
+
+            # Subcase E: Dataclass UsageEvidence with exact router="9router"
+            env_e = make_execution_envelope(self.delivery_id, self.intended_disp, phase=phase, orca_task_id=self.orca_task_id)
+            env_e.usage_evidence.router = "9router"
+            self.assertEqual(validate_execution_envelope(env_e, expected_phase=phase), [])
+
+    def test_r18_08_fail_before_side_effects_on_padded_router_with_expired_lease(self):
+        """8. Counterexample: Padded router with expired lease raises RoutingEvidenceError with zero side effects."""
+        valid_post_ts = (self.past_expiry + timedelta(seconds=1)).isoformat()
+
+        # Subcase A: Mapping padded router
+        env_map = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        u = self._base_usage_dict("implement")
+        u["router"] = " 9router "
+        u["timestamp"] = valid_post_ts
+        env_map.usage_evidence = u
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=self.past_expiry,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_map,
+            )
+        self.assertTrue("router" in str(ctx1.exception).lower() or "invalid" in str(ctx1.exception).lower())
+        self._assert_zero_side_effects()
+
+        # Subcase B: Dataclass padded router
+        env_dc = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env_dc.usage_evidence.router = " 9router "
+        env_dc.usage_evidence.timestamp = valid_post_ts
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=self.past_expiry,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_dc,
+            )
+        self.assertTrue("router" in str(ctx2.exception).lower() or "invalid" in str(ctx2.exception).lower())
+        self._assert_zero_side_effects()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-29 — Khắc phục phát hiện Sol review dispatch vòng 18 (Exact Raw Router Identity & No Whitespace Normalization)
+
+- Khắc phục triệt để phát hiện blocker từ Sol re-review dispatch `ctx_0685621e5af0` trên HEAD `38f3da2e96e0b2404662d08a82a1594c16c2263d` cho bundle `docs/parallel-delivery/`:
+  - **(1) Yêu Cầu Định Danh Router Raw Chính Xác Tuyệt Đối (Exact Raw Router Identity)**: Mọi giá trị alias router được cung cấp (`router`, `route_provider`, `source`) ở dạng mapping cũng như `UsageEvidence.router` ở dạng dataclass bắt buộc phải khớp chính xác tuyệt đối với chuỗi `"9router"`. Xóa bỏ hoàn toàn bước chuẩn hóa khoảng trắng `.strip()` trước khi so sánh, cấm biến chuỗi có khoảng trắng đệm thành hợp lệ.
+  - **(2) Từ Chối Mọi Trường Hợp Padded Router Fail-Closed**: Từ chối ngay lập tức và ném `RoutingEvidenceError` khi giá trị router có khoảng trắng đầu (`" 9router"`), khoảng trắng cuối (`"9router "`), khoảng trắng hai phía (`" 9router "`), tab (`"\t9router"`), newline (`"\n9router\n"`), hoặc carriage return (`"\r\n9router\r\n"`).
+  - **(3) Khóa Chặt Agreeing Padded Aliases và Mixed Aliases**: Khi nhiều alias router cùng hiện diện trong mapping, nếu tất cả cùng đồng thuận trên một giá trị đệm (như `{"router": " 9router ", "route_provider": " 9router "}`), hệ thống từ chối fail-closed vì giá trị raw không khớp `"9router"`; nếu các alias mâu thuẫn hoặc không đồng bộ (như `{"router": "9router", "route_provider": " 9router "}`), hệ thống từ chối fail-closed vì alias mâu thuẫn.
+  - **(4) Bảo Toàn Thẩm Quyền và Ràng Buộc Tương Hỗ (Fail-Before-Side-Effects & Mutual Binding)**: Giữ vững toàn bộ các ràng buộc tương hỗ với route provider, launch requested/effective, live terminal provider và phase; giữ nguyên thứ tự thực thi kiểm tra routing evidence trước bất kỳ tác động phụ nào lên lease hay task state.
+  - **(5) Bộ Fixture Phân Biệt Tự Động 252/252 PASS**: Bổ sung lớp kiểm thử `TestSolRound18ExactRawRouterIdentity` với 8 bài test discriminating RED/GREEN và kiểm chứng đối chứng độc lập trong `test_negative_fixtures.py`, nâng tổng số test lên 252/252 passed 100%.
+  - **(6) Bảo Toàn Toàn Bộ Invariants**: Bảo toàn trọn vẹn toàn bộ 244 fixture hiện hữu và các bất biến kiến trúc đã thiết lập từ các vòng trước.
+
 ## 2026-09-29 — Khắc phục phát hiện Sol review dispatch vòng 17 (Mandatory Explicit Usage Router Evidence & Mutual Binding)
 
 - Khắc phục triệt để phát hiện blocker từ Sol review dispatch `ctx_91fdbd7c4e2b` trên HEAD `5297a42747ded46644ef277e6c337a39cfedaad0` cho bundle `docs/parallel-delivery/`:
