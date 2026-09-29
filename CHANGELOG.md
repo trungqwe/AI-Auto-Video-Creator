@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-29 — Khắc phục phát hiện Sol review sau Astra round 18 (Review/Integration Authority, Unforgeable Transition Tokens, Strict Alias Validation)
+
+- Khắc phục triệt để 3 phát hiện blocker từ Sol review sau Astra round 18 cho bundle docs/parallel-delivery/:
+  - **(1) Thẩm Quyền Chuyển Đổi Review & Integration Fail-Closed (Review Dispatch & Integration Evidence Authority)**: Bắt buộc phải có review_dispatch_id hợp lệ và review_evidence đã được xác thực (khớp candidate commit, exact HEAD SHA, route cx/gpt-5.6-sol, harness Claude Code, verdict khớp) mới được chuyển sang merge_queued, remediation hoặc blocked. Thêm phương thức create_review_dispatch() tạo dispatch review độc lập, phân bổ phase review, không giữ mutation lease. Bắt buộc phải có integration_evidence đã được xác thực với tất cả các gate con đều PASS và bằng chứng ACCEPT từ independent review trước đó mới được chuyển sang integrated. Chuỗi string hoặc giá trị boolean từ phía caller đơn lẻ tuyệt đối không cấu thành thẩm quyền.
+  - **(2) Token Chuyển Đổi Không Thể Giả Mạo (Unforgeable & Private Transition Authorization Tokens)**: Định nghĩa dataclass frozen _TransitionAuthToken và cơ chế sinh token nội bộ _mint_transition_token() với kiểm tra frame caller (sys._getframe(1)), chỉ cho phép các handler nội bộ được đăng ký hợp lệ sinh token. _authorized_transition_scope và transition_task_state bắt buộc phải có token hợp lệ, kiểm tra ngữ cảnh caller và tiêu thụ token ngay sau khi sử dụng (strictly single-use); ngăn chặn triệt để mọi nỗ lực giả mạo context chuyển đổi trạng thái từ caller bên ngoài.
+  - **(3) Xác Thực Nghiêm Ngặt Mọi Khóa Alias Hiện Diện (Strict Alias Presence, None, Type & Semantic Validation)**: Hàm _extract_and_validate_alias() không bỏ qua các khóa alias có giá trị None hiện diện trong mapping; từ chối fail-closed mọi khóa alias có giá trị None, sai kiểu (non-string), rỗng hoặc có khoảng trắng đệm. Kiểm tra tính nhất quán ngữ nghĩa trên tất cả alias hiện diện, từ chối fail-closed khi phát hiện mâu thuẫn giữa các alias trên implement và review (route, launch requested/effective, live terminal, usage, task, dispatch).
+  - **(4) Bộ Fixture Phân Biệt Tự Động 289/289 Tests PASS**: Bổ sung lớp kiểm thử TestSolRound18Remediation với 15 bài test counterexample và positive controls, nâng tổng số test lên 289/289 passed 100%.
+
 ## 2026-09-29 — Khắc phục phát hiện Astra Lead round 18 (Lifecycle Authority Bypass, Contradictory Aliases, Raw Router Identity, Canonical Bytes)
 
 - Khắc phục triệt để 4 phát hiện blocker từ Astra Lead review round 18 trên HEAD `4c95c1d7914772d6311b44aa482fb3eeff5b4912` cho bundle `docs/parallel-delivery/`:

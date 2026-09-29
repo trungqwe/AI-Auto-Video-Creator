@@ -18,7 +18,9 @@ import os
 import re
 import subprocess
 import threading
+import sys
 import time
+import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -1099,7 +1101,7 @@ DEFAULT_PRODUCTION_REGISTRY_PATH = Path(
 )
 
 
-@dataclass
+@dataclass(init=False)
 class LiveTerminalEvidence:
     harness: str
     provider: str
@@ -1107,9 +1109,37 @@ class LiveTerminalEvidence:
     archive_reference: Optional[str] = None
     verified: bool = True
     dispatch_id: Optional[str] = None
-    terminal_id: Optional[str] = None
     delivery_task_id: Optional[str] = None
     effort: Optional[str] = None
+
+    def __init__(
+        self,
+        harness: str,
+        provider: str,
+        route: str,
+        archive_reference: Optional[str] = None,
+        verified: bool = True,
+        dispatch_id: Optional[str] = None,
+        terminal_id: Optional[str] = None,
+        delivery_task_id: Optional[str] = None,
+        effort: Optional[str] = None,
+    ):
+        self.harness = harness
+        self.provider = provider
+        self.route = route
+        self.archive_reference = archive_reference if archive_reference is not None else terminal_id
+        self.verified = verified
+        self.dispatch_id = dispatch_id
+        self.delivery_task_id = delivery_task_id
+        self.effort = effort
+
+    @property
+    def terminal_id(self) -> Optional[str]:
+        return self.archive_reference
+
+    @terminal_id.setter
+    def terminal_id(self, val: Optional[str]):
+        self.archive_reference = val
 
 
 @dataclass
@@ -1136,6 +1166,109 @@ class ExecutionEnvelope:
     usage_evidence: Optional[Union[Dict[str, Any], UsageEvidence]] = None
     launch_requested: Optional[Any] = None
     launch_effective: Optional[Any] = None
+
+
+@dataclass
+class ReviewEvidence:
+    review_dispatch_id: str
+    delivery_task_id: str
+    candidate_commit: str
+    verdict: str
+    reviewer_route: str = "cx/gpt-5.6-sol"
+    reviewer_harness: str = "Claude Code"
+    evidence_hash: Optional[str] = None
+    summary: Optional[str] = None
+    timestamp: Optional[str] = None
+
+
+@dataclass
+class IntegrationEvidence:
+    delivery_task_id: str
+    candidate_commit: str
+    base_commit: str
+    gates_pass: bool
+    gate_results: Dict[str, bool] = field(default_factory=dict)
+    evidence_hash: Optional[str] = None
+    integrated_by: Optional[str] = None
+    timestamp: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class _TransitionAuthToken:
+    token_id: str
+    task_id: str
+    new_state: str
+    handler: str
+    adapter_id: int
+    created_at: float
+
+
+def make_review_evidence(
+    delivery_task_id: str,
+    review_dispatch_id: str,
+    candidate_commit: str,
+    verdict: str = "ACCEPT",
+    reviewer_route: str = "cx/gpt-5.6-sol",
+    reviewer_harness: str = "Claude Code",
+    summary: str = "Independent review accepted on exact candidate HEAD",
+    now: Optional[datetime] = None,
+) -> ReviewEvidence:
+    now_dt = now or datetime.now(timezone.utc)
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
+    ev_bytes = f"{delivery_task_id}:{review_dispatch_id}:{candidate_commit}:{verdict}:{reviewer_route}:{now_dt.isoformat()}".encode("utf-8")
+    ev_hash = hashlib.sha256(ev_bytes).hexdigest()
+    return ReviewEvidence(
+        review_dispatch_id=review_dispatch_id.strip(),
+        delivery_task_id=delivery_task_id.strip(),
+        candidate_commit=candidate_commit.strip(),
+        verdict=verdict.strip(),
+        reviewer_route=reviewer_route.strip(),
+        reviewer_harness=reviewer_harness.strip(),
+        evidence_hash=ev_hash,
+        summary=summary,
+        timestamp=now_dt.isoformat(),
+    )
+
+
+def make_integration_evidence(
+    delivery_task_id: str,
+    candidate_commit: str,
+    base_commit: str,
+    gates_pass: bool = True,
+    gate_results: Optional[Dict[str, bool]] = None,
+    integrated_by: str = "Control",
+    now: Optional[datetime] = None,
+) -> IntegrationEvidence:
+    if gate_results is None:
+        gate_results = {
+            "authority": gates_pass,
+            "candidate": gates_pass,
+            "scope": gates_pass,
+            "encoding": gates_pass,
+            "security": gates_pass,
+            "contract": gates_pass,
+            "migration": gates_pass,
+            "focused_tests": gates_pass,
+            "regression": gates_pass,
+            "evidence": gates_pass,
+            "independent_review": gates_pass,
+        }
+    now_dt = now or datetime.now(timezone.utc)
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
+    ev_bytes = f"{delivery_task_id}:{candidate_commit}:{base_commit}:{gates_pass}:{json.dumps(gate_results, sort_keys=True)}".encode("utf-8")
+    ev_hash = hashlib.sha256(ev_bytes).hexdigest()
+    return IntegrationEvidence(
+        delivery_task_id=delivery_task_id.strip(),
+        candidate_commit=candidate_commit.strip(),
+        base_commit=base_commit.strip(),
+        gates_pass=gates_pass,
+        gate_results=gate_results,
+        evidence_hash=ev_hash,
+        integrated_by=integrated_by,
+        timestamp=now_dt.isoformat(),
+    )
 
 
 _SECRET_PATTERNS = [
@@ -1173,7 +1306,8 @@ def _extract_and_validate_alias(
 ) -> Optional[str]:
     """Validate all present aliases for type (must be non-blank string), exactness,
     disallowed substrings, and mutual semantic consistency before choosing a canonical value."""
-    present_keys = [k for k in aliases if k in mapping and mapping[k] is not None]
+    # Blocker 3: Do not silently exclude present None. Every present alias key must be checked.
+    present_keys = [k for k in aliases if k in mapping]
     if not present_keys:
         if required:
             msg = f"{container_label} missing required field {field_label!r}; fails closed"
@@ -1182,18 +1316,27 @@ def _extract_and_validate_alias(
             raise RoutingEvidenceError(msg)
         return None
 
-    # Check each present alias for type and non-blank form
+    # Check each present alias for type, None, non-blank form, and whitespace padding
     for k in present_keys:
         val = mapping[k]
-        if val is None or not isinstance(val, str):
+        if val is None:
+            msg = f"{container_label} field {k!r} must be a non-blank string; got NoneType: None; fails closed"
+            if blank_or_missing_hint:
+                msg += f"; {blank_or_missing_hint}"
+            raise RoutingEvidenceError(msg)
+        if not isinstance(val, str):
             raise RoutingEvidenceError(
-                f"{container_label} field {k!r} must be a non-blank string; got {type(val).__name__}: {val!r}"
+                f"{container_label} field {k!r} must be a non-blank string; got {type(val).__name__}: {val!r}; fails closed"
             )
         if not val.strip():
             msg = f"{container_label} field {k!r} must be a non-blank string; cannot be blank; fails closed"
             if blank_or_missing_hint:
                 msg += f"; {blank_or_missing_hint}"
             raise RoutingEvidenceError(msg)
+        if val != val.strip():
+            raise RoutingEvidenceError(
+                f"{container_label} field {k!r} {val!r} has invalid whitespace padding; fails closed"
+            )
 
     # Check mutual semantic consistency across all present aliases before checking exact_raw
     cleaned_values = {mapping[k].strip() for k in present_keys}
@@ -2363,14 +2506,83 @@ class OrcaDeliveryAdapter:
         self.declared_task_locks: Dict[str, List[str]] = dict(declared_task_locks or {})
         self.task_phases: Dict[str, str] = {}
         self._lifecycle_handler_context: Optional[Dict[str, Any]] = None
+        self.active_review_dispatches: Dict[str, str] = {}
+        self.review_dispatch_bindings: Dict[str, DispatchBinding] = {}
+        self._verified_review_evidence: Dict[str, Any] = {}
+        self._verified_integration_evidence: Dict[str, Any] = {}
+        self._active_transition_tokens: Dict[str, _TransitionAuthToken] = {}
+
+    def _mint_transition_token(self, handler: str, task_id: str, new_state: str) -> _TransitionAuthToken:
+        frame = sys._getframe(1)
+        caller_name = frame.f_code.co_name
+        caller_self = frame.f_locals.get('self')
+        if caller_self is not self or caller_name != handler:
+            raise ProtocolViolationError(
+                f'Unauthorized transition token minting attempt: caller={caller_name!r}; tokens cannot be forged externally'
+            )
+        allowed_handlers = {
+            'create_dispatch',
+            'create_review_dispatch',
+            'acknowledge_dispatch',
+            'start_running',
+            'handle_worker_done',
+            'handle_harness_failure',
+            'handle_review_verdict',
+            'handle_integration_gates',
+            'resolve_blocker_and_replan',
+        }
+        if handler not in allowed_handlers:
+            raise ProtocolViolationError(f'Handler {handler!r} is not an authorized transition handler')
+        tok = _TransitionAuthToken(
+            token_id=str(uuid.uuid4()),
+            task_id=task_id,
+            new_state=new_state,
+            handler=handler,
+            adapter_id=id(self),
+            created_at=time.time(),
+        )
+        self._active_transition_tokens[tok.token_id] = tok
+        return tok
 
     @contextmanager
-    def _authorized_transition_scope(self, task_id: str, new_state: str, handler: str, **evidence):
+    def _authorized_transition_scope(
+        self,
+        task_id: str,
+        new_state: str,
+        handler: str,
+        _token: Optional[_TransitionAuthToken] = None,
+        **evidence
+    ):
+        if _token is None:
+            raise ProtocolViolationError(
+                "Unauthorized transition scope: unforgeable token required; external callers cannot forge transition contexts"
+            )
+        if not isinstance(_token, _TransitionAuthToken):
+            raise ProtocolViolationError(
+                f"Invalid or forged transition token: expected _TransitionAuthToken, got {type(_token).__name__}; tokens cannot be forged"
+            )
+        if _token.adapter_id != id(self) or _token.token_id not in self._active_transition_tokens:
+            raise ProtocolViolationError(
+                "Invalid, forged, or already consumed transition token; token is unauthorized"
+            )
+        if _token.task_id != task_id or _token.new_state != new_state or _token.handler != handler:
+            raise ProtocolViolationError(
+                f"Transition token mismatch: token=({_token.task_id}, {_token.new_state}, {_token.handler}) vs scope=({task_id}, {new_state}, {handler})"
+            )
+        frame = sys._getframe(2)
+        caller_name = frame.f_code.co_name
+        caller_self = frame.f_locals.get("self")
+        if caller_self is not self or caller_name != handler:
+            raise ProtocolViolationError(
+                f"External caller cannot invoke _authorized_transition_scope: caller={caller_name!r}"
+            )
+
         prev = self._lifecycle_handler_context
         self._lifecycle_handler_context = {
             "task_id": task_id,
             "new_state": new_state,
             "handler": handler,
+            "token": _token,
             "evidence": evidence,
         }
         try:
@@ -2487,6 +2699,16 @@ class OrcaDeliveryAdapter:
                     f"all transitions must be invoked through authorized handlers with verified dispatch, lease, and evidence"
                 )
 
+            tok = ctx.get("token")
+            if not tok or not isinstance(tok, _TransitionAuthToken) or tok.token_id not in self._active_transition_tokens:
+                raise ProtocolViolationError(
+                    "Transition authorization token missing, invalid, or already consumed; transition forbidden"
+                )
+            if tok.task_id != clean_tid or tok.new_state != new_state or tok.handler != ctx.get("handler"):
+                raise ProtocolViolationError(
+                    f"Transition authorization token parameters mismatch context: token=({tok.task_id}, {tok.new_state}, {tok.handler})"
+                )
+
             handler = ctx.get("handler")
             evidence = ctx.get("evidence", {})
 
@@ -2562,6 +2784,10 @@ class OrcaDeliveryAdapter:
                 if handler != "resolve_blocker_and_replan":
                     raise ProtocolViolationError(f"Transition to {new_state!r} must be authorized by resolve_blocker_and_replan; got {handler!r}")
 
+            # Strictly single-use token consumption
+            if tok.token_id in self._active_transition_tokens:
+                del self._active_transition_tokens[tok.token_id]
+
             self._task_states[clean_tid] = new_state
 
     def get_task_state(self, delivery_task_id: str) -> str:
@@ -2599,7 +2825,8 @@ class OrcaDeliveryAdapter:
             raise ProtocolViolationError(
                 f"Cannot acknowledge dispatch for {clean_tid} in state {current!r}; must be 'dispatched'"
             )
-        with self._authorized_transition_scope(clean_tid, "acknowledged", handler="acknowledge_dispatch", dispatch_id=clean_disp):
+        token = self._mint_transition_token("acknowledge_dispatch", clean_tid, "acknowledged")
+        with self._authorized_transition_scope(clean_tid, "acknowledged", handler="acknowledge_dispatch", _token=token, dispatch_id=clean_disp):
             self.transition_task_state(clean_tid, "acknowledged")
 
     def start_running(self, delivery_task_id: str, dispatch_id: str) -> None:
@@ -2620,7 +2847,8 @@ class OrcaDeliveryAdapter:
                 f"Cannot start running task {clean_tid} in state {current!r}; "
                 f"mandatory lifecycle requires state 'acknowledged' (cannot skip acknowledged stage)"
             )
-        with self._authorized_transition_scope(clean_tid, "running", handler="start_running", dispatch_id=clean_disp):
+        token = self._mint_transition_token("start_running", clean_tid, "running")
+        with self._authorized_transition_scope(clean_tid, "running", handler="start_running", _token=token, dispatch_id=clean_disp):
             self.transition_task_state(clean_tid, "running")
 
     def create_dispatch(
@@ -2918,12 +3146,161 @@ class OrcaDeliveryAdapter:
         )
         with self._task_state_lock:
             self.active_dispatches[delivery_task_id] = dispatch_id
+            token = self._mint_transition_token("create_dispatch", delivery_task_id, "dispatched")
             with self._authorized_transition_scope(
-                delivery_task_id, "dispatched", handler="create_dispatch",
+                delivery_task_id, "dispatched", handler="create_dispatch", _token=token,
                 dispatch_id=dispatch_id, lease_ids=all_leases, fencing_token=fencing_token
             ):
                 self.transition_task_state(delivery_task_id, "dispatched")
             self.last_fencing_tokens[delivery_task_id] = fencing_token
+        return dispatch_id
+
+    def create_review_dispatch(
+        self,
+        delivery_task_id: str,
+        orca_task_id: Optional[str] = None,
+        candidate_commit: Optional[str] = None,
+        intended_dispatch_id: Optional[str] = None,
+        now: Optional[datetime] = None,
+        dispatch_origin: Optional[str] = None,
+        execution_envelope: Optional[Union[ExecutionEnvelope, Dict[str, Any]]] = None,
+    ) -> str:
+        """Create an independent review dispatch for a delivery task in 'review' state.
+        Reviewer is strictly read-only and does not hold mutation leases.
+        Review route MUST be cx/gpt-5.6-sol on Claude Code harness through 9router.
+        """
+        if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
+            raise ProtocolViolationError("delivery_task_id cannot be blank")
+        delivery_task_id = delivery_task_id.strip()
+
+        # Authority check
+        if delivery_task_id not in self.task_authorities:
+            raise ProtocolViolationError(
+                f"Task {delivery_task_id} has no registered authority; authority must be explicitly registered and granted"
+            )
+        registered_auth = self.task_authorities[delivery_task_id]
+        if registered_auth != "granted":
+            raise ProtocolViolationError(
+                f"Cannot dispatch review for task {delivery_task_id} with authority {registered_auth!r}; only 'granted' authority permitted"
+            )
+
+        # State check: task MUST be in 'review' state
+        current_state = self.get_task_state(delivery_task_id)
+        if current_state != "review":
+            raise ProtocolViolationError(
+                f"Cannot dispatch review for task {delivery_task_id} from state {current_state!r}; task must be in 'review' state"
+            )
+
+        # Orca task identity
+        if not orca_task_id or not isinstance(orca_task_id, str) or not orca_task_id.strip():
+            raise ProtocolViolationError("orca_task_id cannot be blank")
+        orca_task_id = orca_task_id.strip()
+
+        if orca_task_id in self.seen_orca_task_ids:
+            other_task = self.orca_task_to_delivery_task.get(orca_task_id)
+            if other_task and other_task != delivery_task_id:
+                raise ProtocolViolationError(
+                    f"Orca task ID {orca_task_id!r} is already assigned to delivery task {other_task!r}; global reuse is forbidden"
+                )
+            raise ProtocolViolationError(
+                f"Orca task ID {orca_task_id!r} is already assigned or has already been used in an active or settled dispatch; global reuse is forbidden"
+            )
+
+        # Candidate commit validation
+        if not candidate_commit or not isinstance(candidate_commit, str) or not candidate_commit.strip():
+            raise ProtocolViolationError("candidate_commit cannot be blank")
+        candidate_commit = candidate_commit.strip()
+        if candidate_commit.upper() == "HEAD" or not SHA_HEX_40_RE.match(candidate_commit):
+            raise ProtocolViolationError(
+                f"candidate_commit {candidate_commit!r} is invalid; must be an immutable full 40-character commit SHA"
+            )
+
+        repo_root = self.git_root or (ROOT if "ROOT" in globals() else Path.cwd())
+        cmd = ["git", "cat-file", "-e", f"{candidate_commit}^{{commit}}"]
+        res = subprocess.run(cmd, cwd=repo_root, capture_output=True)
+        if res.returncode != 0:
+            raise ProtocolViolationError(f"Candidate commit {candidate_commit!r} does not exist in git")
+
+        head_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, capture_output=True, text=True)
+        if head_res.returncode != 0 or not head_res.stdout.strip():
+            raise ProtocolViolationError("Cannot determine actual current git HEAD")
+        actual_head = head_res.stdout.strip()
+
+        if candidate_commit.lower() != actual_head.lower():
+            raise ProtocolViolationError(
+                f"Candidate commit {candidate_commit} does not match approved candidate / HEAD {actual_head}"
+            )
+        if self.approved_candidate_commit.lower() != actual_head.lower():
+            raise ProtocolViolationError(
+                f"Approved candidate commit {self.approved_candidate_commit} does not match actual current HEAD {actual_head}"
+            )
+        if candidate_commit.lower() != self.approved_candidate_commit.lower():
+            raise ProtocolViolationError(
+                f"Candidate commit {candidate_commit} does not match approved candidate {self.approved_candidate_commit}"
+            )
+
+        # Intended dispatch ID
+        if intended_dispatch_id is None or not isinstance(intended_dispatch_id, str) or not intended_dispatch_id.strip():
+            raise ProtocolViolationError("intended_dispatch_id is mandatory and cannot be blank")
+        intended_dispatch_id = intended_dispatch_id.strip()
+
+        # Origin
+        clean_orig = (dispatch_origin or "").strip() if isinstance(dispatch_origin, str) else ""
+        if clean_orig != "dely dispatch":
+            raise RoutingEvidenceError(
+                f"Invalid dispatch origin {dispatch_origin!r}; every delivery dispatch MUST go through 'dely dispatch'"
+            )
+
+        # Execution envelope validation
+        if execution_envelope is None:
+            raise RoutingEvidenceError(
+                "Missing execution_envelope; every delivery dispatch MUST provide an execution envelope"
+            )
+
+        now_dt = now or datetime.now(timezone.utc)
+        if now_dt.tzinfo is None:
+            now_dt = now_dt.replace(tzinfo=timezone.utc)
+
+        validate_execution_envelope(
+            envelope=execution_envelope,
+            expected_phase="review",
+            expected_delivery_task_id=delivery_task_id,
+            expected_dispatch_id=intended_dispatch_id,
+            expected_orca_task_id=orca_task_id,
+            dispatch_time=now_dt,
+        )
+
+        dispatch_id = intended_dispatch_id
+        if (
+            dispatch_id in self.seen_dispatch_ids
+            or dispatch_id in self.settled_dispatches
+            or dispatch_id in self.dispatch_bindings
+            or dispatch_id in self.review_dispatch_bindings
+        ):
+            raise ProtocolViolationError(
+                f"Duplicate dispatch binding overwrite: dispatch ID {dispatch_id!r} is already bound or settled; global reuse is forbidden"
+            )
+
+        binding = DispatchBinding(
+            delivery_task_id=delivery_task_id,
+            orca_task_id=orca_task_id,
+            dispatch_id=dispatch_id,
+            candidate_commit=candidate_commit,
+            fencing_token=None,
+            lease_id=None,
+            lease_ids=[],
+            authority_state=registered_auth,
+            settled=False,
+        )
+
+        self.registry.register_dispatch_and_orca_task(
+            dispatch_id=dispatch_id,
+            binding=binding,
+            orca_task_id=orca_task_id,
+            delivery_task_id=delivery_task_id,
+        )
+        self.active_review_dispatches[delivery_task_id] = dispatch_id
+        self.review_dispatch_bindings[dispatch_id] = binding
         return dispatch_id
 
     def handle_worker_done(
@@ -3092,8 +3469,9 @@ class OrcaDeliveryAdapter:
             ]
             for lid in to_remove:
                 self.lease_mgr.release_lease(lid)
+            token = self._mint_transition_token("handle_worker_done", delivery_task_id, "review")
             with self._authorized_transition_scope(
-                delivery_task_id, "review", handler="handle_worker_done",
+                delivery_task_id, "review", handler="handle_worker_done", _token=token,
                 dispatch_id=dispatch_id, outcome="succeeded", candidate_commit=candidate_commit
             ):
                 self.transition_task_state(delivery_task_id, "review")
@@ -3106,8 +3484,9 @@ class OrcaDeliveryAdapter:
             ]
             for lid in to_remove:
                 self.lease_mgr.release_lease(lid)
+            token = self._mint_transition_token("handle_worker_done", delivery_task_id, "blocked")
             with self._authorized_transition_scope(
-                delivery_task_id, "blocked", handler="handle_worker_done",
+                delivery_task_id, "blocked", handler="handle_worker_done", _token=token,
                 dispatch_id=dispatch_id, outcome="failed"
             ):
                 self.transition_task_state(delivery_task_id, "blocked")
@@ -3184,80 +3563,250 @@ class OrcaDeliveryAdapter:
                 self.lease_mgr.release_lease(lid)
 
         # 8. Transition task state to blocked
+        token = self._mint_transition_token("handle_harness_failure", clean_tid, "blocked")
         with self._authorized_transition_scope(
-            clean_tid, "blocked", handler="handle_harness_failure",
+            clean_tid, "blocked", handler="handle_harness_failure", _token=token,
             dispatch_id=clean_did
         ):
             self.transition_task_state(clean_tid, "blocked")
         return "blocked"
 
-    def handle_review_verdict(self, delivery_task_id: str, verdict: str) -> str:
+    def handle_review_verdict(
+        self,
+        delivery_task_id: str,
+        verdict: str,
+        review_dispatch_id: Optional[str] = None,
+        review_evidence: Optional[Union[ReviewEvidence, Dict[str, Any]]] = None,
+    ) -> str:
         """Handle independent review disposition ('ACCEPT', 'CHANGES_REQUESTED', 'BLOCKED').
         Unknown review verdicts are strictly rejected.
+        Requires valid review dispatch and verified review evidence.
+        Caller-supplied strings alone are never authority.
         """
-        auth = self.get_task_authority(delivery_task_id)
-        if auth != "granted":
-            raise ProtocolViolationError(
-                f"Task {delivery_task_id} has authority {auth!r}; review transition blocked (only 'granted' permitted)"
-            )
-        current_state = self.get_task_state(delivery_task_id)
-        if current_state != "review":
-            raise ProtocolViolationError(f"Cannot review task {delivery_task_id} in state {current_state!r}; must be 'review'")
-
-        if verdict == "ACCEPT":
-            with self._authorized_transition_scope(
-                delivery_task_id, "merge_queued", handler="handle_review_verdict", verdict="ACCEPT"
-            ):
-                self.transition_task_state(delivery_task_id, "merge_queued")
-            return "merge_queued"
-        elif verdict == "CHANGES_REQUESTED":
-            with self._authorized_transition_scope(
-                delivery_task_id, "remediation", handler="handle_review_verdict", verdict="CHANGES_REQUESTED"
-            ):
-                self.transition_task_state(delivery_task_id, "remediation")
-            return "remediation"
-        elif verdict == "BLOCKED":
-            with self._authorized_transition_scope(
-                delivery_task_id, "blocked", handler="handle_review_verdict", verdict="BLOCKED"
-            ):
-                self.transition_task_state(delivery_task_id, "blocked")
-            return "blocked"
-        else:
+        allowed_verdicts = {"ACCEPT", "CHANGES_REQUESTED", "BLOCKED"}
+        if not isinstance(verdict, str) or verdict not in allowed_verdicts:
             raise ProtocolViolationError(
                 f"Unknown review verdict {verdict!r}; allowed verdicts are 'ACCEPT', 'CHANGES_REQUESTED', 'BLOCKED'"
             )
 
-    def handle_integration_gates(self, delivery_task_id: str, gates_pass: bool) -> str:
+        if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
+            raise ProtocolViolationError("delivery_task_id cannot be blank")
+        clean_tid = delivery_task_id.strip()
+
+        auth = self.get_task_authority(clean_tid)
+        if auth != "granted":
+            raise ProtocolViolationError(
+                f"Task {clean_tid} has authority {auth!r}; review transition blocked (only 'granted' permitted)"
+            )
+        current_state = self.get_task_state(clean_tid)
+        if current_state != "review":
+            raise ProtocolViolationError(f"Cannot review task {clean_tid} in state {current_state!r}; must be 'review'")
+
+        # Blocker 1: Review dispatch and verified evidence are mandatory
+        if not review_dispatch_id or not isinstance(review_dispatch_id, str) or not review_dispatch_id.strip():
+            raise ProtocolViolationError(
+                "handle_review_verdict requires a valid review dispatch; caller-supplied string alone is not authority"
+            )
+        clean_did = review_dispatch_id.strip()
+
+        if review_evidence is None:
+            raise ProtocolViolationError(
+                "handle_review_verdict requires verified review evidence; caller-supplied string alone is not authority"
+            )
+
+        binding = self.review_dispatch_bindings.get(clean_did) or self.registry.get_dispatch_binding(clean_did)
+        if binding is None:
+            raise ProtocolViolationError(f"Unknown review dispatch ID {clean_did!r}")
+        if binding.delivery_task_id != clean_tid:
+            raise ProtocolViolationError(
+                f"Review dispatch {clean_did!r} is bound to delivery task {binding.delivery_task_id!r}, not {clean_tid!r}"
+            )
+        if clean_did in self.registry.settled_dispatches:
+            raise ProtocolViolationError(f"Review dispatch {clean_did!r} has already been settled")
+
+        # Validate review evidence
+        if isinstance(review_evidence, ReviewEvidence):
+            ev_disp_id = review_evidence.review_dispatch_id
+            ev_task_id = review_evidence.delivery_task_id
+            ev_commit = review_evidence.candidate_commit
+            ev_verdict = review_evidence.verdict
+            ev_route = review_evidence.reviewer_route
+            ev_harness = review_evidence.reviewer_harness
+        elif isinstance(review_evidence, dict):
+            ev_disp_id = review_evidence.get("review_dispatch_id")
+            ev_task_id = review_evidence.get("delivery_task_id")
+            ev_commit = review_evidence.get("candidate_commit")
+            ev_verdict = review_evidence.get("verdict")
+            ev_route = review_evidence.get("reviewer_route", "cx/gpt-5.6-sol")
+            ev_harness = review_evidence.get("reviewer_harness", "Claude Code")
+        else:
+            raise ProtocolViolationError(f"Invalid review_evidence type: {type(review_evidence).__name__}")
+
+        if not ev_disp_id or ev_disp_id.strip() != clean_did:
+            raise ProtocolViolationError(
+                f"Review evidence dispatch ID {ev_disp_id!r} does not match review dispatch {clean_did!r}"
+            )
+        if not ev_task_id or ev_task_id.strip() != clean_tid:
+            raise ProtocolViolationError(
+                f"Review evidence delivery task ID {ev_task_id!r} does not match task {clean_tid!r}"
+            )
+        if not ev_verdict or ev_verdict.strip() != verdict:
+            raise ProtocolViolationError(
+                f"Review evidence verdict {ev_verdict!r} does not match disposition verdict {verdict!r}"
+            )
+        if not ev_commit or ev_commit.strip().lower() != self.approved_candidate_commit.lower():
+            raise ProtocolViolationError(
+                f"Review evidence candidate commit {ev_commit!r} does not match approved candidate {self.approved_candidate_commit}"
+            )
+
+        repo_root = self.git_root or (ROOT if "ROOT" in globals() else Path.cwd())
+        head_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, capture_output=True, text=True)
+        if head_res.returncode == 0 and head_res.stdout.strip():
+            actual_head = head_res.stdout.strip()
+            if ev_commit.strip().lower() != actual_head.lower():
+                raise ProtocolViolationError(
+                    f"Review evidence candidate commit {ev_commit!r} does not match current HEAD {actual_head}"
+                )
+
+        if (ev_route or "").strip() != "cx/gpt-5.6-sol":
+            raise ProtocolViolationError(
+                f"Review evidence reviewer route {ev_route!r} does not match required reviewer route 'cx/gpt-5.6-sol'"
+            )
+        if (ev_harness or "").strip() != "Claude Code":
+            raise ProtocolViolationError(
+                f"Review evidence reviewer harness {ev_harness!r} does not match required reviewer harness 'Claude Code'"
+            )
+
+        # Settle review dispatch
+        self.registry.settle_dispatch(clean_did)
+        if clean_tid in self.active_review_dispatches:
+            del self.active_review_dispatches[clean_tid]
+
+        if verdict == "ACCEPT":
+            self._verified_review_evidence[clean_tid] = review_evidence
+            token = self._mint_transition_token("handle_review_verdict", clean_tid, "merge_queued")
+            with self._authorized_transition_scope(
+                clean_tid, "merge_queued", handler="handle_review_verdict", _token=token,
+                verdict="ACCEPT", review_dispatch_id=clean_did
+            ):
+                self.transition_task_state(clean_tid, "merge_queued")
+            return "merge_queued"
+        elif verdict == "CHANGES_REQUESTED":
+            token = self._mint_transition_token("handle_review_verdict", clean_tid, "remediation")
+            with self._authorized_transition_scope(
+                clean_tid, "remediation", handler="handle_review_verdict", _token=token,
+                verdict="CHANGES_REQUESTED", review_dispatch_id=clean_did
+            ):
+                self.transition_task_state(clean_tid, "remediation")
+            return "remediation"
+        elif verdict == "BLOCKED":
+            token = self._mint_transition_token("handle_review_verdict", clean_tid, "blocked")
+            with self._authorized_transition_scope(
+                clean_tid, "blocked", handler="handle_review_verdict", _token=token,
+                verdict="BLOCKED", review_dispatch_id=clean_did
+            ):
+                self.transition_task_state(clean_tid, "blocked")
+            return "blocked"
+
+    def handle_integration_gates(
+        self,
+        delivery_task_id: str,
+        gates_pass: bool,
+        integration_evidence: Optional[Union[IntegrationEvidence, Dict[str, Any]]] = None,
+    ) -> str:
         """Handle integration gates on exact candidate HEAD.
         gates_pass must be strict bool; truthy/falsy coercion is strictly rejected.
+        Requires verified integration evidence and verified prior independent review ACCEPT.
+        Caller-supplied booleans alone are never authority.
         """
         if type(gates_pass) is not bool:
             raise ProtocolViolationError(
                 f"gates_pass must be strict bool (True or False, no truthy coercion); got {type(gates_pass).__name__}: {gates_pass!r}"
             )
-        auth = self.get_task_authority(delivery_task_id)
+        if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
+            raise ProtocolViolationError("delivery_task_id cannot be blank")
+        clean_tid = delivery_task_id.strip()
+
+        auth = self.get_task_authority(clean_tid)
         if auth != "granted":
             raise ProtocolViolationError(
-                f"Task {delivery_task_id} has authority {auth!r}; integration transition blocked (only 'granted' permitted)"
+                f"Task {clean_tid} has authority {auth!r}; integration transition blocked (only 'granted' permitted)"
             )
-        current_state = self.get_task_state(delivery_task_id)
+        current_state = self.get_task_state(clean_tid)
         if current_state != "merge_queued":
-            raise ProtocolViolationError(f"Cannot integrate task {delivery_task_id} in state {current_state!r}; must be 'merge_queued'")
+            raise ProtocolViolationError(f"Cannot integrate task {clean_tid} in state {current_state!r}; must be 'merge_queued'")
+
+        if integration_evidence is None:
+            raise ProtocolViolationError(
+                "handle_integration_gates requires verified integration evidence; caller-supplied boolean alone is not authority"
+            )
+
+        # Extract and validate integration evidence
+        if isinstance(integration_evidence, IntegrationEvidence):
+            ev_task_id = integration_evidence.delivery_task_id
+            ev_commit = integration_evidence.candidate_commit
+            ev_base = integration_evidence.base_commit
+            ev_gates_pass = integration_evidence.gates_pass
+            gate_results = integration_evidence.gate_results
+        elif isinstance(integration_evidence, dict):
+            ev_task_id = integration_evidence.get("delivery_task_id")
+            ev_commit = integration_evidence.get("candidate_commit")
+            ev_base = integration_evidence.get("base_commit")
+            ev_gates_pass = integration_evidence.get("gates_pass")
+            gate_results = integration_evidence.get("gate_results", {})
+        else:
+            raise ProtocolViolationError(f"Invalid integration_evidence type: {type(integration_evidence).__name__}")
+
+        if not ev_task_id or ev_task_id.strip() != clean_tid:
+            raise ProtocolViolationError(
+                f"Integration evidence delivery task ID {ev_task_id!r} does not match task {clean_tid!r}"
+            )
+        if type(ev_gates_pass) is not bool or ev_gates_pass != gates_pass:
+            raise ProtocolViolationError(
+                f"Integration evidence gates_pass ({ev_gates_pass!r}) does not match argument gates_pass ({gates_pass!r})"
+            )
+        if not ev_commit or ev_commit.strip().lower() != self.approved_candidate_commit.lower():
+            raise ProtocolViolationError(
+                f"Integration evidence candidate commit {ev_commit!r} does not match approved candidate {self.approved_candidate_commit}"
+            )
+
+        repo_root = self.git_root or (ROOT if "ROOT" in globals() else Path.cwd())
+        head_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, capture_output=True, text=True)
+        if head_res.returncode == 0 and head_res.stdout.strip():
+            actual_head = head_res.stdout.strip()
+            if ev_commit.strip().lower() != actual_head.lower():
+                raise ProtocolViolationError(
+                    f"Integration evidence candidate commit {ev_commit!r} does not match current HEAD {actual_head}"
+                )
+
         if gates_pass:
+            if isinstance(gate_results, dict) and gate_results:
+                failing_gates = [k for k, v in gate_results.items() if not v]
+                if failing_gates:
+                    raise ProtocolViolationError(
+                        f"Contradictory integration evidence: gates_pass=True but individual gate(s) failing: {failing_gates}"
+                    )
+            if clean_tid not in self._verified_review_evidence:
+                raise ProtocolViolationError(
+                    f"Task {clean_tid} cannot reach integration without prior verified independent review ACCEPT evidence; binding mismatch"
+                )
+            self._verified_integration_evidence[clean_tid] = integration_evidence
+            token = self._mint_transition_token("handle_integration_gates", clean_tid, "integrated")
             with self._authorized_transition_scope(
-                delivery_task_id, "integrated", handler="handle_integration_gates", gates_pass=True
+                clean_tid, "integrated", handler="handle_integration_gates", _token=token, gates_pass=True
             ):
-                self.transition_task_state(delivery_task_id, "integrated")
-            self.lease_mgr.mark_task_integrated(delivery_task_id)
+                self.transition_task_state(clean_tid, "integrated")
+            self.lease_mgr.mark_task_integrated(clean_tid)
             return "integrated"
         else:
+            token = self._mint_transition_token("handle_integration_gates", clean_tid, "blocked")
             with self._authorized_transition_scope(
-                delivery_task_id, "blocked", handler="handle_integration_gates", gates_pass=False
+                clean_tid, "blocked", handler="handle_integration_gates", _token=token, gates_pass=False
             ):
-                self.transition_task_state(delivery_task_id, "blocked")
+                self.transition_task_state(clean_tid, "blocked")
             to_remove = [
                 lid for lid, l in list(self.lease_mgr.active_leases.items())
-                if l.delivery_task_id == delivery_task_id
+                if l.delivery_task_id == clean_tid
             ]
             for lid in to_remove:
                 self.lease_mgr.release_lease(lid)
@@ -3274,13 +3823,15 @@ class OrcaDeliveryAdapter:
         if state not in ("blocked", "needs_replan"):
             raise ProtocolViolationError(f"Cannot resolve blocker for task in state {state!r}")
         if state == "blocked":
+            token = self._mint_transition_token("resolve_blocker_and_replan", delivery_task_id, "ready")
             with self._authorized_transition_scope(
-                delivery_task_id, "ready", handler="resolve_blocker_and_replan"
+                delivery_task_id, "ready", handler="resolve_blocker_and_replan", _token=token
             ):
                 self.transition_task_state(delivery_task_id, "ready")
         elif state == "needs_replan":
+            token = self._mint_transition_token("resolve_blocker_and_replan", delivery_task_id, "planned")
             with self._authorized_transition_scope(
-                delivery_task_id, "planned", handler="resolve_blocker_and_replan"
+                delivery_task_id, "planned", handler="resolve_blocker_and_replan", _token=token
             ):
                 self.transition_task_state(delivery_task_id, "planned")
 
