@@ -4227,8 +4227,20 @@ class TestSolRound11RoutingEvidencePolicy(unittest.TestCase):
                 "dispatch_id": "ctx_impl_001",
                 "router": "9router",
             },
-            "launch_requested": {"harness": "Codex CLI", "route": "ag/gemini-3.8-flash-high"},
-            "launch_effective": {"harness": "Codex CLI", "route": "ag/gemini-3.8-flash-high"},
+            "launch_requested": {
+                "harness": "Codex CLI",
+                "provider": "9router",
+                "route": "ag/gemini-3.8-flash-high",
+                "model": "ag/gemini-3.8-flash-high",
+                "effort": "high",
+            },
+            "launch_effective": {
+                "harness": "Codex CLI",
+                "provider": "9router",
+                "route": "ag/gemini-3.8-flash-high",
+                "model": "ag/gemini-3.8-flash-high",
+                "effort": "high",
+            },
         }
         self.valid_review_envelope = {
             "delivery_task_id": "PD-PILOT-CONTROL",
@@ -4262,8 +4274,20 @@ class TestSolRound11RoutingEvidencePolicy(unittest.TestCase):
                 "dispatch_id": "ctx_rev_001",
                 "router": "9router",
             },
-            "launch_requested": {"harness": "Claude Code", "route": "cx/gpt-5.6-sol"},
-            "launch_effective": {"harness": "Claude Code", "route": "cx/gpt-5.6-sol"},
+            "launch_requested": {
+                "harness": "Claude Code",
+                "provider": "9router",
+                "route": "cx/gpt-5.6-sol",
+                "model": "cx/gpt-5.6-sol",
+                "effort": "high",
+            },
+            "launch_effective": {
+                "harness": "Claude Code",
+                "provider": "9router",
+                "route": "cx/gpt-5.6-sol",
+                "model": "cx/gpt-5.6-sol",
+                "effort": "high",
+            },
         }
 
     def test_r11_07_valid_routing_envelope_passes(self):
@@ -4826,6 +4850,18 @@ class TestSolRound14IdentityAnchorsAndBackendValidation(unittest.TestCase):
                 "delivery_task_id": self.delivery_id,
                 "dispatch_id": self.intended_disp,
                 "router": "9router",
+            },
+            "launch_requested": {
+                "harness": "Codex CLI",
+                "provider": "9router",
+                "route": "ag/gemini-3.8-flash-high",
+                "effort": "high",
+            },
+            "launch_effective": {
+                "harness": "Codex CLI",
+                "provider": "9router",
+                "route": "ag/gemini-3.8-flash-high",
+                "effort": "high",
             },
         }
         with self.assertRaises(RoutingEvidenceError) as ctx3:
@@ -5539,6 +5575,379 @@ class TestSolRound15FailBeforeSideEffect(unittest.TestCase):
         self.assertEqual(binding.orca_task_id, self.orca_task_id)
         self.assertEqual(binding.dispatch_id, self.intended_disp)
         self.assertTrue(self.lease.is_active)
+
+class TestAstraRound16LaunchEvidenceValidation(unittest.TestCase):
+    """Astra Supreme Audit Dispatch ctx_f3936df94ecf Remediation (Round 16):
+    1. Mandatory machine-readable mappings launch_requested and launch_effective on every envelope.
+    2. Phase-specific harness, provider/router, route/model, and effort validation with exact identities.
+    3. Strict mutual binding between requested and effective launch evidence, and to route, live terminal
+       evidence, usage evidence, and phase.
+    4. Antigravity native, direct-vendor, wrong models, combined slugs, and non-high effort fail closed.
+    5. Astra phase rejected as delivery envelope phase (Astra is a supreme-audit control-plane dispatch).
+    6. Fail-before-side-effect: pure launch evidence validation precedes any lease mutation or purge.
+    7. Discriminating RED/GREEN counterexamples and positive controls.
+    """
+
+    def setUp(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        self.lock_defs = [{"id": "LOCK-R16", "mode": "exclusive", "renewable": True, "lease_seconds": 10}]
+        self.mgr = LeaseManager(self.lock_defs)
+        self.delivery_id = "TASK-R16-PROBE"
+        self.mgr.set_task_authority(self.delivery_id, "granted")
+        self.candidate_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT_DIR, text=True
+        ).strip()
+        self.adapter = OrcaDeliveryAdapter(
+            self.mgr,
+            approved_candidate_commit=self.candidate_commit,
+            git_root=ROOT_DIR,
+        )
+        self.adapter.register_task_locks(self.delivery_id, ["LOCK-R16"])
+        self.adapter.set_task_authority(self.delivery_id, "granted")
+        self.adapter.set_task_state(self.delivery_id, "ready")
+        self.intended_disp = "ctx-r16-probe"
+        self.orca_task_id = "orca-r16-task"
+        self.t0 = datetime(2026, 9, 29, 10, 0, 0, tzinfo=timezone.utc)
+        self.lease = self.mgr.acquire_lease("LOCK-R16", self.delivery_id, self.intended_disp, lease_seconds=10, now=self.t0)
+        self.past_expiry = self.t0 + timedelta(seconds=30)
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+
+    def _assert_zero_side_effects(self):
+        """Assert zero side effects on lease state, task state, active dispatches, and bindings."""
+        self.assertIn(self.lease.lease_id, self.mgr.active_leases)
+        self.assertTrue(self.lease.is_active)
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "ready")
+        self.assertNotIn(self.delivery_id, self.adapter.active_dispatches)
+        self.assertNotIn(self.intended_disp, self.adapter.dispatch_bindings)
+        self.assertNotIn(self.intended_disp, self.adapter.seen_dispatch_ids)
+
+    def test_r16_01_missing_launch_requested_fails_closed(self):
+        """1. Counterexample: Missing launch_requested on ExecutionEnvelope or dict fails closed."""
+        # Case A: launch_requested is None
+        env_none = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id)
+        env_none.launch_requested = None
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            validate_execution_envelope(env_none)
+        self.assertIn("launch_requested", str(ctx1.exception).lower())
+
+        # Case B: dict envelope completely omitting launch_requested
+        env_dict = {
+            "delivery_task_id": self.delivery_id,
+            "dispatch_id": self.intended_disp,
+            "orca_task_id": self.orca_task_id,
+            "dispatch_origin": "dely dispatch",
+            "phase": "implement",
+            "route": {
+                "provider": "9router",
+                "harness": "Codex CLI",
+                "model": "ag/gemini-3.8-flash-high",
+                "effort": "high",
+            },
+            "launch_effective": {
+                "harness": "Codex CLI",
+                "provider": "9router",
+                "route": "ag/gemini-3.8-flash-high",
+                "effort": "high",
+            },
+            "live_terminal_evidence": {
+                "harness": "Codex CLI",
+                "provider": "9router",
+                "route": "ag/gemini-3.8-flash-high",
+                "archive_reference": "ref_r16_01",
+                "verified": True,
+                "delivery_task_id": self.delivery_id,
+                "dispatch_id": self.intended_disp,
+                "effort": "high",
+            },
+            "usage_evidence": {
+                "backend_provider": "google",
+                "backend_model": "ag/gemini-3.8-flash-high",
+                "recorded_after_dispatch": True,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "request_id": "req_r16_01",
+                "delivery_task_id": self.delivery_id,
+                "dispatch_id": self.intended_disp,
+                "router": "9router",
+            },
+        }
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            validate_execution_envelope(env_dict)
+        self.assertIn("launch_requested", str(ctx2.exception).lower())
+
+    def test_r16_02_missing_launch_effective_fails_closed(self):
+        """2. Counterexample: Missing launch_effective on ExecutionEnvelope or dict fails closed."""
+        # Case A: launch_effective is None
+        env_none = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id)
+        env_none.launch_effective = None
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            validate_execution_envelope(env_none)
+        self.assertIn("launch_effective", str(ctx1.exception).lower())
+
+        # Case B: dict envelope completely omitting launch_effective
+        env_dict = {
+            "delivery_task_id": self.delivery_id,
+            "dispatch_id": self.intended_disp,
+            "orca_task_id": self.orca_task_id,
+            "dispatch_origin": "dely dispatch",
+            "phase": "implement",
+            "route": {
+                "provider": "9router",
+                "harness": "Codex CLI",
+                "model": "ag/gemini-3.8-flash-high",
+                "effort": "high",
+            },
+            "launch_requested": {
+                "harness": "Codex CLI",
+                "provider": "9router",
+                "route": "ag/gemini-3.8-flash-high",
+                "effort": "high",
+            },
+            "live_terminal_evidence": {
+                "harness": "Codex CLI",
+                "provider": "9router",
+                "route": "ag/gemini-3.8-flash-high",
+                "archive_reference": "ref_r16_02",
+                "verified": True,
+                "delivery_task_id": self.delivery_id,
+                "dispatch_id": self.intended_disp,
+                "effort": "high",
+            },
+            "usage_evidence": {
+                "backend_provider": "google",
+                "backend_model": "ag/gemini-3.8-flash-high",
+                "recorded_after_dispatch": True,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "request_id": "req_r16_02",
+                "delivery_task_id": self.delivery_id,
+                "dispatch_id": self.intended_disp,
+                "router": "9router",
+            },
+        }
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            validate_execution_envelope(env_dict)
+        self.assertIn("launch_effective", str(ctx2.exception).lower())
+
+    def test_r16_03_malformed_non_mapping_launch_evidence_fails_closed(self):
+        """3. Counterexample: Malformed non-mapping launch fields fail closed."""
+        for bad_val in ("Codex CLI", ["Codex CLI"], 123, True, {}):
+            env_req = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id)
+            env_req.launch_requested = bad_val
+            with self.assertRaises(RoutingEvidenceError) as ctx1:
+                validate_execution_envelope(env_req)
+            self.assertTrue("mapping" in str(ctx1.exception).lower() or "empty" in str(ctx1.exception).lower())
+
+            env_eff = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id)
+            env_eff.launch_effective = bad_val
+            with self.assertRaises(RoutingEvidenceError) as ctx2:
+                validate_execution_envelope(env_eff)
+            self.assertTrue("mapping" in str(ctx2.exception).lower() or "empty" in str(ctx2.exception).lower())
+
+    def test_r16_04_missing_or_blank_fields_in_launch_evidence_fails_closed(self):
+        """4. Counterexample: Missing or blank fields in launch evidence fail closed."""
+        fields = ("harness", "provider", "model", "effort")
+        for f in fields:
+            # Missing in launch_requested
+            env1 = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id)
+            del env1.launch_requested[f]
+            if f == "model" and "route" in env1.launch_requested:
+                del env1.launch_requested["route"]
+            with self.assertRaises(RoutingEvidenceError) as ctx1:
+                validate_execution_envelope(env1)
+            self.assertIn("missing required", str(ctx1.exception).lower())
+
+            # Blank in launch_requested
+            env2 = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id)
+            env2.launch_requested[f] = "   "
+            if f == "model" and "route" in env2.launch_requested:
+                env2.launch_requested["route"] = "   "
+            with self.assertRaises(RoutingEvidenceError) as ctx2:
+                validate_execution_envelope(env2)
+            self.assertTrue("non-blank" in str(ctx2.exception).lower() or "missing required" in str(ctx2.exception).lower())
+
+    def test_r16_05_wrong_harness_in_launch_evidence_fails_closed(self):
+        """5. Counterexample: Antigravity native or wrong harness in launch evidence fails closed."""
+        for bad_h in ("Antigravity native", "antigravity", "Claude Code", "CustomHarness"):
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+            env.launch_requested["harness"] = bad_h
+            env.launch_effective["harness"] = bad_h
+            with self.assertRaises(RoutingEvidenceError) as ctx:
+                validate_execution_envelope(env)
+            self.assertTrue("harness" in str(ctx.exception).lower() or "forbidden" in str(ctx.exception).lower())
+
+    def test_r16_06_wrong_provider_in_launch_evidence_fails_closed(self):
+        """6. Counterexample: Antigravity native, direct-vendor, or foreign provider in launch evidence fails closed."""
+        for bad_p in ("Antigravity native", "antigravity", "direct-vendor", "direct", "openai", "google"):
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id)
+            env.launch_requested["provider"] = bad_p
+            env.launch_effective["provider"] = bad_p
+            with self.assertRaises(RoutingEvidenceError) as ctx:
+                validate_execution_envelope(env)
+            self.assertTrue("provider" in str(ctx.exception).lower() or "9router" in str(ctx.exception).lower())
+
+    def test_r16_07_wrong_model_or_combined_slug_in_launch_evidence_fails_closed(self):
+        """7. Counterexample: Wrong model or combined slug in launch evidence fails closed."""
+        # Combined slug
+        env_slug = make_execution_envelope(self.delivery_id, self.intended_disp, phase="review", orca_task_id=self.orca_task_id)
+        env_slug.launch_requested["model"] = "cx/gpt-5.6-sol-high"
+        env_slug.launch_requested["route"] = "cx/gpt-5.6-sol-high"
+        env_slug.launch_effective["model"] = "cx/gpt-5.6-sol-high"
+        env_slug.launch_effective["route"] = "cx/gpt-5.6-sol-high"
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            validate_execution_envelope(env_slug)
+        self.assertIn("combined", str(ctx1.exception).lower())
+
+        # Astra's exact counterexample: wrong-model
+        env_wrong = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env_wrong.launch_requested["model"] = "wrong-model"
+        env_wrong.launch_requested["route"] = "wrong-model"
+        env_wrong.launch_effective["model"] = "wrong-model"
+        env_wrong.launch_effective["route"] = "wrong-model"
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            validate_execution_envelope(env_wrong)
+        self.assertIn("does not match expected model", str(ctx2.exception).lower())
+
+    def test_r16_08_wrong_effort_in_launch_evidence_fails_closed(self):
+        """8. Counterexample: Non-high effort in launch evidence fails closed."""
+        for bad_eff in ("medium", "low", "default", "none"):
+            env = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id)
+            env.launch_requested["effort"] = bad_eff
+            env.launch_effective["effort"] = bad_eff
+            with self.assertRaises(RoutingEvidenceError) as ctx:
+                validate_execution_envelope(env)
+            self.assertIn("effort", str(ctx.exception).lower())
+
+    def test_r16_09_disagreement_between_requested_and_effective_fails_closed(self):
+        """9. Counterexample: Disagreement between launch_requested and launch_effective fails closed."""
+        # Harness disagreement
+        env_h = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env_h.launch_effective["harness"] = "Claude Code"
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            validate_execution_envelope(env_h)
+        self.assertIn("contradictory", str(ctx1.exception).lower())
+
+        # Provider disagreement
+        env_p = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id)
+        env_p.launch_effective["provider"] = "direct-vendor"
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            validate_execution_envelope(env_p)
+        self.assertTrue("provider" in str(ctx2.exception).lower() or "contradictory" in str(ctx2.exception).lower())
+
+        # Model disagreement
+        env_m = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env_m.launch_effective["model"] = "wrong-model"
+        env_m.launch_effective["route"] = "wrong-model"
+        with self.assertRaises(RoutingEvidenceError) as ctx3:
+            validate_execution_envelope(env_m)
+        self.assertTrue("model" in str(ctx3.exception).lower() or "contradictory" in str(ctx3.exception).lower())
+
+        # Effort disagreement
+        env_e = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id)
+        env_e.launch_effective["effort"] = "medium"
+        with self.assertRaises(RoutingEvidenceError) as ctx4:
+            validate_execution_envelope(env_e)
+        self.assertTrue("effort" in str(ctx4.exception).lower() or "contradictory" in str(ctx4.exception).lower())
+
+    def test_r16_10_disagreement_between_launch_and_route_fails_closed(self):
+        """10. Counterexample: Disagreement between launch evidence and envelope route fails closed."""
+        # Route harness differs from launch harness
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env.route["harness"] = "Claude Code"
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env)
+        self.assertIn("harness", str(ctx.exception).lower())
+
+    def test_r16_11_disagreement_between_launch_and_live_terminal_evidence_fails_closed(self):
+        """11. Counterexample: Disagreement between launch evidence and live terminal evidence fails closed."""
+        # Live terminal harness differs
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env.live_terminal_evidence.harness = "Claude Code"
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env)
+        self.assertIn("live terminal", str(ctx.exception).lower())
+
+    def test_r16_12_disagreement_between_launch_and_usage_evidence_fails_closed(self):
+        """12. Counterexample: Disagreement between launch evidence and 9Router usage evidence fails closed."""
+        # Usage router differs from launch provider
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env.usage_evidence.router = "direct_vendor"
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            validate_execution_envelope(env)
+        self.assertTrue("9router" in str(ctx.exception).lower() or "contradictory" in str(ctx.exception).lower())
+
+    def test_r16_13_contradictory_internal_keys_in_launch_evidence_fails_closed(self):
+        """13. Counterexample: Contradictory model vs route or provider vs router within launch evidence fails closed."""
+        # Contradictory model and route
+        env1 = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env1.launch_requested["route"] = "wrong-model"
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            validate_execution_envelope(env1)
+        self.assertIn("contradictory", str(ctx1.exception).lower())
+
+        # Contradictory provider and router
+        env2 = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env2.launch_requested["router"] = "direct-vendor"
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            validate_execution_envelope(env2)
+        self.assertIn("contradictory", str(ctx2.exception).lower())
+
+    def test_r16_14_astra_phase_rejected_as_envelope_phase(self):
+        """14. Contract: Astra is supreme-audit control-plane dispatch and is strictly rejected as Dely envelope phase."""
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            make_execution_envelope(self.delivery_id, self.intended_disp, phase="astra", orca_task_id=self.orca_task_id)
+        self.assertIn("invalid phase", str(ctx1.exception).lower())
+
+        # Manual dict with phase="astra"
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        env_dict = {
+            "delivery_task_id": self.delivery_id,
+            "dispatch_id": self.intended_disp,
+            "orca_task_id": self.orca_task_id,
+            "dispatch_origin": "dely dispatch",
+            "phase": "astra",
+            "route": {"provider": "9router", "harness": "Codex CLI", "model": "ag/gemini-3.8-flash-high", "effort": "high"},
+            "launch_requested": env.launch_requested,
+            "launch_effective": env.launch_effective,
+            "live_terminal_evidence": env.live_terminal_evidence,
+            "usage_evidence": env.usage_evidence,
+        }
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            validate_execution_envelope(env_dict)
+        self.assertIn("invalid execution envelope phase", str(ctx2.exception).lower())
+
+    def test_r16_15_positive_control_valid_launch_evidence_succeeds_both_phases(self):
+        """15. Positive control: Valid implement and review envelopes with exact launch evidence pass validation."""
+        env_impl = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id)
+        errors_impl = validate_execution_envelope(env_impl, expected_phase="implement")
+        self.assertEqual(errors_impl, [])
+
+        env_rev = make_execution_envelope(self.delivery_id, self.intended_disp, phase="review", orca_task_id=self.orca_task_id)
+        errors_rev = validate_execution_envelope(env_rev, expected_phase="review")
+        self.assertEqual(errors_rev, [])
+
+    def test_r16_16_fail_before_side_effects_on_invalid_launch_evidence_with_expired_lease(self):
+        """16. Counterexample: Contradictory/invalid launch evidence with expired lease raises RoutingEvidenceError with zero side effects."""
+        # Antigravity native in launch evidence + expired active lease
+        env_bad = make_execution_envelope(self.delivery_id, self.intended_disp, orca_task_id=self.orca_task_id)
+        env_bad.launch_requested["provider"] = "antigravity"
+        env_bad.launch_effective["provider"] = "antigravity"
+
+        with self.assertRaises(RoutingEvidenceError) as ctx:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id=self.orca_task_id,
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=self.past_expiry,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_bad,
+            )
+        self.assertTrue("antigravity" in str(ctx.exception).lower() or "provider" in str(ctx.exception).lower())
+        self._assert_zero_side_effects()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

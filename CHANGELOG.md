@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-29 — Khắc phục phát hiện Astra supreme audit dispatch vòng 16 (Mandatory Launch Evidence Validation & Mutual Binding)
+
+- Khắc phục triệt để phát hiện blocker từ Astra supreme audit dispatch `ctx_f3936df94ecf` trên HEAD `34f9af5ade2b8991912f622a6b45b39a57cf6d91` cho bundle `docs/parallel-delivery/`:
+  - **(1) Bắt Buộc Cặp Bằng Chứng Khởi Chạy Máy Đọc Được (Machine-Readable Launch Mappings)**: Mọi execution envelope đều bắt buộc phải cung cấp cả hai trường `launch_requested` và `launch_effective` dưới dạng mapping máy đọc được (non-empty mapping), từ chối fail-closed ngay lập tức nếu thiếu (None / omitted) hoặc sai kiểu dữ liệu (non-mapping).
+  - **(2) Xác Thực Nghiêm Ngặt Định Danh Theo Phase**: Cả `launch_requested` và `launch_effective` bắt buộc phải chứa đầy đủ 4 trường định danh riêng biệt không được để trống: `harness`, `provider` (hoặc `router`), `model` (hoặc `route`) và `effort`. Khóa chính xác định danh theo phase: phase `implement` = `Codex CLI` + `9router` + `ag/gemini-3.8-flash-high` + `high`; phase `review` = `Claude Code` + `9router` + `cx/gpt-5.6-sol` + `high`. Cấm tuyệt đối fallback sang `Antigravity native`, cấm nhà cung cấp `direct-vendor`/ngoại lai, cấm model sai và cấm slug gộp model/effort.
+  - **(3) Ràng Buộc Tương Hỗ Chặt Chẽ (Mutual Binding)**: Ràng buộc chặt chẽ `launch_requested` và `launch_effective` với nhau (từ chối fail-closed nếu có bất kỳ sự sai lệch nào giữa requested và effective), đồng thời ràng buộc nhất quán với trường `route` của envelope, neo bằng chứng `live_terminal_evidence`, bằng chứng sử dụng `usage_evidence` và phase tương ứng.
+  - **(4) Từ Chối Tuyệt Đối Phase Không Hợp Lệ**: Tái khẳng định Astra là phân phối supreme-audit control-plane độc lập, không phải là phase review trong envelope của Dely; bất kỳ envelope nào khai báo phase `astra` đều bị từ chối fail-closed.
+  - **(5) Bộ Fixture Phân Biệt Tự Động 235/235 PASS**: Bổ sung lớp kiểm thử `TestAstraRound16LaunchEvidenceValidation` với 16 bài test discriminating RED/GREEN và đối chứng độc lập trong `test_negative_fixtures.py`, nâng tổng số test lên 235/235 passed 100%.
+  - **(6) Bảo Toàn Toàn Bộ Invariants**: Bảo toàn trọn vẹn toàn bộ 219 fixture hiện hữu, các bất biến định danh, backend, lease/fencing và cơ chế fail-before-side-effect trước đó.
+
 ## 2026-09-29 — Khắc phục phát hiện Sol re-review vòng 15 (Fail-Before-Side-Effect Validation Ordering Preceding Lease Purge)
 
 - Khắc phục triệt để phát hiện blocking từ Sol review dispatch `ctx_0ece9399b481` trên HEAD `8f27b701efb452cbe6c9acdd1a028160e776ba7a` cho bundle `docs/parallel-delivery/`:

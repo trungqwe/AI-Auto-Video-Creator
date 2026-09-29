@@ -1142,6 +1142,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "sol_round_15": {
                     "1_fail_before_side_effect_execution_envelope_validation_precedes_lease_purge": "RESOLVED",
                 },
+                "astra_round_16": {
+                    "1_mandatory_launch_requested_and_effective_mappings": "RESOLVED",
+                    "2_exact_phase_harness_provider_model_effort_validation": "RESOLVED",
+                    "3_requested_effective_route_terminal_usage_mutual_binding": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

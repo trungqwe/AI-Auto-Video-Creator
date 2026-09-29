@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from collections.abc import Mapping
 
 try:
     import yaml
@@ -1156,6 +1157,91 @@ _MUTABLE_DB_PATH_RE = re.compile(
 )
 
 
+_DEFAULT_LAUNCH = object()
+
+
+def _validate_launch_mapping(
+    mapping: Any,
+    label: str,
+) -> Tuple[str, str, str, str]:
+    """Validate a launch evidence mapping (launch_requested or launch_effective).
+    Returns normalized (harness, provider, model, effort)."""
+    if mapping is None:
+        raise RoutingEvidenceError(f"Execution envelope missing required field {label!r}; fails closed")
+    if not isinstance(mapping, Mapping):
+        raise RoutingEvidenceError(
+            f"Execution envelope {label!r} must be a machine-readable mapping; got {type(mapping).__name__}"
+        )
+    if not mapping:
+        raise RoutingEvidenceError(f"Execution envelope {label!r} is empty; fails closed")
+
+    # 1. Harness check
+    h = mapping.get("harness")
+    if not isinstance(h, str) or not h.strip():
+        raise RoutingEvidenceError(f"{label} missing required non-blank field 'harness'")
+    clean_h = h.strip()
+    if "antigravity" in clean_h.lower():
+        raise RoutingEvidenceError(
+            f"Antigravity native harness {h!r} in {label} is strictly forbidden; fails closed"
+        )
+
+    # 2. Provider / Router check
+    has_provider = "provider" in mapping
+    has_router = "router" in mapping
+    if not has_provider and not has_router:
+        raise RoutingEvidenceError(f"{label} missing required non-blank field 'provider'")
+    p = mapping.get("provider") if has_provider else mapping.get("router")
+    if not isinstance(p, str) or not p.strip():
+        raise RoutingEvidenceError(f"{label} missing required non-blank field 'provider'")
+    clean_p = p.strip()
+    if "antigravity" in clean_p.lower():
+        raise RoutingEvidenceError(
+            f"Antigravity native provider {p!r} in {label} is strictly forbidden; fails closed"
+        )
+    if clean_p != "9router":
+        raise RoutingEvidenceError(
+            f"{label} provider {clean_p!r} is invalid; route provider MUST be '9router'"
+        )
+    if has_provider and has_router:
+        r_val = str(mapping["router"]).strip() if mapping["router"] is not None else ""
+        if clean_p != r_val:
+            raise RoutingEvidenceError(
+                f"Contradictory provider and router in {label}: provider={mapping['provider']!r}, router={mapping['router']!r}"
+            )
+
+    # 3. Model / Route check
+    has_model = "model" in mapping
+    has_route = "route" in mapping
+    if not has_model and not has_route:
+        raise RoutingEvidenceError(f"{label} missing required non-blank field 'model'/'route'")
+    m = mapping.get("model") if has_model else mapping.get("route")
+    if not isinstance(m, str) or not m.strip():
+        raise RoutingEvidenceError(f"{label} missing required non-blank field 'model'/'route'")
+    clean_m = m.strip()
+    if clean_m in ("cx/gpt-5.6-sol-high", "cx/gpt-5.6-sol:high", "ag/gemini-3.8-flash-high-high"):
+        raise RoutingEvidenceError(
+            f"Combined model/effort slug {clean_m!r} in {label} is invalid; model and effort MUST be separate fields"
+        )
+    if has_model and has_route:
+        route_val = str(mapping["route"]).strip() if mapping["route"] is not None else ""
+        if clean_m != route_val:
+            raise RoutingEvidenceError(
+                f"Contradictory model and route in {label}: model={mapping['model']!r}, route={mapping['route']!r}"
+            )
+
+    # 4. Effort check
+    e = mapping.get("effort")
+    if not isinstance(e, str) or not e.strip():
+        raise RoutingEvidenceError(f"{label} missing required non-blank field 'effort'")
+    clean_e = e.strip().lower()
+    if clean_e != "high":
+        raise RoutingEvidenceError(
+            f"{label} effort {e!r} is invalid; expected 'high'"
+        )
+
+    return clean_h, clean_p, clean_m, clean_e
+
+
 def make_execution_envelope(
     delivery_task_id: str,
     dispatch_id: str,
@@ -1171,6 +1257,8 @@ def make_execution_envelope(
     recorded_after_dispatch: bool = True,
     now: Optional[datetime] = None,
     orca_task_id: Optional[str] = None,
+    launch_requested: Any = _DEFAULT_LAUNCH,
+    launch_effective: Any = _DEFAULT_LAUNCH,
 ) -> ExecutionEnvelope:
     """Factory to build a valid, machine-readable execution envelope anchored to
     exact delivery_task_id, dispatch_id, and phase."""
@@ -1225,6 +1313,22 @@ def make_execution_envelope(
         if (orca_task_id is not None and isinstance(orca_task_id, str))
         else (orca_task_id if orca_task_id is not None else f"orca-{delivery_task_id.lower()}")
     )
+    if launch_requested is _DEFAULT_LAUNCH:
+        launch_requested = {
+            "harness": harness,
+            "provider": provider,
+            "route": model,
+            "model": model,
+            "effort": effort,
+        }
+    if launch_effective is _DEFAULT_LAUNCH:
+        launch_effective = {
+            "harness": harness,
+            "provider": provider,
+            "route": model,
+            "model": model,
+            "effort": effort,
+        }
     return ExecutionEnvelope(
         delivery_task_id=delivery_task_id,
         dispatch_id=dispatch_id,
@@ -1234,8 +1338,8 @@ def make_execution_envelope(
         orca_task_id=clean_orca_tid,
         live_terminal_evidence=live_ev,
         usage_evidence=usage_ev,
-        launch_requested={"harness": harness, "route": model},
-        launch_effective={"harness": harness, "route": model},
+        launch_requested=launch_requested,
+        launch_effective=launch_effective,
     )
 
 
@@ -1406,23 +1510,78 @@ def validate_execution_envelope(
             f"Model mismatch for phase {clean_phase!r}: expected {expected_model!r}, got {clean_m!r}"
         )
 
-    # 6. Evidence sufficiency
-    has_launch_req = data.get("launch_requested") is not None
-    has_launch_eff = data.get("launch_effective") is not None
+    # 6. Launch requested and launch effective validation & mutual binding
+    launch_req = data.get("launch_requested")
+    if "launch_requested" not in data or launch_req is None:
+        raise RoutingEvidenceError("Execution envelope missing required field 'launch_requested'; fails closed")
+    req_h, req_p, req_m, req_e = _validate_launch_mapping(
+        launch_req, "launch_requested"
+    )
+
+    launch_eff = data.get("launch_effective")
+    if "launch_effective" not in data or launch_eff is None:
+        raise RoutingEvidenceError("Execution envelope missing required field 'launch_effective'; fails closed")
+    eff_h, eff_p, eff_m, eff_e = _validate_launch_mapping(
+        launch_eff, "launch_effective"
+    )
+
+
+    # Phase-specific expected identity validation
+    if req_h != expected_harness:
+        raise RoutingEvidenceError(
+            f"launch_requested identifies harness {req_h!r}, expected {expected_harness!r} for phase {clean_phase!r}"
+        )
+    if req_m != expected_model:
+        raise RoutingEvidenceError(
+            f"launch_requested model/route {req_m!r} does not match expected model {expected_model!r} for phase {clean_phase!r}"
+        )
+
+    # Requested vs Effective mutual consistency
+    if req_h != eff_h:
+        raise RoutingEvidenceError(
+            f"Contradictory launch evidence: launch_requested harness {req_h!r} does not match launch_effective harness {eff_h!r}"
+        )
+    if req_p != eff_p:
+        raise RoutingEvidenceError(
+            f"Contradictory launch evidence: launch_requested provider {req_p!r} does not match launch_effective provider {eff_p!r}"
+        )
+    if req_m != eff_m:
+        raise RoutingEvidenceError(
+            f"Contradictory launch evidence: launch_requested model {req_m!r} does not match launch_effective model {eff_m!r}"
+        )
+    if req_e != eff_e:
+        raise RoutingEvidenceError(
+            f"Contradictory launch evidence: launch_requested effort {req_e!r} does not match launch_effective effort {eff_e!r}"
+        )
+
+    # Launch evidence vs Route consistency
+    if req_h != clean_h:
+        raise RoutingEvidenceError(
+            f"Contradictory launch evidence: launch harness {req_h!r} does not match route harness {clean_h!r}"
+        )
+    if req_p != clean_p:
+        raise RoutingEvidenceError(
+            f"Contradictory launch evidence: launch provider {req_p!r} does not match route provider {clean_p!r}"
+        )
+    if req_m != clean_m:
+        raise RoutingEvidenceError(
+            f"Contradictory launch evidence: launch model {req_m!r} does not match route model {clean_m!r}"
+        )
+    if req_e != clean_e:
+        raise RoutingEvidenceError(
+            f"Contradictory launch evidence: launch effort {req_e!r} does not match route effort {clean_e!r}"
+        )
+
+    # Evidence sufficiency: launch evidence alone is insufficient
     live_terminal = data.get("live_terminal_evidence")
     usage_ev = data.get("usage_evidence")
 
-    if (has_launch_req or has_launch_eff) and (not live_terminal or not usage_ev):
+    if not live_terminal or not usage_ev:
         raise RoutingEvidenceError(
             "launch.requested and launch.effective are necessary but insufficient; "
             "dispatch is valid only when live terminal/archive evidence identifies the expected harness/provider "
             "and 9Router usage evidence records the backend request after dispatch"
         )
-
-    if not live_terminal:
-        raise RoutingEvidenceError("Missing live terminal/archive evidence; routing validation fails closed")
-    if not usage_ev:
-        raise RoutingEvidenceError("Missing 9Router usage evidence; routing validation fails closed")
 
     # 7. Live terminal evidence validation
     if isinstance(live_terminal, LiveTerminalEvidence):
@@ -1496,6 +1655,24 @@ def validate_execution_envelope(
             f"Live terminal evidence task ID {live_task!r} does not match task {clean_dtid!r}"
         )
 
+    # Mutual consistency between live terminal evidence and launch evidence
+    if live_h != req_h:
+        raise RoutingEvidenceError(
+            f"Contradictory evidence: live terminal harness {live_h!r} does not match launch harness {req_h!r}"
+        )
+    if live_p != req_p:
+        raise RoutingEvidenceError(
+            f"Contradictory evidence: live terminal provider {live_p!r} does not match launch provider {req_p!r}"
+        )
+    if live_r != req_m:
+        raise RoutingEvidenceError(
+            f"Contradictory evidence: live terminal route {live_r!r} does not match launch model {req_m!r}"
+        )
+    if clean_live_eff != req_e:
+        raise RoutingEvidenceError(
+            f"Contradictory evidence: live terminal effort {clean_live_eff!r} does not match launch effort {req_e!r}"
+        )
+
     # 8. Usage evidence validation
     if isinstance(usage_ev, UsageEvidence):
         u_p = usage_ev.backend_provider
@@ -1522,6 +1699,10 @@ def validate_execution_envelope(
     if clean_u_router != "9router":
         raise RoutingEvidenceError(
             f"9Router usage evidence route source {u_router!r} is invalid; route MUST be via '9router'"
+        )
+    if clean_u_router != req_p:
+        raise RoutingEvidenceError(
+            f"Contradictory evidence: usage router {clean_u_router!r} does not match launch provider {req_p!r}"
         )
 
     if u_after is not True:
@@ -1612,8 +1793,8 @@ def validate_execution_envelope(
 
     # 9. Credential and mutable path safety
     all_strings = []
-    for item in (live_terminal, usage_ev, data.get("evidence_outputs", [])):
-        if isinstance(item, dict):
+    for item in (launch_req, launch_eff, live_terminal, usage_ev, data.get("evidence_outputs", [])):
+        if isinstance(item, Mapping):
             all_strings.extend(str(v) for v in item.values())
         elif hasattr(item, "__dict__"):
             all_strings.extend(str(v) for v in item.__dict__.values())
