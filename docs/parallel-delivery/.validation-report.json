@@ -3,8 +3,8 @@
   "status": "PASS",
   "attestation": {
     "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
-    "candidate_commit": "f4d389570c246ffa88cee34706901a2d6abb2bb0",
-    "parent_commit": "f4d389570c246ffa88cee34706901a2d6abb2bb0",
+    "candidate_commit": "7ac1eb835569c6481b61f607e00fd5e1025e10df",
+    "parent_commit": "7ac1eb835569c6481b61f607e00fd5e1025e10df",
     "wrapper_commit": "HEAD",
     "candidate_is_actual_head": false,
     "committed_changes_count": 20,
@@ -128,10 +128,15 @@
       "2_contradictory_evidence_aliases_validation": "RESOLVED",
       "3_raw_router_identity_strict_end_to_end": "RESOLVED",
       "4_exact_head_attestation_reproducible_canonical_bytes": "RESOLVED"
+    },
+    "sol_lead_review_da26686": {
+      "1_evidence_provenance_internal_authority_freshness_replay_protection": "RESOLVED",
+      "2_unforgeable_internal_lifecycle_capability_and_authoritative_settlement": "RESOLVED",
+      "3_raw_canonical_spelling_across_all_identity_positions": "RESOLVED"
     }
   },
   "fixture_stats": {
-    "tests_run": 297,
+    "tests_run": 313,
     "failures": 0,
     "errors": 0,
     "passed": true
@@ -206,7 +211,7 @@
   ],
   "bundle_sha256": {
     "contract-registry.yaml": "417687b7520f9b0cfc26d7f5a2c0df098581f18ad87ef91c0452356cbb9bfc01",
-    "delivery_engine.py": "da2ca5efa25dd8923f9f5f923b4942a8608f365fa89d4937a6cab49baa0fcfed",
+    "delivery_engine.py": "594679166222efbf9694193bc1c0cd0f847db62745c5d4c0e5e165d63339e33c",
     "merge-and-integration.md": "fe85a843f23057dbc4109eda8a2d40467ac5531d38cd92f6379a5f446318fa29",
     "operating-model.md": "495bc6bb66a75a29e6dc010c184e7e69ff12df6b0e3be6a4d55d40f4e46224f3",
     "ownership-and-locks.yaml": "ca060cf8603f0d98370260dadc088d22e63850b7ae324280c2262008b14760c2",
@@ -214,8 +219,8 @@
     "README.md": "b4f276f5a23e099f20967c12c1506061cc6774c09c6ddfffdf014a0c058458e9",
     "security-performance-recovery.md": "954c65cdcaae28135e9c154406d243b4fafcbe0601eda2d2b3a58e733de53888",
     "task-dag.yaml": "5b3e45b3a52d654cc29800abdb4819746bf9fe0b71548b76cc2f1f0a5254f906",
-    "test_negative_fixtures.py": "5b90f4a75385aa97ed18217641126b3bbd1a311d34456d791df65870ee7ffebf",
+    "test_negative_fixtures.py": "d32a0098b60d56cd964355161ce743c5eb9da90b0ee4e95678685e668ba8dda9",
     "traceability.md": "69caff38f6fe526253071bf8fe3c27d7a7064f4af771a8e88eeddc86ee5632cc",
-    "validate.py": "aa31a45f83b210f799fcc85de80a39193798e4c2e6b5a2aa1dc497207773debc"
+    "validate.py": "a0ba1984d2390824ed9dc5fdf3f28849c6e5c9c998d0837a250a29372f494c53"
   }
 }
