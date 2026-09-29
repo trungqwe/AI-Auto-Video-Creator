@@ -1130,6 +1130,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "1_identity_first_fail_closed_harness_failure_release_bound_leases_only": "RESOLVED",
                     "2_machine_readable_routing_evidence_9router_and_execution_envelope": "RESOLVED",
                 },
+                "sol_round_13": {
+                    "1_fail_closed_execution_envelope_and_dispatch_origin": "RESOLVED",
+                    "2_anchored_identity_binding_live_terminal_and_usage_evidence_freshness": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

@@ -49,6 +49,7 @@ from delivery_engine import (  # noqa: E402
     UsageEvidence,
     ExecutionEnvelope,
     validate_execution_envelope,
+    make_execution_envelope,
     build_contract_catalog,
     check_harness_tool_compatibility,
     check_owned_vs_forbidden,
@@ -261,6 +262,8 @@ class TestF4OrcaMappingAndLifecycle(unittest.TestCase):
             fencing_token=lease.fencing_token,
             lease_id=lease.lease_id,
             intended_dispatch_id=ctx_id,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope(delivery_id, ctx_id),
         )
         return dispatch_id, lease
 
@@ -827,6 +830,8 @@ class TestSolOrcaDeliveryAdapterAdversarialProbes(unittest.TestCase):
             fencing_token=self.lease.fencing_token,
             lease_id=self.lease.lease_id,
             intended_dispatch_id="ctx-setup",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-PILOT", "ctx-setup"),
         )
         self.adapter.acknowledge_dispatch("TASK-PILOT", dispatch_id)
         self.adapter.start_running("TASK-PILOT", dispatch_id)
@@ -867,6 +872,8 @@ class TestSolOrcaDeliveryAdapterAdversarialProbes(unittest.TestCase):
             fencing_token=self.lease.fencing_token,
             lease_id=self.lease.lease_id,
             intended_dispatch_id="ctx-setup",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-PILOT", "ctx-setup"),
         )
         self.adapter.acknowledge_dispatch("TASK-PILOT", dispatch_id)
         self.adapter.start_running("TASK-PILOT", dispatch_id)
@@ -892,6 +899,8 @@ class TestSolOrcaDeliveryAdapterAdversarialProbes(unittest.TestCase):
             fencing_token=self.lease.fencing_token,
             lease_id=self.lease.lease_id,
             intended_dispatch_id="ctx-setup",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-PILOT", "ctx-setup"),
         )
         self.adapter.acknowledge_dispatch("TASK-PILOT", dispatch_id)
         self.adapter.start_running("TASK-PILOT", dispatch_id)
@@ -915,6 +924,8 @@ class TestSolOrcaDeliveryAdapterAdversarialProbes(unittest.TestCase):
             fencing_token=self.lease.fencing_token,
             lease_id=self.lease.lease_id,
             intended_dispatch_id="ctx-setup",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-PILOT", "ctx-setup"),
         )
         self.adapter.acknowledge_dispatch("TASK-PILOT", dispatch_id)
         self.adapter.start_running("TASK-PILOT", dispatch_id)
@@ -1272,6 +1283,8 @@ class TestSolTwentyOneIndependentProbes(unittest.TestCase):
             fencing_token=l.fencing_token,
             lease_id=l.lease_id,
             intended_dispatch_id="ctx-disp",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-PROBE", "ctx-disp"),
         )
         self.adapter.acknowledge_dispatch("TASK-PROBE", disp)
         self.adapter.start_running("TASK-PROBE", disp)
@@ -1309,7 +1322,7 @@ class TestSolTwentyOneIndependentProbes(unittest.TestCase):
 
         # Authority revocation blocks review, integration, and replan
         l = self.mgr.acquire_lease("SOL-LOCK-EXCL", "TASK-OTHER", "ctx-trans")
-        disp = self.adapter.create_dispatch("TASK-OTHER", "orca-t", self.candidate_commit, l.fencing_token, l.lease_id, intended_dispatch_id="ctx-trans")
+        disp = self.adapter.create_dispatch("TASK-OTHER", "orca-t", self.candidate_commit, l.fencing_token, l.lease_id, intended_dispatch_id="ctx-trans", dispatch_origin="dely dispatch", execution_envelope=make_execution_envelope("TASK-OTHER", "ctx-trans"))
         self.adapter.acknowledge_dispatch("TASK-OTHER", disp)
         self.adapter.start_running("TASK-OTHER", disp)
         self.adapter.handle_worker_done("TASK-OTHER", "orca-t", disp, "succeeded", self.candidate_commit, l.fencing_token)
@@ -1456,6 +1469,8 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
                 fencing_token=lease.fencing_token,
                 lease_id=lease.lease_id,
                 intended_dispatch_id="ctx-a",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-a"),
                 now=past_expiry,
             )
         self.assertIn("has expired", str(ctx.exception))
@@ -1470,6 +1485,8 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             fencing_token=lease.fencing_token,
             lease_id=lease.lease_id,
             intended_dispatch_id="ctx-a",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-a"),
         )
         self.assertIsNotNone(disp1)
         self.adapter._task_states["TASK-A"] = "ready"
@@ -1481,6 +1498,8 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
                 fencing_token=lease.fencing_token,
                 lease_id=lease.lease_id,
                 intended_dispatch_id="ctx-a",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-a"),
             )
         self.assertIn("already bound to dispatch", str(ctx.exception))
 
@@ -1525,6 +1544,8 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
                 fencing_token=lease.fencing_token,
                 lease_id=lease.lease_id,
                 intended_dispatch_id="ctx-a",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-a"),
             )
         self.assertIn("does not match approved candidate / HEAD", str(ctx.exception))
 
@@ -1538,6 +1559,8 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             fencing_token=lease_a.fencing_token,
             lease_id=lease_a.lease_id,
             intended_dispatch_id="ctx-a",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-a"),
         )
         lease_b = self.mgr.acquire_lease("R3-LOCK-CAP", "TASK-B", "ctx-b", units=1)
         with self.assertRaises(ProtocolViolationError) as ctx:
@@ -1548,6 +1571,8 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
                 fencing_token=lease_b.fencing_token,
                 lease_id=lease_b.lease_id,
                 intended_dispatch_id="ctx-b",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-B", "ctx-b"),
             )
         self.assertIn("already assigned to delivery task 'TASK-A'", str(ctx.exception))
 
@@ -1579,6 +1604,8 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             lease_id=lease.lease_id,
             intended_dispatch_id="ctx-a",
             now=now_time,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-a", now=now_time),
         )
         self.adapter.acknowledge_dispatch("TASK-A", disp)
         self.adapter.start_running("TASK-A", disp)
@@ -1619,6 +1646,8 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             fencing_token=lease.fencing_token,
             lease_id=lease.lease_id,
             intended_dispatch_id="ctx-a",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-a"),
         )
         self.adapter.acknowledge_dispatch("TASK-A", disp)
         self.adapter.start_running("TASK-A", disp)
@@ -1640,6 +1669,8 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             fencing_token=lease.fencing_token,
             lease_id=lease.lease_id,
             intended_dispatch_id="ctx-a",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-a"),
         )
         self.adapter.acknowledge_dispatch("TASK-A", disp)
         self.adapter.start_running("TASK-A", disp)
@@ -1829,6 +1860,8 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
             fencing_token=lease_a.fencing_token,
             lease_id=lease_a.lease_id,
             intended_dispatch_id="ctx-a",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-a"),
         )
         self.adapter.acknowledge_dispatch("TASK-A", disp_a)
         self.adapter.start_running("TASK-A", disp_a)
@@ -1852,6 +1885,8 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
                 fencing_token=lease_b.fencing_token,
                 lease_id=lease_b.lease_id,
                 intended_dispatch_id="ctx-b",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-B", "ctx-b"),
             )
         self.assertIn("global reuse is forbidden", str(ctx.exception))
 
@@ -1865,6 +1900,8 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
             fencing_token=lease_a.fencing_token,
             lease_id=lease_a.lease_id,
             intended_dispatch_id="ctx-disp-reuse",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-disp-reuse"),
         )
         self.adapter.acknowledge_dispatch("TASK-A", disp_a)
         self.adapter.start_running("TASK-A", disp_a)
@@ -1901,6 +1938,8 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
             fencing_token=lease.fencing_token,
             lease_id=lease.lease_id,
             intended_dispatch_id="ctx-overwrite",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-overwrite"),
         )
         # Attempt to create duplicate binding with same dispatch ID using TASK-B
         lease_b = self.mgr.acquire_lease("R4-LOCK-CAP", "TASK-B", "ctx-overwrite", units=1)
@@ -1912,6 +1951,8 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
                 fencing_token=lease_b.fencing_token,
                 lease_id=lease_b.lease_id,
                 intended_dispatch_id="ctx-overwrite",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-B", "ctx-overwrite"),
             )
         self.assertIn("Duplicate dispatch binding overwrite", str(ctx.exception))
 
@@ -2009,6 +2050,8 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
             fencing_token=lease.fencing_token,
             lease_id=lease.lease_id,
             intended_dispatch_id="ctx-worker-done",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-worker-done"),
         )
         self.adapter.acknowledge_dispatch("TASK-A", disp)
         self.adapter.start_running("TASK-A", disp)
@@ -2269,6 +2312,8 @@ class TestSolRoundFiveCounterexamples(unittest.TestCase):
             fencing_token=lease_a.fencing_token,
             lease_id=lease_a.lease_id,
             intended_dispatch_id="ctx-a-r5",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-a-r5"),
         )
 
         lease_b = self.mgr.acquire_lease("R5-LOCK-CAP", "TASK-B", "ctx-b-r5", units=1)
@@ -2280,6 +2325,8 @@ class TestSolRoundFiveCounterexamples(unittest.TestCase):
                 fencing_token=lease_b.fencing_token,
                 lease_id=lease_b.lease_id,
                 intended_dispatch_id="ctx-b-r5",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-B", "ctx-b-r5"),
             )
         self.assertIn("global reuse is forbidden", str(ctx.exception))
 
@@ -2303,6 +2350,8 @@ class TestSolRoundFiveCounterexamples(unittest.TestCase):
             fencing_token=lease_a.fencing_token,
             lease_id=lease_a.lease_id,
             intended_dispatch_id="ctx-shared-disp",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-shared-disp"),
         )
 
         lease_b = self.mgr.acquire_lease("R5-LOCK-CAP", "TASK-B", "ctx-shared-disp", units=1)
@@ -2314,6 +2363,8 @@ class TestSolRoundFiveCounterexamples(unittest.TestCase):
                 fencing_token=lease_b.fencing_token,
                 lease_id=lease_b.lease_id,
                 intended_dispatch_id="ctx-shared-disp",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-B", "ctx-shared-disp"),
             )
         self.assertIn("Duplicate dispatch binding overwrite", str(ctx.exception))
 
@@ -2384,6 +2435,8 @@ class TestSolRoundFiveCounterexamples(unittest.TestCase):
             fencing_token=lease.fencing_token,
             lease_id=lease.lease_id,
             intended_dispatch_id="ctx-lifecycle-1",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-lifecycle-1"),
         )
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "dispatched")
 
@@ -2417,6 +2470,8 @@ class TestSolRoundFiveCounterexamples(unittest.TestCase):
             fencing_token=lease.fencing_token,
             lease_id=lease.lease_id,
             intended_dispatch_id="ctx-lifecycle-2",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-lifecycle-2"),
         )
         self.adapter.acknowledge_dispatch("TASK-A", disp)
         self.adapter.start_running("TASK-A", disp)
@@ -2484,6 +2539,8 @@ class TestSolRoundFiveCounterexamples(unittest.TestCase):
             fencing_token=lease_excl.fencing_token,
             lease_ids=[lease_excl.lease_id, lease_extra.lease_id],
             intended_dispatch_id="ctx-lock-set",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-lock-set"),
         )
         self.assertEqual(disp, "ctx-lock-set")
 
@@ -2585,6 +2642,8 @@ class TestSolRoundFiveCounterexamples(unittest.TestCase):
             fencing_token=l1.fencing_token,
             lease_ids=[l1.lease_id, l2.lease_id],
             intended_dispatch_id="ctx-wd-rel",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-wd-rel"),
         )
         self.adapter.acknowledge_dispatch("TASK-A", disp)
         self.adapter.start_running("TASK-A", disp)
@@ -2827,6 +2886,8 @@ class TestSolRoundSixCounterexamples(unittest.TestCase):
             fencing_token=lease_a.fencing_token,
             lease_id=lease_a.lease_id,
             intended_dispatch_id="ctx-shared-default-1",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-shared-default-1"),
         )
 
         # adapter2 must see orca-default-task-1 and reject reuse
@@ -2839,6 +2900,8 @@ class TestSolRoundSixCounterexamples(unittest.TestCase):
                 fencing_token=lease_b.fencing_token,
                 lease_id=lease_b.lease_id,
                 intended_dispatch_id="ctx-shared-default-2",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-B", "ctx-shared-default-2"),
             )
         self.assertIn("global reuse is forbidden", str(ctx.exception))
 
@@ -2871,6 +2934,8 @@ class TestSolRoundSixCounterexamples(unittest.TestCase):
             fencing_token=lease_a.fencing_token,
             lease_id=lease_a.lease_id,
             intended_dispatch_id="ctx-life-1",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-life-1"),
         )
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "dispatched")
 
@@ -2894,6 +2959,8 @@ class TestSolRoundSixCounterexamples(unittest.TestCase):
             fencing_token=lease_a.fencing_token,
             lease_id=lease_a.lease_id,
             intended_dispatch_id="ctx-life-2",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx-life-2"),
         )
 
         # 1. worker_done from dispatched fails
@@ -3530,6 +3597,8 @@ class TestSolRoundEightCounterexamples(unittest.TestCase):
                 fencing_token=lease1.fencing_token,
                 lease_id=lease1.lease_id,
                 intended_dispatch_id="ctx-winner",
+                dispatch_origin="dely dispatch",
+                execution_envelope=make_execution_envelope("TASK-A", "ctx-winner"),
             )
             self.assertEqual(disp_winner, "ctx-winner")
 
@@ -3542,6 +3611,8 @@ class TestSolRoundEightCounterexamples(unittest.TestCase):
                     fencing_token=lease2.fencing_token,
                     lease_id=lease2.lease_id,
                     intended_dispatch_id="ctx-loser",
+                    dispatch_origin="dely dispatch",
+                    execution_envelope=make_execution_envelope("TASK-B", "ctx-loser"),
                 )
             self.assertTrue(
                 "already" in str(ctx.exception) or "forbidden" in str(ctx.exception),
@@ -3829,7 +3900,9 @@ class TestSolRoundTenCounterexamples(unittest.TestCase):
         adapter.set_task_state("TASK-R10", "ready")
         lease = mgr.acquire_lease("R10-LOCK-MUT", "TASK-R10", "ctx_r10")
         disp_id = adapter.create_dispatch(
-            "TASK-R10", "orca_task_r10", self.candidate_commit, lease_id=lease.lease_id, intended_dispatch_id="ctx_r10", fencing_token=lease.fencing_token
+            "TASK-R10", "orca_task_r10", self.candidate_commit, lease_id=lease.lease_id, intended_dispatch_id="ctx_r10", fencing_token=lease.fencing_token,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-R10", "ctx_r10"),
         )
         adapter.acknowledge_dispatch("TASK-R10", disp_id)
         adapter.start_running("TASK-R10", disp_id)
@@ -3898,7 +3971,9 @@ class TestSolRound11HarnessFailureLeaseSafety(unittest.TestCase):
         lease = mgr.acquire_lease("R11-LOCK-1", "TASK-R11-1", "ctx_real")
         disp_id = adapter.create_dispatch(
             "TASK-R11-1", "orca_r11_1", self.candidate_commit,
-            lease_id=lease.lease_id, intended_dispatch_id="ctx_real", fencing_token=lease.fencing_token
+            lease_id=lease.lease_id, intended_dispatch_id="ctx_real", fencing_token=lease.fencing_token,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-R11-1", "ctx_real"),
         )
         adapter.acknowledge_dispatch("TASK-R11-1", disp_id)
         adapter.start_running("TASK-R11-1", disp_id)
@@ -3930,7 +4005,9 @@ class TestSolRound11HarnessFailureLeaseSafety(unittest.TestCase):
         lease_a = mgr.acquire_lease("R11-LOCK-A", "TASK-A", "ctx_a")
         disp_a = adapter.create_dispatch(
             "TASK-A", "orca_a", self.candidate_commit,
-            lease_id=lease_a.lease_id, intended_dispatch_id="ctx_a", fencing_token=lease_a.fencing_token
+            lease_id=lease_a.lease_id, intended_dispatch_id="ctx_a", fencing_token=lease_a.fencing_token,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-A", "ctx_a"),
         )
         adapter.acknowledge_dispatch("TASK-A", disp_a)
         adapter.start_running("TASK-A", disp_a)
@@ -3938,7 +4015,9 @@ class TestSolRound11HarnessFailureLeaseSafety(unittest.TestCase):
         lease_b = mgr.acquire_lease("R11-LOCK-B", "TASK-B", "ctx_b")
         disp_b = adapter.create_dispatch(
             "TASK-B", "orca_b", self.candidate_commit,
-            lease_id=lease_b.lease_id, intended_dispatch_id="ctx_b", fencing_token=lease_b.fencing_token
+            lease_id=lease_b.lease_id, intended_dispatch_id="ctx_b", fencing_token=lease_b.fencing_token,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-B", "ctx_b"),
         )
         adapter.acknowledge_dispatch("TASK-B", disp_b)
         adapter.start_running("TASK-B", disp_b)
@@ -3965,7 +4044,9 @@ class TestSolRound11HarnessFailureLeaseSafety(unittest.TestCase):
         lease1 = mgr.acquire_lease("R11-LOCK-DUP", "TASK-DUP", "ctx_dup1")
         disp1 = adapter.create_dispatch(
             "TASK-DUP", "orca_dup1", self.candidate_commit,
-            lease_id=lease1.lease_id, intended_dispatch_id="ctx_dup1", fencing_token=lease1.fencing_token
+            lease_id=lease1.lease_id, intended_dispatch_id="ctx_dup1", fencing_token=lease1.fencing_token,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-DUP", "ctx_dup1"),
         )
         adapter.acknowledge_dispatch("TASK-DUP", disp1)
         adapter.start_running("TASK-DUP", disp1)
@@ -3992,7 +4073,9 @@ class TestSolRound11HarnessFailureLeaseSafety(unittest.TestCase):
         lease1 = mgr.acquire_lease("R11-LOCK-REPLAN", "TASK-REPLAN", "ctx_first")
         disp1 = adapter.create_dispatch(
             "TASK-REPLAN", "orca_first", self.candidate_commit,
-            lease_id=lease1.lease_id, intended_dispatch_id="ctx_first", fencing_token=lease1.fencing_token
+            lease_id=lease1.lease_id, intended_dispatch_id="ctx_first", fencing_token=lease1.fencing_token,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-REPLAN", "ctx_first"),
         )
         adapter.acknowledge_dispatch("TASK-REPLAN", disp1)
         adapter.start_running("TASK-REPLAN", disp1)
@@ -4005,7 +4088,9 @@ class TestSolRound11HarnessFailureLeaseSafety(unittest.TestCase):
         lease2 = mgr.acquire_lease("R11-LOCK-REPLAN", "TASK-REPLAN", "ctx_second")
         disp2 = adapter.create_dispatch(
             "TASK-REPLAN", "orca_second", self.candidate_commit,
-            lease_id=lease2.lease_id, intended_dispatch_id="ctx_second", fencing_token=lease2.fencing_token
+            lease_id=lease2.lease_id, intended_dispatch_id="ctx_second", fencing_token=lease2.fencing_token,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-REPLAN", "ctx_second"),
         )
         adapter.acknowledge_dispatch("TASK-REPLAN", disp2)
         adapter.start_running("TASK-REPLAN", disp2)
@@ -4029,7 +4114,9 @@ class TestSolRound11HarnessFailureLeaseSafety(unittest.TestCase):
         lease = mgr.acquire_lease("R11-LOCK-VALID", "TASK-VALID", "ctx_valid")
         disp_id = adapter.create_dispatch(
             "TASK-VALID", "orca_valid", self.candidate_commit,
-            lease_id=lease.lease_id, intended_dispatch_id="ctx_valid", fencing_token=lease.fencing_token
+            lease_id=lease.lease_id, intended_dispatch_id="ctx_valid", fencing_token=lease.fencing_token,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-VALID", "ctx_valid"),
         )
         adapter.acknowledge_dispatch("TASK-VALID", disp_id)
         adapter.start_running("TASK-VALID", disp_id)
@@ -4056,7 +4143,9 @@ class TestSolRound11HarnessFailureLeaseSafety(unittest.TestCase):
         lease = mgr.acquire_lease("R11-LOCK-TX", "TASK-TX", "ctx_tx")
         disp_id = adapter.create_dispatch(
             "TASK-TX", "orca_tx", self.candidate_commit,
-            lease_id=lease.lease_id, intended_dispatch_id="ctx_tx", fencing_token=lease.fencing_token
+            lease_id=lease.lease_id, intended_dispatch_id="ctx_tx", fencing_token=lease.fencing_token,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope("TASK-TX", "ctx_tx"),
         )
         adapter.acknowledge_dispatch("TASK-TX", disp_id)
         adapter.start_running("TASK-TX", disp_id)
@@ -4233,6 +4322,360 @@ class TestSolRound11RoutingEvidencePolicy(unittest.TestCase):
             validate_execution_envelope(env2)
         self.assertIn("mutable local database path", str(ctx.exception).lower())
 
+
+
+class TestSolRound13FailClosedExecutionEnvelope(unittest.TestCase):
+    """Sol Round 13 Finding F2 remediation: fail-closed execution envelope validation,
+    anchored identity binding, strictly verified live terminal evidence, machine-readable
+    usage evidence freshness, and zero side effects on failure.
+    """
+
+    def setUp(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        self.lock_defs = [{"id": "LOCK-R13", "mode": "exclusive", "renewable": True}]
+        self.mgr = LeaseManager(self.lock_defs)
+        self.delivery_id = "TASK-R13-PROBE"
+        self.mgr.set_task_authority(self.delivery_id, "granted")
+        self.candidate_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT_DIR, text=True
+        ).strip()
+        self.adapter = OrcaDeliveryAdapter(
+            self.mgr,
+            approved_candidate_commit=self.candidate_commit,
+            git_root=ROOT_DIR,
+        )
+        self.adapter.register_task_locks(self.delivery_id, ["LOCK-R13"])
+        self.adapter.set_task_authority(self.delivery_id, "granted")
+        self.adapter.set_task_state(self.delivery_id, "ready")
+        self.intended_disp = "ctx-r13-probe"
+        self.lease = self.mgr.acquire_lease("LOCK-R13", self.delivery_id, self.intended_disp)
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+
+    def _assert_zero_side_effects(self, intended_disp_id="ctx-r13-probe"):
+        """Verify no side effects occurred on task state, active dispatches, bindings, seen dispatches, or leases."""
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "ready")
+        self.assertNotIn(self.delivery_id, self.adapter.active_dispatches)
+        self.assertNotIn(intended_disp_id, self.adapter.dispatch_bindings)
+        self.assertNotIn(intended_disp_id, self.adapter.seen_dispatch_ids)
+        self.assertTrue(self.lease.is_active)
+
+    def test_r13_01_sol_counterexample_dispatch_without_origin_or_envelope_rejected_zero_side_effects(self):
+        """1. Counterexample: create_dispatch without origin or envelope fails closed with zero side effects."""
+        # Exact Sol counterexample: caller omits both dispatch_origin and execution_envelope
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe-1",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+            )
+        self.assertIn("dispatch origin", str(ctx1.exception).lower())
+        self._assert_zero_side_effects()
+
+        # Forbidden direct origin: worker-start
+        for bad_origin in ("worker-start", "orca worker-start", "direct worker-start", "orca", "custom-starter"):
+            with self.assertRaises(RoutingEvidenceError) as ctx2:
+                self.adapter.create_dispatch(
+                    self.delivery_id,
+                    orca_task_id="orca-r13-probe-2",
+                    candidate_commit=self.candidate_commit,
+                    fencing_token=self.lease.fencing_token,
+                    lease_id=self.lease.lease_id,
+                    intended_dispatch_id=self.intended_disp,
+                    dispatch_origin=bad_origin,
+                    execution_envelope=make_execution_envelope(self.delivery_id, self.intended_disp),
+                )
+            self.assertIn("dely dispatch", str(ctx2.exception).lower())
+            self._assert_zero_side_effects()
+
+        # Correct origin 'dely dispatch' but missing envelope
+        with self.assertRaises(RoutingEvidenceError) as ctx3:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe-3",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=None,
+            )
+        self.assertIn("execution envelope", str(ctx3.exception).lower())
+        self._assert_zero_side_effects()
+
+    def test_r13_02_sol_counterexample_missing_identity_fields_rejected_zero_side_effects(self):
+        """2. Counterexample: Missing delivery_task_id, dispatch_id, or phase fails closed."""
+        # Blank / missing delivery_task_id in envelope
+        env_no_task = make_execution_envelope(self.delivery_id, self.intended_disp)
+        env_no_task.delivery_task_id = ""
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_no_task,
+            )
+        self.assertIn("delivery_task_id", str(ctx1.exception).lower())
+        self._assert_zero_side_effects()
+
+        # Blank / missing dispatch_id in envelope
+        env_no_disp = make_execution_envelope(self.delivery_id, self.intended_disp)
+        env_no_disp.dispatch_id = ""
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_no_disp,
+            )
+        self.assertIn("dispatch_id", str(ctx2.exception).lower())
+        self._assert_zero_side_effects()
+
+        # Invalid phase
+        env_bad_phase = make_execution_envelope(self.delivery_id, self.intended_disp)
+        env_bad_phase.phase = "invalid_phase"
+        with self.assertRaises(RoutingEvidenceError) as ctx3:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_bad_phase,
+            )
+        self.assertIn("phase", str(ctx3.exception).lower())
+        self._assert_zero_side_effects()
+
+    def test_r13_03_sol_counterexample_contradictory_unanchored_evidence_rejected_zero_side_effects(self):
+        """3. Counterexample: Unanchored or contradictory terminal/usage evidence fails closed."""
+        # Contradictory live terminal evidence dispatch_id
+        env_contra_disp = make_execution_envelope(self.delivery_id, self.intended_disp)
+        env_contra_disp.live_terminal_evidence.dispatch_id = "ctx-different-disp"
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_contra_disp,
+            )
+        self.assertIn("does not match dispatch", str(ctx1.exception).lower())
+        self._assert_zero_side_effects()
+
+        # Contradictory usage evidence task_id
+        env_contra_task = make_execution_envelope(self.delivery_id, self.intended_disp)
+        env_contra_task.usage_evidence.delivery_task_id = "TASK-DIFFERENT"
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_contra_task,
+            )
+        self.assertIn("does not match task", str(ctx2.exception).lower())
+        self._assert_zero_side_effects()
+
+    def test_r13_04_mismatched_task_dispatch_phase_identities_rejected_zero_side_effects(self):
+        """4. Counterexample: Mismatched task, dispatch, or phase identities fail closed."""
+        # Envelope bound to different task
+        env_mismatch_task = make_execution_envelope("TASK-OTHER-BOUND", self.intended_disp)
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_mismatch_task,
+            )
+        self.assertIn("mismatch", str(ctx1.exception).lower())
+        self._assert_zero_side_effects()
+
+        # Envelope bound to different dispatch
+        env_mismatch_disp = make_execution_envelope(self.delivery_id, "ctx-unauthorized-id")
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_mismatch_disp,
+            )
+        self.assertIn("mismatch", str(ctx2.exception).lower())
+        self._assert_zero_side_effects()
+
+        # Task phase mismatch
+        self.adapter.register_task_phase(self.delivery_id, "implement")
+        env_wrong_phase = make_execution_envelope(self.delivery_id, self.intended_disp, phase="review")
+        with self.assertRaises(RoutingEvidenceError) as ctx3:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_wrong_phase,
+            )
+        self.assertIn("phase mismatch", str(ctx3.exception).lower())
+        self._assert_zero_side_effects()
+
+    def test_r13_05_unverified_terminal_evidence_rejected_zero_side_effects(self):
+        """5. Counterexample: Unverified live terminal evidence fails closed."""
+        # verified is False
+        env_unverified = make_execution_envelope(self.delivery_id, self.intended_disp)
+        env_unverified.live_terminal_evidence.verified = False
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_unverified,
+            )
+        self.assertIn("unverified", str(ctx1.exception).lower())
+        self._assert_zero_side_effects()
+
+        # Non-boolean verified or missing archive reference
+        env_no_ref = make_execution_envelope(self.delivery_id, self.intended_disp)
+        env_no_ref.live_terminal_evidence.archive_reference = ""
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_no_ref,
+            )
+        self.assertIn("archive reference", str(ctx2.exception).lower())
+        self._assert_zero_side_effects()
+
+    def test_r13_06_wrong_backend_provider_and_model_per_phase_rejected_zero_side_effects(self):
+        """6. Counterexample: Wrong backend provider/model for phase fails closed."""
+        # Implement phase with openai provider
+        env_wrong_p = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement")
+        env_wrong_p.usage_evidence.backend_provider = "openai"
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_wrong_p,
+            )
+        self.assertIn("backend_provider", str(ctx1.exception).lower())
+        self._assert_zero_side_effects()
+
+        # Usage route not via 9router
+        env_wrong_route = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement")
+        env_wrong_route.usage_evidence.router = "direct_vendor"
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_wrong_route,
+            )
+        self.assertIn("9router", str(ctx2.exception).lower())
+        self._assert_zero_side_effects()
+
+    def test_r13_07_stale_or_missing_machine_readable_timestamp_rejected_zero_side_effects(self):
+        """7. Counterexample: Usage evidence with stale or missing timestamp fails closed."""
+        now_dt = datetime.now(timezone.utc)
+        stale_ts = (now_dt - timedelta(hours=2)).isoformat()
+        env_stale = make_execution_envelope(self.delivery_id, self.intended_disp, timestamp=stale_ts)
+        with self.assertRaises(RoutingEvidenceError) as ctx1:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                now=now_dt,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_stale,
+            )
+        self.assertIn("earlier than dispatch time", str(ctx1.exception).lower())
+        self._assert_zero_side_effects()
+
+        # Missing timestamp (relying solely on recorded_after_dispatch boolean)
+        env_no_ts = make_execution_envelope(self.delivery_id, self.intended_disp)
+        env_no_ts.usage_evidence.timestamp = None
+        with self.assertRaises(RoutingEvidenceError) as ctx2:
+            self.adapter.create_dispatch(
+                self.delivery_id,
+                orca_task_id="orca-r13-probe",
+                candidate_commit=self.candidate_commit,
+                fencing_token=self.lease.fencing_token,
+                lease_id=self.lease.lease_id,
+                intended_dispatch_id=self.intended_disp,
+                dispatch_origin="dely dispatch",
+                execution_envelope=env_no_ts,
+            )
+        self.assertIn("machine-readable timestamp", str(ctx2.exception).lower())
+        self._assert_zero_side_effects()
+
+    def test_r13_08_valid_envelope_succeeds_and_binds_identities(self):
+        """8. Positive control: Valid execution envelope succeeds, transitions state, and binds identities."""
+        env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement")
+        disp_id = self.adapter.create_dispatch(
+            self.delivery_id,
+            orca_task_id="orca-r13-probe-success",
+            candidate_commit=self.candidate_commit,
+            fencing_token=self.lease.fencing_token,
+            lease_id=self.lease.lease_id,
+            intended_dispatch_id=self.intended_disp,
+            dispatch_origin="dely dispatch",
+            execution_envelope=env,
+        )
+        self.assertEqual(disp_id, self.intended_disp)
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "dispatched")
+        self.assertIn(self.intended_disp, self.adapter.dispatch_bindings)
+        binding = self.adapter.dispatch_bindings[self.intended_disp]
+        self.assertEqual(binding.delivery_task_id, self.delivery_id)
+        self.assertEqual(binding.orca_task_id, "orca-r13-probe-success")
+        self.assertTrue(self.lease.is_active)
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

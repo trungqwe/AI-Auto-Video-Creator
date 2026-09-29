@@ -1105,6 +1105,10 @@ class LiveTerminalEvidence:
     route: str
     archive_reference: Optional[str] = None
     verified: bool = True
+    dispatch_id: Optional[str] = None
+    terminal_id: Optional[str] = None
+    delivery_task_id: Optional[str] = None
+    effort: Optional[str] = None
 
 
 @dataclass
@@ -1114,6 +1118,9 @@ class UsageEvidence:
     recorded_after_dispatch: bool = True
     timestamp: Optional[str] = None
     request_id: Optional[str] = None
+    dispatch_id: Optional[str] = None
+    delivery_task_id: Optional[str] = None
+    router: str = "9router"
 
 
 @dataclass
@@ -1148,21 +1155,105 @@ _MUTABLE_DB_PATH_RE = re.compile(
 )
 
 
+def make_execution_envelope(
+    delivery_task_id: str,
+    dispatch_id: str,
+    phase: str = "implement",
+    harness: Optional[str] = None,
+    model: Optional[str] = None,
+    effort: str = "high",
+    provider: str = "9router",
+    archive_reference: str = "term_archive_default",
+    request_id: str = "req_default_01",
+    timestamp: Optional[str] = None,
+    verified: bool = True,
+    recorded_after_dispatch: bool = True,
+    now: Optional[datetime] = None,
+) -> ExecutionEnvelope:
+    """Factory to build a valid, machine-readable execution envelope anchored to
+    exact delivery_task_id, dispatch_id, and phase."""
+    clean_phase = (phase or "implement").strip()
+    if clean_phase not in ("implement", "review"):
+        raise RoutingEvidenceError(f"Invalid phase {phase!r}; must be 'implement' or 'review'")
+
+    if clean_phase == "implement":
+        harness = harness or "Codex CLI"
+        model = model or "ag/gemini-3.8-flash-high"
+        backend_provider = "google"
+        backend_model = "ag/gemini-3.8-flash-high"
+    else:
+        harness = harness or "Claude Code"
+        model = model or "cx/gpt-5.6-sol"
+        backend_provider = "openai"
+        backend_model = "cx/gpt-5.6-sol"
+
+    now_dt = now or datetime.now(timezone.utc)
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
+    ts = timestamp or (now_dt + timedelta(seconds=1)).isoformat()
+
+    route = {
+        "provider": provider,
+        "harness": harness,
+        "model": model,
+        "effort": effort,
+    }
+    live_ev = LiveTerminalEvidence(
+        harness=harness,
+        provider=provider,
+        route=model,
+        archive_reference=archive_reference,
+        verified=verified,
+        dispatch_id=dispatch_id,
+        delivery_task_id=delivery_task_id,
+        effort=effort,
+    )
+    usage_ev = UsageEvidence(
+        backend_provider=backend_provider,
+        backend_model=backend_model,
+        recorded_after_dispatch=recorded_after_dispatch,
+        timestamp=ts,
+        request_id=request_id,
+        dispatch_id=dispatch_id,
+        delivery_task_id=delivery_task_id,
+        router="9router",
+    )
+    return ExecutionEnvelope(
+        delivery_task_id=delivery_task_id,
+        dispatch_id=dispatch_id,
+        dispatch_origin="dely dispatch",
+        phase=clean_phase,
+        route=route,
+        live_terminal_evidence=live_ev,
+        usage_evidence=usage_ev,
+        launch_requested={"harness": harness, "route": model},
+        launch_effective={"harness": harness, "route": model},
+    )
+
+
 def validate_execution_envelope(
     envelope: Union[ExecutionEnvelope, Dict[str, Any]],
     expected_phase: Optional[str] = None,
+    expected_delivery_task_id: Optional[str] = None,
+    expected_dispatch_id: Optional[str] = None,
+    dispatch_time: Optional[datetime] = None,
 ) -> List[str]:
     """Validate a dispatch execution envelope machine-readably according to repository
     routing authority policy in AGENTS.md:
     - dispatch origin MUST be 'dely dispatch', never direct Orca worker-start;
+    - delivery_task_id and dispatch_id are mandatory required identity fields;
+    - bound identities must match expected delivery task and dispatch attempt;
     - route provider MUST be '9router' for implement and review routes;
     - expected harness, model, and effort MUST be separate fields;
     - combined slugs (such as 'cx/gpt-5.6-sol-high') are strictly invalid;
     - launch requested and effective evidence alone are insufficient;
-    - live terminal/archive evidence MUST identify the expected harness/provider route;
-    - 9Router usage evidence MUST identify the expected backend provider/model after dispatch;
+    - live terminal/archive evidence MUST be verified (verified is True) and identify
+      expected harness/provider route anchored to exact dispatch attempt;
+    - 9Router usage evidence MUST identify expected backend provider/model per phase,
+      prove route via 9router, anchored to exact dispatch, and machine-readable timestamp
+      actually not earlier than dispatch time;
     - evidence references MUST NOT contain raw secrets, credentials, or mutable local db paths;
-    - missing or contradictory evidence fails closed.
+    - missing, contradictory, or unanchored evidence fails closed.
     """
     if isinstance(envelope, ExecutionEnvelope):
         data = {
@@ -1183,7 +1274,31 @@ def validate_execution_envelope(
             f"Execution envelope must be dict or ExecutionEnvelope; got {type(envelope).__name__}"
         )
 
-    # 1. Dispatch origin: MUST be 'dely dispatch'
+    # 1. Delivery Task ID: mandatory and non-blank
+    dtid = data.get("delivery_task_id")
+    clean_dtid = (dtid or "").strip() if isinstance(dtid, str) else ""
+    if not clean_dtid:
+        raise RoutingEvidenceError("Execution envelope missing required field 'delivery_task_id'")
+    if expected_delivery_task_id is not None:
+        clean_exp_dtid = expected_delivery_task_id.strip()
+        if clean_dtid != clean_exp_dtid:
+            raise RoutingEvidenceError(
+                f"Envelope delivery_task_id mismatch: expected {clean_exp_dtid!r}, got {clean_dtid!r}"
+            )
+
+    # 2. Dispatch ID: mandatory and non-blank
+    disp_id = data.get("dispatch_id")
+    clean_disp_id = (disp_id or "").strip() if isinstance(disp_id, str) else ""
+    if not clean_disp_id:
+        raise RoutingEvidenceError("Execution envelope missing required field 'dispatch_id'")
+    if expected_dispatch_id is not None:
+        clean_exp_disp = expected_dispatch_id.strip()
+        if clean_disp_id != clean_exp_disp:
+            raise RoutingEvidenceError(
+                f"Envelope dispatch_id mismatch: expected {clean_exp_disp!r}, got {clean_disp_id!r}"
+            )
+
+    # 3. Dispatch origin: MUST be 'dely dispatch'
     origin = data.get("dispatch_origin")
     clean_origin = (origin or "").strip() if isinstance(origin, str) else ""
     if clean_origin != "dely dispatch":
@@ -1197,14 +1312,15 @@ def validate_execution_envelope(
             f"Invalid dispatch origin {origin!r}; every delivery dispatch MUST go through 'dely dispatch'"
         )
 
-    # 2. Phase
+    # 4. Phase: must be 'implement' or 'review'
     phase = data.get("phase")
-    if phase not in ("implement", "review"):
+    clean_phase = (phase or "").strip() if isinstance(phase, str) else ""
+    if clean_phase not in ("implement", "review"):
         raise RoutingEvidenceError(f"Invalid execution envelope phase {phase!r}; must be 'implement' or 'review'")
-    if expected_phase is not None and phase != expected_phase:
-        raise RoutingEvidenceError(f"Phase mismatch: expected {expected_phase!r}, got {phase!r}")
+    if expected_phase is not None and clean_phase != expected_phase.strip():
+        raise RoutingEvidenceError(f"Phase mismatch: expected {expected_phase!r}, got {clean_phase!r}")
 
-    # 3. Route
+    # 5. Route
     route = data.get("route")
     if not isinstance(route, dict):
         raise RoutingEvidenceError(f"Execution envelope route must be a dict; got {type(route).__name__}")
@@ -1219,7 +1335,7 @@ def validate_execution_envelope(
                 f"implement and review routes MUST use provider '9router'"
             )
         raise RoutingEvidenceError(
-            f"Provider must be '9router' for phase {phase!r}; got {provider!r}. "
+            f"Provider must be '9router' for phase {clean_phase!r}; got {provider!r}. "
             f"Missing or foreign providers fail closed."
         )
 
@@ -1233,10 +1349,10 @@ def validate_execution_envelope(
             f"Antigravity native harness {harness!r} is strictly forbidden; "
             f"repository routing policy requires fail-closed delivery without native fallback"
         )
-    expected_harness = "Codex CLI" if phase == "implement" else "Claude Code"
+    expected_harness = "Codex CLI" if clean_phase == "implement" else "Claude Code"
     if clean_h != expected_harness:
         raise RoutingEvidenceError(
-            f"Harness mismatch for phase {phase!r}: expected {expected_harness!r}, got {clean_h!r}"
+            f"Harness mismatch for phase {clean_phase!r}: expected {expected_harness!r}, got {clean_h!r}"
         )
 
     # Model check: separate field
@@ -1254,7 +1370,7 @@ def validate_execution_envelope(
             "model and effort cannot be combined into a single slug"
         )
     if clean_e != "high":
-        raise RoutingEvidenceError(f"Expected effort 'high' for phase {phase!r}; got {effort!r}")
+        raise RoutingEvidenceError(f"Expected effort 'high' for phase {clean_phase!r}; got {effort!r}")
 
     # Combined slug check
     if clean_m in ("cx/gpt-5.6-sol-high", "cx/gpt-5.6-sol:high", "ag/gemini-3.8-flash-high-high"):
@@ -1262,13 +1378,13 @@ def validate_execution_envelope(
             f"Combined model/effort slug {clean_m!r} is invalid; "
             f"model and effort MUST be separate fields (e.g. model='cx/gpt-5.6-sol', effort='high')"
         )
-    expected_model = "ag/gemini-3.8-flash-high" if phase == "implement" else "cx/gpt-5.6-sol"
+    expected_model = "ag/gemini-3.8-flash-high" if clean_phase == "implement" else "cx/gpt-5.6-sol"
     if clean_m != expected_model:
         raise RoutingEvidenceError(
-            f"Model mismatch for phase {phase!r}: expected {expected_model!r}, got {clean_m!r}"
+            f"Model mismatch for phase {clean_phase!r}: expected {expected_model!r}, got {clean_m!r}"
         )
 
-    # 4. Evidence sufficiency
+    # 6. Evidence sufficiency
     has_launch_req = data.get("launch_requested") is not None
     has_launch_eff = data.get("launch_effective") is not None
     live_terminal = data.get("live_terminal_evidence")
@@ -1286,20 +1402,34 @@ def validate_execution_envelope(
     if not usage_ev:
         raise RoutingEvidenceError("Missing 9Router usage evidence; routing validation fails closed")
 
-    # Live terminal evidence validation
+    # 7. Live terminal evidence validation
     if isinstance(live_terminal, LiveTerminalEvidence):
         live_h = live_terminal.harness
         live_p = live_terminal.provider
         live_r = live_terminal.route
+        live_ver = live_terminal.verified
+        live_ref = live_terminal.archive_reference or live_terminal.terminal_id
+        live_disp = live_terminal.dispatch_id
+        live_task = live_terminal.delivery_task_id
+        live_eff = live_terminal.effort
     elif isinstance(live_terminal, dict):
         if not live_terminal:
             raise RoutingEvidenceError("Live terminal evidence is empty; fails closed")
         live_h = live_terminal.get("harness")
         live_p = live_terminal.get("provider")
         live_r = live_terminal.get("route") or live_terminal.get("model")
+        live_ver = live_terminal.get("verified")
+        live_ref = live_terminal.get("archive_reference") or live_terminal.get("terminal_id")
+        live_disp = live_terminal.get("dispatch_id")
+        live_task = live_terminal.get("delivery_task_id") or live_terminal.get("task_id")
+        live_eff = live_terminal.get("effort")
     else:
         raise RoutingEvidenceError(f"Invalid live_terminal_evidence type: {type(live_terminal).__name__}")
 
+    if live_ver is not True:
+        raise RoutingEvidenceError(
+            f"Live terminal evidence verified must be strictly True (got {live_ver!r}); unverified terminal fails closed"
+        )
     if not live_h or live_h != expected_harness:
         raise RoutingEvidenceError(
             f"Live terminal evidence identifies harness {live_h!r}, expected {expected_harness!r}"
@@ -1312,20 +1442,48 @@ def validate_execution_envelope(
         raise RoutingEvidenceError(
             f"Live terminal evidence identifies route {live_r!r}, expected {expected_model!r}"
         )
+    if live_eff and str(live_eff).strip().lower() != "high":
+        raise RoutingEvidenceError(
+            f"Live terminal evidence identifies effort {live_eff!r}, expected 'high'"
+        )
+    if not live_ref or not str(live_ref).strip():
+        raise RoutingEvidenceError("Live terminal evidence missing terminal/archive reference")
+    if live_disp is not None and str(live_disp).strip() != clean_disp_id:
+        raise RoutingEvidenceError(
+            f"Live terminal evidence dispatch ID {live_disp!r} does not match dispatch {clean_disp_id!r}"
+        )
+    if live_task is not None and str(live_task).strip() != clean_dtid:
+        raise RoutingEvidenceError(
+            f"Live terminal evidence task ID {live_task!r} does not match task {clean_dtid!r}"
+        )
 
-    # Usage evidence validation
+    # 8. Usage evidence validation
     if isinstance(usage_ev, UsageEvidence):
         u_p = usage_ev.backend_provider
         u_m = usage_ev.backend_model
         u_after = usage_ev.recorded_after_dispatch
+        u_ts = usage_ev.timestamp
+        u_disp = usage_ev.dispatch_id
+        u_task = usage_ev.delivery_task_id
+        u_router = usage_ev.router
     elif isinstance(usage_ev, dict):
         if not usage_ev:
             raise RoutingEvidenceError("Usage evidence is empty; fails closed")
         u_p = usage_ev.get("backend_provider") or usage_ev.get("provider")
         u_m = usage_ev.get("backend_model") or usage_ev.get("model")
-        u_after = usage_ev.get("recorded_after_dispatch", False)
+        u_after = usage_ev.get("recorded_after_dispatch")
+        u_ts = usage_ev.get("timestamp")
+        u_disp = usage_ev.get("dispatch_id")
+        u_task = usage_ev.get("delivery_task_id") or usage_ev.get("task_id")
+        u_router = usage_ev.get("router", usage_ev.get("route_provider", usage_ev.get("source", "9router")))
     else:
         raise RoutingEvidenceError(f"Invalid usage_evidence type: {type(usage_ev).__name__}")
+
+    clean_u_router = (u_router or "").strip() if isinstance(u_router, str) else ""
+    if clean_u_router != "9router":
+        raise RoutingEvidenceError(
+            f"9Router usage evidence route source {u_router!r} is invalid; route MUST be via '9router'"
+        )
 
     if u_after is not True:
         raise RoutingEvidenceError(
@@ -1337,16 +1495,68 @@ def validate_execution_envelope(
     if not u_m:
         raise RoutingEvidenceError("9Router usage evidence missing backend_model")
 
-    if phase == "implement" and "gemini-3.8" not in str(u_m).lower() and "flash" not in str(u_m).lower() and "ag/gemini-3.8-flash-high" not in str(u_m):
+    clean_u_p = (u_p or "").strip().lower()
+    clean_u_m = (u_m or "").strip()
+
+    if clean_phase == "implement":
+        if clean_u_p not in ("google", "9router/google"):
+            raise RoutingEvidenceError(
+                f"9Router usage backend_provider {u_p!r} invalid for phase 'implement'; expected 'google'"
+            )
+        if clean_u_m not in ("ag/gemini-3.8-flash-high", "gemini-3.8-flash-high") and ("gemini-3.8" not in clean_u_m.lower() or "flash" not in clean_u_m.lower()):
+            raise RoutingEvidenceError(
+                f"9Router usage backend_model {u_m!r} does not match expected model {expected_model!r}"
+            )
+    elif clean_phase == "review":
+        if clean_u_p not in ("openai", "9router/openai"):
+            raise RoutingEvidenceError(
+                f"9Router usage backend_provider {u_p!r} invalid for phase 'review'; expected 'openai'"
+            )
+        if clean_u_m not in ("cx/gpt-5.6-sol", "gpt-5.6-sol") and "gpt-5.6-sol" not in clean_u_m.lower():
+            raise RoutingEvidenceError(
+                f"9Router usage backend_model {u_m!r} does not match expected model {expected_model!r}"
+            )
+
+    if u_disp is not None and str(u_disp).strip() != clean_disp_id:
         raise RoutingEvidenceError(
-            f"9Router usage evidence backend_model {u_m!r} does not match expected model {expected_model!r}"
+            f"Usage evidence dispatch ID {u_disp!r} does not match dispatch {clean_disp_id!r}"
         )
-    if phase == "review" and "gpt-5.6-sol" not in str(u_m).lower() and "cx/gpt-5.6-sol" not in str(u_m):
+    if u_task is not None and str(u_task).strip() != clean_dtid:
         raise RoutingEvidenceError(
-            f"9Router usage evidence backend_model {u_m!r} does not match expected model {expected_model!r}"
+            f"Usage evidence task ID {u_task!r} does not match task {clean_dtid!r}"
         )
 
-    # Credential and mutable path safety
+    # Timestamp machine-readable validation & freshness
+    if not u_ts or not isinstance(u_ts, (str, int, float)) or (isinstance(u_ts, str) and not u_ts.strip()):
+        raise RoutingEvidenceError(
+            "9Router usage evidence missing machine-readable timestamp; cannot rely solely on recorded_after_dispatch"
+        )
+    try:
+        if isinstance(u_ts, (int, float)):
+            u_dt = datetime.fromtimestamp(u_ts, tz=timezone.utc)
+        else:
+            ts_str = u_ts.strip()
+            if ts_str.endswith("Z"):
+                ts_str = ts_str[:-1] + "+00:00"
+            u_dt = datetime.fromisoformat(ts_str)
+            if u_dt.tzinfo is None:
+                u_dt = u_dt.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError) as exc:
+        raise RoutingEvidenceError(
+            f"9Router usage evidence timestamp {u_ts!r} is not a valid ISO 8601 machine-readable format"
+        ) from exc
+
+    if dispatch_time is not None:
+        dt_comp = dispatch_time
+        if dt_comp.tzinfo is None:
+            dt_comp = dt_comp.replace(tzinfo=timezone.utc)
+        if u_dt < dt_comp:
+            raise RoutingEvidenceError(
+                f"9Router usage evidence timestamp {u_ts!r} ({u_dt.isoformat()}) is earlier than dispatch time "
+                f"{dt_comp.isoformat()}; stale timestamp rejected"
+            )
+
+    # 9. Credential and mutable path safety
     all_strings = []
     for item in (live_terminal, usage_ev, data.get("evidence_outputs", [])):
         if isinstance(item, dict):
@@ -1824,6 +2034,14 @@ class OrcaDeliveryAdapter:
         self.dispatch_counters: Dict[str, int] = {}
         self.last_fencing_tokens: Dict[str, int] = {}
         self.declared_task_locks: Dict[str, List[str]] = dict(declared_task_locks or {})
+        self.task_phases: Dict[str, str] = {}
+
+    def register_task_phase(self, delivery_task_id: str, phase: str) -> None:
+        if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
+            raise ProtocolViolationError("delivery_task_id cannot be blank")
+        if phase not in ("implement", "review"):
+            raise ProtocolViolationError(f"Invalid task phase {phase!r}; must be 'implement' or 'review'")
+        self.task_phases[delivery_task_id.strip()] = phase
 
     @property
     def task_states(self) -> Dict[str, str]:
@@ -1983,6 +2201,7 @@ class OrcaDeliveryAdapter:
         now: Optional[datetime] = None,
         dispatch_origin: Optional[str] = None,
         execution_envelope: Optional[Union[ExecutionEnvelope, Dict[str, Any]]] = None,
+        phase: Optional[str] = None,
     ) -> str:
         """Create a fresh dispatch attempt for a delivery task and bind identities.
         Requires exact nonblank and globally unique Orca task ID, candidate commit existing in git
@@ -2166,14 +2385,6 @@ class OrcaDeliveryAdapter:
                 f"{'; '.join(err_parts)}. Dispatch must prove the complete declared task lock set."
             )
 
-        if dispatch_origin is not None:
-            clean_orig = dispatch_origin.strip() if isinstance(dispatch_origin, str) else ""
-            if clean_orig != "dely dispatch":
-                raise ProtocolViolationError(
-                    f"Illegal dispatch origin {dispatch_origin!r}: every delivery dispatch MUST go through 'dely dispatch'; direct Orca worker-start is forbidden"
-                )
-        if execution_envelope is not None:
-            validate_execution_envelope(execution_envelope)
 
         dispatch_id = intended_dispatch_id
 
@@ -2214,6 +2425,39 @@ class OrcaDeliveryAdapter:
                             f"lease recorded {rec_s}, current counter is {exp_s} (capacity slot reallocation detected)"
                         )
 
+        # Mandatory fail-closed dispatch origin and execution envelope validation:
+        # Every dispatch MUST go through 'dely dispatch' and provide a valid execution envelope.
+        # Validation occurs BEFORE ANY side effects on task state, leases, or registry.
+        clean_orig = (dispatch_origin or "").strip() if isinstance(dispatch_origin, str) else ""
+        if clean_orig != "dely dispatch":
+            clean_lower = clean_orig.lower()
+            if "worker-start" in clean_lower or clean_lower in ("worker-start", "orca worker-start", "direct worker-start", "orca"):
+                raise RoutingEvidenceError(
+                    f"Direct Orca worker-start dispatch origin {dispatch_origin!r} is strictly forbidden; "
+                    f"every delivery dispatch MUST go through 'dely dispatch'"
+                )
+            raise RoutingEvidenceError(
+                f"Invalid dispatch origin {dispatch_origin!r}; every delivery dispatch MUST go through 'dely dispatch'"
+            )
+
+        if execution_envelope is None:
+            raise RoutingEvidenceError(
+                "Missing execution_envelope; every delivery dispatch MUST provide an execution envelope"
+            )
+
+        now_dt = now or datetime.now(timezone.utc)
+        if now_dt.tzinfo is None:
+            now_dt = now_dt.replace(tzinfo=timezone.utc)
+
+        expected_task_phase = phase or getattr(self, "task_phases", {}).get(delivery_task_id)
+
+        validate_execution_envelope(
+            envelope=execution_envelope,
+            expected_phase=expected_task_phase,
+            expected_delivery_task_id=delivery_task_id,
+            expected_dispatch_id=intended_dispatch_id.strip(),
+            dispatch_time=now_dt,
+        )
         slot_fencing_map = {}
         for lid in all_leases:
             l = self.lease_mgr.active_leases[lid]

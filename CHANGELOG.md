@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-29 — Khắc phục phát hiện Sol re-review vòng 13 (Fail-Closed Execution Envelope & Anchored Routing Evidence)
+
+- Khắc phục toàn diện phát hiện F2 từ scoped re-review của Sol trên HEAD wrapper `b2cd8d177a6048d7385dd551190dd5808ba39739` cho bundle `docs/parallel-delivery/`:
+  - **(1) Thực Thi Fail-Closed Dispatch Origin và Execution Envelope Trước Tác Động Phụ**: Mọi lệnh gọi `OrcaDeliveryAdapter.create_dispatch()` bắt buộc phải có `dispatch_origin == "dely dispatch"` và cung cấp `execution_envelope` hợp lệ; kiểm tra fail-closed xảy ra trước mọi side effect lên task state, dispatch registry, binding hay active lease; loại bỏ dứt điểm counterexample `dispatch_without_origin_or_envelope_accepted = ctx-probe`.
+  - **(2) Ràng Buộc Định Danh Bắt Buộc (Mandatory Identity Binding)**: `validate_execution_envelope()` bắt buộc các trường `delivery_task_id`, `dispatch_id`, `phase`, route, live terminal/archive evidence và 9Router usage evidence; đối chiếu chặt chẽ với exact task, intended dispatch attempt và phase đang được tạo, loại bỏ triệt để counterexample `missing_identity_fields_result = []`.
+  - **(3) Bằng Chứng Terminal Đã Xác Thực (Verified Live Terminal Evidence)**: Yêu cầu bắt buộc `live_terminal_evidence.verified is True` (bắt buộc boolean `True`), khớp chính xác harness, route/model, effort `high`, terminal/archive reference và định danh dispatch/task.
+  - **(4) Độ Tươi và Nguồn Bằng Chứng Sử Dụng 9Router (Machine-Readable Usage Freshness)**: Bằng chứng usage phải chứng minh route qua `9router`, backend provider/model đúng phase (`google`/`ag/gemini-3.8-flash-high` cho implement, `openai`/`cx/gpt-5.6-sol` cho review), neo đúng dispatch/task, và timestamp máy đọc được (ISO 8601) thực sự không sớm hơn thời điểm dispatch; không phụ thuộc riêng vào boolean `recorded_after_dispatch`.
+  - **(5) Fixture Suite Tự Động 198/198 PASS**: Bổ sung 8 bài kiểm tra phản ví dụ và kiểm chứng độc lập trong `TestSolRound13FailClosedExecutionEnvelope` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 198/198 passed 100%.
+
 ## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 11 (Identity-First Fail-Closed Harness Failure & Machine-Readable Routing Authority Policy)
 
 - Khắc phục toàn diện phát hiện/blocker từ independent Sol round 11 review cho bundle `docs/parallel-delivery/`:
