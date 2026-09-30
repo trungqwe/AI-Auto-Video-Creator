@@ -3,8 +3,8 @@
   "status": "PASS",
   "attestation": {
     "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
-    "candidate_commit": "b07aa25ee0c53b75ccf873d3e3c0806bb5b5da2f",
-    "parent_commit": "b07aa25ee0c53b75ccf873d3e3c0806bb5b5da2f",
+    "candidate_commit": "40f440ac7c6d1fa3ad714bf80531f211c0c075a2",
+    "parent_commit": "40f440ac7c6d1fa3ad714bf80531f211c0c075a2",
     "wrapper_commit": "HEAD",
     "candidate_is_actual_head": false,
     "committed_changes_count": 20,
@@ -184,10 +184,15 @@
       "3_ticket_issuer_requires_authentic_bootstrap_capability_fail_closed": "RESOLVED",
       "4_provision_channel_verifies_and_consumes_bootstrap_capability_single_use": "RESOLVED",
       "5_rogue_daemon_and_endpoint_rejected_in_fresh_subprocess_verified": "RESOLVED"
+    },
+    "sol_lead_audit_2798fd6": {
+      "1_complete_elimination_of_private_signing_key_from_repository": "RESOLVED",
+      "2_external_signer_daemon_private_key_custody_out_of_process": "RESOLVED",
+      "3_candidate_reading_entire_repo_cannot_mint_bootstrap_capability": "RESOLVED"
     }
   },
   "fixture_stats": {
-    "tests_run": 396,
+    "tests_run": 397,
     "failures": 0,
     "errors": 0,
     "passed": true
@@ -262,16 +267,16 @@
   ],
   "bundle_sha256": {
     "contract-registry.yaml": "417687b7520f9b0cfc26d7f5a2c0df098581f18ad87ef91c0452356cbb9bfc01",
-    "delivery_engine.py": "9f69410f0fdf68c0c60d2b8d3478cfcc71a377d61c8193875e0555f9e63b3c23",
+    "delivery_engine.py": "c272264e0820fd929dde65a205c1a921bb7971132084dd7d49156da7042fc50a",
     "merge-and-integration.md": "8b3d617e4a52c70f72682434b73a33d300f387b83065312351a1543de81deb72",
     "operating-model.md": "288086ccde6a380f91a3f921334d5fa673d437805478926e44aa6d455a7dd92b",
     "ownership-and-locks.yaml": "ca060cf8603f0d98370260dadc088d22e63850b7ae324280c2262008b14760c2",
     "protocol.md": "d485e6131f0ac34c18bcb662581273b7c844ac291f40a14b5de33e6c725ec690",
-    "README.md": "471ecb8869e94b6344adc113e4305cb9154ef9ab70db5f6e9eefe683a33b562a",
-    "security-performance-recovery.md": "5c11091fd1fddc62816826034ebe9c07dc09c817687ab3b9f5070ade1420c60e",
+    "README.md": "074494675e724ae3447405ff27b53d9441075ea4bcc937ac0b103af95f76a38d",
+    "security-performance-recovery.md": "2db9336e76a5fb12723bc34e1c7d427cb2626a9dddd7eefc9d7c4389c2d3f733",
     "task-dag.yaml": "5b3e45b3a52d654cc29800abdb4819746bf9fe0b71548b76cc2f1f0a5254f906",
-    "test_negative_fixtures.py": "8d79686b033300e08564d652a4c86f7e9664ee5b5fa0354371605143f883254b",
-    "traceability.md": "4d0c17b6a934c8c6016c1ce04f86bdc526b01f5cd2b49d8a10c43f99be03adec",
-    "validate.py": "277a1173afa925a6b4d192bfb08a022f0b6ddcd9ec7cf2cbf4c59fa7dcae391b"
+    "test_negative_fixtures.py": "7b7c981f206a7f51f98d3ffe0c03b47159b85ed4d94eac9262c6e1fd97e14fa8",
+    "traceability.md": "61665d966fba4b72fb82ff2b0fff30833ba83e9025fcc98c301db7cc48977859",
+    "validate.py": "73c75371e143e4529d06e5ef7705b70a8784ccd03fa7003f2df58b125cc0649f"
   }
 }
