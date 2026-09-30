@@ -3,8 +3,8 @@
   "status": "PASS",
   "attestation": {
     "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
-    "candidate_commit": "d778769129e66b0957bfb44ca5aab4abc1309e1c",
-    "parent_commit": "d778769129e66b0957bfb44ca5aab4abc1309e1c",
+    "candidate_commit": "d9b3b024954048b87821d85199572e4035edad87",
+    "parent_commit": "d9b3b024954048b87821d85199572e4035edad87",
     "wrapper_commit": "HEAD",
     "candidate_is_actual_head": false,
     "committed_changes_count": 20,
@@ -255,7 +255,7 @@
   ],
   "bundle_sha256": {
     "contract-registry.yaml": "417687b7520f9b0cfc26d7f5a2c0df098581f18ad87ef91c0452356cbb9bfc01",
-    "delivery_engine.py": "c8432a0f1ebbeb2a32e3f8be96e9a061dc7b495ec60d2df7e8e1d2a8b93c1f20",
+    "delivery_engine.py": "2b861b7c8f0cd57f7dd23392b8e88f0e502d38c8cd88477175e898ec5e5d8470",
     "merge-and-integration.md": "8b3d617e4a52c70f72682434b73a33d300f387b83065312351a1543de81deb72",
     "operating-model.md": "288086ccde6a380f91a3f921334d5fa673d437805478926e44aa6d455a7dd92b",
     "ownership-and-locks.yaml": "ca060cf8603f0d98370260dadc088d22e63850b7ae324280c2262008b14760c2",
@@ -263,7 +263,7 @@
     "README.md": "5d8989a2983435e5f1565d15c7e129110bf40d78d88886cd722a948a7b820cfb",
     "security-performance-recovery.md": "363b7028a0b77e032176c800aee29531466da5318964f13dfe702707205005ae",
     "task-dag.yaml": "5b3e45b3a52d654cc29800abdb4819746bf9fe0b71548b76cc2f1f0a5254f906",
-    "test_negative_fixtures.py": "ed279fda5156bac3e5b13a89202ac10c0a7d1e3059c724b583a7f6de886b4af9",
+    "test_negative_fixtures.py": "b6e47fc05ba8a5be39533b6f3a020aef3ed57372dd981853622daedf2abc57dd",
     "traceability.md": "1de67e54bcde280fb1f5c80c1efe90e9cda3e3065d7cdfbcdcabe37d97d46d52",
     "validate.py": "96c848022c9182b2224536409f1fc783073d2f74f2ef1636043b01e4e36c8b1d"
   }
