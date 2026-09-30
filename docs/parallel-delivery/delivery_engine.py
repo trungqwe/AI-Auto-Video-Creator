@@ -1452,6 +1452,14 @@ class EvidenceAuthority:
             raise ProtocolViolationError(
                 "Internal wildcard capability cannot be used to issue review evidence; independently authenticated capability required"
             )
+        if getattr(effective_cap, "delivery_task_id", None) is None or getattr(effective_cap, "delivery_task_id", "") == "*":
+            raise ProtocolViolationError(
+                "Wildcard capability cannot be used to issue review evidence; explicit task-scoped capability required"
+            )
+        if effective_cap.delivery_task_id != (delivery_task_id.strip() if delivery_task_id else ""):
+            raise ProtocolViolationError(
+                f"Capability delivery_task_id mismatch: expected {delivery_task_id!r}, got {effective_cap.delivery_task_id!r}"
+            )
         self.verify_capability(
             effective_cap,
             expected_task_id=delivery_task_id.strip() if delivery_task_id else "",
@@ -1522,6 +1530,14 @@ class EvidenceAuthority:
         if getattr(effective_cap, "capability_id", "").startswith("adapter_internal_"):
             raise ProtocolViolationError(
                 "Internal wildcard capability cannot be used to issue integration evidence; independently authenticated Control capability required"
+            )
+        if getattr(effective_cap, "delivery_task_id", None) is None or getattr(effective_cap, "delivery_task_id", "") == "*":
+            raise ProtocolViolationError(
+                "Wildcard capability cannot be used to issue integration evidence; explicit task-scoped Control capability required"
+            )
+        if effective_cap.delivery_task_id != (delivery_task_id.strip() if delivery_task_id else ""):
+            raise ProtocolViolationError(
+                f"ControlCapability delivery_task_id mismatch: expected {delivery_task_id!r}, got {effective_cap.delivery_task_id!r}"
             )
         self.verify_capability(effective_cap, expected_role="Control", expected_task_id=delivery_task_id.strip() if delivery_task_id else "")
 
@@ -1602,7 +1618,11 @@ class EvidenceAuthority:
             )
             if not hmac.compare_digest(capability.signature, expected_sig):
                 raise ProtocolViolationError("ControlCapability cryptographic signature mismatch; tampered or forged capability rejected")
-            if capability.delivery_task_id is not None and expected_task_id is not None and expected_task_id != "*":
+            if expected_task_id is not None and expected_task_id != "*":
+                if getattr(capability, "delivery_task_id", None) is None or capability.delivery_task_id == "*":
+                    raise ProtocolViolationError(
+                        f"ControlCapability delivery_task_id cannot be wildcard ({capability.delivery_task_id!r}) when expected_task_id ({expected_task_id!r}) is specified"
+                    )
                 if capability.delivery_task_id != expected_task_id:
                     raise ProtocolViolationError(
                         f"ControlCapability delivery_task_id mismatch: expected {expected_task_id!r}, got {capability.delivery_task_id!r}"
@@ -3378,6 +3398,14 @@ class OrcaDeliveryAdapter:
             raise ProtocolViolationError(
                 "Internal wildcard capability cannot be used to issue review evidence; independently authenticated capability required"
             )
+        if getattr(effective_cap, "delivery_task_id", None) is None or getattr(effective_cap, "delivery_task_id", "") == "*":
+            raise ProtocolViolationError(
+                "Wildcard capability cannot be used to issue review evidence; explicit task-scoped capability required"
+            )
+        if effective_cap.delivery_task_id != (delivery_task_id.strip() if delivery_task_id else ""):
+            raise ProtocolViolationError(
+                f"Capability delivery_task_id mismatch: expected {delivery_task_id!r}, got {effective_cap.delivery_task_id!r}"
+            )
         return self.evidence_authority.issue_review_evidence(
             delivery_task_id=delivery_task_id,
             review_dispatch_id=review_dispatch_id,
@@ -3412,6 +3440,14 @@ class OrcaDeliveryAdapter:
         if getattr(effective_cap, "capability_id", "").startswith("adapter_internal_"):
             raise ProtocolViolationError(
                 "Internal wildcard capability cannot be used to issue integration evidence; independently authenticated Control capability required"
+            )
+        if getattr(effective_cap, "delivery_task_id", None) is None or getattr(effective_cap, "delivery_task_id", "") == "*":
+            raise ProtocolViolationError(
+                "Wildcard capability cannot be used to issue integration evidence; explicit task-scoped Control capability required"
+            )
+        if effective_cap.delivery_task_id != (delivery_task_id.strip() if delivery_task_id else ""):
+            raise ProtocolViolationError(
+                f"ControlCapability delivery_task_id mismatch: expected {delivery_task_id!r}, got {effective_cap.delivery_task_id!r}"
             )
         return self.evidence_authority.issue_integration_evidence(
             delivery_task_id=delivery_task_id,

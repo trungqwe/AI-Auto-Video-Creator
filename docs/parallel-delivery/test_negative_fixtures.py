@@ -330,14 +330,14 @@ class TestF4OrcaMappingAndLifecycle(unittest.TestCase):
             dispatch_origin="dely dispatch",
             execution_envelope=rev_env,
         )
-        ctrl_cap = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=delivery_id)
         rev_cap = self.adapter.issue_reviewer_capability(delivery_id, rev_disp, self.candidate_commit, control_capability=ctrl_cap)
         rev_ev = self.adapter.issue_review_evidence(delivery_id, rev_disp, self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap)
         state = self.adapter.handle_review_verdict(delivery_id, "ACCEPT", review_dispatch_id=rev_disp, review_evidence=rev_ev)
         self.assertEqual(state, "merge_queued")
 
         # 3. Integration gates pass moves task to integrated
-        ctrl_cap2 = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap2 = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=delivery_id)
         int_ev = self.adapter.issue_integration_evidence(delivery_id, self.candidate_commit, "4a7c8c921b7e05066505d51b168a02c3fde61317", gates_pass=True, control_capability=ctrl_cap2)
         state = self.adapter.handle_integration_gates(delivery_id, gates_pass=True, integration_evidence=int_ev)
         self.assertEqual(state, "integrated")
@@ -1719,13 +1719,13 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             dispatch_origin="dely dispatch",
             execution_envelope=rev_env,
         )
-        ctrl_cap = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id="TASK-A")
         rev_cap = self.adapter.issue_reviewer_capability("TASK-A", rev_disp, self.candidate_commit, control_capability=ctrl_cap)
         rev_ev = self.adapter.issue_review_evidence("TASK-A", rev_disp, self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap)
         self.adapter.handle_review_verdict("TASK-A", "ACCEPT", review_dispatch_id=rev_disp, review_evidence=rev_ev)
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "merge_queued")
 
-        ctrl_cap2 = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap2 = self.adapter.issue_control_capability(self.control_secret, delivery_task_id="TASK-A")
         int_ev = self.adapter.issue_integration_evidence("TASK-A", self.candidate_commit, "4a7c8c921b7e05066505d51b168a02c3fde61317", gates_pass=True, control_capability=ctrl_cap2)
         for truthy_val in (1, 0, "true", "True", [True], {"pass": True}, None):
             with self.assertRaises(ProtocolViolationError) as ctx:
@@ -2111,12 +2111,12 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
             dispatch_origin="dely dispatch",
             execution_envelope=rev_env,
         )
-        ctrl_cap = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id="TASK-A")
         rev_cap = self.adapter.issue_reviewer_capability("TASK-A", rev_disp, self.candidate_commit, control_capability=ctrl_cap)
         rev_ev = self.adapter.issue_review_evidence("TASK-A", rev_disp, self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap)
         self.adapter.handle_review_verdict("TASK-A", "ACCEPT", review_dispatch_id=rev_disp, review_evidence=rev_ev)
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "merge_queued")
-        ctrl_cap2 = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap2 = self.adapter.issue_control_capability(self.control_secret, delivery_task_id="TASK-A")
         int_ev = self.adapter.issue_integration_evidence("TASK-A", self.candidate_commit, "4a7c8c921b7e05066505d51b168a02c3fde61317", gates_pass=True, control_capability=ctrl_cap2)
         self.adapter.handle_integration_gates("TASK-A", True, integration_evidence=int_ev)
         self.assertEqual(self.adapter.get_task_state("TASK-A"), "integrated")
@@ -2919,12 +2919,12 @@ class TestSolRoundSixCounterexamples(unittest.TestCase):
         SharedOrcaExecutionRegistry.reset_default()
 
     def _issue_valid_review_evidence(self, delivery_id, rev_disp_id, candidate_commit, verdict="ACCEPT", now=None):
-        ctrl_cap = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=delivery_id)
         rev_cap = self.adapter.issue_reviewer_capability(delivery_id, rev_disp_id, candidate_commit, control_capability=ctrl_cap)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
 
     def _issue_valid_integration_evidence(self, delivery_id, candidate_commit, base_commit, gates_pass=True, now=None):
-        ctrl_cap = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=delivery_id)
         return self.adapter.issue_integration_evidence(delivery_id, candidate_commit, base_commit, gates_pass=gates_pass, control_capability=ctrl_cap, now=now)
 
 
@@ -6598,12 +6598,12 @@ class TestAstraRound18Remediation(unittest.TestCase):
     def tearDown(self):
         SharedOrcaExecutionRegistry.reset_default()
     def _issue_valid_review_evidence(self, delivery_id, rev_disp_id, candidate_commit, verdict="ACCEPT", now=None):
-        ctrl_cap = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=delivery_id)
         rev_cap = self.adapter.issue_reviewer_capability(delivery_id, rev_disp_id, candidate_commit, control_capability=ctrl_cap)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
 
     def _issue_valid_integration_evidence(self, delivery_id, candidate_commit, base_commit, gates_pass=True, now=None):
-        ctrl_cap = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=delivery_id)
         return self.adapter.issue_integration_evidence(delivery_id, candidate_commit, base_commit, gates_pass=gates_pass, control_capability=ctrl_cap, now=now)
 
 
@@ -6972,12 +6972,12 @@ class TestSolRound18Remediation(unittest.TestCase):
                 pass
 
     def _issue_valid_review_evidence(self, delivery_id, rev_disp_id, candidate_commit, verdict="ACCEPT", now=None):
-        ctrl_cap = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=delivery_id)
         rev_cap = self.adapter.issue_reviewer_capability(delivery_id, rev_disp_id, candidate_commit, control_capability=ctrl_cap)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
 
     def _issue_valid_integration_evidence(self, delivery_id, candidate_commit, base_commit, gates_pass=True, now=None):
-        ctrl_cap = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=delivery_id)
         return self.adapter.issue_integration_evidence(delivery_id, candidate_commit, base_commit, gates_pass=gates_pass, control_capability=ctrl_cap, now=now)
 
 
@@ -7331,12 +7331,12 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
                 pass
 
     def _issue_valid_review_evidence(self, delivery_id, rev_disp_id, candidate_commit, verdict="ACCEPT", now=None):
-        ctrl_cap = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=delivery_id)
         rev_cap = self.adapter.issue_reviewer_capability(delivery_id, rev_disp_id, candidate_commit, control_capability=ctrl_cap)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
 
     def _issue_valid_integration_evidence(self, delivery_id, candidate_commit, base_commit, gates_pass=True, now=None):
-        ctrl_cap = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=delivery_id)
         return self.adapter.issue_integration_evidence(delivery_id, candidate_commit, base_commit, gates_pass=gates_pass, control_capability=ctrl_cap, now=now)
 
     def _advance_to_running(self):
@@ -7649,12 +7649,12 @@ class TestSolLeadReviewDa26686Remediation(unittest.TestCase):
                 pass
 
     def _issue_valid_review_evidence(self, delivery_id, rev_disp_id, candidate_commit, verdict="ACCEPT", now=None):
-        ctrl_cap = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=delivery_id)
         rev_cap = self.adapter.issue_reviewer_capability(delivery_id, rev_disp_id, candidate_commit, control_capability=ctrl_cap)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
 
     def _issue_valid_integration_evidence(self, delivery_id, candidate_commit, base_commit, gates_pass=True, now=None):
-        ctrl_cap = self.adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=delivery_id)
         return self.adapter.issue_integration_evidence(delivery_id, candidate_commit, base_commit, gates_pass=gates_pass, control_capability=ctrl_cap, now=now)
 
     def _advance_to_running(self):
@@ -8164,7 +8164,7 @@ class TestSolLeadReview36092d0Remediation(unittest.TestCase):
             now=self.t0 + timedelta(seconds=5),
         )
 
-        ctrl_cap = adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = adapter.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
         rev_cap = adapter.get_reviewer_capability(rev_disp_id, control_capability=ctrl_cap)
         self.assertIsInstance(rev_cap, ReviewerCapability)
 
@@ -8176,7 +8176,7 @@ class TestSolLeadReview36092d0Remediation(unittest.TestCase):
         self.assertEqual(adapter.get_task_state(self.delivery_id), "merge_queued")
 
         # 3. Integration evidence issuance and gates
-        ctrl_cap2 = adapter.issue_control_capability(self.control_secret)
+        ctrl_cap2 = adapter.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
         int_ev = adapter.issue_integration_evidence(
             self.delivery_id, self.candidate_commit, self.approved_base, gates_pass=True, control_capability=ctrl_cap2
         )
@@ -8231,7 +8231,7 @@ class TestSolLeadReview36092d0Remediation(unittest.TestCase):
             )
 
         # Single-use consumed capability replay
-        ctrl_cap = adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = adapter.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
         int_ev = adapter.issue_integration_evidence(
             self.delivery_id, self.candidate_commit, self.approved_base, gates_pass=True, control_capability=ctrl_cap
         )
@@ -8250,7 +8250,7 @@ class TestSolLeadReview36092d0Remediation(unittest.TestCase):
             declared_task_locks={self.delivery_id: ["LOCK-PARALLEL-REGISTRY"]},
             control_secret=self.control_secret,
         )
-        ctrl_cap = adapter.issue_control_capability(self.control_secret)
+        ctrl_cap = adapter.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
         rev_cap = adapter.issue_reviewer_capability(
             delivery_task_id=self.delivery_id,
             review_dispatch_id="ctx_36092d0_bind_test",
@@ -8877,3 +8877,134 @@ class TestSolLeadAudit2f56bd3Remediation(unittest.TestCase):
         state = self.adapter.handle_integration_gates(self.delivery_id, gates_pass=True, integration_evidence=int_ev)
         self.assertEqual(state, "integrated")
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
+
+
+# =============================================================================
+# Sol-Lead Audit Remediation Fixtures (after 982ed1e)
+# =============================================================================
+
+class TestSolLeadAudit982ed1eRemediation(unittest.TestCase):
+    """Audit remediation fixtures for exact candidate 982ed1e9264444b00ed13736466f6923255d1b7b:
+    1. Legitimate wildcard ControlCapability (delivery_task_id=None) rejected by issue_integration_evidence.
+    2. Legitimate wildcard ControlCapability (delivery_task_id=None) rejected by issue_review_evidence.
+    3. Wildcard ControlCapability (None or '*') rejected by verify_capability when expected_task_id is specified.
+    4. Adapter external callable surface rejects wildcard ControlCapability fail-closed for evidence issuance.
+    5. Positive control: Authenticated task-scoped ControlCapability and ReviewerCapability issue signed evidence, pass verification, and integrate cleanly.
+    """
+
+    def setUp(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        cmd_head = ["git", "rev-parse", "HEAD"]
+        self.candidate_commit = subprocess.run(cmd_head, cwd=ROOT_DIR, capture_output=True, text=True, check=True).stdout.strip()
+        self.approved_base = "4a7c8c921b7e05066505d51b168a02c3fde61317"
+        self.mgr = LeaseManager([
+            {"id": "LOCK-REMED-982ED1E", "mode": "exclusive", "renewable": True, "lease_seconds": 600},
+        ])
+        self.delivery_id = "TASK-REMED-982ED1E"
+        self.mgr.set_task_authority(self.delivery_id, "granted")
+        self.control_secret = "secret_remed_982ed1e_control"
+        self.adapter = OrcaDeliveryAdapter(
+            self.mgr,
+            approved_candidate_commit=self.candidate_commit,
+            git_root=ROOT_DIR,
+            control_secret=self.control_secret,
+        )
+        self.adapter.set_task_authority(self.delivery_id, "granted")
+        self.adapter.set_task_state(self.delivery_id, "ready")
+        self.adapter.register_task_locks(self.delivery_id, ["LOCK-REMED-982ED1E"])
+        self.ea = self.adapter.evidence_authority
+        self.t0 = datetime(2026, 9, 30, 10, 0, 0, tzinfo=timezone.utc)
+
+    def test_982ed1e_01_wildcard_control_capability_rejected_by_evidence_authority_integration_issuer(self):
+        """1. Counterexample: Legitimate wildcard ControlCapability (delivery_task_id=None) rejected by EvidenceAuthority.issue_integration_evidence."""
+        wildcard_cap = self.ea.issue_control_capability(self.control_secret, delivery_task_id=None)
+        self.assertIsNone(wildcard_cap.delivery_task_id)
+
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.ea.issue_integration_evidence(
+                self.delivery_id,
+                self.candidate_commit,
+                self.approved_base,
+                gates_pass=True,
+                control_capability=wildcard_cap,
+            )
+        self.assertIn("Wildcard", str(ctx.exception))
+
+    def test_982ed1e_02_wildcard_control_capability_rejected_by_evidence_authority_review_issuer(self):
+        """2. Counterexample: Legitimate wildcard ControlCapability (delivery_task_id=None) rejected by EvidenceAuthority.issue_review_evidence."""
+        wildcard_cap = self.ea.issue_control_capability(self.control_secret, delivery_task_id=None)
+        self.assertIsNone(wildcard_cap.delivery_task_id)
+
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.ea.issue_review_evidence(
+                self.delivery_id,
+                "ctx_rev_test_01",
+                self.candidate_commit,
+                "ACCEPT",
+                capability=wildcard_cap,
+            )
+        self.assertIn("Wildcard", str(ctx.exception))
+
+    def test_982ed1e_03_verify_capability_rejects_wildcard_control_capability_when_task_specified(self):
+        """3. Counterexample: verify_capability rejects ControlCapability with delivery_task_id=None or '*' when expected_task_id is concrete."""
+        wildcard_cap_none = self.ea.issue_control_capability(self.control_secret, delivery_task_id=None)
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.ea.verify_capability(wildcard_cap_none, expected_role="Control", expected_task_id=self.delivery_id)
+        self.assertIn("wildcard", str(ctx.exception).lower())
+
+        wildcard_cap_star = self.ea.issue_control_capability(self.control_secret, delivery_task_id="*")
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.ea.verify_capability(wildcard_cap_star, expected_role="Control", expected_task_id=self.delivery_id)
+        self.assertIn("wildcard", str(ctx.exception).lower())
+
+    def test_982ed1e_04_adapter_callable_surface_rejects_wildcard_control_capability_for_evidence(self):
+        """4. Counterexample: Adapter entry points reject wildcard ControlCapability for review and integration evidence."""
+        wildcard_cap1 = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=None)
+        with self.assertRaises(ProtocolViolationError) as ctx1:
+            self.adapter.issue_integration_evidence(
+                self.delivery_id,
+                self.candidate_commit,
+                self.approved_base,
+                gates_pass=True,
+                control_capability=wildcard_cap1,
+            )
+        self.assertIn("Wildcard", str(ctx1.exception))
+
+        wildcard_cap2 = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=None)
+        with self.assertRaises(ProtocolViolationError) as ctx2:
+            self.adapter.issue_review_evidence(
+                self.delivery_id,
+                "ctx_rev_test_02",
+                self.candidate_commit,
+                "ACCEPT",
+                capability=wildcard_cap2,
+            )
+        self.assertIn("Wildcard", str(ctx2.exception))
+
+    def test_982ed1e_05_positive_control_task_scoped_control_capability_and_reviewer_capability_succeed(self):
+        """5. Positive control: Authenticated task-scoped ControlCapability and ReviewerCapability issue evidence and integrate cleanly."""
+        # Task-scoped ControlCapability for ReviewerCapability minting
+        ctrl_for_rev = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        rev_cap = self.ea.issue_reviewer_capability(
+            self.delivery_id, "ctx_rev_pos_01", self.candidate_commit, control_capability=ctrl_for_rev
+        )
+        self.assertEqual(rev_cap.delivery_task_id, self.delivery_id)
+
+        # Review evidence issued with ReviewerCapability
+        rev_ev = self.ea.issue_review_evidence(
+            self.delivery_id, "ctx_rev_pos_01", self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap
+        )
+        self.assertIsInstance(rev_ev, ReviewEvidence)
+
+        # Integration evidence issued with task-scoped ControlCapability
+        gate_results = {g: True for g in MANDATORY_INTEGRATION_GATES}
+        ctrl_for_int = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        int_ev = self.ea.issue_integration_evidence(
+            delivery_task_id=self.delivery_id,
+            candidate_commit=self.candidate_commit,
+            base_commit=self.approved_base,
+            gates_pass=True,
+            gate_results=gate_results,
+            control_capability=ctrl_for_int,
+        )
+        self.assertIsInstance(int_ev, IntegrationEvidence)

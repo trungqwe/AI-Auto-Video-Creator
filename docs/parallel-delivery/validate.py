@@ -1206,6 +1206,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "2_token_minting_unable_to_confer_authority_to_ordinary_callers": "RESOLVED",
                     "3_internal_lifecycle_execution_boundary_hardened_against_bypass": "RESOLVED",
                 },
+                "sol_lead_audit_982ed1e": {
+                    "1_wildcard_control_capability_rejected_by_evidence_issuers": "RESOLVED",
+                    "2_verify_capability_rejects_wildcard_for_concrete_task": "RESOLVED",
+                    "3_discriminating_negative_fixtures_verify_fail_closed_wildcard": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

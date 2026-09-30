@@ -59,3 +59,8 @@
 ## Điểm tiếp tục
 
 Chờ checkpoint thiết kế/independent review riêng cho P8 hoặc checkpoint riêng để pilot kiến trúc parallel delivery trên scope đã được cấp quyền. Không bắt đầu P8 Behavioral RED, P8/P9 implementation, M3 hoặc Phân hệ A từ bundle đề xuất này.
+- Đã khắc phục triệt để toàn bộ phát hiện blocker từ Sol-Lead audit trên 982ed1e:
+  1. Khóa chặt các bề mặt phát hành bằng chứng trước wildcard ControlCapability: `issue_review_evidence()` và `issue_integration_evidence()` trên cả `EvidenceAuthority` và `OrcaDeliveryAdapter` từ chối fail-closed mọi capability có `delivery_task_id` là `None` hoặc `"*"`.
+  2. Khóa chặt `verify_capability()`: từ chối fail-closed mọi `ControlCapability` wildcard (`None` hoặc `"*"`) khi `expected_task_id` được chỉ định.
+  3. Chuẩn hóa toàn bộ helper fixtures và positive controls kiểm thử để truyền tường minh task-scoped `delivery_task_id`.
+  4. Bộ kiểm thử tự động đạt 338/338 tests PASS (100%), bổ sung 5 bài kiểm thử độc lập trong `TestSolLeadAudit982ed1eRemediation` tái hiện và kiểm chứng trọn vẹn counterexamples và positive control; toàn bộ project gates PASS.
