@@ -631,6 +631,22 @@ Remediation R1 có 42 test acceptance qua, migration tiến/lùi và evidence/ha
     - Cập nhật `test_sod_16` kiểm tra khởi tạo `ReviewerHostHandoff` trực tiếp bị từ chối fail-closed ngay lập tức.
     - Nâng tổng số test lên 375/375 passed 100%.
 
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 6731c15 (Unforgeable Host Issuer Capability, Outside Module Subclass Rejection, and Cryptographic Provenance Binding)
+
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `6731c156e09b06f991a1ed523f318c0c24c0005b` cho bundle `docs/parallel-delivery/`:
+  - **(1) Loại Bỏ Hoàn Toàn Kiểm Tra Dựa Trên Tên Module & Chặn Đứng Subclass Ngoài Luồng (Elimination of Module-Name Checks & Outside Module Subclass Rejection)**:
+    - Loại bỏ hoàn toàn cơ chế kiểm tra tin cậy dựa trên tên module `cls.__module__ in ("delivery_engine", "__main__")`.
+    - `ReviewerHostHandoff.__init_subclass__` từ chối fail-closed vô điều kiện mọi nỗ lực subclass hóa trên toàn bộ các module (kể cả module ngoài như `attacker_module`), ngăn chặn triệt để lỗ hổng định nghĩa subclass ngoài luồng để override `_consume_for_provisioning()`.
+    - `ReviewerSessionBoundary.provision_from_host()` bắt buộc `type(authority) is ReviewerHostHandoff`, từ chối fail-closed mọi subclass từ bất kỳ module nào.
+  - **(2) Ràng Buộc Handoff Vào Thẩm Quyền Host Issuer Với Chữ Ký HMAC Không Thể Giả Mạo (Cryptographic Provenance Binding via Unforgeable ReviewerHostIssuerCapability)**:
+    - Triển khai dataclass frozen `ReviewerHostIssuerCapability` mang chữ ký HMAC bí mật không thể làm giả và định danh gắn kết `handoff_id`.
+    - Triển khai thẩm quyền host `ReviewerHostIssuer` độc lập bên ngoài, quản lý việc phát hành handoff dùng một lần duy nhất (`_minted`), xác thực chữ ký mật mã HMAC-SHA256 và tiêu thụ token nguyên tử (`verify_and_consume_capability`).
+    - Caller thông thường trong tiến trình tuyệt đối không thể tự khởi tạo `ReviewerHostIssuer` (từ chối fail-closed nếu thiếu `_internal_token`).
+    - `ReviewerSessionBoundary.provision_from_host()` bắt buộc authority phải mang `ReviewerHostIssuerCapability` hợp lệ do `ReviewerHostIssuer` cấp phát, thẩm định chữ ký và tiêu thụ nguyên tử trước khi tiếp nhận credential.
+  - **(3) Bộ Fixture Phân Biệt Tự Động 376/376 Tests PASS**:
+    - Bổ sung `test_sod_18_outside_module_attacker_handoff_rejected_cannot_bypass_boundary` tái hiện chính xác counterexample của Sol audit trong tiến trình con mới: kiểm thử toàn diện việc từ chối subclass ở module ngoài, từ chối dynamic subclass qua `type()`, từ chối tự khởi tạo host issuer, từ chối unauthenticated object, từ chối raw instance thiếu capability, từ chối capability giả mạo chữ ký, xác nhận boundary giữ nguyên unprovisioned và cấm mint proof; đồng thời kiểm thử positive control với authentic host handoff hoàn tất provisioning và thực thi nghiêm ngặt single-use.
+    - Nâng tổng số test lên 376/376 passed 100%.
+
 ## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau a286e6d (Elimination of In-Process Environment Variable Provisioning, Mandatory ReviewerHostHandoff Authority, and Caller-Set Env Rejection)
 
 - Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `a286e6ddde69ac0f0452c31888d8ad641402f706` cho bundle `docs/parallel-delivery/`:

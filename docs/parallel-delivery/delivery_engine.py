@@ -1339,6 +1339,38 @@ class ReviewerSessionProof:
             raise ProtocolViolationError("ReviewerSessionProof signature must be non-empty unpadded string")
 
 
+@dataclass(frozen=True)
+class ReviewerHostIssuerCapability:
+    capability_id: str
+    issuer_name: str
+    authority_id: int
+    created_at: float
+    signature: str = ""
+    role: str = "HostHandoffIssuer"
+    handoff_id: Optional[str] = None
+
+    def __post_init__(self):
+        for field_name in ("capability_id", "issuer_name", "signature", "role"):
+            val = getattr(self, field_name, None)
+            if not isinstance(val, str) or not val.strip() or val != val.strip():
+                raise ProtocolViolationError(
+                    f"ReviewerHostIssuerCapability field {field_name!r} must be non-empty unpadded string"
+                )
+        if self.role != "HostHandoffIssuer":
+            raise ProtocolViolationError(
+                f"ReviewerHostIssuerCapability role must be 'HostHandoffIssuer'; got {self.role!r}"
+            )
+        if type(self.created_at) is bool or not isinstance(self.created_at, (int, float)) or self.created_at < 0:
+            raise ProtocolViolationError(
+                "ReviewerHostIssuerCapability created_at must be non-negative int or float"
+            )
+        if self.handoff_id is not None:
+            if not isinstance(self.handoff_id, str) or not self.handoff_id.strip() or self.handoff_id != self.handoff_id.strip():
+                raise ProtocolViolationError(
+                    "ReviewerHostIssuerCapability handoff_id must be non-empty unpadded string when provided"
+                )
+
+
 @dataclass
 class ReviewerContext:
     delivery_task_id: str
@@ -1485,11 +1517,127 @@ class ReviewerDeliveryChannel:
             return cap
 
 
+class ReviewerHostIssuer:
+    """Trusted host boundary authority for minting and verifying unforgeable ReviewerHostHandoff instances
+    and ReviewerHostIssuerCapability tokens.
+    Direct in-process construction by ordinary callers is forbidden fail-closed.
+    Single-use host authority confers reviewer boundary provisioning.
+    """
+    _instance: Optional['ReviewerHostIssuer'] = None
+    _lock = threading.RLock()
+
+    def __init__(
+        self,
+        host_secret: Optional[str] = None,
+        _internal_token: Optional[bytes] = None,
+    ) -> None:
+        if _internal_token is None:
+            raise ProtocolViolationError(
+                "Direct construction of ReviewerHostIssuer by in-process caller is forbidden fail-closed; "
+                "host issuer authority is managed exclusively by trusted host boundary"
+            )
+        self._secret: bytes = (
+            host_secret.strip().encode("utf-8")
+            if (host_secret and isinstance(host_secret, str))
+            else secrets.token_bytes(32)
+        )
+        self._issued_capabilities: Set[str] = set()
+        self._consumed_capabilities: Set[str] = set()
+        self._minted = False
+        self._lock = threading.RLock()
+
+    @classmethod
+    def get_default_host_issuer(cls) -> 'ReviewerHostIssuer':
+        """Retrieve or initialize the trusted host issuer authority for the process."""
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = cls(_internal_token=secrets.token_bytes(16))
+            return cls._instance
+
+    def _sign_issuer_capability(
+        self, cap_id: str, issuer_name: str, created_at: float, handoff_id: str
+    ) -> str:
+        payload = f"HOST_ISSUER_CAP:{cap_id}:{issuer_name}:{id(self)}:{created_at}:{handoff_id}".encode("utf-8")
+        return hmac.new(self._secret, payload, hashlib.sha256).hexdigest()
+
+    def issue_handoff(
+        self, credential: bytes, issuer_name: str = "trusted_host"
+    ) -> 'ReviewerHostHandoff':
+        """Mint an authentic ReviewerHostHandoff bound to an unforgeable issuer capability.
+        Single-use: cannot mint multiple handoffs fail-closed.
+        """
+        if not isinstance(credential, bytes) or not credential.strip():
+            raise ProtocolViolationError("Host reviewer credential must be non-empty bytes fail-closed")
+        clean_issuer = issuer_name.strip() if isinstance(issuer_name, str) else ""
+        if not clean_issuer:
+            raise ProtocolViolationError("issuer_name must be non-empty string")
+
+        with self._lock:
+            if self._minted:
+                raise ProtocolViolationError(
+                    "ReviewerHostIssuer has already minted a handoff authority; "
+                    "single-use host issuer cannot mint multiple handoffs fail-closed"
+                )
+            self._minted = True
+            cap_id = f"host_cap_{uuid.uuid4().hex}"
+            handoff_id = f"rev_ho_{uuid.uuid4().hex}"
+            created_at = time.time()
+            sig = self._sign_issuer_capability(cap_id, clean_issuer, created_at, handoff_id)
+            cap = ReviewerHostIssuerCapability(
+                capability_id=cap_id,
+                issuer_name=clean_issuer,
+                authority_id=id(self),
+                created_at=created_at,
+                signature=sig,
+                role="HostHandoffIssuer",
+                handoff_id=handoff_id,
+            )
+            self._issued_capabilities.add(cap_id)
+            return ReviewerHostHandoff._create_authenticated(
+                credential=credential,
+                issuer_capability=cap,
+                handoff_id=handoff_id,
+                issuer=self,
+            )
+
+    def verify_and_consume_capability(
+        self, cap: ReviewerHostIssuerCapability, handoff_id: str
+    ) -> None:
+        """Verify provenance and unforgeable cryptographic signature of issuer capability, and consume it."""
+        if cap is None or not isinstance(cap, ReviewerHostIssuerCapability):
+            raise ProtocolViolationError("Expected valid ReviewerHostIssuerCapability")
+        if cap.authority_id != id(self):
+            raise ProtocolViolationError(
+                "ReviewerHostIssuerCapability authority_id mismatch; foreign issuer rejected fail-closed"
+            )
+        expected_sig = self._sign_issuer_capability(
+            cap.capability_id, cap.issuer_name, cap.created_at, handoff_id
+        )
+        if not hmac.compare_digest(cap.signature, expected_sig):
+            raise ProtocolViolationError(
+                "ReviewerHostIssuerCapability cryptographic signature mismatch; forged provenance rejected fail-closed"
+            )
+        if cap.handoff_id != handoff_id:
+            raise ProtocolViolationError("ReviewerHostIssuerCapability handoff_id binding mismatch")
+
+        with self._lock:
+            if cap.capability_id in self._consumed_capabilities:
+                raise ProtocolViolationError(
+                    f"ReviewerHostIssuerCapability {cap.capability_id!r} has already been consumed"
+                )
+            if cap.capability_id not in self._issued_capabilities:
+                raise ProtocolViolationError(
+                    f"ReviewerHostIssuerCapability {cap.capability_id!r} was not issued by this host authority"
+                )
+            self._consumed_capabilities.add(cap.capability_id)
+
+
 class ReviewerHostHandoff:
     """Opaque host-owned handoff authority conferring reviewer boundary provisioning.
     Caller-selected credentials and direct in-process construction are forbidden fail-closed.
     Ordinary in-process callers cannot construct, subclass, read, or set handoff authority.
-    Creation of handoff authority and credentials resides exclusively in trusted external host boundary.
+    Creation of handoff authority and credentials resides exclusively in trusted external host boundary
+    via unforgeable provenance / issuer capability.
     """
     def __init__(self, *args, **kwargs) -> None:
         raise ProtocolViolationError(
@@ -1499,11 +1647,32 @@ class ReviewerHostHandoff:
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
-        if cls.__module__ in ("delivery_engine", "__main__"):
-            raise ProtocolViolationError(
-                f"Subclassing ReviewerHostHandoff in module {cls.__module__!r} is strictly forbidden fail-closed; "
-                "handoff authority can only be created by trusted external host boundary"
-            )
+        raise ProtocolViolationError(
+            f"Subclassing ReviewerHostHandoff in module {cls.__module__!r} is strictly forbidden fail-closed; "
+            "handoff authority can only be created by trusted external host boundary via unforgeable issuer capability"
+        )
+
+    @classmethod
+    def _create_authenticated(
+        cls,
+        credential: bytes,
+        issuer_capability: ReviewerHostIssuerCapability,
+        handoff_id: str,
+        issuer: ReviewerHostIssuer,
+    ) -> 'ReviewerHostHandoff':
+        instance = object.__new__(cls)
+        object.__setattr__(instance, "_credential", credential)
+        object.__setattr__(instance, "_issuer_capability", issuer_capability)
+        object.__setattr__(instance, "_handoff_id", handoff_id)
+        object.__setattr__(instance, "_issuer", issuer)
+        object.__setattr__(instance, "_consumed", False)
+        object.__setattr__(instance, "_lock", threading.Lock())
+        object.__setattr__(instance, "_initialized", True)
+        return instance
+
+    @property
+    def issuer_capability(self) -> Optional[ReviewerHostIssuerCapability]:
+        return getattr(self, "_issuer_capability", None)
 
     @property
     def reviewer_secret(self) -> None:
@@ -1521,13 +1690,31 @@ class ReviewerHostHandoff:
     def __setattr__(self, name: str, value: Any) -> None:
         if getattr(self, "_initialized", False):
             raise AttributeError("Host reviewer handoff is immutable; setting credentials forbidden fail-closed")
+        if "secret" in name.lower() or "credential" in name.lower():
+            raise AttributeError("Setting reviewer credential on ReviewerHostHandoff is strictly forbidden fail-closed")
         super().__setattr__(name, value)
 
     def _consume_for_provisioning(self, target_cls: Any) -> bytes:
-        raise ProtocolViolationError(
-            "Abstract ReviewerHostHandoff base instance cannot be consumed directly fail-closed; "
-            "boundary must be provisioned from concrete trusted host handoff authority"
-        )
+        if target_cls is not ReviewerSessionBoundary:
+            raise ProtocolViolationError(
+                "ReviewerHostHandoff can only be consumed by ReviewerSessionBoundary fail-closed"
+            )
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            raise ProtocolViolationError(
+                "Uninitialized ReviewerHostHandoff cannot be consumed fail-closed"
+            )
+        with lock:
+            if getattr(self, "_consumed", False):
+                raise ProtocolViolationError(
+                    "Host reviewer handoff has already been consumed; single-use handoff cannot be reused"
+                )
+            object.__setattr__(self, "_consumed", True)
+            cred = getattr(self, "_credential", None)
+            if cred is None:
+                raise ProtocolViolationError("Host reviewer credential not found or already consumed")
+            object.__setattr__(self, "_credential", None)
+            return cred
 
 
 class ReviewerSessionBoundary:
@@ -1566,18 +1753,36 @@ class ReviewerSessionBoundary:
         if args or kwargs or authority is None or not isinstance(authority, ReviewerHostHandoff):
             raise ProtocolViolationError(
                 "Caller-selected reviewer boundary provisioning forbidden; "
-                "boundary must be provisioned immutably from trusted external host handoff authority"
+                "boundary must be provisioned immutably from trusted external host handoff authority via unforgeable issuer capability"
             )
-        if type(authority) is ReviewerHostHandoff:
+        with cls._lock:
+            if cls._default is not None:
+                raise ProtocolViolationError(
+                    "Reviewer boundary already provisioned; replacement or reprovisioning forbidden fail-closed"
+                )
+        if type(authority) is not ReviewerHostHandoff:
             raise ProtocolViolationError(
-                "Direct construction of ReviewerHostHandoff forbidden fail-closed; "
-                "boundary must be provisioned from concrete trusted external host handoff authority"
+                f"ReviewerHostHandoff subclass in module {authority.__class__.__module__!r} is strictly forbidden fail-closed; "
+                "authority must originate from trusted external host boundary with unforgeable issuer capability"
             )
-        if authority.__class__.__module__ in ("delivery_engine", "__main__"):
+        issuer_cap = getattr(authority, "issuer_capability", None)
+        if issuer_cap is None or not isinstance(issuer_cap, ReviewerHostIssuerCapability):
             raise ProtocolViolationError(
-                f"ReviewerHostHandoff created in module {authority.__class__.__module__!r} is forbidden fail-closed; "
-                "authority must originate from trusted external host boundary"
+                f"ReviewerHostHandoff from module {authority.__class__.__module__!r} missing required unforgeable issuer capability; "
+                "unauthenticated handoff is forbidden fail-closed"
             )
+        issuer = getattr(authority, "_issuer", None)
+        default_issuer = ReviewerHostIssuer.get_default_host_issuer()
+        if issuer is None or issuer is not default_issuer:
+            raise ProtocolViolationError(
+                "ReviewerHostHandoff issuer is not the trusted host issuer authority; foreign provenance rejected fail-closed"
+            )
+        handoff_id = getattr(authority, "_handoff_id", "")
+        if not handoff_id:
+            raise ProtocolViolationError("ReviewerHostHandoff missing handoff_id fail-closed")
+
+        issuer.verify_and_consume_capability(issuer_cap, handoff_id)
+
         with cls._lock:
             if cls._default is not None:
                 raise ProtocolViolationError(

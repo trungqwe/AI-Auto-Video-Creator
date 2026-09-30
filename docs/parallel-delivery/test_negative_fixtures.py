@@ -62,6 +62,8 @@ from delivery_engine import (  # noqa: E402
     ReviewerDeliveryChannel,
     _InternalReviewerMintToken,
     ReviewerHostHandoff,
+    ReviewerHostIssuer,
+    ReviewerHostIssuerCapability,
     ReviewerSessionBoundary,
     ReviewerSessionProof,
     make_review_evidence,
@@ -81,34 +83,13 @@ from delivery_engine import (  # noqa: E402
 )
 from validate import check_secret_scan, check_task_dag
 
-class TrustedHostReviewerHandoff(ReviewerHostHandoff):
+_test_host_issuer = ReviewerHostIssuer.get_default_host_issuer()
+
+def TrustedHostReviewerHandoff(credential: bytes) -> ReviewerHostHandoff:
     """Trusted host-owned handoff authority created exclusively by test harness / trusted host boundary.
     Cannot be called or imported by candidate modules.
     """
-    def __init__(self, credential: bytes) -> None:
-        if not isinstance(credential, bytes) or not credential.strip():
-            raise ProtocolViolationError("Trusted host credential must be non-empty bytes")
-        object.__setattr__(self, "_consumed", False)
-        object.__setattr__(self, "_lock", threading.Lock())
-        object.__setattr__(self, "_credential", credential)
-        object.__setattr__(self, "_initialized", True)
-
-    def _consume_for_provisioning(self, target_cls: Any) -> bytes:
-        if target_cls is not ReviewerSessionBoundary:
-            raise ProtocolViolationError(
-                "ReviewerHostHandoff can only be consumed by ReviewerSessionBoundary fail-closed"
-            )
-        with self._lock:
-            if self._consumed:
-                raise ProtocolViolationError(
-                    "Host reviewer handoff has already been consumed; single-use handoff cannot be reused"
-                )
-            object.__setattr__(self, "_consumed", True)
-            cred = getattr(self, "_credential", None)
-            if cred is None:
-                raise ProtocolViolationError("Host reviewer credential not found or already consumed")
-            object.__setattr__(self, "_credential", None)
-            return cred
+    return _test_host_issuer.issue_handoff(credential)
 
 
 TEST_FIXTURE_REVIEWER_SECRET = "test_fixture_reviewer_secret_32b_hex!"
@@ -11367,6 +11348,157 @@ print("ORDINARY_CALLER_CANNOT_PROVISION_PASS: ordinary in-process caller cannot 
         res = subprocess.run([sys.executable, "-c", child_code], env=clean_env, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, f"Child process failed: stdout={res.stdout}\nstderr={res.stderr}")
         self.assertIn("ORDINARY_CALLER_CANNOT_PROVISION_PASS: ordinary in-process caller cannot create authority or provision boundary", res.stdout)
+
+    def test_sod_18_outside_module_attacker_handoff_rejected_cannot_bypass_boundary(self):
+        """18. Sol actionable finding counterexample: In a fresh process, an attacker in an outside module
+        (e.g. __module__ = 'attacker_module') cannot subclass ReviewerHostHandoff, cannot bypass boundary
+        with unauthenticated handoff, cannot forge issuer capabilities, and default boundary remains unprovisioned;
+        while in an independent fresh process, authentic host handoff with unforgeable issuer capability successfully provisions."""
+        clean_env = {k: v for k, v in os.environ.items() if "REVIEWER" not in k.upper()}
+        child_code_neg = r'''
+import sys
+import os
+import time
+from pathlib import Path
+
+assert not any("REVIEWER" in k.upper() for k in os.environ), "Reviewer env vars present in test environment"
+
+sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
+import delivery_engine
+from delivery_engine import (
+    ReviewerSessionBoundary,
+    ReviewerHostHandoff,
+    ReviewerHostIssuer,
+    ReviewerHostIssuerCapability,
+    ProtocolViolationError,
+)
+
+# 1. Subclassing ReviewerHostHandoff in an outside module is strictly rejected fail-closed
+try:
+    class AttackerHandoff(ReviewerHostHandoff):
+        __module__ = "attacker_module"
+        def __init__(self):
+            pass
+        def _consume_for_provisioning(self, target_cls):
+            return b"attacker_chosen_secret_32b_hex!"
+    assert False, "Subclassing ReviewerHostHandoff in outside module succeeded"
+except ProtocolViolationError as e:
+    assert "Subclassing ReviewerHostHandoff in module 'attacker_module' is strictly forbidden fail-closed" in str(e)
+
+# 2. Dynamic subclassing via type() in an outside module is strictly rejected fail-closed
+try:
+    AttackerCls = type("AttackerCls", (ReviewerHostHandoff,), {
+        "__module__": "attacker_module",
+        "__init__": lambda self: None,
+        "_consume_for_provisioning": lambda self, target_cls: b"attacker_chosen_secret_32b_hex!",
+    })
+    assert False, "Dynamic type() subclassing ReviewerHostHandoff in outside module succeeded"
+except ProtocolViolationError as e:
+    assert "Subclassing ReviewerHostHandoff in module 'attacker_module' is strictly forbidden fail-closed" in str(e)
+
+# 3. Direct construction of ReviewerHostIssuer by in-process caller is strictly rejected fail-closed
+try:
+    ReviewerHostIssuer()
+    assert False, "Direct construction of ReviewerHostIssuer succeeded"
+except ProtocolViolationError as e:
+    assert "Direct construction of ReviewerHostIssuer by in-process caller is forbidden fail-closed" in str(e)
+
+# 4. Attempting to bypass with an unauthenticated foreign object is rejected fail-closed
+class OutsideModuleHandoff:
+    __module__ = "attacker_module"
+    def _consume_for_provisioning(self, target_cls):
+        return b"attacker_chosen_secret_32b_hex!"
+
+try:
+    ReviewerSessionBoundary.provision_from_host(OutsideModuleHandoff())
+    assert False, "provision_from_host accepted OutsideModuleHandoff"
+except ProtocolViolationError as e:
+    assert "Caller-selected reviewer boundary provisioning forbidden" in str(e) or "unforgeable" in str(e)
+
+# 5. Raw instance without issuer capability is rejected fail-closed
+raw_h = object.__new__(ReviewerHostHandoff)
+try:
+    ReviewerSessionBoundary.provision_from_host(raw_h)
+    assert False, "provision_from_host accepted raw_h"
+except ProtocolViolationError as e:
+    assert "missing required unforgeable issuer capability" in str(e) or "forbidden" in str(e)
+
+# 6. Forged capability with invalid signature is rejected fail-closed
+forged_cap = ReviewerHostIssuerCapability(
+    capability_id="host_cap_forged",
+    issuer_name="attacker_host",
+    authority_id=12345,
+    created_at=time.time(),
+    signature="deadbeef" * 8,
+    role="HostHandoffIssuer",
+    handoff_id="rev_ho_forged",
+)
+object.__setattr__(raw_h, "_issuer_capability", forged_cap)
+object.__setattr__(raw_h, "_handoff_id", "rev_ho_forged")
+try:
+    ReviewerSessionBoundary.provision_from_host(raw_h)
+    assert False, "provision_from_host accepted forged capability"
+except ProtocolViolationError as e:
+    assert "trusted host issuer authority" in str(e) or "foreign provenance" in str(e) or "forbidden" in str(e)
+
+# 7. Boundary remains completely unprovisioned
+boundary = ReviewerSessionBoundary.get_default()
+assert boundary._reviewer_secret is None, "Boundary has unauthenticated or fallback secret configured"
+
+# 8. Minting proof against unprovisioned boundary fails closed
+try:
+    boundary.issue_session_proof(
+        delivery_task_id="TASK-SOD-18",
+        review_dispatch_id="ctx_rev_18",
+        reviewer_secret="attacker_chosen_secret_32b_hex!",
+    )
+    assert False, "issue_session_proof succeeded against unprovisioned boundary"
+except ProtocolViolationError as e:
+    assert "Reviewer credential not configured on ReviewerSessionBoundary fail-closed" in str(e)
+
+print("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS")
+'''
+        res_neg = subprocess.run([sys.executable, "-c", child_code_neg], env=clean_env, capture_output=True, text=True)
+        self.assertEqual(res_neg.returncode, 0, f"Child process failed: stdout={res_neg.stdout}\nstderr={res_neg.stderr}")
+        self.assertIn("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS", res_neg.stdout)
+
+        child_code_pos = r'''
+import sys, os
+from pathlib import Path
+sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
+from delivery_engine import ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
+
+# Positive control: authentic host handoff from trusted host issuer successfully provisions boundary
+host_issuer = ReviewerHostIssuer.get_default_host_issuer()
+authentic_handoff = host_issuer.issue_handoff(b"authentic_fixture_secret_32b_hex!")
+provisioned_boundary = ReviewerSessionBoundary.provision_from_host(authentic_handoff)
+assert provisioned_boundary._reviewer_secret == b"authentic_fixture_secret_32b_hex!", "Boundary secret mismatch"
+assert ReviewerSessionBoundary.get_default() is provisioned_boundary
+
+try:
+    _ = provisioned_boundary.reviewer_secret
+    assert False
+except AttributeError:
+    pass
+
+# Single-use enforcement: host issuer cannot mint second handoff, and boundary cannot be reprovisioned
+try:
+    host_issuer.issue_handoff(b"second_secret")
+    assert False, "Host issuer minted second handoff"
+except ProtocolViolationError as e:
+    assert "single-use host issuer cannot mint multiple handoffs fail-closed" in str(e)
+
+try:
+    ReviewerSessionBoundary.provision_from_host(authentic_handoff)
+    assert False, "Boundary reprovisioned"
+except ProtocolViolationError as e:
+    assert "Reviewer boundary already provisioned" in str(e)
+
+print("POSITIVE_CONTROL_PASS")
+'''
+        res_pos = subprocess.run([sys.executable, "-c", child_code_pos], env=clean_env, capture_output=True, text=True)
+        self.assertEqual(res_pos.returncode, 0, f"Positive child process failed: stdout={res_pos.stdout}\nstderr={res_pos.stderr}")
+        self.assertIn("POSITIVE_CONTROL_PASS", res_pos.stdout)
 
 
 if __name__ == "__main__":

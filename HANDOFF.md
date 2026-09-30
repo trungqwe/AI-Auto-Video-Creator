@@ -4,11 +4,12 @@
 
 - Authority hiện hành giữ nguyên: `M2-P1..P7B_ACCEPTED_CLOSED`; M2-P8/P9 `LOCKED`; M3/Phân hệ A `NOT AUTHORIZED`.
 - Đã thêm [kiến trúc triển khai song song](./docs/parallel-delivery/README.md) ở trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`. Bundle chỉ là docs/config và định nghĩa DAG, contract registry, ownership/lease, Orca worker protocol, merge queue, traceability, security/performance/recovery.
-- Đã khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate `8ceacb41aeb67bbfd1f644b9e252df1db12f58e2`:
-  1. Loại bỏ hoàn toàn literal credential `test_fixture_reviewer_secret_32b_hex!` và kho lưu trữ `_HOST_HANDOFF_VAULT` khỏi production module `docs/parallel-delivery/delivery_engine.py`.
-  2. Chuyển toàn bộ việc tạo handoff authority và credential sang `TrustedHostReviewerHandoff` trực thuộc trusted host boundary trong `docs/parallel-delivery/test_negative_fixtures.py`, không callable hoặc importable bởi candidate.
-  3. `ReviewerHostHandoff.__init__` và `__init_subclass__` trong `delivery_engine.py` từ chối fail-closed mọi nỗ lực khởi tạo hoặc kế thừa từ in-process candidate callers; `ReviewerSessionBoundary.provision_from_host()` từ chối fail-closed mọi authority khởi tạo trong module candidate hoặc `__main__`.
-  4. Bộ kiểm thử tự động đạt 375/375 tests PASS (100%), bổ sung `test_sod_17` chứng minh caller thông thường trong tiến trình mới không thể tự tạo authority, không thể chiếm dụng ranh giới (`HANDOFF_PROVISIONED=False`, `KNOWN_CREDENTIAL=False`), default boundary giữ nguyên `_reviewer_secret = None`, và không thể mint proof/context.
+- Đã khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate `6731c156e09b06f991a1ed523f318c0c24c0005b`:
+  1. Loại bỏ hoàn toàn cơ chế kiểm tra tin cậy dựa trên tên module `cls.__module__ in ("delivery_engine", "__main__")`.
+  2. `ReviewerHostHandoff.__init_subclass__` từ chối fail-closed vô điều kiện mọi nỗ lực subclass hóa trên toàn bộ các module (kể cả module ngoài như `attacker_module`).
+  3. `ReviewerHostIssuer` và `ReviewerHostIssuerCapability` ràng buộc xuất xứ tin cậy của host handoff bằng chữ ký HMAC không thể làm giả; caller cùng tiến trình không thể tự khởi tạo host issuer hay giả mạo capability.
+  4. `ReviewerSessionBoundary.provision_from_host()` bắt buộc `type(authority) is ReviewerHostHandoff`, thẩm định chữ ký và tiêu thụ nguyên tử `ReviewerHostIssuerCapability` từ `ReviewerHostIssuer` trước khi tiếp nhận credential.
+  5. Bộ kiểm thử tự động đạt 376/376 tests PASS (100%), bổ sung `test_sod_18` chứng minh subclass ở module ngoài, unauthenticated object, raw instance thiếu capability và capability giả mạo chữ ký đều bị từ chối fail-closed, boundary giữ nguyên unprovisioned và cấm mint proof; đồng thời positive control với authentic host handoff hoàn tất provisioning an toàn.
 
 ## Chưa quyết định
 
