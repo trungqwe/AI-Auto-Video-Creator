@@ -3,8 +3,8 @@
   "status": "PASS",
   "attestation": {
     "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
-    "candidate_commit": "fd7540cabf983ff0c84ac5c4a8d465248e192666",
-    "parent_commit": "fd7540cabf983ff0c84ac5c4a8d465248e192666",
+    "candidate_commit": "a5955d932f4790863f584dff8bb3073eabe9e7c0",
+    "parent_commit": "a5955d932f4790863f584dff8bb3073eabe9e7c0",
     "wrapper_commit": "HEAD",
     "candidate_is_actual_head": false,
     "committed_changes_count": 20,
@@ -173,7 +173,7 @@
     }
   },
   "fixture_stats": {
-    "tests_run": 358,
+    "tests_run": 364,
     "failures": 0,
     "errors": 0,
     "passed": true
@@ -248,15 +248,15 @@
   ],
   "bundle_sha256": {
     "contract-registry.yaml": "417687b7520f9b0cfc26d7f5a2c0df098581f18ad87ef91c0452356cbb9bfc01",
-    "delivery_engine.py": "9e007ed4fa862d37771dec0f9c452a9772432876c75be3e6306d7c04f733b6f9",
+    "delivery_engine.py": "66128bea3aeb4fc5a79cc17ea1f0623652459992673f3c4cd1a9ee9865786726",
     "merge-and-integration.md": "fe85a843f23057dbc4109eda8a2d40467ac5531d38cd92f6379a5f446318fa29",
     "operating-model.md": "495bc6bb66a75a29e6dc010c184e7e69ff12df6b0e3be6a4d55d40f4e46224f3",
     "ownership-and-locks.yaml": "ca060cf8603f0d98370260dadc088d22e63850b7ae324280c2262008b14760c2",
-    "protocol.md": "478b1dd7b52726826cd12a5a0a6e0458128d7fa4bd413d542431c64e03e510aa",
-    "README.md": "b4f276f5a23e099f20967c12c1506061cc6774c09c6ddfffdf014a0c058458e9",
+    "protocol.md": "a9a279e707686e76f644a4e16a8976457bc46c05fa1a3e3bdbd2a5a553ca3f78",
+    "README.md": "f817ef8bfd88161c9207e76c47fae4188856d6617e204599a19f960d1d81972e",
     "security-performance-recovery.md": "954c65cdcaae28135e9c154406d243b4fafcbe0601eda2d2b3a58e733de53888",
     "task-dag.yaml": "5b3e45b3a52d654cc29800abdb4819746bf9fe0b71548b76cc2f1f0a5254f906",
-    "test_negative_fixtures.py": "23383e2dd178f777ec1915bcb3f2e1a055d39a3452b663ea527e422ff9639e7c",
+    "test_negative_fixtures.py": "68fab8cf2e0ef908154462a65a628b50065c13f28ca03ef99146d4d68a05ce2d",
     "traceability.md": "69caff38f6fe526253071bf8fe3c27d7a7064f4af771a8e88eeddc86ee5632cc",
     "validate.py": "fa1dad69b9dfdf5403f46bb0fb1317cbda48d307a848f0128a1879f754b6bb46"
   }
