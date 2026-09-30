@@ -1509,26 +1509,30 @@ class ReviewerSessionBoundary:
         self._lock = threading.RLock()
 
     @classmethod
-    def provision_from_host(cls, reviewer_secret: Optional[str] = None) -> 'ReviewerSessionBoundary':
+    def provision_from_host(cls, *args, **kwargs) -> 'ReviewerSessionBoundary':
         """Provision an immutable reviewer boundary from trusted external session/host.
         Once provisioned, identity cannot be selected or replaced by in-process callers.
+        Public caller-selected provisioning is forbidden fail-closed.
         """
+        if args or kwargs:
+            raise ProtocolViolationError(
+                "Caller-selected reviewer boundary provisioning forbidden; "
+                "boundary must be provisioned immutably from trusted external host environment"
+            )
         with cls._lock:
             if cls._default is not None:
                 raise ProtocolViolationError(
                     "Reviewer boundary already provisioned; replacement or reprovisioning forbidden fail-closed"
                 )
-            eff_secret = reviewer_secret
-            if eff_secret is None:
-                eff_secret = (
-                    os.environ.get("ORCA_REVIEWER_SESSION_SECRET")
-                    or os.environ.get("ORCA_REVIEWER_SECRET")
-                    or os.environ.get("DELY_REVIEWER_SESSION_SECRET")
-                    or os.environ.get("REVIEWER_SESSION_SECRET")
-                )
-            if not eff_secret:
-                eff_secret = "test_fixture_reviewer_secret_32b_hex!"
-            cls._default = cls(reviewer_secret=eff_secret)
+            eff_secret = (
+                os.environ.get("ORCA_REVIEWER_SESSION_SECRET")
+                or os.environ.get("ORCA_REVIEWER_SECRET")
+                or os.environ.get("DELY_REVIEWER_SESSION_SECRET")
+                or os.environ.get("REVIEWER_SESSION_SECRET")
+            )
+            cls._default = cls(
+                reviewer_secret=eff_secret.strip() if eff_secret and isinstance(eff_secret, str) and eff_secret.strip() else None
+            )
             return cls._default
 
     @classmethod
@@ -4063,9 +4067,10 @@ class OrcaDeliveryAdapter:
         self._authoritatively_released_tasks: Set[str] = set()
         self._consumed_transition_tokens: Set[str] = set()
         if reviewer_boundary is not None:
-            if not isinstance(reviewer_boundary, ReviewerSessionBoundary):
+            if not isinstance(reviewer_boundary, ReviewerSessionBoundary) or reviewer_boundary is not ReviewerSessionBoundary.get_default():
                 raise ProtocolViolationError(
-                    f"reviewer_boundary must be a ReviewerSessionBoundary instance; got {type(reviewer_boundary).__name__}"
+                    "Caller-selected reviewer boundary forbidden; "
+                    "OrcaDeliveryAdapter strictly requires opaque host-owned ReviewerSessionBoundary"
                 )
             self._reviewer_boundary: ReviewerSessionBoundary = reviewer_boundary
         else:

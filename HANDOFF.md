@@ -4,6 +4,11 @@
 
 - Authority hiện hành giữ nguyên: `M2-P1..P7B_ACCEPTED_CLOSED`; M2-P8/P9 `LOCKED`; M3/Phân hệ A `NOT AUTHORIZED`.
 - Đã thêm [kiến trúc triển khai song song](./docs/parallel-delivery/README.md) ở trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`. Bundle chỉ là docs/config và định nghĩa DAG, contract registry, ownership/lease, Orca worker protocol, merge queue, traceability, security/performance/recovery.
+- Đã khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate a518501:
+  1. Xóa bỏ hoàn toàn fallback secret literal khỏi mã nguồn production: Xóa bỏ triệt để test_fixture_reviewer_secret_32b_hex! khỏi ReviewerSessionBoundary.provision_from_host(); trong tiến trình mới không có biến môi trường từ host, ranh giới khởi tạo với _reviewer_secret = None và từ chối fail-closed mọi nỗ lực mint proof hay context.
+  2. Ngăn chặn tuyệt đối public caller-selected provisioning: ReviewerSessionBoundary.provision_from_host() từ chối fail-closed nếu caller truyền bất kỳ tham số nào.
+  3. Bắt buộc ranh giới host-owned opaque trong OrcaDeliveryAdapter: Constructor từ chối fail-closed mọi boundary do caller tự khởi tạo, chỉ chấp nhận singleton ReviewerSessionBoundary.get_default().
+  4. Bộ kiểm thử tự động đạt 373/373 tests PASS (100%), bổ sung `test_sod_15` tái hiện counterexample trong tiến trình mới hoàn toàn không có biến môi trường reviewer, xác nhận thiếu external provisioning bị từ chối fail-closed và task giữ nguyên trạng thái review.
 - Đã khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate 7e0e312:
   1. Loại bỏ triệt để reset và credential injection khỏi bề mặt production: Xóa bỏ hoàn toàn
 eset_default(), inject_reviewer_credential(), ootstrap_reviewer_credential(), và ootstrap_reviewer_capability() khỏi ReviewerSessionBoundary.

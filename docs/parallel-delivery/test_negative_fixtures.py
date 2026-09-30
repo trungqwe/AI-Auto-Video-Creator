@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -80,6 +81,7 @@ from delivery_engine import (  # noqa: E402
 from validate import check_secret_scan, check_task_dag
 
 TEST_FIXTURE_REVIEWER_SECRET = "test_fixture_reviewer_secret_32b_hex!"
+os.environ.setdefault("ORCA_REVIEWER_SESSION_SECRET", TEST_FIXTURE_REVIEWER_SECRET)
 
 
 
@@ -8659,8 +8661,7 @@ class TestSolLeadAudit654860cRemediation(unittest.TestCase):
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+# (unittest.main moved to EOF)
 
 
 
@@ -10212,8 +10213,8 @@ class TestSolRemediationSeparationOfDuties(unittest.TestCase):
         self.lease = self.mgr.acquire_lease("LOCK-SOD-REMED", self.delivery_id, self.intended_disp, now=self.t0)
         self.registry = SharedOrcaExecutionRegistry.get_default()
         self.control_secret = "test_control_secret_sod_32b_hex!"
-        self.reviewer_secret = "test_sod_reviewer_secret_32b_hex!"
-        self.boundary = ReviewerSessionBoundary(reviewer_secret=self.reviewer_secret)
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default()
         self.adapter = OrcaDeliveryAdapter(
             self.mgr,
             approved_candidate_commit=self.candidate_commit,
@@ -10771,6 +10772,17 @@ class TestSolRemediationSeparationOfDuties(unittest.TestCase):
         with self.assertRaises(AttributeError):
             self.adapter.reviewer_boundary = attacker_boundary
 
+        # 3b. Attacker cannot supply attacker_boundary to OrcaDeliveryAdapter constructor
+        with self.assertRaises(ProtocolViolationError) as ctx_adapt:
+            OrcaDeliveryAdapter(
+                self.mgr,
+                approved_candidate_commit=self.candidate_commit,
+                git_root=ROOT_DIR,
+                control_secret=self.control_secret,
+                reviewer_boundary=attacker_boundary,
+            )
+        self.assertIn("Caller-selected reviewer boundary forbidden", str(ctx_adapt.exception))
+
         # 4. Create review dispatch on adapter; adapter binds dispatch strictly to its provisioned boundary
         rev_disp_id = "ctx_sod_rev_14"
         rev_env = make_execution_envelope(
@@ -10862,3 +10874,169 @@ class TestSolRemediationSeparationOfDuties(unittest.TestCase):
 
         # 8. Task remains strictly in review state; cannot reach merge_queued
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "review")
+
+    def test_sod_15_fresh_process_missing_external_provisioning_rejected_task_remains_review(self):
+        """15. Sol actionable finding counterexample: Fresh process lacking external reviewer provisioning
+        fails closed; ordinary in-process caller cannot select secret, mint proofs, claim capability,
+        or reach merge_queued; task remains strictly in review state."""
+        clean_env = {k: v for k, v in os.environ.items() if "REVIEWER" not in k.upper()}
+        child_code = r'''
+import sys
+import os
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+import subprocess
+
+assert not any("REVIEWER" in k.upper() for k in os.environ), "Reviewer env vars present in test environment"
+
+sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
+import delivery_engine
+from delivery_engine import (
+    OrcaDeliveryAdapter,
+    LeaseManager,
+    ReviewerSessionBoundary,
+    make_execution_envelope,
+    SharedOrcaExecutionRegistry,
+    ProtocolViolationError,
+)
+
+assert not hasattr(delivery_engine, "DEFAULT_TEST_REVIEWER_SECRET"), "delivery_engine exports DEFAULT_TEST_REVIEWER_SECRET"
+
+delivery_id = "TASK-SOD-15"
+disp_id = "ctx_sod_15_impl"
+cmd_head = ["git", "rev-parse", "HEAD"]
+candidate = subprocess.run(cmd_head, capture_output=True, text=True, check=True).stdout.strip()
+t0 = datetime(2026, 9, 30, 10, 0, 0, tzinfo=timezone.utc)
+
+mgr = LeaseManager([{"id": "LOCK-SOD-15", "mode": "exclusive", "renewable": True, "lease_seconds": 600}])
+mgr.set_task_authority(delivery_id, "granted")
+lease = mgr.acquire_lease("LOCK-SOD-15", delivery_id, disp_id, now=t0)
+
+# Default adapter in fresh unprovisioned process
+adapter = OrcaDeliveryAdapter(
+    mgr,
+    approved_candidate_commit=candidate,
+    git_root=Path(".").resolve(),
+    control_secret="test_control_secret_32b_hex!",
+)
+adapter.set_task_authority(delivery_id, "granted")
+adapter.set_task_state(delivery_id, "ready")
+adapter.register_task_locks(delivery_id, ["LOCK-SOD-15"])
+
+# Caller-selected provisioning via provision_from_host is rejected fail-closed
+try:
+    ReviewerSessionBoundary.provision_from_host(reviewer_secret="attacker_secret")
+    assert False, "provision_from_host accepted caller-selected secret"
+except ProtocolViolationError as e:
+    assert "Caller-selected" in str(e) or "already provisioned" in str(e)
+
+# Caller-selected boundary passed to OrcaDeliveryAdapter is rejected fail-closed
+attacker_boundary = ReviewerSessionBoundary(reviewer_secret="attacker_chosen_secret")
+try:
+    OrcaDeliveryAdapter(
+        mgr,
+        approved_candidate_commit=candidate,
+        git_root=Path(".").resolve(),
+        reviewer_boundary=attacker_boundary,
+    )
+    assert False, "OrcaDeliveryAdapter accepted caller-selected boundary"
+except ProtocolViolationError as e:
+    assert "Caller-selected reviewer boundary forbidden" in str(e)
+
+# Boundary has no configured reviewer credential
+boundary = adapter.reviewer_boundary
+assert boundary._reviewer_secret is None, "Boundary has unauthenticated or fallback secret configured"
+
+# Advance implement phase to worker_done succeeded
+disp_env = make_execution_envelope(delivery_id, disp_id, phase="implement", orca_task_id="task_impl_15", now=t0)
+d_id = adapter.create_dispatch(
+    delivery_id,
+    orca_task_id="task_impl_15",
+    candidate_commit=candidate,
+    intended_dispatch_id=disp_id,
+    lease_id=lease.lease_id,
+    fencing_token=lease.fencing_token,
+    dispatch_origin="dely dispatch",
+    execution_envelope=disp_env,
+    now=t0,
+)
+adapter.acknowledge_dispatch(delivery_id, d_id)
+adapter.start_running(delivery_id, d_id)
+adapter.handle_worker_done(delivery_id, "task_impl_15", d_id, "succeeded", candidate_commit=candidate, fencing_token=lease.fencing_token, now=t0 + timedelta(seconds=1))
+
+assert adapter.get_task_state(delivery_id) == "review", f"Expected review state, got {adapter.get_task_state(delivery_id)}"
+
+# Create review dispatch
+rev_disp_id = "ctx_rev_15"
+rev_env = make_execution_envelope(delivery_id, rev_disp_id, phase="review", orca_task_id="task_rev_15", now=t0 + timedelta(seconds=2))
+res_id = adapter.create_review_dispatch(
+    delivery_id,
+    orca_task_id="task_rev_15",
+    candidate_commit=candidate,
+    intended_dispatch_id=rev_disp_id,
+    dispatch_origin="dely dispatch",
+    execution_envelope=rev_env,
+    now=t0 + timedelta(seconds=2),
+)
+
+# Attempting to create reviewer context / issue session proof without external provisioning fails closed
+try:
+    adapter.reviewer_boundary.create_reviewer_context(
+        delivery_task_id=delivery_id,
+        review_dispatch_id=res_id,
+        orca_task_id="task_rev_15",
+        terminal_id=rev_env.live_terminal_evidence.archive_reference,
+        candidate_commit=candidate,
+        reviewer_secret="test_fixture_reviewer_secret_32b_hex!",
+    )
+    assert False, "create_reviewer_context succeeded without external reviewer provisioning"
+except ProtocolViolationError as e:
+    assert "Reviewer credential not configured on ReviewerSessionBoundary fail-closed" in str(e)
+
+try:
+    adapter.reviewer_boundary.issue_session_proof(
+        delivery_task_id=delivery_id,
+        review_dispatch_id=res_id,
+        reviewer_secret="test_fixture_reviewer_secret_32b_hex!",
+    )
+    assert False, "issue_session_proof succeeded without external reviewer provisioning"
+except ProtocolViolationError as e:
+    assert "Reviewer credential not configured on ReviewerSessionBoundary fail-closed" in str(e)
+
+# Attempting to issue review evidence without capability fails closed
+try:
+    adapter.issue_review_evidence(
+        delivery_id,
+        res_id,
+        candidate,
+        verdict="ACCEPT",
+        reviewer_capability=None,
+    )
+    assert False, "issue_review_evidence succeeded with None capability"
+except ProtocolViolationError:
+    pass
+
+# Attempting to advance review verdict without valid evidence fails closed
+try:
+    adapter.handle_review_verdict(
+        delivery_id,
+        "ACCEPT",
+        review_dispatch_id=res_id,
+        review_evidence=None,
+    )
+    assert False, "handle_review_verdict succeeded with None evidence"
+except ProtocolViolationError:
+    pass
+
+# Task remains strictly in review state; cannot reach merge_queued
+final_state = adapter.get_task_state(delivery_id)
+assert final_state == "review", f"Expected task to remain in 'review', but got {final_state}"
+print("FRESH_PROCESS_PASS: task safely remains in review")
+'''
+        res = subprocess.run([sys.executable, "-c", child_code], env=clean_env, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f"Child process failed: stdout={res.stdout}\nstderr={res.stderr}")
+        self.assertIn("FRESH_PROCESS_PASS: task safely remains in review", res.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

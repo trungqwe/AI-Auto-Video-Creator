@@ -615,6 +615,24 @@ Remediation R1 có 42 test acceptance qua, migration tiến/lùi và evidence/ha
     - Mở rộng suite `TestSolRemediationSeparationOfDuties` lên 9 bài test: chứng minh dispatch creator có đủ 7 public IDs vẫn không thể claim capability (`test_sod_06`), caller không thể đọc token/channel từ adapter và không thể giả mạo proof hay dùng Control authority để issue proof (`test_sod_07`), thực thi nghiêm ngặt single-use proof và cấm duplicate issuance (`test_sod_08`), và positive control độc lập với `self.reviewer_secret` hoàn tất toàn bộ vòng đời đến `integrated` (`test_sod_09`).
     - Nâng tổng số test lên 367/367 passed 100%.
 
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau a518501 (Elimination of Fallback Reviewer Secret, Public Caller-Selected Provisioning Prevention, and Mandatory Host-Owned Boundary)
+
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `a5185012fa21a0727c0b36de28e86917494b3591` cho bundle `docs/parallel-delivery/`:
+  - **(1) Xóa Bỏ Hoàn Toàn Fallback Secret Literal Khỏi Mã Nguồn Production**:
+    - Xóa bỏ triệt để fallback secret literal `test_fixture_reviewer_secret_32b_hex!` khỏi `ReviewerSessionBoundary.provision_from_host()` trong `docs/parallel-delivery/delivery_engine.py`.
+    - Khi không có biến môi trường nào từ host (`ORCA_REVIEWER_SESSION_SECRET`, `ORCA_REVIEWER_SECRET`, `DELY_REVIEWER_SESSION_SECRET`, `REVIEWER_SESSION_SECRET`), ranh giới mặc định khởi tạo với `_reviewer_secret = None`.
+    - Mọi lời gọi `issue_session_proof()` hoặc `create_reviewer_context()` khi thiếu external reviewer provisioning đều bị từ chối fail-closed với `ProtocolViolationError("Reviewer credential not configured on ReviewerSessionBoundary fail-closed; trusted session bootstrap must inject reviewer credential before issuing session proofs")`.
+  - **(2) Ngăn Chặn Tuyệt Đối Public Caller-Selected Provisioning**:
+    - Phương thức `ReviewerSessionBoundary.provision_from_host()` nhận `*args, **kwargs` và từ chối fail-closed ngay lập tức nếu caller cung cấp bất kỳ tham số nào (`ProtocolViolationError("Caller-selected reviewer boundary provisioning forbidden; boundary must be provisioned immutably from trusted external host environment")`).
+    - Caller cùng tiến trình tuyệt đối không thể tự chọn secret khi gọi `provision_from_host()`.
+  - **(3) Bắt Buộc Ranh Giới Host-Owned Opaque Trong OrcaDeliveryAdapter**:
+    - `OrcaDeliveryAdapter.__init__` kiểm tra nghiêm ngặt: nếu `reviewer_boundary` được truyền vào, nó bắt buộc phải là singleton `ReviewerSessionBoundary.get_default()` do host cấp phát; mọi boundary do caller tự khởi tạo (`ReviewerSessionBoundary(...)`) đều bị từ chối fail-closed với `ProtocolViolationError("Caller-selected reviewer boundary forbidden; OrcaDeliveryAdapter strictly requires opaque host-owned ReviewerSessionBoundary")`.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 373/373 Tests PASS**:
+    - Bổ sung `test_sod_14` kiểm tra từ chối truyền boundary tự tạo vào constructor của `OrcaDeliveryAdapter`.
+    - Bổ sung `test_sod_15_fresh_process_missing_external_provisioning_rejected_task_remains_review` tái hiện counterexample độc lập trong tiến trình Python mới hoàn toàn không có biến môi trường reviewer: xác nhận thiếu external provisioning bị từ chối fail-closed ở mọi nỗ lực mint proof, context, hay evidence; task an toàn giữ nguyên trạng thái `review` và không thể đạt `merge_queued`.
+    - Di chuyển `if __name__ == "__main__": unittest.main()` về cuối tệp `test_negative_fixtures.py`.
+    - Nâng tổng số test lên 373/373 passed 100%.
+
 ## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 7e0e312 (Elimination of In-Process Reset/Credential Injection, Immutable Reviewer Boundary Provisioning, and Adapter-Bound Review Dispatch)
 
 - Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate 7e0e31259574c414eb7a7ba86bf9fc84b72ddf6d cho bundle docs/parallel-delivery/:
