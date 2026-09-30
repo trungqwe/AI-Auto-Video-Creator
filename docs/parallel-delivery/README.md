@@ -484,3 +484,25 @@ Biện pháp khắc phục triệt để:
      + Thực thi kịch bản counterexample an toàn: candidate tự sinh khóa hoặc tìm kiếm trên repository không thể tạo ra chữ ký vượt qua verify() đối với pinned public key (SAFE_ASSERTION_TRACKED_KEY_CAN_MINT_VERIFIABLE_CAPABILITY = False).
      + Kiểm tra việc cố tình ghim hoặc thay đổi pinned public key bằng token giả mạo đều thất bại fail-closed.
 5. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **397/397 tests PASS (100%)**, bảo đảm an toàn tuyệt đối trên mọi cổng thẩm định và release gate.
+
+## 28. Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n 42ea7a7 (Lo?i B? Ho?n To?n Trusted Host Factory, Credential & Endpoint Kh?i Candidate-Readable Fixtures, Kh? Side Effect Kh?i ??ng Daemon Khi Import & B? Sung Negative Assertion test_18v)
+
+??t r? so?t ??c l?p tr?n exact candidate SHA 42ea7a7c8a421f153026c51aa0fcd5c9b3973530 (approved base 4a7c8c921b7e05066505d51b168a02c3fde61317) ghi nh?n finding actionable:
+Invariant out-of-process ph?i ng?n candidate mint verifiable bootstrap capability nh?ng fresh subprocess ch? c?n import docs/parallel-delivery/test_negative_fixtures.py r?i g?i TrustedHostBootstrapCapability(f._h_port, f._h_authkey, f._HOST_BOUNDARY_TOKEN) v? verify() th?nh c?ng, quan s?t CANDIDATE_IMPORT_FIXTURE_AUTHORITY_ACCEPTED; nguy?n nh?n t?i test_negative_fixtures.py:117-171,256-260 ph?i b?y token/endpoint/factory v? import c? side effect kh?i ??ng daemon. C?n lo?i b? trusted-host factory/credential/endpoint kh?i candidate-readable fixture ho?c ??t ngo?i repository qua boundary th?t, r?i b? sung fresh-subprocess negative assertion ch?ng minh import candidate kh?ng th? mint capability.
+
+Bi?n ph?p kh?c ph?c tri?t ??:
+1. **Finding 1 ? Lo?i B? Ho?n To?n Factory, Token & Endpoint Kh?i Candidate-Readable Fixtures**:
+   - Lo?i b? tri?t ?? factory `TrustedHostBootstrapCapability`, token `_HOST_BOUNDARY_TOKEN`, v? c?c bi?n `_h_port`, `_h_authkey`, `_h_proc`, `_h_boot_cap` kh?i ph?m vi module-level c?a `test_negative_fixtures.py`.
+   - Ti?n tr?nh candidate khi import `test_negative_fixtures.py` ho?n to?n kh?ng th? nh?n th?y hay g?i b?t k? h?m/bi?n th?m quy?n n?o (`hasattr` tr? v? `False`).
+2. **Finding 2 ? Kh? Tri?t ?? Side Effect Kh?i ??ng Daemon Khi Import**:
+   - Chuy?n to?n b? logic kh?i ch?y v? d?ng daemon `_launch_test_host_boundary_daemon` v?o lifecycle runner `setUpModule` v? `tearDownModule` c?a b? ki?m th?.
+   - Thao t?c import `test_negative_fixtures` t? candidate process kh?ng kh?i ??ng b?t k? ti?n tr?nh con daemon n?o, kh?ng c?p b?t k? socket hay port n?o.
+3. **Finding 3 ? B? Sung Retry Khi Persist Atomic Tr?nh Race Condition Tr?n Windows**:
+   - Trong `delivery_engine.py:6363` (`_persist_atomic`), b? sung retry loop ng?n cho `os.replace` khi g?p `PermissionError` tr?n Windows, b?o ??m ?? b?n v?ng khi nhi?u b?i ki?m th? ghi registry d?n d?p.
+4. **Finding 4 ? Fixture Ki?m Th? test_18v Ch?ng Minh Candidate Import Fixture Kh?ng Th? Mint Capability**:
+   - B? sung b?i ki?m tra `test_18v_sol_finding_candidate_importing_fixture_cannot_mint_bootstrap_capability`:
+     + Trong fresh subprocess, candidate import `test_negative_fixtures as f`.
+     + Kh?ng ??nh `f` kh?ng ch?a `TrustedHostBootstrapCapability`, `_HOST_BOUNDARY_TOKEN`, `_h_port`, `_h_authkey`, `_h_proc`, hay `_h_boot_cap`.
+     + Kh?ng ??nh kh?ng c? daemon host boundary n?o ???c k?ch ho?t do thao t?c import.
+     + Candidate n? l?c mint capability th?t b?i fail-closed; kh?ng ??nh `CANDIDATE_IMPORT_FIXTURE_AUTHORITY_ACCEPTED` b?ng `False` v? ph?t xu?t b?ng ch?ng `CANDIDATE_IMPORT_FIXTURE_MINT_REJECTED_PASS`.
+5. **B? ki?m th? to?n di?n**: N?ng t?ng s? b?i test/probe l?n **398/398 tests PASS (100%)**, b?o ??m an to?n tuy?t ??i tr?n m?i c?ng th?m ??nh v? release gate.

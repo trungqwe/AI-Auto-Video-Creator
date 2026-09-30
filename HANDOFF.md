@@ -1,32 +1,32 @@
 # HANDOFF
 
-## Đã quyết định
+## ?? quy?t ??nh
 
-- Authority hiện hành giữ nguyên: M2-P1..P7B_ACCEPTED_CLOSED; M2-P8/P9 LOCKED; M3/Phân hệ A NOT AUTHORIZED.
-- Khắc phục triệt để phát hiện độc lập từ đợt audit của Sol trên exact candidate 2798fd6f4af760f757ae41d5beab53408cc5a0da (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
-  1. Loại bỏ hoàn toàn _HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES và _HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY khỏi test_negative_fixtures.py và toàn bộ repository.
-  2. Triển khai cơ chế external signer daemon ngoài tiến trình (_launch_test_host_boundary_daemon): cặp khóa Ed25519 được sinh trong RAM của daemon, chỉ xuất khóa công khai qua pipe để ghim bất biến; factory TrustedHostBootstrapCapability ủy quyền ký số mật mã qua IPC với xác thực HMAC host_secret.
-  3. Ghim khóa công khai bất biến qua HostBoundaryBootstrapCapability.pin_trusted_host_public_key; cấm tuyệt đối candidate worker trong tiến trình tự ý ghim hay thay đổi khóa đã ghim (ProtocolViolationError).
-  4. Bổ sung fixture test_18u: chứng minh quét toàn bộ tệp được Git theo dõi trong repository không tìm thấy private key hay chuỗi hex của khóa đã thu hồi, và candidate không thể mint bất kỳ verifiable bootstrap capability nào (SAFE_ASSERTION_TRACKED_KEY_CAN_MINT_VERIFIABLE_CAPABILITY = False).
-  5. Bộ kiểm thử tự động đạt **397/397 tests PASS (100%)**.
-  6. Trạng thái kích hoạt production tiếp tục bị khóa chặt fail-closed: ProductionActivationGate.STATUS == PRODUCTION_ACTIVATION_BLOCKED (NOT_PROVISIONED).
+- Authority hi?n h?nh gi? nguy?n: M2-P1..P7B_ACCEPTED_CLOSED; M2-P8/P9 LOCKED; M3/Ph?n h? A NOT AUTHORIZED.
+- Kh?c ph?c tri?t ?? ph?t hi?n ??c l?p t? ??t audit c?a Sol tr?n exact candidate 42ea7a7c8a421f153026c51aa0fcd5c9b3973530 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  1. Lo?i b? tri?t ?? factory `TrustedHostBootstrapCapability`, token `_HOST_BOUNDARY_TOKEN`, v? c?c bi?n to?n c?c `_h_port`, `_h_authkey`, `_h_proc`, `_h_boot_cap` kh?i module level c?a `test_negative_fixtures.py`.
+  2. Kh? ho?n to?n side-effect kh?i ??ng daemon khi import module: chuy?n vi?c kh?i t?o host boundary daemon sang lifecycle `setUpModule` / `tearDownModule` c?a test harness runner, import module thu?n t?y kh?ng ch?y b?t k? subprocess n?o.
+  3. B? sung retry loop cho thao t?c `os.replace` trong `_persist_atomic` c?a `delivery_engine.py` ?? x? l? tri?t ?? transient file locking tr?n Windows filesystem.
+  4. B? sung b?i ki?m tra `test_18v` ch?ng minh fresh subprocess import fixture module kh?ng th? ti?p c?n factory, token, hay endpoint, v? kh?ng th? mint b?t k? capability n?o fail-closed (`CANDIDATE_IMPORT_FIXTURE_AUTHORITY_ACCEPTED` b?ng `False`, ph?t sinh b?ng ch?ng `CANDIDATE_IMPORT_FIXTURE_MINT_REJECTED_PASS`).
+  5. To?n b? b? ki?m th? t? ??ng ??t **398/398 tests PASS (100%)**.
+  6. Tr?ng th?i k?ch ho?t production ti?p t?c b? kh?a ch?t fail-closed: ProductionActivationGate.STATUS == PRODUCTION_ACTIVATION_BLOCKED (NOT_PROVISIONED).
 
-## Chưa quyết định
+## Ch?a quy?t ??nh
 
-- Chưa mở implementation authority cho Milestone M2-P8/P9 hoặc Milestone M3.
-- Chưa kích hoạt production mode (PRODUCTION_ACTIVATION_BLOCKED giữ nguyên fail-closed).
-- Chờ kết quả re-review của Sol trên exact candidate SHA mới sau remediation.
+- Ch?a m? implementation authority cho Milestone M2-P8/P9 ho?c Milestone M3.
+- Ch?a k?ch ho?t production mode (PRODUCTION_ACTIVATION_BLOCKED gi? nguy?n fail-closed).
+- Ch? k?t qu? re-review c?a Sol tr?n exact candidate SHA m?i sau remediation.
 
-## Tệp cần đọc tiếp
+## T?p c?n ??c ti?p
 
-- docs/parallel-delivery/security-performance-recovery.md (Mục 8: Threat Model, Out-of-Process Trust Boundary, Closure Matrix, Prerequisites Inventory)
+- docs/parallel-delivery/security-performance-recovery.md (M?c 8: Threat Model, Out-of-Process Trust Boundary, Closure Matrix, Prerequisites Inventory)
 - docs/parallel-delivery/delivery_engine.py (HostBoundaryChannel, HostBoundaryTicket, HostBoundaryTicketIssuer, HostBoundaryBootstrapCapability, KeyStoreHostIssuer, KeyStoreHostHandoff, TrustedKeyStore, DurableConsumptionRegistry)
-- docs/parallel-delivery/test_negative_fixtures.py (TestSolTrustBoundaryRootCauseRemediation)
+- docs/parallel-delivery/test_negative_fixtures.py (TestSolTrustBoundaryRootCauseRemediation, test_18v)
 
-## Điểm tiếp tục
+## ?i?m ti?p t?c
 
-- Chạy toàn bộ gate kiểm thử và kiểm tra mã hóa/toàn vẹn dữ liệu (validate.py).
-- Commit thay đổi code/docs theo Conventional Commits.
-- Tái tạo báo cáo attestation chính xác (python docs/parallel-delivery/validate.py --generate-report --base 4a7c8c921b7e05066505d51b168a02c3fde61317 --candidate <NEW_HEAD>).
-- Commit tệp .validation-report.json và push lên origin/trungqwe/parallel-architecture-revolution.
-- Gửi worker_done với --outcome succeeded.
+- Ch?y to?n b? gate ki?m th? v? ki?m tra m? h?a/to?n v?n d? li?u (validate.py).
+- Commit thay ??i code/docs theo Conventional Commits.
+- T?i t?o b?o c?o attestation ch?nh x?c (python docs/parallel-delivery/validate.py --generate-report --base 4a7c8c921b7e05066505d51b168a02c3fde61317 --candidate <NEW_HEAD>).
+- Commit t?p .validation-report.json v? push l?n origin/trungqwe/parallel-architecture-revolution.
+- G?i worker_done v?i --outcome succeeded.

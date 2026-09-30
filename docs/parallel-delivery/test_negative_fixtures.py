@@ -114,181 +114,201 @@ from delivery_engine import (  # noqa: E402
 )
 from validate import check_secret_scan, check_task_dag
 
-_HOST_BOUNDARY_TOKEN = secrets.token_hex(32)
+TEST_FIXTURE_REVIEWER_SECRET = "test_fixture_reviewer_secret_32b_hex!"
 
 
-def TrustedHostBootstrapCapability(
-    port: int,
-    authkey: bytes,
-    host_token: str,
-    *,
-    bootstrap_id: Optional[str] = None,
-    created_at: Optional[float] = None,
-) -> HostBoundaryBootstrapCapability:
-    """Trusted host-owned bootstrap capability factory issued exclusively by test harness / trusted host boundary.
-    Cannot be called or imported by candidate modules.
-    Delegates cryptographic signing strictly out-of-process to the external signer daemon.
-    """
-    if not isinstance(port, int) or port <= 0 or port > 65535:
-        raise ProtocolViolationError("Invalid host boundary port fail-closed")
-    if not isinstance(authkey, bytes) or len(authkey) < 16:
-        raise ProtocolViolationError("Invalid host boundary authkey fail-closed")
-    clean_token = (
-        host_token.strip()
-        if isinstance(host_token, str)
-        else (host_token.decode("utf-8", errors="replace").strip() if isinstance(host_token, bytes) else "")
-    )
-    if len(clean_token) < 32:
-        raise ProtocolViolationError("host_token must be at least 32 characters fail-closed")
+class _TestHostBoundaryContext:
+    port: int = 0
+    authkey: bytes = b""
+    token: str = ""
+    proc: Optional[subprocess.Popen] = None
+    boot_cap: Optional[HostBoundaryBootstrapCapability] = None
+    test_host_issuer: Optional[ReviewerHostIssuer] = None
+    lock = threading.RLock()
 
-    bid = bootstrap_id or f"boot_cap_{secrets.token_hex(16)}"
-    now = created_at if created_at is not None else time.time()
-    authkey_hash = hashlib.sha256(authkey).hexdigest()
-    host_token_hash = hashlib.sha256(clean_token.encode("utf-8")).hexdigest()
-    payload = f"HOST_BOOTSTRAP_CAP:{bid}:{port}:{authkey_hash}:{host_token_hash}:{now}".encode("utf-8")
 
-    from multiprocessing.connection import Client
-    try:
-        conn = Client(("127.0.0.1", port), authkey=authkey)
+def _ensure_test_host_boundary_harness() -> None:
+    with _TestHostBoundaryContext.lock:
+        if _TestHostBoundaryContext.proc is not None and _TestHostBoundaryContext.proc.poll() is None:
+            return
+
+        clean_token = secrets.token_hex(32)
+        effective_authkey = secrets.token_bytes(32)
+        server_code = (
+            "import sys, hmac\n"
+            "from multiprocessing.connection import Listener\n"
+            "from cryptography.hazmat.primitives.asymmetric import ed25519\n"
+            "line1 = sys.stdin.readline().strip()\n"
+            "line2 = sys.stdin.readline().strip()\n"
+            "host_secret = line1.encode('utf-8')\n"
+            "authkey = bytes.fromhex(line2)\n"
+            "listener = Listener(('127.0.0.1', 0), authkey=authkey)\n"
+            "priv_key = ed25519.Ed25519PrivateKey.generate()\n"
+            "pub_bytes = priv_key.public_key().public_bytes_raw()\n"
+            "sys.stdout.write(str(listener.address[1]) + '\\n')\n"
+            "sys.stdout.write(pub_bytes.hex() + '\\n')\n"
+            "sys.stdout.flush()\n"
+            "while True:\n"
+            "    try:\n"
+            "        conn = listener.accept()\n"
+            "        msg = conn.recv()\n"
+            "        if msg == '__STOP_HOST_BOUNDARY__':\n"
+            "            conn.send(True)\n"
+            "            conn.close()\n"
+            "            break\n"
+            "        if isinstance(msg, tuple) and len(msg) == 3 and msg[0] == 'SIGN_BOOTSTRAP_CAP':\n"
+            "            _, req_token, payload = msg\n"
+            "            t_bytes = req_token if isinstance(req_token, bytes) else req_token.encode('utf-8', errors='replace')\n"
+            "            if len(t_bytes) >= 32 and hmac.compare_digest(t_bytes.strip(), host_secret):\n"
+            "                sig = priv_key.sign(payload).hex()\n"
+            "                conn.send(('OK', sig))\n"
+            "            else:\n"
+            "                conn.send(('ERR', 'Unauthorized'))\n"
+            "            conn.close()\n"
+            "            continue\n"
+            "        if isinstance(msg, bytes):\n"
+            "            t_bytes = msg\n"
+            "        elif isinstance(msg, str):\n"
+            "            t_bytes = msg.encode('utf-8', errors='replace')\n"
+            "        else:\n"
+            "            conn.send(False)\n"
+            "            conn.close()\n"
+            "            continue\n"
+            "        valid = len(t_bytes) >= 32 and hmac.compare_digest(t_bytes.strip(), host_secret)\n"
+            "        conn.send(valid)\n"
+            "        conn.close()\n"
+            "    except Exception:\n"
+            "        break\n"
+            "listener.close()\n"
+        )
+
+        proc = subprocess.Popen(
+            [sys.executable, "-u", "-c", server_code],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        proc.stdin.write(clean_token + "\n" + effective_authkey.hex() + "\n")
+        proc.stdin.flush()
+
+        port_line = proc.stdout.readline()
+        if not port_line or not port_line.strip().isdigit():
+            proc.kill()
+            raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel port")
+        port = int(port_line.strip())
+
+        pub_line = proc.stdout.readline()
+        if not pub_line or len(pub_line.strip()) != 64:
+            proc.kill()
+            raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel public key")
+        pub_bytes = bytes.fromhex(pub_line.strip())
+
+        HostBoundaryBootstrapCapability.pin_trusted_host_public_key(
+            pub_bytes, _internal_token=clean_token, port=port, authkey=effective_authkey
+        )
+
+        bid = f"boot_cap_{secrets.token_hex(16)}"
+        now = time.time()
+        authkey_hash = hashlib.sha256(effective_authkey).hexdigest()
+        host_token_hash = hashlib.sha256(clean_token.encode("utf-8")).hexdigest()
+        payload = f"HOST_BOOTSTRAP_CAP:{bid}:{port}:{authkey_hash}:{host_token_hash}:{now}".encode("utf-8")
+
+        from multiprocessing.connection import Client
+        conn = Client(("127.0.0.1", port), authkey=effective_authkey)
         conn.send(("SIGN_BOOTSTRAP_CAP", clean_token, payload))
         res = conn.recv()
         conn.close()
         if not isinstance(res, tuple) or len(res) != 2 or res[0] != "OK":
-            raise ProtocolViolationError("Trusted host boundary daemon refused to sign bootstrap capability fail-closed")
+            proc.kill()
+            raise ProtocolViolationError("Trusted host boundary daemon refused to sign initial bootstrap capability fail-closed")
         sig = res[1]
-    except ProtocolViolationError:
-        raise
-    except Exception as e:
-        raise ProtocolViolationError(f"Failed to sign capability via external host daemon: {e} fail-closed") from e
 
-    return HostBoundaryBootstrapCapability.from_host_signed_payload(
-        bootstrap_id=bid,
-        port=port,
-        authkey_hash=authkey_hash,
-        host_token_hash=host_token_hash,
-        created_at=now,
-        signature=sig,
-    )
+        boot_cap = HostBoundaryBootstrapCapability.from_host_signed_payload(
+            bootstrap_id=bid,
+            port=port,
+            authkey_hash=authkey_hash,
+            host_token_hash=host_token_hash,
+            created_at=now,
+            signature=sig,
+        )
+
+        HostBoundaryTicketIssuer._default_bootstrap_capability = boot_cap
+        host_ticket_issuer = HostBoundaryTicketIssuer(_internal_token=clean_token, bootstrap_capability=boot_cap)
+        host_ticket = host_ticket_issuer.issue_ticket(port, effective_authkey, _internal_token=clean_token)
+        HostBoundaryChannel.provision_channel(port, effective_authkey, host_ticket=host_ticket, bootstrap_capability=boot_cap, proc=proc)
+
+        test_host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token=clean_token)
+        ReviewerSessionBoundary.provision_from_host(
+            test_host_issuer.issue_handoff(TEST_FIXTURE_REVIEWER_SECRET.encode("utf-8"))
+        )
+
+        _TestHostBoundaryContext.port = port
+        _TestHostBoundaryContext.authkey = effective_authkey
+        _TestHostBoundaryContext.token = clean_token
+        _TestHostBoundaryContext.proc = proc
+        _TestHostBoundaryContext.boot_cap = boot_cap
+        _TestHostBoundaryContext.test_host_issuer = test_host_issuer
 
 
-def _launch_test_host_boundary_daemon(host_token: str) -> tuple[int, bytes, subprocess.Popen, HostBoundaryBootstrapCapability]:
-    clean_token = host_token.strip()
-    effective_authkey = secrets.token_bytes(32)
-    server_code = (
-        "import sys, hmac\n"
-        "from multiprocessing.connection import Listener\n"
-        "from cryptography.hazmat.primitives.asymmetric import ed25519\n"
-        "line1 = sys.stdin.readline().strip()\n"
-        "line2 = sys.stdin.readline().strip()\n"
-        "host_secret = line1.encode('utf-8')\n"
-        "authkey = bytes.fromhex(line2)\n"
-        "listener = Listener(('127.0.0.1', 0), authkey=authkey)\n"
-        "priv_key = ed25519.Ed25519PrivateKey.generate()\n"
-        "pub_bytes = priv_key.public_key().public_bytes_raw()\n"
-        "sys.stdout.write(str(listener.address[1]) + '\\n')\n"
-        "sys.stdout.write(pub_bytes.hex() + '\\n')\n"
-        "sys.stdout.flush()\n"
-        "while True:\n"
-        "    try:\n"
-        "        conn = listener.accept()\n"
-        "        msg = conn.recv()\n"
-        "        if msg == '__STOP_HOST_BOUNDARY__':\n"
-        "            conn.send(True)\n"
-        "            conn.close()\n"
-        "            break\n"
-        "        if isinstance(msg, tuple) and len(msg) == 3 and msg[0] == 'SIGN_BOOTSTRAP_CAP':\n"
-        "            _, req_token, payload = msg\n"
-        "            t_bytes = req_token if isinstance(req_token, bytes) else req_token.encode('utf-8', errors='replace')\n"
-        "            if len(t_bytes) >= 32 and hmac.compare_digest(t_bytes.strip(), host_secret):\n"
-        "                sig = priv_key.sign(payload).hex()\n"
-        "                conn.send(('OK', sig))\n"
-        "            else:\n"
-        "                conn.send(('ERR', 'Unauthorized'))\n"
-        "            conn.close()\n"
-        "            continue\n"
-        "        if isinstance(msg, bytes):\n"
-        "            t_bytes = msg\n"
-        "        elif isinstance(msg, str):\n"
-        "            t_bytes = msg.encode('utf-8', errors='replace')\n"
-        "        else:\n"
-        "            conn.send(False)\n"
-        "            conn.close()\n"
-        "            continue\n"
-        "        valid = len(t_bytes) >= 32 and hmac.compare_digest(t_bytes.strip(), host_secret)\n"
-        "        conn.send(valid)\n"
-        "        conn.close()\n"
-        "    except Exception:\n"
-        "        break\n"
-        "listener.close()\n"
-    )
+def _stop_test_host_boundary_harness() -> None:
+    with _TestHostBoundaryContext.lock:
+        proc = _TestHostBoundaryContext.proc
+        if proc is not None:
+            try:
+                if proc.poll() is None:
+                    if _TestHostBoundaryContext.port and _TestHostBoundaryContext.authkey:
+                        try:
+                            from multiprocessing.connection import Client
+                            conn = Client(("127.0.0.1", _TestHostBoundaryContext.port), authkey=_TestHostBoundaryContext.authkey)
+                            conn.send("__STOP_HOST_BOUNDARY__")
+                            conn.recv()
+                            conn.close()
+                        except Exception:
+                            pass
+                    proc.terminate()
+                    proc.wait(timeout=2.0)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+            _TestHostBoundaryContext.proc = None
 
-    proc = subprocess.Popen(
-        [sys.executable, "-u", "-c", server_code],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
 
-    proc.stdin.write(clean_token + "\n" + effective_authkey.hex() + "\n")
-    proc.stdin.flush()
+def setUpModule() -> None:
+    _ensure_test_host_boundary_harness()
 
-    port_line = proc.stdout.readline()
-    if not port_line or not port_line.strip().isdigit():
-        proc.kill()
-        raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel port")
 
-    port = int(port_line.strip())
+def tearDownModule() -> None:
+    _stop_test_host_boundary_harness()
 
-    pub_line = proc.stdout.readline()
-    if not pub_line or len(pub_line.strip()) != 64:
-        proc.kill()
-        raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel public key")
-
-    pub_bytes = bytes.fromhex(pub_line.strip())
-    HostBoundaryBootstrapCapability.pin_trusted_host_public_key(
-        pub_bytes, _internal_token=clean_token, port=port, authkey=effective_authkey
-    )
-
-    boot_cap = TrustedHostBootstrapCapability(port, effective_authkey, clean_token)
-    return port, effective_authkey, proc, boot_cap
-
-_h_port, _h_authkey, _h_proc, _h_boot_cap = _launch_test_host_boundary_daemon(_HOST_BOUNDARY_TOKEN)
-HostBoundaryTicketIssuer._default_bootstrap_capability = _h_boot_cap
-_host_ticket_issuer = HostBoundaryTicketIssuer(_internal_token=_HOST_BOUNDARY_TOKEN, bootstrap_capability=_h_boot_cap)
-_host_ticket = _host_ticket_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
-HostBoundaryChannel.provision_channel(_h_port, _h_authkey, host_ticket=_host_ticket, bootstrap_capability=_h_boot_cap, proc=_h_proc)
-
-_test_host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
 
 def TrustedHostReviewerHandoff(credential: bytes) -> ReviewerHostHandoff:
-    """Trusted host-owned handoff authority created exclusively by test harness / trusted host boundary.
-    Cannot be called or imported by candidate modules.
-    """
-    return _test_host_issuer.issue_handoff(credential)
+    _ensure_test_host_boundary_harness()
+    if _TestHostBoundaryContext.test_host_issuer is None:
+        raise ProtocolViolationError("Trusted host reviewer issuer uninitialized fail-closed")
+    return _TestHostBoundaryContext.test_host_issuer.issue_handoff(credential)
 
 
 def TrustedHostKeyStoreHandoff(pinned_keys: Mapping[str, bytes], issuer_name: str = "trusted_host") -> KeyStoreHostHandoff:
-    """Trusted host-owned keystore handoff authority created exclusively by test harness / trusted host boundary."""
-    issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
-    return issuer.issue_handoff(pinned_keys, issuer_name=issuer_name, _internal_token=_HOST_BOUNDARY_TOKEN)
+    _ensure_test_host_boundary_harness()
+    token = _TestHostBoundaryContext.token
+    issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=token)
+    return issuer.issue_handoff(pinned_keys, issuer_name=issuer_name, _internal_token=token)
 
 
 def TrustedHostIsolatedKeyStore(pinned_keys: Mapping[str, bytes]) -> TrustedKeyStore:
-    """Trusted host-owned isolated keystore created exclusively by test harness / trusted host boundary."""
-    issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
-    return issuer.issue_isolated_keystore(pinned_keys, _internal_token=_HOST_BOUNDARY_TOKEN)
+    _ensure_test_host_boundary_harness()
+    token = _TestHostBoundaryContext.token
+    issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=token)
+    return issuer.issue_isolated_keystore(pinned_keys, _internal_token=token)
 
 
 def TrustedHostProvisionKeyStore(handoff: KeyStoreHostHandoff) -> TrustedKeyStore:
-    """Trusted host-owned keystore provisioning executed exclusively by test harness / trusted host boundary."""
-    return TrustedKeyStore.provision_from_host(handoff, _internal_token=_HOST_BOUNDARY_TOKEN)
-
-
-TEST_FIXTURE_REVIEWER_SECRET = "test_fixture_reviewer_secret_32b_hex!"
-ReviewerSessionBoundary.provision_from_host(
-    TrustedHostReviewerHandoff(TEST_FIXTURE_REVIEWER_SECRET.encode("utf-8"))
-)
+    _ensure_test_host_boundary_harness()
+    token = _TestHostBoundaryContext.token
+    return TrustedKeyStore.provision_from_host(handoff, _internal_token=token)
 
 
 
@@ -11655,7 +11675,8 @@ print("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS")
         self.assertEqual(res_neg.returncode, 0, f"Child process failed: stdout={res_neg.stdout}\nstderr={res_neg.stderr}")
         self.assertIn("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS", res_neg.stdout)
 
-        pos_boot = TrustedHostBootstrapCapability(_h_port, _h_authkey, _HOST_BOUNDARY_TOKEN)
+        pos_boot = _TestHostBoundaryContext.boot_cap
+        self.assertIsNotNone(pos_boot)
         pos_pub_hex = HostBoundaryBootstrapCapability.get_pinned_public_key().hex()
         child_code_pos = f'''
 import sys, os
@@ -11664,16 +11685,16 @@ sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
 from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, HostBoundaryTicketIssuer, HostBoundaryBootstrapCapability, ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
 
 # Host pins public key in child process
-HostBoundaryBootstrapCapability.pin_trusted_host_public_key(bytes.fromhex('{pos_pub_hex}'), _internal_token='{_HOST_BOUNDARY_TOKEN}', port={_h_port}, authkey={_h_authkey!r})
+HostBoundaryBootstrapCapability.pin_trusted_host_public_key(bytes.fromhex('{pos_pub_hex}'), _internal_token='{_TestHostBoundaryContext.token}', port={_TestHostBoundaryContext.port}, authkey={_TestHostBoundaryContext.authkey!r})
 
 # Host provisions channel endpoint/auth via host mechanism in child process
-child_boot_cap = HostBoundaryBootstrapCapability.from_host_signed_payload('{pos_boot.bootstrap_id}', {_h_port}, '{pos_boot.authkey_hash}', '{pos_boot.host_token_hash}', {pos_boot.created_at}, '{pos_boot.signature}')
-child_issuer = HostBoundaryTicketIssuer(_internal_token='{_HOST_BOUNDARY_TOKEN}', bootstrap_capability=child_boot_cap)
-child_ticket = child_issuer.issue_ticket({_h_port}, {_h_authkey!r}, _internal_token='{_HOST_BOUNDARY_TOKEN}')
-HostBoundaryChannel.provision_channel({_h_port}, {_h_authkey!r}, host_ticket=child_ticket, bootstrap_capability=child_boot_cap)
+child_boot_cap = HostBoundaryBootstrapCapability.from_host_signed_payload('{pos_boot.bootstrap_id}', {_TestHostBoundaryContext.port}, '{pos_boot.authkey_hash}', '{pos_boot.host_token_hash}', {pos_boot.created_at}, '{pos_boot.signature}')
+child_issuer = HostBoundaryTicketIssuer(_internal_token='{_TestHostBoundaryContext.token}', bootstrap_capability=child_boot_cap)
+child_ticket = child_issuer.issue_ticket({_TestHostBoundaryContext.port}, {_TestHostBoundaryContext.authkey!r}, _internal_token='{_TestHostBoundaryContext.token}')
+HostBoundaryChannel.provision_channel({_TestHostBoundaryContext.port}, {_TestHostBoundaryContext.authkey!r}, host_ticket=child_ticket, bootstrap_capability=child_boot_cap)
 
 # Positive control: authentic host handoff from trusted host issuer successfully provisions boundary
-host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token='{_HOST_BOUNDARY_TOKEN}')
+host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token='{_TestHostBoundaryContext.token}')
 authentic_handoff = host_issuer.issue_handoff(b"authentic_fixture_secret_32b_hex!")
 provisioned_boundary = ReviewerSessionBoundary.provision_from_host(authentic_handoff)
 assert provisioned_boundary._reviewer_secret == b"authentic_fixture_secret_32b_hex!", "Boundary secret mismatch"
@@ -11715,8 +11736,9 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
 
     def setUp(self):
         SharedOrcaExecutionRegistry.reset_default()
-        TrustedKeyStore._reset_for_testing(_internal_token=_HOST_BOUNDARY_TOKEN)
-        KeyStoreHostIssuer._reset_for_testing(_internal_token=_HOST_BOUNDARY_TOKEN)
+        _ensure_test_host_boundary_harness()
+        TrustedKeyStore._reset_for_testing(_internal_token=_TestHostBoundaryContext.token)
+        KeyStoreHostIssuer._reset_for_testing(_internal_token=_TestHostBoundaryContext.token)
         DurableConsumptionRegistry.reset_default()
         cmd_head = ["git", "rev-parse", "HEAD"]
         res = subprocess.run(cmd_head, capture_output=True, text=True)
@@ -11731,8 +11753,8 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
 
     def tearDown(self):
         SharedOrcaExecutionRegistry.reset_default()
-        TrustedKeyStore._reset_for_testing(_internal_token=_HOST_BOUNDARY_TOKEN)
-        KeyStoreHostIssuer._reset_for_testing(_internal_token=_HOST_BOUNDARY_TOKEN)
+        TrustedKeyStore._reset_for_testing(_internal_token=_TestHostBoundaryContext.token)
+        KeyStoreHostIssuer._reset_for_testing(_internal_token=_TestHostBoundaryContext.token)
         DurableConsumptionRegistry.reset_default()
 
     def test_01_red_evidence_sol_finding_constructor_and_issuer_reproduction(self):
@@ -12518,7 +12540,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("Access to host keystore issuer by in-process candidate caller is strictly forbidden fail-closed", str(ctx_iss_fake.exception))
 
         # 11o. Sol Finding 1: Candidate calls issue_handoff on host issuer without host token -> fails closed
-        host_issuer_auth = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
+        host_issuer_auth = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_TestHostBoundaryContext.token)
         with self.assertRaises(ProtocolViolationError) as ctx_ho_cand:
             host_issuer_auth.issue_handoff({"integ_gatekeeper_v1": attacker_pub})
         self.assertIn("Minting host handoff by in-process candidate caller is strictly forbidden fail-closed", str(ctx_ho_cand.exception))
@@ -13261,7 +13283,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertFalse(HostBoundaryChannel.verify_capability("arbitrary_forged_token_value_32b_hex!"))
 
         # 17b. Out-of-process daemon verifies authentic host token
-        self.assertTrue(HostBoundaryChannel.verify_capability(_HOST_BOUNDARY_TOKEN))
+        self.assertTrue(HostBoundaryChannel.verify_capability(_TestHostBoundaryContext.token))
 
         # 17c. KeyStoreHostIssuer rejects candidate-set mutable env token
         with self.assertRaises(ProtocolViolationError) as ctx_iss:
@@ -13283,16 +13305,16 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             KeyStoreHostIssuer._reset_for_testing(_internal_token=attacker_token)
 
         # 17g. Positive control: Authentic host token succeeds for reset and issuer
-        KeyStoreHostIssuer._reset_for_testing(_internal_token=_HOST_BOUNDARY_TOKEN)
-        TrustedKeyStore._reset_for_testing(_internal_token=_HOST_BOUNDARY_TOKEN)
-        valid_issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
+        KeyStoreHostIssuer._reset_for_testing(_internal_token=_TestHostBoundaryContext.token)
+        TrustedKeyStore._reset_for_testing(_internal_token=_TestHostBoundaryContext.token)
+        valid_issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_TestHostBoundaryContext.token)
         self.assertIsNotNone(valid_issuer)
 
         # 17h. In-process candidate attempts env endpoint forgery by setting _ORCA_HOST_BOUNDARY_PORT / _ORCA_HOST_BOUNDARY_AUTHKEY
         os.environ["_ORCA_HOST_BOUNDARY_PORT"] = "65530"
         os.environ["_ORCA_HOST_BOUNDARY_AUTHKEY"] = secrets.token_hex(16)
         # verify_capability does not read or trust mutable environment variables: authentic token succeeds against provisioned daemon
-        self.assertTrue(HostBoundaryChannel.verify_capability(_HOST_BOUNDARY_TOKEN))
+        self.assertTrue(HostBoundaryChannel.verify_capability(_TestHostBoundaryContext.token))
         self.assertFalse(HostBoundaryChannel.verify_capability(attacker_token))
         os.environ.pop("_ORCA_HOST_BOUNDARY_PORT", None)
         os.environ.pop("_ORCA_HOST_BOUNDARY_AUTHKEY", None)
@@ -13457,7 +13479,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         object.__setattr__(raw_ticket, "_created_at", 0.0)
         object.__setattr__(raw_ticket, "_signature", "candidate-signature")
         with self.assertRaises(ProtocolViolationError) as ctx_consume:
-            raw_ticket._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+            raw_ticket._consume_for_provisioning(HostBoundaryChannel, _TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey)
         self.assertIn("Uninitialized or forged HostBoundaryTicket cannot be consumed fail-closed", str(ctx_consume.exception))
 
         # 18e. HostBoundaryTicketIssuer direct construction without valid host token fails closed
@@ -13471,12 +13493,12 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("at least 32 characters", str(ctx_short.exception))
 
         # 18g. Trust-root tampering/monkeypatch: replace _issuer on ticket with foreign or fake issuer
-        valid_issuer = HostBoundaryTicketIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
-        tampered_ticket = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        valid_issuer = HostBoundaryTicketIssuer.get_default_host_issuer(_internal_token=_TestHostBoundaryContext.token)
+        tampered_ticket = valid_issuer.issue_ticket(_TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey, _internal_token=_TestHostBoundaryContext.token)
         fake_issuer = HostBoundaryTicketIssuer(_internal_token="fake_issuer_token_32_bytes_long!")
         object.__setattr__(tampered_ticket, "_issuer", fake_issuer)
         with self.assertRaises(ProtocolViolationError) as ctx_tamp:
-            tampered_ticket._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+            tampered_ticket._consume_for_provisioning(HostBoundaryChannel, _TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey)
         self.assertTrue("forged provenance rejected fail-closed" in str(ctx_tamp.exception) or "foreign issuer rejected" in str(ctx_tamp.exception), str(ctx_tamp.exception))
 
         # 18h. Ticket minted with attacker issuer rejected by provision_channel against authentic host daemon in child process
@@ -13489,8 +13511,8 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             f"attacker_token = secrets.token_hex(32)\n"
             f"attacker_issuer = HostBoundaryTicketIssuer(_internal_token=attacker_token)\n"
             f"try:\n"
-            f"    attacker_ticket = attacker_issuer.issue_ticket({_h_port}, {_h_authkey!r}, _internal_token=attacker_token)\n"
-            f"    HostBoundaryChannel.provision_channel({_h_port}, {_h_authkey!r}, host_ticket=attacker_ticket)\n"
+            f"    attacker_ticket = attacker_issuer.issue_ticket({_TestHostBoundaryContext.port}, {_TestHostBoundaryContext.authkey!r}, _internal_token=attacker_token)\n"
+            f"    HostBoundaryChannel.provision_channel({_TestHostBoundaryContext.port}, {_TestHostBoundaryContext.authkey!r}, host_ticket=attacker_ticket)\n"
             f"    assert False, 'Expected failure'\n"
             f"except ProtocolViolationError as e:\n"
             f"    assert ('Host ticket issuance rejected' in str(e) or 'HostBoundaryTicket issuer secret was rejected' in str(e)), str(e)\n"
@@ -13506,61 +13528,61 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("ATTACKER_DAEMON_REJECTED_PASS", proc_att.stdout)
 
         # 18i. Ticket with forged HMAC signature is rejected fail-closed
-        legit_ticket = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        legit_ticket = valid_issuer.issue_ticket(_TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey, _internal_token=_TestHostBoundaryContext.token)
         object.__setattr__(legit_ticket, "_signature", "deadbeef" * 8)
         with self.assertRaises(ProtocolViolationError) as ctx_sig:
-            legit_ticket._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+            legit_ticket._consume_for_provisioning(HostBoundaryChannel, _TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey)
         self.assertIn("cryptographic signature mismatch", str(ctx_sig.exception))
 
         # 18j. Ticket with port binding mismatch is rejected fail-closed
-        legit_ticket2 = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        legit_ticket2 = valid_issuer.issue_ticket(_TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey, _internal_token=_TestHostBoundaryContext.token)
         with self.assertRaises(ProtocolViolationError) as ctx_port:
-            legit_ticket2._consume_for_provisioning(HostBoundaryChannel, _h_port + 1, _h_authkey)
+            legit_ticket2._consume_for_provisioning(HostBoundaryChannel, _TestHostBoundaryContext.port + 1, _TestHostBoundaryContext.authkey)
         self.assertIn("port binding mismatch", str(ctx_port.exception))
 
         # 18k. Ticket with authkey binding mismatch is rejected fail-closed
-        legit_ticket3 = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        legit_ticket3 = valid_issuer.issue_ticket(_TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey, _internal_token=_TestHostBoundaryContext.token)
         with self.assertRaises(ProtocolViolationError) as ctx_auth:
-            legit_ticket3._consume_for_provisioning(HostBoundaryChannel, _h_port, b"wrong_authkey_32b_length_bytes!")
+            legit_ticket3._consume_for_provisioning(HostBoundaryChannel, _TestHostBoundaryContext.port, b"wrong_authkey_32b_length_bytes!")
         self.assertIn("authkey binding mismatch", str(ctx_auth.exception))
 
         # 18l. Wrong audience/role: manipulated role rejected fail-closed
-        wrong_role_ticket = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        wrong_role_ticket = valid_issuer.issue_ticket(_TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey, _internal_token=_TestHostBoundaryContext.token)
         object.__setattr__(wrong_role_ticket, "_role", "WrongAudienceRole")
         with self.assertRaises(ProtocolViolationError) as ctx_role:
-            wrong_role_ticket._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+            wrong_role_ticket._consume_for_provisioning(HostBoundaryChannel, _TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey)
         self.assertIn("role mismatch", str(ctx_role.exception))
 
         # 18m. Temporal validity — expired ticket (created_at 301s in past) is rejected fail-closed
-        legit_ticket4 = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        legit_ticket4 = valid_issuer.issue_ticket(_TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey, _internal_token=_TestHostBoundaryContext.token)
         object.__setattr__(legit_ticket4, "_created_at", time.time() - 301.0)
         with self.assertRaises(ProtocolViolationError) as ctx_exp:
-            legit_ticket4._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+            legit_ticket4._consume_for_provisioning(HostBoundaryChannel, _TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey)
         self.assertIn("has expired", str(ctx_exp.exception))
 
         # 18n. Temporal validity — future ticket beyond skew (created_at 35s in future) is rejected fail-closed
-        future_ticket = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        future_ticket = valid_issuer.issue_ticket(_TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey, _internal_token=_TestHostBoundaryContext.token)
         object.__setattr__(future_ticket, "_created_at", time.time() + 35.0)
         with self.assertRaises(ProtocolViolationError) as ctx_fut:
-            future_ticket._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+            future_ticket._consume_for_provisioning(HostBoundaryChannel, _TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey)
         self.assertIn("future beyond acceptable skew", str(ctx_fut.exception))
 
         # 18o. Single-use sequential replay protection: consumed ticket cannot be reused fail-closed
-        legit_ticket5 = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
-        legit_ticket5._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+        legit_ticket5 = valid_issuer.issue_ticket(_TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey, _internal_token=_TestHostBoundaryContext.token)
+        legit_ticket5._consume_for_provisioning(HostBoundaryChannel, _TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey)
         self.assertTrue(getattr(legit_ticket5, "_consumed", False))
         with self.assertRaises(ProtocolViolationError) as ctx_replay:
-            legit_ticket5._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+            legit_ticket5._consume_for_provisioning(HostBoundaryChannel, _TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey)
         self.assertIn("single-use ticket cannot be reused fail-closed", str(ctx_replay.exception))
 
         # 18p. Concurrent replay: 10 threads racing to consume the same ticket simultaneously
-        concurrent_ticket = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        concurrent_ticket = valid_issuer.issue_ticket(_TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey, _internal_token=_TestHostBoundaryContext.token)
         results = []
         barrier = threading.Barrier(10)
         def racer():
             barrier.wait()
             try:
-                concurrent_ticket._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+                concurrent_ticket._consume_for_provisioning(HostBoundaryChannel, _TestHostBoundaryContext.port, _TestHostBoundaryContext.authkey)
                 results.append("SUCCESS")
             except ProtocolViolationError as e:
                 results.append(f"FAIL:{e}")
@@ -13758,15 +13780,23 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         2. Candidate API _create_authenticated is fail-closed against in-process callers.
         3. Fake signature via from_host_signed_payload or object.__new__ fails cryptographic verification against pinned public key.
         4. Full rogue exploit chain cannot reach FULL_CHAIN_ACCEPTED or set HostBoundaryChannel._started = True.
-        5. Trusted host boundary factory TrustedHostBootstrapCapability succeeds with authentic Ed25519 signature from external signer.
+        5. Trusted host boundary authentic capability succeeds with authentic Ed25519 signature from external signer.
+        6. Fixture module completely eliminates TrustedHostBootstrapCapability factory, _HOST_BOUNDARY_TOKEN,
+           _h_port, _h_authkey, _h_proc, and _h_boot_cap from module exports.
         """
         import delivery_engine
         fixture_module = sys.modules[__name__]
 
-        # 1. Secret and private keys removed from candidate module and test fixtures
+        # 1. Secret, private keys, factories and tokens removed from candidate module and test fixtures
         self.assertFalse(hasattr(delivery_engine, "_HOST_BOUNDARY_BOOTSTRAP_SECRET"))
         self.assertFalse(hasattr(fixture_module, "_HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES"))
         self.assertFalse(hasattr(fixture_module, "_HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY"))
+        self.assertFalse(hasattr(fixture_module, "TrustedHostBootstrapCapability"))
+        self.assertFalse(hasattr(fixture_module, "_HOST_BOUNDARY_TOKEN"))
+        self.assertFalse(hasattr(fixture_module, "_h_port"))
+        self.assertFalse(hasattr(fixture_module, "_h_authkey"))
+        self.assertFalse(hasattr(fixture_module, "_h_proc"))
+        self.assertFalse(hasattr(fixture_module, "_h_boot_cap"))
 
         # 2. Candidate-side _create_authenticated fails closed
         with self.assertRaises(ProtocolViolationError) as ctx_mint:
@@ -13775,17 +13805,18 @@ print("FRESH_PROCESS_ISOLATION_PASS")
 
         # 3. Cryptographic verification fails against pinned public key for forged Ed25519 signature
         fake_cap = HostBoundaryBootstrapCapability.from_host_signed_payload(
-            "boot_cap_tampered", _h_port, hashlib.sha256(_h_authkey).hexdigest(), "0"*64, time.time(), "deadbeef"*8
+            "boot_cap_tampered", _TestHostBoundaryContext.port, hashlib.sha256(_TestHostBoundaryContext.authkey).hexdigest(), "0"*64, time.time(), "deadbeef"*8
         )
         with self.assertRaises(ProtocolViolationError) as ctx_fake:
-            fake_cap.verify(port=_h_port, authkey=_h_authkey)
+            fake_cap.verify(port=_TestHostBoundaryContext.port, authkey=_TestHostBoundaryContext.authkey)
         self.assertIn("cryptographic signature mismatch", str(ctx_fake.exception))
 
         # 4. Authentic capability from trusted host boundary succeeds
-        auth_cap = TrustedHostBootstrapCapability(_h_port, _h_authkey, _HOST_BOUNDARY_TOKEN)
-        auth_cap.verify(port=_h_port, authkey=_h_authkey)
-        self.assertEqual(auth_cap.port, _h_port)
-        self.assertEqual(auth_cap.authkey_hash, hashlib.sha256(_h_authkey).hexdigest())
+        auth_cap = _TestHostBoundaryContext.boot_cap
+        self.assertIsNotNone(auth_cap)
+        auth_cap.verify(port=_TestHostBoundaryContext.port, authkey=_TestHostBoundaryContext.authkey)
+        self.assertEqual(auth_cap.port, _TestHostBoundaryContext.port)
+        self.assertEqual(auth_cap.authkey_hash, hashlib.sha256(_TestHostBoundaryContext.authkey).hexdigest())
 
     def test_18u_sol_finding_candidate_reading_entire_repo_cannot_mint_bootstrap_capability(self):
         """18u. Sol Audit Finding Remediation: Candidate reading entire repository cannot mint bootstrap capability.
@@ -13823,16 +13854,16 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         attacker_priv = ed25519.Ed25519PrivateKey.generate()
         bid = "cand_minted_cap"
         now = time.time()
-        authkey_hash = hashlib.sha256(_h_authkey).hexdigest()
-        host_token_hash = hashlib.sha256(_HOST_BOUNDARY_TOKEN.encode("utf-8")).hexdigest()
-        payload = f"HOST_BOOTSTRAP_CAP:{bid}:{_h_port}:{authkey_hash}:{host_token_hash}:{now}".encode("utf-8")
+        authkey_hash = hashlib.sha256(_TestHostBoundaryContext.authkey).hexdigest()
+        host_token_hash = hashlib.sha256(_TestHostBoundaryContext.token.encode("utf-8")).hexdigest()
+        payload = f"HOST_BOOTSTRAP_CAP:{bid}:{_TestHostBoundaryContext.port}:{authkey_hash}:{host_token_hash}:{now}".encode("utf-8")
         attacker_sig = attacker_priv.sign(payload).hex()
 
         attacker_cap = HostBoundaryBootstrapCapability.from_host_signed_payload(
-            bid, _h_port, authkey_hash, host_token_hash, now, attacker_sig
+            bid, _TestHostBoundaryContext.port, authkey_hash, host_token_hash, now, attacker_sig
         )
         try:
-            attacker_cap.verify(port=_h_port, authkey=_h_authkey)
+            attacker_cap.verify(port=_TestHostBoundaryContext.port, authkey=_TestHostBoundaryContext.authkey)
             candidate_can_mint = True
         except ProtocolViolationError as e:
             self.assertIn("cryptographic signature mismatch", str(e))
@@ -13852,9 +13883,53 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         # 4. Attempting to mutate already-pinned key fails closed
         with self.assertRaises(ProtocolViolationError) as ctx_mut:
             HostBoundaryBootstrapCapability.pin_trusted_host_public_key(
-                b"Y" * 32, _internal_token=_HOST_BOUNDARY_TOKEN, port=_h_port, authkey=_h_authkey
+                b"Y" * 32, _internal_token=_TestHostBoundaryContext.token, port=_TestHostBoundaryContext.port, authkey=_TestHostBoundaryContext.authkey
             )
         self.assertIn("Trusted host public key already pinned; cannot be mutated fail-closed", str(ctx_mut.exception))
+
+    def test_18v_sol_finding_candidate_importing_fixture_cannot_mint_bootstrap_capability(self):
+        """18v. Sol Audit Finding Remediation: Candidate importing fixture module in fresh subprocess cannot mint capability.
+        Proves:
+        1. Fresh subprocess importing docs/parallel-delivery/test_negative_fixtures does not expose
+           TrustedHostBootstrapCapability, _HOST_BOUNDARY_TOKEN, _h_port, _h_authkey, _h_proc, or _h_boot_cap.
+        2. Importing test_negative_fixtures has zero side-effect daemon startup.
+        3. Candidate caller cannot call or mint any verifiable HostBoundaryBootstrapCapability.
+        4. CANDIDATE_IMPORT_FIXTURE_AUTHORITY_ACCEPTED is impossible to observe fail-closed.
+        """
+        child_code = (
+            "import sys\n"
+            "from pathlib import Path\n"
+            "sys.path.insert(0, str(Path('docs/parallel-delivery').resolve()))\n"
+            "import test_negative_fixtures as f\n"
+            "\n"
+            "# 1. Assert module does not expose trusted host factory, token, endpoint, or authkey\n"
+            "assert not hasattr(f, 'TrustedHostBootstrapCapability'), 'TrustedHostBootstrapCapability must not be exposed in fixture'\n"
+            "assert not hasattr(f, '_HOST_BOUNDARY_TOKEN'), '_HOST_BOUNDARY_TOKEN must not be exposed in fixture'\n"
+            "assert not hasattr(f, '_h_port'), '_h_port must not be exposed in fixture'\n"
+            "assert not hasattr(f, '_h_authkey'), '_h_authkey must not be exposed in fixture'\n"
+            "assert not hasattr(f, '_h_proc'), '_h_proc must not be exposed in fixture'\n"
+            "assert not hasattr(f, '_h_boot_cap'), '_h_boot_cap must not be exposed in fixture'\n"
+            "\n"
+            "# 2. Sol Counterexample attempt: candidate attempts to import or call factory to mint capability\n"
+            "cand_minted = False\n"
+            "try:\n"
+            "    factory = getattr(f, 'TrustedHostBootstrapCapability', None)\n"
+            "    if factory is not None:\n"
+            "        port = getattr(f, '_h_port', 0)\n"
+            "        authkey = getattr(f, '_h_authkey', b'')\n"
+            "        token = getattr(f, '_HOST_BOUNDARY_TOKEN', '')\n"
+            "        cap = factory(port, authkey, token)\n"
+            "        cap.verify(port=port, authkey=authkey)\n"
+            "        cand_minted = True\n"
+            "except Exception:\n"
+            "    cand_minted = False\n"
+            "\n"
+            "assert cand_minted is False, 'CANDIDATE_IMPORT_FIXTURE_AUTHORITY_ACCEPTED must be False fail-closed'\n"
+            "sys.stdout.write('CANDIDATE_IMPORT_FIXTURE_MINT_REJECTED_PASS\\n')\n"
+        )
+        proc = subprocess.run([sys.executable, "-u", "-c", child_code], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, f"Child process failed: stdout={proc.stdout}\nstderr={proc.stderr}")
+        self.assertIn("CANDIDATE_IMPORT_FIXTURE_MINT_REJECTED_PASS", proc.stdout)
 
 
 if __name__ == "__main__":

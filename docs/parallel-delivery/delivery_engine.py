@@ -6360,7 +6360,14 @@ class SharedOrcaExecutionRegistry:
             json.dump(data, f, indent=2)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp_path, self.storage_path)
+        for _attempt in range(5):
+            try:
+                os.replace(tmp_path, self.storage_path)
+                break
+            except PermissionError:
+                if _attempt == 4:
+                    raise
+                time.sleep(0.01 * (_attempt + 1))
 
     def register_orca_task(self, orca_task_id: str, delivery_task_id: str) -> None:
         if not orca_task_id or not isinstance(orca_task_id, str) or not orca_task_id.strip():
