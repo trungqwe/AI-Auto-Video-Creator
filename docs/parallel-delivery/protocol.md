@@ -326,4 +326,3 @@ Finding trong contract đi một remediation pass bởi original implementer v�
 - Fencing capacity đa slot kiểm tra toàn bộ slot và chống tái phân bổ bất đối xứng.
 - Attestation report bắt buộc có commit thực tế và topo Git nhất quán, từ chối quan hệ thuộc tập hợp {HEAD, HEAD^} lỏng lẻo.
 - Đột biến phức hợp khi dispatch là một giao dịch nguyên tử đa tiến trình duy nhất có rollback, không để lại orphan dispatch binding.
-

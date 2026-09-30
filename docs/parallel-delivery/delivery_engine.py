@@ -1310,33 +1310,145 @@ class ControlCapability:
 
 
 
+@dataclass
+class ReviewerContext:
+    delivery_task_id: str
+    review_dispatch_id: str
+    orca_task_id: str
+    terminal_id: str
+    reviewer_principal: str = "cx/gpt-5.6-sol"
+    harness: str = "Claude Code"
+    session_id: Optional[str] = None
+    reviewer_auth_token: Optional[str] = None
+
+    def claim_capability(self, adapter: Optional['OrcaDeliveryAdapter'] = None) -> 'ReviewerCapability':
+        if adapter is None:
+            raise ProtocolViolationError("OrcaDeliveryAdapter is required to claim ReviewerCapability")
+        return adapter.claim_reviewer_capability(self)
+
+
 class ReviewerDeliveryChannel:
-    def __init__(self, delivery_task_id: str, review_dispatch_id: str, reviewer_auth_token: Optional[str] = None) -> None:
-        self.delivery_task_id: str = delivery_task_id.strip() if delivery_task_id else ''
-        self.review_dispatch_id: str = review_dispatch_id.strip() if review_dispatch_id else ''
-        self.reviewer_auth_token: str = reviewer_auth_token or secrets.token_hex(32)
+    def __init__(
+        self,
+        delivery_task_id: str,
+        review_dispatch_id: str,
+        orca_task_id: str = "",
+        terminal_id: str = "",
+        reviewer_principal: str = "cx/gpt-5.6-sol",
+        harness: str = "Claude Code",
+        reviewer_auth_token: Optional[str] = None,
+    ) -> None:
+        self.delivery_task_id: str = delivery_task_id.strip() if delivery_task_id else ""
+        self.review_dispatch_id: str = review_dispatch_id.strip() if review_dispatch_id else ""
+        self.orca_task_id: str = orca_task_id.strip() if orca_task_id else ""
+        self.terminal_id: str = terminal_id.strip() if terminal_id else ""
+        self.reviewer_principal: str = reviewer_principal.strip() if reviewer_principal else "cx/gpt-5.6-sol"
+        self.harness: str = harness.strip() if harness else "Claude Code"
+        self._reviewer_auth_token: str = reviewer_auth_token or secrets.token_hex(32)
         self._capability: Optional[ReviewerCapability] = None
         self._claimed: bool = False
         self._lock: threading.Lock = threading.Lock()
 
+    @property
+    def reviewer_auth_token(self) -> str:
+        return self._reviewer_auth_token
+
     def _deposit_capability(self, capability: ReviewerCapability) -> None:
         with self._lock:
             if self._capability is not None or self._claimed:
-                raise ProtocolViolationError(f'Reviewer delivery channel for dispatch {self.review_dispatch_id!r} already has capability deposited or claimed')
+                raise ProtocolViolationError(
+                    f"Reviewer delivery channel for dispatch {self.review_dispatch_id!r} already has capability deposited or claimed"
+                )
             self._capability = capability
 
-    def claim_capability(self, reviewer_auth_token: Optional[str] = None, control_capability: Optional[ControlCapability] = None, control_secret: Optional[str] = None) -> ReviewerCapability:
+    def claim_capability(
+        self,
+        reviewer_context: Optional[ReviewerContext] = None,
+        reviewer_principal: Optional[str] = None,
+        session_id: Optional[str] = None,
+        terminal_id: Optional[str] = None,
+        orca_task_id: Optional[str] = None,
+        reviewer_auth_token: Optional[str] = None,
+        control_capability: Optional[ControlCapability] = None,
+        control_secret: Optional[str] = None,
+    ) -> ReviewerCapability:
         if control_capability is not None or control_secret is not None:
-            raise ProtocolViolationError('Control authority cannot issue or hold ReviewerCapability; independent review boundary strictly separates Control from Reviewer')
-        if not reviewer_auth_token or not isinstance(reviewer_auth_token, str) or not reviewer_auth_token.strip():
-            raise ProtocolViolationError('reviewer_auth_token is required to claim capability from ReviewerDeliveryChannel')
+            raise ProtocolViolationError(
+                "Control authority cannot issue or hold ReviewerCapability; independent review boundary strictly separates Control from Reviewer"
+            )
+
+        if reviewer_context is not None:
+            if not isinstance(reviewer_context, ReviewerContext):
+                raise ProtocolViolationError(
+                    f"Invalid reviewer_context type: expected ReviewerContext, got {type(reviewer_context).__name__}"
+                )
+            if reviewer_context.delivery_task_id.strip() != self.delivery_task_id:
+                raise ProtocolViolationError(
+                    f"ReviewerContext delivery_task_id {reviewer_context.delivery_task_id!r} does not match {self.delivery_task_id!r}"
+                )
+            if reviewer_context.review_dispatch_id.strip() != self.review_dispatch_id:
+                raise ProtocolViolationError(
+                    f"ReviewerContext review_dispatch_id {reviewer_context.review_dispatch_id!r} does not match {self.review_dispatch_id!r}"
+                )
+            reviewer_principal = reviewer_context.reviewer_principal
+            terminal_id = reviewer_context.terminal_id
+            orca_task_id = reviewer_context.orca_task_id
+            session_id = reviewer_context.session_id
+            reviewer_auth_token = reviewer_context.reviewer_auth_token or reviewer_auth_token
+
+        # Bare call without reviewer context or token fails closed
+        if (
+            not reviewer_principal
+            and not terminal_id
+            and not orca_task_id
+            and not reviewer_auth_token
+        ):
+            raise ProtocolViolationError(
+                "Bare retrieval of ReviewerCapability without reviewer authentication is forbidden; "
+                "reviewer delivery requires authenticated ReviewerContext bound to reviewer principal, session, terminal, and Orca dispatch"
+            )
+
+        if reviewer_auth_token is not None:
+            if not isinstance(reviewer_auth_token, str) or not reviewer_auth_token.strip():
+                raise ProtocolViolationError("reviewer_auth_token cannot be blank when provided")
+            if not hmac.compare_digest(reviewer_auth_token.strip(), self._reviewer_auth_token):
+                raise ProtocolViolationError("Invalid reviewer_auth_token; authentication rejected fail closed")
+
+        if reviewer_principal is not None:
+            clean_principal = str(reviewer_principal).strip()
+            if "Control" in clean_principal:
+                raise ProtocolViolationError(
+                    "Control authority cannot claim ReviewerCapability; separation of duties strictly separates Control from Reviewer"
+                )
+            valid_principals = (self.reviewer_principal, f"{self.harness}:{self.reviewer_principal}", "cx/gpt-5.6-sol")
+            if clean_principal not in valid_principals:
+                raise ProtocolViolationError(
+                    f"Invalid reviewer principal {clean_principal!r}; expected 'cx/gpt-5.6-sol' on harness 'Claude Code'"
+                )
+
+        if terminal_id is not None:
+            clean_term = str(terminal_id).strip()
+            if self.terminal_id and clean_term != self.terminal_id:
+                raise ProtocolViolationError(
+                    f"Reviewer terminal {clean_term!r} does not match dispatch terminal {self.terminal_id!r}"
+                )
+
+        if orca_task_id is not None:
+            clean_orca = str(orca_task_id).strip()
+            if self.orca_task_id and clean_orca != self.orca_task_id:
+                raise ProtocolViolationError(
+                    f"Reviewer orca_task_id {clean_orca!r} does not match dispatch orca_task_id {self.orca_task_id!r}"
+                )
+
         with self._lock:
-            if not hmac.compare_digest(reviewer_auth_token.strip(), self.reviewer_auth_token):
-                raise ProtocolViolationError('Invalid reviewer_auth_token; authentication rejected fail closed')
             if self._claimed:
-                raise ProtocolViolationError(f'ReviewerCapability for review dispatch {self.review_dispatch_id!r} has already been claimed; single-use delivery channel cannot be reused')
+                raise ProtocolViolationError(
+                    f"ReviewerCapability for review dispatch {self.review_dispatch_id!r} has already been claimed; single-use delivery channel cannot be reused"
+                )
             if self._capability is None:
-                raise ProtocolViolationError(f'No capability deposited in reviewer delivery channel for dispatch {self.review_dispatch_id!r}')
+                raise ProtocolViolationError(
+                    f"No capability deposited in reviewer delivery channel for dispatch {self.review_dispatch_id!r}"
+                )
             self._claimed = True
             cap = self._capability
             self._capability = None
@@ -1585,10 +1697,15 @@ class EvidenceAuthority:
     def issue_reviewer_capability(
         self,
         delivery_task_id: str,
-        review_dispatch_id: Union[str, ReviewDispatchHandle],
+        review_dispatch_id: Union[str, ReviewerContext, ReviewDispatchHandle],
         candidate_commit: str,
         reviewer_route: str = "cx/gpt-5.6-sol",
         reviewer_harness: str = "Claude Code",
+        reviewer_context: Optional[ReviewerContext] = None,
+        reviewer_principal: Optional[str] = None,
+        terminal_id: Optional[str] = None,
+        orca_task_id: Optional[str] = None,
+        session_id: Optional[str] = None,
         reviewer_auth_token: Optional[str] = None,
         control_capability: Optional[ControlCapability] = None,
         control_secret: Optional[str] = None,
@@ -1599,8 +1716,17 @@ class EvidenceAuthority:
             )
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
             raise ProtocolViolationError("delivery_task_id cannot be blank")
-        if not review_dispatch_id or (not isinstance(review_dispatch_id, str) and not isinstance(review_dispatch_id, ReviewDispatchHandle)):
+        if isinstance(review_dispatch_id, ReviewerContext):
+            clean_did = review_dispatch_id.review_dispatch_id.strip()
+            reviewer_context = review_dispatch_id
+        elif isinstance(review_dispatch_id, (str, ReviewDispatchHandle)):
+            clean_did = str(review_dispatch_id).strip()
+        else:
             raise ProtocolViolationError("review_dispatch_id cannot be blank")
+
+        if not clean_did:
+            raise ProtocolViolationError("review_dispatch_id cannot be blank")
+
         if not candidate_commit or not isinstance(candidate_commit, str) or not candidate_commit.strip():
             raise ProtocolViolationError("candidate_commit cannot be blank")
         if reviewer_route != "cx/gpt-5.6-sol":
@@ -1609,7 +1735,6 @@ class EvidenceAuthority:
             raise ProtocolViolationError(f"Invalid reviewer harness {reviewer_harness!r}; expected 'Claude Code'")
 
         clean_tid = delivery_task_id.strip()
-        clean_did = str(review_dispatch_id).strip()
         clean_commit = candidate_commit.strip()
 
         if self.adapter is None:
@@ -1638,8 +1763,13 @@ class EvidenceAuthority:
         if self.adapter.registry.is_dispatch_settled(clean_did):
             raise ProtocolViolationError(f"Review dispatch {clean_did!r} has already been settled")
 
-        return self.adapter.get_reviewer_capability(
-            review_dispatch_id,
+        return self.adapter.claim_reviewer_capability(
+            clean_did,
+            reviewer_context=reviewer_context,
+            reviewer_principal=reviewer_principal,
+            terminal_id=terminal_id,
+            orca_task_id=orca_task_id,
+            session_id=session_id,
             reviewer_auth_token=reviewer_auth_token,
             control_capability=control_capability,
             control_secret=control_secret,
@@ -1647,15 +1777,25 @@ class EvidenceAuthority:
 
     def get_reviewer_capability(
         self,
-        review_dispatch_id: Union[str, ReviewDispatchHandle],
+        review_dispatch_id: Union[str, ReviewerContext, ReviewDispatchHandle],
+        reviewer_context: Optional[ReviewerContext] = None,
+        reviewer_principal: Optional[str] = None,
+        terminal_id: Optional[str] = None,
+        orca_task_id: Optional[str] = None,
+        session_id: Optional[str] = None,
         reviewer_auth_token: Optional[str] = None,
         control_capability: Optional[ControlCapability] = None,
         control_secret: Optional[str] = None,
     ) -> ReviewerCapability:
         if self.adapter is None:
             raise ProtocolViolationError("No adapter attached to evidence authority")
-        return self.adapter.get_reviewer_capability(
+        return self.adapter.claim_reviewer_capability(
             review_dispatch_id,
+            reviewer_context=reviewer_context,
+            reviewer_principal=reviewer_principal,
+            terminal_id=terminal_id,
+            orca_task_id=orca_task_id,
+            session_id=session_id,
             reviewer_auth_token=reviewer_auth_token,
             control_capability=control_capability,
             control_secret=control_secret,
@@ -3578,7 +3718,6 @@ class OrcaDeliveryAdapter:
         self._active_transition_tokens: Dict[str, _TransitionAuthToken] = {}
         self.evidence_authority = EvidenceAuthority(adapter=self, control_secret=control_secret)
         self._reviewer_delivery_channels: Dict[str, ReviewerDeliveryChannel] = {}
-        self._reviewer_auth_tokens: Dict[str, str] = {}
         self._executing_lifecycle_handler: Optional[str] = None
         self._executing_lifecycle_task_id: Optional[str] = None
         self._executing_review_dispatch: Optional[str] = None
@@ -3808,10 +3947,15 @@ class OrcaDeliveryAdapter:
     def issue_reviewer_capability(
         self,
         delivery_task_id: str,
-        review_dispatch_id: Union[str, ReviewDispatchHandle],
+        review_dispatch_id: Union[str, ReviewerContext, ReviewDispatchHandle],
         candidate_commit: str,
         reviewer_route: str = "cx/gpt-5.6-sol",
         reviewer_harness: str = "Claude Code",
+        reviewer_context: Optional[ReviewerContext] = None,
+        reviewer_principal: Optional[str] = None,
+        terminal_id: Optional[str] = None,
+        orca_task_id: Optional[str] = None,
+        session_id: Optional[str] = None,
         reviewer_auth_token: Optional[str] = None,
         control_capability: Optional[ControlCapability] = None,
         control_secret: Optional[str] = None,
@@ -3826,14 +3970,66 @@ class OrcaDeliveryAdapter:
             candidate_commit=candidate_commit,
             reviewer_route=reviewer_route,
             reviewer_harness=reviewer_harness,
+            reviewer_context=reviewer_context,
+            reviewer_principal=reviewer_principal,
+            terminal_id=terminal_id,
+            orca_task_id=orca_task_id,
+            session_id=session_id,
             reviewer_auth_token=reviewer_auth_token,
             control_capability=control_capability,
             control_secret=control_secret,
         )
 
+    def deliver_reviewer_capability(
+        self,
+        reviewer_context: ReviewerContext,
+    ) -> ReviewerCapability:
+        """Deliver ReviewerCapability to an authenticated ReviewerContext."""
+        if not isinstance(reviewer_context, ReviewerContext):
+            raise ProtocolViolationError(
+                f"deliver_reviewer_capability requires ReviewerContext; got {type(reviewer_context).__name__}"
+            )
+        return self.claim_reviewer_capability(
+            review_dispatch_id=reviewer_context.review_dispatch_id,
+            reviewer_context=reviewer_context,
+        )
+
     def get_reviewer_capability(
         self,
-        review_dispatch_id: Union[str, ReviewDispatchHandle],
+        review_dispatch_id: Union[str, ReviewerContext, ReviewDispatchHandle],
+        reviewer_context: Optional[ReviewerContext] = None,
+        reviewer_principal: Optional[str] = None,
+        terminal_id: Optional[str] = None,
+        orca_task_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        reviewer_auth_token: Optional[str] = None,
+        control_capability: Optional[ControlCapability] = None,
+        control_secret: Optional[str] = None,
+    ) -> ReviewerCapability:
+        if control_capability is not None or control_secret is not None:
+            raise ProtocolViolationError(
+                "Control authority cannot issue or hold ReviewerCapability; independent review boundary strictly separates Control from Reviewer"
+            )
+        return self.claim_reviewer_capability(
+            review_dispatch_id=review_dispatch_id,
+            reviewer_context=reviewer_context,
+            reviewer_principal=reviewer_principal,
+            terminal_id=terminal_id,
+            orca_task_id=orca_task_id,
+            session_id=session_id,
+            reviewer_auth_token=reviewer_auth_token,
+            control_capability=control_capability,
+            control_secret=control_secret,
+        )
+
+    def claim_reviewer_capability(
+        self,
+        review_dispatch_id: Union[str, ReviewerContext, ReviewDispatchHandle],
+        reviewer_context: Optional[ReviewerContext] = None,
+        reviewer_principal: Optional[str] = None,
+        terminal_id: Optional[str] = None,
+        orca_task_id: Optional[str] = None,
+        session_id: Optional[str] = None,
         reviewer_auth_token: Optional[str] = None,
         control_capability: Optional[ControlCapability] = None,
         control_secret: Optional[str] = None,
@@ -3843,23 +4039,22 @@ class OrcaDeliveryAdapter:
                 "Control authority cannot issue or hold ReviewerCapability; independent review boundary strictly separates Control from Reviewer"
             )
         auth_token = reviewer_auth_token
-        if isinstance(review_dispatch_id, ReviewDispatchHandle):
+        if isinstance(review_dispatch_id, ReviewerContext):
+            reviewer_context = review_dispatch_id
+            clean_did = reviewer_context.review_dispatch_id.strip()
+        elif isinstance(review_dispatch_id, ReviewDispatchHandle):
             clean_did = review_dispatch_id.dispatch_id.strip()
             if not auth_token:
                 auth_token = review_dispatch_id.reviewer_auth_token
         elif isinstance(review_dispatch_id, str):
             clean_did = review_dispatch_id.strip()
         else:
-            raise ProtocolViolationError(f"Invalid review_dispatch_id type: expected str or ReviewDispatchHandle, got {type(review_dispatch_id).__name__}")
+            raise ProtocolViolationError(
+                f"Invalid review_dispatch_id type: expected str or ReviewerContext, got {type(review_dispatch_id).__name__}"
+            )
 
         if not clean_did:
             raise ProtocolViolationError("review_dispatch_id cannot be blank")
-
-        if not auth_token or not isinstance(auth_token, str) or not auth_token.strip():
-            raise ProtocolViolationError(
-                "Bare retrieval of ReviewerCapability without reviewer authentication is forbidden; "
-                "reviewer delivery requires reviewer_auth_token or ReviewDispatchHandle"
-            )
 
         if clean_did not in self.review_dispatch_bindings:
             raise ProtocolViolationError(f"No ReviewerCapability registered for review dispatch {clean_did!r}")
@@ -3882,21 +4077,12 @@ class OrcaDeliveryAdapter:
 
         channel = self._reviewer_delivery_channels[clean_did]
         return channel.claim_capability(
+            reviewer_context=reviewer_context,
+            reviewer_principal=reviewer_principal,
+            session_id=session_id,
+            terminal_id=terminal_id,
+            orca_task_id=orca_task_id,
             reviewer_auth_token=auth_token,
-            control_capability=control_capability,
-            control_secret=control_secret,
-        )
-
-    def claim_reviewer_capability(
-        self,
-        review_dispatch_id: Union[str, ReviewDispatchHandle],
-        reviewer_auth_token: Optional[str] = None,
-        control_capability: Optional[ControlCapability] = None,
-        control_secret: Optional[str] = None,
-    ) -> ReviewerCapability:
-        return self.get_reviewer_capability(
-            review_dispatch_id=review_dispatch_id,
-            reviewer_auth_token=reviewer_auth_token,
             control_capability=control_capability,
             control_secret=control_secret,
         )
@@ -4857,16 +5043,27 @@ class OrcaDeliveryAdapter:
         self.active_review_dispatches[delivery_task_id] = dispatch_id
         self.review_dispatch_bindings[dispatch_id] = binding
 
+        # Extract terminal ID from execution envelope
+        live_ev = getattr(execution_envelope, "live_terminal_evidence", None)
+        if isinstance(live_ev, LiveTerminalEvidence):
+            term_id = live_ev.archive_reference or live_ev.terminal_id or ""
+        elif isinstance(live_ev, dict):
+            term_id = live_ev.get("archive_reference") or live_ev.get("terminal_id") or ""
+        else:
+            term_id = ""
+
         # Mint ReviewerCapability bound to this dispatch via delivery channel
         self._executing_lifecycle_handler = "create_review_dispatch"
         self._executing_lifecycle_task_id = delivery_task_id
         self._executing_review_dispatch = intended_dispatch_id
         try:
-            auth_token = secrets.token_hex(32)
             channel = ReviewerDeliveryChannel(
                 delivery_task_id=delivery_task_id,
                 review_dispatch_id=dispatch_id,
-                reviewer_auth_token=auth_token,
+                orca_task_id=orca_task_id,
+                terminal_id=term_id,
+                reviewer_principal="cx/gpt-5.6-sol",
+                harness="Claude Code",
             )
             rev_cap = self.evidence_authority._mint_reviewer_capability_for_dispatch(
                 delivery_task_id=delivery_task_id,
@@ -4875,13 +5072,7 @@ class OrcaDeliveryAdapter:
             )
             channel._deposit_capability(rev_cap)
             self._reviewer_delivery_channels[dispatch_id] = channel
-            self._reviewer_auth_tokens[dispatch_id] = auth_token
-            return ReviewDispatchHandle(
-                dispatch_id=dispatch_id,
-                delivery_task_id=delivery_task_id,
-                reviewer_auth_token=auth_token,
-                delivery_channel=channel,
-            )
+            return dispatch_id
         finally:
             self._executing_lifecycle_handler = None
             self._executing_lifecycle_task_id = None

@@ -1,7 +1,7 @@
 # Kiến trúc triển khai song song có kiểm soát
 
-> **Trạng thái:** `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`  
-> **Ngày lập:** 28-09-2026  
+> **Trạng thái:** `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`
+> **Ngày lập:** 28-09-2026
 > **Phạm vi:** cơ chế lập kế hoạch, điều phối, giao tiếp, tích hợp và bằng chứng cho công việc đã được cấp quyền; không thay đổi kiến trúc sản phẩm hoặc trạng thái milestone.
 
 ## 1. Mục đích
