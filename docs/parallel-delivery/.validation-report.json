@@ -3,8 +3,8 @@
   "status": "PASS",
   "attestation": {
     "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
-    "candidate_commit": "40f440ac7c6d1fa3ad714bf80531f211c0c075a2",
-    "parent_commit": "40f440ac7c6d1fa3ad714bf80531f211c0c075a2",
+    "candidate_commit": "ffd57adae338a25e1c95c0a364a7bc4ed986b23f",
+    "parent_commit": "ffd57adae338a25e1c95c0a364a7bc4ed986b23f",
     "wrapper_commit": "HEAD",
     "candidate_is_actual_head": false,
     "committed_changes_count": 20,
@@ -192,7 +192,7 @@
     }
   },
   "fixture_stats": {
-    "tests_run": 397,
+    "tests_run": 398,
     "failures": 0,
     "errors": 0,
     "passed": true
@@ -267,15 +267,15 @@
   ],
   "bundle_sha256": {
     "contract-registry.yaml": "417687b7520f9b0cfc26d7f5a2c0df098581f18ad87ef91c0452356cbb9bfc01",
-    "delivery_engine.py": "c272264e0820fd929dde65a205c1a921bb7971132084dd7d49156da7042fc50a",
+    "delivery_engine.py": "3631492b6dddfbec0fd94c6be3d4265056edd6ae4f0c7570a00d15acb785c9f4",
     "merge-and-integration.md": "8b3d617e4a52c70f72682434b73a33d300f387b83065312351a1543de81deb72",
     "operating-model.md": "288086ccde6a380f91a3f921334d5fa673d437805478926e44aa6d455a7dd92b",
     "ownership-and-locks.yaml": "ca060cf8603f0d98370260dadc088d22e63850b7ae324280c2262008b14760c2",
     "protocol.md": "d485e6131f0ac34c18bcb662581273b7c844ac291f40a14b5de33e6c725ec690",
-    "README.md": "074494675e724ae3447405ff27b53d9441075ea4bcc937ac0b103af95f76a38d",
+    "README.md": "63770cbc284accdf9decc3aded78b3fcaf85940c11f7d45973b6a66853cedb35",
     "security-performance-recovery.md": "2db9336e76a5fb12723bc34e1c7d427cb2626a9dddd7eefc9d7c4389c2d3f733",
     "task-dag.yaml": "5b3e45b3a52d654cc29800abdb4819746bf9fe0b71548b76cc2f1f0a5254f906",
-    "test_negative_fixtures.py": "7b7c981f206a7f51f98d3ffe0c03b47159b85ed4d94eac9262c6e1fd97e14fa8",
+    "test_negative_fixtures.py": "ea4fc8b2712c993da3881617022815309616b2b8b73dee1295d903a7a61216f2",
     "traceability.md": "61665d966fba4b72fb82ff2b0fff30833ba83e9025fcc98c301db7cc48977859",
     "validate.py": "73c75371e143e4529d06e5ef7705b70a8784ccd03fa7003f2df58b125cc0649f"
   }
