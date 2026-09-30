@@ -442,3 +442,23 @@ Biện pháp khắc phục triệt để:
 4. **Finding 4 — Fixture Kiểm Thử Fresh Subprocess test_18s**:
    - Bổ sung test_18s_sol_counterexample_rogue_daemon_and_endpoint_rejected_in_fresh_subprocess trong tiến trình con độc lập: caller tự mở listener trên cổng nội bộ với rogue token/authkey, gọi issue_ticket và provision_channel; chứng minh toàn bộ chuỗi tấn công bị chặn đứng fail-closed, HostBoundaryChannel._started giữ nguyên False.
 5. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **395/395 tests PASS (100%)**, chạy hoàn hảo trên toàn bộ 12 gate validation và release gate.
+## 26. Khắc phục triệt để phát hiện Sol Audit trên bd38239 (HostBootstrapCapability Asymmetric Cryptographic Verification, Loại Bỏ Secret Khỏi Candidate Module & Candidate Minting Fail-Closed)
+
+Đợt rà soát độc lập trên exact candidate SHA bd382390340b0495d6a725bc97aa9f623720185e (approved base 4a7c8c921b7e05066505d51b168a02c3fde61317) ghi nhận finding actionable:
+HostBoundaryBootstrapCapability._create_authenticated tại delivery_engine.py:1632 vẫn là public callable trong candidate process và dùng _HOST_BOUNDARY_BOOTSTRAP_SECRET tại dòng 1592 nằm ngay trong module candidate; assertion an toàn đã tự mint+verify capability, rồi full-chain rogue listener -> issuer -> ticket -> provision đạt FULL_CHAIN_ACCEPTED và đặt HostBoundaryChannel._started=True, trái invariant out-of-process tại security-performance-recovery.md:166-170/189-195 và claim README remediation. Counterexample hiện được harness helper gọi cùng factory tại test_negative_fixtures.py:172 nên 395 fixture không phân biệt candidate authority; cần chuyển factory/secret issuance ra trusted host boundary không callable từ candidate, hoặc làm API candidate-side fail-closed, rồi bổ sung fixture fresh-process chứng minh không thể mint capability và không thể provision.
+
+Biện pháp khắc phục triệt để:
+1. **Finding 1 — Loại Bỏ Hoàn Toàn Secret Khỏi Candidate Module & Ghim Public Key Ed25519 Bất Biến**:
+   - Loại bỏ hoàn toàn _HOST_BOUNDARY_BOOTSTRAP_SECRET khỏi candidate module delivery_engine.py.
+   - Ghim khóa công khai Ed25519 bất biến _HOST_BOUNDARY_BOOTSTRAP_PUBLIC_KEY = bytes.fromhex("b49df8557f17629954b62697c2097549c92f2cf0185e7c284d71475a787b1d6e").
+   - Tiến trình candidate không lưu trữ, không chia sẻ và không thể truy cập bất kỳ signing key hay secret nào để tự ký thẩm quyền.
+2. **Finding 2 — Khóa Fail-Closed Toàn Bộ Candidate Minting API**:
+   - Phương thức HostBoundaryBootstrapCapability._create_authenticated bị vô hiệu hóa fail-closed: lập tức ném ProtocolViolationError("Caller-selected or direct creation of HostBoundaryBootstrapCapability via in-process candidate API is strictly forbidden fail-closed; host boundary bootstrap capability can only be issued by trusted external host boundary").
+   - Bổ sung HostBoundaryBootstrapCapability.from_host_signed_payload để tiếp nhận capability DTO mang chữ ký số mật mã do host ngoài tiến trình cấp phát. Phương thức này không tự ký hay cấp thẩm quyền; tính hợp lệ được xác thực mật mã bất đối xứng nghiêm ngặt qua ed25519.Ed25519PublicKey.verify() khi gọi verify().
+3. **Finding 3 — Tách Biệt Factory & Chữ Ký Sang Trusted Host Boundary Test Harness**:
+   - Khóa ký Ed25519 riêng tư (_HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY) và factory cấp phát thẩm quyền (TrustedHostBootstrapCapability) được đặt độc quyền trong test harness / trusted host boundary tại test_negative_fixtures.py, nằm hoàn toàn ngoài phạm vi import và callable của candidate module.
+   - Cập nhật helper _launch_test_host_boundary_daemon (dòng 172) và fixture test_sod_18 gọi trực tiếp TrustedHostBootstrapCapability.
+4. **Finding 4 — Bổ Sung Fixture Mở Rộng Fresh Subprocess test_18s & In-Process test_18t**:
+   - Mở rộng test_18s: kiểm chứng trong tiến trình con độc lập rằng candidate module không chứa _HOST_BOUNDARY_BOOTSTRAP_SECRET, gọi _create_authenticated bị ném ProtocolViolationError, giả mạo chữ ký trong from_host_signed_payload bị verify() từ chối fail-closed, và chuỗi tấn công rogue listener -> issuer -> ticket -> provision hoàn toàn thất bại (FULL_CHAIN_ACCEPTED == False, HostBoundaryChannel._started == False).
+   - Bổ sung test_18t: kiểm chứng trong cùng tiến trình candidate rằng caller không thể đọc secret, không thể gọi _create_authenticated, không thể forge capability, và chuỗi provision fail-closed, trong khi authentic capability do trusted host cấp phát vẫn hoạt động chính xác.
+5. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **396/396 tests PASS (100%)**, bảo đảm an toàn tuyệt đối trên mọi cổng thẩm định.

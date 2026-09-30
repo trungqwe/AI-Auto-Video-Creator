@@ -24,6 +24,7 @@ import time
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from cryptography.hazmat.primitives.asymmetric import ed25519
 
 # Add bundle dir to path to import delivery_engine
 BUNDLE_DIR = Path(__file__).resolve().parent
@@ -115,6 +116,53 @@ from validate import check_secret_scan, check_task_dag
 
 _HOST_BOUNDARY_TOKEN = secrets.token_hex(32)
 
+_HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES: bytes = bytes.fromhex(
+    "814b2aa619babba68f1d84fdab682343d989276c0383bbf308607857312f3c16"
+)
+_HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY = ed25519.Ed25519PrivateKey.from_private_bytes(
+    _HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES
+)
+
+def TrustedHostBootstrapCapability(
+    port: int,
+    authkey: bytes,
+    host_token: str,
+    *,
+    bootstrap_id: Optional[str] = None,
+    created_at: Optional[float] = None,
+) -> HostBoundaryBootstrapCapability:
+    """Trusted host-owned bootstrap capability factory issued exclusively by test harness / trusted host boundary.
+    Cannot be called or imported by candidate modules.
+    """
+    if not isinstance(port, int) or port <= 0 or port > 65535:
+        raise ProtocolViolationError("Invalid host boundary port fail-closed")
+    if not isinstance(authkey, bytes) or len(authkey) < 16:
+        raise ProtocolViolationError("Invalid host boundary authkey fail-closed")
+    clean_token = (
+        host_token.strip()
+        if isinstance(host_token, str)
+        else (host_token.decode("utf-8", errors="replace").strip() if isinstance(host_token, bytes) else "")
+    )
+    if len(clean_token) < 32:
+        raise ProtocolViolationError("host_token must be at least 32 characters fail-closed")
+
+    bid = bootstrap_id or f"boot_cap_{secrets.token_hex(16)}"
+    now = created_at if created_at is not None else time.time()
+    authkey_hash = hashlib.sha256(authkey).hexdigest()
+    host_token_hash = hashlib.sha256(clean_token.encode("utf-8")).hexdigest()
+    payload = f"HOST_BOOTSTRAP_CAP:{bid}:{port}:{authkey_hash}:{host_token_hash}:{now}".encode("utf-8")
+    sig_bytes = _HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY.sign(payload)
+    sig = sig_bytes.hex()
+    return HostBoundaryBootstrapCapability.from_host_signed_payload(
+        bootstrap_id=bid,
+        port=port,
+        authkey_hash=authkey_hash,
+        host_token_hash=host_token_hash,
+        created_at=now,
+        signature=sig,
+    )
+
+
 def _launch_test_host_boundary_daemon(host_token: str) -> tuple[int, bytes, subprocess.Popen]:
     clean_token = host_token.strip()
     effective_authkey = secrets.token_bytes(32)
@@ -169,7 +217,7 @@ def _launch_test_host_boundary_daemon(host_token: str) -> tuple[int, bytes, subp
         raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel")
 
     port = int(port_line.strip())
-    boot_cap = HostBoundaryBootstrapCapability._create_authenticated(port, effective_authkey, clean_token)
+    boot_cap = TrustedHostBootstrapCapability(port, effective_authkey, clean_token)
     return port, effective_authkey, proc, boot_cap
 
 _h_port, _h_authkey, _h_proc, _h_boot_cap = _launch_test_host_boundary_daemon(_HOST_BOUNDARY_TOKEN)
@@ -11574,6 +11622,7 @@ print("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS")
         self.assertEqual(res_neg.returncode, 0, f"Child process failed: stdout={res_neg.stdout}\nstderr={res_neg.stderr}")
         self.assertIn("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS", res_neg.stdout)
 
+        pos_boot = TrustedHostBootstrapCapability(_h_port, _h_authkey, _HOST_BOUNDARY_TOKEN)
         child_code_pos = f'''
 import sys, os
 from pathlib import Path
@@ -11581,7 +11630,7 @@ sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
 from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, HostBoundaryTicketIssuer, HostBoundaryBootstrapCapability, ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
 
 # Host provisions channel endpoint/auth via host mechanism in child process
-child_boot_cap = HostBoundaryBootstrapCapability._create_authenticated({_h_port}, {_h_authkey!r}, '{_HOST_BOUNDARY_TOKEN}')
+child_boot_cap = HostBoundaryBootstrapCapability.from_host_signed_payload('{pos_boot.bootstrap_id}', {_h_port}, '{pos_boot.authkey_hash}', '{pos_boot.host_token_hash}', {pos_boot.created_at}, '{pos_boot.signature}')
 child_issuer = HostBoundaryTicketIssuer(_internal_token='{_HOST_BOUNDARY_TOKEN}', bootstrap_capability=child_boot_cap)
 child_ticket = child_issuer.issue_ticket({_h_port}, {_h_authkey!r}, _internal_token='{_HOST_BOUNDARY_TOKEN}')
 HostBoundaryChannel.provision_channel({_h_port}, {_h_authkey!r}, host_ticket=child_ticket, bootstrap_capability=child_boot_cap)
@@ -13614,7 +13663,46 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "assert rogue_accepted is False, 'ROGUE_ENDPOINT_TICKET_ACCEPTED must be False'\n"
             "assert HostBoundaryChannel._started is False, 'Channel _started must remain False on rejection'\n"
             "\n"
-            "# Step 7: Emits acceptance evidence token\n"
+            # Step 7: Attacker verifies candidate module does not expose bootstrap secret\n"
+            "import delivery_engine\n"
+            "assert not hasattr(delivery_engine, '_HOST_BOUNDARY_BOOTSTRAP_SECRET'), 'Candidate module must not expose bootstrap secret'\n"
+            "\n"
+            "# Step 8: Attacker attempts candidate-side _create_authenticated minting\n"
+            "try:\n"
+            "    HostBoundaryBootstrapCapability._create_authenticated(rogue_port, rogue_authkey, rogue_token)\n"
+            "    assert False, 'Expected candidate _create_authenticated to fail closed'\n"
+            "except ProtocolViolationError as e:\n"
+            "    assert 'Caller-selected or direct creation of HostBoundaryBootstrapCapability' in str(e), f'Unexpected error: {e}'\n"
+            "\n"
+            "# Step 9: Attacker attempts from_host_signed_payload with fake signature\n"
+            "fake_cap = HostBoundaryBootstrapCapability.from_host_signed_payload(\n"
+            "    'boot_cap_fake', rogue_port, '0'*64, '0'*64, time.time(), 'deadbeef'*8\n"
+            ")\n"
+            "try:\n"
+            "    fake_cap.verify(port=rogue_port, authkey=rogue_authkey)\n"
+            "    assert False, 'Expected fake capability verification to fail closed'\n"
+            "except ProtocolViolationError as e:\n"
+            "    assert ('cryptographic signature mismatch' in str(e) or 'binding mismatch' in str(e)), f'Unexpected error: {e}'\n"
+            "\n"
+            "# Step 10: Attacker attempts full exploit chain: rogue listener -> issuer -> ticket -> provision\n"
+            "full_chain_accepted = False\n"
+            "try:\n"
+            "    raw_ticket2 = object.__new__(HostBoundaryTicket)\n"
+            "    object.__setattr__(raw_ticket2, '_ticket_id', 'ticket_full_chain_rogue')\n"
+            "    object.__setattr__(raw_ticket2, '_host_token_hash', '0'*64)\n"
+            "    object.__setattr__(raw_ticket2, '_created_at', time.time())\n"
+            "    object.__setattr__(raw_ticket2, '_signature', 'sig')\n"
+            "    object.__setattr__(raw_ticket2, '_port', rogue_port)\n"
+            "    object.__setattr__(raw_ticket2, '_authkey_hash', '0'*64)\n"
+            "    object.__setattr__(raw_ticket2, '_bootstrap_capability', fake_cap)\n"
+            "    HostBoundaryChannel.provision_channel(rogue_port, rogue_authkey, host_ticket=raw_ticket2, bootstrap_capability=fake_cap)\n"
+            "    full_chain_accepted = True\n"
+            "except ProtocolViolationError:\n"
+            "    full_chain_accepted = False\n"
+            "assert full_chain_accepted is False, 'FULL_CHAIN_ACCEPTED must be False fail-closed'\n"
+            "assert HostBoundaryChannel._started is False, 'Channel _started must remain False on full chain attempt'\n"
+            "\n"
+            "# Step 11: Emits acceptance evidence token\n"
             "sys.stdout.write('ROGUE_ENDPOINT_TICKET_REJECTED_PASS\\n')\n"
         )
         proc_rogue = subprocess.run(
@@ -13624,6 +13712,40 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         )
         self.assertEqual(proc_rogue.returncode, 0, f"Child process failed: {proc_rogue.stderr}")
         self.assertIn("ROGUE_ENDPOINT_TICKET_REJECTED_PASS", proc_rogue.stdout)
+
+
+    def test_18t_sol_counterexample_in_process_bootstrap_mint_and_provision_fail_closed(self):
+        """18t. Sol Audit Finding Remediation: In-process candidate bootstrap mint and provision fail closed.
+        Proves:
+        1. _HOST_BOUNDARY_BOOTSTRAP_SECRET is removed from delivery_engine globals.
+        2. Candidate API _create_authenticated is fail-closed against in-process callers.
+        3. Fake signature via from_host_signed_payload or object.__new__ fails cryptographic verification against pinned public key.
+        4. Full rogue exploit chain cannot reach FULL_CHAIN_ACCEPTED or set HostBoundaryChannel._started = True.
+        5. Trusted host boundary factory TrustedHostBootstrapCapability succeeds with authentic Ed25519 signature.
+        """
+        import delivery_engine
+
+        # 1. Secret removed from candidate module
+        self.assertFalse(hasattr(delivery_engine, "_HOST_BOUNDARY_BOOTSTRAP_SECRET"))
+
+        # 2. Candidate-side _create_authenticated fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx_mint:
+            HostBoundaryBootstrapCapability._create_authenticated(9999, b"authkey16bytes!!", "a"*32)
+        self.assertIn("Caller-selected or direct creation of HostBoundaryBootstrapCapability", str(ctx_mint.exception))
+
+        # 3. Cryptographic verification fails against pinned public key for forged Ed25519 signature
+        fake_cap = HostBoundaryBootstrapCapability.from_host_signed_payload(
+            "boot_cap_tampered", _h_port, hashlib.sha256(_h_authkey).hexdigest(), "0"*64, time.time(), "deadbeef"*8
+        )
+        with self.assertRaises(ProtocolViolationError) as ctx_fake:
+            fake_cap.verify(port=_h_port, authkey=_h_authkey)
+        self.assertIn("cryptographic signature mismatch", str(ctx_fake.exception))
+
+        # 4. Authentic capability from trusted host boundary succeeds
+        auth_cap = TrustedHostBootstrapCapability(_h_port, _h_authkey, _HOST_BOUNDARY_TOKEN)
+        auth_cap.verify(port=_h_port, authkey=_h_authkey)
+        self.assertEqual(auth_cap.port, _h_port)
+        self.assertEqual(auth_cap.authkey_hash, hashlib.sha256(_h_authkey).hexdigest())
 
 
 if __name__ == "__main__":

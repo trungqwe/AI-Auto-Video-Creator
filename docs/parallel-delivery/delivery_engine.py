@@ -1589,7 +1589,9 @@ class HostBoundaryTicketIssuerCapability:
                 )
 
 
-_HOST_BOUNDARY_BOOTSTRAP_SECRET: bytes = secrets.token_bytes(32)
+_HOST_BOUNDARY_BOOTSTRAP_PUBLIC_KEY: bytes = bytes.fromhex(
+    "b49df8557f17629954b62697c2097549c92f2cf0185e7c284d71475a787b1d6e"
+)
 
 
 class HostBoundaryBootstrapCapability:
@@ -1617,52 +1619,32 @@ class HostBoundaryBootstrapCapability:
         )
 
     @classmethod
-    def _sign_bootstrap_payload(
+    def _create_authenticated(cls, *args: Any, **kwargs: Any) -> 'HostBoundaryBootstrapCapability':
+        raise ProtocolViolationError(
+            "Caller-selected or direct creation of HostBoundaryBootstrapCapability via in-process candidate API is strictly forbidden fail-closed; "
+            "host boundary bootstrap capability can only be issued by trusted external host boundary"
+        )
+
+    @classmethod
+    def from_host_signed_payload(
         cls,
         bootstrap_id: str,
         port: int,
         authkey_hash: str,
         host_token_hash: str,
         created_at: float,
-    ) -> str:
-        payload = f"HOST_BOOTSTRAP_CAP:{bootstrap_id}:{port}:{authkey_hash}:{host_token_hash}:{created_at}".encode("utf-8")
-        return hmac.new(_HOST_BOUNDARY_BOOTSTRAP_SECRET, payload, hashlib.sha256).hexdigest()
-
-    @classmethod
-    def _create_authenticated(
-        cls,
-        port: int,
-        authkey: bytes,
-        host_token: str,
-        *,
-        bootstrap_id: Optional[str] = None,
-        created_at: Optional[float] = None,
+        signature: str,
     ) -> 'HostBoundaryBootstrapCapability':
-        if not isinstance(port, int) or port <= 0 or port > 65535:
-            raise ProtocolViolationError("Invalid host boundary port fail-closed")
-        if not isinstance(authkey, bytes) or len(authkey) < 16:
-            raise ProtocolViolationError("Invalid host boundary authkey fail-closed")
-        clean_token = (
-            host_token.strip()
-            if isinstance(host_token, str)
-            else (host_token.decode("utf-8", errors="replace").strip() if isinstance(host_token, bytes) else "")
-        )
-        if len(clean_token) < 32:
-            raise ProtocolViolationError("host_token must be at least 32 characters fail-closed")
-
-        bid = bootstrap_id or f"boot_cap_{secrets.token_hex(16)}"
-        now = created_at if created_at is not None else time.time()
-        authkey_hash = hashlib.sha256(authkey).hexdigest()
-        host_token_hash = hashlib.sha256(clean_token.encode("utf-8")).hexdigest()
-        sig = cls._sign_bootstrap_payload(bid, port, authkey_hash, host_token_hash, now)
-
+        """Construct capability DTO from host-signed provenance.
+        Does NOT sign or mint authority; signature will be validated by verify() against pinned host public key.
+        """
         instance = object.__new__(cls)
-        object.__setattr__(instance, "_bootstrap_id", bid)
+        object.__setattr__(instance, "_bootstrap_id", bootstrap_id)
         object.__setattr__(instance, "_port", port)
         object.__setattr__(instance, "_authkey_hash", authkey_hash)
         object.__setattr__(instance, "_host_token_hash", host_token_hash)
-        object.__setattr__(instance, "_created_at", now)
-        object.__setattr__(instance, "_signature", sig)
+        object.__setattr__(instance, "_created_at", created_at)
+        object.__setattr__(instance, "_signature", signature)
         object.__setattr__(instance, "_role", "HostBoundaryBootstrap")
         object.__setattr__(instance, "_consumed", False)
         object.__setattr__(instance, "_lock", threading.Lock())
@@ -1740,8 +1722,16 @@ class HostBoundaryBootstrapCapability:
         ahash = getattr(self, "_authkey_hash", "")
         thash = getattr(self, "_host_token_hash", "")
         sig = getattr(self, "_signature", "")
-        expected_sig = self._sign_bootstrap_payload(bid, bport, ahash, thash, created_at)
-        if not hmac.compare_digest(sig, expected_sig):
+        if not isinstance(sig, str) or not sig.strip():
+            raise ProtocolViolationError("HostBoundaryBootstrapCapability signature missing or empty fail-closed")
+        if ed25519 is None or InvalidSignature is None:
+            raise ProtocolViolationError("Ed25519 cryptography library unavailable fail-closed")
+        payload = f"HOST_BOOTSTRAP_CAP:{bid}:{bport}:{ahash}:{thash}:{created_at}".encode("utf-8")
+        try:
+            sig_bytes = bytes.fromhex(sig.strip())
+            pub_key = ed25519.Ed25519PublicKey.from_public_bytes(_HOST_BOUNDARY_BOOTSTRAP_PUBLIC_KEY)
+            pub_key.verify(sig_bytes, payload)
+        except (InvalidSignature, ValueError, Exception):
             raise ProtocolViolationError(
                 "HostBoundaryBootstrapCapability cryptographic signature mismatch; forged provenance rejected fail-closed"
             )

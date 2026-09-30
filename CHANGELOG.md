@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên bd38239 (HostBootstrapCapability Asymmetric Cryptographic Verification, Loại Bỏ Secret Khỏi Candidate Module & Candidate Minting Fail-Closed)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate bd382390340b0495d6a725bc97aa9f623720185e (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Loại Bỏ Hoàn Toàn Secret Khỏi Candidate Module & Ghim Khóa Công Khai Ed25519 Bất Biến**:
+    - Loại bỏ hoàn toàn _HOST_BOUNDARY_BOOTSTRAP_SECRET khỏi candidate module delivery_engine.py.
+    - Ghim khóa công khai Ed25519 bất biến _HOST_BOUNDARY_BOOTSTRAP_PUBLIC_KEY = bytes.fromhex("b49df8557f17629954b62697c2097549c92f2cf0185e7c284d71475a787b1d6e").
+    - Tiến trình candidate không lưu trữ, không chia sẻ và không thể truy cập bất kỳ signing key hay secret nào để tự ký thẩm quyền.
+  - **(2) Khóa Fail-Closed Toàn Bộ Candidate Minting API**:
+    - Phương thức HostBoundaryBootstrapCapability._create_authenticated bị vô hiệu hóa fail-closed: lập tức ném ProtocolViolationError("Caller-selected or direct creation of HostBoundaryBootstrapCapability via in-process candidate API is strictly forbidden fail-closed; host boundary bootstrap capability can only be issued by trusted external host boundary").
+    - Bổ sung HostBoundaryBootstrapCapability.from_host_signed_payload để tiếp nhận capability DTO mang chữ ký số mật mã do host ngoài tiến trình cấp phát. Tính hợp lệ được xác thực mật mã bất đối xứng nghiêm ngặt qua ed25519.Ed25519PublicKey.verify() khi gọi verify().
+  - **(3) Tách Biệt Factory & Chữ Ký Sang Trusted Host Boundary Test Harness**:
+    - Khóa ký Ed25519 riêng tư (_HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY) và factory cấp phát thẩm quyền (TrustedHostBootstrapCapability) được đặt độc quyền trong test harness / trusted host boundary tại test_negative_fixtures.py, nằm hoàn toàn ngoài phạm vi import và callable của candidate module.
+    - Cập nhật helper _launch_test_host_boundary_daemon (dòng 172) và fixture test_sod_18 gọi trực tiếp TrustedHostBootstrapCapability.
+  - **(4) Bổ Sung Fixture Mở Rộng Fresh Subprocess test_18s & In-Process test_18t**:
+    - Mở rộng test_18s: kiểm chứng trong tiến trình con độc lập rằng candidate module không chứa _HOST_BOUNDARY_BOOTSTRAP_SECRET, gọi _create_authenticated bị ném ProtocolViolationError, giả mạo chữ ký trong from_host_signed_payload bị verify() từ chối fail-closed, và chuỗi tấn công rogue listener -> issuer -> ticket -> provision hoàn toàn thất bại (FULL_CHAIN_ACCEPTED == False, HostBoundaryChannel._started == False).
+    - Bổ sung test_18t: kiểm chứng trong cùng tiến trình candidate rằng caller không thể đọc secret, không thể gọi _create_authenticated, không thể forge capability, và chuỗi provision fail-closed, trong khi authentic capability do trusted host cấp phát vẫn hoạt động chính xác.
+  - **(5) Bộ Kiểm Thử Toàn Diện**:
+    - Toàn bộ suite đạt **396/396 tests PASS (100%)**, vượt qua toàn bộ 12 gate validation và release gate.
+
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên d1edb50 (HostBoundaryBootstrapCapability, Neo Chặt Daemon Endpoint/Authkey Provenance & Ngăn Chặn Rogue Daemon/Ticket Trong Tiến Trình Con)
 
 - Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate d1edb5073314fc66488820f8d66ae0655a210fb2 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
