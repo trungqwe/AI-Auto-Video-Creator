@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau eab4cab (Unforgeable Reviewer Mint Token, Authenticated Dispatch Binding, Separation of ReviewerCapability from Control, Zero-Side-Effect Validation)
+
+- Khắc phục triệt để hai phát hiện blocker từ Sol-Lead independent audit trên exact candidate `eab4cab060a469ecfec7793a15368e635988033b` cho bundle `docs/parallel-delivery/`:
+  - **(1) Khóa Bề Mặt Mint ReviewerCapability Bằng Token HMAC Nội Bộ Không Thể Giả Mạo (Unforgeable Internal Reviewer Mint Token)**:
+    - Triển khai dataclass `_InternalReviewerMintToken` mang chữ ký HMAC bí mật (`_reviewer_mint_secret` độc lập của `EvidenceAuthority`).
+    - Phương thức `_mint_reviewer_capability_internal()` bắt buộc phải có `_InternalReviewerMintToken` hợp lệ, kiểm tra chữ ký HMAC, `authority_id`, `delivery_task_id`, `review_dispatch_id`, `candidate_commit`, và tiêu thụ token ngay lập tức (`_consumed_mint_tokens`) để chống replay.
+    - Phương thức `_create_reviewer_mint_token()` yêu cầu bí mật nội bộ `_internal_secret`, kiểm tra gắn kết với review dispatch đang hoạt động (`active_review_dispatches`, `review_dispatch_bindings`) và trạng thái task phải là `'review'`.
+  - **(2) Tách Biệt Tuyệt Đối Thẩm Quyền Control Khỏi Reviewer (Separation of Control Authority from ReviewerCapability)**:
+    - Các phương thức `issue_reviewer_capability()` và `get_reviewer_capability()` trên cả `EvidenceAuthority` và `OrcaDeliveryAdapter` từ chối fail-closed ngay lập tức nếu caller cung cấp `control_capability` hoặc `control_secret`, ngăn chặn triệt để hành vi Control tự tạo hoặc tự lấy `ReviewerCapability`.
+    - `ReviewerCapability` được cấp phát độc lập khi `create_review_dispatch()` tạo review dispatch đã được xác thực (phù hợp với route `cx/gpt-5.6-sol` trên harness `Claude Code` qua `9router`, effort `high`).
+    - Bổ sung trường `role: str = "Reviewer"` trên `ReviewerCapability`, xác thực trong `__post_init__` và kiểm tra trong `verify_capability()`.
+    - `issue_review_evidence()` từ chối tuyệt đối `ControlCapability` hoặc bất kỳ capability nào không mang đúng vai trò Reviewer.
+  - **(3) Hoàn Tất 100% Validation Trước Khi Mutate State (Zero-Side-Effect Validation for Review and Integration)**:
+    - Trong `issue_review_evidence()`: toàn bộ các kiểm tra tính hợp lệ (verdict, định dạng 40-char SHA của candidate commit, summary, khớp định danh binding giữa task/dispatch/commit, trạng thái dispatch trên adapter, và xác thực chữ ký capability qua `verify_capability`) được thực hiện đầy đủ TRƯỚC KHI tiêu thụ capability (`_consumed_capabilities.add(...)`). Mọi request malformed đều thất bại fail-closed mà không làm cháy capability hợp lệ (zero side effects).
+    - Trong `issue_integration_evidence()`: toàn bộ các kiểm tra tính hợp lệ (kiểm tra `strict bool` cho `gates_pass`, kiểm tra định dạng 40-char SHA cho cả candidate commit và base commit, dictionary `gate_results` có đầy đủ 11 mandatory gates và mỗi gate value đều là strict bool, và xác thực chữ ký capability qua `verify_capability`) được thực hiện đầy đủ TRƯỚC KHI tiêu thụ capability.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 350/350 Tests PASS**:
+    - Bổ sung lớp kiểm thử `TestSolLeadAuditEab4cabRemediation` với 7 bài kiểm thử độc lập tái hiện chính xác counterexamples của cả Finding 1 và Finding 2, đồng thời xác nhận các assertions zero-side-effect và positive control toàn trình, nâng tổng số test lên 350/350 passed 100%.
+
 ## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 2f56bd3 (Replan Control Capability Requirement, Token Minting Hardening, and Boundary Enforcement)
 
 - Khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate 2f56bd36a87daa2ef2db579e5bbf90e8ab088bc6 cho bundle docs/parallel-delivery/:

@@ -1216,6 +1216,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "2_independent_review_boundary_strictly_enforces_reviewer_capability": "RESOLVED",
                     "3_discriminating_negative_fixtures_verify_fail_closed_review_issuance": "RESOLVED",
                 },
+                "sol_lead_audit_eab4cab": {
+                    "1_unforgeable_reviewer_mint_token_bound_to_authenticated_dispatch": "RESOLVED",
+                    "2_control_forbidden_from_issuing_or_retrieving_reviewer_capability": "RESOLVED",
+                    "3_zero_side_effect_validation_before_state_mutation_for_review_and_integration": "RESOLVED",
+                    "4_discriminating_negative_fixtures_verify_fail_closed_and_zero_side_effects": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

@@ -1239,6 +1239,23 @@ class _InternalLifecycleToken:
 
 
 @dataclass(frozen=True)
+class _InternalReviewerMintToken:
+    token_id: str
+    delivery_task_id: str
+    review_dispatch_id: str
+    candidate_commit: str
+    authority_id: int
+    created_at: float
+    signature: str = ""
+
+    def __post_init__(self):
+        for field_name in ("token_id", "delivery_task_id", "review_dispatch_id", "candidate_commit", "signature"):
+            val = getattr(self, field_name, None)
+            if not isinstance(val, str) or not val.strip() or val != val.strip():
+                raise ProtocolViolationError(f"_InternalReviewerMintToken field {field_name!r} must be non-empty unpadded string")
+
+
+@dataclass(frozen=True)
 class ReviewerCapability:
     capability_id: str
     delivery_task_id: str
@@ -1249,6 +1266,7 @@ class ReviewerCapability:
     authority_id: int
     created_at: float
     signature: str = ""
+    role: str = "Reviewer"
 
     def __post_init__(self):
         for field_name in (
@@ -1259,10 +1277,13 @@ class ReviewerCapability:
             "reviewer_route",
             "reviewer_harness",
             "signature",
+            "role",
         ):
             val = getattr(self, field_name, None)
             if not isinstance(val, str) or not val.strip() or val != val.strip():
                 raise ProtocolViolationError(f"ReviewerCapability field {field_name!r} must be non-empty unpadded string")
+        if self.role != "Reviewer":
+            raise ProtocolViolationError(f"ReviewerCapability role must be 'Reviewer'; got {self.role!r}")
 
 
 @dataclass(frozen=True)
@@ -1313,10 +1334,12 @@ class EvidenceAuthority:
     def __init__(self, adapter: Optional[Any] = None, control_secret: Optional[str] = None) -> None:
         self._secret: bytes = secrets.token_bytes(32)
         self._control_secret: bytes = control_secret.encode("utf-8") if control_secret else secrets.token_bytes(32)
+        self._reviewer_mint_secret: bytes = secrets.token_bytes(32)
         self._issued_evidence_ids: Set[str] = set()
         self._consumed_evidence_ids: Set[str] = set()
         self._issued_capabilities: Set[str] = set()
         self._consumed_capabilities: Set[str] = set()
+        self._consumed_mint_tokens: Set[str] = set()
         self.adapter = adapter
         self._lock = threading.Lock()
 
@@ -1325,32 +1348,125 @@ class EvidenceAuthority:
         return hmac.new(self._secret, payload, hashlib.sha256).hexdigest()
 
     def _sign_reviewer_capability(
-        self, cap_id: str, tid: str, disp_id: str, commit: str, route: str, harness: str, created_at: float
+        self, cap_id: str, tid: str, disp_id: str, commit: str, route: str, harness: str, created_at: float, role: str = "Reviewer"
     ) -> str:
-        payload = f"REVIEWER_CAPABILITY:{cap_id}:{tid}:{disp_id}:{commit}:{route}:{harness}:{id(self)}:{created_at}".encode("utf-8")
+        payload = f"REVIEWER_CAPABILITY:{cap_id}:{tid}:{disp_id}:{commit}:{route}:{harness}:{role}:{id(self)}:{created_at}".encode("utf-8")
         return hmac.new(self._secret, payload, hashlib.sha256).hexdigest()
 
+    def _sign_reviewer_mint_token(self, token_id: str, tid: str, disp_id: str, commit: str, created_at: float) -> str:
+        payload = f"REV_MINT_TOKEN:{token_id}:{tid}:{disp_id}:{commit}:{id(self)}:{created_at}".encode("utf-8")
+        return hmac.new(self._reviewer_mint_secret, payload, hashlib.sha256).hexdigest()
+
+    def _create_reviewer_mint_token(
+        self,
+        delivery_task_id: str,
+        review_dispatch_id: str,
+        candidate_commit: str,
+        _internal_secret: Optional[bytes] = None,
+    ) -> _InternalReviewerMintToken:
+        if _internal_secret is None or not hmac.compare_digest(_internal_secret, self._reviewer_mint_secret):
+            raise ProtocolViolationError(
+                "Direct external calling of _create_reviewer_mint_token is forbidden; "
+                "token creation is strictly internal to authoritative review dispatch handlers"
+            )
+        clean_tid = delivery_task_id.strip() if isinstance(delivery_task_id, str) else ""
+        clean_did = review_dispatch_id.strip() if isinstance(review_dispatch_id, str) else ""
+        clean_commit = candidate_commit.strip() if isinstance(candidate_commit, str) else ""
+        if not clean_tid or not clean_did or not clean_commit:
+            raise ProtocolViolationError("delivery_task_id, review_dispatch_id, and candidate_commit cannot be blank")
+
+        if self.adapter is None:
+            raise ProtocolViolationError("Reviewer mint token creation requires an attached adapter")
+        if self.adapter.active_review_dispatches.get(clean_tid) != clean_did or clean_did not in self.adapter.review_dispatch_bindings:
+            raise ProtocolViolationError(
+                f"Cannot create reviewer mint token: dispatch {clean_did!r} is not an active authenticated review dispatch for task {clean_tid!r}"
+            )
+        binding = self.adapter.review_dispatch_bindings[clean_did]
+        if binding.delivery_task_id != clean_tid:
+            raise ProtocolViolationError(
+                f"Review dispatch {clean_did!r} is bound to delivery task {binding.delivery_task_id!r}, not {clean_tid!r}"
+            )
+        if binding.candidate_commit.lower() != clean_commit.lower():
+            raise ProtocolViolationError(
+                f"Review dispatch {clean_did!r} is bound to candidate commit {binding.candidate_commit}, not {clean_commit}"
+            )
+        task_st = self.adapter.get_task_state(clean_tid)
+        if task_st != "review":
+            raise ProtocolViolationError(
+                f"Cannot create reviewer mint token: task {clean_tid!r} is in state {task_st!r}; must be 'review'"
+            )
+        if self.adapter.registry.is_dispatch_settled(clean_did):
+            raise ProtocolViolationError(f"Review dispatch {clean_did!r} has already been settled")
+
+        tok_id = f"rev_mt_{uuid.uuid4().hex}"
+        created_at = time.time()
+        sig = self._sign_reviewer_mint_token(tok_id, clean_tid, clean_did, clean_commit, created_at)
+        return _InternalReviewerMintToken(
+            token_id=tok_id,
+            delivery_task_id=clean_tid,
+            review_dispatch_id=clean_did,
+            candidate_commit=clean_commit,
+            authority_id=id(self),
+            created_at=created_at,
+            signature=sig,
+        )
 
     def _mint_reviewer_capability_internal(
-        self, delivery_task_id: str, review_dispatch_id: str, candidate_commit: str,
-        reviewer_route: str = "cx/gpt-5.6-sol", reviewer_harness: str = "Claude Code"
+        self,
+        delivery_task_id: str,
+        review_dispatch_id: str,
+        candidate_commit: str,
+        reviewer_route: str = "cx/gpt-5.6-sol",
+        reviewer_harness: str = "Claude Code",
+        _mint_token: Optional[_InternalReviewerMintToken] = None,
     ) -> ReviewerCapability:
+        if _mint_token is None:
+            raise ProtocolViolationError(
+                "Direct external calling of _mint_reviewer_capability_internal is forbidden; "
+                "capability minting requires an unforgeable internal mint token bound to an authenticated review dispatch"
+            )
+        if not isinstance(_mint_token, _InternalReviewerMintToken):
+            raise ProtocolViolationError(
+                f"Invalid internal reviewer mint token: expected _InternalReviewerMintToken, got {type(_mint_token).__name__}"
+            )
+        if _mint_token.authority_id != id(self):
+            raise ProtocolViolationError("Internal reviewer mint token authority_id mismatch")
+        expected_sig = self._sign_reviewer_mint_token(
+            _mint_token.token_id, _mint_token.delivery_task_id, _mint_token.review_dispatch_id, _mint_token.candidate_commit, _mint_token.created_at
+        )
+        if not hmac.compare_digest(_mint_token.signature, expected_sig):
+            raise ProtocolViolationError("Internal reviewer mint token cryptographic signature mismatch; tampered or forged token rejected")
+        clean_tid = delivery_task_id.strip() if isinstance(delivery_task_id, str) else ""
+        clean_did = review_dispatch_id.strip() if isinstance(review_dispatch_id, str) else ""
+        clean_commit = candidate_commit.strip() if isinstance(candidate_commit, str) else ""
+        if _mint_token.delivery_task_id != clean_tid:
+            raise ProtocolViolationError("Internal reviewer mint token delivery_task_id mismatch")
+        if _mint_token.review_dispatch_id != clean_did:
+            raise ProtocolViolationError("Internal reviewer mint token review_dispatch_id mismatch")
+        if _mint_token.candidate_commit.lower() != clean_commit.lower():
+            raise ProtocolViolationError("Internal reviewer mint token candidate_commit mismatch")
+
+        with self._lock:
+            if _mint_token.token_id in self._consumed_mint_tokens:
+                raise ProtocolViolationError(f"Internal reviewer mint token {_mint_token.token_id!r} has already been consumed")
+            self._consumed_mint_tokens.add(_mint_token.token_id)
+
         cap_id = f"rev_cap_{uuid.uuid4().hex}"
         created_at = time.time()
         sig = self._sign_reviewer_capability(
-            cap_id, delivery_task_id.strip(), review_dispatch_id.strip(),
-            candidate_commit.strip(), reviewer_route.strip(), reviewer_harness.strip(), created_at
+            cap_id, clean_tid, clean_did, clean_commit, reviewer_route.strip(), reviewer_harness.strip(), created_at, role="Reviewer"
         )
         cap = ReviewerCapability(
             capability_id=cap_id,
-            delivery_task_id=delivery_task_id.strip(),
-            review_dispatch_id=review_dispatch_id.strip(),
-            candidate_commit=candidate_commit.strip(),
+            delivery_task_id=clean_tid,
+            review_dispatch_id=clean_did,
+            candidate_commit=clean_commit,
             reviewer_route=reviewer_route.strip(),
             reviewer_harness=reviewer_harness.strip(),
             authority_id=id(self),
             created_at=created_at,
             signature=sig,
+            role="Reviewer",
         )
         with self._lock:
             self._issued_capabilities.add(cap_id)
@@ -1390,6 +1506,10 @@ class EvidenceAuthority:
         control_capability: Optional[ControlCapability] = None,
         control_secret: Optional[str] = None,
     ) -> ReviewerCapability:
+        if control_capability is not None or control_secret is not None:
+            raise ProtocolViolationError(
+                "Control authority cannot issue or hold ReviewerCapability; independent review boundary strictly separates Control from Reviewer"
+            )
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
             raise ProtocolViolationError("delivery_task_id cannot be blank")
         if not review_dispatch_id or not isinstance(review_dispatch_id, str) or not review_dispatch_id.strip():
@@ -1401,26 +1521,39 @@ class EvidenceAuthority:
         if reviewer_harness != "Claude Code":
             raise ProtocolViolationError(f"Invalid reviewer harness {reviewer_harness!r}; expected 'Claude Code'")
 
-        authenticated = False
-        if control_secret and isinstance(control_secret, str):
-            if hmac.compare_digest(control_secret.encode("utf-8"), self._control_secret):
-                authenticated = True
-        if not authenticated and control_capability is not None:
-            self.verify_capability(control_capability, expected_role="Control", expected_task_id=delivery_task_id.strip())
-            authenticated = True
+        clean_tid = delivery_task_id.strip()
+        clean_did = review_dispatch_id.strip()
+        clean_commit = candidate_commit.strip()
 
-        if not authenticated:
+        if self.adapter is None:
             raise ProtocolViolationError(
-                "Unauthorized: issuing ReviewerCapability requires authenticated Control authority (valid ControlCapability or control_secret)"
+                "ReviewerCapability issuance requires an attached adapter with an authenticated review dispatch"
             )
 
-        return self._mint_reviewer_capability_internal(
-            delivery_task_id=delivery_task_id,
-            review_dispatch_id=review_dispatch_id,
-            candidate_commit=candidate_commit,
-            reviewer_route=reviewer_route,
-            reviewer_harness=reviewer_harness,
-        )
+        if self.adapter.active_review_dispatches.get(clean_tid) != clean_did or clean_did not in self.adapter.review_dispatch_bindings:
+            raise ProtocolViolationError(
+                f"Cannot issue ReviewerCapability: dispatch {clean_did!r} is not an active authenticated review dispatch for task {clean_tid!r}"
+            )
+        binding = self.adapter.review_dispatch_bindings[clean_did]
+        if binding.delivery_task_id != clean_tid:
+            raise ProtocolViolationError(
+                f"Review dispatch {clean_did!r} is bound to delivery task {binding.delivery_task_id!r}, not {clean_tid!r}"
+            )
+        if binding.candidate_commit.lower() != clean_commit.lower():
+            raise ProtocolViolationError(
+                f"Review dispatch {clean_did!r} is bound to candidate commit {binding.candidate_commit}, not {clean_commit}"
+            )
+        task_st = self.adapter.get_task_state(clean_tid)
+        if task_st != "review":
+            raise ProtocolViolationError(
+                f"Cannot issue ReviewerCapability: task {clean_tid!r} is in state {task_st!r}; must be 'review'"
+            )
+        if self.adapter.registry.is_dispatch_settled(clean_did):
+            raise ProtocolViolationError(f"Review dispatch {clean_did!r} has already been settled")
+
+        if clean_did not in self.adapter._dispatch_reviewer_capabilities:
+            raise ProtocolViolationError(f"No ReviewerCapability registered for review dispatch {clean_did!r}")
+        return self.adapter._dispatch_reviewer_capabilities[clean_did]
 
     def get_reviewer_capability(
         self, review_dispatch_id: str, control_capability: Optional[ControlCapability] = None, control_secret: Optional[str] = None
@@ -1456,36 +1589,85 @@ class EvidenceAuthority:
             raise ProtocolViolationError(
                 "Wildcard capability cannot be used to issue review evidence; explicit task-scoped ReviewerCapability required"
             )
+        if isinstance(effective_cap, ControlCapability) or getattr(effective_cap, "role", "") == "Control":
+            raise ProtocolViolationError(
+                f"Review evidence issuance strictly requires ReviewerCapability; ControlCapability cannot be used to issue review evidence"
+            )
+        if isinstance(effective_cap, ControlCapability) or getattr(effective_cap, "role", "") == "Control":
+            raise ProtocolViolationError(
+                "Review evidence issuance strictly requires ReviewerCapability; ControlCapability cannot be used to issue review evidence"
+            )
         if not isinstance(effective_cap, ReviewerCapability):
             raise ProtocolViolationError(
                 f"Review evidence issuance strictly requires ReviewerCapability; {type(effective_cap).__name__} cannot be used to issue review evidence"
             )
-        if effective_cap.delivery_task_id != (delivery_task_id.strip() if delivery_task_id else ""):
-            raise ProtocolViolationError(
-                f"Capability delivery_task_id mismatch: expected {delivery_task_id!r}, got {effective_cap.delivery_task_id!r}"
-            )
-        self.verify_capability(
-            effective_cap,
-            expected_role="Reviewer",
-            expected_task_id=delivery_task_id.strip() if delivery_task_id else "",
-            expected_dispatch_id=review_dispatch_id.strip() if review_dispatch_id else "",
-            expected_commit=candidate_commit.strip() if candidate_commit else "",
-        )
 
-        with self._lock:
-            self._consumed_capabilities.add(effective_cap.capability_id)
-        if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
+        clean_tid = delivery_task_id.strip() if (delivery_task_id and isinstance(delivery_task_id, str)) else ""
+        clean_did = review_dispatch_id.strip() if (review_dispatch_id and isinstance(review_dispatch_id, str)) else ""
+        clean_commit = candidate_commit.strip() if (candidate_commit and isinstance(candidate_commit, str)) else ""
+
+        if not clean_tid:
             raise ProtocolViolationError("delivery_task_id cannot be blank")
-        if not review_dispatch_id or not isinstance(review_dispatch_id, str) or not review_dispatch_id.strip():
+        if not clean_did:
             raise ProtocolViolationError("review_dispatch_id cannot be blank")
-        if not candidate_commit or not isinstance(candidate_commit, str) or not candidate_commit.strip():
+        if not clean_commit:
             raise ProtocolViolationError("candidate_commit cannot be blank")
+        if clean_commit.upper() == "HEAD" or not SHA_HEX_40_RE.match(clean_commit):
+            raise ProtocolViolationError(f"candidate_commit {candidate_commit!r} must be an immutable full 40-character commit SHA")
         if verdict not in ("ACCEPT", "CHANGES_REQUESTED", "BLOCKED"):
             raise ProtocolViolationError(f"Invalid review verdict {verdict!r}")
         if reviewer_route != "cx/gpt-5.6-sol":
             raise ProtocolViolationError(f"Invalid reviewer route {reviewer_route!r}; expected 'cx/gpt-5.6-sol'")
         if reviewer_harness != "Claude Code":
             raise ProtocolViolationError(f"Invalid reviewer harness {reviewer_harness!r}; expected 'Claude Code'")
+        if not summary or not isinstance(summary, str) or not summary.strip():
+            raise ProtocolViolationError("summary cannot be blank")
+
+        if effective_cap.delivery_task_id != clean_tid:
+            raise ProtocolViolationError(
+                f"Capability delivery_task_id mismatch: expected {clean_tid!r}, got {effective_cap.delivery_task_id!r}"
+            )
+        if effective_cap.review_dispatch_id != clean_did:
+            raise ProtocolViolationError(
+                f"Capability review_dispatch_id mismatch: expected {clean_did!r}, got {effective_cap.review_dispatch_id!r}"
+            )
+        if effective_cap.candidate_commit.lower() != clean_commit.lower():
+            raise ProtocolViolationError(
+                f"Capability candidate_commit mismatch: expected {clean_commit!r}, got {effective_cap.candidate_commit!r}"
+            )
+
+        if self.adapter is None:
+            raise ProtocolViolationError(
+                "Review evidence issuance requires an attached delivery adapter with an authenticated review dispatch"
+            )
+        if self.adapter.active_review_dispatches.get(clean_tid) != clean_did or clean_did not in self.adapter.review_dispatch_bindings:
+            raise ProtocolViolationError(
+                f"Review evidence issuance requires an authenticated review dispatch; dispatch {clean_did!r} is not an active authenticated review dispatch"
+            )
+        binding = self.adapter.review_dispatch_bindings[clean_did]
+        if binding.delivery_task_id != clean_tid:
+            raise ProtocolViolationError(
+                f"Review dispatch {clean_did!r} is bound to delivery task {binding.delivery_task_id!r}, not {clean_tid!r}"
+            )
+        if binding.candidate_commit.lower() != clean_commit.lower():
+            raise ProtocolViolationError(
+                f"Review dispatch {clean_did!r} is bound to candidate commit {binding.candidate_commit}, not {clean_commit}"
+            )
+        task_st = self.adapter.get_task_state(clean_tid)
+        if task_st != "review":
+            raise ProtocolViolationError(
+                f"Cannot issue review evidence for task {clean_tid!r} in state {task_st!r}; task must be in 'review' state"
+            )
+        if self.adapter.registry.is_dispatch_settled(clean_did):
+            raise ProtocolViolationError(f"Review dispatch {clean_did!r} has already been settled")
+
+        self.verify_capability(
+            effective_cap,
+            expected_role="Reviewer",
+            expected_task_id=clean_tid,
+            expected_dispatch_id=clean_did,
+            expected_commit=clean_commit,
+        )
 
         now_dt = now or datetime.now(timezone.utc)
         if now_dt.tzinfo is None:
@@ -1493,16 +1675,17 @@ class EvidenceAuthority:
         ts = now_dt.isoformat()
         ev_id = f"rev_ev_{uuid.uuid4().hex}"
 
-        payload = f"REVIEW_EVIDENCE:{ev_id}:{delivery_task_id.strip()}:{review_dispatch_id.strip()}:{candidate_commit.strip()}:{verdict.strip()}:{reviewer_route.strip()}:{reviewer_harness.strip()}:{ts}".encode("utf-8")
+        payload = f"REVIEW_EVIDENCE:{ev_id}:{clean_tid}:{clean_did}:{clean_commit}:{verdict.strip()}:{reviewer_route.strip()}:{reviewer_harness.strip()}:{ts}".encode("utf-8")
         sig = hmac.new(self._secret, payload, hashlib.sha256).hexdigest()
 
         with self._lock:
+            self._consumed_capabilities.add(effective_cap.capability_id)
             self._issued_evidence_ids.add(ev_id)
 
         return ReviewEvidence(
-            review_dispatch_id=review_dispatch_id.strip(),
-            delivery_task_id=delivery_task_id.strip(),
-            candidate_commit=candidate_commit.strip(),
+            review_dispatch_id=clean_did,
+            delivery_task_id=clean_tid,
+            candidate_commit=clean_commit,
             verdict=verdict.strip(),
             reviewer_route=reviewer_route.strip(),
             reviewer_harness=reviewer_harness.strip(),
@@ -1540,24 +1723,31 @@ class EvidenceAuthority:
             raise ProtocolViolationError(
                 "Wildcard capability cannot be used to issue integration evidence; explicit task-scoped Control capability required"
             )
-        if effective_cap.delivery_task_id != (delivery_task_id.strip() if delivery_task_id else ""):
-            raise ProtocolViolationError(
-                f"ControlCapability delivery_task_id mismatch: expected {delivery_task_id!r}, got {effective_cap.delivery_task_id!r}"
-            )
-        self.verify_capability(effective_cap, expected_role="Control", expected_task_id=delivery_task_id.strip() if delivery_task_id else "")
-
-        with self._lock:
-            self._consumed_capabilities.add(effective_cap.capability_id)
         if type(gates_pass) is not bool:
             raise ProtocolViolationError("gates_pass must be strict bool")
-        if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
+
+        clean_tid = delivery_task_id.strip() if (delivery_task_id and isinstance(delivery_task_id, str)) else ""
+        clean_cand = candidate_commit.strip() if (candidate_commit and isinstance(candidate_commit, str)) else ""
+        clean_base = base_commit.strip() if (base_commit and isinstance(base_commit, str)) else ""
+        clean_by = integrated_by.strip() if (integrated_by and isinstance(integrated_by, str)) else ""
+
+        if not clean_tid:
             raise ProtocolViolationError("delivery_task_id cannot be blank")
-        if not candidate_commit or not isinstance(candidate_commit, str) or not candidate_commit.strip():
+        if not clean_cand:
             raise ProtocolViolationError("candidate_commit cannot be blank")
-        if not base_commit or not isinstance(base_commit, str) or not base_commit.strip():
+        if clean_cand.upper() == "HEAD" or not SHA_HEX_40_RE.match(clean_cand):
+            raise ProtocolViolationError(f"candidate_commit {candidate_commit!r} must be an immutable full 40-character commit SHA")
+        if not clean_base:
             raise ProtocolViolationError("base_commit cannot be blank")
-        if not integrated_by or not isinstance(integrated_by, str) or not integrated_by.strip():
+        if clean_base.upper() == "HEAD" or not SHA_HEX_40_RE.match(clean_base):
+            raise ProtocolViolationError(f"base_commit {base_commit!r} must be an immutable full 40-character commit SHA")
+        if not clean_by:
             raise ProtocolViolationError("integrated_by cannot be blank")
+
+        if effective_cap.delivery_task_id != clean_tid:
+            raise ProtocolViolationError(
+                f"ControlCapability delivery_task_id mismatch: expected {clean_tid!r}, got {effective_cap.delivery_task_id!r}"
+            )
 
         if gate_results is None:
             gate_results = {g: gates_pass for g in MANDATORY_INTEGRATION_GATES}
@@ -1566,6 +1756,10 @@ class EvidenceAuthority:
         for g in MANDATORY_INTEGRATION_GATES:
             if g not in gate_results:
                 raise ProtocolViolationError(f"Missing mandatory integration gate {g!r}")
+            if type(gate_results[g]) is not bool:
+                raise ProtocolViolationError(f"gate_results[{g!r}] must be strict bool")
+
+        self.verify_capability(effective_cap, expected_role="Control", expected_task_id=clean_tid)
 
         now_dt = now or datetime.now(timezone.utc)
         if now_dt.tzinfo is None:
@@ -1574,21 +1768,22 @@ class EvidenceAuthority:
         ev_id = f"int_ev_{uuid.uuid4().hex}"
 
         sorted_gates_json = json.dumps(gate_results, sort_keys=True)
-        payload = f"INTEGRATION_EVIDENCE:{ev_id}:{delivery_task_id.strip()}:{candidate_commit.strip()}:{base_commit.strip()}:{gates_pass}:{sorted_gates_json}:{integrated_by.strip()}:{ts}".encode("utf-8")
+        payload = f"INTEGRATION_EVIDENCE:{ev_id}:{clean_tid}:{clean_cand}:{clean_base}:{gates_pass}:{sorted_gates_json}:{clean_by}:{ts}".encode("utf-8")
         sig = hmac.new(self._secret, payload, hashlib.sha256).hexdigest()
 
         with self._lock:
+            self._consumed_capabilities.add(effective_cap.capability_id)
             self._issued_evidence_ids.add(ev_id)
 
         return IntegrationEvidence(
-            delivery_task_id=delivery_task_id.strip(),
-            candidate_commit=candidate_commit.strip(),
-            base_commit=base_commit.strip(),
+            delivery_task_id=clean_tid,
+            candidate_commit=clean_cand,
+            base_commit=clean_base,
             gates_pass=gates_pass,
-            gate_results=gate_results,
+            gate_results=dict(gate_results),
             evidence_hash=sig,
             signature=sig,
-            integrated_by=integrated_by.strip(),
+            integrated_by=clean_by,
             timestamp=ts,
             evidence_id=ev_id,
             authority_id=id(self),
@@ -1637,6 +1832,8 @@ class EvidenceAuthority:
         elif isinstance(capability, ReviewerCapability):
             if expected_role is not None and expected_role != "Reviewer":
                 raise ProtocolViolationError(f"Expected role {expected_role!r}, got ReviewerCapability")
+            if getattr(capability, "role", "Reviewer") != "Reviewer":
+                raise ProtocolViolationError(f"ReviewerCapability role must be 'Reviewer'; got {getattr(capability, 'role', None)!r}")
             if getattr(capability, "capability_id", "").startswith("adapter_internal_"):
                 raise ProtocolViolationError("Internal wildcard capability cannot be verified or used across external surfaces")
             with self._lock:
@@ -1654,6 +1851,7 @@ class EvidenceAuthority:
                 capability.reviewer_route,
                 capability.reviewer_harness,
                 capability.created_at,
+                role=getattr(capability, "role", "Reviewer"),
             )
             if not hmac.compare_digest(capability.signature, expected_sig):
                 raise ProtocolViolationError("ReviewerCapability cryptographic signature mismatch; tampered or forged capability rejected")
@@ -3488,6 +3686,10 @@ class OrcaDeliveryAdapter:
         control_capability: Optional[ControlCapability] = None,
         control_secret: Optional[str] = None,
     ) -> ReviewerCapability:
+        if control_capability is not None or control_secret is not None:
+            raise ProtocolViolationError(
+                "Control authority cannot issue or hold ReviewerCapability; independent review boundary strictly separates Control from Reviewer"
+            )
         return self.evidence_authority.issue_reviewer_capability(
             delivery_task_id=delivery_task_id,
             review_dispatch_id=review_dispatch_id,
@@ -3504,20 +3706,31 @@ class OrcaDeliveryAdapter:
         control_capability: Optional[ControlCapability] = None,
         control_secret: Optional[str] = None,
     ) -> ReviewerCapability:
+        if control_capability is not None or control_secret is not None:
+            raise ProtocolViolationError(
+                "Control authority cannot issue or hold ReviewerCapability; independent review boundary strictly separates Control from Reviewer"
+            )
         clean_did = review_dispatch_id.strip() if isinstance(review_dispatch_id, str) else ""
+        if not clean_did:
+            raise ProtocolViolationError("review_dispatch_id cannot be blank")
+        if clean_did not in self.review_dispatch_bindings:
+            raise ProtocolViolationError(f"No ReviewerCapability registered for review dispatch {clean_did!r}")
+        binding = self.review_dispatch_bindings[clean_did]
+        clean_tid = binding.delivery_task_id
+        if self.active_review_dispatches.get(clean_tid) != clean_did:
+            raise ProtocolViolationError(
+                f"Review dispatch {clean_did!r} is not the active review dispatch for task {clean_tid!r}"
+            )
+        task_st = self.get_task_state(clean_tid)
+        if task_st != "review":
+            raise ProtocolViolationError(
+                f"Cannot get ReviewerCapability: task {clean_tid!r} is in state {task_st!r}; must be 'review'"
+            )
+        if self.registry.is_dispatch_settled(clean_did):
+            raise ProtocolViolationError(f"Review dispatch {clean_did!r} has already been settled")
         if clean_did not in self._dispatch_reviewer_capabilities:
             raise ProtocolViolationError(f"No ReviewerCapability registered for review dispatch {clean_did!r}")
-        cap = self._dispatch_reviewer_capabilities[clean_did]
-        authenticated = False
-        if control_secret and isinstance(control_secret, str):
-            if hmac.compare_digest(control_secret.encode("utf-8"), self.evidence_authority._control_secret):
-                authenticated = True
-        if not authenticated and control_capability is not None:
-            self.evidence_authority.verify_capability(control_capability, expected_role="Control", expected_task_id=cap.delivery_task_id)
-            authenticated = True
-        if not authenticated:
-            raise ProtocolViolationError("Unauthorized: retrieving ReviewerCapability requires authenticated Control authority")
-        return cap
+        return self._dispatch_reviewer_capabilities[clean_did]
 
     def _mint_transition_token(self, handler: str, task_id: str, new_state: str) -> _TransitionAuthToken:
         if not task_id or not isinstance(task_id, str) or not task_id.strip():
@@ -4460,10 +4673,17 @@ class OrcaDeliveryAdapter:
         self.review_dispatch_bindings[dispatch_id] = binding
 
         # Mint ReviewerCapability bound to this dispatch
+        mint_token = self.evidence_authority._create_reviewer_mint_token(
+            delivery_task_id=delivery_task_id,
+            review_dispatch_id=dispatch_id,
+            candidate_commit=candidate_commit,
+            _internal_secret=self.evidence_authority._reviewer_mint_secret,
+        )
         rev_cap = self.evidence_authority._mint_reviewer_capability_internal(
             delivery_task_id=delivery_task_id,
             review_dispatch_id=dispatch_id,
             candidate_commit=candidate_commit,
+            _mint_token=mint_token,
         )
         self._dispatch_reviewer_capabilities[dispatch_id] = rev_cap
         return dispatch_id
