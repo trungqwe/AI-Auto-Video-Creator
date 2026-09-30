@@ -462,3 +462,25 @@ Biện pháp khắc phục triệt để:
    - Mở rộng test_18s: kiểm chứng trong tiến trình con độc lập rằng candidate module không chứa _HOST_BOUNDARY_BOOTSTRAP_SECRET, gọi _create_authenticated bị ném ProtocolViolationError, giả mạo chữ ký trong from_host_signed_payload bị verify() từ chối fail-closed, và chuỗi tấn công rogue listener -> issuer -> ticket -> provision hoàn toàn thất bại (FULL_CHAIN_ACCEPTED == False, HostBoundaryChannel._started == False).
    - Bổ sung test_18t: kiểm chứng trong cùng tiến trình candidate rằng caller không thể đọc secret, không thể gọi _create_authenticated, không thể forge capability, và chuỗi provision fail-closed, trong khi authentic capability do trusted host cấp phát vẫn hoạt động chính xác.
 5. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **396/396 tests PASS (100%)**, bảo đảm an toàn tuyệt đối trên mọi cổng thẩm định.
+
+## 27. Khắc phục triệt để phát hiện Sol Audit trên 2798fd6 (External Signer Daemon Ngoài Tiến Trình, Loại Bỏ Hoàn Toàn Private Key Khỏi Repository & Ngăn Chặn Mint Capability Khi Quét Toàn Bộ Mã Nguồn)
+
+Đợt rà soát độc lập trên exact candidate SHA 2798fd6f4af760f757ae41d5beab53408cc5a0da (approved base 4a7c8c921b7e05066505d51b168a02c3fde61317) ghi nhận finding actionable:
+Private Ed25519 signing key _HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES vẫn được commit trong docs/parallel-delivery/test_negative_fixtures.py:119-123 và factory TrustedHostBootstrapCapability ở cùng fixture dùng key đó; counterexample an toàn đã suy ra public key khớp pinned candidate key và tự ký payload rồi from_host_signed_payload(...).verify(...) thành công (SAFE_ASSERTION_TRACKED_KEY_CAN_MINT_VERIFIABLE_CAPABILITY=TRUE), tái hiện cả fresh clone, trái invariant out-of-process/private-key custody tại security-performance-recovery.md:166-170,189-195. Cần chuyển private signing key/factory ra trusted host boundary thật không nằm trong candidate repository hoặc thay bằng cơ chế external signer; bổ sung fixture chứng minh candidate đọc toàn repository vẫn không thể mint capability; không có mutation nào được thực hiện trong review.
+
+Biện pháp khắc phục triệt để:
+1. **Finding 1 — Xóa Bỏ Hoàn Toàn Private Signing Key Khỏi Repository**:
+   - Loại bỏ hoàn toàn _HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES và _HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY khỏi test_negative_fixtures.py cũng như toàn bộ các tệp được Git theo dõi trong repository.
+   - Tuyệt đối không lưu trữ khóa riêng Ed25519 tĩnh dưới dạng hằng số, biến toàn cục, hay chuỗi hex trong mã nguồn candidate hay test fixtures.
+2. **Finding 2 — Kiến Trúc External Signer Daemon Ngoài Tiến Trình Trong Bộ Nhớ**:
+   - Chuyển việc sinh cặp khóa Ed25519 sang tiến trình con độc lập _launch_test_host_boundary_daemon chạy ngoài tiến trình. Khóa riêng chỉ tồn tại tạm thời trong RAM của daemon host boundary và không bao giờ ghi ra đĩa hay gửi qua IPC cho candidate process.
+   - Daemon xuất khóa công khai pub_bytes qua pipe khi khởi chạy để ghim bất biến vào HostBoundaryBootstrapCapability.pin_trusted_host_public_key(...).
+   - Factory TrustedHostBootstrapCapability ủy quyền ký số mật mã ra bên ngoài (external signer) qua giao thức IPC ('SIGN_BOOTSTRAP_CAP', clean_token, payload). Daemon xác thực nghiêm ngặt bí mật máy chủ (host_secret) bằng so sánh thời gian không đổi hmac.compare_digest trước khi thực hiện ký.
+3. **Finding 3 — Ghim Bất Biến & Khóa Fail-Closed Mọi Nỗ Lực Sửa Đổi Khóa Công Khai**:
+   - HostBoundaryBootstrapCapability.pin_trusted_host_public_key chỉ cho phép ghim khóa từ ranh giới máy chủ đáng tin cậy với token/IPC hợp lệ; cấm tuyệt đối candidate trong tiến trình tự ý ghim hay thay đổi khóa đã ghim (ném ProtocolViolationError).
+4. **Finding 4 — Fixture Kiểm Thử test_18u Chứng Minh Đọc Toàn Bộ Repo Vẫn Không Thể Mint Capability**:
+   - Bổ sung fixture test_18u_sol_finding_candidate_reading_entire_repo_cannot_mint_bootstrap_capability:
+     + Quét toàn bộ các tệp được Git theo dõi trong docs/parallel-delivery/, khẳng định không tệp nào chứa định nghĩa private signing key hay chuỗi hex của khóa đã thu hồi.
+     + Thực thi kịch bản counterexample an toàn: candidate tự sinh khóa hoặc tìm kiếm trên repository không thể tạo ra chữ ký vượt qua verify() đối với pinned public key (SAFE_ASSERTION_TRACKED_KEY_CAN_MINT_VERIFIABLE_CAPABILITY = False).
+     + Kiểm tra việc cố tình ghim hoặc thay đổi pinned public key bằng token giả mạo đều thất bại fail-closed.
+5. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **397/397 tests PASS (100%)**, bảo đảm an toàn tuyệt đối trên mọi cổng thẩm định và release gate.

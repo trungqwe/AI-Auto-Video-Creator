@@ -3,12 +3,12 @@
 ## Đã quyết định
 
 - Authority hiện hành giữ nguyên: M2-P1..P7B_ACCEPTED_CLOSED; M2-P8/P9 LOCKED; M3/Phân hệ A NOT AUTHORIZED.
-- Khắc phục triệt để phát hiện độc lập từ đợt audit của Sol trên exact candidate bd382390340b0495d6a725bc97aa9f623720185e (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
-  1. Loại bỏ hoàn toàn _HOST_BOUNDARY_BOOTSTRAP_SECRET khỏi candidate module delivery_engine.py, ghim khóa công khai Ed25519 bất biến _HOST_BOUNDARY_BOOTSTRAP_PUBLIC_KEY; candidate không thể tự ký hay truy cập secret.
-  2. Khóa fail-closed toàn bộ API candidate-side minting: HostBoundaryBootstrapCapability._create_authenticated ném ProtocolViolationError; bổ sung from_host_signed_payload nhận DTO đã ký từ host và xác thực bằng Ed25519.
-  3. Tách biệt factory và signing key sang trusted host test boundary (TrustedHostBootstrapCapability trong test_negative_fixtures.py), không thể gọi hay import từ candidate module. Cập nhật _launch_test_host_boundary_daemon và test_sod_18.
-  4. Mở rộng test_18s và bổ sung test_18t: Chứng minh trong fresh subprocess và in-process candidate không thể đọc secret, không thể mint capability, không thể forge chữ ký, và chuỗi rogue listener -> issuer -> ticket -> provision hoàn toàn fail-closed (FULL_CHAIN_ACCEPTED == False, HostBoundaryChannel._started == False).
-  5. Bộ kiểm thử tự động đạt **396/396 tests PASS (100%)**.
+- Khắc phục triệt để phát hiện độc lập từ đợt audit của Sol trên exact candidate 2798fd6f4af760f757ae41d5beab53408cc5a0da (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  1. Loại bỏ hoàn toàn _HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES và _HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY khỏi test_negative_fixtures.py và toàn bộ repository.
+  2. Triển khai cơ chế external signer daemon ngoài tiến trình (_launch_test_host_boundary_daemon): cặp khóa Ed25519 được sinh trong RAM của daemon, chỉ xuất khóa công khai qua pipe để ghim bất biến; factory TrustedHostBootstrapCapability ủy quyền ký số mật mã qua IPC với xác thực HMAC host_secret.
+  3. Ghim khóa công khai bất biến qua HostBoundaryBootstrapCapability.pin_trusted_host_public_key; cấm tuyệt đối candidate worker trong tiến trình tự ý ghim hay thay đổi khóa đã ghim (ProtocolViolationError).
+  4. Bổ sung fixture test_18u: chứng minh quét toàn bộ tệp được Git theo dõi trong repository không tìm thấy private key hay chuỗi hex của khóa đã thu hồi, và candidate không thể mint bất kỳ verifiable bootstrap capability nào (SAFE_ASSERTION_TRACKED_KEY_CAN_MINT_VERIFIABLE_CAPABILITY = False).
+  5. Bộ kiểm thử tự động đạt **397/397 tests PASS (100%)**.
   6. Trạng thái kích hoạt production tiếp tục bị khóa chặt fail-closed: ProductionActivationGate.STATUS == PRODUCTION_ACTIVATION_BLOCKED (NOT_PROVISIONED).
 
 ## Chưa quyết định

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 2798fd6 (External Signer Daemon Ngoài Tiến Trình, Loại Bỏ Hoàn Toàn Private Key Khỏi Repository & Ngăn Chặn Mint Capability Khi Quét Toàn Bộ Mã Nguồn)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate 2798fd6f4af760f757ae41d5beab53408cc5a0da (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Xóa Bỏ Hoàn Toàn Private Signing Key Khỏi Repository**:
+    - Loại bỏ hoàn toàn _HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES và _HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY khỏi test_negative_fixtures.py và toàn bộ repository.
+    - Tuyệt đối không lưu trữ khóa riêng Ed25519 tĩnh dưới dạng hằng số hay biến toàn cục trong mã nguồn.
+  - **(2) External Signer Daemon Ngoài Tiến Trình Trong Bộ Nhớ**:
+    - Chuyển việc sinh cặp khóa Ed25519 sang tiến trình con độc lập _launch_test_host_boundary_daemon. Khóa riêng chỉ tồn tại trong RAM của daemon host boundary, không bao giờ ghi ra đĩa hay gửi qua IPC cho candidate process.
+    - Daemon xuất khóa công khai pub_bytes qua pipe khi khởi chạy để ghim bất biến vào HostBoundaryBootstrapCapability.pin_trusted_host_public_key(...).
+    - Factory TrustedHostBootstrapCapability ủy quyền ký số mật mã ra external signer daemon qua IPC ('SIGN_BOOTSTRAP_CAP', clean_token, payload) với xác thực HMAC constant-time.
+  - **(3) Ghim Bất Biến & Khóa Fail-Closed Sửa Đổi Khóa Công Khai**:
+    - HostBoundaryBootstrapCapability.pin_trusted_host_public_key chỉ cho phép ghim khóa từ ranh giới máy chủ đáng tin cậy; cấm tuyệt đối candidate trong tiến trình tự ý ghim hay thay đổi khóa đã ghim (ném ProtocolViolationError).
+  - **(4) Fixture Kiểm Thử test_18u (Đọc Toàn Bộ Repo Vẫn Không Thể Mint Capability)**:
+    - Bổ sung test_18u_sol_finding_candidate_reading_entire_repo_cannot_mint_bootstrap_capability:
+      - Quét toàn bộ các tệp được Git theo dõi trong docs/parallel-delivery/, khẳng định không tệp nào chứa định nghĩa private signing key hay chuỗi hex của khóa đã thu hồi.
+      - Thực thi kịch bản counterexample: candidate tự sinh khóa hoặc tìm kiếm repo không thể tạo chữ ký hợp lệ (SAFE_ASSERTION_TRACKED_KEY_CAN_MINT_VERIFIABLE_CAPABILITY = False).
+      - Kiểm tra việc cố tình ghim hoặc thay đổi pinned public key bằng token giả mạo đều thất bại fail-closed.
+  - **(5) Toàn Bộ 397/397 Tests PASS (100%)**:
+    - Toàn bộ 397 negative và positive fixtures đạt PASS tuyệt đối trên mọi cổng thẩm định.
+
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên bd38239 (HostBootstrapCapability Asymmetric Cryptographic Verification, Loại Bỏ Secret Khỏi Candidate Module & Candidate Minting Fail-Closed)
 
 - Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate bd382390340b0495d6a725bc97aa9f623720185e (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):

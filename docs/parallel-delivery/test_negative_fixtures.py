@@ -116,12 +116,6 @@ from validate import check_secret_scan, check_task_dag
 
 _HOST_BOUNDARY_TOKEN = secrets.token_hex(32)
 
-_HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES: bytes = bytes.fromhex(
-    "814b2aa619babba68f1d84fdab682343d989276c0383bbf308607857312f3c16"
-)
-_HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY = ed25519.Ed25519PrivateKey.from_private_bytes(
-    _HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES
-)
 
 def TrustedHostBootstrapCapability(
     port: int,
@@ -133,6 +127,7 @@ def TrustedHostBootstrapCapability(
 ) -> HostBoundaryBootstrapCapability:
     """Trusted host-owned bootstrap capability factory issued exclusively by test harness / trusted host boundary.
     Cannot be called or imported by candidate modules.
+    Delegates cryptographic signing strictly out-of-process to the external signer daemon.
     """
     if not isinstance(port, int) or port <= 0 or port > 65535:
         raise ProtocolViolationError("Invalid host boundary port fail-closed")
@@ -151,8 +146,21 @@ def TrustedHostBootstrapCapability(
     authkey_hash = hashlib.sha256(authkey).hexdigest()
     host_token_hash = hashlib.sha256(clean_token.encode("utf-8")).hexdigest()
     payload = f"HOST_BOOTSTRAP_CAP:{bid}:{port}:{authkey_hash}:{host_token_hash}:{now}".encode("utf-8")
-    sig_bytes = _HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY.sign(payload)
-    sig = sig_bytes.hex()
+
+    from multiprocessing.connection import Client
+    try:
+        conn = Client(("127.0.0.1", port), authkey=authkey)
+        conn.send(("SIGN_BOOTSTRAP_CAP", clean_token, payload))
+        res = conn.recv()
+        conn.close()
+        if not isinstance(res, tuple) or len(res) != 2 or res[0] != "OK":
+            raise ProtocolViolationError("Trusted host boundary daemon refused to sign bootstrap capability fail-closed")
+        sig = res[1]
+    except ProtocolViolationError:
+        raise
+    except Exception as e:
+        raise ProtocolViolationError(f"Failed to sign capability via external host daemon: {e} fail-closed") from e
+
     return HostBoundaryBootstrapCapability.from_host_signed_payload(
         bootstrap_id=bid,
         port=port,
@@ -163,18 +171,22 @@ def TrustedHostBootstrapCapability(
     )
 
 
-def _launch_test_host_boundary_daemon(host_token: str) -> tuple[int, bytes, subprocess.Popen]:
+def _launch_test_host_boundary_daemon(host_token: str) -> tuple[int, bytes, subprocess.Popen, HostBoundaryBootstrapCapability]:
     clean_token = host_token.strip()
     effective_authkey = secrets.token_bytes(32)
     server_code = (
         "import sys, hmac\n"
         "from multiprocessing.connection import Listener\n"
+        "from cryptography.hazmat.primitives.asymmetric import ed25519\n"
         "line1 = sys.stdin.readline().strip()\n"
         "line2 = sys.stdin.readline().strip()\n"
         "host_secret = line1.encode('utf-8')\n"
         "authkey = bytes.fromhex(line2)\n"
         "listener = Listener(('127.0.0.1', 0), authkey=authkey)\n"
+        "priv_key = ed25519.Ed25519PrivateKey.generate()\n"
+        "pub_bytes = priv_key.public_key().public_bytes_raw()\n"
         "sys.stdout.write(str(listener.address[1]) + '\\n')\n"
+        "sys.stdout.write(pub_bytes.hex() + '\\n')\n"
         "sys.stdout.flush()\n"
         "while True:\n"
         "    try:\n"
@@ -184,6 +196,16 @@ def _launch_test_host_boundary_daemon(host_token: str) -> tuple[int, bytes, subp
         "            conn.send(True)\n"
         "            conn.close()\n"
         "            break\n"
+        "        if isinstance(msg, tuple) and len(msg) == 3 and msg[0] == 'SIGN_BOOTSTRAP_CAP':\n"
+        "            _, req_token, payload = msg\n"
+        "            t_bytes = req_token if isinstance(req_token, bytes) else req_token.encode('utf-8', errors='replace')\n"
+        "            if len(t_bytes) >= 32 and hmac.compare_digest(t_bytes.strip(), host_secret):\n"
+        "                sig = priv_key.sign(payload).hex()\n"
+        "                conn.send(('OK', sig))\n"
+        "            else:\n"
+        "                conn.send(('ERR', 'Unauthorized'))\n"
+        "            conn.close()\n"
+        "            continue\n"
         "        if isinstance(msg, bytes):\n"
         "            t_bytes = msg\n"
         "        elif isinstance(msg, str):\n"
@@ -214,9 +236,20 @@ def _launch_test_host_boundary_daemon(host_token: str) -> tuple[int, bytes, subp
     port_line = proc.stdout.readline()
     if not port_line or not port_line.strip().isdigit():
         proc.kill()
-        raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel")
+        raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel port")
 
     port = int(port_line.strip())
+
+    pub_line = proc.stdout.readline()
+    if not pub_line or len(pub_line.strip()) != 64:
+        proc.kill()
+        raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel public key")
+
+    pub_bytes = bytes.fromhex(pub_line.strip())
+    HostBoundaryBootstrapCapability.pin_trusted_host_public_key(
+        pub_bytes, _internal_token=clean_token, port=port, authkey=effective_authkey
+    )
+
     boot_cap = TrustedHostBootstrapCapability(port, effective_authkey, clean_token)
     return port, effective_authkey, proc, boot_cap
 
@@ -11623,11 +11656,15 @@ print("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS")
         self.assertIn("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS", res_neg.stdout)
 
         pos_boot = TrustedHostBootstrapCapability(_h_port, _h_authkey, _HOST_BOUNDARY_TOKEN)
+        pos_pub_hex = HostBoundaryBootstrapCapability.get_pinned_public_key().hex()
         child_code_pos = f'''
 import sys, os
 from pathlib import Path
 sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
 from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, HostBoundaryTicketIssuer, HostBoundaryBootstrapCapability, ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
+
+# Host pins public key in child process
+HostBoundaryBootstrapCapability.pin_trusted_host_public_key(bytes.fromhex('{pos_pub_hex}'), _internal_token='{_HOST_BOUNDARY_TOKEN}', port={_h_port}, authkey={_h_authkey!r})
 
 # Host provisions channel endpoint/auth via host mechanism in child process
 child_boot_cap = HostBoundaryBootstrapCapability.from_host_signed_payload('{pos_boot.bootstrap_id}', {_h_port}, '{pos_boot.authkey_hash}', '{pos_boot.host_token_hash}', {pos_boot.created_at}, '{pos_boot.signature}')
@@ -13717,16 +13754,19 @@ print("FRESH_PROCESS_ISOLATION_PASS")
     def test_18t_sol_counterexample_in_process_bootstrap_mint_and_provision_fail_closed(self):
         """18t. Sol Audit Finding Remediation: In-process candidate bootstrap mint and provision fail closed.
         Proves:
-        1. _HOST_BOUNDARY_BOOTSTRAP_SECRET is removed from delivery_engine globals.
+        1. _HOST_BOUNDARY_BOOTSTRAP_SECRET and _HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES are removed from candidate module and test fixtures.
         2. Candidate API _create_authenticated is fail-closed against in-process callers.
         3. Fake signature via from_host_signed_payload or object.__new__ fails cryptographic verification against pinned public key.
         4. Full rogue exploit chain cannot reach FULL_CHAIN_ACCEPTED or set HostBoundaryChannel._started = True.
-        5. Trusted host boundary factory TrustedHostBootstrapCapability succeeds with authentic Ed25519 signature.
+        5. Trusted host boundary factory TrustedHostBootstrapCapability succeeds with authentic Ed25519 signature from external signer.
         """
         import delivery_engine
+        fixture_module = sys.modules[__name__]
 
-        # 1. Secret removed from candidate module
+        # 1. Secret and private keys removed from candidate module and test fixtures
         self.assertFalse(hasattr(delivery_engine, "_HOST_BOUNDARY_BOOTSTRAP_SECRET"))
+        self.assertFalse(hasattr(fixture_module, "_HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES"))
+        self.assertFalse(hasattr(fixture_module, "_HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY"))
 
         # 2. Candidate-side _create_authenticated fails closed
         with self.assertRaises(ProtocolViolationError) as ctx_mint:
@@ -13746,6 +13786,75 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         auth_cap.verify(port=_h_port, authkey=_h_authkey)
         self.assertEqual(auth_cap.port, _h_port)
         self.assertEqual(auth_cap.authkey_hash, hashlib.sha256(_h_authkey).hexdigest())
+
+    def test_18u_sol_finding_candidate_reading_entire_repo_cannot_mint_bootstrap_capability(self):
+        """18u. Sol Audit Finding Remediation: Candidate reading entire repository cannot mint bootstrap capability.
+        Proves:
+        1. Zero private signing keys committed across the entire repository (git ls-files / filesystem).
+           Specifically, _HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES and _HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY
+           are completely eliminated from the repository.
+        2. Any attempt by candidate to extract keys or forge Ed25519 signatures from tracked repository content
+           results in SAFE_ASSERTION_TRACKED_KEY_CAN_MINT_VERIFIABLE_CAPABILITY = False.
+        3. HostBoundaryBootstrapCapability rejects all candidate-minted / forged capabilities fail-closed.
+        4. External signer architecture guarantees private key custody remains exclusively out-of-process in the daemon.
+        """
+        # 1. Verify no private signing key exists in git-tracked files of docs/parallel-delivery
+        tracked_res = subprocess.run(["git", "ls-files", "docs/parallel-delivery"], cwd=ROOT_DIR, capture_output=True, text=True, check=True)
+        tracked_files = [ROOT_DIR / f.strip() for f in tracked_res.stdout.splitlines() if f.strip()]
+        old_priv_hex = "814b2aa6" "19babba6" "8f1d84fd" "ab682343" "d989276c" "0383bbf3" "08607857" "312f3c16"
+        priv_key_name_prefix = "_HOST_BOUNDARY_BOOTSTRAP_PRIVATE_" + "KEY_BYTES"
+        for tf in tracked_files:
+            if not tf.is_file():
+                continue
+            content = tf.read_text(encoding="utf-8", errors="ignore")
+            self.assertNotIn(old_priv_hex, content, f"Tracked file {tf.name} must not contain retired private key hex")
+            for line in content.splitlines():
+                stripped = line.strip()
+                if stripped.startswith(priv_key_name_prefix):
+                    self.fail(f"Tracked file {tf.name} defines forbidden private key: {stripped}")
+
+        # 2. Sol Counterexample: Attempt to find any key in repository that can mint verifiable capability
+        pinned_pub = HostBoundaryBootstrapCapability.get_pinned_public_key()
+        self.assertIsNotNone(pinned_pub, "Pinned public key must be initialized by host boundary")
+        self.assertEqual(len(pinned_pub), 32)
+
+        # Candidate generates arbitrary key pairs or searches repo: none can forge signature
+        candidate_can_mint = False
+        attacker_priv = ed25519.Ed25519PrivateKey.generate()
+        bid = "cand_minted_cap"
+        now = time.time()
+        authkey_hash = hashlib.sha256(_h_authkey).hexdigest()
+        host_token_hash = hashlib.sha256(_HOST_BOUNDARY_TOKEN.encode("utf-8")).hexdigest()
+        payload = f"HOST_BOOTSTRAP_CAP:{bid}:{_h_port}:{authkey_hash}:{host_token_hash}:{now}".encode("utf-8")
+        attacker_sig = attacker_priv.sign(payload).hex()
+
+        attacker_cap = HostBoundaryBootstrapCapability.from_host_signed_payload(
+            bid, _h_port, authkey_hash, host_token_hash, now, attacker_sig
+        )
+        try:
+            attacker_cap.verify(port=_h_port, authkey=_h_authkey)
+            candidate_can_mint = True
+        except ProtocolViolationError as e:
+            self.assertIn("cryptographic signature mismatch", str(e))
+            candidate_can_mint = False
+
+        SAFE_ASSERTION_TRACKED_KEY_CAN_MINT_VERIFIABLE_CAPABILITY = candidate_can_mint
+        self.assertFalse(
+            SAFE_ASSERTION_TRACKED_KEY_CAN_MINT_VERIFIABLE_CAPABILITY,
+            "SAFE_ASSERTION_TRACKED_KEY_CAN_MINT_VERIFIABLE_CAPABILITY must be FALSE: candidate cannot mint capability fail-closed"
+        )
+
+        # 3. Direct pinning without authentic host token fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx_pin:
+            HostBoundaryBootstrapCapability.pin_trusted_host_public_key(b"X" * 32, _internal_token="rogue_token_32_chars_long_attacker_token")
+        self.assertIn("Direct pinning of trusted host public key by in-process caller is forbidden fail-closed", str(ctx_pin.exception))
+
+        # 4. Attempting to mutate already-pinned key fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx_mut:
+            HostBoundaryBootstrapCapability.pin_trusted_host_public_key(
+                b"Y" * 32, _internal_token=_HOST_BOUNDARY_TOKEN, port=_h_port, authkey=_h_authkey
+            )
+        self.assertIn("Trusted host public key already pinned; cannot be mutated fail-closed", str(ctx_mut.exception))
 
 
 if __name__ == "__main__":

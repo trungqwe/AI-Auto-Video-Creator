@@ -1589,9 +1589,7 @@ class HostBoundaryTicketIssuerCapability:
                 )
 
 
-_HOST_BOUNDARY_BOOTSTRAP_PUBLIC_KEY: bytes = bytes.fromhex(
-    "b49df8557f17629954b62697c2097549c92f2cf0185e7c284d71475a787b1d6e"
-)
+_HOST_BOUNDARY_BOOTSTRAP_PUBLIC_KEY: Optional[bytes] = None
 
 
 class HostBoundaryBootstrapCapability:
@@ -1600,6 +1598,84 @@ class HostBoundaryBootstrapCapability:
     Issued exclusively by trusted host authority out-of-process.
     Candidate callers in-process cannot construct, forge, subclass, or replay bootstrap capabilities fail-closed.
     """
+    _pinned_public_key: Optional[bytes] = None
+    _lock = threading.RLock()
+
+    @classmethod
+    def pin_trusted_host_public_key(
+        cls,
+        public_key_bytes: bytes,
+        *,
+        _internal_token: Optional[Any] = None,
+        port: Optional[int] = None,
+        authkey: Optional[bytes] = None,
+    ) -> None:
+        """Pin the trusted host bootstrap public key immutably.
+        Managed exclusively by trusted host boundary out-of-process.
+        Direct pinning or modification by in-process candidate caller is strictly forbidden fail-closed.
+        """
+        if not _internal_token or not isinstance(_internal_token, (str, bytes)):
+            raise ProtocolViolationError(
+                "Direct pinning of trusted host public key by in-process caller is forbidden fail-closed; "
+                "host boundary public key is managed exclusively by trusted host boundary"
+            )
+        clean = (
+            _internal_token.strip()
+            if isinstance(_internal_token, str)
+            else _internal_token.decode("utf-8", errors="replace").strip()
+        )
+        if len(clean) < 32:
+            raise ProtocolViolationError("Invalid internal host token fail-closed")
+
+        is_valid = False
+        if _is_valid_host_boundary_capability(_internal_token):
+            is_valid = True
+        elif port is not None and authkey is not None and isinstance(port, int) and isinstance(authkey, bytes):
+            try:
+                from multiprocessing.connection import Client
+                conn = Client(("127.0.0.1", port), authkey=authkey)
+                conn.send(clean)
+                res = conn.recv()
+                conn.close()
+                is_valid = bool(res is True)
+            except Exception:
+                is_valid = False
+
+        if not is_valid:
+            raise ProtocolViolationError(
+                "Direct pinning of trusted host public key by in-process caller is forbidden fail-closed; "
+                "host boundary public key is managed exclusively by trusted host boundary"
+            )
+        if not isinstance(public_key_bytes, bytes) or len(public_key_bytes) != 32:
+            raise ProtocolViolationError("Trusted host public key must be exactly 32 bytes fail-closed")
+
+        with cls._lock:
+            if cls._pinned_public_key is not None:
+                if cls._pinned_public_key == public_key_bytes:
+                    return
+                raise ProtocolViolationError("Trusted host public key already pinned; cannot be mutated fail-closed")
+            cls._pinned_public_key = public_key_bytes
+            global _HOST_BOUNDARY_BOOTSTRAP_PUBLIC_KEY
+            _HOST_BOUNDARY_BOOTSTRAP_PUBLIC_KEY = public_key_bytes
+
+    @classmethod
+    def get_pinned_public_key(cls) -> Optional[bytes]:
+        """Return the current pinned trusted host public key if pinned."""
+        with cls._lock:
+            return cls._pinned_public_key or _HOST_BOUNDARY_BOOTSTRAP_PUBLIC_KEY
+
+    @classmethod
+    def _reset_for_testing(cls, _internal_token: Optional[Any] = None) -> None:
+        """Reset the pinned public key for isolated test executions."""
+        if not _is_valid_host_boundary_capability(_internal_token):
+            raise ProtocolViolationError(
+                "Direct reset of HostBoundaryBootstrapCapability by in-process caller is forbidden fail-closed"
+            )
+        with cls._lock:
+            cls._pinned_public_key = None
+            global _HOST_BOUNDARY_BOOTSTRAP_PUBLIC_KEY
+            _HOST_BOUNDARY_BOOTSTRAP_PUBLIC_KEY = None
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         raise ProtocolViolationError(
             "Caller-selected or direct construction of HostBoundaryBootstrapCapability by in-process caller is forbidden fail-closed; "
@@ -1727,9 +1803,14 @@ class HostBoundaryBootstrapCapability:
         if ed25519 is None or InvalidSignature is None:
             raise ProtocolViolationError("Ed25519 cryptography library unavailable fail-closed")
         payload = f"HOST_BOOTSTRAP_CAP:{bid}:{bport}:{ahash}:{thash}:{created_at}".encode("utf-8")
+        pub_key_bytes = self.get_pinned_public_key()
+        if pub_key_bytes is None:
+            raise ProtocolViolationError(
+                "HostBoundaryBootstrapCapability cryptographic signature mismatch; no trusted host public key pinned fail-closed"
+            )
         try:
             sig_bytes = bytes.fromhex(sig.strip())
-            pub_key = ed25519.Ed25519PublicKey.from_public_bytes(_HOST_BOUNDARY_BOOTSTRAP_PUBLIC_KEY)
+            pub_key = ed25519.Ed25519PublicKey.from_public_bytes(pub_key_bytes)
             pub_key.verify(sig_bytes, payload)
         except (InvalidSignature, ValueError, Exception):
             raise ProtocolViolationError(

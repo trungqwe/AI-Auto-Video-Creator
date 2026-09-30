@@ -98,6 +98,7 @@ Validator phải từ chối:
 - phân tích SignedIntegrationEnvelope hoặc SignedReviewEnvelope từ dictionary với kiểu dữ liệu bị ép kiểu lỏng lẻo (gates_pass='false' hoặc kiểu phi-bool/phi-số) vi phạm strict type rejection;
 - tự bootstrap hoặc xác thực host boundary capability thông qua biến môi trường mutable `os.environ` thay vì daemon kênh ngoài tiến trình `HostBoundaryChannel`;
 - tự khởi chạy hoặc cấu hình lại HostBoundaryChannel từ tiến trình con hoặc caller __main__ mà không có HostBoundaryTicket hợp lệ do host ngoài tiến trình cấp phát, hoặc nỗ lực giả mạo channel endpoint qua biến môi trường mutable; hoặc tự khởi tạo, giả mạo, hay replay HostBoundaryTicket mà không có xác thực chữ ký HMAC và provenance từ daemon máy chủ ngoài tiến trình; hoặc tự tạo rogue daemon/endpoint, tự ký/mint HostBoundaryBootstrapCapability trong tiến trình candidate hoặc gọi API candidate-side fail-closed (_create_authenticated), hoặc giả mạo capability mà không có chữ ký mật mã bất đối xứng Ed25519 hợp lệ được xác thực bởi pinned public key bất biến của trusted host boundary;
+- lưu trữ, commit, hoặc export private Ed25519 signing key (_HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES) trong repository hay test fixtures; mọi thao tác ký số bootstrap capability phải được ủy quyền ra daemon external signer ngoài tiến trình và private key custody hoàn toàn thuộc về trusted host boundary ngoài tiến trình;
 
 ## 5. Open thresholds giữ nguyên
 

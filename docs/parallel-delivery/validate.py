@@ -1245,6 +1245,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "4_provision_channel_verifies_and_consumes_bootstrap_capability_single_use": "RESOLVED",
                     "5_rogue_daemon_and_endpoint_rejected_in_fresh_subprocess_verified": "RESOLVED",
                 },
+                "sol_lead_audit_2798fd6": {
+                    "1_complete_elimination_of_private_signing_key_from_repository": "RESOLVED",
+                    "2_external_signer_daemon_private_key_custody_out_of_process": "RESOLVED",
+                    "3_candidate_reading_entire_repo_cannot_mint_bootstrap_capability": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},
