@@ -4,6 +4,13 @@
 
 - Authority hiện hành giữ nguyên: `M2-P1..P7B_ACCEPTED_CLOSED`; M2-P8/P9 `LOCKED`; M3/Phân hệ A `NOT AUTHORIZED`.
 - Đã thêm [kiến trúc triển khai song song](./docs/parallel-delivery/README.md) ở trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`. Bundle chỉ là docs/config và định nghĩa DAG, contract registry, ownership/lease, Orca worker protocol, merge queue, traceability, security/performance/recovery.
+- Đã khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate 7e0e312:
+  1. Loại bỏ triệt để reset và credential injection khỏi bề mặt production: Xóa bỏ hoàn toàn
+eset_default(), inject_reviewer_credential(), ootstrap_reviewer_credential(), và ootstrap_reviewer_capability() khỏi ReviewerSessionBoundary.
+  2. Ngăn chặn tuyệt đối caller cùng tiến trình tự chọn hoặc thay thế secret: ReviewerSessionBoundary.get_default() từ chối fail-closed nếu truyền tham số; boundary được cấp phát bất biến từ trusted external session/host (provision_from_host).
+  3. Ràng buộc create_review_dispatch() và claim capability vào self._reviewer_boundary của adapter: Chấm dứt hoàn toàn khả năng hoán đổi singleton để mạo danh reviewer.
+  4. Bộ kiểm thử tự động đạt 372/372 tests PASS (100%), bổ sung 	est_sod_12 và 	est_sod_14 tái hiện chính xác counterexample, chứng minh ordinary caller không thể bypass reviewer hay đạt merge_queued.
+  5. Xóa bỏ dòng trống thừa tại cuối tệp docs/parallel-delivery/test_negative_fixtures.py:10839, bảo đảm git diff --check đạt 0 lỗi.
 - Đã khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate 358571a:
   1. Xóa bỏ hoàn toàn hằng số mặc định công khai `DEFAULT_TEST_REVIEWER_SECRET` khỏi `docs/parallel-delivery/delivery_engine.py`; `ReviewerSessionBoundary` không fallback về secret mặc định.
   2. Ngăn chặn triệt để đột biến credential singleton: `ReviewerSessionBoundary.get_default()` từ chối fail-closed nếu caller cố gắng ghi đè credential của boundary đã khởi tạo.

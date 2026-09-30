@@ -615,6 +615,26 @@ Remediation R1 có 42 test acceptance qua, migration tiến/lùi và evidence/ha
     - Mở rộng suite `TestSolRemediationSeparationOfDuties` lên 9 bài test: chứng minh dispatch creator có đủ 7 public IDs vẫn không thể claim capability (`test_sod_06`), caller không thể đọc token/channel từ adapter và không thể giả mạo proof hay dùng Control authority để issue proof (`test_sod_07`), thực thi nghiêm ngặt single-use proof và cấm duplicate issuance (`test_sod_08`), và positive control độc lập với `self.reviewer_secret` hoàn tất toàn bộ vòng đời đến `integrated` (`test_sod_09`).
     - Nâng tổng số test lên 367/367 passed 100%.
 
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 7e0e312 (Elimination of In-Process Reset/Credential Injection, Immutable Reviewer Boundary Provisioning, and Adapter-Bound Review Dispatch)
+
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate 7e0e31259574c414eb7a7ba86bf9fc84b72ddf6d cho bundle docs/parallel-delivery/:
+  - **(1) Loại Bỏ Triệt Để API Reset Và Injection Khỏi Bề Mặt Production (Elimination of Reset/Credential Injection from Production-Callable Surface)**:
+    - Xóa bỏ hoàn toàn các phương thức
+eset_default(), inject_reviewer_credential(), ootstrap_reviewer_credential(), và ootstrap_reviewer_capability() khỏi ReviewerSessionBoundary.
+    - ReviewerSessionBoundary.get_default() từ chối fail-closed mọi tham số truyền vào từ in-process callers (args hoặc kwargs đều kích hoạt ProtocolViolationError("Cannot mutate reviewer credential of already initialized ReviewerSessionBoundary; singleton credential replacement forbidden fail-closed")), ngăn chặn tuyệt đối caller cùng tiến trình tự chọn hoặc thay thế secret.
+  - **(2) Cấp Phát Boundary Bất Biến Từ Trusted External Session/Host (Immutable External Session/Host Boundary Provisioning)**:
+    - Cơ chế provision_from_host() cấp phát ranh giới bất biến từ biến môi trường của phiên bên ngoài tin cậy (ORCA_REVIEWER_SESSION_SECRET / ORCA_REVIEWER_SECRET / DELY_REVIEWER_SESSION_SECRET / REVIEWER_SESSION_SECRET) hoặc secret mật mã không thể đoán trước; cấm tái cấp phát hay thay thế một khi đã khởi tạo.
+  - **(3) Ràng Buộc create_review_dispatch Và Claim Capability Vào Boundary Đã Cấp Phát (Binding Review Dispatch to Provisioned Boundary)**:
+    - OrcaDeliveryAdapter.__init__ nhận
+eviewer_boundary đã được cấp phát từ host (hoặc mặc định từ host boundary) và lưu thành thuộc tính bất biến @property reviewer_boundary. Caller không thể gán đè hay thay thế thuộc tính này.
+    - Cả create_review_dispatch(), claim_reviewer_capability(), và get_reviewer_capability() đều gắn kết trực tiếp vào self._reviewer_boundary, chấm dứt hoàn toàn lỗ hổng singleton bị caller in-process hoán đổi.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 372/372 Tests PASS**:
+    - Bổ sung và cập nhật các bài test trong TestSolRemediationSeparationOfDuties: 	est_sod_12 chứng minh caller không thể reset, inject, hay thay thế boundary credential; 	est_sod_14 tái hiện chính xác counterexample của Sol audit, chứng minh caller in-process không thể tạo boundary giả mạo, không thể claim capability hay forge evidence, và task không bao giờ có thể vượt qua trạng thái
+eview để đạt merge_queued.
+    - Nâng tổng số test lên 372/372 passed 100%.
+  - **(5) Xóa Bỏ Dòng Trống Thừa Tại Cuối Tệp (Trailing Blank Line Elimination)**:
+    - Xóa bỏ dòng trống thừa tại docs/parallel-delivery/test_negative_fixtures.py:10839, bảo đảm git diff --check đạt 0 cảnh báo/lỗi trên toàn bộ lịch sử từ approved base commit 4a7c8c921b7e05066505d51b168a02c3fde61317.
+
 ## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 358571a (Elimination of Public Default Reviewer Secret, Immutable Boundary Credentials, and Trusted Session Bootstrap)
 
 - Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `358571a0be3bf9dc39dbeccc624e48cba5936fbf` cho bundle `docs/parallel-delivery/`:

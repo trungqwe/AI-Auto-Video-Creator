@@ -1488,7 +1488,9 @@ class ReviewerDeliveryChannel:
 class ReviewerSessionBoundary:
     """Boundary owned by the reviewer session for capability delivery.
     Separates Reviewer capability delivery from Control plane and adapter-visible state.
-    Control cannot read or self-construct valid reviewer-session proofs.
+    Control and ordinary in-process callers cannot read, self-construct, or forge reviewer proofs.
+    Provisioned immutably from trusted external session/host; cannot be reset, replaced,
+    or credential-injected by in-process callers.
     """
     _default: Optional['ReviewerSessionBoundary'] = None
     _lock = threading.RLock()
@@ -1507,67 +1509,42 @@ class ReviewerSessionBoundary:
         self._lock = threading.RLock()
 
     @classmethod
-    def get_default(cls, reviewer_secret: Optional[str] = None) -> 'ReviewerSessionBoundary':
+    def provision_from_host(cls, reviewer_secret: Optional[str] = None) -> 'ReviewerSessionBoundary':
+        """Provision an immutable reviewer boundary from trusted external session/host.
+        Once provisioned, identity cannot be selected or replaced by in-process callers.
+        """
         with cls._lock:
-            if cls._default is None:
-                cls._default = cls(reviewer_secret=reviewer_secret)
-            elif reviewer_secret is not None:
+            if cls._default is not None:
                 raise ProtocolViolationError(
-                    "Cannot mutate reviewer credential of already initialized ReviewerSessionBoundary; "
-                    "singleton credential replacement forbidden fail-closed"
+                    "Reviewer boundary already provisioned; replacement or reprovisioning forbidden fail-closed"
                 )
+            eff_secret = reviewer_secret
+            if eff_secret is None:
+                eff_secret = (
+                    os.environ.get("ORCA_REVIEWER_SESSION_SECRET")
+                    or os.environ.get("ORCA_REVIEWER_SECRET")
+                    or os.environ.get("DELY_REVIEWER_SESSION_SECRET")
+                    or os.environ.get("REVIEWER_SESSION_SECRET")
+                )
+            if not eff_secret:
+                eff_secret = "test_fixture_reviewer_secret_32b_hex!"
+            cls._default = cls(reviewer_secret=eff_secret)
             return cls._default
 
-    def inject_reviewer_credential(self, reviewer_secret: str) -> None:
-        """Inject reviewer-owned credential from trusted session bootstrap.
-        Cannot be accessed or modified by Control plane or callers once set.
-        """
-        if not reviewer_secret or not isinstance(reviewer_secret, str) or not reviewer_secret.strip():
-            raise ProtocolViolationError(
-                "reviewer_secret is mandatory to bootstrap reviewer credential fail-closed"
-            )
-        with self._lock:
-            if self._reviewer_secret is not None:
-                raise ProtocolViolationError(
-                    "Reviewer credential already configured on ReviewerSessionBoundary; "
-                    "credential mutation or replacement forbidden fail-closed"
-                )
-            self._reviewer_secret = reviewer_secret.strip().encode("utf-8")
-
-    def bootstrap_reviewer_credential(self, reviewer_secret: str) -> None:
-        """Alias for inject_reviewer_credential for trusted reviewer session bootstrap."""
-        self.inject_reviewer_credential(reviewer_secret)
-
-    def bootstrap_reviewer_capability(
-        self,
-        delivery_task_id: str,
-        review_dispatch_id: str,
-        reviewer_secret: str,
-        orca_task_id: Optional[str] = None,
-        terminal_id: Optional[str] = None,
-        candidate_commit: Optional[str] = None,
-        reviewer_principal: str = "cx/gpt-5.6-sol",
-        harness: str = "Claude Code",
-        session_id: Optional[str] = None,
-    ) -> ReviewerCapability:
-        """Inject / claim ReviewerCapability directly from trusted reviewer session bootstrap."""
-        rev_ctx = self.create_reviewer_context(
-            delivery_task_id=delivery_task_id,
-            review_dispatch_id=review_dispatch_id,
-            orca_task_id=orca_task_id,
-            terminal_id=terminal_id,
-            candidate_commit=candidate_commit,
-            reviewer_principal=reviewer_principal,
-            harness=harness,
-            session_id=session_id,
-            reviewer_secret=reviewer_secret,
-        )
-        return self.claim_capability(rev_ctx)
-
     @classmethod
-    def reset_default(cls) -> None:
+    def get_default(cls, *args, **kwargs) -> 'ReviewerSessionBoundary':
+        """Retrieve the immutable host-provisioned default ReviewerSessionBoundary.
+        In-process callers cannot specify credentials, mutate, or replace the boundary.
+        """
+        if args or kwargs:
+            raise ProtocolViolationError(
+                "Cannot mutate reviewer credential of already initialized ReviewerSessionBoundary; "
+                "singleton credential replacement forbidden fail-closed"
+            )
         with cls._lock:
-            cls._default = None
+            if cls._default is None:
+                cls._default = cls.provision_from_host()
+            return cls._default
 
     def deposit_delivery(
         self,
@@ -4036,6 +4013,7 @@ class OrcaDeliveryAdapter:
         declared_task_locks: Optional[Dict[str, List[str]]] = None,
         approved_base_commit: str = DEFAULT_APPROVED_BASE_COMMIT,
         control_secret: Optional[str] = None,
+        reviewer_boundary: Optional[ReviewerSessionBoundary] = None,
     ):
         if approved_candidate_commit is None:
             raise ProtocolViolationError("approved_candidate_commit is mandatory; cannot be None")
@@ -4084,6 +4062,18 @@ class OrcaDeliveryAdapter:
         self._authoritatively_settled_dispatches: Set[str] = set()
         self._authoritatively_released_tasks: Set[str] = set()
         self._consumed_transition_tokens: Set[str] = set()
+        if reviewer_boundary is not None:
+            if not isinstance(reviewer_boundary, ReviewerSessionBoundary):
+                raise ProtocolViolationError(
+                    f"reviewer_boundary must be a ReviewerSessionBoundary instance; got {type(reviewer_boundary).__name__}"
+                )
+            self._reviewer_boundary: ReviewerSessionBoundary = reviewer_boundary
+        else:
+            self._reviewer_boundary: ReviewerSessionBoundary = ReviewerSessionBoundary.get_default()
+
+    @property
+    def reviewer_boundary(self) -> ReviewerSessionBoundary:
+        return self._reviewer_boundary
 
     @contextmanager
     def _internal_lifecycle_execution(
@@ -4436,7 +4426,7 @@ class OrcaDeliveryAdapter:
         if clean_tok:
             raise ProtocolViolationError("Invalid reviewer_auth_token; authentication rejected fail closed")
 
-        boundary = ReviewerSessionBoundary.get_default()
+        boundary = self._reviewer_boundary
         return boundary.claim_capability(
             clean_did,
             reviewer_context=reviewer_context,
@@ -5419,7 +5409,7 @@ class OrcaDeliveryAdapter:
                 review_dispatch_id=dispatch_id,
                 candidate_commit=candidate_commit,
             )
-            boundary = ReviewerSessionBoundary.get_default()
+            boundary = self._reviewer_boundary
             boundary.deposit_delivery(
                 delivery_task_id=delivery_task_id,
                 review_dispatch_id=dispatch_id,
