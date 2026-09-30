@@ -23,6 +23,15 @@ Git là nguồn sự thật cho candidate; `docs/12-pre-code-checklist.md` là n
 
 Bảng Dely được quản lý trong `AGENTS.md` và chỉ có hai dòng `implement`/`review`. Supreme audit không được thêm thành phase Dely. Model routing không trao thêm authority và không thay security boundary.
 
+### Ranh giới tin cậy Độc lập Ngoài tiến trình (Out-of-Process Trust Boundary)
+
+- **Nguyên tắc cốt lõi**: Quyền phê duyệt (Review ACCEPT) và quyền tích hợp (Merge / Integrated) tuyệt đối không nằm trong cùng tiến trình Python của worker implementer. Worker chạy mã trong candidate tree không thể tự cấp quyền qua reflection, sửa biến toàn cục, subclassing hay monkey-patching.
+- **Phong bì Ký số Bất đối xứng (Asymmetric Signed Envelopes)**: Quá trình chuyển trạng thái sang `merge_queued` bắt buộc phải có `SignedReviewEnvelope` mang chữ ký Ed25519 từ Reviewer Lead (`rev_key_lead_v1`), và chuyển sang `integrated` bắt buộc phải có `SignedIntegrationEnvelope` mang chữ ký Ed25519 từ Integration Gatekeeper (`integ_gatekeeper_v1`).
+- **Phân định Ba Trạng thái Kiến trúc**:
+  1. `ARCHITECTURE_IMPLEMENTED`: Đã hiện thực hóa toàn bộ data contracts, asymmetric envelopes, validators, và out-of-process consumers trong mã nguồn.
+  2. `REFERENCE_TESTED`: 100% các probe tests, kịch bản tấn công giả mạo (tampering, replay, restart, temporal expiration, worker monkey-patching) đạt PASS.
+  3. `PRODUCTION_ACTIVATION_BLOCKED`: Trạng thái kích hoạt production bị **KHÓA CHẶT FAIL-CLOSED** (`ProductionActivationGate.STATUS == PRODUCTION_ACTIVATION_BLOCKED`) cho đến khi hệ thống đáp ứng đầy đủ 4 điều kiện tiên quyết: cách ly tài khoản OS, ACL tệp tin khóa riêng, runner CI/CD biệt lập, và quy tắc bảo vệ nhánh chính.
+
 ### Cổng tương thích Harness (Harness Compatibility Gate)
 
 - **Quan sát thực tế**: Codex CLI khi định tuyến sang `ag/gemini-3.8-flash-high` đã từng được ghi nhận hiện tượng làm sụp các công cụ có namespace (`functions.exec` -> `functions`), dẫn đến việc không thể thực thi tool call dù bước routing báo thành công.
@@ -153,7 +162,8 @@ Dừng task và mọi descendant chưa dispatch khi:
 - phát hiện bất kỳ sự tăng thế hệ bất đối xứng nào trên capacity lock đa slot;
 - nỗ lực can thiệp, tái mở trạng thái terminal hoặc tua ngược review/merge_queued về planned qua `set_task_state`;
 - báo cáo attestation chứa zero commit, commit không tồn tại hoặc topology không nhất quán với Git DAG (từ chối quan hệ thuộc tập hợp `{HEAD, HEAD^}` lỏng lẻo);
-- xung đột tranh chấp tạo dispatch bỏ sót rollback hoặc để lại durable orphan dispatch binding trên đĩa.
+- xung đột tranh chấp tạo dispatch bỏ sót rollback hoặc để lại durable orphan dispatch binding trên đĩa;
+- nỗ lực tự cấp quyền review/merge trong cùng tiến trình hoặc vi phạm khóa fail-closed `PRODUCTION_ACTIVATION_BLOCKED`.
 
 Task trả `blocked` nếu phụ thuộc có thể được giải quyết không đổi contract; trả `needs_replan` nếu scope/architecture/acceptance cần đổi; trả `stopped` khi authority hoặc safety yêu cầu kết thúc. Không giao phần còn lại cho worker khác dưới cùng lease.
 

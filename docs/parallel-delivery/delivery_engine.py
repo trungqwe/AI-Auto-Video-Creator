@@ -21,6 +21,7 @@ import secrets
 import subprocess
 import threading
 import sys
+import sqlite3
 import time
 import uuid
 import weakref
@@ -28,7 +29,14 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
+
+try:
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+    from cryptography.exceptions import InvalidSignature
+except ImportError:
+    ed25519 = None  # type: ignore
+    InvalidSignature = None  # type: ignore
 from collections.abc import Mapping
 
 try:
@@ -83,6 +91,27 @@ class HarnessCompatibilityError(ProtocolViolationError):
 
 class RoutingEvidenceError(ProtocolViolationError):
     """F2: Provider routing policy or execution envelope validation failure."""
+
+
+class ProductionActivationBlockedError(ParallelDeliveryError):
+    """Production activation is strictly blocked because required OS accounts,
+    ACLs, dedicated runner, or branch protection are not provisioned."""
+
+
+class EnvelopeVerificationError(ProtocolViolationError):
+    """Envelope signature, canonical bytes, or field verification failed."""
+
+
+class ReplayAttackError(ProtocolViolationError):
+    """Envelope or nonce has already been consumed (replay attack detected)."""
+
+
+class ExpiredEnvelopeError(ProtocolViolationError):
+    """Envelope timestamp is outside valid freshness window."""
+
+
+class FencingViolationError(ProtocolViolationError):
+    """Envelope fencing token is stale or out of order."""
 
 
 # ---------------------------------------------------------------------------
@@ -1517,11 +1546,15 @@ class ReviewerDeliveryChannel:
             return cap
 
 
+_SENTINEL_HOST_TOKEN = object()
+
+
 class ReviewerHostIssuer:
-    """Trusted host boundary authority for minting and verifying unforgeable ReviewerHostHandoff instances
-    and ReviewerHostIssuerCapability tokens.
+    """DEPRECATED IN-PROCESS SIMULATOR:
+    This class is an in-process simulation token and confers ZERO security boundary or merge authority.
     Direct in-process construction by ordinary callers is forbidden fail-closed.
-    Single-use host authority confers reviewer boundary provisioning.
+    Real trusted authority resides exclusively in out-of-process TrustedReviewConsumer with asymmetric SignedReviewEnvelope.
+    In-process callers cannot forge credentials or bypass external cryptographic gates.
     """
     _instance: Optional['ReviewerHostIssuer'] = None
     _lock = threading.RLock()
@@ -1529,9 +1562,9 @@ class ReviewerHostIssuer:
     def __init__(
         self,
         host_secret: Optional[str] = None,
-        _internal_token: Optional[bytes] = None,
+        _internal_token: Optional[Any] = None,
     ) -> None:
-        if _internal_token is None:
+        if _internal_token is not _SENTINEL_HOST_TOKEN:
             raise ProtocolViolationError(
                 "Direct construction of ReviewerHostIssuer by in-process caller is forbidden fail-closed; "
                 "host issuer authority is managed exclusively by trusted host boundary"
@@ -1548,10 +1581,12 @@ class ReviewerHostIssuer:
 
     @classmethod
     def get_default_host_issuer(cls) -> 'ReviewerHostIssuer':
-        """Retrieve or initialize the trusted host issuer authority for the process."""
+        """Retrieve simulated host issuer for backward-compatible test fixtures.
+        Confers ZERO production authority; cannot bypass TrustedReviewConsumer or ProductionActivationGate.
+        """
         with cls._lock:
             if cls._instance is None:
-                cls._instance = cls(_internal_token=secrets.token_bytes(16))
+                cls._instance = cls(_internal_token=_SENTINEL_HOST_TOKEN)
             return cls._instance
 
     def _sign_issuer_capability(
@@ -3002,6 +3037,631 @@ def make_integration_evidence(
     )
 
 
+# ---------------------------------------------------------------------------
+# Out-of-Process Trust Boundary & Asymmetric Verification Components
+# ---------------------------------------------------------------------------
+
+PRODUCTION_ACTIVATION_BLOCKED = "PRODUCTION_ACTIVATION_BLOCKED"
+ARCHITECTURE_IMPLEMENTED = "ARCHITECTURE_IMPLEMENTED"
+REFERENCE_TESTED = "REFERENCE_TESTED"
+
+
+class ProductionActivationGate:
+    """Production activation gate.
+    Enforces fail-closed blocking when production prerequisites (isolated OS accounts,
+    filesystem ACLs, dedicated runner, branch protection) are not provisioned.
+    """
+    STATUS: str = PRODUCTION_ACTIVATION_BLOCKED
+    REASON: str = (
+        "Production activation is strictly BLOCKED (NOT_PROVISIONED). "
+        "Infrastructure prerequisites required: [OS_USER_ISOLATION, "
+        "PRIVATE_KEY_ACL_RESTRICTION, DEDICATED_RUNNER, PROTECTED_BRANCH_POLICY]."
+    )
+
+    @classmethod
+    def get_status(cls) -> str:
+        return cls.STATUS
+
+    @classmethod
+    def is_blocked(cls) -> bool:
+        return True
+
+    @classmethod
+    def assert_production_gate_ready(cls) -> None:
+        raise ProductionActivationBlockedError(cls.REASON)
+
+
+REVIEW_ENVELOPE_DOMAIN = "PARALLEL_DELIVERY_REVIEW_ENVELOPE_V1"
+INTEGRATION_ENVELOPE_DOMAIN = "PARALLEL_DELIVERY_INTEGRATION_ENVELOPE_V1"
+
+
+def canonical_serialize_payload(payload: Dict[str, Any], domain: str) -> bytes:
+    """Serialize dictionary canonically for asymmetric signature verification (RFC 8785 style).
+    Excludes the signature field and prepends the domain separator."""
+    clean_dict = {k: v for k, v in payload.items() if k != "signature"}
+    serialized = json.dumps(clean_dict, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return f"{domain}:".encode("utf-8") + serialized.encode("utf-8")
+
+
+@dataclass(frozen=True)
+class SignedReviewEnvelope:
+    """Asymmetrically signed review envelope.
+    Produced exclusively by an authenticated out-of-process reviewer session using its private key.
+    Verified exclusively by TrustedReviewConsumer using pinned public keys.
+    """
+    envelope_id: str
+    delivery_task_id: str
+    review_dispatch_id: str
+    candidate_commit: str
+    base_commit: str
+    reviewer_route: str
+    reviewer_harness: str
+    reviewer_key_id: str
+    verdict: str
+    summary: str
+    nonce: str
+    issued_at: float
+    expires_at: float
+    fencing_token: int
+    signature: str = ""
+    orca_task_id: str = ""
+    terminal_id: str = ""
+    repo_identity: str = "AI-Auto-Video-Creator"
+    domain: str = REVIEW_ENVELOPE_DOMAIN
+    version: str = "v1"
+
+    def __post_init__(self) -> None:
+        for fld in (
+            "envelope_id",
+            "delivery_task_id",
+            "review_dispatch_id",
+            "candidate_commit",
+            "base_commit",
+            "reviewer_route",
+            "reviewer_harness",
+            "reviewer_key_id",
+            "verdict",
+            "summary",
+            "nonce",
+            "domain",
+            "version",
+        ):
+            val = getattr(self, fld, None)
+            if not isinstance(val, str) or not val.strip() or val != val.strip():
+                raise EnvelopeVerificationError(f"SignedReviewEnvelope field {fld!r} must be non-empty unpadded string")
+        if self.domain != REVIEW_ENVELOPE_DOMAIN:
+            raise EnvelopeVerificationError(f"SignedReviewEnvelope domain must be {REVIEW_ENVELOPE_DOMAIN!r}; got {self.domain!r}")
+        if self.version != "v1":
+            raise EnvelopeVerificationError(f"SignedReviewEnvelope version must be 'v1'; got {self.version!r}")
+        if self.verdict not in ("ACCEPT", "CHANGES_REQUESTED", "BLOCKED"):
+            raise EnvelopeVerificationError(f"SignedReviewEnvelope invalid verdict {self.verdict!r}")
+        if not isinstance(self.issued_at, (int, float)) or self.issued_at <= 0:
+            raise EnvelopeVerificationError("SignedReviewEnvelope issued_at must be positive float")
+        if not isinstance(self.expires_at, (int, float)) or self.expires_at <= self.issued_at:
+            raise EnvelopeVerificationError("SignedReviewEnvelope expires_at must be strictly greater than issued_at")
+        if not isinstance(self.fencing_token, int) or self.fencing_token <= 0:
+            raise EnvelopeVerificationError("SignedReviewEnvelope fencing_token must be positive integer")
+
+    def canonical_bytes(self) -> bytes:
+        return canonical_serialize_payload(self.to_dict(), self.domain)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "version": self.version,
+            "domain": self.domain,
+            "envelope_id": self.envelope_id,
+            "repo_identity": self.repo_identity,
+            "delivery_task_id": self.delivery_task_id,
+            "review_dispatch_id": self.review_dispatch_id,
+            "orca_task_id": self.orca_task_id,
+            "terminal_id": self.terminal_id,
+            "candidate_commit": self.candidate_commit,
+            "base_commit": self.base_commit,
+            "reviewer_route": self.reviewer_route,
+            "reviewer_harness": self.reviewer_harness,
+            "reviewer_key_id": self.reviewer_key_id,
+            "verdict": self.verdict,
+            "summary": self.summary,
+            "nonce": self.nonce,
+            "issued_at": float(self.issued_at),
+            "expires_at": float(self.expires_at),
+            "fencing_token": int(self.fencing_token),
+            "signature": self.signature,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SignedReviewEnvelope':
+        if not isinstance(data, dict):
+            raise EnvelopeVerificationError(f"SignedReviewEnvelope data must be a dictionary; got {type(data).__name__}")
+        return cls(
+            envelope_id=data.get("envelope_id", ""),
+            delivery_task_id=data.get("delivery_task_id", ""),
+            review_dispatch_id=data.get("review_dispatch_id", ""),
+            candidate_commit=data.get("candidate_commit", ""),
+            base_commit=data.get("base_commit", ""),
+            reviewer_route=data.get("reviewer_route", "cx/gpt-5.6-sol"),
+            reviewer_harness=data.get("reviewer_harness", "Claude Code"),
+            reviewer_key_id=data.get("reviewer_key_id", ""),
+            verdict=data.get("verdict", ""),
+            summary=data.get("summary", ""),
+            nonce=data.get("nonce", ""),
+            issued_at=float(data.get("issued_at", 0.0)),
+            expires_at=float(data.get("expires_at", 0.0)),
+            fencing_token=int(data.get("fencing_token", 0)),
+            signature=data.get("signature", ""),
+            orca_task_id=data.get("orca_task_id", ""),
+            terminal_id=data.get("terminal_id", ""),
+            repo_identity=data.get("repo_identity", "AI-Auto-Video-Creator"),
+            domain=data.get("domain", REVIEW_ENVELOPE_DOMAIN),
+            version=data.get("version", "v1"),
+        )
+
+@dataclass(frozen=True)
+class SignedIntegrationEnvelope:
+    """Asymmetrically signed integration gate envelope.
+    Produced exclusively by an authenticated out-of-process integration runner using its private key.
+    Verified exclusively by TrustedIntegrationConsumer using pinned public keys.
+    """
+    envelope_id: str
+    delivery_task_id: str
+    candidate_commit: str
+    base_commit: str
+    gates_pass: bool
+    gate_results: Dict[str, bool]
+    integration_key_id: str
+    nonce: str
+    issued_at: float
+    expires_at: float
+    fencing_token: int
+    signature: str = ""
+    domain: str = INTEGRATION_ENVELOPE_DOMAIN
+    version: str = "v1"
+
+    def __post_init__(self) -> None:
+        for fld in (
+            "envelope_id",
+            "delivery_task_id",
+            "candidate_commit",
+            "base_commit",
+            "integration_key_id",
+            "nonce",
+            "domain",
+            "version",
+        ):
+            val = getattr(self, fld, None)
+            if not isinstance(val, str) or not val.strip() or val != val.strip():
+                raise EnvelopeVerificationError(f"SignedIntegrationEnvelope field {fld!r} must be non-empty unpadded string")
+        if type(self.gates_pass) is not bool:
+            raise EnvelopeVerificationError("SignedIntegrationEnvelope gates_pass must be strict bool")
+        if not isinstance(self.gate_results, dict) or not self.gate_results:
+            raise EnvelopeVerificationError("SignedIntegrationEnvelope gate_results must be non-empty dict")
+        if not isinstance(self.issued_at, (int, float)) or self.issued_at <= 0:
+            raise EnvelopeVerificationError("SignedIntegrationEnvelope issued_at must be positive float")
+        if not isinstance(self.expires_at, (int, float)) or self.expires_at <= self.issued_at:
+            raise EnvelopeVerificationError("SignedIntegrationEnvelope expires_at must be strictly greater than issued_at")
+        if not isinstance(self.fencing_token, int) or self.fencing_token <= 0:
+            raise EnvelopeVerificationError("SignedIntegrationEnvelope fencing_token must be positive integer")
+
+    def canonical_bytes(self) -> bytes:
+        return canonical_serialize_payload(self.to_dict(), self.domain)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "version": self.version,
+            "domain": self.domain,
+            "envelope_id": self.envelope_id,
+            "delivery_task_id": self.delivery_task_id,
+            "candidate_commit": self.candidate_commit,
+            "base_commit": self.base_commit,
+            "gates_pass": self.gates_pass,
+            "gate_results": dict(self.gate_results),
+            "integration_key_id": self.integration_key_id,
+            "nonce": self.nonce,
+            "issued_at": float(self.issued_at),
+            "expires_at": float(self.expires_at),
+            "fencing_token": int(self.fencing_token),
+            "signature": self.signature,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SignedIntegrationEnvelope':
+        if not isinstance(data, dict):
+            raise EnvelopeVerificationError(f"SignedIntegrationEnvelope data must be a dictionary; got {type(data).__name__}")
+        return cls(
+            envelope_id=data.get("envelope_id", ""),
+            delivery_task_id=data.get("delivery_task_id", ""),
+            candidate_commit=data.get("candidate_commit", ""),
+            base_commit=data.get("base_commit", ""),
+            gates_pass=bool(data.get("gates_pass", False)),
+            gate_results=dict(data.get("gate_results", {})),
+            integration_key_id=data.get("integration_key_id", ""),
+            nonce=data.get("nonce", ""),
+            issued_at=float(data.get("issued_at", 0.0)),
+            expires_at=float(data.get("expires_at", 0.0)),
+            fencing_token=int(data.get("fencing_token", 0)),
+            signature=data.get("signature", ""),
+            domain=data.get("domain", INTEGRATION_ENVELOPE_DOMAIN),
+            version=data.get("version", "v1"),
+        )
+
+
+class TrustedKeyStore:
+    """Out-of-process public key custody registry.
+    Maintains pinned public keys for trusted authorities (ReviewerLead, IntegrationGatekeeper, ControlAuthority).
+    Private signing keys are NEVER stored here or accessible to the candidate worker process.
+    """
+    def __init__(self, pinned_keys: Optional[Dict[str, bytes]] = None) -> None:
+        self._pinned_keys: Dict[str, bytes] = dict(pinned_keys or {})
+        self._revoked_keys: Set[str] = set()
+        self._lock = threading.RLock()
+
+    def register_pinned_public_key(self, key_id: str, public_key_bytes: bytes) -> None:
+        clean_kid = key_id.strip() if isinstance(key_id, str) else ""
+        if not clean_kid:
+            raise ProtocolViolationError("key_id cannot be blank")
+        if not isinstance(public_key_bytes, bytes) or len(public_key_bytes) != 32:
+            raise ProtocolViolationError("public_key_bytes must be exactly 32 raw Ed25519 bytes")
+        with self._lock:
+            self._pinned_keys[clean_kid] = public_key_bytes
+
+    def revoke_key(self, key_id: str) -> None:
+        clean_kid = key_id.strip() if isinstance(key_id, str) else ""
+        if not clean_kid:
+            raise ProtocolViolationError("key_id cannot be blank")
+        with self._lock:
+            self._revoked_keys.add(clean_kid)
+
+    def is_revoked(self, key_id: str) -> bool:
+        with self._lock:
+            return key_id in self._revoked_keys
+
+    def verify_signature(self, key_id: str, message: bytes, signature: bytes) -> bool:
+        if ed25519 is None:
+            raise ProtocolViolationError("cryptography library required for Ed25519 signature verification")
+        clean_kid = key_id.strip() if isinstance(key_id, str) else ""
+        with self._lock:
+            if clean_kid in self._revoked_keys:
+                raise ProtocolViolationError(f"Key {clean_kid!r} has been revoked fail-closed")
+            pub_bytes = self._pinned_keys.get(clean_kid)
+            if pub_bytes is None:
+                raise ProtocolViolationError(f"Key ID {clean_kid!r} is not registered in TrustedKeyStore fail-closed")
+        try:
+            pub_key = ed25519.Ed25519PublicKey.from_public_bytes(pub_bytes)
+            pub_key.verify(signature, message)
+            return True
+        except (InvalidSignature, Exception):
+            return False
+
+class DurableConsumptionRegistry:
+    """Atomic, durable registry for tracking consumed envelopes, nonces, and monotonic fencing tokens.
+    Guarantees single-use, detects replay attacks, and survives process restarts.
+    """
+    def __init__(self, db_path: Optional[Union[str, Path]] = None) -> None:
+        self.db_path = str(db_path) if db_path else ":memory:"
+        self._lock = threading.RLock()
+        self._is_mem = (self.db_path in (":memory:", "", None))
+        if self._is_mem:
+            self._mem_consumed: Set[str] = set()
+            self._mem_nonces: Set[str] = set()
+            self._mem_fencing: Dict[str, int] = {}
+        else:
+            self._init_db()
+
+    @contextmanager
+    def _get_connection(self):
+        conn = sqlite3.connect(self.db_path, timeout=10.0)
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    def _init_db(self) -> None:
+        if self._is_mem:
+            return
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS consumed_envelopes (
+                    envelope_id TEXT PRIMARY KEY,
+                    nonce TEXT UNIQUE NOT NULL,
+                    domain TEXT NOT NULL,
+                    delivery_task_id TEXT NOT NULL,
+                    review_dispatch_id TEXT NOT NULL,
+                    candidate_commit TEXT NOT NULL,
+                    fencing_token INTEGER NOT NULL,
+                    consumed_at REAL NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS task_fencing (
+                    delivery_task_id TEXT PRIMARY KEY,
+                    last_fencing_token INTEGER NOT NULL
+                )
+                """
+            )
+            conn.commit()
+
+    def check_and_consume(
+        self,
+        envelope_id: str,
+        nonce: str,
+        domain: str,
+        delivery_task_id: str,
+        review_dispatch_id: str,
+        candidate_commit: str,
+        fencing_token: int,
+        issued_at: float,
+        expires_at: float,
+        expected_task_id: str,
+        expected_candidate: str,
+        expected_dispatch_id: str,
+        now: Optional[float] = None,
+    ) -> None:
+        current_time = time.time() if now is None else now
+        if current_time > expires_at:
+            raise ExpiredEnvelopeError(
+                f"Review envelope {envelope_id} expired at {expires_at} (current {current_time}); fails closed"
+            )
+        if issued_at > current_time + 30.0:
+            raise EnvelopeVerificationError(
+                f"Review envelope {envelope_id} issued in the future (issued {issued_at}, current {current_time}); fails closed"
+            )
+        if delivery_task_id != expected_task_id:
+            raise EnvelopeVerificationError(
+                f"Envelope task {delivery_task_id!r} does not match expected {expected_task_id!r}"
+            )
+        if review_dispatch_id != expected_dispatch_id:
+            raise EnvelopeVerificationError(
+                f"Envelope review dispatch {review_dispatch_id!r} does not match expected {expected_dispatch_id!r}"
+            )
+        if candidate_commit.lower() != expected_candidate.lower():
+            raise EnvelopeVerificationError(
+                f"Envelope candidate commit {candidate_commit!r} does not match expected {expected_candidate!r}"
+            )
+
+        with self._lock:
+            if self._is_mem:
+                if envelope_id in self._mem_consumed:
+                    raise ReplayAttackError(f"Envelope {envelope_id!r} has already been consumed fail-closed")
+                if nonce in self._mem_nonces:
+                    raise ReplayAttackError(f"Nonce {nonce!r} has already been used fail-closed (replay attack)")
+                last_token = self._mem_fencing.get(delivery_task_id, 0)
+                if fencing_token <= last_token:
+                    raise FencingViolationError(
+                        f"Fencing token {fencing_token} is stale (last observed {last_token}) for task {delivery_task_id!r}"
+                    )
+                self._mem_fencing[delivery_task_id] = fencing_token
+                self._mem_consumed.add(envelope_id)
+                self._mem_nonces.add(nonce)
+            else:
+                with self._get_connection() as conn:
+                    conn.isolation_level = None
+                    conn.execute("BEGIN IMMEDIATE")
+                    try:
+                        cur = conn.execute("SELECT 1 FROM consumed_envelopes WHERE envelope_id = ?", (envelope_id,))
+                        if cur.fetchone() is not None:
+                            raise ReplayAttackError(f"Envelope {envelope_id!r} has already been consumed fail-closed")
+
+                        cur = conn.execute("SELECT 1 FROM consumed_envelopes WHERE nonce = ?", (nonce,))
+                        if cur.fetchone() is not None:
+                            raise ReplayAttackError(f"Nonce {nonce!r} has already been used fail-closed (replay attack)")
+
+                        cur = conn.execute("SELECT last_fencing_token FROM task_fencing WHERE delivery_task_id = ?", (delivery_task_id,))
+                        row = cur.fetchone()
+                        if row is not None:
+                            last_token = row[0]
+                            if fencing_token <= last_token:
+                                raise FencingViolationError(
+                                    f"Fencing token {fencing_token} is stale (last observed {last_token}) for task {delivery_task_id!r}"
+                                )
+                            conn.execute(
+                                "UPDATE task_fencing SET last_fencing_token = ? WHERE delivery_task_id = ?",
+                                (fencing_token, delivery_task_id),
+                            )
+                        else:
+                            conn.execute(
+                                "INSERT INTO task_fencing (delivery_task_id, last_fencing_token) VALUES (?, ?)",
+                                (delivery_task_id, fencing_token),
+                            )
+
+                        conn.execute(
+                            """
+                            INSERT INTO consumed_envelopes
+                            (envelope_id, nonce, domain, delivery_task_id, review_dispatch_id, candidate_commit, fencing_token, consumed_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (envelope_id, nonce, domain, delivery_task_id, review_dispatch_id, candidate_commit, fencing_token, current_time),
+                        )
+                        conn.execute("COMMIT")
+                    except Exception:
+                        conn.execute("ROLLBACK")
+                        raise
+
+    def is_consumed(self, envelope_id: str) -> bool:
+        with self._lock:
+            if self._is_mem:
+                return envelope_id in self._mem_consumed
+            with self._get_connection() as conn:
+                cur = conn.execute("SELECT 1 FROM consumed_envelopes WHERE envelope_id = ?", (envelope_id,))
+                return cur.fetchone() is not None
+
+    def get_last_fencing_token(self, delivery_task_id: str) -> int:
+        with self._lock:
+            if self._is_mem:
+                return self._mem_fencing.get(delivery_task_id, 0)
+            with self._get_connection() as conn:
+                cur = conn.execute("SELECT last_fencing_token FROM task_fencing WHERE delivery_task_id = ?", (delivery_task_id,))
+                row = cur.fetchone()
+                return row[0] if row is not None else 0
+
+
+class TrustedReviewConsumer:
+    """Out-of-process trusted review verification consumer.
+    Verifies asymmetrically-signed envelopes using pinned public keys from TrustedKeyStore
+    and enforces durable replay/fencing constraints via DurableConsumptionRegistry.
+    Zero trust in caller-provided in-process objects or monkey-patched worker state.
+    """
+    def __init__(
+        self,
+        keystore: TrustedKeyStore,
+        registry: DurableConsumptionRegistry,
+    ) -> None:
+        self.keystore = keystore
+        self.registry = registry
+
+    def consume_review_envelope(
+        self,
+        envelope_data: Union[SignedReviewEnvelope, Dict[str, Any]],
+        expected_task_id: str,
+        expected_candidate: str,
+        expected_dispatch_id: str,
+        now: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        if isinstance(envelope_data, SignedReviewEnvelope):
+            env = envelope_data
+        elif isinstance(envelope_data, dict):
+            env = SignedReviewEnvelope.from_dict(envelope_data)
+        else:
+            raise EnvelopeVerificationError(
+                f"Expected SignedReviewEnvelope or dict; got {type(envelope_data).__name__}"
+            )
+
+        if env.domain != REVIEW_ENVELOPE_DOMAIN:
+            raise EnvelopeVerificationError(f"Invalid domain separator: expected {REVIEW_ENVELOPE_DOMAIN!r}; got {env.domain!r}")
+        if env.version != "v1":
+            raise EnvelopeVerificationError(f"Invalid envelope version: expected 'v1'; got {env.version!r}")
+        if env.reviewer_route != "cx/gpt-5.6-sol":
+            raise EnvelopeVerificationError(f"Invalid reviewer route: expected 'cx/gpt-5.6-sol'; got {env.reviewer_route!r}")
+        if env.reviewer_harness != "Claude Code":
+            raise EnvelopeVerificationError(f"Invalid reviewer harness: expected 'Claude Code'; got {env.reviewer_harness!r}")
+        if env.verdict not in ("ACCEPT", "CHANGES_REQUESTED", "BLOCKED"):
+            raise EnvelopeVerificationError(f"Invalid review verdict: {env.verdict!r}")
+
+        if not env.signature or not isinstance(env.signature, str):
+            raise EnvelopeVerificationError("Envelope missing cryptographic signature fail-closed")
+        try:
+            sig_bytes = bytes.fromhex(env.signature)
+        except ValueError:
+            raise EnvelopeVerificationError("Envelope signature is not valid hex")
+
+        canonical_bytes = env.canonical_bytes()
+        valid = self.keystore.verify_signature(env.reviewer_key_id, canonical_bytes, sig_bytes)
+        if not valid:
+            raise EnvelopeVerificationError("Cryptographic signature mismatch; untrusted reviewer provenance rejected fail-closed")
+
+        self.registry.check_and_consume(
+            envelope_id=env.envelope_id,
+            nonce=env.nonce,
+            domain=env.domain,
+            delivery_task_id=env.delivery_task_id,
+            review_dispatch_id=env.review_dispatch_id,
+            candidate_commit=env.candidate_commit,
+            fencing_token=env.fencing_token,
+            issued_at=env.issued_at,
+            expires_at=env.expires_at,
+            expected_task_id=expected_task_id,
+            expected_candidate=expected_candidate,
+            expected_dispatch_id=expected_dispatch_id,
+            now=now,
+        )
+
+        return env.to_dict()
+
+
+class TrustedIntegrationConsumer:
+    """Out-of-process trusted integration verification consumer.
+    Verifies asymmetrically-signed integration gate envelopes using pinned public keys from TrustedKeyStore.
+    """
+    def __init__(
+        self,
+        keystore: TrustedKeyStore,
+        registry: DurableConsumptionRegistry,
+    ) -> None:
+        self.keystore = keystore
+        self.registry = registry
+
+    def consume_integration_envelope(
+        self,
+        envelope_data: Union[SignedIntegrationEnvelope, Dict[str, Any]],
+        expected_task_id: str,
+        expected_candidate: str,
+        expected_base: str,
+        expected_gates_pass: bool,
+        now: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        if isinstance(envelope_data, SignedIntegrationEnvelope):
+            env = envelope_data
+        elif isinstance(envelope_data, dict):
+            env = SignedIntegrationEnvelope.from_dict(envelope_data)
+        else:
+            raise EnvelopeVerificationError(
+                f"Expected SignedIntegrationEnvelope or dict; got {type(envelope_data).__name__}"
+            )
+
+        if env.domain != INTEGRATION_ENVELOPE_DOMAIN:
+            raise EnvelopeVerificationError(f"Invalid domain separator: expected {INTEGRATION_ENVELOPE_DOMAIN!r}; got {env.domain!r}")
+        if env.version != "v1":
+            raise EnvelopeVerificationError(f"Invalid envelope version: expected 'v1'; got {env.version!r}")
+        if env.delivery_task_id != expected_task_id:
+            raise EnvelopeVerificationError(f"Integration task mismatch: expected {expected_task_id!r}, got {env.delivery_task_id!r}")
+        if env.candidate_commit.lower() != expected_candidate.lower():
+            raise EnvelopeVerificationError(f"Integration candidate mismatch: expected {expected_candidate!r}, got {env.candidate_commit!r}")
+        if env.base_commit.lower() != expected_base.lower():
+            raise EnvelopeVerificationError(f"Integration base mismatch: expected {expected_base!r}, got {env.base_commit!r}")
+        if env.gates_pass != expected_gates_pass:
+            raise EnvelopeVerificationError(f"Integration gates_pass mismatch: expected {expected_gates_pass!r}, got {env.gates_pass!r}")
+
+        if not env.signature or not isinstance(env.signature, str):
+            raise EnvelopeVerificationError("Integration envelope missing cryptographic signature fail-closed")
+        try:
+            sig_bytes = bytes.fromhex(env.signature)
+        except ValueError:
+            raise EnvelopeVerificationError("Integration envelope signature is not valid hex")
+
+        canonical_bytes = env.canonical_bytes()
+        valid = self.keystore.verify_signature(env.integration_key_id, canonical_bytes, sig_bytes)
+        if not valid:
+            raise EnvelopeVerificationError("Cryptographic signature mismatch; untrusted integration provenance rejected fail-closed")
+
+        return env.to_dict()
+
+
+def sign_review_envelope(
+    private_key_bytes: bytes,
+    envelope: Union[SignedReviewEnvelope, Dict[str, Any]],
+) -> SignedReviewEnvelope:
+    """Helper for trusted signing side or test fixtures to generate an Ed25519 signature on an envelope."""
+    if ed25519 is None:
+        raise ProtocolViolationError("cryptography library required for Ed25519 signing")
+    if isinstance(envelope, SignedReviewEnvelope):
+        env = envelope
+    else:
+        env = SignedReviewEnvelope.from_dict(envelope)
+    data = env.to_dict()
+    priv = ed25519.Ed25519PrivateKey.from_private_bytes(private_key_bytes)
+    canonical = env.canonical_bytes()
+    sig = priv.sign(canonical).hex()
+    data['signature'] = sig
+    return SignedReviewEnvelope.from_dict(data)
+def sign_integration_envelope(
+    private_key_bytes: bytes,
+    envelope: Union[SignedIntegrationEnvelope, Dict[str, Any]],
+) -> SignedIntegrationEnvelope:
+    """Helper for trusted integration signing side or test fixtures to generate an Ed25519 signature."""
+    if ed25519 is None:
+        raise ProtocolViolationError("cryptography library required for Ed25519 signing")
+    if isinstance(envelope, SignedIntegrationEnvelope):
+        env = envelope
+    else:
+        env = SignedIntegrationEnvelope.from_dict(envelope)
+    data = env.to_dict()
+    priv = ed25519.Ed25519PrivateKey.from_private_bytes(private_key_bytes)
+    canonical = env.canonical_bytes()
+    sig = priv.sign(canonical).hex()
+    data['signature'] = sig
+    return SignedIntegrationEnvelope.from_dict(data)
 def _validate_unpadded_identity(
     val: Any,
     field_name: str,
@@ -4336,6 +4996,15 @@ class OrcaDeliveryAdapter:
             self._reviewer_boundary: ReviewerSessionBoundary = reviewer_boundary
         else:
             self._reviewer_boundary: ReviewerSessionBoundary = ReviewerSessionBoundary.get_default()
+        self.keystore: TrustedKeyStore = TrustedKeyStore()
+        self.consumption_registry: DurableConsumptionRegistry = DurableConsumptionRegistry()
+        self.trusted_review_consumer: TrustedReviewConsumer = TrustedReviewConsumer(
+            keystore=self.keystore, registry=self.consumption_registry
+        )
+        self.trusted_integration_consumer: TrustedIntegrationConsumer = TrustedIntegrationConsumer(
+            keystore=self.keystore, registry=self.consumption_registry
+        )
+        self.production_gate: ProductionActivationGate = ProductionActivationGate()
 
     @property
     def reviewer_boundary(self) -> ReviewerSessionBoundary:
@@ -5975,6 +6644,7 @@ class OrcaDeliveryAdapter:
         verdict: str,
         review_dispatch_id: Optional[str] = None,
         review_evidence: Optional[Union[ReviewEvidence, Dict[str, Any]]] = None,
+        review_envelope: Optional[Union[SignedReviewEnvelope, Dict[str, Any]]] = None,
         now: Optional[datetime] = None,
     ) -> str:
         """Handle independent review disposition ('ACCEPT', 'CHANGES_REQUESTED', 'BLOCKED').
@@ -6008,7 +6678,30 @@ class OrcaDeliveryAdapter:
             )
         clean_did = review_dispatch_id.strip()
 
-        if review_evidence is None:
+        verified_dict = None
+        if review_envelope is not None:
+            verified_dict = self.trusted_review_consumer.consume_review_envelope(
+                review_envelope,
+                expected_task_id=clean_tid,
+                expected_candidate=self.approved_candidate_commit,
+                expected_dispatch_id=clean_did,
+                now=now.timestamp() if now else None,
+            )
+            self._verified_review_evidence[clean_tid] = verified_dict
+            if verified_dict.get("verdict") != verdict:
+                raise ProtocolViolationError(
+                    f"Review envelope verdict {verified_dict.get('verdict')!r} does not match disposition verdict {verdict!r}"
+                )
+            repo_root = self.git_root or (ROOT if "ROOT" in globals() else Path.cwd())
+            head_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, capture_output=True, text=True)
+            if head_res.returncode == 0 and head_res.stdout.strip():
+                actual_head = head_res.stdout.strip()
+                if self.approved_candidate_commit.strip().lower() != actual_head.lower():
+                    raise ProtocolViolationError(
+                        f"Review evidence candidate commit {self.approved_candidate_commit!r} does not match current HEAD {actual_head}"
+                    )
+
+        if review_evidence is None and review_envelope is None:
             raise ProtocolViolationError(
                 "handle_review_verdict requires verified review evidence; caller-supplied string alone is not authority"
             )
@@ -6023,70 +6716,71 @@ class OrcaDeliveryAdapter:
         if clean_did in self.registry.settled_dispatches:
             raise ProtocolViolationError(f"Review dispatch {clean_did!r} has already been settled")
 
-        # Validate review evidence
-        if not isinstance(review_evidence, ReviewEvidence):
-            raise ProtocolViolationError(
-                f"Review evidence must be an instance of ReviewEvidence with verifiable provenance; plain caller dictionary is rejected (type mismatch: got {type(review_evidence).__name__})"
-            )
-
-        for fld in ("review_dispatch_id", "delivery_task_id", "candidate_commit", "verdict", "reviewer_route", "reviewer_harness"):
-            val = getattr(review_evidence, fld, None)
-            if not isinstance(val, str) or not val.strip():
-                raise ProtocolViolationError(f"Review evidence field {fld!r} must be a non-blank string")
-            if val != val.strip():
-                raise ProtocolViolationError(f"Review evidence field {fld!r} {val!r} has invalid whitespace padding")
-
-        ev_disp_id = review_evidence.review_dispatch_id
-        ev_task_id = review_evidence.delivery_task_id
-        ev_commit = review_evidence.candidate_commit
-        ev_verdict = review_evidence.verdict
-        ev_route = review_evidence.reviewer_route
-        ev_harness = review_evidence.reviewer_harness
-
-        if not ev_disp_id or ev_disp_id.strip() != clean_did:
-            raise ProtocolViolationError(
-                f"Review evidence dispatch ID {ev_disp_id!r} does not match review dispatch {clean_did!r}"
-            )
-        if not ev_task_id or ev_task_id.strip() != clean_tid:
-            raise ProtocolViolationError(
-                f"Review evidence delivery task ID {ev_task_id!r} does not match task {clean_tid!r}"
-            )
-        if not ev_verdict or ev_verdict.strip() != verdict:
-            raise ProtocolViolationError(
-                f"Review evidence verdict {ev_verdict!r} does not match disposition verdict {verdict!r}"
-            )
-        if not ev_commit or ev_commit.strip().lower() != self.approved_candidate_commit.lower():
-            raise ProtocolViolationError(
-                f"Review evidence candidate commit {ev_commit!r} does not match approved candidate {self.approved_candidate_commit}"
-            )
-
-        repo_root = self.git_root or (ROOT if "ROOT" in globals() else Path.cwd())
-        head_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, capture_output=True, text=True)
-        if head_res.returncode == 0 and head_res.stdout.strip():
-            actual_head = head_res.stdout.strip()
-            if ev_commit.strip().lower() != actual_head.lower():
+        if review_evidence is not None:
+            # Validate review evidence
+            if not isinstance(review_evidence, ReviewEvidence):
                 raise ProtocolViolationError(
-                    f"Review evidence candidate commit {ev_commit!r} does not match current HEAD {actual_head}"
+                    f"Review evidence must be an instance of ReviewEvidence with verifiable provenance; plain caller dictionary is rejected (type mismatch: got {type(review_evidence).__name__})"
                 )
 
-        if (ev_route or "").strip() != "cx/gpt-5.6-sol":
-            raise ProtocolViolationError(
-                f"Review evidence reviewer route {ev_route!r} does not match required reviewer route 'cx/gpt-5.6-sol'"
-            )
-        if (ev_harness or "").strip() != "Claude Code":
-            raise ProtocolViolationError(
-                f"Review evidence reviewer harness {ev_harness!r} does not match required reviewer harness 'Claude Code'"
-            )
+            for fld in ("review_dispatch_id", "delivery_task_id", "candidate_commit", "verdict", "reviewer_route", "reviewer_harness"):
+                val = getattr(review_evidence, fld, None)
+                if not isinstance(val, str) or not val.strip():
+                    raise ProtocolViolationError(f"Review evidence field {fld!r} must be a non-blank string")
+                if val != val.strip():
+                    raise ProtocolViolationError(f"Review evidence field {fld!r} {val!r} has invalid whitespace padding")
 
-        # Verify evidence authority BEFORE settling or mutating state (invalid evidence has zero side effects)
-        self.evidence_authority.verify_and_consume_review_evidence(
-            review_evidence,
-            expected_task_id=clean_tid,
-            expected_dispatch_id=clean_did,
-            expected_candidate=self.approved_candidate_commit,
-            expected_verdict=verdict,
-            now=now,
-        )
+            ev_disp_id = review_evidence.review_dispatch_id
+            ev_task_id = review_evidence.delivery_task_id
+            ev_commit = review_evidence.candidate_commit
+            ev_verdict = review_evidence.verdict
+            ev_route = review_evidence.reviewer_route
+            ev_harness = review_evidence.reviewer_harness
+
+            if not ev_disp_id or ev_disp_id.strip() != clean_did:
+                raise ProtocolViolationError(
+                    f"Review evidence dispatch ID {ev_disp_id!r} does not match review dispatch {clean_did!r}"
+                )
+            if not ev_task_id or ev_task_id.strip() != clean_tid:
+                raise ProtocolViolationError(
+                    f"Review evidence delivery task ID {ev_task_id!r} does not match task {clean_tid!r}"
+                )
+            if not ev_verdict or ev_verdict.strip() != verdict:
+                raise ProtocolViolationError(
+                    f"Review evidence verdict {ev_verdict!r} does not match disposition verdict {verdict!r}"
+                )
+            if not ev_commit or ev_commit.strip().lower() != self.approved_candidate_commit.lower():
+                raise ProtocolViolationError(
+                    f"Review evidence candidate commit {ev_commit!r} does not match approved candidate {self.approved_candidate_commit}"
+                )
+
+            repo_root = self.git_root or (ROOT if "ROOT" in globals() else Path.cwd())
+            head_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, capture_output=True, text=True)
+            if head_res.returncode == 0 and head_res.stdout.strip():
+                actual_head = head_res.stdout.strip()
+                if ev_commit.strip().lower() != actual_head.lower():
+                    raise ProtocolViolationError(
+                        f"Review evidence candidate commit {ev_commit!r} does not match current HEAD {actual_head}"
+                    )
+
+            if (ev_route or "").strip() != "cx/gpt-5.6-sol":
+                raise ProtocolViolationError(
+                    f"Review evidence reviewer route {ev_route!r} does not match required reviewer route 'cx/gpt-5.6-sol'"
+                )
+            if (ev_harness or "").strip() != "Claude Code":
+                raise ProtocolViolationError(
+                    f"Review evidence reviewer harness {ev_harness!r} does not match required reviewer harness 'Claude Code'"
+                )
+
+            # Verify evidence authority BEFORE settling or mutating state (invalid evidence has zero side effects)
+            self.evidence_authority.verify_and_consume_review_evidence(
+                review_evidence,
+                expected_task_id=clean_tid,
+                expected_dispatch_id=clean_did,
+                expected_candidate=self.approved_candidate_commit,
+                expected_verdict=verdict,
+                now=now,
+            )
 
         # Settle review dispatch
         self.registry.settle_dispatch(clean_did)
@@ -6094,7 +6788,8 @@ class OrcaDeliveryAdapter:
             del self.active_review_dispatches[clean_tid]
 
         if verdict == "ACCEPT":
-            self._verified_review_evidence[clean_tid] = review_evidence
+            if review_evidence is not None:
+                self._verified_review_evidence[clean_tid] = review_evidence
             ilt = self._mint_internal_lifecycle_token("handle_review_verdict", clean_tid, _internal_secret=self._internal_exec_secret)
             with self._internal_lifecycle_execution("handle_review_verdict", clean_tid, _internal_token=ilt):
                 token = self._mint_transition_token("handle_review_verdict", clean_tid, "merge_queued")
@@ -6130,6 +6825,8 @@ class OrcaDeliveryAdapter:
         delivery_task_id: str,
         gates_pass: bool,
         integration_evidence: Optional[Union[IntegrationEvidence, Dict[str, Any]]] = None,
+        integration_envelope: Optional[Union[SignedIntegrationEnvelope, Dict[str, Any]]] = None,
+        production_mode: bool = False,
         now: Optional[datetime] = None,
     ) -> str:
         """Handle integration gates on exact candidate HEAD.
@@ -6154,88 +6851,132 @@ class OrcaDeliveryAdapter:
         if current_state != "merge_queued":
             raise ProtocolViolationError(f"Cannot integrate task {clean_tid} in state {current_state!r}; must be 'merge_queued'")
 
-        if integration_evidence is None:
+        if production_mode:
+            ProductionActivationGate.assert_production_gate_ready()
+
+        verified_int_dict = None
+        if integration_envelope is not None:
+            verified_int_dict = self.trusted_integration_consumer.consume_integration_envelope(
+                integration_envelope,
+                expected_task_id=clean_tid,
+                expected_candidate=self.approved_candidate_commit,
+                expected_base=self.approved_base_commit,
+                expected_gates_pass=gates_pass,
+            )
+
+        if integration_evidence is None and integration_envelope is None:
             raise ProtocolViolationError(
                 "handle_integration_gates requires verified integration evidence; caller-supplied boolean alone is not authority"
             )
 
-        # Extract and validate integration evidence
-        if not isinstance(integration_evidence, IntegrationEvidence):
-            raise ProtocolViolationError(
-                f"Integration evidence must be an instance of IntegrationEvidence with verifiable provenance; plain caller dictionary is rejected (type mismatch: got {type(integration_evidence).__name__})"
-            )
+        if integration_envelope is not None:
+            if gates_pass:
+                gate_results = verified_int_dict.get("gate_results", {}) if verified_int_dict else {}
+                failing_gates = [k for k, v in gate_results.items() if not v]
+                if failing_gates:
+                    raise ProtocolViolationError(
+                        f"Contradictory integration envelope: gates_pass=True but individual gate(s) failing: {failing_gates}"
+                    )
+                missing_mandatory = [g for g in MANDATORY_INTEGRATION_GATES if g not in gate_results or gate_results[g] is not True]
+                if missing_mandatory:
+                    raise ProtocolViolationError(
+                        f"Mandatory integration gate(s) missing or failing in integration evidence: {missing_mandatory}"
+                    )
+                if clean_tid not in self._verified_review_evidence:
+                    raise ProtocolViolationError(
+                        f"Task {clean_tid} cannot reach integration without prior verified independent review ACCEPT evidence; binding mismatch"
+                    )
+            repo_root = self.git_root or (ROOT if "ROOT" in globals() else Path.cwd())
+            head_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, capture_output=True, text=True)
+            if head_res.returncode == 0 and head_res.stdout.strip():
+                actual_head = head_res.stdout.strip()
+                if self.approved_candidate_commit.strip().lower() != actual_head.lower():
+                    raise ProtocolViolationError(
+                        f"Integration evidence candidate commit {self.approved_candidate_commit!r} does not match current HEAD {actual_head}"
+                    )
 
-        for fld in ("delivery_task_id", "candidate_commit", "base_commit"):
-            val = getattr(integration_evidence, fld, None)
-            if not isinstance(val, str) or not val.strip():
-                raise ProtocolViolationError(f"Integration evidence field {fld!r} must be a non-blank string")
-            if val != val.strip():
-                raise ProtocolViolationError(f"Integration evidence field {fld!r} {val!r} has invalid whitespace padding")
-
-        ev_task_id = integration_evidence.delivery_task_id
-        ev_commit = integration_evidence.candidate_commit
-        ev_base = integration_evidence.base_commit
-        ev_gates_pass = integration_evidence.gates_pass
-        gate_results = integration_evidence.gate_results
-
-        if not ev_task_id or ev_task_id.strip() != clean_tid:
-            raise ProtocolViolationError(
-                f"Integration evidence delivery task ID {ev_task_id!r} does not match task {clean_tid!r}"
-            )
-        if type(ev_gates_pass) is not bool or ev_gates_pass != gates_pass:
-            raise ProtocolViolationError(
-                f"Integration evidence gates_pass ({ev_gates_pass!r}) does not match argument gates_pass ({gates_pass!r})"
-            )
-        if not ev_commit or ev_commit.strip().lower() != self.approved_candidate_commit.lower():
-            raise ProtocolViolationError(
-                f"Integration evidence candidate commit {ev_commit!r} does not match approved candidate {self.approved_candidate_commit}"
-            )
-
-        repo_root = self.git_root or (ROOT if "ROOT" in globals() else Path.cwd())
-        head_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, capture_output=True, text=True)
-        if head_res.returncode == 0 and head_res.stdout.strip():
-            actual_head = head_res.stdout.strip()
-            if ev_commit.strip().lower() != actual_head.lower():
+        if integration_evidence is not None:
+            # Extract and validate integration evidence
+            if not isinstance(integration_evidence, IntegrationEvidence):
                 raise ProtocolViolationError(
-                    f"Integration evidence candidate commit {ev_commit!r} does not match current HEAD {actual_head}"
+                    f"Integration evidence must be an instance of IntegrationEvidence with verifiable provenance; plain caller dictionary is rejected (type mismatch: got {type(integration_evidence).__name__})"
                 )
 
-        if not ev_base or ev_base.strip().lower() != self.approved_base_commit.lower():
-            raise ProtocolViolationError(
-                f"Integration evidence base commit {ev_base!r} does not match approved base {self.approved_base_commit}"
-            )
+            for fld in ("delivery_task_id", "candidate_commit", "base_commit"):
+                val = getattr(integration_evidence, fld, None)
+                if not isinstance(val, str) or not val.strip():
+                    raise ProtocolViolationError(f"Integration evidence field {fld!r} must be a non-blank string")
+                if val != val.strip():
+                    raise ProtocolViolationError(f"Integration evidence field {fld!r} {val!r} has invalid whitespace padding")
 
-        if not isinstance(gate_results, dict) or len(gate_results) == 0:
-            raise ProtocolViolationError(
-                "Integration evidence gate_results must be a non-empty dictionary of integration gate results (gate_count == 0); fails closed"
-            )
+            ev_task_id = integration_evidence.delivery_task_id
+            ev_commit = integration_evidence.candidate_commit
+            ev_base = integration_evidence.base_commit
+            ev_gates_pass = integration_evidence.gates_pass
+            gate_results = integration_evidence.gate_results
+
+            if not ev_task_id or ev_task_id.strip() != clean_tid:
+                raise ProtocolViolationError(
+                    f"Integration evidence delivery task ID {ev_task_id!r} does not match task {clean_tid!r}"
+                )
+            if type(ev_gates_pass) is not bool or ev_gates_pass != gates_pass:
+                raise ProtocolViolationError(
+                    f"Integration evidence gates_pass ({ev_gates_pass!r}) does not match argument gates_pass ({gates_pass!r})"
+                )
+            if not ev_commit or ev_commit.strip().lower() != self.approved_candidate_commit.lower():
+                raise ProtocolViolationError(
+                    f"Integration evidence candidate commit {ev_commit!r} does not match approved candidate {self.approved_candidate_commit}"
+                )
+
+            repo_root = self.git_root or (ROOT if "ROOT" in globals() else Path.cwd())
+            head_res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, capture_output=True, text=True)
+            if head_res.returncode == 0 and head_res.stdout.strip():
+                actual_head = head_res.stdout.strip()
+                if ev_commit.strip().lower() != actual_head.lower():
+                    raise ProtocolViolationError(
+                        f"Integration evidence candidate commit {ev_commit!r} does not match current HEAD {actual_head}"
+                    )
+
+            if not ev_base or ev_base.strip().lower() != self.approved_base_commit.lower():
+                raise ProtocolViolationError(
+                    f"Integration evidence base commit {ev_base!r} does not match approved base {self.approved_base_commit}"
+                )
+
+            if not isinstance(gate_results, dict) or len(gate_results) == 0:
+                raise ProtocolViolationError(
+                    "Integration evidence gate_results must be a non-empty dictionary of integration gate results (gate_count == 0); fails closed"
+                )
 
         if gates_pass:
-            failing_gates = [k for k, v in gate_results.items() if not v]
-            if failing_gates:
-                raise ProtocolViolationError(
-                    f"Contradictory integration evidence: gates_pass=True but individual gate(s) failing: {failing_gates}"
-                )
-            missing_mandatory = [g for g in MANDATORY_INTEGRATION_GATES if g not in gate_results or gate_results[g] is not True]
-            if missing_mandatory:
-                raise ProtocolViolationError(
-                    f"Mandatory integration gate(s) missing or failing in integration evidence: {missing_mandatory}"
-                )
+            if integration_evidence is not None:
+                failing_gates = [k for k, v in gate_results.items() if not v]
+                if failing_gates:
+                    raise ProtocolViolationError(
+                        f"Contradictory integration evidence: gates_pass=True but individual gate(s) failing: {failing_gates}"
+                    )
+                missing_mandatory = [g for g in MANDATORY_INTEGRATION_GATES if g not in gate_results or gate_results[g] is not True]
+                if missing_mandatory:
+                    raise ProtocolViolationError(
+                        f"Mandatory integration gate(s) missing or failing in integration evidence: {missing_mandatory}"
+                    )
             if clean_tid not in self._verified_review_evidence:
                 raise ProtocolViolationError(
                     f"Task {clean_tid} cannot reach integration without prior verified independent review ACCEPT evidence; binding mismatch"
                 )
 
-            # Verify integration evidence authority BEFORE mutating state (invalid evidence has zero side effects)
-            self.evidence_authority.verify_and_consume_integration_evidence(
-                integration_evidence,
-                expected_task_id=clean_tid,
-                expected_candidate=self.approved_candidate_commit,
-                expected_base=self.approved_base_commit,
-                expected_gates_pass=gates_pass,
-                now=now,
-            )
-            self._verified_integration_evidence[clean_tid] = integration_evidence
+            if integration_evidence is not None:
+                # Verify integration evidence authority BEFORE mutating state (invalid evidence has zero side effects)
+                self.evidence_authority.verify_and_consume_integration_evidence(
+                    integration_evidence,
+                    expected_task_id=clean_tid,
+                    expected_candidate=self.approved_candidate_commit,
+                    expected_base=self.approved_base_commit,
+                    expected_gates_pass=gates_pass,
+                    now=now,
+                )
+                self._verified_integration_evidence[clean_tid] = integration_evidence
+            else:
+                self._verified_integration_evidence[clean_tid] = verified_int_dict
             ilt = self._mint_internal_lifecycle_token("handle_integration_gates", clean_tid, _internal_secret=self._internal_exec_secret)
             with self._internal_lifecycle_execution("handle_integration_gates", clean_tid, _internal_token=ilt):
                 token = self._mint_transition_token("handle_integration_gates", clean_tid, "integrated")

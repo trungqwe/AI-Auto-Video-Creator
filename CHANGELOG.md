@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-09-30 — Khắc phục triệt để phát hiện Sol-Lead audit sau 8913b39 (Out-of-Process Trust Boundary, Asymmetric Ed25519 Cryptography, Pinned Key Custody, Durable Replay Protection & Fail-Closed Production Activation Gate)
+
+- Khắc phục triệt để nguyên nhân gốc rễ (root cause) ranh giới tin cậy (trust boundary) theo audit finding của Sol trên exact candidate `8913b392522701f924117a234f4e0cee7fc83624` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) và tuân thủ tuyệt đối chỉ thị tại `D:/AI_SETUP/supervisor/generated/root-cause-trust-boundary-intervention.md`:
+  - **(1) Tái Hiện RED Evidence & Vô Hiệu Hóa Hoàn Toàn Khả Năng Tự Cấp Quyền Trong Cùng Tiến Trình**:
+    - Tái hiện chính xác finding: constructor `ReviewerHostIssuer(_internal_token=b"caller_non_none_token")` cho phép caller tự tạo authority trong cùng Python process.
+    - Sửa đổi `ReviewerHostIssuer`: `_internal_token` sử dụng sentinel object private `_SENTINEL_HOST_TOKEN`, cấm caller truyền token tùy ý; đánh dấu deprecated toàn bộ DTO in-process (`ReviewerHostIssuer`, `ReviewerHostHandoff`, `ReviewerSessionBoundary`) và khẳng định chúng mang ZERO thẩm quyền bảo mật trong môi trường production.
+  - **(2) Mô Hình Đe Dọa 3 Tầng & Quyết Định Kiến Trúc Tách Biệt Ranh Giới Ngoài Tiến Trình (Out-of-Process Architecture)**:
+    - Thiết lập mô hình đe dọa 3 tầng rủi ro: (1) Sửa nhầm thông thường, (2) Candidate/Worker không tin cậy chạy mã Python tùy ý và monkey-patching bộ nhớ, và (3) Host OS Administrator (không tuyên bố sandbox ngăn được Administrator toàn máy).
+    - Phân tích 3 phương án và ban hành ADR lựa chọn Phương án 2 (Broker ngoài tiến trình với chữ ký mật mã bất đối xứng kết hợp OS ACL) kết hợp khóa fail-closed kích hoạt production.
+    - Tách biệt hoàn toàn privileged decision / merge consumer (`TrustedReviewConsumer`, `TrustedIntegrationConsumer`) ra ngoài tiến trình và interpreter của worker; worker chỉ có quyền nộp request/artifact trên feature branch.
+  - **(3) Quản Lý Khóa Bất Đối Xứng Ed25519 & Pinned Key Custody (`TrustedKeyStore`)**:
+    - Private signing keys tuyệt đối không nằm trong repository candidate, env của worker, log, hay test fixture; chỉ thuộc sở hữu của phiên Reviewer Lead độc lập (`rev_key_lead_v1`) và Integration Runner độc lập (`integ_gatekeeper_v1`).
+    - Candidate worker chỉ được cấu hình danh sách public keys ghim sẵn (`register_pinned_public_key`); hỗ trợ thu hồi khóa tức thời (`revoke_key`) fail-closed.
+  - **(4) Phong Bì Ký Số Bất Đối Xứng (`SignedReviewEnvelope` & `SignedIntegrationEnvelope`)**:
+    - Phân tách miền ký (Domain Separation): `PARALLEL_DELIVERY_REVIEW_ENVELOPE_V1` và `PARALLEL_DELIVERY_INTEGRATION_ENVELOPE_V1`.
+    - Chuẩn hóa chuỗi dữ liệu (Canonical Serialization) RFC 8785 loại trừ trường chữ ký trước khi ký và xác minh.
+    - Ràng buộc chặt chẽ commit SHA ứng viên (40-hex), base commit, delivery task ID, review dispatch ID, route attestation (`cx/gpt-5.6-sol`), harness (`Claude Code`), nonce, thời gian hết hạn (`expires_at`), và monotonic fencing token.
+  - **(5) Sổ Đăng Ký Tiêu Thụ Bền Vững Đa Tiến Trình (`DurableConsumptionRegistry`)**:
+    - Lưu trữ atomic trên SQLite (kèm hỗ trợ in-memory thread-safe cho adapter), ngăn chặn triệt để tấn công phát lại (replay attack) và tái sử dụng nonce (`UNIQUE` constraint).
+    - Lưu vết monotonic fencing token bền vững qua restart tiến trình; từ chối fail-closed mọi token cũ hơn hoặc bằng giá trị đã ghi nhận.
+    - Kiểm tra temporal freshness window: từ chối phong bì đã hết hạn hoặc phát hành vượt trước thời gian thực (> 30s).
+  - **(6) Khóa Kích Hoạt Production Fail-Closed (`ProductionActivationGate`)**:
+    - Thiết lập trạng thái `ProductionActivationGate.STATUS == PRODUCTION_ACTIVATION_BLOCKED` (`NOT_PROVISIONED`), nghiêm cấm kích hoạt chế độ production hoặc merge vào protected branch khi chưa có 4 điều kiện hạ tầng: `OS_USER_ISOLATION`, `PRIVATE_KEY_ACL_RESTRICTION`, `DEDICATED_RUNNER`, `PROTECTED_BRANCH_POLICY`.
+    - Phân định rõ 3 trạng thái: `ARCHITECTURE_IMPLEMENTED`, `REFERENCE_TESTED`, và `PRODUCTION_ACTIVATION_BLOCKED`.
+  - **(7) Bộ Kiểm Thử Tự Động 386/386 Tests PASS (100%)**:
+    - Bổ sung lớp kiểm thử `TestSolTrustBoundaryRootCauseRemediation` với 10 bài test tự động bao quát toàn bộ threat model và closure matrix (RED evidence, worker monkey-patching failure, asymmetric Ed25519 signature tamper rejection, key revocation, single-use replay protection, SQLite restart durability, temporal validity, production gate fail-closed, fresh subprocess isolation, và positive control full lifecycle review -> merge_queued -> integration -> integrated), nâng tổng số test lên 386/386 passed 100%.
+
 ## 2026-09-30 ? Kh?c ph?c ph?t hi?n Sol-Lead audit sau a189e50 (Reviewer Authenticated Delivery Channel, Removal of _reviewer_mint_secret, Atomic Verify-and-Consume Capability)
 
 - Kh?c ph?c tri?t ?? ba ph?t hi?n blocker t? Sol-Lead independent audit tr?n exact candidate `a189e501d2eec58f7891cb35d46fbc176c2e2ea8` cho bundle `docs/parallel-delivery/`:

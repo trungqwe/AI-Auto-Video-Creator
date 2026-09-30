@@ -89,6 +89,8 @@ Validator phải từ chối:
 - lock yêu cầu trong `resource_locks` không được khai báo trong lock registry;
 - nỗ lực tái sử dụng Orca task ID hoặc dispatch ID đã dùng;
 - chuyển trạng thái tác vụ vi phạm ma trận chuyển đổi hợp lệ.
+- chuyển trạng thái sang `merge_queued` hoặc `integrated` không có phong bì ký số bất đối xứng xác thực (`SignedReviewEnvelope` / `SignedIntegrationEnvelope`);
+- nỗ lực kích hoạt production mode khi `ProductionActivationGate` đang bị khóa `PRODUCTION_ACTIVATION_BLOCKED`;
 
 ## 5. Open thresholds giữ nguyên
 

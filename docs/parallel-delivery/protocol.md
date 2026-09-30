@@ -326,3 +326,6 @@ Finding trong contract đi một remediation pass bởi original implementer v�
 - Fencing capacity đa slot kiểm tra toàn bộ slot và chống tái phân bổ bất đối xứng.
 - Attestation report bắt buộc có commit thực tế và topo Git nhất quán, từ chối quan hệ thuộc tập hợp {HEAD, HEAD^} lỏng lẻo.
 - Đột biến phức hợp khi dispatch là một giao dịch nguyên tử đa tiến trình duy nhất có rollback, không để lại orphan dispatch binding.
+- Ranh giới tin cậy ngoài tiến trình (Out-of-Process Trust Boundary): Verifier và authority độc lập hoàn toàn với tiến trình của worker; worker-side monkey-patching hoặc caller-crafted objects không thể cấp quyền review hay merge.
+- Phong bì ký số bất đối xứng (Signed Review & Integration Envelopes): Chữ ký Ed25519 với domain separation, canonical serialization RFC 8785, single-use nonce, monotonic fencing token, và temporal validity window.
+- Khóa kích hoạt Production (Production Activation Gate): Trạng thái kích hoạt production bị khóa fail-closed (`PRODUCTION_ACTIVATION_BLOCKED`) khi chưa provision đầy đủ 4 điều kiện hạ tầng (OS_USER_ISOLATION, PRIVATE_KEY_ACL_RESTRICTION, DEDICATED_RUNNER, PROTECTED_BRANCH_POLICY).

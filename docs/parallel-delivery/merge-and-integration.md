@@ -111,6 +111,10 @@ Không dùng mock để đóng Drive/OAuth/Temporal/AI/render/restore/performanc
 - Accepted và rejected historical runs đều immutable; rejected run không bị xóa để làm lịch sử đẹp hơn.
 - Evidence thiếu provenance, runtime pin, command/result hoặc tamper check không được dùng đóng gate.
 
+- Integration Gatekeeper phải chạy ngoài tiến trình candidate; sử dụng `SignedIntegrationEnvelope` có chữ ký bất đối xứng Ed25519 được xác thực bởi `TrustedIntegrationConsumer` ở phong bì tiến trình bên ngoài.
+- Worker chỉ được quyền push nhánh tính năng (feature branch), tuyệt đối không nắm quyền merge trực tiếp vào protected target (main/trunk).
+- Khóa kích hoạt production: `ProductionActivationGate.STATUS == PRODUCTION_ACTIVATION_BLOCKED` cấm merge vào production khi thiếu 4 điều kiện hạ tầng (cách ly tài khoản OS, ACL khóa riêng, runner CI/CD, và protected branch).
+
 ## 8. Rollback
 
 Rollback ưu tiên Git revert của commit task/integration, sau đó chạy gate ảnh hưởng. Bản sao thiết kế trước thí nghiệm:
@@ -132,6 +136,7 @@ Dừng queue khi:
 - secret hoặc unredacted log xuất hiện;
 - gate runtime bắt buộc unavailable;
 - external outcome unknown;
+- ranh giới tin cậy ngoài tiến trình bị can thiệp trái phép hoặc cố tình bypass `PRODUCTION_ACTIVATION_BLOCKED`;
 - review không ACCEPT.
 
 Không bỏ item lỗi rồi tích hợp descendant phụ thuộc.

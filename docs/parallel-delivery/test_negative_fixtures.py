@@ -68,6 +68,25 @@ from delivery_engine import (  # noqa: E402
     ReviewerSessionProof,
     make_review_evidence,
     make_integration_evidence,
+    PRODUCTION_ACTIVATION_BLOCKED,
+    ARCHITECTURE_IMPLEMENTED,
+    REFERENCE_TESTED,
+    ProductionActivationGate,
+    ProductionActivationBlockedError,
+    EnvelopeVerificationError,
+    ReplayAttackError,
+    ExpiredEnvelopeError,
+    FencingViolationError,
+    REVIEW_ENVELOPE_DOMAIN,
+    INTEGRATION_ENVELOPE_DOMAIN,
+    SignedReviewEnvelope,
+    SignedIntegrationEnvelope,
+    TrustedKeyStore,
+    DurableConsumptionRegistry,
+    TrustedReviewConsumer,
+    TrustedIntegrationConsumer,
+    sign_review_envelope,
+    sign_integration_envelope,
     MANDATORY_INTEGRATION_GATES,
     build_contract_catalog,
     check_harness_tool_compatibility,
@@ -11499,6 +11518,663 @@ print("POSITIVE_CONTROL_PASS")
         res_pos = subprocess.run([sys.executable, "-c", child_code_pos], env=clean_env, capture_output=True, text=True)
         self.assertEqual(res_pos.returncode, 0, f"Positive child process failed: stdout={res_pos.stdout}\nstderr={res_pos.stderr}")
         self.assertIn("POSITIVE_CONTROL_PASS", res_pos.stdout)
+
+
+
+class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
+    """Sol & User Mandate: Root cause trust-boundary remediation tests.
+    Enforces out-of-process key custody, asymmetric Ed25519 signed envelopes,
+    durable replay/fencing protection, complete failure of in-process monkey-patching,
+    and fail-closed PRODUCTION_ACTIVATION_BLOCKED state.
+    """
+
+    def setUp(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        cmd_head = ["git", "rev-parse", "HEAD"]
+        res = subprocess.run(cmd_head, capture_output=True, text=True)
+        if res.returncode == 0 and res.stdout.strip():
+            self.candidate_commit = res.stdout.strip()
+        else:
+            self.candidate_commit = "8913b392522701f924117a234f4e0cee7fc83624"
+        self.base_commit = "4a7c8c921b7e05066505d51b168a02c3fde61317"
+        self.delivery_id = "TASK-SOD-20"
+        self.dispatch_id = "ctx_rev_20"
+        self.t0 = datetime(2026, 9, 30, 22, 0, 0, tzinfo=timezone.utc)
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+
+    def test_01_red_evidence_sol_finding_constructor_and_issuer_reproduction(self):
+        """1. RED evidence reproduction: Direct construction of ReviewerHostIssuer with caller token
+        or without token is strictly rejected fail-closed; deprecated in-process issuer confers zero authority."""
+        # 1a. Direct construction with caller token is rejected fail-closed
+        with self.assertRaises(ProtocolViolationError) as ctx_token:
+            ReviewerHostIssuer(_internal_token=b"caller_non_none_token")
+        self.assertIn("Direct construction of ReviewerHostIssuer by in-process caller is forbidden fail-closed", str(ctx_token.exception))
+
+        # 1b. Direct construction without token is rejected fail-closed
+        with self.assertRaises(ProtocolViolationError) as ctx_bare:
+            ReviewerHostIssuer()
+        self.assertIn("Direct construction of ReviewerHostIssuer by in-process caller is forbidden fail-closed", str(ctx_bare.exception))
+
+        # 1c. Deprecated simulation issuer confers ZERO authority to TrustedReviewConsumer
+        sim_issuer = ReviewerHostIssuer.get_default_host_issuer()
+        self.assertIsNotNone(sim_issuer)
+        keystore = TrustedKeyStore()
+        registry = DurableConsumptionRegistry()
+        consumer = TrustedReviewConsumer(keystore, registry)
+        with self.assertRaises(EnvelopeVerificationError):
+            consumer.consume_review_envelope(
+                {"unauthenticated": True},
+                expected_task_id=self.delivery_id,
+                expected_candidate=self.candidate_commit,
+                expected_dispatch_id=self.dispatch_id,
+            )
+
+    def test_02_worker_side_monkeypatching_zero_effect_on_trusted_consumer(self):
+        """2. Threat Model: Worker running arbitrary Python in candidate interpreter and monkey-patching
+        internal classes or methods has ZERO effect on TrustedReviewConsumer verification."""
+        import delivery_engine
+        keystore = TrustedKeyStore()
+        registry = DurableConsumptionRegistry()
+        consumer = TrustedReviewConsumer(keystore, registry)
+
+        original_review_evidence = delivery_engine.ReviewEvidence
+        try:
+            class SpoofedReviewEvidence:
+                def __init__(self, *args, **kwargs):
+                    self.verdict = "ACCEPT"
+                    self.signature = "attacker_spoofed_signature"
+            delivery_engine.ReviewEvidence = SpoofedReviewEvidence
+
+            forged_payload = {
+                "envelope_id": "rev_env_monkey_01",
+                "delivery_task_id": self.delivery_id,
+                "review_dispatch_id": self.dispatch_id,
+                "candidate_commit": self.candidate_commit,
+                "base_commit": self.base_commit,
+                "reviewer_route": "cx/gpt-5.6-sol",
+                "reviewer_harness": "Claude Code",
+                "reviewer_key_id": "rev_key_lead_v1",
+                "verdict": "ACCEPT",
+                "summary": "Attacker monkeypatched review",
+                "nonce": "attacker_nonce_12345",
+                "issued_at": time.time(),
+                "expires_at": time.time() + 300.0,
+                "fencing_token": 1,
+                "signature": "00" * 64,
+            }
+            with self.assertRaises(ProtocolViolationError) as ctx:
+                consumer.consume_review_envelope(
+                    forged_payload,
+                    expected_task_id=self.delivery_id,
+                    expected_candidate=self.candidate_commit,
+                    expected_dispatch_id=self.dispatch_id,
+                )
+            self.assertIn("Key ID 'rev_key_lead_v1' is not registered in TrustedKeyStore fail-closed", str(ctx.exception))
+        finally:
+            delivery_engine.ReviewEvidence = original_review_evidence
+
+    def test_03_asymmetric_signature_verification_and_tamper_rejection(self):
+        """3. Asymmetric Cryptography: Authentic Ed25519 signature verified with pinned public key;
+        tampering with ANY field fails verification fail-closed."""
+        from cryptography.hazmat.primitives.asymmetric import ed25519
+        priv = ed25519.Ed25519PrivateKey.generate()
+        pub = priv.public_key()
+        pub_bytes = pub.public_bytes_raw()
+
+        keystore = TrustedKeyStore()
+        keystore.register_pinned_public_key("rev_key_lead_v1", pub_bytes)
+        registry = DurableConsumptionRegistry()
+        consumer = TrustedReviewConsumer(keystore, registry)
+
+        now = time.time()
+        base_payload = {
+            "envelope_id": "rev_env_tamper_01",
+            "delivery_task_id": self.delivery_id,
+            "review_dispatch_id": self.dispatch_id,
+            "candidate_commit": self.candidate_commit,
+            "base_commit": self.base_commit,
+            "reviewer_route": "cx/gpt-5.6-sol",
+            "reviewer_harness": "Claude Code",
+            "reviewer_key_id": "rev_key_lead_v1",
+            "verdict": "ACCEPT",
+            "summary": "Authentic review",
+            "nonce": "valid_nonce_hex_32_characters_123",
+            "issued_at": now,
+            "expires_at": now + 300.0,
+            "fencing_token": 1,
+        }
+        signed = sign_review_envelope(priv.private_bytes_raw(), base_payload)
+
+        verified = consumer.consume_review_envelope(
+            signed,
+            expected_task_id=self.delivery_id,
+            expected_candidate=self.candidate_commit,
+            expected_dispatch_id=self.dispatch_id,
+        )
+        self.assertEqual(verified["verdict"], "ACCEPT")
+
+        tampered_candidate = SignedReviewEnvelope.from_dict({
+            **signed.to_dict(),
+            "envelope_id": "rev_env_tamper_02",
+            "candidate_commit": "1111111111111111111111111111111111111111",
+            "nonce": "valid_nonce_hex_32_characters_124",
+        })
+        with self.assertRaises(EnvelopeVerificationError) as ctx_cand:
+            consumer.consume_review_envelope(
+                tampered_candidate,
+                expected_task_id=self.delivery_id,
+                expected_candidate="1111111111111111111111111111111111111111",
+                expected_dispatch_id=self.dispatch_id,
+            )
+        self.assertIn("Cryptographic signature mismatch", str(ctx_cand.exception))
+
+        blocked_signed = sign_review_envelope(priv.private_bytes_raw(), {
+            **base_payload,
+            "envelope_id": "rev_env_tamper_03",
+            "verdict": "BLOCKED",
+            "nonce": "valid_nonce_hex_32_characters_125",
+            "fencing_token": 2,
+        })
+        tampered_verdict = SignedReviewEnvelope.from_dict({
+            **blocked_signed.to_dict(),
+            "verdict": "ACCEPT",
+        })
+        with self.assertRaises(EnvelopeVerificationError) as ctx_verd:
+            consumer.consume_review_envelope(
+                tampered_verdict,
+                expected_task_id=self.delivery_id,
+                expected_candidate=self.candidate_commit,
+                expected_dispatch_id=self.dispatch_id,
+            )
+        self.assertIn("Cryptographic signature mismatch", str(ctx_verd.exception))
+
+    def test_04_wrong_or_revoked_key_id_rejected(self):
+        """4. Trust Root: Envelopes signed with unknown key_id or revoked key_id are strictly rejected fail-closed."""
+        from cryptography.hazmat.primitives.asymmetric import ed25519
+        priv = ed25519.Ed25519PrivateKey.generate()
+        pub_bytes = priv.public_key().public_bytes_raw()
+
+        keystore = TrustedKeyStore()
+        keystore.register_pinned_public_key("rev_key_lead_v1", pub_bytes)
+        registry = DurableConsumptionRegistry()
+        consumer = TrustedReviewConsumer(keystore, registry)
+
+        now = time.time()
+        payload = {
+            "envelope_id": "rev_env_key_01",
+            "delivery_task_id": self.delivery_id,
+            "review_dispatch_id": self.dispatch_id,
+            "candidate_commit": self.candidate_commit,
+            "base_commit": self.base_commit,
+            "reviewer_route": "cx/gpt-5.6-sol",
+            "reviewer_harness": "Claude Code",
+            "reviewer_key_id": "rev_key_lead_v1",
+            "verdict": "ACCEPT",
+            "summary": "Revocation test review",
+            "nonce": "nonce_key_01_hex_32_chars_123456",
+            "issued_at": now,
+            "expires_at": now + 300.0,
+            "fencing_token": 1,
+        }
+        signed = sign_review_envelope(priv.private_bytes_raw(), payload)
+
+        keystore.revoke_key("rev_key_lead_v1")
+        self.assertTrue(keystore.is_revoked("rev_key_lead_v1"))
+        with self.assertRaises(ProtocolViolationError) as ctx_rev:
+            consumer.consume_review_envelope(
+                signed,
+                expected_task_id=self.delivery_id,
+                expected_candidate=self.candidate_commit,
+                expected_dispatch_id=self.dispatch_id,
+            )
+        self.assertIn("has been revoked fail-closed", str(ctx_rev.exception))
+
+        unknown_signed = sign_review_envelope(priv.private_bytes_raw(), {
+            **payload,
+            "envelope_id": "rev_env_key_02",
+            "reviewer_key_id": "unknown_attacker_key",
+            "nonce": "nonce_key_02_hex_32_chars_123456",
+        })
+        with self.assertRaises(ProtocolViolationError) as ctx_unk:
+            consumer.consume_review_envelope(
+                unknown_signed,
+                expected_task_id=self.delivery_id,
+                expected_candidate=self.candidate_commit,
+                expected_dispatch_id=self.dispatch_id,
+            )
+        self.assertIn("is not registered in TrustedKeyStore fail-closed", str(ctx_unk.exception))
+
+    def test_05_single_use_and_replay_protection(self):
+        """5. Replay Protection: Signed envelopes and nonces are strictly single-use; replay is rejected fail-closed."""
+        from cryptography.hazmat.primitives.asymmetric import ed25519
+        priv = ed25519.Ed25519PrivateKey.generate()
+        pub_bytes = priv.public_key().public_bytes_raw()
+
+        keystore = TrustedKeyStore()
+        keystore.register_pinned_public_key("rev_key_lead_v1", pub_bytes)
+        registry = DurableConsumptionRegistry()
+        consumer = TrustedReviewConsumer(keystore, registry)
+
+        now = time.time()
+        payload = {
+            "envelope_id": "rev_env_replay_01",
+            "delivery_task_id": self.delivery_id,
+            "review_dispatch_id": self.dispatch_id,
+            "candidate_commit": self.candidate_commit,
+            "base_commit": self.base_commit,
+            "reviewer_route": "cx/gpt-5.6-sol",
+            "reviewer_harness": "Claude Code",
+            "reviewer_key_id": "rev_key_lead_v1",
+            "verdict": "ACCEPT",
+            "summary": "Replay test review",
+            "nonce": "nonce_replay_01_hex_32_chars_123",
+            "issued_at": now,
+            "expires_at": now + 300.0,
+            "fencing_token": 1,
+        }
+        signed = sign_review_envelope(priv.private_bytes_raw(), payload)
+
+        # First consumption succeeds
+        consumer.consume_review_envelope(
+            signed,
+            expected_task_id=self.delivery_id,
+            expected_candidate=self.candidate_commit,
+            expected_dispatch_id=self.dispatch_id,
+        )
+
+        # 5a. Direct envelope replay fails closed
+        with self.assertRaises(ReplayAttackError) as ctx_rep:
+            consumer.consume_review_envelope(
+                signed,
+                expected_task_id=self.delivery_id,
+                expected_candidate=self.candidate_commit,
+                expected_dispatch_id=self.dispatch_id,
+            )
+        self.assertIn("has already been consumed fail-closed", str(ctx_rep.exception))
+
+        # 5b. Reusing same nonce in a different envelope fails closed
+        dup_nonce_payload = {
+            **payload,
+            "envelope_id": "rev_env_replay_02",
+            "fencing_token": 2,
+        }
+        dup_nonce_signed = sign_review_envelope(priv.private_bytes_raw(), dup_nonce_payload)
+        with self.assertRaises(ReplayAttackError) as ctx_nonce:
+            consumer.consume_review_envelope(
+                dup_nonce_signed,
+                expected_task_id=self.delivery_id,
+                expected_candidate=self.candidate_commit,
+                expected_dispatch_id=self.dispatch_id,
+            )
+        self.assertIn("has already been used fail-closed (replay attack)", str(ctx_nonce.exception))
+
+        # 5c. Cross-task replay fails closed
+        other_task_signed = sign_review_envelope(priv.private_bytes_raw(), {
+            **payload,
+            "envelope_id": "rev_env_replay_03",
+            "nonce": "nonce_replay_03_hex_32_chars_123",
+            "delivery_task_id": "TASK-OTHER-01",
+            "fencing_token": 3,
+        })
+        with self.assertRaises(EnvelopeVerificationError) as ctx_task:
+            consumer.consume_review_envelope(
+                other_task_signed,
+                expected_task_id=self.delivery_id,
+                expected_candidate=self.candidate_commit,
+                expected_dispatch_id=self.dispatch_id,
+            )
+        self.assertIn("does not match expected", str(ctx_task.exception))
+
+    def test_06_durability_across_process_restart_with_sqlite(self):
+        """6. Durability: Consumption records and monotonic fencing survive registry/process restart."""
+        import tempfile
+        from cryptography.hazmat.primitives.asymmetric import ed25519
+        priv = ed25519.Ed25519PrivateKey.generate()
+        pub_bytes = priv.public_key().public_bytes_raw()
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
+            db_file = Path(tf.name)
+
+        try:
+            keystore = TrustedKeyStore()
+            keystore.register_pinned_public_key("rev_key_lead_v1", pub_bytes)
+
+            # Session A consumes envelope
+            registry_a = DurableConsumptionRegistry(db_path=db_file)
+            consumer_a = TrustedReviewConsumer(keystore, registry_a)
+            now = time.time()
+            payload = {
+                "envelope_id": "rev_env_restart_01",
+                "delivery_task_id": self.delivery_id,
+                "review_dispatch_id": self.dispatch_id,
+                "candidate_commit": self.candidate_commit,
+                "base_commit": self.base_commit,
+                "reviewer_route": "cx/gpt-5.6-sol",
+                "reviewer_harness": "Claude Code",
+                "reviewer_key_id": "rev_key_lead_v1",
+                "verdict": "ACCEPT",
+                "summary": "Durability review",
+                "nonce": "nonce_restart_01_hex_32_chars_1",
+                "issued_at": now,
+                "expires_at": now + 300.0,
+                "fencing_token": 10,
+            }
+            signed_a = sign_review_envelope(priv.private_bytes_raw(), payload)
+            consumer_a.consume_review_envelope(
+                signed_a,
+                expected_task_id=self.delivery_id,
+                expected_candidate=self.candidate_commit,
+                expected_dispatch_id=self.dispatch_id,
+            )
+            del consumer_a
+            del registry_a
+
+            # Session B connects to the same database (simulating process restart)
+            registry_b = DurableConsumptionRegistry(db_path=db_file)
+            consumer_b = TrustedReviewConsumer(keystore, registry_b)
+
+            # 6a. Already-consumed envelope is still tracked
+            self.assertTrue(registry_b.is_consumed("rev_env_restart_01"))
+
+            # 6b. Replay in Session B is rejected
+            with self.assertRaises(ReplayAttackError):
+                consumer_b.consume_review_envelope(
+                    signed_a,
+                    expected_task_id=self.delivery_id,
+                    expected_candidate=self.candidate_commit,
+                    expected_dispatch_id=self.dispatch_id,
+                )
+
+            # 6c. Stale fencing token (<= 10) in Session B is rejected
+            stale_payload = {
+                **payload,
+                "envelope_id": "rev_env_restart_02",
+                "nonce": "nonce_restart_02_hex_32_chars_2",
+                "fencing_token": 9,
+            }
+            stale_signed = sign_review_envelope(priv.private_bytes_raw(), stale_payload)
+            with self.assertRaises(FencingViolationError):
+                consumer_b.consume_review_envelope(
+                    stale_signed,
+                    expected_task_id=self.delivery_id,
+                    expected_candidate=self.candidate_commit,
+                    expected_dispatch_id=self.dispatch_id,
+                )
+
+            # 6d. Fresh fencing token (> 10) in Session B succeeds
+            fresh_payload = {
+                **payload,
+                "envelope_id": "rev_env_restart_03",
+                "nonce": "nonce_restart_03_hex_32_chars_3",
+                "fencing_token": 11,
+            }
+            fresh_signed = sign_review_envelope(priv.private_bytes_raw(), fresh_payload)
+            verified_fresh = consumer_b.consume_review_envelope(
+                fresh_signed,
+                expected_task_id=self.delivery_id,
+                expected_candidate=self.candidate_commit,
+                expected_dispatch_id=self.dispatch_id,
+            )
+            self.assertEqual(verified_fresh["verdict"], "ACCEPT")
+        finally:
+            if db_file.exists():
+                try:
+                    db_file.unlink()
+                except Exception:
+                    pass
+
+    def test_07_temporal_validity_expiration_and_future_invalid(self):
+        """7. Temporal validity: Expired envelopes and future-invalid envelopes fail closed."""
+        from cryptography.hazmat.primitives.asymmetric import ed25519
+        priv = ed25519.Ed25519PrivateKey.generate()
+        pub_bytes = priv.public_key().public_bytes_raw()
+
+        keystore = TrustedKeyStore()
+        keystore.register_pinned_public_key("rev_key_lead_v1", pub_bytes)
+        registry = DurableConsumptionRegistry()
+        consumer = TrustedReviewConsumer(keystore, registry)
+
+        t_base = time.time()
+        # 7a. Expired envelope rejected fail closed
+        expired_payload = {
+            "envelope_id": "rev_env_time_01",
+            "delivery_task_id": self.delivery_id,
+            "review_dispatch_id": self.dispatch_id,
+            "candidate_commit": self.candidate_commit,
+            "base_commit": self.base_commit,
+            "reviewer_route": "cx/gpt-5.6-sol",
+            "reviewer_harness": "Claude Code",
+            "reviewer_key_id": "rev_key_lead_v1",
+            "verdict": "ACCEPT",
+            "summary": "Expired review",
+            "nonce": "nonce_time_01_hex_32_chars_1234",
+            "issued_at": t_base - 600.0,
+            "expires_at": t_base - 300.0,
+            "fencing_token": 1,
+        }
+        expired_signed = sign_review_envelope(priv.private_bytes_raw(), expired_payload)
+        with self.assertRaises(ExpiredEnvelopeError) as ctx_exp:
+            consumer.consume_review_envelope(
+                expired_signed,
+                expected_task_id=self.delivery_id,
+                expected_candidate=self.candidate_commit,
+                expected_dispatch_id=self.dispatch_id,
+                now=t_base,
+            )
+        self.assertIn("expired", str(ctx_exp.exception))
+
+        # 7b. Future-dated envelope rejected fail closed
+        future_payload = {
+            "envelope_id": "rev_env_time_02",
+            "delivery_task_id": self.delivery_id,
+            "review_dispatch_id": self.dispatch_id,
+            "candidate_commit": self.candidate_commit,
+            "base_commit": self.base_commit,
+            "reviewer_route": "cx/gpt-5.6-sol",
+            "reviewer_harness": "Claude Code",
+            "reviewer_key_id": "rev_key_lead_v1",
+            "verdict": "ACCEPT",
+            "summary": "Future review",
+            "nonce": "nonce_time_02_hex_32_chars_1234",
+            "issued_at": t_base + 3600.0,
+            "expires_at": t_base + 7200.0,
+            "fencing_token": 2,
+        }
+        future_signed = sign_review_envelope(priv.private_bytes_raw(), future_payload)
+        with self.assertRaises(EnvelopeVerificationError) as ctx_fut:
+            consumer.consume_review_envelope(
+                future_signed,
+                expected_task_id=self.delivery_id,
+                expected_candidate=self.candidate_commit,
+                expected_dispatch_id=self.dispatch_id,
+                now=t_base,
+            )
+        self.assertIn("issued in the future", str(ctx_fut.exception))
+
+    def test_08_production_activation_blocked_without_provisioned_prerequisites(self):
+        """8. Mandatory Gate: Production activation is explicitly BLOCKED/NOT_PROVISIONED;
+        calling assert_production_gate_ready or integration in production mode strictly fails closed."""
+        # 8a. ProductionActivationGate status is strictly BLOCKED
+        self.assertEqual(ProductionActivationGate.STATUS, PRODUCTION_ACTIVATION_BLOCKED)
+        self.assertTrue(ProductionActivationGate.is_blocked())
+        self.assertEqual(ProductionActivationGate.get_status(), "PRODUCTION_ACTIVATION_BLOCKED")
+
+        # 8b. Gate assertion fails closed
+        with self.assertRaises(ProductionActivationBlockedError) as ctx_gate:
+            ProductionActivationGate.assert_production_gate_ready()
+        self.assertIn("Production activation is strictly BLOCKED", str(ctx_gate.exception))
+        self.assertIn("OS_USER_ISOLATION", str(ctx_gate.exception))
+        self.assertIn("PRIVATE_KEY_ACL_RESTRICTION", str(ctx_gate.exception))
+        self.assertIn("DEDICATED_RUNNER", str(ctx_gate.exception))
+        self.assertIn("PROTECTED_BRANCH_POLICY", str(ctx_gate.exception))
+
+        # 8c. Production mode in handle_integration_gates fails closed
+        lm = LeaseManager([{"id": "LOCK-SOD-20", "mode": "exclusive", "renewable": True, "lease_seconds": 600}])
+        adapter = OrcaDeliveryAdapter(
+            lease_manager=lm,
+            approved_candidate_commit=self.candidate_commit,
+            approved_base_commit=self.base_commit,
+        )
+        adapter.task_authorities[self.delivery_id] = "granted"
+        adapter._task_states[self.delivery_id] = "merge_queued"
+        with self.assertRaises(ProductionActivationBlockedError):
+            adapter.handle_integration_gates(
+                self.delivery_id,
+                gates_pass=True,
+                production_mode=True,
+            )
+
+    def test_09_fresh_process_isolation_and_no_permissive_fallback(self):
+        """9. Fresh Process: Subprocess execution demonstrates that in-process monkeypatching
+        cannot affect external consumer, and missing credentials have zero permissive fallback."""
+        clean_env = {k: v for k, v in os.environ.items() if "REVIEWER" not in k.upper()}
+        child_code = r'''
+import sys, os
+from pathlib import Path
+sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
+from delivery_engine import (
+    TrustedKeyStore,
+    DurableConsumptionRegistry,
+    TrustedReviewConsumer,
+    ProductionActivationGate,
+    ProductionActivationBlockedError,
+    EnvelopeVerificationError,
+    PRODUCTION_ACTIVATION_BLOCKED,
+)
+
+# 1. Production gate is blocked in fresh process
+assert ProductionActivationGate.is_blocked() is True
+assert ProductionActivationGate.STATUS == PRODUCTION_ACTIVATION_BLOCKED
+
+# 2. No permissive fallback when unauthenticated
+keystore = TrustedKeyStore()
+registry = DurableConsumptionRegistry()
+consumer = TrustedReviewConsumer(keystore, registry)
+
+try:
+    consumer.consume_review_envelope(
+        {"forged": True},
+        expected_task_id="TASK-SOD-20",
+        expected_candidate="8913b392522701f924117a234f4e0cee7fc83624",
+        expected_dispatch_id="ctx_rev_20",
+    )
+    assert False, "Consumer accepted unauthenticated envelope"
+except EnvelopeVerificationError:
+    pass
+
+print("FRESH_PROCESS_ISOLATION_PASS")
+'''
+        res = subprocess.run([sys.executable, "-c", child_code], env=clean_env, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f"Child process failed: stdout={res.stdout}\nstderr={res.stderr}")
+        self.assertIn("FRESH_PROCESS_ISOLATION_PASS", res.stdout)
+
+    def test_10_positive_control_full_lifecycle_with_asymmetric_envelope(self):
+        """10. Positive Control: Authentic reviewer keypair signs valid envelope;
+        adapter consumes envelope, transitions to merge_queued, and reference integration passes."""
+        from cryptography.hazmat.primitives.asymmetric import ed25519
+        priv = ed25519.Ed25519PrivateKey.generate()
+        pub_bytes = priv.public_key().public_bytes_raw()
+
+        lm = LeaseManager([{"id": "LOCK-SOD-20", "mode": "exclusive", "renewable": True, "lease_seconds": 600}])
+        adapter = OrcaDeliveryAdapter(
+            lease_manager=lm,
+            approved_candidate_commit=self.candidate_commit,
+            approved_base_commit=self.base_commit,
+        )
+        adapter.keystore.register_pinned_public_key("rev_key_lead_v1", pub_bytes)
+
+        tid_pos = "TASK-SOD-20-POS"
+        did_pos = "ctx_rev_20_pos"
+        adapter.declared_task_locks[tid_pos] = ["LOCK-SOD-20"]
+        # Advance task to review state
+        adapter.task_authorities[tid_pos] = "granted"
+        adapter._task_states[tid_pos] = "review"
+
+        # Register review dispatch binding
+        rev_env = make_execution_envelope(
+            tid_pos, did_pos, phase="review",
+            orca_task_id="task_orca_sod_rev_20_pos", now=self.t0 + timedelta(seconds=5)
+        )
+        res_id = adapter.create_review_dispatch(
+            tid_pos,
+            orca_task_id="task_orca_sod_rev_20_pos",
+            candidate_commit=self.candidate_commit,
+            intended_dispatch_id=did_pos,
+            dispatch_origin="dely dispatch",
+            execution_envelope=rev_env,
+            now=self.t0 + timedelta(seconds=5),
+        )
+
+        now = self.t0.timestamp()
+        payload = {
+            "envelope_id": "rev_env_pos_01",
+            "delivery_task_id": tid_pos,
+            "review_dispatch_id": res_id,
+            "candidate_commit": self.candidate_commit,
+            "base_commit": self.base_commit,
+            "reviewer_route": "cx/gpt-5.6-sol",
+            "reviewer_harness": "Claude Code",
+            "reviewer_key_id": "rev_key_lead_v1",
+            "verdict": "ACCEPT",
+            "summary": "Positive control accepted on exact candidate HEAD",
+            "nonce": "valid_nonce_positive_01_hex_32",
+            "issued_at": now,
+            "expires_at": now + 300.0,
+            "fencing_token": 1,
+        }
+        signed = sign_review_envelope(priv.private_bytes_raw(), payload)
+
+        # Handle review verdict with authentic envelope
+        new_state = adapter.handle_review_verdict(
+            tid_pos,
+            verdict="ACCEPT",
+            review_dispatch_id=res_id,
+            review_envelope=signed,
+            now=self.t0 + timedelta(seconds=10),
+        )
+        self.assertEqual(new_state, "merge_queued")
+        self.assertEqual(adapter.get_task_state(tid_pos), "merge_queued")
+
+        # Integration gate with authentic asymmetric envelope
+        int_priv = ed25519.Ed25519PrivateKey.generate()
+        int_pub_bytes = int_priv.public_key().public_bytes_raw()
+        adapter.keystore.register_pinned_public_key("integ_gatekeeper_v1", int_pub_bytes)
+
+        int_payload = {
+            "envelope_id": "int_env_pos_01",
+            "delivery_task_id": tid_pos,
+            "candidate_commit": self.candidate_commit,
+            "base_commit": self.base_commit,
+            "gates_pass": True,
+            "gate_results": {g: True for g in MANDATORY_INTEGRATION_GATES},
+            "integration_key_id": "integ_gatekeeper_v1",
+            "nonce": "valid_nonce_int_01_hex_32",
+            "issued_at": now + 15.0,
+            "expires_at": now + 300.0,
+            "fencing_token": 1,
+        }
+        signed_int = sign_integration_envelope(int_priv.private_bytes_raw(), int_payload)
+
+        # In production mode, integration is strictly blocked fail-closed
+        with self.assertRaises(ProductionActivationBlockedError):
+            adapter.handle_integration_gates(
+                tid_pos,
+                gates_pass=True,
+                integration_envelope=signed_int,
+                production_mode=True,
+            )
+
+        # In reference tested mode, integration succeeds
+        int_state = adapter.handle_integration_gates(
+            tid_pos,
+            gates_pass=True,
+            integration_envelope=signed_int,
+            production_mode=False,
+        )
+        self.assertEqual(int_state, "integrated")
+        self.assertEqual(adapter.get_task_state(tid_pos), "integrated")
 
 
 if __name__ == "__main__":

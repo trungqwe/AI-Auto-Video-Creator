@@ -322,3 +322,15 @@ Toàn bộ 21 bypass độc lập do Sol review phát hiện cùng các boundary
    - Bằng chứng `launch.requested` và `launch.effective` đơn lẻ là KHÔNG ĐỦ; dispatch chỉ hợp lệ khi có bằng chứng terminal/archive trực tiếp xác nhận đúng route harness/provider, và cơ sở dữ liệu sử dụng 9Router ghi nhận đúng request backend (`google` / `openai` qua 9Router) sau khi dispatch được tạo (`recorded_after_dispatch: true`).
    - Bằng chứng phải ở dạng machine-readable và tuyệt đối không commit secret, token, credential hoặc đường dẫn cơ sở dữ liệu cục bộ khả biến.
    - Duy trì sự phân biệt rõ ràng giữa cơ chế fallback AI provider của sản phẩm (theo product roadmap) và việc nghiêm cấm fallback agent-harness/provider trong delivery control plane này.
+
+## 18. Khắc phục triệt để phát hiện Sol Round 22 (Out-of-Process Trust Boundary & Asymmetric Cryptography)
+
+Đợt rà soát độc lập trên candidate SHA `8913b392522701f924117a234f4e0cee7fc83624` (approved base `4a7c8c921b7e05066505d51b168a02c3fde61317`) đã xác lập finding ranh giới tin cậy (trust boundary) cùng họ nguyên nhân gốc rễ: issuer, HMAC secret, credential và consumer đều nằm trong cùng tiến trình Python của caller nên candidate code có thể tự bootstrap authority.
+
+Hệ thống đã triển khai toàn diện giải pháp kiến trúc ngoài tiến trình (Out-of-Process Trust Boundary) tuân thủ chỉ thị tại `D:/AI_SETUP/supervisor/generated/root-cause-trust-boundary-intervention.md`:
+1. **Threat Model 3 tầng rủi ro**: Phân định rõ ràng giữa (1) Sửa nhầm thông thường, (2) Candidate/Worker không tin cậy chạy mã Python tùy ý, và (3) Host OS Administrator. Không coi đối tượng hay biến trong cùng tiến trình là bằng chứng danh tính.
+2. **Khóa ký số bất đối xứng (Ed25519 Asymmetric Cryptography & Pinned Key Custody)**: Khóa riêng chỉ nằm ở Reviewer Lead và Integration Gatekeeper độc lập; candidate worker chỉ sở hữu public key ghim sẵn trong `TrustedKeyStore`.
+3. **Phong bì ký số (Signed Review & Integration Envelopes)**: Domain separation (`PARALLEL_DELIVERY_REVIEW_ENVELOPE_V1` / `PARALLEL_DELIVERY_INTEGRATION_ENVELOPE_V1`), canonical serialization RFC 8785, candidate SHA, dispatch ID, route attestation, nonce, temporal window, monotonic fencing token.
+4. **Sổ đăng ký tiêu thụ bền vững (DurableConsumptionRegistry)**: Quản lý atomic trên SQLite, ngăn chặn tuyệt đối replay, tái sử dụng nonce, stale retry, và tranh chấp đồng thời kể cả qua restart tiến trình.
+5. **Khóa kích hoạt Production (ProductionActivationGate)**: Khóa fail-closed `PRODUCTION_ACTIVATION_BLOCKED` (`NOT_PROVISIONED`) khi hệ thống chưa được trang bị đủ 4 điều kiện hạ tầng: `OS_USER_ISOLATION`, `PRIVATE_KEY_ACL_RESTRICTION`, `DEDICATED_RUNNER`, `PROTECTED_BRANCH_POLICY`.
+6. **Bộ kiểm thử toàn diện**: 10 bài test mới trong `TestSolTrustBoundaryRootCauseRemediation` (RED evidence, worker monkey-patching failure, asymmetric Ed25519 signature tamper rejection, key revocation, single-use replay protection, SQLite restart durability, temporal validity, production gate fail-closed, fresh subprocess isolation, và positive control full lifecycle) nâng tổng số bài test lên **386/386 tests PASS 100%**.
