@@ -153,102 +153,113 @@ Trình tự an toàn:
 
 Bản backup này không tạo claim G05. Product DB/workflow/artifact restore vẫn cần test hạ tầng thật và gate riêng.
 
-## 8. M? h?nh ?e d?a (Threat Model) v? Ranh gi?i tin c?y Ngo?i ti?n tr?nh (Out-of-Process Trust Boundary)
+## 8. Mô hình đe dọa (Threat Model) và Ranh giới tin cậy Ngoài tiến trình (Out-of-Process Trust Boundary)
 
-### 8.1. M? h?nh ?e d?a 3 t?ng r?i ro (Threat Model Risk Tiers)
+### 8.1. Mô hình đe dọa 3 tầng rủi ro (Threat Model Risk Tiers)
 
-?? gi?i quy?t tri?t ?? nguy?n nh?n g?c r? (root cause) c?a finding audit trust boundary t? Sol (trong ?? caller c? th? t? bootstrap authority trong c?ng ti?n tr?nh Python th?ng qua reflection, secret constructor, ho?c monkey-patching), h? th?ng thi?t l?p m? h?nh ?e d?a 3 t?ng r? r?t:
+Để giải quyết triệt để nguyên nhân gốc rễ (root cause) của finding audit trust boundary từ Sol (trong đó caller có thể tự bootstrap authority trong cùng tiến trình Python thông qua reflection, secret constructor, hoặc monkey-patching), hệ thống thiết lập mô hình đe dọa 3 tầng rõ rệt:
 
-1. **T?ng 1 - S?a nh?m th?ng th??ng (Accidental Drift / Misconfiguration)**:
-   - Worker ho?c developer v? ? g?i nh?m API, truy?n thi?u tham s?, s? d?ng sai schema, nh?m l?n commit SHA ho?c dispatch ID.
-   - C? ch? ph?ng v?: Strict dataclass validation, ki?u d? li?u kh?ng c? kho?ng tr?ng th?a, schema assertion, ki?m tra t?nh to?n v?n commit trong Git v? ki?m tra h?p ??ng ph?n nh?nh.
+1. **Tầng 1 - Sửa nhầm thông thường (Accidental Drift / Misconfiguration)**:
+   - Worker hoặc developer vô ý gọi nhầm API, truyền thiếu tham số, sử dụng sai schema, nhầm lẫn commit SHA hoặc dispatch ID.
+   - Cơ chế phòng vệ: Strict dataclass validation, kiểu dữ liệu không có khoảng trắng thừa, schema assertion, kiểm tra tính toàn vẹn commit trong Git và kiểm tra hợp đồng phân nhánh.
 
-2. **T?ng 2 - Candidate / Worker kh?ng tin c?y (Hostile / Compromised Candidate Worker)**:
-   - Worker ch?y m? Python t?y ? trong m?i tr??ng candidate, c? kh? n?ng s?a ??i to?n b? m? ngu?n candidate, ??c m?i t?p tin m? phi?n l?m vi?c ???c c?p quy?n, can thi?p v?o b? nh? Python runtime (monkey-patching, inspect call stack, subclassing, ghi ?? global registry, forge HMAC secret n?u n?m c?ng b? nh?).
-   - Nguy?n t?c b?t bi?n: **Kh?ng m?t ??i t??ng, secret, identifier, t?n module, class, underscore private, closure, UUID, hay l?i khai t? nh?n n?o trong c?ng ti?n tr?nh c?a worker ???c coi l? b?ng ch?ng danh t?nh ho?c th?m quy?n**.
-   - Quy?n quy?t ??nh ph? duy?t (verdict) v? quy?n t?ch h?p/merge ???c t?ch bi?t ho?n to?n kh?i ti?n tr?nh worker.
+2. **Tầng 2 - Candidate / Worker không tin cậy (Hostile / Compromised Candidate Worker)**:
+   - Worker chạy mã Python tùy ý trong môi trường candidate, có khả năng sửa đổi toàn bộ mã nguồn candidate, đọc mọi tệp tin mà phiên làm việc được cấp quyền, can thiệp vào bộ nhớ Python runtime (monkey-patching, inspect call stack, subclassing, ghi đè global registry, forge HMAC secret nếu nằm cùng bộ nhớ).
+   - Nguyên tắc bất biến: **Không một đối tượng, secret, identifier, tên module, class, underscore private, closure, UUID, hay lời khai tự nhận nào trong cùng tiến trình của worker được coi là bằng chứng danh tính hoặc thẩm quyền**.
+   - Quyền quyết định phê duyệt (verdict) và quyền tích hợp/merge được tách biệt hoàn toàn khỏi tiến trình worker.
+   - Pinned public keys không thể được đăng ký, thay thế, hay sửa đổi bởi candidate worker trong cùng tiến trình; việc cấp phát khóa chỉ có thể diễn ra từ ranh giới máy chủ bên ngoài (host boundary).
 
-3. **T?ng 3 - Quy?n Qu?n tr? vi?n To?n quy?n c?a Host (Host Operating System Administrator)**:
-   - Ng??i d?ng ho?c ti?n tr?nh ch?y v?i quy?n Administrator/root to?n m?y c? th? can thi?p tr?c ti?p v?o kernel, debug memory, ghi ?? ? ??a v?t l? ho?c s?a ??i registry c?a h? th?ng.
-   - Tuy?n b? an ninh: **Ki?n tr?c ?ng d?ng v? sandbox ti?n tr?nh KH?NG tuy?n b? ng?n c?n ???c Administrator to?n quy?n c?a Host OS**. Vi?c c?ch ly ch?ng l?i r?i ro n?y b?t bu?c ph?i d?a tr?n ph?n quy?n t?i kho?n h? ?i?u h?nh ??c l?p (OS User Isolation), m?y ch? CI/CD bi?t l?p (Dedicated Runner) ho?c m?y ?o c?ch ly ph?n c?ng.
+3. **Tầng 3 - Quyền Quản trị viên Toàn quyền của Host (Host Operating System Administrator)**:
+   - Người dùng hoặc tiến trình chạy với quyền Administrator/root toàn máy có thể can thiệp trực tiếp vào kernel, debug memory, ghi đè ổ đĩa vật lý hoặc sửa đổi registry của hệ thống.
+   - Tuyên bố an ninh: **Kiến trúc ứng dụng và sandbox tiến trình KHÔNG tuyên bố ngăn cản được Administrator toàn quyền của Host OS**. Việc cách ly chống lại rủi ro này bắt buộc phải dựa trên phân quyền tài khoản hệ điều hành độc lập (OS User Isolation), máy chủ CI/CD biệt lập (Dedicated Runner) hoặc máy ảo cách ly phần cứng.
 
-### 8.2. Ph?n t?ch ph??ng ?n ki?n tr?c & Quy?t ??nh (Architectural Decision Record - ADR)
+### 8.2. Phân tích phương án kiến trúc & Quyết định (Architectural Decision Record - ADR)
 
-??nh gi? 3 ph??ng ?n kh? thi ?? gi?i quy?t b?i to?n ranh gi?i tin c?y:
+Đánh giá 3 phương án khả thi để giải quyết bài toán ranh giới tin cậy:
 
-| Ti?u ch? | Ph??ng ?n 1: Reference Model + Manual External Gate | Ph??ng ?n 2: Broker ??c L?p + Ch? K? B?t ??i X?ng + OS ACL (???c ch?n) | Ph??ng ?n 3: N?n t?ng CI/CD / Isolated Runner Ho?n Ch?nh |
+| Tiêu chí | Phương án 1: Reference Model + Manual External Gate | Phương án 2: Broker Độc Lập + Chữ Ký Bất Đối Xứng + OS ACL (Được chọn) | Phương án 3: Nền tảng CI/CD / Isolated Runner Hoàn Chỉnh |
 | :--- | :--- | :--- | :--- |
-| **B?n ch?t** | Ch? gi? m? m?u, to?n b? gate chuy?n th?nh ki?m duy?t th? c?ng ngo?i h? th?ng | T?ch vai tr? Reviewer Lead v? Integration Gatekeeper, s? d?ng c?p kh?a b?t ??i x?ng Ed25519; worker ch? gi? pinned public key; verifier ch?y ??c l?p | Tri?n khai c?m server runner t? ??ng h?a ho?n to?n v?i m?y ?o ho?c container ??c l?p |
-| **Kh? n?ng t??ng th?ch** | Ho?n to?n t??ng th?ch nh?ng kh?ng t? ??ng h?a ???c quy tr?nh delivery | Ho?n to?n t??ng th?ch m?i tr??ng Windows hi?n t?i m? kh?ng c?n c?i ??t h? t?ng ph?c t?p | ??i h?i h? t?ng m?y ch?, d?ch v? m?ng b?n ngo?i, v??t qu? ph?m vi d? ?n hi?n t?i |
-| **M?c ?? an to?n** | Fail-closed tuy?t ??i nh?ng ph? thu?c 100% v?o thao t?c th? c?ng | ??m b?o t?nh to?n h?c m?t m? b?t ??i x?ng; worker kh?ng th? gi? m?o ch? k? d? ki?m so?t to?n b? runtime Python | C?ch ly v?t l?/OS m?nh nh?t |
-| **Quy?t ??nh** | D?ng l?m c? ch? kh?a k?ch ho?t (`PRODUCTION_ACTIVATION_BLOCKED`) khi ch?a ?? ?i?u ki?n h? t?ng | **???C CH?N L?M KI?N TR?C M?C TI?U**: Tri?n khai ??y ?? adapter, Signed Envelope, Keystore, v? Durable Consumption Registry | Ghi nh?n trong l? tr?nh n?ng c?p d?i h?n (Long-term Infrastructure Roadmap) |
+| **Bản chất** | Chỉ giữ mã mẫu, toàn bộ gate chuyển thành kiểm duyệt thủ công ngoài hệ thống | Tách vai trò Reviewer Lead và Integration Gatekeeper, sử dụng cặp khóa bất đối xứng Ed25519; worker chỉ giữ pinned public key; verifier chạy độc lập | Triển khai cụm server runner tự động hóa hoàn toàn với máy ảo hoặc container độc lập |
+| **Khả năng tương thích** | Hoàn toàn tương thích nhưng không tự động hóa được quy trình delivery | Hoàn toàn tương thích môi trường Windows hiện tại mà không cần cài đặt hạ tầng phức tạp | Đòi hỏi hạ tầng máy chủ, dịch vụ mạng bên ngoài, vượt quá phạm vi dự án hiện tại |
+| **Mức độ an toàn** | Fail-closed tuyệt đối nhưng phụ thuộc 100% vào thao tác thủ công | Đảm bảo tính toán học mật mã bất đối xứng; worker không thể giả mạo chữ ký dù kiểm soát toàn bộ runtime Python | Cách ly vật lý/OS mạnh nhất |
+| **Quyết định** | Dùng làm cơ chế khóa kích hoạt (PRODUCTION_ACTIVATION_BLOCKED) khi chưa đủ điều kiện hạ tầng | **ĐƯỢC CHỌN LÀM KIẾN TRÚC MỤC TIÊU**: Triển khai đầy đủ adapter, Signed Envelope, Keystore, và Durable Consumption Registry | Ghi nhận trong lộ trình nâng cấp dài hạn (Long-term Infrastructure Roadmap) |
 
-### 8.3. Thi?t k? Ranh gi?i tin c?y ??c l?p & Ch? k? M?t m? B?t ??i x?ng (Ed25519)
+### 8.3. Thiết kế Ranh giới tin cậy Độc lập & Chữ ký Mật mã Bất đối xứng (Ed25519)
 
-1. **Qu?n l? Kh?a B?t ??i x?ng (Out-of-Process Key Custody & TrustedKeyStore)**:
-   - Private signing keys tuy?t ??i kh?ng ???c l?u tr? trong repository, bi?n m?i tr??ng c?a worker, log, hay fixture ch?y c?ng ti?n tr?nh. Kh?a ri?ng ch? thu?c s? h?u c?a phi?n Reviewer ??c l?p (`rev_key_lead_v1`) v? Integration Runner ??c l?p (`integ_gatekeeper_v1`).
-   - Candidate worker ch? ???c cung c?p danh s?ch public keys ghim s?n (`TrustedKeyStore.register_pinned_public_key`).
-   - H? tr? c? ch? thu h?i kh?a t?c th?i (`revoke_key`): m?t phong b? k? b?i kh?a ?? thu h?i s? b? t? ch?i fail-closed ngay l?p t?c.
+1. **Quản lý Khóa Bất đối xứng Ngoại tiến trình (Out-of-Process Key Custody & TrustedKeyStore)**:
+   - Private signing keys tuyệt đối không được lưu trữ trong repository, biến môi trường của worker, log, hay fixture chạy cùng tiến trình. Khóa riêng chỉ thuộc sở hữu của phiên Reviewer độc lập (
+ev_key_lead_v1) và Integration Runner độc lập (integ_gatekeeper_v1).
+   - Cấp phát khóa ngoài tiến trình (Out-of-Process Pinned Key Provisioning): TrustedKeyStore được cấp phát bất biến thông qua KeyStoreHostHandoff và KeyStoreHostIssuer từ trusted external host boundary với unforgeable capability (KeyStoreHostIssuerCapability).
+   - Pinned public keys được bọc trong MappingProxyType bất biến.
+   - Caller trong cùng tiến trình (candidate worker) bị cấm gọi trực tiếp 
+egister_pinned_public_key (fail-closed với ProtocolViolationError), cấm khởi tạo TrustedKeyStore với custom pinned keys, cấm thay thế hay sửa đổi các khóa đã ghim (Cannot replace or mutate existing pinned key authority), và cấm tiêm keystore tự chọn vào OrcaDeliveryAdapter.
+   - Hỗ trợ cơ chế thu hồi khóa tức thời (
+evoke_key): một phong bì ký bởi khóa đã thu hồi sẽ bị từ chối fail-closed ngay lập tức.
 
-2. **Phong b? K? s? B?t ??i x?ng (SignedReviewEnvelope & SignedIntegrationEnvelope)**:
-   - Ph?n t?ch mi?n k? (Domain Separation): `PARALLEL_DELIVERY_REVIEW_ENVELOPE_V1` v? `PARALLEL_DELIVERY_INTEGRATION_ENVELOPE_V1`.
-   - Chu?n h?a chu?i d? li?u (Canonical Serialization): Tu?n th? RFC 8785, s?p x?p key nh?t qu?n, lo?i b? tr??ng signature tr??c khi k? v? b?m.
-   - G?n ch?t ng? c?nh nhi?m v?: B?t bu?c ch?a ??y ?? `delivery_task_id`, `review_dispatch_id`, commit SHA ?ng vi?n ??y ?? (40 k? t? hex), base commit, route attestation (`cx/gpt-5.6-sol`), harness (`Claude Code`), s? ng?u nhi?n d?ng m?t l?n (`nonce`), th?i gian ph?t h?nh/h?t h?n (`issued_at`, `expires_at`), v? m? r?o monotonic (`fencing_token`).
+2. **Phong bì Ký số Bất đối xứng (SignedReviewEnvelope & SignedIntegrationEnvelope)**:
+   - Phân tách miền ký (Domain Separation): PARALLEL_DELIVERY_REVIEW_ENVELOPE_V1 và PARALLEL_DELIVERY_INTEGRATION_ENVELOPE_V1.
+   - Chuẩn hóa chuỗi dữ liệu (Canonical Serialization): Tuân thủ RFC 8785, sắp xếp key nhất quán, loại bỏ trường signature trước khi ký và băm.
+   - Gắn chặt ngữ cảnh nhiệm vụ: Bắt buộc chứa đầy đủ delivery_task_id, 
+eview_dispatch_id, commit SHA ứng viên đầy đủ (40 ký tự hex), base commit, route attestation (cx/gpt-5.6-sol), harness (Claude Code), số ngẫu nhiên dùng một lần (
+once), thời gian phát hành/hết hạn (issued_at, expires_at), và mã rào monotonic (encing_token).
 
-3. **S? ??ng k? Ti?u th? B?n v?ng (DurableConsumptionRegistry)**:
-   - L?u tr? nguy?n t? (atomic persistence) qua SQLite v? kh?a lu?ng.
-   - Ch?ng t?n c?ng ph?t l?i (Replay Protection): B?t bu?c m?i envelope v? m?i nonce l? duy nh?t tr?n to?n h? th?ng; t?i s? d?ng l?p t?c b? t? ch?i v?i l?i `ReplayAttackError`.
-   - Gi? v?ng tr?ng th?i qua kh?i ??ng l?i (Durability across restart): D? li?u ti?u th? v? s? fencing t?n t?i b?n v?ng tr?n ??a, ng?n ch?n vi?c restart ti?n tr?nh ?? l?ch lu?t.
-   - Monotonic Fencing Token: B? ??m fencing token cho t?ng task ph?i t?ng ??n ?i?u; m?i token c? h?n ho?c b?ng gi? tr? ?? ghi nh?n ??u b? t? ch?i v?i `FencingViolationError`.
-   - C?a s? th?i gian h?p l?: Phong b? ?? h?t h?n ho?c ph?t h?nh v??t tr??c th?i gian th?c (> 30s) ??u b? t? ch?i fail-closed.
+3. **Sổ đăng ký Tiêu thụ Bền vững (DurableConsumptionRegistry)**:
+   - Lưu trữ nguyên tử (atomic persistence) qua SQLite và khóa luồng.
+   - Tiêu thụ phong bì tích hợp nguyên tử (check_and_consume_integration): TrustedIntegrationConsumer.consume_integration_envelope bắt buộc xác thực chữ ký và tiêu thụ nguyên tử qua DurableConsumptionRegistry.check_and_consume_integration, ngăn chặn tình trạng phong bì đã ký được chấp nhận nhiều lần mà không tiêu thụ.
+   - Chống tấn công phát lại (Replay Protection): Bắt buộc mỗi envelope_id và mỗi 
+once là duy nhất trên toàn hệ thống; tái sử dụng lập tức bị từ chối với lỗi ReplayAttackError.
+   - Giữ vững trạng thái qua khởi động lại (Durability across restart): Dữ liệu tiêu thụ và số fencing tồn tại bền vững trên đĩa SQLite, ngăn chặn việc restart tiến trình để lách luật.
+   - Monotonic Fencing Token: Bộ đếm fencing token cho từng task và từng domain phải tăng đơn điệu; mọi token cũ hơn hoặc bằng giá trị đã ghi nhận đều bị từ chối với FencingViolationError.
+   - Cửa sổ thời gian hợp lệ: Phong bì đã hết hạn (expires_at < current_time) hoặc phát hành vượt trước thời gian thực (> 30s) đều bị từ chối fail-closed.
+   - Ràng buộc định danh: Bắt buộc khớp chính xác giữa nội dung phong bì với expected_task_id, expected_candidate, và expected_base.
 
-4. **Lo?i b? Ho?n to?n Quy?n h?n C? trong Ti?n tr?nh (In-Process Deprecation)**:
-   - `ReviewerHostIssuer`, `ReviewerHostHandoff`, v? `ReviewerSessionBoundary` ch? c?n vai tr? DTO m? ph?ng cho backward compatibility c?a test fixtures, kh?ng mang b?t k? th?m quy?n b?o m?t n?o trong m?i tr??ng production.
-   - H?m kh?i t?o c?a `ReviewerHostIssuer` ???c b?o v? b?ng private sentinel token `_SENTINEL_HOST_TOKEN`, ng?n ch?n caller t?y ? t?o issuer trong ti?n tr?nh.
+4. **Loại bỏ Hoàn toàn Quyền hạn Cũ trong Tiến trình (In-Process Deprecation)**:
+   - ReviewerHostIssuer, ReviewerHostHandoff, và ReviewerSessionBoundary chỉ còn vai trò DTO mô phỏng cho backward compatibility của test fixtures, không mang bất kỳ thẩm quyền bảo mật nào trong môi trường production.
+   - Hàm khởi tạo của ReviewerHostIssuer và KeyStoreHostIssuer được bảo vệ bằng private sentinel token _SENTINEL_HOST_TOKEN, ngăn chặn caller tùy ý tạo issuer trong tiến trình.
 
-### 8.4. B?ng ??i chi?u ??ng to?n b? h? l?i (Root Cause Closure Matrix)
+### 8.4. Bảng đối chiếu đóng toàn bộ họ lỗi (Root Cause Closure Matrix)
 
-| H? l?i b?o m?t (Vulnerability Class) | Bi?u hi?n r?i ro c? (Observed Anti-Pattern) | Gi?i ph?p Ki?n tr?c Out-of-Process (Root Cause Remediation) | Tr?ng th?i ki?m ch?ng (Verification Status) |
+| Họ lỗi bảo mật (Vulnerability Class) | Biểu hiện rủi ro cũ (Observed Anti-Pattern) | Giải pháp Kiến trúc Out-of-Process (Root Cause Remediation) | Trạng thái kiểm chứng (Verification Status) |
 | :--- | :--- | :--- | :--- |
-| **1. Identity Bootstrap** | Worker t? t?o issuer capability, kh?i t?o `ReviewerHostIssuer`, ho?c import fixture ?? t? c?p quy?n review | Private sentinel token c?m t?o in-process; th?m quy?n ch? ???c c?p qua ch? k? Ed25519 t? trusted keypair ??c l?p | **CLOSED** (`test_01`, `test_02`) |
-| **2. Key Custody** | HMAC secret n?m trong bi?n m?i tr??ng ho?c b? nh? ti?n tr?nh worker, worker ??c ???c secret ?? t? k? | Kh?a k? b?t ??i x?ng (Ed25519 private key) n?m ngo?i t?m ki?m so?t c?a worker; candidate ch? ch?a pinned public keys | **CLOSED** (`test_03`, `test_04`) |
-| **3. Verifier Ownership** | To?n b? verifier ch?y trong c?ng Python runtime c?a candidate; worker c? th? monkey-patch class ho?c bypass logic ki?m tra | Ph?n t?ch vai tr? r? r?ng: worker ch? n?p artifact/request; `TrustedReviewConsumer` v? `TrustedIntegrationConsumer` x?c minh d?a tr?n pinned keys ??c l?p | **CLOSED** (`test_02`, `test_09`) |
-| **4. Replay & Fencing** | Worker g?i l?i k?t qu? review c? c?a task kh?c, d?ng l?i dispatch, ho?c restart ti?n tr?nh ?? x?a b? nh? cache | `DurableConsumptionRegistry` l?u SQLite b?n v?ng, ki?m tra nonce duy nh?t, monotonic fencing token t?ng d?n, temporal expiry window | **CLOSED** (`test_05`, `test_06`, `test_07`) |
-| **5. Merge Authority** | Worker t? g?i transition sang `integrated` ho?c t? merge m? ngu?n v?o nh?nh ch?nh | Ch? `TrustedIntegrationConsumer` v?i phong b? h?p l? m?i cho ph?p ho?n t?t integration gate; worker ch? c? quy?n push feature branch | **CLOSED** (`test_08`, `test_10`) |
+| **1. Identity Bootstrap** | Worker tự tạo issuer capability, khởi tạo ReviewerHostIssuer, hoặc import fixture để tự cấp quyền review | Private sentinel token cấm tạo in-process; thẩm quyền chỉ được cấp qua chữ ký Ed25519 từ trusted keypair độc lập | **CLOSED** (	est_01, 	est_02) |
+| **2. Key Custody & Provisioning** | Worker tự đăng ký public key tùy ý vào TrustedKeyStore.register_pinned_public_key, tự sinh keypair Ed25519 để ký | Key custody chuyển sang host boundary; cấp phát bất biến qua KeyStoreHostHandoff và KeyStoreHostIssuerCapability; caller in-process cấm đăng ký/sửa/thay thế khóa (MappingProxyType) | **CLOSED** (	est_03, 	est_04, 	est_11) |
+| **3. Verifier Ownership** | Toàn bộ verifier chạy trong cùng Python runtime của candidate; worker có thể monkey-patch class hoặc bypass logic kiểm tra | Phân tách vai trò rõ ràng: worker chỉ nộp artifact/request; TrustedReviewConsumer và TrustedIntegrationConsumer xác minh dựa trên pinned keys độc lập | **CLOSED** (	est_02, 	est_09) |
+| **4. Replay & Durable Consumption** | Worker gửi lại kết quả review/integration cũ, dùng lại nonce, hoặc SignedIntegrationEnvelope không được ghi nhận tiêu thụ | DurableConsumptionRegistry lưu SQLite bền vững, check_and_consume_integration nguyên tử kiểm tra replay, nonce single-use, monotonic fencing token, temporal freshness | **CLOSED** (	est_05, 	est_06, 	est_07, 	est_12, 	est_13, 	est_14) |
+| **5. Merge Authority** | Worker tự gọi transition sang integrated hoặc tự merge mã nguồn vào nhánh chính | Chỉ TrustedIntegrationConsumer với phong bì hợp lệ mới cho phép hoàn tất integration gate; worker chỉ có quyền push feature branch | **CLOSED** (	est_08, 	est_10) |
 
-### 8.5. Kh?a k?ch ho?t Production & Danh m?c ?i?u ki?n ti?n quy?t (Prerequisites & Runbook)
+### 8.5. Khóa kích hoạt Production & Danh mục điều kiện tiên quyết (Prerequisites & Runbook)
 
-H? th?ng ph?n ??nh r?ch r?i 3 tr?ng th?i c?a ki?n tr?c:
-1. `ARCHITECTURE_IMPLEMENTED`: To?n b? l?p ki?n tr?c, data contract, validator, v? signed envelope ?? ???c hi?n th?c h?a ??y ?? trong code.
-2. `REFERENCE_TESTED`: To?n b? 10/10 probe test negative/positive, m? ph?ng attacker monkey-patching, restart durability, v? fresh subprocess ?? v??t qua 100%.
-3. `PRODUCTION_ACTIVATION_BLOCKED`: Tr?ng th?i k?ch ho?t production b? **KH?A CH?T (FAIL-CLOSED)** cho ??n khi to?n b? 4 ?i?u ki?n h? t?ng b?n d??i ???c cung c?p th?c t?.
+Hệ thống phân định rạch ròi 3 trạng thái của kiến trúc:
+1. ARCHITECTURE_IMPLEMENTED: Toàn bộ lớp kiến trúc, data contract, validator, và signed envelope đã được hiện thực hóa đầy đủ trong code.
+2. REFERENCE_TESTED: Toàn bộ 14/14 probe test negative/positive trong TestSolTrustBoundaryRootCauseRemediation (RED evidence, monkey-patching, chữ ký Ed25519, thu hồi khóa, replay, restart SQLite, temporal validity, production gate fail-closed, fresh subprocess, positive control full lifecycle, key custody bootstrap prevention, integration durable consumption, restart durability, và concurrency race) đã vượt qua 100%.
+3. PRODUCTION_ACTIVATION_BLOCKED: Trạng thái kích hoạt production bị **KHÓA CHẶT (FAIL-CLOSED)** cho đến khi toàn bộ 4 điều kiện hạ tầng bên dưới được cung cấp thực tế.
 
-#### Danh m?c ?i?u ki?n ti?n quy?t h? t?ng b?t bu?c (Infrastructure Prerequisites Inventory):
-- `[ ]` **OS_USER_ISOLATION**: Thi?t l?p t?i kho?n d?ch v? h? ?i?u h?nh ri?ng bi?t (`pd_reviewer_service`, `pd_integration_service`) ho?n to?n ??c l?p v?i t?i kho?n ng??i d?ng c?a worker.
-- `[ ]` **PRIVATE_KEY_ACL_RESTRICTION**: Thi?t l?p quy?n truy c?p t?p tin (NTFS ACL / POSIX permission) ?? ch? t?i kho?n d?ch v? ??c l?p m?i c? quy?n ??c private key Ed25519.
-- `[ ]` **DEDICATED_RUNNER**: Thi?t l?p m?y ch? CI/CD runner bi?t l?p ch?y ngo?i m?y c?a developer/worker ?? th?c thi c?c gate t?ch h?p.
-- `[ ]` **PROTECTED_BRANCH_POLICY**: C?u h?nh quy t?c b?o v? nh?nh ch?nh tr?n Git remote (ch?n push tr?c ti?p, b?t bu?c ch? k? m?t m?, b?t bu?c gate ki?m duy?t ngo?i ti?n tr?nh).
+#### Danh mục điều kiện tiên quyết hạ tầng bắt buộc (Infrastructure Prerequisites Inventory):
+- [ ] **OS_USER_ISOLATION**: Thiết lập tài khoản dịch vụ hệ điều hành riêng biệt (pd_reviewer_service, pd_integration_service) hoàn toàn độc lập với tài khoản người dùng của worker.
+- [ ] **PRIVATE_KEY_ACL_RESTRICTION**: Thiết lập quyền truy cập tệp tin (NTFS ACL / POSIX permission) để chỉ tài khoản dịch vụ độc lập mới có quyền đọc private key Ed25519.
+- [ ] **DEDICATED_RUNNER**: Thiết lập máy chủ CI/CD runner biệt lập chạy ngoài máy của developer/worker để thực thi các gate tích hợp.
+- [ ] **PROTECTED_BRANCH_POLICY**: Cấu hình quy tắc bảo vệ nhánh chính trên Git remote (chặn push trực tiếp, bắt buộc chữ ký mật mã, bắt buộc gate kiểm duyệt ngoài tiến trình).
 
-*Runbook k?ch ho?t*: Khi v? ch? khi 4 ?i?u ki?n ti?n quy?t tr?n ???c h? t?ng c?p ph?t v? nghi?m thu b?i m?t user checkpoint ri?ng bi?t, c? `ProductionActivationGate.STATUS` m?i ???c ph?p chuy?n t? `PRODUCTION_ACTIVATION_BLOCKED` sang `PRODUCTION_ACTIVE`.
+*Runbook kích hoạt*: Khi và chỉ khi 4 điều kiện tiên quyết trên được hạ tầng cấp phát và nghiệm thu bởi một user checkpoint riêng biệt, cờ ProductionActivationGate.STATUS mới được phép chuyển từ PRODUCTION_ACTIVATION_BLOCKED sang PRODUCTION_ACTIVE.
 
 ---
 
 ## 9. STOP conditions chung
 
-D?ng ngay task v? descendant khi:
+Dừng ngay task và descendant khi:
 
-- c? nguy c? m?t output ch?a sync;
-- secret/cross-workspace data b? l?;
-- path/URL kh?ng th? validate;
-- contract owner/revision kh?ng r?;
-- migration/rollback kh?ng an to?n;
-- external outcome unknown ch?a reconcile;
+- có nguy cơ mất output chưa sync;
+- secret/cross-workspace data bị lộ;
+- path/URL không thể validate;
+- contract owner/revision không rõ;
+- migration/rollback không an toàn;
+- external outcome unknown chưa reconcile;
 - required runtime/provider unavailable;
-- test oracle kh?ng ph?n bi?t ???c l?i;
-- evidence provenance/hash kh?ng tin c?y;
-- scope c?n authority m?i;
-- mock l? b?ng ch?ng duy nh?t cho external claim;
-- ranh gi?i tin c?y out-of-process b? can thi?p tr?i ph?p ho?c c? t?nh bypass `PRODUCTION_ACTIVATION_BLOCKED`;
-- harness l?m s?p namespace c?ng c? (`functions.exec` -> `functions`) ho?c th?t b?i tool-execution smoke test.
+- test oracle không phân biệt được lỗi;
+- evidence provenance/hash không tin cậy;
+- scope cần authority mới;
+- mock là bằng chứng duy nhất cho external claim;
+- ranh giới tin cậy out-of-process bị can thiệp trái phép hoặc cố tình bypass PRODUCTION_ACTIVATION_BLOCKED;
+- harness làm sụp namespace công cụ (unctions.exec -> unctions) hoặc thất bại tool-execution smoke test.
 
-Ghi STOP evidence v? h?i/re-plan; kh?ng ti?p t?c r?i s?a sau.
+Ghi STOP evidence và hỏi/re-plan; không tiếp tục rồi sửa sau.

@@ -91,6 +91,8 @@ Validator phải từ chối:
 - chuyển trạng thái tác vụ vi phạm ma trận chuyển đổi hợp lệ.
 - chuyển trạng thái sang `merge_queued` hoặc `integrated` không có phong bì ký số bất đối xứng xác thực (`SignedReviewEnvelope` / `SignedIntegrationEnvelope`);
 - nỗ lực kích hoạt production mode khi `ProductionActivationGate` đang bị khóa `PRODUCTION_ACTIVATION_BLOCKED`;
+- đăng ký hoặc sửa đổi pinned public key trong TrustedKeyStore từ tiến trình candidate worker mà không có KeyStoreHostHandoff được host xác thực;
+- tiêu thụ SignedIntegrationEnvelope mà không qua giao dịch nguyên tử DurableConsumptionRegistry.check_and_consume_integration (chặn replay, nonce reuse, stale fencing, quá hạn);
 
 ## 5. Open thresholds giữ nguyên
 

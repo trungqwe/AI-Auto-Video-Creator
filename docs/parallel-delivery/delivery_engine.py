@@ -38,6 +38,7 @@ except ImportError:
     ed25519 = None  # type: ignore
     InvalidSignature = None  # type: ignore
 from collections.abc import Mapping
+from types import MappingProxyType
 
 try:
     import yaml
@@ -3285,24 +3286,415 @@ class SignedIntegrationEnvelope:
         )
 
 
+@dataclass(frozen=True)
+class KeyStoreHostIssuerCapability:
+    """Unforgeable cryptographic capability issued exclusively by KeyStoreHostIssuer.
+    Confers authority to provision immutable pinned keys in TrustedKeyStore.
+    """
+    capability_id: str
+    issuer_name: str
+    authority_id: int
+    created_at: float
+    signature: str
+    role: str = "KeyStoreHostIssuer"
+    handoff_id: str = ""
+
+    def __post_init__(self) -> None:
+        for field_name in ("capability_id", "issuer_name", "signature"):
+            val = getattr(self, field_name, None)
+            if not isinstance(val, str) or not val.strip() or val != val.strip():
+                raise ProtocolViolationError(
+                    f"KeyStoreHostIssuerCapability field {field_name!r} must be non-empty unpadded string"
+                )
+        if self.role != "KeyStoreHostIssuer":
+            raise ProtocolViolationError(
+                f"KeyStoreHostIssuerCapability role must be 'KeyStoreHostIssuer'; got {self.role!r}"
+            )
+        if not isinstance(self.created_at, (int, float)) or self.created_at < 0:
+            raise ProtocolViolationError(
+                "KeyStoreHostIssuerCapability created_at must be non-negative int or float"
+            )
+        if self.handoff_id:
+            if not isinstance(self.handoff_id, str) or not self.handoff_id.strip() or self.handoff_id != self.handoff_id.strip():
+                raise ProtocolViolationError(
+                    "KeyStoreHostIssuerCapability handoff_id must be non-empty unpadded string when provided"
+                )
+
+
+class KeyStoreHostIssuer:
+    """Host-owned issuer capable of minting KeyStoreHostHandoff tokens.
+    Operates outside the candidate worker boundary with a private host secret.
+    Direct construction by in-process caller without sentinel token is strictly forbidden fail-closed.
+    """
+    _instance: Optional['KeyStoreHostIssuer'] = None
+    _lock = threading.RLock()
+
+    def __init__(
+        self,
+        host_secret: Optional[str] = None,
+        _internal_token: Optional[Any] = None,
+    ) -> None:
+        if _internal_token is not _SENTINEL_HOST_TOKEN:
+            raise ProtocolViolationError(
+                "Direct construction of KeyStoreHostIssuer by in-process caller is forbidden fail-closed; "
+                "host keystore issuer authority is managed exclusively by trusted host boundary"
+            )
+        self._secret: bytes = (
+            host_secret.strip().encode("utf-8")
+            if (host_secret and isinstance(host_secret, str))
+            else secrets.token_bytes(32)
+        )
+        self._issued_capabilities: Set[str] = set()
+        self._consumed_capabilities: Set[str] = set()
+        self._minted = False
+        self._lock = threading.RLock()
+
+    @classmethod
+    def get_default_host_issuer(cls) -> 'KeyStoreHostIssuer':
+        """Retrieve simulated host issuer for backward-compatible test fixtures / harness.
+        Confers ZERO production authority; cannot bypass TrustedKeyStore or ProductionActivationGate.
+        """
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = cls(_internal_token=_SENTINEL_HOST_TOKEN)
+            return cls._instance
+
+    @classmethod
+    def _reset_for_testing(cls, _internal_token: Optional[Any] = None) -> None:
+        """Reset the singleton instance for isolated test executions."""
+        if _internal_token is not _SENTINEL_HOST_TOKEN:
+            raise ProtocolViolationError("Direct reset of KeyStoreHostIssuer by in-process caller is forbidden fail-closed")
+        with cls._lock:
+            cls._instance = None
+
+    def _sign_issuer_capability(
+        self, cap_id: str, issuer_name: str, created_at: float, handoff_id: str
+    ) -> str:
+        payload = f"KEYSTORE_ISSUER_CAP:{cap_id}:{issuer_name}:{id(self)}:{created_at}:{handoff_id}".encode("utf-8")
+        return hmac.new(self._secret, payload, hashlib.sha256).hexdigest()
+
+    def issue_handoff(
+        self,
+        pinned_keys: Mapping[str, bytes],
+        issuer_name: str = "trusted_host",
+    ) -> 'KeyStoreHostHandoff':
+        """Mint an authentic KeyStoreHostHandoff bound to an unforgeable issuer capability.
+        Single-use: cannot mint multiple handoffs fail-closed.
+        """
+        if not isinstance(pinned_keys, (dict, Mapping)) or not pinned_keys:
+            raise ProtocolViolationError("KeyStore pinned_keys must be a non-empty mapping of key_id -> raw public bytes")
+        clean_issuer = issuer_name.strip() if isinstance(issuer_name, str) else ""
+        if not clean_issuer:
+            raise ProtocolViolationError("issuer_name must be non-empty string")
+
+        validated_keys: Dict[str, bytes] = {}
+        for kid, kbytes in pinned_keys.items():
+            clean_kid = kid.strip() if isinstance(kid, str) else ""
+            if not clean_kid or clean_kid != kid:
+                raise ProtocolViolationError(f"key_id {kid!r} must be non-empty unpadded string")
+            if not isinstance(kbytes, bytes) or len(kbytes) != 32:
+                raise ProtocolViolationError(f"pinned key {clean_kid!r} must be exactly 32 raw Ed25519 public bytes")
+            validated_keys[clean_kid] = kbytes
+
+        with self._lock:
+            if self._minted:
+                raise ProtocolViolationError(
+                    "KeyStoreHostIssuer has already minted a handoff authority; "
+                    "single-use host issuer cannot mint multiple handoffs fail-closed"
+                )
+            self._minted = True
+            cap_id = f"kstore_cap_{uuid.uuid4().hex}"
+            handoff_id = f"kstore_ho_{uuid.uuid4().hex}"
+            created_at = time.time()
+            sig = self._sign_issuer_capability(cap_id, clean_issuer, created_at, handoff_id)
+            cap = KeyStoreHostIssuerCapability(
+                capability_id=cap_id,
+                issuer_name=clean_issuer,
+                authority_id=id(self),
+                created_at=created_at,
+                signature=sig,
+                role="KeyStoreHostIssuer",
+                handoff_id=handoff_id,
+            )
+            self._issued_capabilities.add(cap_id)
+            return KeyStoreHostHandoff._create_authenticated(
+                pinned_keys=validated_keys,
+                issuer_capability=cap,
+                handoff_id=handoff_id,
+                issuer=self,
+            )
+
+    def issue_isolated_keystore(self, pinned_keys: Mapping[str, bytes]) -> 'TrustedKeyStore':
+        """Mint an isolated immutable TrustedKeyStore for isolated consumer tests."""
+        validated_keys: Dict[str, bytes] = {}
+        for kid, kbytes in pinned_keys.items():
+            clean_kid = kid.strip() if isinstance(kid, str) else ""
+            if not clean_kid or clean_kid != kid:
+                raise ProtocolViolationError(f"key_id {kid!r} must be non-empty unpadded string")
+            if not isinstance(kbytes, bytes) or len(kbytes) != 32:
+                raise ProtocolViolationError(f"pinned key {clean_kid!r} must be exactly 32 raw Ed25519 public bytes")
+            validated_keys[clean_kid] = kbytes
+        return TrustedKeyStore(pinned_keys=validated_keys, _internal_token=_SENTINEL_HOST_TOKEN)
+
+    def verify_and_consume_capability(
+        self, cap: KeyStoreHostIssuerCapability, handoff_id: str
+    ) -> None:
+        """Verify provenance and unforgeable cryptographic signature of issuer capability, and consume it."""
+        if cap is None or not isinstance(cap, KeyStoreHostIssuerCapability):
+            raise ProtocolViolationError("Expected valid KeyStoreHostIssuerCapability")
+        if cap.authority_id != id(self):
+            raise ProtocolViolationError(
+                "KeyStoreHostIssuerCapability authority_id mismatch; foreign issuer rejected fail-closed"
+            )
+        expected_sig = self._sign_issuer_capability(
+            cap.capability_id, cap.issuer_name, cap.created_at, handoff_id
+        )
+        if not hmac.compare_digest(cap.signature, expected_sig):
+            raise ProtocolViolationError(
+                "KeyStoreHostIssuerCapability cryptographic signature mismatch; forged provenance rejected fail-closed"
+            )
+        if cap.handoff_id != handoff_id:
+            raise ProtocolViolationError("KeyStoreHostIssuerCapability handoff_id binding mismatch")
+
+        with self._lock:
+            if cap.capability_id in self._consumed_capabilities:
+                raise ProtocolViolationError(
+                    f"KeyStoreHostIssuerCapability {cap.capability_id!r} has already been consumed"
+                )
+            if cap.capability_id not in self._issued_capabilities:
+                raise ProtocolViolationError(
+                    f"KeyStoreHostIssuerCapability {cap.capability_id!r} was not issued by this host authority"
+                )
+            self._consumed_capabilities.add(cap.capability_id)
+
+
+class KeyStoreHostHandoff:
+    """Opaque host-owned handoff authority conferring TrustedKeyStore provisioning.
+    Caller-selected keys and direct in-process construction are forbidden fail-closed.
+    Ordinary in-process callers cannot construct, subclass, read, or set handoff authority.
+    Creation of handoff authority resides exclusively in trusted external host boundary
+    via unforgeable provenance / issuer capability.
+    """
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        raise ProtocolViolationError(
+            "Caller-selected or direct construction of KeyStoreHostHandoff by in-process caller is forbidden fail-closed; "
+            "keystore must be provisioned immutably from trusted external host handoff authority"
+        )
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        raise ProtocolViolationError(
+            f"Subclassing KeyStoreHostHandoff in module {cls.__module__!r} is strictly forbidden fail-closed; "
+            "handoff authority can only be created by trusted external host boundary via unforgeable issuer capability"
+        )
+
+    @classmethod
+    def _create_authenticated(
+        cls,
+        pinned_keys: Dict[str, bytes],
+        issuer_capability: KeyStoreHostIssuerCapability,
+        handoff_id: str,
+        issuer: KeyStoreHostIssuer,
+    ) -> 'KeyStoreHostHandoff':
+        instance = object.__new__(cls)
+        object.__setattr__(instance, "_pinned_keys", MappingProxyType(dict(pinned_keys)))
+        object.__setattr__(instance, "_issuer_capability", issuer_capability)
+        object.__setattr__(instance, "_handoff_id", handoff_id)
+        object.__setattr__(instance, "_issuer", issuer)
+        object.__setattr__(instance, "_consumed", False)
+        object.__setattr__(instance, "_lock", threading.Lock())
+        object.__setattr__(instance, "_initialized", True)
+        return instance
+
+    @property
+    def issuer_capability(self) -> Optional[KeyStoreHostIssuerCapability]:
+        return getattr(self, "_issuer_capability", None)
+
+    @property
+    def pinned_keys(self) -> None:
+        raise AttributeError("Host KeyStore pinned keys are opaque and cannot be inspected or altered through handoff")
+
+    def __getattr__(self, name: str) -> Any:
+        if "key" in name.lower() or "secret" in name.lower():
+            raise AttributeError("Host KeyStore data is opaque and cannot be read by in-process callers")
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if getattr(self, "_initialized", False):
+            raise AttributeError("Host keystore handoff is immutable; setting attributes forbidden fail-closed")
+        if "key" in name.lower() or "secret" in name.lower():
+            raise AttributeError("Setting keys on KeyStoreHostHandoff is strictly forbidden fail-closed")
+        super().__setattr__(name, value)
+
+    def _consume_for_provisioning(self, target_cls: Any) -> Dict[str, bytes]:
+        if target_cls is not TrustedKeyStore:
+            raise ProtocolViolationError(
+                "KeyStoreHostHandoff can only be consumed by TrustedKeyStore fail-closed"
+            )
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            raise ProtocolViolationError(
+                "Uninitialized KeyStoreHostHandoff cannot be consumed fail-closed"
+            )
+        with lock:
+            if getattr(self, "_consumed", False):
+                raise ProtocolViolationError(
+                    "Host keystore handoff has already been consumed; single-use handoff cannot be reused"
+                )
+            object.__setattr__(self, "_consumed", True)
+            keys = getattr(self, "_pinned_keys", None)
+            if keys is None:
+                raise ProtocolViolationError("Host keystore keys not found or already consumed")
+            object.__setattr__(self, "_pinned_keys", None)
+            return dict(keys)
+
+
 class TrustedKeyStore:
     """Out-of-process public key custody registry.
     Maintains pinned public keys for trusted authorities (ReviewerLead, IntegrationGatekeeper, ControlAuthority).
+    Provisioned immutably from trusted external host handoff authority; in-process callers cannot
+    register, modify, or replace key authorities.
     Private signing keys are NEVER stored here or accessible to the candidate worker process.
     """
-    def __init__(self, pinned_keys: Optional[Dict[str, bytes]] = None) -> None:
-        self._pinned_keys: Dict[str, bytes] = dict(pinned_keys or {})
+    _default: Optional['TrustedKeyStore'] = None
+    _lock = threading.RLock()
+
+    def __init__(
+        self,
+        pinned_keys: Optional[Mapping[str, bytes]] = None,
+        _internal_token: Optional[Any] = None,
+    ) -> None:
+        if pinned_keys is not None and _internal_token is not _SENTINEL_HOST_TOKEN:
+            raise ProtocolViolationError(
+                "Direct instantiation of TrustedKeyStore with custom pinned keys is forbidden fail-closed; "
+                "key custody must be provisioned immutably via out-of-process KeyStoreHostHandoff"
+            )
+        validated: Dict[str, bytes] = {}
+        if pinned_keys:
+            for kid, kbytes in pinned_keys.items():
+                clean_kid = kid.strip() if isinstance(kid, str) else ""
+                if not clean_kid:
+                    raise ProtocolViolationError("key_id cannot be blank")
+                if not isinstance(kbytes, bytes) or len(kbytes) != 32:
+                    raise ProtocolViolationError("pinned key must be exactly 32 raw Ed25519 bytes")
+                validated[clean_kid] = kbytes
+
+        self._pinned_keys: Mapping[str, bytes] = MappingProxyType(validated)
         self._revoked_keys: Set[str] = set()
         self._lock = threading.RLock()
 
-    def register_pinned_public_key(self, key_id: str, public_key_bytes: bytes) -> None:
+    @classmethod
+    def provision_from_host(
+        cls,
+        authority: Optional[KeyStoreHostHandoff] = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> 'TrustedKeyStore':
+        """Provision an immutable TrustedKeyStore from trusted external host handoff authority.
+        Once provisioned, pinned keys cannot be selected or replaced by in-process callers.
+        """
+        if args or kwargs or authority is None or not isinstance(authority, KeyStoreHostHandoff):
+            raise ProtocolViolationError(
+                "Caller-selected keystore provisioning forbidden; "
+                "keystore must be provisioned immutably from trusted external host handoff authority via unforgeable issuer capability"
+            )
+        if type(authority) is not KeyStoreHostHandoff:
+            raise ProtocolViolationError(
+                f"KeyStoreHostHandoff subclass in module {authority.__class__.__module__!r} is strictly forbidden fail-closed; "
+                "authority must originate from trusted external host boundary with unforgeable issuer capability"
+            )
+        issuer_cap = getattr(authority, "issuer_capability", None)
+        if issuer_cap is None or not isinstance(issuer_cap, KeyStoreHostIssuerCapability):
+            raise ProtocolViolationError(
+                f"KeyStoreHostHandoff from module {authority.__class__.__module__!r} missing required unforgeable issuer capability; "
+                "unauthenticated handoff is forbidden fail-closed"
+            )
+        issuer = getattr(authority, "_issuer", None)
+        if issuer is None or not isinstance(issuer, KeyStoreHostIssuer):
+            raise ProtocolViolationError(
+                "KeyStoreHostHandoff issuer is not a trusted host issuer authority; foreign provenance rejected fail-closed"
+            )
+        handoff_id = getattr(authority, "_handoff_id", "")
+        if not handoff_id:
+            raise ProtocolViolationError("KeyStoreHostHandoff missing handoff_id fail-closed")
+
+        issuer.verify_and_consume_capability(issuer_cap, handoff_id)
+
+        with cls._lock:
+            if cls._default is not None and len(cls._default._pinned_keys) > 0:
+                raise ProtocolViolationError(
+                    "TrustedKeyStore already provisioned with pinned keys; replacement or reprovisioning forbidden fail-closed"
+                )
+            raw_keys = authority._consume_for_provisioning(cls)
+            keystore = cls(pinned_keys=raw_keys, _internal_token=_SENTINEL_HOST_TOKEN)
+            cls._default = keystore
+            return keystore
+
+    @classmethod
+    def get_default(cls, *args: Any, **kwargs: Any) -> 'TrustedKeyStore':
+        """Retrieve the immutable host-provisioned default TrustedKeyStore."""
+        if args or kwargs:
+            raise ProtocolViolationError(
+                "Cannot mutate pinned keys of already initialized TrustedKeyStore; "
+                "singleton key replacement forbidden fail-closed"
+            )
+        with cls._lock:
+            if cls._default is None:
+                cls._default = cls()
+            return cls._default
+
+    @classmethod
+    def _reset_for_testing(cls, _internal_token: Optional[Any] = None) -> None:
+        """Reset the singleton instance for isolated test executions."""
+        if _internal_token is not _SENTINEL_HOST_TOKEN:
+            raise ProtocolViolationError("Direct reset of TrustedKeyStore by in-process caller is forbidden fail-closed")
+        with cls._lock:
+            cls._default = None
+
+    def register_pinned_public_key(
+        self,
+        key_id: str,
+        public_key_bytes: bytes,
+        authority: Optional[Any] = None,
+    ) -> None:
+        """Register a pinned public key.
+        Direct in-process invocation by candidate worker is strictly forbidden fail-closed.
+        Key custody must be provisioned immutably via out-of-process host authority.
+        Replacing an existing pinned key is strictly forbidden fail-closed.
+        """
+        if authority is None:
+            raise ProtocolViolationError(
+                "In-process candidate registration of pinned public keys is strictly forbidden fail-closed; "
+                "key custody must be provisioned immutably via out-of-process KeyStoreHostHandoff"
+            )
+        if not isinstance(authority, (KeyStoreHostHandoff, KeyStoreHostIssuerCapability)):
+            raise ProtocolViolationError(
+                "Invalid authority for pinned key registration; must be authentic KeyStoreHostHandoff fail-closed"
+            )
+        if isinstance(authority, KeyStoreHostHandoff):
+            issuer_cap = getattr(authority, "issuer_capability", None)
+            if issuer_cap is None:
+                raise ProtocolViolationError("KeyStoreHostHandoff missing required issuer capability fail-closed")
+            issuer = getattr(authority, "_issuer", None)
+            if issuer is None or not isinstance(issuer, KeyStoreHostIssuer):
+                raise ProtocolViolationError("Foreign host issuer rejected fail-closed")
+            handoff_id = getattr(authority, "_handoff_id", "")
+            issuer.verify_and_consume_capability(issuer_cap, handoff_id)
+
         clean_kid = key_id.strip() if isinstance(key_id, str) else ""
         if not clean_kid:
             raise ProtocolViolationError("key_id cannot be blank")
         if not isinstance(public_key_bytes, bytes) or len(public_key_bytes) != 32:
             raise ProtocolViolationError("public_key_bytes must be exactly 32 raw Ed25519 bytes")
+
         with self._lock:
-            self._pinned_keys[clean_kid] = public_key_bytes
+            if clean_kid in self._pinned_keys:
+                raise ProtocolViolationError(
+                    f"Cannot replace or mutate existing pinned key authority for {clean_kid!r} fail-closed"
+                )
+            current = dict(self._pinned_keys)
+            current[clean_kid] = public_key_bytes
+            self._pinned_keys = MappingProxyType(current)
 
     def revoke_key(self, key_id: str) -> None:
         clean_kid = key_id.strip() if isinstance(key_id, str) else ""
@@ -3366,13 +3758,22 @@ class DurableConsumptionRegistry:
                     nonce TEXT UNIQUE NOT NULL,
                     domain TEXT NOT NULL,
                     delivery_task_id TEXT NOT NULL,
-                    review_dispatch_id TEXT NOT NULL,
+                    review_dispatch_id TEXT NOT NULL DEFAULT '',
+                    base_commit TEXT NOT NULL DEFAULT '',
                     candidate_commit TEXT NOT NULL,
                     fencing_token INTEGER NOT NULL,
                     consumed_at REAL NOT NULL
                 )
                 """
             )
+            try:
+                conn.execute("ALTER TABLE consumed_envelopes ADD COLUMN review_dispatch_id TEXT NOT NULL DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE consumed_envelopes ADD COLUMN base_commit TEXT NOT NULL DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS task_fencing (
@@ -3421,18 +3822,21 @@ class DurableConsumptionRegistry:
                 f"Envelope candidate commit {candidate_commit!r} does not match expected {expected_candidate!r}"
             )
 
+        fencing_key = f"{delivery_task_id}:{domain}"
         with self._lock:
             if self._is_mem:
                 if envelope_id in self._mem_consumed:
                     raise ReplayAttackError(f"Envelope {envelope_id!r} has already been consumed fail-closed")
                 if nonce in self._mem_nonces:
                     raise ReplayAttackError(f"Nonce {nonce!r} has already been used fail-closed (replay attack)")
-                last_token = self._mem_fencing.get(delivery_task_id, 0)
+                last_token = self._mem_fencing.get(fencing_key)
+                if last_token is None:
+                    last_token = self._mem_fencing.get(delivery_task_id, 0)
                 if fencing_token <= last_token:
                     raise FencingViolationError(
                         f"Fencing token {fencing_token} is stale (last observed {last_token}) for task {delivery_task_id!r}"
                     )
-                self._mem_fencing[delivery_task_id] = fencing_token
+                self._mem_fencing[fencing_key] = fencing_token
                 self._mem_consumed.add(envelope_id)
                 self._mem_nonces.add(nonce)
             else:
@@ -3448,7 +3852,7 @@ class DurableConsumptionRegistry:
                         if cur.fetchone() is not None:
                             raise ReplayAttackError(f"Nonce {nonce!r} has already been used fail-closed (replay attack)")
 
-                        cur = conn.execute("SELECT last_fencing_token FROM task_fencing WHERE delivery_task_id = ?", (delivery_task_id,))
+                        cur = conn.execute("SELECT last_fencing_token FROM task_fencing WHERE delivery_task_id = ? OR delivery_task_id = ?", (fencing_key, delivery_task_id))
                         row = cur.fetchone()
                         if row is not None:
                             last_token = row[0]
@@ -3457,22 +3861,121 @@ class DurableConsumptionRegistry:
                                     f"Fencing token {fencing_token} is stale (last observed {last_token}) for task {delivery_task_id!r}"
                                 )
                             conn.execute(
-                                "UPDATE task_fencing SET last_fencing_token = ? WHERE delivery_task_id = ?",
-                                (fencing_token, delivery_task_id),
+                                "UPDATE task_fencing SET last_fencing_token = ? WHERE delivery_task_id = ? OR delivery_task_id = ?",
+                                (fencing_token, fencing_key, delivery_task_id),
                             )
                         else:
                             conn.execute(
                                 "INSERT INTO task_fencing (delivery_task_id, last_fencing_token) VALUES (?, ?)",
-                                (delivery_task_id, fencing_token),
+                                (fencing_key, fencing_token),
                             )
 
                         conn.execute(
                             """
                             INSERT INTO consumed_envelopes
-                            (envelope_id, nonce, domain, delivery_task_id, review_dispatch_id, candidate_commit, fencing_token, consumed_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            (envelope_id, nonce, domain, delivery_task_id, review_dispatch_id, base_commit, candidate_commit, fencing_token, consumed_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
-                            (envelope_id, nonce, domain, delivery_task_id, review_dispatch_id, candidate_commit, fencing_token, current_time),
+                            (envelope_id, nonce, domain, delivery_task_id, review_dispatch_id, "", candidate_commit, fencing_token, current_time),
+                        )
+                        conn.execute("COMMIT")
+                    except Exception:
+                        conn.execute("ROLLBACK")
+                        raise
+
+    def check_and_consume_integration(
+        self,
+        envelope_id: str,
+        nonce: str,
+        domain: str,
+        delivery_task_id: str,
+        candidate_commit: str,
+        base_commit: str,
+        fencing_token: int,
+        issued_at: float,
+        expires_at: float,
+        expected_task_id: str,
+        expected_candidate: str,
+        expected_base: str,
+        now: Optional[float] = None,
+    ) -> None:
+        current_time = time.time() if now is None else now
+        if current_time > expires_at:
+            raise ExpiredEnvelopeError(
+                f"Integration envelope {envelope_id} expired at {expires_at} (current {current_time}); fails closed"
+            )
+        if issued_at > current_time + 30.0:
+            raise EnvelopeVerificationError(
+                f"Integration envelope {envelope_id} issued in the future (issued {issued_at}, current {current_time}); fails closed"
+            )
+        if delivery_task_id != expected_task_id:
+            raise EnvelopeVerificationError(
+                f"Integration task mismatch: expected {expected_task_id!r}, got {delivery_task_id!r}"
+            )
+        if candidate_commit.lower() != expected_candidate.lower():
+            raise EnvelopeVerificationError(
+                f"Integration candidate commit mismatch: expected {expected_candidate!r}, got {candidate_commit!r}"
+            )
+        if base_commit.lower() != expected_base.lower():
+            raise EnvelopeVerificationError(
+                f"Integration base commit mismatch: expected {expected_base!r}, got {base_commit!r}"
+            )
+
+        fencing_key = f"{delivery_task_id}:{domain}"
+        with self._lock:
+            if self._is_mem:
+                if envelope_id in self._mem_consumed:
+                    raise ReplayAttackError(f"Integration envelope {envelope_id!r} has already been consumed fail-closed")
+                if nonce in self._mem_nonces:
+                    raise ReplayAttackError(f"Nonce {nonce!r} has already been used fail-closed (replay attack)")
+                last_token = self._mem_fencing.get(fencing_key)
+                if last_token is None:
+                    last_token = self._mem_fencing.get(delivery_task_id, 0)
+                if fencing_token <= last_token:
+                    raise FencingViolationError(
+                        f"Fencing token {fencing_token} is stale (last observed {last_token}) for task {delivery_task_id!r}"
+                    )
+                self._mem_fencing[fencing_key] = fencing_token
+                self._mem_consumed.add(envelope_id)
+                self._mem_nonces.add(nonce)
+            else:
+                with self._get_connection() as conn:
+                    conn.isolation_level = None
+                    conn.execute("BEGIN IMMEDIATE")
+                    try:
+                        cur = conn.execute("SELECT 1 FROM consumed_envelopes WHERE envelope_id = ?", (envelope_id,))
+                        if cur.fetchone() is not None:
+                            raise ReplayAttackError(f"Integration envelope {envelope_id!r} has already been consumed fail-closed")
+
+                        cur = conn.execute("SELECT 1 FROM consumed_envelopes WHERE nonce = ?", (nonce,))
+                        if cur.fetchone() is not None:
+                            raise ReplayAttackError(f"Nonce {nonce!r} has already been used fail-closed (replay attack)")
+
+                        cur = conn.execute("SELECT last_fencing_token FROM task_fencing WHERE delivery_task_id = ? OR delivery_task_id = ?", (fencing_key, delivery_task_id))
+                        row = cur.fetchone()
+                        if row is not None:
+                            last_token = row[0]
+                            if fencing_token <= last_token:
+                                raise FencingViolationError(
+                                    f"Fencing token {fencing_token} is stale (last observed {last_token}) for task {delivery_task_id!r}"
+                                )
+                            conn.execute(
+                                "UPDATE task_fencing SET last_fencing_token = ? WHERE delivery_task_id = ? OR delivery_task_id = ?",
+                                (fencing_token, fencing_key, delivery_task_id),
+                            )
+                        else:
+                            conn.execute(
+                                "INSERT INTO task_fencing (delivery_task_id, last_fencing_token) VALUES (?, ?)",
+                                (fencing_key, fencing_token),
+                            )
+
+                        conn.execute(
+                            """
+                            INSERT INTO consumed_envelopes
+                            (envelope_id, nonce, domain, delivery_task_id, review_dispatch_id, base_commit, candidate_commit, fencing_token, consumed_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (envelope_id, nonce, domain, delivery_task_id, "", base_commit, candidate_commit, fencing_token, current_time),
                         )
                         conn.execute("COMMIT")
                     except Exception:
@@ -3487,15 +3990,21 @@ class DurableConsumptionRegistry:
                 cur = conn.execute("SELECT 1 FROM consumed_envelopes WHERE envelope_id = ?", (envelope_id,))
                 return cur.fetchone() is not None
 
-    def get_last_fencing_token(self, delivery_task_id: str) -> int:
+    def get_last_fencing_token(self, delivery_task_id: str, domain: Optional[str] = None) -> int:
+        clean_tid = delivery_task_id.strip() if isinstance(delivery_task_id, str) else ""
+        keys_to_check = [f"{clean_tid}:{domain}"] if domain else [f"{clean_tid}:{REVIEW_ENVELOPE_DOMAIN}", f"{clean_tid}:{INTEGRATION_ENVELOPE_DOMAIN}", clean_tid]
         with self._lock:
             if self._is_mem:
-                return self._mem_fencing.get(delivery_task_id, 0)
+                tokens = [self._mem_fencing.get(k, 0) for k in keys_to_check]
+                return max(tokens, default=0)
             with self._get_connection() as conn:
-                cur = conn.execute("SELECT last_fencing_token FROM task_fencing WHERE delivery_task_id = ?", (delivery_task_id,))
-                row = cur.fetchone()
-                return row[0] if row is not None else 0
-
+                max_tok = 0
+                for k in keys_to_check:
+                    cur = conn.execute("SELECT last_fencing_token FROM task_fencing WHERE delivery_task_id = ?", (k,))
+                    row = cur.fetchone()
+                    if row is not None and row[0] > max_tok:
+                        max_tok = row[0]
+                return max_tok
 
 class TrustedReviewConsumer:
     """Out-of-process trusted review verification consumer.
@@ -3624,6 +4133,22 @@ class TrustedIntegrationConsumer:
         valid = self.keystore.verify_signature(env.integration_key_id, canonical_bytes, sig_bytes)
         if not valid:
             raise EnvelopeVerificationError("Cryptographic signature mismatch; untrusted integration provenance rejected fail-closed")
+
+        self.registry.check_and_consume_integration(
+            envelope_id=env.envelope_id,
+            nonce=env.nonce,
+            domain=env.domain,
+            delivery_task_id=env.delivery_task_id,
+            candidate_commit=env.candidate_commit,
+            base_commit=env.base_commit,
+            fencing_token=env.fencing_token,
+            issued_at=env.issued_at,
+            expires_at=env.expires_at,
+            expected_task_id=expected_task_id,
+            expected_candidate=expected_candidate,
+            expected_base=expected_base,
+            now=now,
+        )
 
         return env.to_dict()
 
@@ -4939,6 +5464,7 @@ class OrcaDeliveryAdapter:
         approved_base_commit: str = DEFAULT_APPROVED_BASE_COMMIT,
         control_secret: Optional[str] = None,
         reviewer_boundary: Optional[ReviewerSessionBoundary] = None,
+        keystore: Optional[TrustedKeyStore] = None,
     ):
         if approved_candidate_commit is None:
             raise ProtocolViolationError("approved_candidate_commit is mandatory; cannot be None")
@@ -4996,15 +5522,27 @@ class OrcaDeliveryAdapter:
             self._reviewer_boundary: ReviewerSessionBoundary = reviewer_boundary
         else:
             self._reviewer_boundary: ReviewerSessionBoundary = ReviewerSessionBoundary.get_default()
-        self.keystore: TrustedKeyStore = TrustedKeyStore()
+        if keystore is not None:
+            if not isinstance(keystore, TrustedKeyStore) or keystore is not TrustedKeyStore.get_default():
+                raise ProtocolViolationError(
+                    "Caller-selected keystore forbidden; "
+                    "OrcaDeliveryAdapter strictly requires host-provisioned TrustedKeyStore fail-closed"
+                )
+            self._keystore: TrustedKeyStore = keystore
+        else:
+            self._keystore: TrustedKeyStore = TrustedKeyStore.get_default()
         self.consumption_registry: DurableConsumptionRegistry = DurableConsumptionRegistry()
         self.trusted_review_consumer: TrustedReviewConsumer = TrustedReviewConsumer(
-            keystore=self.keystore, registry=self.consumption_registry
+            keystore=self._keystore, registry=self.consumption_registry
         )
         self.trusted_integration_consumer: TrustedIntegrationConsumer = TrustedIntegrationConsumer(
-            keystore=self.keystore, registry=self.consumption_registry
+            keystore=self._keystore, registry=self.consumption_registry
         )
         self.production_gate: ProductionActivationGate = ProductionActivationGate()
+
+    @property
+    def keystore(self) -> TrustedKeyStore:
+        return self._keystore
 
     @property
     def reviewer_boundary(self) -> ReviewerSessionBoundary:
@@ -6862,6 +7400,7 @@ class OrcaDeliveryAdapter:
                 expected_candidate=self.approved_candidate_commit,
                 expected_base=self.approved_base_commit,
                 expected_gates_pass=gates_pass,
+                now=now.timestamp() if isinstance(now, datetime) else now,
             )
 
         if integration_evidence is None and integration_envelope is None:

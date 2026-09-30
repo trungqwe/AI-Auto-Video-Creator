@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit sau d7f0043 (Out-of-Process Pinned Key Custody Provisioning & Durable Integration Envelope Consumption)
+
+- Khắc phục triệt để hai phát hiện trust-boundary từ đợt independent audit của Sol trên exact candidate d7f0043d99c970e3d6efc7a8c392be73b58b27b2 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Vô Hiệu Hóa Key Custody Bootstrap Trong Tiến Trình & Cấp Phát Khóa Ngoài Tiến Trình (Out-of-Process Pinned Key Custody Provisioning)**:
+    - Loại bỏ hoàn toàn khả năng candidate worker tự đăng ký public key trong cùng tiến trình: TrustedKeyStore.register_pinned_public_key từ chối caller in-process fail-closed với ProtocolViolationError nếu không có ủy quyền xác thực từ host.
+    - Chuyển cơ chế cấp phát khóa sang ranh giới máy chủ bên ngoài: triển khai KeyStoreHostIssuer, KeyStoreHostHandoff, và KeyStoreHostIssuerCapability với token sentinel _SENTINEL_HOST_TOKEN.
+    - Pinned public keys được đóng băng trong MappingProxyType bất biến; nghiêm cấm việc ghi đè hoặc thay thế khóa authority đã ghim (Cannot replace or mutate existing pinned key authority).
+    - Thuộc tính OrcaDeliveryAdapter.keystore là read-only gắn chặt với TrustedKeyStore.get_default(), từ chối nhận caller-selected keystore fail-closed.
+  - **(2) Tiêu Thụ Phong Bì Tích Hợp Nguyên Tử Qua Sổ Đăng Ký Bền Vững (Durable Integration Envelope Consumption)**:
+    - TrustedIntegrationConsumer.consume_integration_envelope gọi giao dịch nguyên tử DurableConsumptionRegistry.check_and_consume_integration(...) ngay sau khi xác thực chữ ký Ed25519.
+    - Kiểm tra toàn diện temporal validity (expires_at, issued_at <= now + 30.0s), ràng buộc danh tính (expected_task_id, expected_candidate, expected_base), chống phát lại phong bì (envelope_id single-use), chống tái sử dụng 
+once, và monotonic fencing token theo miền (	ask_fencing).
+    - Đảm bảo tính bền vững qua restart tiến trình với SQLite và khả năng chống xung đột tương tranh giữa 10 luồng đồng thời (duy nhất 1 luồng thành công, 9 luồng bị chặn bởi ReplayAttackError).
+  - **(3) Bộ Kiểm Thử Tự Động 390/390 Tests PASS (100%)**:
+    - Bổ sung 4 bài test phương thức toàn diện trong TestSolTrustBoundaryRootCauseRemediation (	est_11, 	est_12, 	est_13, 	est_14) bao quát trọn vẹn các kịch bản counterexample tiêu cực cho key custody bootstrap, integration replay/nonce/fencing/expiry, restart durability, và đa luồng tương tranh.
+
 ## 2026-09-30 — Khắc phục triệt để phát hiện Sol-Lead audit sau 8913b39 (Out-of-Process Trust Boundary, Asymmetric Ed25519 Cryptography, Pinned Key Custody, Durable Replay Protection & Fail-Closed Production Activation Gate)
 
 - Khắc phục triệt để nguyên nhân gốc rễ (root cause) ranh giới tin cậy (trust boundary) theo audit finding của Sol trên exact candidate `8913b392522701f924117a234f4e0cee7fc83624` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) và tuân thủ tuyệt đối chỉ thị tại `D:/AI_SETUP/supervisor/generated/root-cause-trust-boundary-intervention.md`:

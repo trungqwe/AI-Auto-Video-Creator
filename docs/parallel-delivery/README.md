@@ -333,4 +333,18 @@ Hệ thống đã triển khai toàn diện giải pháp kiến trúc ngoài ti�
 3. **Phong bì ký số (Signed Review & Integration Envelopes)**: Domain separation (`PARALLEL_DELIVERY_REVIEW_ENVELOPE_V1` / `PARALLEL_DELIVERY_INTEGRATION_ENVELOPE_V1`), canonical serialization RFC 8785, candidate SHA, dispatch ID, route attestation, nonce, temporal window, monotonic fencing token.
 4. **Sổ đăng ký tiêu thụ bền vững (DurableConsumptionRegistry)**: Quản lý atomic trên SQLite, ngăn chặn tuyệt đối replay, tái sử dụng nonce, stale retry, và tranh chấp đồng thời kể cả qua restart tiến trình.
 5. **Khóa kích hoạt Production (ProductionActivationGate)**: Khóa fail-closed `PRODUCTION_ACTIVATION_BLOCKED` (`NOT_PROVISIONED`) khi hệ thống chưa được trang bị đủ 4 điều kiện hạ tầng: `OS_USER_ISOLATION`, `PRIVATE_KEY_ACL_RESTRICTION`, `DEDICATED_RUNNER`, `PROTECTED_BRANCH_POLICY`.
-6. **Bộ kiểm thử toàn diện**: 10 bài test mới trong `TestSolTrustBoundaryRootCauseRemediation` (RED evidence, worker monkey-patching failure, asymmetric Ed25519 signature tamper rejection, key revocation, single-use replay protection, SQLite restart durability, temporal validity, production gate fail-closed, fresh subprocess isolation, và positive control full lifecycle) nâng tổng số bài test lên **386/386 tests PASS 100%**.
+6. **Bộ kiểm thử toàn diện**: 10 bài test mới trong `TestSolTrustBoundaryRootCauseRemediation` (RED evidence, worker monkey-patching failure, asymmetric Ed25519 signature tamper rejection, key revocation, single-use replay protection, SQLite restart durability, temporal validity, production gate fail-closed, fresh subprocess isolation, và positive control full lifecycle) nâng tổng số bài test lên **390/390 tests PASS 100%**.
+## 19. Khắc phục triệt để phát hiện Sol Audit sau d7f0043 (Out-of-Process Pinned Key Custody & Durable Integration Consumption)
+
+Đợt rà soát độc lập trên candidate SHA d7f0043d99c970e3d6efc7a8c392be73b58b27b2 (approved base 4a7c8c921b7e05066505d51b168a02c3fde61317) ghi nhận 2 finding ranh giới tin cậy cần khắc phục trước khi ACCEPT:
+1. **Finding 1 — Out-of-Process Pinned Key Custody Provisioning**:
+   - Vô hiệu hóa hoàn toàn khả năng candidate worker tự đăng ký khóa trong cùng tiến trình (
+egister_pinned_public_key từ chối caller in-process fail-closed với ProtocolViolationError).
+   - Cấp phát khóa công khai ghim sẵn qua ranh giới máy chủ bên ngoài: KeyStoreHostIssuer, KeyStoreHostHandoff, và KeyStoreHostIssuerCapability với token sentinel _SENTINEL_HOST_TOKEN.
+   - Lưu trữ pinned keys trong MappingProxyType bất biến; từ chối mọi nỗ lực thay thế hay sửa đổi khóa authority đã ghim (Cannot replace or mutate existing pinned key authority).
+   - OrcaDeliveryAdapter.keystore là thuộc tính read-only gắn chặt với TrustedKeyStore.get_default(), từ chối nhận caller-selected keystore.
+2. **Finding 2 — Durable Integration Envelope Consumption**:
+   - TrustedIntegrationConsumer.consume_integration_envelope bắt buộc gọi giao dịch nguyên tử DurableConsumptionRegistry.check_and_consume_integration.
+   - Kiểm tra toàn diện temporal validity (expires_at, issued_at <= now + 30.0s), ràng buộc danh tính (expected_task_id, expected_candidate, expected_base), chống phát lại (envelope_id single-use), chống tái sử dụng 
+once, và monotonic fencing token theo miền (	ask_fencing).
+   - Đảm bảo tính bền vững qua restart tiến trình với SQLite và an toàn tương tranh đa luồng (10 luồng đồng thời: đúng 1 luồng thành công, 9 luồng bị chặn bởi ReplayAttackError).
