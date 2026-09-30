@@ -4,6 +4,12 @@
 
 - Authority hiện hành giữ nguyên: `M2-P1..P7B_ACCEPTED_CLOSED`; M2-P8/P9 `LOCKED`; M3/Phân hệ A `NOT AUTHORIZED`.
 - Đã thêm [kiến trúc triển khai song song](./docs/parallel-delivery/README.md) ở trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`. Bundle chỉ là docs/config và định nghĩa DAG, contract registry, ownership/lease, Orca worker protocol, merge queue, traceability, security/performance/recovery.
+- Đã khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate 82efe33:
+  1. Chuyển capability delivery sang ranh giới do reviewer session sở hữu (`ReviewerSessionBoundary`), hoàn toàn độc lập với Control plane và adapter-visible state.
+  2. Xóa bỏ hoàn toàn thuộc tính `_reviewer_delivery_channels` khỏi `OrcaDeliveryAdapter` và xóa bỏ `reviewer_auth_token` khỏi channel, bảo đảm adapter không để lộ bearer token hay capability-bearing channel cho Control.
+  3. Bắt buộc opaque single-use `ReviewerSessionProof` có chữ ký mật mã HMAC do reviewer boundary sở hữu, ràng buộc chặt chẽ 7 yếu tố: `delivery_task_id`, `review_dispatch_id`, `orca_task_id`, `terminal_id`/`session_id`, `candidate_commit`, `reviewer_route` ("cx/gpt-5.6-sol"), `reviewer_harness` ("Claude Code"); cấm Control authority phát hành proof.
+  4. Từ chối fail-closed mọi nỗ lực của caller tự dựng `ReviewerContext` chỉ bằng các định danh công khai (public IDs); từ chối proof giả mạo, proof sai chữ ký, và proof đã tiêu thụ (single-use replay rejection).
+  5. Bộ kiểm thử tự động đạt 367/367 tests PASS (100%), mở rộng suite `TestSolRemediationSeparationOfDuties` lên 9 bài test bao quát toàn bộ negative fixtures và positive control hoàn tất vòng đời đến `integrated`.
 - Đã khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên 569f0d1:
   1. Tách rời hoàn toàn dispatch creation khỏi capability delivery: `create_review_dispatch()` chỉ trả về `dispatch_id: str` thuần túy, tuyệt đối không trả bearer token (`reviewer_auth_token`) hay `ReviewDispatchHandle` cho caller/dispatcher.
   2. Loại bỏ hoàn toàn dictionary `_reviewer_auth_tokens` trên `OrcaDeliveryAdapter`, bảo đảm Control plane không thể đọc, giữ, hoặc claim token.

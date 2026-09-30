@@ -60,6 +60,9 @@ from delivery_engine import (  # noqa: E402
     ReviewDispatchHandle,
     ReviewerDeliveryChannel,
     _InternalReviewerMintToken,
+    ReviewerSessionBoundary,
+    ReviewerSessionProof,
+    DEFAULT_TEST_REVIEWER_SECRET,
     make_review_evidence,
     make_integration_evidence,
     MANDATORY_INTEGRATION_GATES,
@@ -335,13 +338,11 @@ class TestF4OrcaMappingAndLifecycle(unittest.TestCase):
             dispatch_origin="dely dispatch",
             execution_envelope=rev_env,
         )
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp,
-            orca_task_id=rev_orca,
-            terminal_id=rev_env.live_terminal_evidence.archive_reference,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         rev_ev = self.adapter.issue_review_evidence(delivery_id, rev_disp, self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap)
@@ -1731,13 +1732,11 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             dispatch_origin="dely dispatch",
             execution_envelope=rev_env,
         )
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id="TASK-A",
             review_dispatch_id=rev_disp,
-            orca_task_id=rev_orca,
-            terminal_id=rev_env.live_terminal_evidence.archive_reference,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         rev_ev = self.adapter.issue_review_evidence("TASK-A", rev_disp, self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap)
@@ -2130,13 +2129,11 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
             dispatch_origin="dely dispatch",
             execution_envelope=rev_env,
         )
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id="TASK-A",
             review_dispatch_id=rev_disp,
-            orca_task_id=rev_orca,
-            terminal_id=rev_env.live_terminal_evidence.archive_reference,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         rev_ev = self.adapter.issue_review_evidence("TASK-A", rev_disp, self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap)
@@ -2945,15 +2942,12 @@ class TestSolRoundSixCounterexamples(unittest.TestCase):
         SharedOrcaExecutionRegistry.reset_default()
 
     def _issue_valid_review_evidence(self, delivery_id, rev_disp_id, candidate_commit, verdict="ACCEPT", now=None):
-        binding = self.adapter.review_dispatch_bindings[rev_disp_id]
-        channel = self.adapter._reviewer_delivery_channels[rev_disp_id]
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=binding.orca_task_id,
-            terminal_id=channel.terminal_id,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=candidate_commit,
+            reviewer_secret=getattr(self, "reviewer_secret", DEFAULT_TEST_REVIEWER_SECRET),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -6633,15 +6627,12 @@ class TestAstraRound18Remediation(unittest.TestCase):
     def tearDown(self):
         SharedOrcaExecutionRegistry.reset_default()
     def _issue_valid_review_evidence(self, delivery_id, rev_disp_id, candidate_commit, verdict="ACCEPT", now=None):
-        binding = self.adapter.review_dispatch_bindings[rev_disp_id]
-        channel = self.adapter._reviewer_delivery_channels[rev_disp_id]
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=binding.orca_task_id,
-            terminal_id=channel.terminal_id,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=candidate_commit,
+            reviewer_secret=getattr(self, "reviewer_secret", DEFAULT_TEST_REVIEWER_SECRET),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -7016,15 +7007,12 @@ class TestSolRound18Remediation(unittest.TestCase):
                 pass
 
     def _issue_valid_review_evidence(self, delivery_id, rev_disp_id, candidate_commit, verdict="ACCEPT", now=None):
-        binding = self.adapter.review_dispatch_bindings[rev_disp_id]
-        channel = self.adapter._reviewer_delivery_channels[rev_disp_id]
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=binding.orca_task_id,
-            terminal_id=channel.terminal_id,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=candidate_commit,
+            reviewer_secret=getattr(self, "reviewer_secret", DEFAULT_TEST_REVIEWER_SECRET),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -7384,15 +7372,12 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
                 pass
 
     def _issue_valid_review_evidence(self, delivery_id, rev_disp_id, candidate_commit, verdict="ACCEPT", now=None):
-        binding = self.adapter.review_dispatch_bindings[rev_disp_id]
-        channel = self.adapter._reviewer_delivery_channels[rev_disp_id]
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=binding.orca_task_id,
-            terminal_id=channel.terminal_id,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=candidate_commit,
+            reviewer_secret=getattr(self, "reviewer_secret", DEFAULT_TEST_REVIEWER_SECRET),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -7711,15 +7696,12 @@ class TestSolLeadReviewDa26686Remediation(unittest.TestCase):
                 pass
 
     def _issue_valid_review_evidence(self, delivery_id, rev_disp_id, candidate_commit, verdict="ACCEPT", now=None):
-        binding = self.adapter.review_dispatch_bindings[rev_disp_id]
-        channel = self.adapter._reviewer_delivery_channels[rev_disp_id]
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=binding.orca_task_id,
-            terminal_id=channel.terminal_id,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=candidate_commit,
+            reviewer_secret=getattr(self, "reviewer_secret", DEFAULT_TEST_REVIEWER_SECRET),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -8233,13 +8215,11 @@ class TestSolLeadReview36092d0Remediation(unittest.TestCase):
             now=self.t0 + timedelta(seconds=5),
         )
 
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=rev_orca_id,
-            terminal_id=rev_env.live_terminal_evidence.archive_reference,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         rev_cap = adapter.claim_reviewer_capability(rev_ctx)
         self.assertIsInstance(rev_cap, ReviewerCapability)
@@ -8321,15 +8301,11 @@ class TestSolLeadReview36092d0Remediation(unittest.TestCase):
         """8. Counterexample: ReviewerCapability with mismatched bindings is rejected fail closed."""
         self._advance_to_review()
         rev_disp_id = self._create_review_dispatch()
-        binding = self.adapter.review_dispatch_bindings[rev_disp_id]
-        channel = self.adapter._reviewer_delivery_channels[rev_disp_id]
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=binding.orca_task_id,
-            terminal_id=channel.terminal_id,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
 
@@ -8622,13 +8598,11 @@ class TestSolLeadAudit654860cRemediation(unittest.TestCase):
             execution_envelope=rev_env,
             now=self.t0 + timedelta(seconds=20),
         )
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=rev_orca_id,
-            terminal_id=rev_env.live_terminal_evidence.archive_reference,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         rev_ev = self.adapter.issue_review_evidence(
@@ -8939,13 +8913,11 @@ class TestSolLeadAudit2f56bd3Remediation(unittest.TestCase):
             execution_envelope=rev_env,
             now=self.t0 + timedelta(seconds=25),
         )
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id="orca_2f56bd3_rev2",
-            terminal_id=rev_env.live_terminal_evidence.archive_reference,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         rev_ev = self.ea.issue_review_evidence(
@@ -9110,13 +9082,11 @@ class TestSolLeadAudit982ed1eRemediation(unittest.TestCase):
             execution_envelope=rev_env,
             now=self.t0 + timedelta(seconds=5),
         )
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp,
-            orca_task_id="task_orca_pos_01",
-            terminal_id=rev_env.live_terminal_evidence.archive_reference,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         self.assertEqual(rev_cap.delivery_task_id, self.delivery_id)
@@ -9335,13 +9305,11 @@ class TestSolLeadAudit1f90e6cRemediation(unittest.TestCase):
         )
 
         # 3. ReviewerCapability retrieved for review dispatch
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp,
-            orca_task_id=rev_orca,
-            terminal_id=rev_env.live_terminal_evidence.archive_reference,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         rev_cap = self.ea.issue_reviewer_capability(
             self.delivery_id, rev_disp, self.candidate_commit, reviewer_context=rev_ctx
@@ -9592,15 +9560,11 @@ class TestSolLeadAuditEab4cabRemediation(unittest.TestCase):
         self.assertIn("bound to candidate commit", str(ctx3.exception))
 
         # Valid retrieval succeeds with authenticated ReviewerContext
-        binding = self.adapter.review_dispatch_bindings[rev_disp_id]
-        channel = self.adapter._reviewer_delivery_channels[rev_disp_id]
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=binding.orca_task_id,
-            terminal_id=channel.terminal_id,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         self.assertIsInstance(rev_cap, ReviewerCapability)
@@ -9610,15 +9574,11 @@ class TestSolLeadAuditEab4cabRemediation(unittest.TestCase):
         """5. Finding 2 Counterexample: Malformed review evidence request does not consume valid ReviewerCapability."""
         self._advance_to_review()
         rev_disp_id = self._create_review_dispatch()
-        binding = self.adapter.review_dispatch_bindings[rev_disp_id]
-        channel = self.adapter._reviewer_delivery_channels[rev_disp_id]
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=binding.orca_task_id,
-            terminal_id=channel.terminal_id,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
 
@@ -9731,15 +9691,11 @@ class TestSolLeadAuditEab4cabRemediation(unittest.TestCase):
 
         # 2. Dispatch review and obtain ReviewerCapability
         rev_disp_id = self._create_review_dispatch()
-        binding = self.adapter.review_dispatch_bindings[rev_disp_id]
-        channel = self.adapter._reviewer_delivery_channels[rev_disp_id]
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=binding.orca_task_id,
-            terminal_id=channel.terminal_id,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         self.assertIsInstance(rev_cap, ReviewerCapability)
@@ -9899,7 +9855,8 @@ class TestSolLeadAuditA189e50Remediation(unittest.TestCase):
             self.adapter.get_reviewer_capability(rev_disp_id, control_secret=self.control_secret)
         self.assertIn("Control authority cannot issue or hold ReviewerCapability", str(ctx2.exception))
 
-        channel = self.adapter._reviewer_delivery_channels[rev_disp_id]
+        boundary = ReviewerSessionBoundary.get_default()
+        channel = boundary._channels[rev_disp_id]
         # Control passing control_capability to channel.claim_capability
         with self.assertRaises(ProtocolViolationError) as ctx3:
             channel.claim_capability(control_capability=ctrl_cap)
@@ -9914,15 +9871,12 @@ class TestSolLeadAuditA189e50Remediation(unittest.TestCase):
         """3. Finding 1 Invariant: ReviewerDeliveryChannel enforces strictly single-use capability delivery."""
         self._advance_to_review()
         rev_disp_id = self._create_review_dispatch()
-        binding = self.adapter.review_dispatch_bindings[rev_disp_id]
-        channel = self.adapter._reviewer_delivery_channels[rev_disp_id]
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        channel = boundary._channels[rev_disp_id]
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=binding.orca_task_id,
-            terminal_id=channel.terminal_id,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
 
         # First claim via context succeeds
@@ -9931,15 +9885,21 @@ class TestSolLeadAuditA189e50Remediation(unittest.TestCase):
         self.assertEqual(cap.delivery_task_id, self.delivery_id)
         self.assertEqual(cap.role, "Reviewer")
 
-        # Second claim via context is rejected fail closed
+        # Second claim via context is rejected fail closed (proof replayed)
         with self.assertRaises(ProtocolViolationError) as ctx:
             self.adapter.claim_reviewer_capability(rev_ctx)
-        self.assertIn("has already been claimed; single-use delivery channel cannot be reused", str(ctx.exception))
+        self.assertTrue(
+            "has already been claimed" in str(ctx.exception)
+            or "has already been consumed" in str(ctx.exception)
+        )
 
         # Second claim via channel directly is also rejected fail closed
         with self.assertRaises(ProtocolViolationError) as ctx2:
             channel.claim_capability(reviewer_context=rev_ctx)
-        self.assertIn("has already been claimed; single-use delivery channel cannot be reused", str(ctx2.exception))
+        self.assertTrue(
+            "has already been claimed" in str(ctx2.exception)
+            or "has already been consumed" in str(ctx2.exception)
+        )
 
     def test_a189e50_04_no_reviewer_mint_secret_attribute_and_mint_token_external_call_forbidden(self):
         """4. Finding 2 Counterexample: _reviewer_mint_secret attribute removed; external mint token creation strictly forbidden."""
@@ -9980,15 +9940,11 @@ class TestSolLeadAuditA189e50Remediation(unittest.TestCase):
         """6. Finding 3 Concurrency Fixture: Atomic verify_and_consume_capability prevents two threads from issuing ReviewEvidence from one capability."""
         self._advance_to_review()
         rev_disp_id = self._create_review_dispatch()
-        binding = self.adapter.review_dispatch_bindings[rev_disp_id]
-        channel = self.adapter._reviewer_delivery_channels[rev_disp_id]
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=binding.orca_task_id,
-            terminal_id=channel.terminal_id,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         cap = self.adapter.claim_reviewer_capability(rev_ctx)
         self.assertIsInstance(cap, ReviewerCapability)
@@ -10035,15 +9991,11 @@ class TestSolLeadAuditA189e50Remediation(unittest.TestCase):
         """7. Finding 3 Invariant: Malformed review evidence request fails before verify_and_consume; capability remains valid."""
         self._advance_to_review()
         rev_disp_id = self._create_review_dispatch()
-        binding = self.adapter.review_dispatch_bindings[rev_disp_id]
-        channel = self.adapter._reviewer_delivery_channels[rev_disp_id]
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=binding.orca_task_id,
-            terminal_id=channel.terminal_id,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         cap = self.adapter.claim_reviewer_capability(rev_ctx)
         self.assertIsInstance(cap, ReviewerCapability)
@@ -10103,15 +10055,11 @@ class TestSolLeadAuditA189e50Remediation(unittest.TestCase):
         self.assertIsInstance(rev_disp_id, str)
 
         # 2. Authenticated ReviewerContext claims capability from channel
-        binding = self.adapter.review_dispatch_bindings[rev_disp_id]
-        channel = self.adapter._reviewer_delivery_channels[rev_disp_id]
-        rev_ctx = ReviewerContext(
+        boundary = ReviewerSessionBoundary.get_default()
+        rev_ctx = boundary.create_reviewer_context(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
-            orca_task_id=binding.orca_task_id,
-            terminal_id=channel.terminal_id,
-            reviewer_principal="cx/gpt-5.6-sol",
-            harness="Claude Code",
+            candidate_commit=self.candidate_commit,
         )
         rev_cap = self.adapter.deliver_reviewer_capability(rev_ctx)
         self.assertIsInstance(rev_cap, ReviewerCapability)
@@ -10190,6 +10138,9 @@ class TestSolRemediationSeparationOfDuties(unittest.TestCase):
         self.lease = self.mgr.acquire_lease("LOCK-SOD-REMED", self.delivery_id, self.intended_disp, now=self.t0)
         self.registry = SharedOrcaExecutionRegistry.get_default()
         self.control_secret = "test_control_secret_sod_32b_hex!"
+        self.reviewer_secret = "test_sod_reviewer_secret_32b_hex!"
+        ReviewerSessionBoundary.reset_default()
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
         self.adapter = OrcaDeliveryAdapter(
             self.mgr,
             approved_candidate_commit=self.candidate_commit,
@@ -10203,6 +10154,7 @@ class TestSolRemediationSeparationOfDuties(unittest.TestCase):
 
     def tearDown(self):
         SharedOrcaExecutionRegistry.reset_default()
+        ReviewerSessionBoundary.reset_default()
 
     def _advance_to_review(self):
         disp_env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id, now=self.t0)
@@ -10249,8 +10201,10 @@ class TestSolRemediationSeparationOfDuties(unittest.TestCase):
         self.assertNotIsInstance(disp_res, ReviewDispatchHandle)
         self.assertFalse(hasattr(disp_res, "reviewer_auth_token"))
         self.assertFalse(hasattr(disp_res, "claim_reviewer_capability"))
-        # Verify adapter does not store or expose _reviewer_auth_tokens map
+        # Verify adapter does not store or expose _reviewer_auth_tokens map or channels
         self.assertFalse(hasattr(self.adapter, "_reviewer_auth_tokens"))
+        self.assertFalse(hasattr(self.adapter, "_reviewer_delivery_channels"))
+        self.assertFalse(hasattr(self.adapter, "reviewer_auth_token"))
 
     def test_sod_02_dispatch_creator_cannot_claim_reviewer_capability_with_bare_dispatch_id(self):
         """2. Separation of duties: Dispatch creator calling claim or get without ReviewerContext fails closed."""
@@ -10376,8 +10330,8 @@ class TestSolRemediationSeparationOfDuties(unittest.TestCase):
         # Task remains in review state
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "review")
 
-    def test_sod_06_positive_fixture_independent_reviewer_context_successfully_issues_accept(self):
-        """6. Positive control: Authenticated independent ReviewerContext successfully claims capability, issues ACCEPT, and transitions task to merge_queued."""
+    def test_sod_06_dispatch_creator_with_all_public_ids_cannot_claim_reviewer_capability(self):
+        """6. Negative fixture: Dispatch creator possessing all 7 public identifiers cannot self-construct ReviewerContext or claim capability."""
         self._advance_to_review()
         rev_disp_id = "ctx_sod_rev_06"
         rev_env = make_execution_envelope(
@@ -10393,14 +10347,171 @@ class TestSolRemediationSeparationOfDuties(unittest.TestCase):
             execution_envelope=rev_env,
             now=self.t0 + timedelta(seconds=5),
         )
-        # Legitimate independent ReviewerContext
-        rev_ctx = ReviewerContext(
+        # Caller has all 7 public identifiers: task_id, dispatch_id, orca_task_id, terminal_id, candidate_commit, route, harness
+        self_constructed_ctx = ReviewerContext(
             delivery_task_id=self.delivery_id,
             review_dispatch_id=res_id,
             orca_task_id="task_orca_sod_rev_06",
             terminal_id=rev_env.live_terminal_evidence.archive_reference,
             reviewer_principal="cx/gpt-5.6-sol",
             harness="Claude Code",
+        )
+        # Attempt claim via adapter fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.claim_reviewer_capability(self_constructed_ctx)
+        self.assertIn("requires an authenticated opaque single-use ReviewerSessionProof", str(ctx.exception))
+
+        # Attempt claim via boundary fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx2:
+            self.boundary.claim_capability(self_constructed_ctx)
+        self.assertIn("requires an authenticated opaque single-use ReviewerSessionProof", str(ctx2.exception))
+
+    def test_sod_07_dispatch_creator_cannot_read_or_forge_reviewer_session_proof(self):
+        """7. Negative fixture: Dispatch creator cannot read tokens/channels from adapter or forge ReviewerSessionProof."""
+        self._advance_to_review()
+        rev_disp_id = "ctx_sod_rev_07"
+        rev_env = make_execution_envelope(
+            self.delivery_id, rev_disp_id, phase="review",
+            orca_task_id="task_orca_sod_rev_07", now=self.t0 + timedelta(seconds=5)
+        )
+        res_id = self.adapter.create_review_dispatch(
+            self.delivery_id,
+            orca_task_id="task_orca_sod_rev_07",
+            candidate_commit=self.candidate_commit,
+            intended_dispatch_id=rev_disp_id,
+            dispatch_origin="dely dispatch",
+            execution_envelope=rev_env,
+            now=self.t0 + timedelta(seconds=5),
+        )
+        # 1. Adapter has no reviewer channels or tokens in visible state
+        self.assertFalse(hasattr(self.adapter, "_reviewer_delivery_channels"))
+        self.assertFalse(hasattr(self.adapter, "_channels"))
+        self.assertFalse(hasattr(self.adapter, "_reviewer_auth_tokens"))
+
+        # 2. Control authority attempting to issue ReviewerSessionProof is rejected
+        ctrl_cap = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.boundary.issue_session_proof(
+                self.delivery_id, res_id, control_capability=ctrl_cap, reviewer_secret=self.reviewer_secret
+            )
+        self.assertIn("Control authority cannot issue ReviewerSessionProof", str(ctx.exception))
+
+        with self.assertRaises(ProtocolViolationError) as ctx2:
+            self.boundary.issue_session_proof(
+                self.delivery_id, res_id, control_secret=self.control_secret, reviewer_secret=self.reviewer_secret
+            )
+        self.assertIn("Control authority cannot issue ReviewerSessionProof", str(ctx2.exception))
+
+        # 3. Caller with wrong reviewer secret cannot issue proof
+        with self.assertRaises(ProtocolViolationError) as ctx3:
+            self.boundary.issue_session_proof(
+                self.delivery_id, res_id, reviewer_secret="unauthorized_caller_secret"
+            )
+        self.assertIn("Invalid reviewer secret", str(ctx3.exception))
+
+        # 4. Forged proof with bad HMAC signature is rejected fail closed
+        forged_proof = ReviewerSessionProof(
+            proof_id="prf_forged_01",
+            delivery_task_id=self.delivery_id,
+            review_dispatch_id=res_id,
+            orca_task_id="task_orca_sod_rev_07",
+            terminal_id=rev_env.live_terminal_evidence.archive_reference,
+            candidate_commit=self.candidate_commit,
+            reviewer_route="cx/gpt-5.6-sol",
+            reviewer_harness="Claude Code",
+            proof_token="forged_token_32b_hex_value_invalid",
+            authority_id=id(self.boundary),
+            created_at=time.time(),
+            signature="bad_forged_signature_hex" * 4,
+        )
+        forged_ctx = ReviewerContext(
+            delivery_task_id=self.delivery_id,
+            review_dispatch_id=res_id,
+            orca_task_id="task_orca_sod_rev_07",
+            terminal_id=rev_env.live_terminal_evidence.archive_reference,
+            reviewer_principal="cx/gpt-5.6-sol",
+            harness="Claude Code",
+            reviewer_session_proof=forged_proof,
+        )
+        with self.assertRaises(ProtocolViolationError) as ctx4:
+            self.adapter.claim_reviewer_capability(forged_ctx)
+        self.assertIn("Invalid ReviewerSessionProof signature", str(ctx4.exception))
+
+    def test_sod_08_reviewer_session_proof_single_use_enforcement(self):
+        """8. Invariant: ReviewerSessionProof is strictly single-use; replayed proof and duplicated proof issuance are rejected."""
+        self._advance_to_review()
+        rev_disp_id = "ctx_sod_rev_08"
+        rev_env = make_execution_envelope(
+            self.delivery_id, rev_disp_id, phase="review",
+            orca_task_id="task_orca_sod_rev_08", now=self.t0 + timedelta(seconds=5)
+        )
+        res_id = self.adapter.create_review_dispatch(
+            self.delivery_id,
+            orca_task_id="task_orca_sod_rev_08",
+            candidate_commit=self.candidate_commit,
+            intended_dispatch_id=rev_disp_id,
+            dispatch_origin="dely dispatch",
+            execution_envelope=rev_env,
+            now=self.t0 + timedelta(seconds=5),
+        )
+        # Legitimate reviewer session issues proof
+        proof = self.boundary.issue_session_proof(
+            delivery_task_id=self.delivery_id,
+            review_dispatch_id=res_id,
+            candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
+        )
+        # Duplicated proof issuance for the same dispatch is rejected
+        with self.assertRaises(ProtocolViolationError) as ctx_dup:
+            self.boundary.issue_session_proof(
+                delivery_task_id=self.delivery_id,
+                review_dispatch_id=res_id,
+                candidate_commit=self.candidate_commit,
+                reviewer_secret=self.reviewer_secret,
+            )
+        self.assertIn("single-use proof issuance cannot be duplicated", str(ctx_dup.exception))
+
+        # First claim consumes proof
+        ctx1 = ReviewerContext(
+            delivery_task_id=self.delivery_id,
+            review_dispatch_id=res_id,
+            orca_task_id="task_orca_sod_rev_08",
+            terminal_id=rev_env.live_terminal_evidence.archive_reference,
+            reviewer_principal="cx/gpt-5.6-sol",
+            harness="Claude Code",
+            reviewer_session_proof=proof,
+        )
+        rev_cap = self.adapter.claim_reviewer_capability(ctx1)
+        self.assertIsInstance(rev_cap, ReviewerCapability)
+
+        # Second claim attempting to replay the consumed proof fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx_replay:
+            self.adapter.claim_reviewer_capability(ctx1)
+        self.assertIn("single-use proof replay forbidden", str(ctx_replay.exception))
+
+    def test_sod_09_positive_fixture_independent_reviewer_boundary_full_lifecycle_to_integrated(self):
+        """9. Positive control: Authenticated independent reviewer boundary completes review ACCEPT, integration gates pass, and task reaches integrated."""
+        self._advance_to_review()
+        rev_disp_id = "ctx_sod_rev_09"
+        rev_env = make_execution_envelope(
+            self.delivery_id, rev_disp_id, phase="review",
+            orca_task_id="task_orca_sod_rev_09", now=self.t0 + timedelta(seconds=5)
+        )
+        res_id = self.adapter.create_review_dispatch(
+            self.delivery_id,
+            orca_task_id="task_orca_sod_rev_09",
+            candidate_commit=self.candidate_commit,
+            intended_dispatch_id=rev_disp_id,
+            dispatch_origin="dely dispatch",
+            execution_envelope=rev_env,
+            now=self.t0 + timedelta(seconds=5),
+        )
+        # Legitimate independent reviewer session creates context with proof
+        rev_ctx = self.boundary.create_reviewer_context(
+            delivery_task_id=self.delivery_id,
+            review_dispatch_id=res_id,
+            candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         rev_cap = self.adapter.deliver_reviewer_capability(rev_ctx)
         self.assertIsInstance(rev_cap, ReviewerCapability)
@@ -10427,3 +10538,22 @@ class TestSolRemediationSeparationOfDuties(unittest.TestCase):
         )
         self.assertEqual(st_rev, "merge_queued")
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "merge_queued")
+
+        # Control issues IntegrationEvidence and task advances to integrated
+        ctrl_cap = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        int_ev = self.adapter.issue_integration_evidence(
+            self.delivery_id,
+            self.candidate_commit,
+            self.approved_base,
+            gates_pass=True,
+            control_capability=ctrl_cap,
+            now=self.t0 + timedelta(seconds=15),
+        )
+        st_int = self.adapter.handle_integration_gates(
+            self.delivery_id,
+            gates_pass=True,
+            integration_evidence=int_ev,
+            now=self.t0 + timedelta(seconds=16),
+        )
+        self.assertEqual(st_int, "integrated")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
