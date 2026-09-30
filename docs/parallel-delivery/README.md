@@ -345,23 +345,33 @@ egister_pinned_public_key từ chối caller in-process fail-closed với Protoc
    - OrcaDeliveryAdapter.keystore là thuộc tính read-only gắn chặt với TrustedKeyStore.get_default(), từ chối nhận caller-selected keystore.
 2. **Finding 2 — Durable Integration Envelope Consumption**:
    - TrustedIntegrationConsumer.consume_integration_envelope bắt buộc gọi giao dịch nguyên tử DurableConsumptionRegistry.check_and_consume_integration.
-   - Kiểm tra toàn diện temporal validity (expires_at, issued_at <= now + 30.0s), ràng buộc danh tính (expected_task_id, expected_candidate, expected_base), chống phát lại (envelope_id single-use), chống tái sử dụng 
-once, và monotonic fencing token theo miền (	ask_fencing).
+   - Kiểm tra toàn diện temporal validity (expires_at, issued_at <= now + 30.0s), ràng buộc danh tính (expected_task_id, expected_candidate, expected_base), chống phát lại (envelope_id single-use), chống tái sử dụng nonce, và monotonic fencing token theo miền (task_fencing).
    - Đảm bảo tính bền vững qua restart tiến trình với SQLite và an toàn tương tranh đa luồng (10 luồng đồng thời: đúng 1 luồng thành công, 9 luồng bị chặn bởi ReplayAttackError).
 
-## 20. Kh?c ph?c tri?t ?? 3 ph?t hi?n ??c l?p t? Sol Audit sau 851d23c (Out-of-Process Key Custody Bootstrap Prevention, Durable Adapter Restart Consumption & Strict Envelope Type Rejection)
+## 20. Khắc phục triệt để 3 phát hiện độc lập từ Sol Audit sau 851d23c (Out-of-Process Key Custody Bootstrap Prevention, Durable Adapter Restart Consumption & Strict Envelope Type Rejection)
 
-??t r? so?t ??c l?p tr?n candidate SHA `851d23c3f7fde7e37891b933547d931706e11417` (approved base `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nh?n 3 finding h?nh ??ng (actionable findings) c?n kh?c ph?c tri?t ??:
-1. **Finding 1 ? V? hi?u h?a Public Host API Bootstrap Kh?a Trong C?ng Ti?n Tr?nh**:
-   - `KeyStoreHostIssuer.get_default_host_issuer`, `issue_handoff`, `issue_isolated_keystore`, v? `TrustedKeyStore.provision_from_host` b?t bu?c token m?y ch? ngo?i ti?n tr?nh `_SENTINEL_HOST_TOKEN`.
-   - Ng?n ch?n tri?t ?? k?ch b?n counterexample trong ?? candidate worker t? sinh c?p kh?a Ed25519, g?i public host API ?? mint handoff v? t? n?p v?o `TrustedKeyStore` trong c?ng ti?n tr?nh.
-   - Test harness s? d?ng c?c helper m?y ch? chuy?n bi?t (`TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, `TrustedHostProvisionKeyStore`).
-2. **Finding 2 ? T?nh B?n V?ng Ti?u Th? c?a OrcaDeliveryAdapter Qua Kh?i ??ng L?i**:
-   - Kh?i t?o m?c ??nh c?a `OrcaDeliveryAdapter` chuy?n sang s? d?ng ???ng d?n SQLite b?n v?ng tr?n ? ??a `DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH` (`runtime/orca-consumption-registry.db`) ho?c `consumption_db_path` ???c ch? ??nh.
-   - Lo?i b? ho?n to?n fallback v? `:memory:` trong production adapter path; c?m ti?m ephemeral in-memory registry (`_is_mem`) fail-closed.
-   - B?n ghi ti?u th? phong b? v? monotonic fencing token t?n t?i b?n v?ng qua restart adapter; ng?n ch?n ho?n to?n replay attack v? stale fencing token qua restart.
-3. **Finding 3 ? Strict Type Rejection Tr??c Coercion Trong SignedIntegrationEnvelope**:
-   - `SignedIntegrationEnvelope.from_dict` t? ch?i fail-closed `EnvelopeVerificationError` ??i v?i chu?i `'false'`, s? nguy?n, ho?c b?t k? ki?u phi-bool n?o tr??c khi th?c hi?n b?t k? chuy?n ??i ki?u d? li?u n?o.
-   - B? sung strict type checking cho `gate_results` (strict bool values), `issued_at`/`expires_at` (numeric float/int, c?m bool/str), v? `fencing_token` (strict int, c?m bool/str) cho c? review envelope v? integration envelope.
-4. **B? ki?m th? to?n di?n**: N?ng t?ng s? b?i test l?n **392/392 tests PASS 100%**, b? sung `test_15`, `test_16` v? c?c probe `11n..11r` trong `TestSolTrustBoundaryRootCauseRemediation`.
+Đợt rà soát độc lập trên candidate SHA `851d23c3f7fde7e37891b933547d931706e11417` (approved base `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nhận 3 finding hành động cần khắc phục triệt để:
+1. **Finding 1 — Vô hiệu hóa Public Host API Bootstrap Khóa Trong Cùng Tiến Trình**:
+   - Chuyển toàn bộ cơ chế cấp phát khóa sang ranh giới host bên ngoài.
+   - Ngăn chặn triệt để kịch bản counterexample trong đó candidate worker tự sinh cặp khóa Ed25519, gọi public host API để mint handoff và tự nạp vào `TrustedKeyStore` trong cùng tiến trình.
+   - Test harness sử dụng các helper máy chủ chuyên biệt (`TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, `TrustedHostProvisionKeyStore`).
+2. **Finding 2 — Tính Bền Vững Tiêu Thụ của OrcaDeliveryAdapter Qua Khởi Động Lại**:
+   - Khởi tạo mặc định của `OrcaDeliveryAdapter` chuyển sang sử dụng đường dẫn SQLite bền vững trên ổ đĩa `DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH` (`runtime/orca-consumption-registry.db`) hoặc `consumption_db_path` được chỉ định.
+   - Loại bỏ hoàn toàn fallback về `:memory:` trong production adapter path; cấm tiêm ephemeral in-memory registry (`_is_mem`) fail-closed.
+   - Bản ghi tiêu thụ phong bì và monotonic fencing token tồn tại bền vững qua restart adapter; ngăn chặn hoàn toàn replay attack và stale fencing token qua restart.
+3. **Finding 3 — Strict Type Rejection Trước Coercion Trong SignedIntegrationEnvelope**:
+   - `SignedIntegrationEnvelope.from_dict` từ chối fail-closed `EnvelopeVerificationError` đối với chuỗi `'false'`, số nguyên, hoặc bất kỳ kiểu phi-bool nào trước khi thực hiện bất kỳ chuyển đổi kiểu dữ liệu nào.
+   - Bổ sung strict type checking cho `gate_results` (strict bool values), `issued_at`/`expires_at` (numeric float/int, cấm bool/str), và `fencing_token` (strict int, cấm bool/str) cho cả review envelope và integration envelope.
 
+## 21. Khắc phục triệt để 2 phát hiện độc lập từ Sol Audit trên b85c240 (Out-of-Process Host Boundary Capability & Ephemeral Singleton Poisoning Fail-Closed)
+
+Đợt rà soát độc lập trên candidate SHA `b85c240d466c1624966c36bb9148c10d2112b4ae` (approved base `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nhận 2 finding hành động:
+1. **Finding 1 — Thẩm quyền Host Capability Hoàn Toàn Ngoài Tiến Trình**:
+   - Xóa bỏ hoàn toàn biến `_SENTINEL_HOST_TOKEN` khỏi candidate module `delivery_engine.py`; candidate module không chứa hay rò rỉ bất kỳ sentinel token hay host capability nào.
+   - Thẩm quyền host boundary được cung cấp nghiêm ngặt ngoài tiến trình qua biến môi trường host (`ORCA_HOST_BOUNDARY_TOKEN`) kết hợp hàm xác thực mật mã HMAC an toàn thời gian thực.
+   - Ngăn chặn triệt để counterexample `COUNTEREXAMPLE_CANDIDATE_BOOTSTRAPS_AUTHORITY`. Bổ sung fixture phân biệt `11s` trong `TestSolTrustBoundaryRootCauseRemediation`.
+2. **Finding 2 — Chống Đầu Độc Singleton Ephemeral Trong Sổ Đăng Ký Tiêu Thụ**:
+   - `DurableConsumptionRegistry.get_default` cấm tuyệt đối cấu hình `db_path=':memory:'` hoặc `allow_ephemeral=True` fail-closed với `ProtocolViolationError`.
+   - `OrcaDeliveryAdapter` từ chối fail-closed nếu singleton registry mặc định bị can thiệp thành dạng ephemeral trong bộ nhớ (`_is_mem=True`).
+   - Ngăn chặn triệt để counterexample `COUNTEREXAMPLE_EPHEMERAL_DEFAULT_ACCEPTED`. Bổ sung fixture phân biệt `15d` trong `TestSolTrustBoundaryRootCauseRemediation`.
+3. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **392/392 tests PASS (100%)**, chạy hoàn hảo trên toàn bộ gate validation và release gate.

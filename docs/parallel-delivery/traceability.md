@@ -93,9 +93,9 @@ Validator phải từ chối:
 - nỗ lực kích hoạt production mode khi `ProductionActivationGate` đang bị khóa `PRODUCTION_ACTIVATION_BLOCKED`;
 - đăng ký hoặc sửa đổi pinned public key trong TrustedKeyStore từ tiến trình candidate worker mà không có KeyStoreHostHandoff được host xác thực;
 - tiêu thụ SignedIntegrationEnvelope mà không qua giao dịch nguyên tử DurableConsumptionRegistry.check_and_consume_integration (chặn replay, nonce reuse, stale fencing, quá hạn);
-- t? bootstrap TrustedKeyStore qua c?c API c?ng khai c?a KeyStoreHostIssuer (get_default_host_issuer, issue_handoff, issue_isolated_keystore, provision_from_host) t? ti?n tr?nh candidate worker m? kh?ng c? token m?y ch? _SENTINEL_HOST_TOKEN;
-- kh?i t?o OrcaDeliveryAdapter v?i registry b? nh? t?m th?i :memory: l?m m?t d? li?u ti?u th? phong b? ho?c fencing token khi restart adapter;
-- ph?n t?ch SignedIntegrationEnvelope ho?c SignedReviewEnvelope t? dictionary v?i ki?u d? li?u b? ?p ki?u l?ng l?o (gates_pass='false' ho?c ki?u phi-bool/phi-s?) vi ph?m strict type rejection;
+- tự bootstrap TrustedKeyStore qua các API công khai của KeyStoreHostIssuer (get_default_host_issuer, issue_handoff, issue_isolated_keystore, provision_from_host) từ tiến trình candidate worker mà không có host boundary capability hợp lệ ngoài tiến trình;
+- khởi tạo OrcaDeliveryAdapter với registry bộ nhớ tạm thời :memory: hoặc cấu hình get_default(':memory:') làm mất dữ liệu tiêu thụ phong bì hoặc fencing token khi restart adapter;
+- phân tích SignedIntegrationEnvelope hoặc SignedReviewEnvelope từ dictionary với kiểu dữ liệu bị ép kiểu lỏng lẻo (gates_pass='false' hoặc kiểu phi-bool/phi-số) vi phạm strict type rejection;
 
 ## 5. Open thresholds giữ nguyên
 

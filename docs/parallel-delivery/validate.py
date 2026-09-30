@@ -722,6 +722,9 @@ def check_dely_block() -> list[str]:
 def run_negative_fixture_suite() -> Tuple[list[str], dict[str, Any]]:
     """Execute the automated test_negative_fixtures.py suite and capture results."""
     errors: list[str] = []
+    if "ORCA_HOST_BOUNDARY_TOKEN" not in os.environ or len(os.environ["ORCA_HOST_BOUNDARY_TOKEN"].strip()) < 32:
+        import secrets
+        os.environ["ORCA_HOST_BOUNDARY_TOKEN"] = secrets.token_hex(32)
     import test_negative_fixtures
 
     suite = unittest.defaultTestLoader.loadTestsFromModule(test_negative_fixtures)

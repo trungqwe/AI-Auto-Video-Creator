@@ -186,52 +186,56 @@ Bản backup này không tạo claim G05. Product DB/workflow/artifact restore v
 
 ### 8.3. Thiết kế Ranh giới tin cậy Độc lập & Chữ ký Mật mã Bất đối xứng (Ed25519)
 
-1. **Qu?n l? Kh?a B?t ??i x?ng Ngo?i ti?n tr?nh (Out-of-Process Key Custody & TrustedKeyStore)**:
-   - Private signing keys tuy?t ??i kh?ng ???c l?u tr? trong repository, bi?n m?i tr??ng c?a worker, log, hay fixture ch?y c?ng ti?n tr?nh. Kh?a ri?ng ch? thu?c s? h?u c?a phi?n Reviewer ??c l?p (`rev_key_lead_v1`) v? Integration Runner ??c l?p (`integ_gatekeeper_v1`).
-   - C?p ph?t kh?a ngo?i ti?n tr?nh (Out-of-Process Pinned Key Provisioning): TrustedKeyStore ???c c?p ph?t b?t bi?n th?ng qua KeyStoreHostHandoff v? KeyStoreHostIssuer t? trusted external host boundary v?i unforgeable capability (KeyStoreHostIssuerCapability).
-   - Pinned public keys ???c b?c trong MappingProxyType b?t bi?n.
-   - Caller trong c?ng ti?n tr?nh (candidate worker) b? c?m g?i tr?c ti?p `register_pinned_public_key` (fail-closed v?i ProtocolViolationError), c?m kh?i t?o TrustedKeyStore v?i custom pinned keys, c?m thay th? hay s?a ??i c?c kh?a ?? ghim (Cannot replace or mutate existing pinned key authority), c?m t? bootstrap authority qua public host APIs (`get_default_host_issuer`, `issue_handoff`, `issue_isolated_keystore`, `provision_from_host`) khi kh?ng c? token m?y ch? `_SENTINEL_HOST_TOKEN`, v? c?m ti?m keystore t? ch?n v?o OrcaDeliveryAdapter.
-   - H? tr? c? ch? thu h?i kh?a t?c th?i (`revoke_key`): m?t phong b? k? b?i kh?a ?? thu h?i s? b? t? ch?i fail-closed ngay l?p t?c.
+1. **Quản lý Khóa Bất đối xứng Ngoài tiến trình (Out-of-Process Key Custody & TrustedKeyStore)**:
+   - Private signing keys tuyệt đối không được lưu trữ trong repository, biến môi trường của worker, log, hay fixture chạy cùng tiến trình. Khóa riêng chỉ thuộc sở hữu của phiên Reviewer độc lập (`rev_key_lead_v1`) và Integration Runner độc lập (`integ_gatekeeper_v1`).
+   - Cấp phát khóa ngoài tiến trình (Out-of-Process Pinned Key Provisioning): TrustedKeyStore được cấp phát bất biến thông qua KeyStoreHostHandoff và KeyStoreHostIssuer từ trusted external host boundary với unforgeable capability (KeyStoreHostIssuerCapability).
+   - Pinned public keys được bọc trong MappingProxyType bất biến.
+   - Thẩm quyền host capability được quản lý nghiêm ngặt ngoài tiến trình thông qua biến môi trường host (`ORCA_HOST_BOUNDARY_TOKEN`) kết hợp hàm xác thực mật mã HMAC an toàn thời gian thực.
+   - Candidate module (`delivery_engine.py`) tuyệt đối không lưu trữ, không xuất và không rò rỉ bất kỳ sentinel token hay host capability nào trong module globals (loại bỏ hoàn toàn `_SENTINEL_HOST_TOKEN`).
+   - Caller trong cùng tiến trình (candidate worker) bị cấm gọi trực tiếp `register_pinned_public_key` (fail-closed với ProtocolViolationError), cấm khởi tạo TrustedKeyStore với custom pinned keys, cấm thay thế hay sửa đổi các khóa đã ghim (Cannot replace or mutate existing pinned key authority), cấm tự bootstrap authority qua public host APIs (`get_default_host_issuer`, `issue_handoff`, `issue_isolated_keystore`, `provision_from_host`) khi không có host boundary capability hợp lệ, và cấm tiêm keystore tự chọn vào OrcaDeliveryAdapter.
+   - Hỗ trợ cơ chế thu hồi khóa tức thời (`revoke_key`): một phong bì ký bởi khóa đã thu hồi sẽ bị từ chối fail-closed ngay lập tức.
 
-2. **Phong b? K? s? B?t ??i x?ng (SignedReviewEnvelope & SignedIntegrationEnvelope)**:
-   - Ph?n t?ch mi?n k? (Domain Separation): `PARALLEL_DELIVERY_REVIEW_ENVELOPE_V1` v? `PARALLEL_DELIVERY_INTEGRATION_ENVELOPE_V1`.
-   - Chu?n h?a chu?i d? li?u (Canonical Serialization): Tu?n th? RFC 8785, s?p x?p key nh?t qu?n, lo?i b? tr??ng signature tr??c khi k? v? b?m.
-   - G?n ch?t ng? c?nh nhi?m v?: B?t bu?c ch?a ??y ?? `delivery_task_id`, `review_dispatch_id`, commit SHA ?ng vi?n ??y ?? (40 k? t? hex), base commit, route attestation (`cx/gpt-5.6-sol`), harness (`Claude Code`), s? ng?u nhi?n d?ng m?t l?n (`nonce`), th?i gian ph?t h?nh/h?t h?n (`issued_at`, `expires_at`), v? m? r?o monotonic (`fencing_token`).
+2. **Phong bì Ký số Bất đối xứng (SignedReviewEnvelope & SignedIntegrationEnvelope)**:
+   - Phân tách miền ký (Domain Separation): `PARALLEL_DELIVERY_REVIEW_ENVELOPE_V1` và `PARALLEL_DELIVERY_INTEGRATION_ENVELOPE_V1`.
+   - Chuẩn hóa chuỗi dữ liệu (Canonical Serialization): Tuân thủ RFC 8785, sắp xếp key nhất quán, loại bỏ trường signature trước khi ký và băm.
+   - Gắn chặt ngữ cảnh nhiệm vụ: Bắt buộc chứa đầy đủ `delivery_task_id`, `review_dispatch_id`, commit SHA ứng viên đầy đủ (40 ký tự hex), base commit, route attestation (`cx/gpt-5.6-sol`), harness (`Claude Code`), số ngẫu nhiên dùng một lần (`nonce`), thời gian phát hành/hết hạn (`issued_at`, `expires_at`), và mã rào monotonic (`fencing_token`).
 
-3. **S? ??ng k? Ti?u th? B?n v?ng (DurableConsumptionRegistry)**:
-   - L?u tr? nguy?n t? (atomic persistence) qua SQLite v? kh?a lu?ng.
-   - Ti?u th? phong b? t?ch h?p nguy?n t? (check_and_consume_integration): TrustedIntegrationConsumer.consume_integration_envelope b?t bu?c x?c th?c ch? k? v? ti?u th? nguy?n t? qua DurableConsumptionRegistry.check_and_consume_integration, ng?n ch?n t?nh tr?ng phong b? ?? k? ???c ch?p nh?n nhi?u l?n m? kh?ng ti?u th?.
-   - Ch?ng t?n c?ng ph?t l?i (Replay Protection): B?t bu?c m?i envelope_id v? m?i `nonce` l? duy nh?t tr?n to?n h? th?ng; t?i s? d?ng l?p t?c b? t? ch?i v?i l?i ReplayAttackError.
-   - Gi? v?ng tr?ng th?i qua kh?i ??ng l?i (Durability across restart): D? li?u ti?u th? v? s? fencing t?n t?i b?n v?ng tr?n ??a SQLite, ng?n ch?n vi?c restart ti?n tr?nh ?? l?ch lu?t. OrcaDeliveryAdapter m?c ??nh s? d?ng ???ng d?n SQLite b?n v?ng DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH (`runtime/orca-consumption-registry.db`) ho?c `consumption_db_path` ???c ch? ??nh; c?m ti?m registry b? nh? t?m th?i (`:memory:`) fail-closed.
-   - Monotonic Fencing Token: B? ??m fencing token cho t?ng task v? t?ng domain ph?i t?ng ??n ?i?u; m?i token c? h?n ho?c b?ng gi? tr? ?? ghi nh?n ??u b? t? ch?i v?i FencingViolationError.
-   - C?a s? th?i gian h?p l?: Phong b? ?? h?t h?n (expires_at < current_time) ho?c ph?t h?nh v??t tr??c th?i gian th?c (> 30s) ??u b? t? ch?i fail-closed.
-   - R?ng bu?c ??nh danh: B?t bu?c kh?p ch?nh x?c gi?a n?i dung phong b? v?i expected_task_id, expected_candidate, v? expected_base.
+3. **Sổ đăng ký Tiêu thụ Bền vững & Chống đầu độc Singleton (Durable Consumption Registry & Singleton Poisoning Prevention)**:
+   - Lưu trữ nguyên tử (atomic persistence) qua SQLite và khóa luồng.
+   - Tiêu thụ phong bì tích hợp nguyên tử (check_and_consume_integration): TrustedIntegrationConsumer.consume_integration_envelope bắt buộc xác thực chữ ký và tiêu thụ nguyên tử qua DurableConsumptionRegistry.check_and_consume_integration, ngăn chặn tình trạng phong bì đã ký được chấp nhận nhiều lần mà không tiêu thụ.
+   - Chống tấn công phát lại (Replay Protection): Bắt buộc mỗi envelope_id và mỗi `nonce` là duy nhất trên toàn hệ thống; tái sử dụng lập tức bị từ chối với lỗi ReplayAttackError.
+   - Giữ vững trạng thái qua khởi động lại (Durability across restart): Dữ liệu tiêu thụ và số fencing tồn tại bền vững trên đĩa SQLite, ngăn chặn việc restart tiến trình để lách luật. OrcaDeliveryAdapter mặc định sử dụng đường dẫn SQLite bền vững DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH (`runtime/orca-consumption-registry.db`) hoặc `consumption_db_path` được chỉ định.
+   - Chống đầu độc Singleton Ephemeral (Fail-Closed Ephemeral Poisoning): `DurableConsumptionRegistry.get_default` cấm tuyệt đối cấu hình `db_path=':memory:'` hoặc `allow_ephemeral=True` fail-closed với `ProtocolViolationError`. Nếu singleton instance bị can thiệp thành dạng ephemeral trong bộ nhớ, `OrcaDeliveryAdapter` từ chối khởi tạo fail-closed ngay lập tức.
+   - Monotonic Fencing Token: Bộ đếm fencing token cho từng task và từng domain phải tăng đơn điệu; mọi token cũ hơn hoặc bằng giá trị đã ghi nhận đều bị từ chối với FencingViolationError.
+   - Cửa sổ thời gian hợp lệ: Phong bì đã hết hạn (expires_at < current_time) hoặc phát hành vượt trước thời gian thực (> 30s) đều bị từ chối fail-closed.
+   - Ràng buộc định danh: Bắt buộc khớp chính xác giữa nội dung phong bì với expected_task_id, expected_candidate, và expected_base.
 
-4. **Ki?m tra Ki?u D? li?u Nghi?m ng?t trong Phong b? (Strict Envelope Type Rejection)**:
-   - `SignedIntegrationEnvelope.from_dict` v? `SignedReviewEnvelope.from_dict` th?c hi?n ki?m tra ki?u d? li?u nghi?m ng?t tr??c b?t k? coercion n?o: t? ch?i fail-closed `EnvelopeVerificationError` ??i v?i chu?i `'false'`, s? nguy?n, ho?c b?t k? ki?u phi-bool n?o ? tr??ng `gates_pass` v? `gate_results`.
-   - C?c tr??ng `issued_at`, `expires_at`, `fencing_token` b?t bu?c ki?u s? h?c chu?n x?c, t? ch?i bool/str fail-closed.
+4. **Kiểm tra Kiểu Dữ liệu Nghiêm ngặt trong Phong bì (Strict Envelope Type Rejection)**:
+   - `SignedIntegrationEnvelope.from_dict` và `SignedReviewEnvelope.from_dict` thực hiện kiểm tra kiểu dữ liệu nghiêm ngặt trước bất kỳ coercion nào: từ chối fail-closed `EnvelopeVerificationError` đối với chuỗi `'false'`, số nguyên, hoặc bất kỳ kiểu phi-bool nào ở trường `gates_pass` và `gate_results`.
+   - Các trường `issued_at`, `expires_at`, `fencing_token` bắt buộc kiểu số học chuẩn xác, từ chối bool/str fail-closed.
 
-5. **Lo?i b? Ho?n to?n Quy?n h?n C? trong Ti?n tr?nh (In-Process Deprecation)**:
-   - ReviewerHostIssuer, ReviewerHostHandoff, v? ReviewerSessionBoundary ch? c?n vai tr? DTO m? ph?ng cho backward compatibility c?a test fixtures, kh?ng mang b?t k? th?m quy?n b?o m?t n?o trong m?i tr??ng production.
-   - H?m kh?i t?o c?a ReviewerHostIssuer v? KeyStoreHostIssuer ???c b?o v? b?ng private sentinel token `_SENTINEL_HOST_TOKEN`, ng?n ch?n caller t?y ? t?o issuer trong ti?n tr?nh.
+5. **Loại bỏ Hoàn toàn Quyền hạn Cũ trong Tiến trình (In-Process Deprecation)**:
+   - ReviewerHostIssuer, ReviewerHostHandoff, và ReviewerSessionBoundary chỉ còn vai trò DTO mô phỏng cho backward compatibility của test fixtures, không mang bất kỳ thẩm quyền bảo mật nào trong môi trường production.
+   - Hàm khởi tạo của ReviewerHostIssuer và KeyStoreHostIssuer được bảo vệ bằng out-of-process host boundary capability, ngăn chặn triệt để caller tùy ý tạo issuer trong tiến trình.
 
-### 8.4. B?ng ??i chi?u ??ng to?n b? h? l?i (Root Cause Closure Matrix)
+### 8.4. Bảng đối chiếu đóng toàn bộ hệ lỗi (Root Cause Closure Matrix)
 
-| H? l?i b?o m?t (Vulnerability Class) | Bi?u hi?n r?i ro c? (Observed Anti-Pattern) | Gi?i ph?p Ki?n tr?c Out-of-Process (Root Cause Remediation) | Tr?ng th?i ki?m ch?ng (Verification Status) |
+| Hệ lỗi bảo mật (Vulnerability Class) | Biểu hiện rủi ro cũ (Observed Anti-Pattern) | Giải pháp Kiến trúc Out-of-Process (Root Cause Remediation) | Trạng thái kiểm chứng (Verification Status) |
 | :--- | :--- | :--- | :--- |
-| **1. Identity Bootstrap** | Worker t? t?o issuer capability, kh?i t?o ReviewerHostIssuer, ho?c import fixture ?? t? c?p quy?n review | Private sentinel token c?m t?o in-process; th?m quy?n ch? ???c c?p qua ch? k? Ed25519 t? trusted keypair ??c l?p | **CLOSED** (`test_01`, `test_02`) |
-| **2. Key Custody & Provisioning** | Worker t? ??ng k? public key t?y ? v?o TrustedKeyStore.register_pinned_public_key, t? sinh keypair Ed25519 ?? k?, ho?c g?i public host API bootstrap in-process | Key custody chuy?n sang host boundary; c?p ph?t b?t bi?n qua KeyStoreHostHandoff v? KeyStoreHostIssuerCapability; to?n b? API public c?a host issuer y?u c?u `_SENTINEL_HOST_TOKEN`; in-process caller c?m ??ng k?/s?a/thay th?/bootstrap kh?a | **CLOSED** (`test_03`, `test_04`, `test_11`) |
-| **3. Verifier Ownership** | To?n b? verifier ch?y trong c?ng Python runtime c?a candidate; worker c? th? monkey-patch class ho?c bypass logic ki?m tra | Ph?n t?ch vai tr? r? r?ng: worker ch? n?p artifact/request; TrustedReviewConsumer v? TrustedIntegrationConsumer x?c minh d?a tr?n pinned keys ??c l?p | **CLOSED** (`test_02`, `test_09`) |
-| **4. Replay & Durable Consumption** | Worker g?i l?i k?t qu? review/integration c?, d?ng l?i nonce, adapter restart m?t cache :memory:, ho?c SignedIntegrationEnvelope kh?ng ???c ghi nh?n ti?u th? | DurableConsumptionRegistry l?u SQLite b?n v?ng, OrcaDeliveryAdapter d?ng DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH, c?m :memory:, check_and_consume_integration nguy?n t? ki?m tra replay, nonce single-use, monotonic fencing, restart durability | **CLOSED** (`test_05`, `test_06`, `test_07`, `test_12`, `test_13`, `test_14`, `test_15`) |
-| **5. Merge Authority** | Worker t? g?i transition sang integrated ho?c t? merge m? ngu?n v?o nh?nh ch?nh | Ch? TrustedIntegrationConsumer v?i phong b? h?p l? m?i cho ph?p ho?n t?t integration gate; worker ch? c? quy?n push feature branch | **CLOSED** (`test_08`, `test_10`) |
-| **6. Strict Type Validation** | Payload phong b? ch?a chu?i 'false' b? ?p ki?u bool('false') == True, l?t qua gate ki?m duy?t | Strict type rejection trong from_dict t? ch?i chu?i, s? nguy?n v? ki?u kh?ng t??ng th?ch tr??c coercion | **CLOSED** (`test_16`) |
+| **1. Identity Bootstrap** | Worker tự tạo issuer capability, khởi tạo ReviewerHostIssuer, hoặc import fixture để tự cấp quyền review | Host capability chuyển hoàn toàn ra ngoài tiến trình (`ORCA_HOST_BOUNDARY_TOKEN`); loại bỏ hoàn toàn `_SENTINEL_HOST_TOKEN` khỏi candidate module; thẩm quyền chỉ được cấp qua chữ ký Ed25519 từ trusted keypair độc lập | **CLOSED** (`test_01`, `test_02`, `test_11s`) |
+| **2. Key Custody & Provisioning** | Worker tự đăng ký public key tùy ý vào TrustedKeyStore.register_pinned_public_key, tự sinh keypair Ed25519 để ký, hoặc đọc sentinel token từ candidate module để bootstrap in-process | Key custody chuyển sang host boundary; cấp phát bất biến qua KeyStoreHostHandoff và KeyStoreHostIssuerCapability; toàn bộ API public của host issuer yêu cầu host boundary capability ngoài tiến trình; candidate worker cấm đăng ký/sửa/thay thế/bootstrap khóa; chặn đứng counterexample candidate bootstraps authority | **CLOSED** (`test_03`, `test_04`, `test_11`, `test_11s`) |
+| **3. Verifier Ownership** | Toàn bộ verifier chạy trong cùng Python runtime của candidate; worker có thể monkey-patch class hoặc bypass logic kiểm tra | Phân tách vai trò rõ ràng: worker chỉ nộp artifact/request; TrustedReviewConsumer và TrustedIntegrationConsumer xác minh dựa trên pinned keys độc lập | **CLOSED** (`test_02`, `test_09`) |
+| **4. Replay & Durable Consumption** | Worker gửi lại kết quả review/integration cũ, dùng lại nonce, adapter restart mất cache :memory:, gọi get_default(':memory:') đầu độc singleton, hoặc SignedIntegrationEnvelope không được ghi nhận tiêu thụ | DurableConsumptionRegistry lưu SQLite bền vững, OrcaDeliveryAdapter dùng DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH, cấm :memory:, get_default từ chối ephemeral fail-closed, adapter từ chối poisoned singleton fail-closed, check_and_consume_integration nguyên tử kiểm tra replay, nonce single-use, monotonic fencing, restart durability | **CLOSED** (`test_05`, `test_06`, `test_07`, `test_12`, `test_13`, `test_14`, `test_15`, `test_15d`) |
+| **5. Merge Authority** | Worker tự gọi transition sang integrated hoặc tự merge mã nguồn vào nhánh chính | Chỉ TrustedIntegrationConsumer với phong bì hợp lệ mới cho phép hoàn tất integration gate; worker chỉ có quyền push feature branch | **CLOSED** (`test_08`, `test_10`) |
+| **6. Strict Type Validation** | Payload phong bì chứa chuỗi 'false' bị ép kiểu bool('false') == True, lọt qua gate kiểm duyệt | Strict type rejection trong from_dict từ chối chuỗi, số nguyên và kiểu không tương thích trước coercion | **CLOSED** (`test_16`) |
 
-### 8.5. Kh?a k?ch ho?t Production & Danh m?c ?i?u ki?n ti?n quy?t (Prerequisites & Runbook)
+### 8.5. Khóa kích hoạt Production & Danh mục điều kiện tiên quyết (Prerequisites & Runbook)
 
-H? th?ng ph?n ??nh r?ch r?i 3 tr?ng th?i c?a ki?n tr?c:
-1. ARCHITECTURE_IMPLEMENTED: To?n b? l?p ki?n tr?c, data contract, validator, v? signed envelope ?? ???c hi?n th?c h?a ??y ?? trong code.
-2. REFERENCE_TESTED: To?n b? 16/16 probe test negative/positive trong TestSolTrustBoundaryRootCauseRemediation (RED evidence, monkey-patching, ch? k? Ed25519, thu h?i kh?a, replay, restart SQLite, temporal validity, production gate fail-closed, fresh subprocess, positive control full lifecycle, key custody bootstrap prevention, integration durable consumption, restart durability, concurrency race, adapter restart SQLite durability, v? strict envelope type rejection) ?? v??t qua 100%.
-3. PRODUCTION_ACTIVATION_BLOCKED: Tr?ng th?i k?ch ho?t production b? **KH?A CH?T (FAIL-CLOSED)** cho ??n khi to?n b? 4 ?i?u ki?n h? t?ng b?n d??i ???c cung c?p th?c t?.
+Hệ thống phân định rạch ròi 3 trạng thái của kiến trúc:
+1. ARCHITECTURE_IMPLEMENTED: Toàn bộ lớp kiến trúc, data contract, validator, và signed envelope đã được hiện thực hóa đầy đủ trong code.
+2. REFERENCE_TESTED: Toàn bộ 16/16 probe test negative/positive trong TestSolTrustBoundaryRootCauseRemediation (RED evidence, monkey-patching, chữ ký Ed25519, thu hồi khóa, replay, restart SQLite, temporal validity, production gate fail-closed, fresh subprocess, positive control full lifecycle, key custody bootstrap prevention, integration durable consumption, restart durability, concurrency race, adapter restart SQLite durability, strict envelope type rejection, cùng các fixture phân biệt counterexample 11s và 15d) đã vượt qua 100%.
+3. PRODUCTION_ACTIVATION_BLOCKED: Trạng thái kích hoạt production bị **KHÓA CHẶT (FAIL-CLOSED)** cho đến khi toàn bộ 4 điều kiện hạ tầng bên dưới được cung cấp thực tế.
+
 
 
 #### Danh mục điều kiện tiên quyết hạ tầng bắt buộc (Infrastructure Prerequisites Inventory):

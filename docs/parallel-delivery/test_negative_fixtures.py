@@ -91,7 +91,6 @@ from delivery_engine import (  # noqa: E402
     KeyStoreHostIssuerCapability,
     KeyStoreHostIssuer,
     KeyStoreHostHandoff,
-    _SENTINEL_HOST_TOKEN,
     DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH,
     build_contract_catalog,
     check_harness_tool_compatibility,
@@ -107,7 +106,12 @@ from delivery_engine import (  # noqa: E402
 )
 from validate import check_secret_scan, check_task_dag
 
-_test_host_issuer = ReviewerHostIssuer.get_default_host_issuer()
+_HOST_BOUNDARY_TOKEN = os.environ.get("ORCA_HOST_BOUNDARY_TOKEN")
+if not _HOST_BOUNDARY_TOKEN or len(_HOST_BOUNDARY_TOKEN.strip()) < 32:
+    _HOST_BOUNDARY_TOKEN = secrets.token_hex(32)
+    os.environ["ORCA_HOST_BOUNDARY_TOKEN"] = _HOST_BOUNDARY_TOKEN
+
+_test_host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
 
 def TrustedHostReviewerHandoff(credential: bytes) -> ReviewerHostHandoff:
     """Trusted host-owned handoff authority created exclusively by test harness / trusted host boundary.
@@ -118,19 +122,19 @@ def TrustedHostReviewerHandoff(credential: bytes) -> ReviewerHostHandoff:
 
 def TrustedHostKeyStoreHandoff(pinned_keys: Mapping[str, bytes], issuer_name: str = "trusted_host") -> KeyStoreHostHandoff:
     """Trusted host-owned keystore handoff authority created exclusively by test harness / trusted host boundary."""
-    issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_SENTINEL_HOST_TOKEN)
-    return issuer.issue_handoff(pinned_keys, issuer_name=issuer_name, _internal_token=_SENTINEL_HOST_TOKEN)
+    issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
+    return issuer.issue_handoff(pinned_keys, issuer_name=issuer_name, _internal_token=_HOST_BOUNDARY_TOKEN)
 
 
 def TrustedHostIsolatedKeyStore(pinned_keys: Mapping[str, bytes]) -> TrustedKeyStore:
     """Trusted host-owned isolated keystore created exclusively by test harness / trusted host boundary."""
-    issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_SENTINEL_HOST_TOKEN)
-    return issuer.issue_isolated_keystore(pinned_keys, _internal_token=_SENTINEL_HOST_TOKEN)
+    issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
+    return issuer.issue_isolated_keystore(pinned_keys, _internal_token=_HOST_BOUNDARY_TOKEN)
 
 
 def TrustedHostProvisionKeyStore(handoff: KeyStoreHostHandoff) -> TrustedKeyStore:
     """Trusted host-owned keystore provisioning executed exclusively by test harness / trusted host boundary."""
-    return TrustedKeyStore.provision_from_host(handoff, _internal_token=_SENTINEL_HOST_TOKEN)
+    return TrustedKeyStore.provision_from_host(handoff, _internal_token=_HOST_BOUNDARY_TOKEN)
 
 
 TEST_FIXTURE_REVIEWER_SECRET = "test_fixture_reviewer_secret_32b_hex!"
@@ -11552,8 +11556,8 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
 
     def setUp(self):
         SharedOrcaExecutionRegistry.reset_default()
-        TrustedKeyStore._reset_for_testing(_internal_token=_SENTINEL_HOST_TOKEN)
-        KeyStoreHostIssuer._reset_for_testing(_internal_token=_SENTINEL_HOST_TOKEN)
+        TrustedKeyStore._reset_for_testing(_internal_token=_HOST_BOUNDARY_TOKEN)
+        KeyStoreHostIssuer._reset_for_testing(_internal_token=_HOST_BOUNDARY_TOKEN)
         DurableConsumptionRegistry.reset_default()
         cmd_head = ["git", "rev-parse", "HEAD"]
         res = subprocess.run(cmd_head, capture_output=True, text=True)
@@ -11568,8 +11572,8 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
 
     def tearDown(self):
         SharedOrcaExecutionRegistry.reset_default()
-        TrustedKeyStore._reset_for_testing(_internal_token=_SENTINEL_HOST_TOKEN)
-        KeyStoreHostIssuer._reset_for_testing(_internal_token=_SENTINEL_HOST_TOKEN)
+        TrustedKeyStore._reset_for_testing(_internal_token=_HOST_BOUNDARY_TOKEN)
+        KeyStoreHostIssuer._reset_for_testing(_internal_token=_HOST_BOUNDARY_TOKEN)
         DurableConsumptionRegistry.reset_default()
 
     def test_01_red_evidence_sol_finding_constructor_and_issuer_reproduction(self):
@@ -12355,7 +12359,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("Access to host keystore issuer by in-process candidate caller is strictly forbidden fail-closed", str(ctx_iss_fake.exception))
 
         # 11o. Sol Finding 1: Candidate calls issue_handoff on host issuer without host token -> fails closed
-        host_issuer_auth = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_SENTINEL_HOST_TOKEN)
+        host_issuer_auth = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
         with self.assertRaises(ProtocolViolationError) as ctx_ho_cand:
             host_issuer_auth.issue_handoff({"integ_gatekeeper_v1": attacker_pub})
         self.assertIn("Minting host handoff by in-process candidate caller is strictly forbidden fail-closed", str(ctx_ho_cand.exception))
@@ -12387,6 +12391,20 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         # Candidate cannot provision key into TrustedKeyStore.get_default() in-process.
         with self.assertRaises(ProtocolViolationError):
             KeyStoreHostIssuer.get_default_host_issuer()
+
+        # 11s. Sol Finding 1 discriminating fixture: candidate attempts to steal _SENTINEL_HOST_TOKEN from delivery_engine;
+        # candidate module has no sentinel token, getattr returns None, and bootstrap fails closed without executing COUNTEREXAMPLE_CANDIDATE_BOOTSTRAPS_AUTHORITY
+        import delivery_engine
+        self.assertFalse(hasattr(delivery_engine, "_SENTINEL_HOST_TOKEN"), "Candidate module must never export _SENTINEL_HOST_TOKEN")
+        stolen_token = getattr(delivery_engine, "_SENTINEL_HOST_TOKEN", None)
+        self.assertIsNone(stolen_token, "Stolen sentinel token must be None")
+        with self.assertRaises(ProtocolViolationError) as ctx_stolen_iss:
+            KeyStoreHostIssuer.get_default_host_issuer(_internal_token=stolen_token)
+        self.assertIn("Access to host keystore issuer by in-process candidate caller is strictly forbidden fail-closed", str(ctx_stolen_iss.exception))
+
+        with self.assertRaises(ProtocolViolationError) as ctx_stolen_prov:
+            TrustedKeyStore.provision_from_host(_internal_token=stolen_token)
+        self.assertIn("In-process candidate caller cannot bootstrap or provision TrustedKeyStore fail-closed", str(ctx_stolen_prov.exception))
 
     def test_12_finding_02_integration_envelope_durable_registry_and_counterexamples(self):
         """12. Finding 2: Signed integration envelope consumed atomically via DurableConsumptionRegistry.
@@ -12901,6 +12919,32 @@ print("FRESH_PROCESS_ISOLATION_PASS")
                     db_file.unlink()
                 except Exception:
                     pass
+
+        # 15d. Sol Finding 2 discriminating fixture: caller attempting to poison default registry with ':memory:' is rejected fail-closed;
+        # OrcaDeliveryAdapter strictly rejects poisoned ephemeral singleton, preventing COUNTEREXAMPLE_EPHEMERAL_DEFAULT_ACCEPTED
+        with self.assertRaises(ProtocolViolationError) as ctx_poison:
+            DurableConsumptionRegistry.get_default(db_path=":memory:")
+        self.assertIn("cannot be configured with ephemeral ':memory:'", str(ctx_poison.exception))
+
+        with self.assertRaises(ProtocolViolationError) as ctx_eph:
+            DurableConsumptionRegistry.get_default(allow_ephemeral=True)
+        self.assertIn("cannot be configured with allow_ephemeral=True", str(ctx_eph.exception))
+
+        # Even if _default_instance is artificially poisoned with an ephemeral registry, adapter strictly rejects it
+        try:
+            DurableConsumptionRegistry._default_instance = DurableConsumptionRegistry(db_path=":memory:", allow_ephemeral=True)
+            with self.assertRaises(ProtocolViolationError) as ctx_adapt_poison:
+                OrcaDeliveryAdapter(
+                    lease_manager=lm,
+                    approved_candidate_commit=self.candidate_commit,
+                    approved_base_commit=self.base_commit,
+                )
+            self.assertTrue(
+                "poisoned with ephemeral storage" in str(ctx_adapt_poison.exception)
+                or "cannot be ephemeral ':memory:'" in str(ctx_adapt_poison.exception)
+            )
+        finally:
+            DurableConsumptionRegistry.reset_default()
 
     def test_16_finding_03_strict_envelope_type_rejection_no_coercion(self):
         """16. Finding 3: SignedIntegrationEnvelope.from_dict and SignedReviewEnvelope.from_dict

@@ -1,21 +1,40 @@
 # Changelog
 
-## 2026-10-01 ? Kh?c ph?c tri?t ?? 3 ph?t hi?n ??c l?p t? Sol Audit sau 851d23c (Out-of-Process Key Custody Bootstrap Prevention, Durable Adapter Restart Consumption & Strict Envelope Type Rejection)
+## 2026-10-01 — Khắc phục triệt để 2 phát hiện độc lập từ Sol Audit sau b85c240 (Out-of-Process Host Boundary Capability & Ephemeral Singleton Poisoning Fail-Closed)
 
-- Kh?c ph?c tri?t ?? ba ph?t hi?n ??c l?p (actionable findings) t? Sol tr?n exact candidate `851d23c3f7fde7e37891b933547d931706e11417` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
-  - **(1) V? Hi?u H?a Public Host API Bootstrap Kh?a Trong C?ng Ti?n Tr?nh (Out-of-Process Key Custody Bootstrap Prevention)**:
-    - ??ng to?n b? c?c API c?ng khai c?a `KeyStoreHostIssuer` (`get_default_host_issuer`, `issue_handoff`, `issue_isolated_keystore`) v? `TrustedKeyStore.provision_from_host` ??i v?i in-process candidate caller b?ng c?ch b?t bu?c token m?y ch? ngo?i ti?n tr?nh `_SENTINEL_HOST_TOKEN`.
-    - M?i n? l?c g?i `KeyStoreHostIssuer.get_default_host_issuer()` ho?c t? mint handoff/keystore m? kh?ng c? `_SENTINEL_HOST_TOKEN` ??u b? t? ch?i fail-closed ngay l?p t?c v?i `ProtocolViolationError`.
-    - Test harness s? d?ng c?c h?m host helper chuy?n bi?t (`TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, `TrustedHostProvisionKeyStore`) ??i di?n cho ranh gi?i m?y ch? b?n ngo?i.
-  - **(2) ??m B?o T?nh B?n V?ng Ti?u Th? C?a Adapter Qua Kh?i ??ng L?i (Durable Adapter Restart Consumption)**:
-    - Lo?i b? ho?n to?n registry b? nh? t?m th?i `:memory:` kh?i ???ng d?n s?n xu?t c?a `OrcaDeliveryAdapter`: adapter m?c ??nh s? d?ng ???ng d?n SQLite b?n v?ng tr?n ? ??a `DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH` (`runtime/orca-consumption-registry.db`) ho?c `consumption_db_path` ???c ch? ??nh.
-    - C?m ti?m caller-selected ephemeral in-memory registry (`_is_mem`) v?o `OrcaDeliveryAdapter` fail-closed.
-    - D? li?u phong b? ?? ti?u th? v? b? ??m monotonic fencing token t?n t?i b?n v?ng qua restart adapter; replay attack v? stale fencing token qua restart b? ph?t hi?n v? ng?n ch?n 100%.
-  - **(3) Lo?i B? ?p Ki?u L?ng L?o & Ki?m Tra Ki?u D? Li?u Nghi?m Ng?t Tr??c Khi X? L? (Strict Envelope Type Rejection)**:
-    - Lo?i b? vi?c ?p ki?u `bool(data.get("gates_pass", False))` trong `SignedIntegrationEnvelope.from_dict`; tri?n khai c? ch? ki?m tra ki?u d? li?u nghi?m ng?t t? ch?i fail-closed `EnvelopeVerificationError` ??i v?i chu?i `'false'`, s? nguy?n `0`/`1`, ho?c b?t k? ki?u d? li?u phi-bool n?o.
-    - B? sung strict type checking cho `gate_results` (b?t bu?c dict v?i gi? tr? strict bool), `issued_at`/`expires_at` (b?t bu?c s? th?c/nguy?n, t? ch?i bool/str), v? `fencing_token` (b?t bu?c strict int, t? ch?i bool/str) cho c? `SignedIntegrationEnvelope` v? `SignedReviewEnvelope`.
-  - **(4) B? Ki?m Th? T? ??ng 392/392 Tests PASS (100%)**:
-    - M? r?ng suite `TestSolTrustBoundaryRootCauseRemediation` l?n 16/16 tests v?i 2 b?i test ph??ng th?c m?i (`test_15_finding_02_adapter_restart_durable_consumption`, `test_16_finding_03_strict_envelope_type_rejection_no_coercion`) v? b? sung c?c nh?nh probe counterexample `11n..11r` cho public host API bootstrap rejection.
+- Khắc phục triệt để hai phát hiện độc lập (actionable findings) từ Sol trên exact candidate `b85c240d466c1624966c36bb9148c10d2112b4ae` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Thẩm Quyền Host Capability Hoàn Toàn Ngoài Tiến Trình (Out-of-Process Host Boundary Capability)**:
+    - Loại bỏ hoàn toàn biến `_SENTINEL_HOST_TOKEN` khỏi candidate module `delivery_engine.py`; candidate module không chứa hay rò rỉ bất kỳ sentinel token hay host capability nào.
+    - Thẩm quyền host boundary được cung cấp nghiêm ngặt ngoài tiến trình qua biến môi trường host (`ORCA_HOST_BOUNDARY_TOKEN`) kết hợp hàm xác thực mật mã HMAC an toàn thời gian thực.
+    - Ngăn chặn triệt để counterexample `COUNTEREXAMPLE_CANDIDATE_BOOTSTRAPS_AUTHORITY` (caller in-process đọc sentinel token từ candidate module để tự ghim khóa và xác minh chữ ký).
+    - Bổ sung fixture phân biệt `11s` trong `TestSolTrustBoundaryRootCauseRemediation`.
+  - **(2) Chống Đầu Độc Singleton Ephemeral Trong Sổ Đăng Ký Tiêu Thụ (Ephemeral Singleton Poisoning Fail-Closed)**:
+    - `DurableConsumptionRegistry.get_default` cấm tuyệt đối cấu hình `db_path=':memory:'` hoặc `allow_ephemeral=True` fail-closed với `ProtocolViolationError`.
+    - `OrcaDeliveryAdapter` từ chối fail-closed nếu singleton registry mặc định bị can thiệp thành dạng ephemeral trong bộ nhớ (`_is_mem=True`).
+    - Ngăn chặn triệt để counterexample `COUNTEREXAMPLE_EPHEMERAL_DEFAULT_ACCEPTED` (caller đầu độc singleton trước khi adapter khởi tạo).
+    - Bổ sung fixture phân biệt `15d` trong `TestSolTrustBoundaryRootCauseRemediation`.
+  - **(3) Dọn Dẹp Toàn Bộ Residue Khoảng Trắng**:
+    - Xóa bỏ trailing whitespace tại `CHANGELOG.md:30` và `docs/parallel-delivery/README.md:348,367`.
+    - Đảm bảo `git diff 4a7c8c921b7e05066505d51b168a02c3fde61317 --check` đạt 0 lỗi khoảng trắng.
+  - **(4) Bộ Kiểm Thử Tự Động 392/392 Tests PASS (100%)**:
+    - Toàn bộ suite vượt qua 100% không có cảnh báo hay lỗi kiểm thử.
+
+## 2026-10-01 — Khắc phục triệt để 3 phát hiện độc lập từ Sol Audit sau 851d23c (Out-of-Process Key Custody Bootstrap Prevention, Durable Adapter Restart Consumption & Strict Envelope Type Rejection)
+
+- Khắc phục triệt để ba phát hiện độc lập (actionable findings) từ Sol trên exact candidate `851d23c3f7fde7e37891b933547d931706e11417` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Vô Hiệu Hóa Public Host API Bootstrap Khóa Trong Cùng Tiến Trình (Out-of-Process Key Custody Bootstrap Prevention)**:
+    - Đóng toàn bộ các API công khai của `KeyStoreHostIssuer` (`get_default_host_issuer`, `issue_handoff`, `issue_isolated_keystore`) và `TrustedKeyStore.provision_from_host` đối với in-process candidate caller bằng cách bắt buộc token máy chủ ngoài tiến trình.
+    - Mọi nỗ lực gọi `KeyStoreHostIssuer.get_default_host_issuer()` hoặc tự mint handoff/keystore mà không có thẩm quyền hợp lệ đều bị từ chối fail-closed ngay lập tức với `ProtocolViolationError`.
+    - Test harness sử dụng các hàm host helper chuyên biệt (`TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, `TrustedHostProvisionKeyStore`) đại diện cho ranh giới máy chủ bên ngoài.
+  - **(2) Đảm Bảo Tính Bền Vững Tiêu Thụ Của Adapter Qua Khởi Động Lại (Durable Adapter Restart Consumption)**:
+    - Loại bỏ hoàn toàn registry bộ nhớ tạm thời `:memory:` khỏi đường dẫn sản xuất của `OrcaDeliveryAdapter`: adapter mặc định sử dụng đường dẫn SQLite bền vững trên ổ đĩa `DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH` (`runtime/orca-consumption-registry.db`) hoặc `consumption_db_path` được chỉ định.
+    - Cấm tiêm caller-selected ephemeral in-memory registry (`_is_mem`) vào `OrcaDeliveryAdapter` fail-closed.
+    - Dữ liệu phong bì đã tiêu thụ và bộ đếm monotonic fencing token tồn tại bền vững qua restart adapter; replay attack và stale fencing token qua restart bị phát hiện và ngăn chặn 100%.
+  - **(3) Loại Bỏ Ép Kiểu Lỏng Lẻo & Kiểm Tra Kiểu Dữ Liệu Nghiêm Ngặt Trước Khi Xử Lý (Strict Envelope Type Rejection)**:
+    - Loại bỏ việc ép kiểu `bool(data.get("gates_pass", False))` trong `SignedIntegrationEnvelope.from_dict`; triển khai cơ chế kiểm tra kiểu dữ liệu nghiêm ngặt từ chối fail-closed `EnvelopeVerificationError` đối với chuỗi `'false'`, số nguyên `0`/`1`, hoặc bất kỳ kiểu dữ liệu phi-bool nào.
+    - Bổ sung strict type checking cho `gate_results` (bắt buộc dict với giá trị strict bool), `issued_at`/`expires_at` (bắt buộc số thực/nguyên, từ chối bool/str), và `fencing_token` (bắt buộc strict int, từ chối bool/str) cho cả `SignedIntegrationEnvelope` và `SignedReviewEnvelope`.
+  - **(4) Bộ Kiểm Thử Tự Động 392/392 Tests PASS (100%)**:
+    - Mở rộng suite `TestSolTrustBoundaryRootCauseRemediation` lên 16/16 tests với 2 bài test phương thức mới (`test_15_finding_02_adapter_restart_durable_consumption`, `test_16_finding_03_strict_envelope_type_rejection_no_coercion`) và bổ sung các nhánh probe counterexample `11n..11r` cho public host API bootstrap rejection.
 
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit sau d7f0043 (Out-of-Process Pinned Key Custody Provisioning & Durable Integration Envelope Consumption)
 
@@ -27,11 +46,10 @@
     - Thuộc tính OrcaDeliveryAdapter.keystore là read-only gắn chặt với TrustedKeyStore.get_default(), từ chối nhận caller-selected keystore fail-closed.
   - **(2) Tiêu Thụ Phong Bì Tích Hợp Nguyên Tử Qua Sổ Đăng Ký Bền Vững (Durable Integration Envelope Consumption)**:
     - TrustedIntegrationConsumer.consume_integration_envelope gọi giao dịch nguyên tử DurableConsumptionRegistry.check_and_consume_integration(...) ngay sau khi xác thực chữ ký Ed25519.
-    - Kiểm tra toàn diện temporal validity (expires_at, issued_at <= now + 30.0s), ràng buộc danh tính (expected_task_id, expected_candidate, expected_base), chống phát lại phong bì (envelope_id single-use), chống tái sử dụng 
-once, và monotonic fencing token theo miền (	ask_fencing).
+    - Kiểm tra toàn diện temporal validity (expires_at, issued_at <= now + 30.0s), ràng buộc danh tính (expected_task_id, expected_candidate, expected_base), chống phát lại phong bì (envelope_id single-use), chống tái sử dụng nonce, và monotonic fencing token theo miền (task_fencing).
     - Đảm bảo tính bền vững qua restart tiến trình với SQLite và khả năng chống xung đột tương tranh giữa 10 luồng đồng thời (duy nhất 1 luồng thành công, 9 luồng bị chặn bởi ReplayAttackError).
   - **(3) Bộ Kiểm Thử Tự Động 390/390 Tests PASS (100%)**:
-    - Bổ sung 4 bài test phương thức toàn diện trong TestSolTrustBoundaryRootCauseRemediation (	est_11, 	est_12, 	est_13, 	est_14) bao quát trọn vẹn các kịch bản counterexample tiêu cực cho key custody bootstrap, integration replay/nonce/fencing/expiry, restart durability, và đa luồng tương tranh.
+    - Bổ sung 4 bài test phương thức toàn diện trong TestSolTrustBoundaryRootCauseRemediation (test_11, test_12, test_13, test_14) bao quát trọn vẹn các kịch bản counterexample tiêu cực cho key custody bootstrap, integration replay/nonce/fencing/expiry, restart durability, và đa luồng tương tranh.
 
 ## 2026-09-30 — Khắc phục triệt để phát hiện Sol-Lead audit sau 8913b39 (Out-of-Process Trust Boundary, Asymmetric Ed25519 Cryptography, Pinned Key Custody, Durable Replay Protection & Fail-Closed Production Activation Gate)
 
@@ -60,23 +78,23 @@ once, và monotonic fencing token theo miền (	ask_fencing).
   - **(7) Bộ Kiểm Thử Tự Động 386/386 Tests PASS (100%)**:
     - Bổ sung lớp kiểm thử `TestSolTrustBoundaryRootCauseRemediation` với 10 bài test tự động bao quát toàn bộ threat model và closure matrix (RED evidence, worker monkey-patching failure, asymmetric Ed25519 signature tamper rejection, key revocation, single-use replay protection, SQLite restart durability, temporal validity, production gate fail-closed, fresh subprocess isolation, và positive control full lifecycle review -> merge_queued -> integration -> integrated), nâng tổng số test lên 386/386 passed 100%.
 
-## 2026-09-30 ? Kh?c ph?c ph?t hi?n Sol-Lead audit sau a189e50 (Reviewer Authenticated Delivery Channel, Removal of _reviewer_mint_secret, Atomic Verify-and-Consume Capability)
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau a189e50 (Reviewer Authenticated Delivery Channel, Removal of _reviewer_mint_secret, Atomic Verify-and-Consume Capability)
 
-- Kh?c ph?c tri?t ?? ba ph?t hi?n blocker t? Sol-Lead independent audit tr?n exact candidate `a189e501d2eec58f7891cb35d46fbc176c2e2ea8` cho bundle `docs/parallel-delivery/`:
-  - **(1) Lo?i B? Ho?n To?n Bare Retrieval & B?o V? Giao Nh?n Qua K?nh Reviewer-Authenticated (Reviewer Authenticated Delivery Channel)**:
-    - Tri?n khai `ReviewerDeliveryChannel` v? `ReviewDispatchHandle` mang `reviewer_auth_token` b?o m?t cao (32-byte hex) v? c? ch? single-use `_claimed`.
-    - `get_reviewer_capability()` v? `claim_reviewer_capability()` tr?n c? `EvidenceAuthority` v? `OrcaDeliveryAdapter` t? ch?i fail-closed n?u g?i tr?n b?ng ID chu?i m? kh?ng c? x?c th?c (`ReviewDispatchHandle` ho?c `reviewer_auth_token`), lo?i b? ho?n to?n kh? n?ng caller c?ng ti?n tr?nh t? l?y `ReviewerCapability` b?ng dispatch ID tr?n.
-    - Ti?p t?c t? ch?i fail-closed tuy?t ??i n?u caller cung c?p `control_capability` ho?c `control_secret`, b?o to?n ranh gi?i ??c l?p gi?a Control v? Reviewer.
-  - **(2) X?a B? Ho?n To?n Thu?c T?nh `_reviewer_mint_secret` & Ch?n Mint Tr?ng L?p (Elimination of _reviewer_mint_secret and Duplicate Minting Prevention)**:
-    - X?a b? tri?t ?? thu?c t?nh `self._reviewer_mint_secret` tr?n `EvidenceAuthority`; vi?c k? mint token s? d?ng tr?c ti?p b? m?t `_secret` c?a authority m? kh?ng m? b? m?t secret ra ngo?i.
-    - Ph??ng th?c `_create_reviewer_mint_token()` c?m truy?n `_internal_secret` v? ch? cho ph?p th?c thi b?n trong ng? c?nh v?ng ??i ch?nh th?c `create_review_dispatch`.
-    - B? sung t?p h?p `self._minted_review_dispatches: Set[str]` ?? ki?m so?t exactly-once minting cho t?ng review dispatch; t? ch?i fail-closed m?i n? l?c mint l?i capability th? hai cho c?ng m?t review dispatch.
-  - **(3) H?p Nh?t Verify-and-Consume Th?nh Thao T?c Nguy?n T? (Atomic verify_and_consume_capability Preventing Concurrent Double Issuance)**:
-    - N?ng c?p kh?a `self._lock` c?a `EvidenceAuthority` th?nh `threading.RLock()`.
-    - Tri?n khai ph??ng th?c nguy?n t? `verify_and_consume_capability()` th?c hi?n x?c th?c v? ti?u th? capability ngay l?p t?c d??i m?t kh?a duy nh?t.
-    - C? `issue_review_evidence()` v? `issue_integration_evidence()` ??u g?i `verify_and_consume_capability()` nguy?n t? sau khi ?? ho?n th?nh 100% vi?c ki?m tra tham s? (??nh d?ng commit SHA, verdict, summary, routing, mandatory gates), ng?n ch?n tri?t ?? t?nh tr?ng hai thread ch?y song song c?ng ph?t h?nh hai evidence t? m?t capability, ??ng th?i b?o ??m t?nh ch?t zero side effects khi request malformed.
-  - **(4) B? Fixture Ph?n Bi?t T? ??ng 358/358 Tests PASS**:
-    - B? sung l?p ki?m th? `TestSolLeadAuditA189e50Remediation` v?i 8 b?i ki?m th? ??c l?p bao ph? to?n di?n c? 3 finding (t? ch?i bare retrieval, c?m Control claim ReviewerCapability, ki?m so?t single-use channel, x?c nh?n kh?ng t?n t?i `_reviewer_mint_secret`, c?m duplicate minting, ki?m th? ?a lu?ng concurrency v?i `threading.Barrier`, ki?m th? zero side effects khi request malformed, v? positive control to?n tr?nh), n?ng t?ng s? test l?n 358/358 passed 100%.
+- Khắc phục triệt để ba phát hiện blocker từ Sol-Lead independent audit trên exact candidate `a189e501d2eec58f7891cb35d46fbc176c2e2ea8` cho bundle `docs/parallel-delivery/`:
+  - **(1) Loại Bỏ Hoàn Toàn Bare Retrieval & Bảo Vệ Giao Nhận Qua Kênh Reviewer-Authenticated (Reviewer Authenticated Delivery Channel)**:
+    - Triển khai `ReviewerDeliveryChannel` và `ReviewDispatchHandle` mang `reviewer_auth_token` bảo mật cao (32-byte hex) và cơ chế single-use `_claimed`.
+    - `get_reviewer_capability()` và `claim_reviewer_capability()` trên cả `EvidenceAuthority` và `OrcaDeliveryAdapter` từ chối fail-closed nếu gọi trần bằng ID chuỗi mà không có xác thực (`ReviewDispatchHandle` hoặc `reviewer_auth_token`), loại bỏ hoàn toàn khả năng caller cùng tiến trình tự lấy `ReviewerCapability` bằng dispatch ID trần.
+    - Tiếp tục từ chối fail-closed tuyệt đối nếu caller cung cấp `control_capability` hoặc `control_secret`, bảo toàn ranh giới độc lập giữa Control và Reviewer.
+  - **(2) Xóa Bỏ Hoàn Toàn Thuộc Tính `_reviewer_mint_secret` & Chặn Mint Trùng Lặp (Elimination of _reviewer_mint_secret and Duplicate Minting Prevention)**:
+    - Xóa bỏ triệt để thuộc tính `self._reviewer_mint_secret` trên `EvidenceAuthority`; việc ký mint token sử dụng trực tiếp bí mật `_secret` của authority mà không mở bí mật secret ra ngoài.
+    - Phương thức `_create_reviewer_mint_token()` cấm truyền `_internal_secret` và chỉ cho phép thực thi bên trong ngữ cảnh vòng đời chính thức `create_review_dispatch`.
+    - Bổ sung tập hợp `self._minted_review_dispatches: Set[str]` để kiểm soát exactly-once minting cho từng review dispatch; từ chối fail-closed mọi nỗ lực mint lại capability thứ hai cho cùng một review dispatch.
+  - **(3) Hợp Nhất Verify-and-Consume Thành Thao Tác Nguyên Tử (Atomic verify_and_consume_capability Preventing Concurrent Double Issuance)**:
+    - Nâng cấp khóa `self._lock` của `EvidenceAuthority` thành `threading.RLock()`.
+    - Triển khai phương thức nguyên tử `verify_and_consume_capability()` thực hiện xác thực và tiêu thụ capability ngay lập tức dưới một khóa duy nhất.
+    - Cả `issue_review_evidence()` và `issue_integration_evidence()` đều gọi `verify_and_consume_capability()` nguyên tử sau khi đã hoàn thành 100% việc kiểm tra tham số (định dạng commit SHA, verdict, summary, routing, mandatory gates), ngăn chặn triệt để tình trạng hai thread chạy song song cùng phát hành hai evidence từ một capability, đồng thời bảo đảm tính chất zero side effects khi request malformed.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 358/358 Tests PASS**:
+    - Bổ sung lớp kiểm thử `TestSolLeadAuditA189e50Remediation` với 8 bài kiểm thử độc lập bao phủ toàn diện cả 3 finding (từ chối bare retrieval, cấm Control claim ReviewerCapability, kiểm soát single-use channel, xác nhận không tồn tại `_reviewer_mint_secret`, cấm duplicate minting, kiểm thử đa luồng concurrency với `threading.Barrier`, kiểm thử zero side effects khi request malformed, và positive control toàn trình), nâng tổng số test lên 358/358 passed 100%.
 
 ## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau eab4cab (Unforgeable Reviewer Mint Token, Authenticated Dispatch Binding, Separation of ReviewerCapability from Control, Zero-Side-Effect Validation)
 

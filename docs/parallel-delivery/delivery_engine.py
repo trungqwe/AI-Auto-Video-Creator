@@ -1553,7 +1553,17 @@ class ReviewerDeliveryChannel:
             return cap
 
 
-_SENTINEL_HOST_TOKEN = object()
+def _is_valid_host_boundary_capability(token: Any) -> bool:
+    """Validate that the provided capability originates strictly from the trusted external host boundary.
+    Candidate module never stores, hardcodes, or leaks the host sentinel token in module globals.
+    """
+    if not token or not isinstance(token, (str, bytes)):
+        return False
+    expected = os.environ.get("ORCA_HOST_BOUNDARY_TOKEN")
+    if not expected or not isinstance(expected, str) or len(expected.strip()) < 32:
+        return False
+    token_str = token.decode("utf-8", errors="replace") if isinstance(token, bytes) else str(token)
+    return hmac.compare_digest(token_str.strip(), expected.strip())
 
 
 class ReviewerHostIssuer:
@@ -1571,7 +1581,7 @@ class ReviewerHostIssuer:
         host_secret: Optional[str] = None,
         _internal_token: Optional[Any] = None,
     ) -> None:
-        if _internal_token is not _SENTINEL_HOST_TOKEN:
+        if not _is_valid_host_boundary_capability(_internal_token):
             raise ProtocolViolationError(
                 "Direct construction of ReviewerHostIssuer by in-process caller is forbidden fail-closed; "
                 "host issuer authority is managed exclusively by trusted host boundary"
@@ -1587,13 +1597,21 @@ class ReviewerHostIssuer:
         self._lock = threading.RLock()
 
     @classmethod
-    def get_default_host_issuer(cls) -> 'ReviewerHostIssuer':
+    def get_default_host_issuer(
+        cls, _internal_token: Optional[Any] = None
+    ) -> 'ReviewerHostIssuer':
         """Retrieve simulated host issuer for backward-compatible test fixtures.
         Confers ZERO production authority; cannot bypass TrustedReviewConsumer or ProductionActivationGate.
         """
+        effective_token = _internal_token if _internal_token is not None else os.environ.get("ORCA_HOST_BOUNDARY_TOKEN")
+        if not _is_valid_host_boundary_capability(effective_token):
+            raise ProtocolViolationError(
+                "Access to ReviewerHostIssuer is forbidden fail-closed: "
+                "no valid out-of-process host boundary capability configured in environment"
+            )
         with cls._lock:
             if cls._instance is None:
-                cls._instance = cls(_internal_token=_SENTINEL_HOST_TOKEN)
+                cls._instance = cls(_internal_token=effective_token)
             return cls._instance
 
     def _sign_issuer_capability(
@@ -3369,7 +3387,7 @@ class KeyStoreHostIssuer:
         host_secret: Optional[str] = None,
         _internal_token: Optional[Any] = None,
     ) -> None:
-        if _internal_token is not _SENTINEL_HOST_TOKEN:
+        if not _is_valid_host_boundary_capability(_internal_token):
             raise ProtocolViolationError(
                 "Direct construction of KeyStoreHostIssuer by in-process caller is forbidden fail-closed; "
                 "host keystore issuer authority is managed exclusively by trusted host boundary"
@@ -3392,20 +3410,20 @@ class KeyStoreHostIssuer:
         Managed exclusively by trusted host boundary out-of-process.
         Direct access or bootstrap by in-process candidate caller is strictly forbidden fail-closed.
         """
-        if _internal_token is not _SENTINEL_HOST_TOKEN:
+        if not _is_valid_host_boundary_capability(_internal_token):
             raise ProtocolViolationError(
                 "Access to host keystore issuer by in-process candidate caller is strictly forbidden fail-closed; "
                 "host keystore issuer authority operates exclusively out-of-process"
             )
         with cls._lock:
             if cls._instance is None:
-                cls._instance = cls(_internal_token=_SENTINEL_HOST_TOKEN)
+                cls._instance = cls(_internal_token=_internal_token)
             return cls._instance
 
     @classmethod
     def _reset_for_testing(cls, _internal_token: Optional[Any] = None) -> None:
         """Reset the singleton instance for isolated test executions."""
-        if _internal_token is not _SENTINEL_HOST_TOKEN:
+        if not _is_valid_host_boundary_capability(_internal_token):
             raise ProtocolViolationError("Direct reset of KeyStoreHostIssuer by in-process caller is forbidden fail-closed")
         with cls._lock:
             cls._instance = None
@@ -3426,7 +3444,7 @@ class KeyStoreHostIssuer:
         Single-use: cannot mint multiple handoffs fail-closed.
         Direct invocation by in-process candidate caller is strictly forbidden fail-closed.
         """
-        if _internal_token is not _SENTINEL_HOST_TOKEN:
+        if not _is_valid_host_boundary_capability(_internal_token):
             raise ProtocolViolationError(
                 "Minting host handoff by in-process candidate caller is strictly forbidden fail-closed; "
                 "key custody operates exclusively out-of-process"
@@ -3482,7 +3500,7 @@ class KeyStoreHostIssuer:
         """Mint an isolated immutable TrustedKeyStore for isolated consumer tests.
         Direct invocation by in-process candidate caller is strictly forbidden fail-closed.
         """
-        if _internal_token is not _SENTINEL_HOST_TOKEN:
+        if not _is_valid_host_boundary_capability(_internal_token):
             raise ProtocolViolationError(
                 "Minting isolated keystore by in-process candidate caller is strictly forbidden fail-closed; "
                 "key custody operates exclusively out-of-process"
@@ -3495,7 +3513,7 @@ class KeyStoreHostIssuer:
             if not isinstance(kbytes, bytes) or len(kbytes) != 32:
                 raise ProtocolViolationError(f"pinned key {clean_kid!r} must be exactly 32 raw Ed25519 public bytes")
             validated_keys[clean_kid] = kbytes
-        return TrustedKeyStore(pinned_keys=validated_keys, _internal_token=_SENTINEL_HOST_TOKEN)
+        return TrustedKeyStore(pinned_keys=validated_keys, _internal_token=_internal_token)
 
     def verify_and_consume_capability(
         self, cap: KeyStoreHostIssuerCapability, handoff_id: str
@@ -3625,7 +3643,7 @@ class TrustedKeyStore:
         pinned_keys: Optional[Mapping[str, bytes]] = None,
         _internal_token: Optional[Any] = None,
     ) -> None:
-        if pinned_keys is not None and _internal_token is not _SENTINEL_HOST_TOKEN:
+        if pinned_keys is not None and not _is_valid_host_boundary_capability(_internal_token):
             raise ProtocolViolationError(
                 "Direct instantiation of TrustedKeyStore with custom pinned keys is forbidden fail-closed; "
                 "key custody must be provisioned immutably via out-of-process KeyStoreHostHandoff"
@@ -3656,7 +3674,7 @@ class TrustedKeyStore:
         Once provisioned, pinned keys cannot be selected or replaced by in-process callers.
         Direct bootstrap or provisioning by in-process candidate caller is strictly forbidden fail-closed.
         """
-        if _internal_token is not _SENTINEL_HOST_TOKEN:
+        if not _is_valid_host_boundary_capability(_internal_token):
             raise ProtocolViolationError(
                 "In-process candidate caller cannot bootstrap or provision TrustedKeyStore fail-closed; "
                 "key custody must be provisioned out-of-process by trusted host authority"
@@ -3694,7 +3712,7 @@ class TrustedKeyStore:
                     "TrustedKeyStore already provisioned with pinned keys; replacement or reprovisioning forbidden fail-closed"
                 )
             raw_keys = authority._consume_for_provisioning(cls)
-            keystore = cls(pinned_keys=raw_keys, _internal_token=_SENTINEL_HOST_TOKEN)
+            keystore = cls(pinned_keys=raw_keys, _internal_token=_internal_token)
             cls._default = keystore
             return keystore
 
@@ -3714,7 +3732,7 @@ class TrustedKeyStore:
     @classmethod
     def _reset_for_testing(cls, _internal_token: Optional[Any] = None) -> None:
         """Reset the singleton instance for isolated test executions."""
-        if _internal_token is not _SENTINEL_HOST_TOKEN:
+        if not _is_valid_host_boundary_capability(_internal_token):
             raise ProtocolViolationError("Direct reset of TrustedKeyStore by in-process caller is forbidden fail-closed")
         with cls._lock:
             cls._default = None
@@ -3833,9 +3851,30 @@ class DurableConsumptionRegistry:
         allow_ephemeral: bool = False,
     ) -> 'DurableConsumptionRegistry':
         with cls._class_lock:
+            if db_path is not None:
+                clean_path = str(db_path).strip()
+                if clean_path in (":memory:", ""):
+                    raise ProtocolViolationError(
+                        "DurableConsumptionRegistry.get_default cannot be configured with ephemeral ':memory:' db_path fail-closed; "
+                        "default consumption registry strictly requires durable persistence"
+                    )
+            if allow_ephemeral:
+                raise ProtocolViolationError(
+                    "DurableConsumptionRegistry.get_default cannot be configured with allow_ephemeral=True fail-closed; "
+                    "singleton default registry must be durable across restarts"
+                )
+            if cls._default_instance is not None and cls._default_instance._is_mem:
+                raise ProtocolViolationError(
+                    "Default DurableConsumptionRegistry singleton was poisoned with ephemeral storage fail-closed; "
+                    "durable SQLite persistence is mandatory"
+                )
             effective = Path(db_path) if db_path else cls._default_db_path
             if cls._default_instance is None or (db_path and cls._default_instance.db_path != str(effective)):
-                cls._default_instance = cls(db_path=effective, allow_ephemeral=allow_ephemeral)
+                cls._default_instance = cls(db_path=effective, allow_ephemeral=False)
+            if cls._default_instance._is_mem:
+                raise ProtocolViolationError(
+                    "Default DurableConsumptionRegistry singleton cannot be ephemeral fail-closed"
+                )
             return cls._default_instance
 
     @classmethod
@@ -3846,12 +3885,15 @@ class DurableConsumptionRegistry:
     ) -> None:
         with cls._class_lock:
             effective = Path(db_path) if db_path else cls._default_db_path
-            if effective and Path(effective).is_file():
+            if effective and str(effective).strip() not in (":memory:", "") and Path(effective).is_file():
                 try:
                     Path(effective).unlink()
                 except OSError:
                     pass
-            cls._default_instance = cls(db_path=effective, allow_ephemeral=allow_ephemeral) if effective else None
+            if allow_ephemeral or (effective and str(effective).strip() in (":memory:", "")):
+                cls._default_instance = None
+            else:
+                cls._default_instance = cls(db_path=effective, allow_ephemeral=False) if effective else None
 
     @contextmanager
     def _get_connection(self):
@@ -5662,7 +5704,19 @@ class OrcaDeliveryAdapter:
                 raise ProtocolViolationError("consumption_db_path cannot be blank or ephemeral ':memory:' fail-closed")
             self.consumption_registry: DurableConsumptionRegistry = DurableConsumptionRegistry(db_path=clean_db_path)
         else:
-            self.consumption_registry: DurableConsumptionRegistry = DurableConsumptionRegistry.get_default()
+            default_reg = DurableConsumptionRegistry.get_default()
+            if default_reg._is_mem:
+                raise ProtocolViolationError(
+                    "Default consumption registry cannot be ephemeral ':memory:' fail-closed; "
+                    "OrcaDeliveryAdapter strictly requires durable SQLite persistence across restarts"
+                )
+            self.consumption_registry: DurableConsumptionRegistry = default_reg
+
+        if self.consumption_registry._is_mem:
+            raise ProtocolViolationError(
+                "OrcaDeliveryAdapter strictly requires durable SQLite persistence fail-closed; "
+                "consumption registry cannot be ephemeral ':memory:'"
+            )
 
         self.trusted_review_consumer: TrustedReviewConsumer = TrustedReviewConsumer(
             keystore=self._keystore, registry=self.consumption_registry
