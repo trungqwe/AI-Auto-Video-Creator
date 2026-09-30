@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 654860c (Elimination of Module-Global Capabilities, Internal Ephemeral Tokens, Callable Surface Wildcard Hardening)
+
+- Khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate 654860c5dca9d2d2cc8d780d53f8deda777d80a6 cho bundle docs/parallel-delivery/:
+  - **(1) Loại Bỏ Hoàn Toàn Module-Global Capabilities Dictionary (Removal of _ADAPTER_INTERNAL_CAPABILITIES)**: Xóa bỏ hoàn toàn WeakKeyDictionary _ADAPTER_INTERNAL_CAPABILITIES ở cấp module và các phương thức _mint_internal_control_capability(), _internal_capabilities trong EvidenceAuthority. Module state không còn lưu trữ bất kỳ capability nào có thể bị caller cùng process import hoặc index để exfiltrate.
+  - **(2) Cơ Chế Xác Thực Vòng Đời Bằng Token Nội Bộ Dùng Một Lần (Internal Ephemeral Lifecycle Tokens)**: Triển khai dataclass _InternalLifecycleToken được ký HMAC bằng khóa bí mật riêng của từng instance adapter (_internal_exec_secret). Tất cả 8 authoritative handlers nội bộ (acknowledge_dispatch, start_running, create_dispatch, handle_worker_done, handle_harness_failure, handle_review_verdict, handle_integration_gates, resolve_blocker_and_replan) đều tự sinh token nội bộ unforgeable và tiêu thụ ngay lập tức (_consumed_internal_tokens), ngăn chặn triệt để replay và forgery.
+  - **(3) Khóa Chặt Toàn Bộ Bề Mặt Callable Trước Wildcard & Internal Capabilities (Hardened Callable Surfaces)**: Các hàm _internal_lifecycle_execution, issue_review_evidence, issue_integration_evidence và verify_capability từ chối fail-closed mọi capability có tiền tố adapter_internal_ hoặc wildcard (delivery_task_id là None hoặc *), đảm bảo caller bên ngoài không thể vượt ranh giới hay phát hành bằng chứng trái phép.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 327/327 Tests PASS**: Bổ sung lớp kiểm thử TestSolLeadAudit654860cRemediation với 6 bài test độc lập (xác nhận vắng mặt thuộc tính module, từ chối exfiltration chuyển đổi trạng thái blocked sang ready, từ chối phát hành IntegrationEvidence, từ chối phát hành ReviewEvidence, từ chối giả mạo/replay token, và positive control toàn trình), nâng tổng số test lên 327/327 passed 100%.
+
 ## 2026-09-30 — Khắc phục phát hiện Sol-Lead review sau 36092d0 (Evidence Capabilities Restriction, Lifecycle Boundary Protection, Exact Canonical Backend Identities)
 
 - Khắc phục triệt để 3 phát hiện blocker từ Sol-Lead review trên exact candidate `36092d099fea4938764b05ff78eb9596a14ad6bc` cho bundle `docs/parallel-delivery/`:

@@ -1223,6 +1223,22 @@ class _TransitionAuthToken:
         return self.new_state
 
 @dataclass(frozen=True)
+class _InternalLifecycleToken:
+    token_id: str
+    handler: str
+    task_id: str
+    adapter_id: int
+    created_at: float
+    signature: str = ""
+
+    def __post_init__(self):
+        for field_name in ("token_id", "handler", "task_id", "signature"):
+            val = getattr(self, field_name, None)
+            if not isinstance(val, str) or not val.strip() or val != val.strip():
+                raise ProtocolViolationError(f"_InternalLifecycleToken field {field_name!r} must be non-empty unpadded string")
+
+
+@dataclass(frozen=True)
 class ReviewerCapability:
     capability_id: str
     delivery_task_id: str
@@ -1301,7 +1317,6 @@ class EvidenceAuthority:
         self._consumed_evidence_ids: Set[str] = set()
         self._issued_capabilities: Set[str] = set()
         self._consumed_capabilities: Set[str] = set()
-        self._internal_capabilities: Set[str] = set()
         self.adapter = adapter
         self._lock = threading.Lock()
 
@@ -1315,22 +1330,6 @@ class EvidenceAuthority:
         payload = f"REVIEWER_CAPABILITY:{cap_id}:{tid}:{disp_id}:{commit}:{route}:{harness}:{id(self)}:{created_at}".encode("utf-8")
         return hmac.new(self._secret, payload, hashlib.sha256).hexdigest()
 
-    def _mint_internal_control_capability(self) -> ControlCapability:
-        cap_id = f"adapter_internal_ctrl_{uuid.uuid4().hex}"
-        created_at = time.time()
-        sig = self._sign_control_capability(cap_id, "Control", "*", created_at)
-        cap = ControlCapability(
-            capability_id=cap_id,
-            role="Control",
-            delivery_task_id=None,
-            authority_id=id(self),
-            created_at=created_at,
-            signature=sig,
-        )
-        with self._lock:
-            self._issued_capabilities.add(cap_id)
-            self._internal_capabilities.add(cap_id)
-        return cap
 
     def _mint_reviewer_capability_internal(
         self, delivery_task_id: str, review_dispatch_id: str, candidate_commit: str,
@@ -1449,6 +1448,10 @@ class EvidenceAuthority:
                 "Review evidence issuance requires an independently authenticated Reviewer or Control capability; "
                 "unprivileged callers cannot obtain authoritative review evidence"
             )
+        if getattr(effective_cap, "capability_id", "").startswith("adapter_internal_"):
+            raise ProtocolViolationError(
+                "Internal wildcard capability cannot be used to issue review evidence; independently authenticated capability required"
+            )
         self.verify_capability(
             effective_cap,
             expected_task_id=delivery_task_id.strip() if delivery_task_id else "",
@@ -1457,8 +1460,7 @@ class EvidenceAuthority:
         )
 
         with self._lock:
-            if effective_cap.capability_id not in self._internal_capabilities:
-                self._consumed_capabilities.add(effective_cap.capability_id)
+            self._consumed_capabilities.add(effective_cap.capability_id)
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
             raise ProtocolViolationError("delivery_task_id cannot be blank")
         if not review_dispatch_id or not isinstance(review_dispatch_id, str) or not review_dispatch_id.strip():
@@ -1517,11 +1519,14 @@ class EvidenceAuthority:
                 "Integration evidence issuance requires an independently authenticated Control capability; "
                 "unprivileged callers cannot obtain authoritative integration evidence"
             )
+        if getattr(effective_cap, "capability_id", "").startswith("adapter_internal_"):
+            raise ProtocolViolationError(
+                "Internal wildcard capability cannot be used to issue integration evidence; independently authenticated Control capability required"
+            )
         self.verify_capability(effective_cap, expected_role="Control", expected_task_id=delivery_task_id.strip() if delivery_task_id else "")
 
         with self._lock:
-            if effective_cap.capability_id not in self._internal_capabilities:
-                self._consumed_capabilities.add(effective_cap.capability_id)
+            self._consumed_capabilities.add(effective_cap.capability_id)
         if type(gates_pass) is not bool:
             raise ProtocolViolationError("gates_pass must be strict bool")
         if not delivery_task_id or not isinstance(delivery_task_id, str) or not delivery_task_id.strip():
@@ -1582,6 +1587,8 @@ class EvidenceAuthority:
         if isinstance(capability, ControlCapability):
             if expected_role is not None and expected_role != "Control":
                 raise ProtocolViolationError(f"Expected role {expected_role!r}, got ControlCapability")
+            if getattr(capability, "capability_id", "").startswith("adapter_internal_"):
+                raise ProtocolViolationError("Internal wildcard capability cannot be verified or used across external surfaces")
             with self._lock:
                 if capability.capability_id in self._consumed_capabilities:
                     raise ProtocolViolationError(f"ControlCapability {capability.capability_id!r} has already been consumed")
@@ -1605,6 +1612,8 @@ class EvidenceAuthority:
         elif isinstance(capability, ReviewerCapability):
             if expected_role is not None and expected_role != "Reviewer":
                 raise ProtocolViolationError(f"Expected role {expected_role!r}, got ReviewerCapability")
+            if getattr(capability, "capability_id", "").startswith("adapter_internal_"):
+                raise ProtocolViolationError("Internal wildcard capability cannot be verified or used across external surfaces")
             with self._lock:
                 if capability.capability_id in self._consumed_capabilities:
                     raise ProtocolViolationError(f"ReviewerCapability {capability.capability_id!r} has already been consumed")
@@ -3160,8 +3169,6 @@ class SharedOrcaExecutionRegistry:
                 self.dispatch_bindings[clean_id].settled = True
 
 
-_ADAPTER_INTERNAL_CAPABILITIES: "weakref.WeakKeyDictionary[OrcaDeliveryAdapter, ControlCapability]" = weakref.WeakKeyDictionary()
-
 
 class OrcaDeliveryAdapter:
     """Translates Orca CLI events into delivery ledger state transitions."""
@@ -3198,6 +3205,8 @@ class OrcaDeliveryAdapter:
         self.approved_candidate_commit = clean_commit
         self.approved_base_commit = clean_base
         self._internal_transition_secret: bytes = secrets.token_bytes(32)
+        self._internal_exec_secret: bytes = secrets.token_bytes(32)
+        self._consumed_internal_tokens: Set[str] = set()
         self.git_root = git_root
         self.registry = registry if registry is not None else SharedOrcaExecutionRegistry.get_default()
         self._task_states: Dict[str, str] = {}
@@ -3217,9 +3226,7 @@ class OrcaDeliveryAdapter:
         self.evidence_authority = EvidenceAuthority(adapter=self, control_secret=control_secret)
         self._dispatch_reviewer_capabilities: Dict[str, ReviewerCapability] = {}
 
-        # Internal Control capability for adapter's own authoritative operations
-        internal_cap = self.evidence_authority._mint_internal_control_capability()
-        _ADAPTER_INTERNAL_CAPABILITIES[self] = internal_cap
+
 
         self._executing_lifecycle_handler: Optional[str] = None
         self._executing_lifecycle_task_id: Optional[str] = None
@@ -3233,17 +3240,43 @@ class OrcaDeliveryAdapter:
         handler: str,
         task_id: str,
         capability: Optional[Union[ControlCapability, ReviewerCapability]] = None,
+        _internal_token: Optional[_InternalLifecycleToken] = None,
     ):
         """Internal execution boundary for authoritative lifecycle handlers.
         External callers without an independently authenticated Control or Reviewer capability cannot enter.
+        Wildcard capabilities cannot enter lifecycle execution boundary.
         """
-        if capability is None:
+        clean_tid = task_id.strip() if isinstance(task_id, str) else ""
+
+        if _internal_token is not None:
+            if not isinstance(_internal_token, _InternalLifecycleToken):
+                raise ProtocolViolationError(
+                    f"Invalid internal lifecycle execution token: expected _InternalLifecycleToken, got {type(_internal_token).__name__}"
+                )
+            if _internal_token.adapter_id != id(self):
+                raise ProtocolViolationError("Internal lifecycle token adapter_id mismatch")
+            if _internal_token.handler != handler or _internal_token.task_id != clean_tid:
+                raise ProtocolViolationError(
+                    f"Internal lifecycle token mismatch: token=({_internal_token.task_id}, {_internal_token.handler}) vs execution=({clean_tid}, {handler})"
+                )
+            if _internal_token.token_id in self._consumed_internal_tokens:
+                raise ProtocolViolationError(
+                    f"Internal lifecycle token {_internal_token.token_id} has already been consumed"
+                )
+            expected_sig_data = f"ILT:{_internal_token.token_id}:{_internal_token.task_id}:{_internal_token.handler}:{id(self)}:{_internal_token.created_at}".encode("utf-8")
+            expected_sig = hmac.new(self._internal_exec_secret, expected_sig_data, hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(_internal_token.signature, expected_sig):
+                raise ProtocolViolationError("Internal lifecycle token signature mismatch; forged token rejected")
+            self._consumed_internal_tokens.add(_internal_token.token_id)
+        elif capability is not None:
+            self._verify_lifecycle_capability(capability, handler, clean_tid)
+            with self.evidence_authority._lock:
+                self.evidence_authority._consumed_capabilities.add(capability.capability_id)
+        else:
             raise ProtocolViolationError(
                 "Lifecycle context entry requires an independently authenticated Control or Reviewer capability; "
                 "ordinary callers cannot enter lifecycle execution boundary"
             )
-        clean_tid = task_id.strip() if isinstance(task_id, str) else ""
-        self._verify_lifecycle_capability(capability, handler, clean_tid)
 
         prev_handler = self._executing_lifecycle_handler
         prev_task = self._executing_lifecycle_task_id
@@ -3255,6 +3288,20 @@ class OrcaDeliveryAdapter:
             self._executing_lifecycle_handler = prev_handler
             self._executing_lifecycle_task_id = prev_task
 
+    def _mint_internal_lifecycle_token(self, handler: str, clean_tid: str) -> _InternalLifecycleToken:
+        tok_id = f"ilt_{uuid.uuid4().hex}"
+        created_at = time.time()
+        sig_data = f"ILT:{tok_id}:{clean_tid}:{handler}:{id(self)}:{created_at}".encode("utf-8")
+        sig = hmac.new(self._internal_exec_secret, sig_data, hashlib.sha256).hexdigest()
+        return _InternalLifecycleToken(
+            token_id=tok_id,
+            handler=handler,
+            task_id=clean_tid,
+            adapter_id=id(self),
+            created_at=created_at,
+            signature=sig,
+        )
+
     def _verify_lifecycle_capability(
         self,
         capability: Any,
@@ -3264,6 +3311,18 @@ class OrcaDeliveryAdapter:
         if not capability or not isinstance(capability, (ControlCapability, ReviewerCapability)):
             raise ProtocolViolationError(
                 f"Invalid lifecycle execution capability: expected ControlCapability or ReviewerCapability, got {type(capability).__name__}"
+            )
+        if getattr(capability, "capability_id", "").startswith("adapter_internal_"):
+            raise ProtocolViolationError(
+                "Internal wildcard capability cannot be passed across callable surface"
+            )
+        if getattr(capability, "delivery_task_id", None) is None or getattr(capability, "delivery_task_id", "") == "*":
+            raise ProtocolViolationError(
+                "Wildcard capability cannot be used for lifecycle execution; explicit task-scoped capability required"
+            )
+        if capability.delivery_task_id != clean_tid:
+            raise ProtocolViolationError(
+                f"Capability delivery_task_id mismatch: expected {clean_tid!r}, got {capability.delivery_task_id!r}"
             )
         if isinstance(capability, ReviewerCapability):
             if handler != "handle_review_verdict":
@@ -3289,6 +3348,16 @@ class OrcaDeliveryAdapter:
         capability: Optional[Union[ReviewerCapability, ControlCapability]] = None,
         reviewer_capability: Optional[ReviewerCapability] = None,
     ) -> ReviewEvidence:
+        effective_cap = reviewer_capability if reviewer_capability is not None else capability
+        if effective_cap is None:
+            raise ProtocolViolationError(
+                "Review evidence issuance requires an independently authenticated Reviewer or Control capability; "
+                "unprivileged callers cannot obtain authoritative review evidence"
+            )
+        if getattr(effective_cap, "capability_id", "").startswith("adapter_internal_"):
+            raise ProtocolViolationError(
+                "Internal wildcard capability cannot be used to issue review evidence; independently authenticated capability required"
+            )
         return self.evidence_authority.issue_review_evidence(
             delivery_task_id=delivery_task_id,
             review_dispatch_id=review_dispatch_id,
@@ -3314,6 +3383,16 @@ class OrcaDeliveryAdapter:
         capability: Optional[ControlCapability] = None,
         control_capability: Optional[ControlCapability] = None,
     ) -> IntegrationEvidence:
+        effective_cap = control_capability if control_capability is not None else capability
+        if effective_cap is None:
+            raise ProtocolViolationError(
+                "Integration evidence issuance requires an independently authenticated Control capability; "
+                "unprivileged callers cannot obtain authoritative integration evidence"
+            )
+        if getattr(effective_cap, "capability_id", "").startswith("adapter_internal_"):
+            raise ProtocolViolationError(
+                "Internal wildcard capability cannot be used to issue integration evidence; independently authenticated Control capability required"
+            )
         return self.evidence_authority.issue_integration_evidence(
             delivery_task_id=delivery_task_id,
             candidate_commit=candidate_commit,
@@ -3824,7 +3903,8 @@ class OrcaDeliveryAdapter:
             raise ProtocolViolationError(
                 f"Cannot acknowledge dispatch for {clean_tid} in state {current!r}; must be 'dispatched'"
             )
-        with self._internal_lifecycle_execution("acknowledge_dispatch", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
+        ilt = self._mint_internal_lifecycle_token("acknowledge_dispatch", clean_tid)
+        with self._internal_lifecycle_execution("acknowledge_dispatch", clean_tid, _internal_token=ilt):
             token = self._mint_transition_token("acknowledge_dispatch", clean_tid, "acknowledged")
             with self._authorized_transition_scope(clean_tid, "acknowledged", handler="acknowledge_dispatch", _token=token, dispatch_id=clean_disp):
                 self.transition_task_state(clean_tid, "acknowledged")
@@ -3847,7 +3927,8 @@ class OrcaDeliveryAdapter:
                 f"Cannot start running task {clean_tid} in state {current!r}; "
                 f"mandatory lifecycle requires state 'acknowledged' (cannot skip acknowledged stage)"
             )
-        with self._internal_lifecycle_execution("start_running", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
+        ilt = self._mint_internal_lifecycle_token("start_running", clean_tid)
+        with self._internal_lifecycle_execution("start_running", clean_tid, _internal_token=ilt):
             token = self._mint_transition_token("start_running", clean_tid, "running")
             with self._authorized_transition_scope(clean_tid, "running", handler="start_running", _token=token, dispatch_id=clean_disp):
                 self.transition_task_state(clean_tid, "running")
@@ -4147,7 +4228,8 @@ class OrcaDeliveryAdapter:
         )
         with self._task_state_lock:
             self.active_dispatches[delivery_task_id] = dispatch_id
-            with self._internal_lifecycle_execution("create_dispatch", delivery_task_id, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
+            ilt = self._mint_internal_lifecycle_token("create_dispatch", delivery_task_id)
+            with self._internal_lifecycle_execution("create_dispatch", delivery_task_id, _internal_token=ilt):
                 token = self._mint_transition_token("create_dispatch", delivery_task_id, "dispatched")
                 with self._authorized_transition_scope(
                     delivery_task_id, "dispatched", handler="create_dispatch", _token=token,
@@ -4481,7 +4563,8 @@ class OrcaDeliveryAdapter:
             for lid in to_remove:
                 self.lease_mgr.release_lease(lid)
             self._authoritatively_released_tasks.add(delivery_task_id)
-            with self._internal_lifecycle_execution("handle_worker_done", delivery_task_id, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
+            ilt = self._mint_internal_lifecycle_token("handle_worker_done", delivery_task_id)
+            with self._internal_lifecycle_execution("handle_worker_done", delivery_task_id, _internal_token=ilt):
                 token = self._mint_transition_token("handle_worker_done", delivery_task_id, "review")
                 with self._authorized_transition_scope(
                     delivery_task_id, "review", handler="handle_worker_done", _token=token,
@@ -4498,7 +4581,8 @@ class OrcaDeliveryAdapter:
             for lid in to_remove:
                 self.lease_mgr.release_lease(lid)
             self._authoritatively_released_tasks.add(delivery_task_id)
-            with self._internal_lifecycle_execution("handle_worker_done", delivery_task_id, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
+            ilt = self._mint_internal_lifecycle_token("handle_worker_done", delivery_task_id)
+            with self._internal_lifecycle_execution("handle_worker_done", delivery_task_id, _internal_token=ilt):
                 token = self._mint_transition_token("handle_worker_done", delivery_task_id, "blocked")
                 with self._authorized_transition_scope(
                     delivery_task_id, "blocked", handler="handle_worker_done", _token=token,
@@ -4578,7 +4662,8 @@ class OrcaDeliveryAdapter:
                 self.lease_mgr.release_lease(lid)
 
         # 8. Transition task state to blocked
-        with self._internal_lifecycle_execution("handle_harness_failure", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
+        ilt = self._mint_internal_lifecycle_token("handle_harness_failure", clean_tid)
+        with self._internal_lifecycle_execution("handle_harness_failure", clean_tid, _internal_token=ilt):
             token = self._mint_transition_token("handle_harness_failure", clean_tid, "blocked")
             with self._authorized_transition_scope(
                 clean_tid, "blocked", handler="handle_harness_failure", _token=token,
@@ -4713,7 +4798,8 @@ class OrcaDeliveryAdapter:
 
         if verdict == "ACCEPT":
             self._verified_review_evidence[clean_tid] = review_evidence
-            with self._internal_lifecycle_execution("handle_review_verdict", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
+            ilt = self._mint_internal_lifecycle_token("handle_review_verdict", clean_tid)
+            with self._internal_lifecycle_execution("handle_review_verdict", clean_tid, _internal_token=ilt):
                 token = self._mint_transition_token("handle_review_verdict", clean_tid, "merge_queued")
                 with self._authorized_transition_scope(
                     clean_tid, "merge_queued", handler="handle_review_verdict", _token=token,
@@ -4722,7 +4808,8 @@ class OrcaDeliveryAdapter:
                     self.transition_task_state(clean_tid, "merge_queued")
             return "merge_queued"
         elif verdict == "CHANGES_REQUESTED":
-            with self._internal_lifecycle_execution("handle_review_verdict", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
+            ilt = self._mint_internal_lifecycle_token("handle_review_verdict", clean_tid)
+            with self._internal_lifecycle_execution("handle_review_verdict", clean_tid, _internal_token=ilt):
                 token = self._mint_transition_token("handle_review_verdict", clean_tid, "remediation")
                 with self._authorized_transition_scope(
                     clean_tid, "remediation", handler="handle_review_verdict", _token=token,
@@ -4731,7 +4818,8 @@ class OrcaDeliveryAdapter:
                     self.transition_task_state(clean_tid, "remediation")
             return "remediation"
         elif verdict == "BLOCKED":
-            with self._internal_lifecycle_execution("handle_review_verdict", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
+            ilt = self._mint_internal_lifecycle_token("handle_review_verdict", clean_tid)
+            with self._internal_lifecycle_execution("handle_review_verdict", clean_tid, _internal_token=ilt):
                 token = self._mint_transition_token("handle_review_verdict", clean_tid, "blocked")
                 with self._authorized_transition_scope(
                     clean_tid, "blocked", handler="handle_review_verdict", _token=token,
@@ -4851,7 +4939,8 @@ class OrcaDeliveryAdapter:
                 now=now,
             )
             self._verified_integration_evidence[clean_tid] = integration_evidence
-            with self._internal_lifecycle_execution("handle_integration_gates", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
+            ilt = self._mint_internal_lifecycle_token("handle_integration_gates", clean_tid)
+            with self._internal_lifecycle_execution("handle_integration_gates", clean_tid, _internal_token=ilt):
                 token = self._mint_transition_token("handle_integration_gates", clean_tid, "integrated")
                 with self._authorized_transition_scope(
                     clean_tid, "integrated", handler="handle_integration_gates", _token=token, gates_pass=True
@@ -4860,7 +4949,8 @@ class OrcaDeliveryAdapter:
             self.lease_mgr.mark_task_integrated(clean_tid)
             return "integrated"
         else:
-            with self._internal_lifecycle_execution("handle_integration_gates", clean_tid, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
+            ilt = self._mint_internal_lifecycle_token("handle_integration_gates", clean_tid)
+            with self._internal_lifecycle_execution("handle_integration_gates", clean_tid, _internal_token=ilt):
                 token = self._mint_transition_token("handle_integration_gates", clean_tid, "blocked")
                 with self._authorized_transition_scope(
                     clean_tid, "blocked", handler="handle_integration_gates", _token=token, gates_pass=False
@@ -4885,14 +4975,16 @@ class OrcaDeliveryAdapter:
         if state not in ("blocked", "needs_replan"):
             raise ProtocolViolationError(f"Cannot resolve blocker for task in state {state!r}")
         if state == "blocked":
-            with self._internal_lifecycle_execution("resolve_blocker_and_replan", delivery_task_id, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
+            ilt = self._mint_internal_lifecycle_token("resolve_blocker_and_replan", delivery_task_id)
+            with self._internal_lifecycle_execution("resolve_blocker_and_replan", delivery_task_id, _internal_token=ilt):
                 token = self._mint_transition_token("resolve_blocker_and_replan", delivery_task_id, "ready")
                 with self._authorized_transition_scope(
                     delivery_task_id, "ready", handler="resolve_blocker_and_replan", _token=token
                 ):
                     self.transition_task_state(delivery_task_id, "ready")
         elif state == "needs_replan":
-            with self._internal_lifecycle_execution("resolve_blocker_and_replan", delivery_task_id, capability=_ADAPTER_INTERNAL_CAPABILITIES.get(self)):
+            ilt = self._mint_internal_lifecycle_token("resolve_blocker_and_replan", delivery_task_id)
+            with self._internal_lifecycle_execution("resolve_blocker_and_replan", delivery_task_id, _internal_token=ilt):
                 token = self._mint_transition_token("resolve_blocker_and_replan", delivery_task_id, "planned")
                 with self._authorized_transition_scope(
                     delivery_task_id, "planned", handler="resolve_blocker_and_replan", _token=token

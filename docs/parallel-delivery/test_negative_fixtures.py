@@ -8277,6 +8277,277 @@ class TestSolLeadReview36092d0Remediation(unittest.TestCase):
                 pass
 
 
+# =============================================================================
+# Sol-Lead Audit Remediation Fixtures (after 654860c)
+# =============================================================================
+
+class TestSolLeadAudit654860cRemediation(unittest.TestCase):
+    """Independent counterexamples and regression fixtures for Sol-Lead audit findings on 654860c:
+    1. Module-global _ADAPTER_INTERNAL_CAPABILITIES removed from module state; cannot be imported or indexed.
+    2. Counterexample exfiltration rejected: wildcard/internal capabilities cannot enter _internal_lifecycle_execution or transition blocked to ready.
+    3. Counterexample exfiltration rejected: wildcard/internal capabilities cannot issue signed IntegrationEvidence.
+    4. Counterexample exfiltration rejected: wildcard/internal capabilities cannot issue signed ReviewEvidence.
+    5. Forged or replayed _InternalLifecycleToken rejected fail-closed.
+    6. Positive control: authoritative lifecycle methods and control_secret authenticated capabilities succeed.
+    """
+
+    def setUp(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        self.delivery_id = "TASK-654860C-001"
+        self.orca_task_id = "orca_654860c_001"
+        self.intended_disp = "ctx_654860c_001"
+        self.t0 = datetime.now(timezone.utc)
+        self.candidate_commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT_DIR, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        self.approved_base = "4a7c8c921b7e05066505d51b168a02c3fde61317"
+        self.lock_defs = [
+            {"id": "LOCK-PARALLEL-REGISTRY", "mode": "exclusive", "renewable": True, "lease_seconds": 1800},
+        ]
+        self.mgr = LeaseManager(self.lock_defs)
+        self.mgr.set_task_authority(self.delivery_id, "granted")
+        self.lease = self.mgr.acquire_lease("LOCK-PARALLEL-REGISTRY", self.delivery_id, self.intended_disp, now=self.t0)
+        self.tmp_storage = tempfile.mktemp(suffix=".json")
+        self.registry = SharedOrcaExecutionRegistry(storage_path=self.tmp_storage)
+        self.control_secret = "secret_654860c_control_auth_key"
+        self.adapter = OrcaDeliveryAdapter(
+            self.mgr,
+            approved_candidate_commit=self.candidate_commit,
+            registry=self.registry,
+            declared_task_locks={self.delivery_id: ["LOCK-PARALLEL-REGISTRY"]},
+            control_secret=self.control_secret,
+        )
+        self.adapter.set_task_authority(self.delivery_id, "granted")
+        self.adapter.set_task_state(self.delivery_id, "ready")
+
+    def tearDown(self):
+        p = Path(self.tmp_storage)
+        if p.exists():
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+    def _advance_to_running(self):
+        disp_id = self.adapter.create_dispatch(
+            self.delivery_id,
+            orca_task_id=self.orca_task_id,
+            candidate_commit=self.candidate_commit,
+            fencing_token=self.lease.fencing_token,
+            lease_id=self.lease.lease_id,
+            intended_dispatch_id=self.intended_disp,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id, now=self.t0),
+        )
+        self.adapter.acknowledge_dispatch(self.delivery_id, disp_id)
+        self.adapter.start_running(self.delivery_id, disp_id)
+        return disp_id
+
+    def _advance_to_review(self):
+        disp_id = self._advance_to_running()
+        self.adapter.handle_worker_done(
+            self.delivery_id,
+            self.orca_task_id,
+            disp_id,
+            "succeeded",
+            candidate_commit=self.candidate_commit,
+            fencing_token=self.lease.fencing_token,
+            now=self.t0,
+        )
+
+    def _create_review_dispatch(self):
+        rev_disp_id = "ctx_654860c_rev_001"
+        rev_orca_id = "task_654860c_rev_001"
+        rev_env = make_execution_envelope(
+            self.delivery_id, rev_disp_id, phase="review",
+            orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=5)
+        )
+        self.adapter.create_review_dispatch(
+            self.delivery_id,
+            orca_task_id=rev_orca_id,
+            candidate_commit=self.candidate_commit,
+            intended_dispatch_id=rev_disp_id,
+            dispatch_origin="dely dispatch",
+            execution_envelope=rev_env,
+            now=self.t0 + timedelta(seconds=5),
+        )
+        return rev_disp_id
+
+    def test_654860c_01_module_global_adapter_internal_capabilities_removed_and_unindexed(self):
+        """1. Counterexample: _ADAPTER_INTERNAL_CAPABILITIES is removed from module state and cannot be indexed."""
+        import delivery_engine
+        self.assertFalse(hasattr(delivery_engine, "_ADAPTER_INTERNAL_CAPABILITIES"))
+        with self.assertRaises(AttributeError):
+            _ = getattr(delivery_engine, "_ADAPTER_INTERNAL_CAPABILITIES")
+        self.assertFalse(hasattr(self.adapter.evidence_authority, "_mint_internal_control_capability"))
+        self.assertFalse(hasattr(self.adapter.evidence_authority, "_internal_capabilities"))
+
+    def test_654860c_02_counterexample_wildcard_or_internal_cap_cannot_enter_lifecycle_or_transition_blocked_to_ready(self):
+        """2. Counterexample: Wildcard or internal capability cannot enter _internal_lifecycle_execution or transition blocked to ready."""
+        disp_id = self._advance_to_running()
+        self.adapter.handle_harness_failure(self.delivery_id, disp_id, reason="tool_crash")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "blocked")
+
+        # Fabricated internal wildcard capability matching Sol counterexample
+        fake_cap = ControlCapability(
+            capability_id="adapter_internal_ctrl_exfil",
+            role="Control",
+            delivery_task_id=None,
+            authority_id=id(self.adapter.evidence_authority),
+            created_at=time.time(),
+            signature="forged_sig" * 4,
+        )
+
+        with self.assertRaises(ProtocolViolationError):
+            with self.adapter._internal_lifecycle_execution("resolve_blocker_and_replan", self.delivery_id, capability=fake_cap):
+                token = self.adapter._mint_transition_token("resolve_blocker_and_replan", self.delivery_id, "ready")
+                with self.adapter._authorized_transition_scope(
+                    self.delivery_id, "ready", handler="resolve_blocker_and_replan", _token=token
+                ):
+                    self.adapter.transition_task_state(self.delivery_id, "ready")
+
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "blocked")
+        self.assertNotEqual(self.adapter.get_task_state(self.delivery_id), "ready")
+
+    def test_654860c_03_counterexample_wildcard_or_internal_cap_cannot_issue_signed_integration_evidence(self):
+        """3. Counterexample: Wildcard or internal capability cannot issue signed IntegrationEvidence."""
+        self._advance_to_review()
+        rev_disp_id = self._create_review_dispatch()
+
+        fake_cap = ControlCapability(
+            capability_id="adapter_internal_ctrl_exfil",
+            role="Control",
+            delivery_task_id=None,
+            authority_id=id(self.adapter.evidence_authority),
+            created_at=time.time(),
+            signature="forged_sig" * 4,
+        )
+
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.issue_integration_evidence(
+                self.delivery_id, self.candidate_commit, self.approved_base, gates_pass=True, control_capability=fake_cap
+            )
+        self.assertNotEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
+
+    def test_654860c_04_counterexample_wildcard_or_internal_cap_cannot_issue_signed_review_evidence(self):
+        """4. Counterexample: Wildcard or internal capability cannot issue signed ReviewEvidence."""
+        self._advance_to_review()
+        rev_disp_id = self._create_review_dispatch()
+
+        fake_cap = ControlCapability(
+            capability_id="adapter_internal_ctrl_exfil",
+            role="Control",
+            delivery_task_id=None,
+            authority_id=id(self.adapter.evidence_authority),
+            created_at=time.time(),
+            signature="forged_sig" * 4,
+        )
+
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.issue_review_evidence(
+                self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT", capability=fake_cap
+            )
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "review")
+
+    def test_654860c_05_internal_lifecycle_token_forgery_or_replay_rejected_fail_closed(self):
+        """5. Counterexample: Forged or replayed _InternalLifecycleToken rejected fail closed."""
+        from delivery_engine import _InternalLifecycleToken
+
+        # Forged signature
+        forged_ilt = _InternalLifecycleToken(
+            token_id="ilt_forged_001",
+            handler="resolve_blocker_and_replan",
+            task_id=self.delivery_id,
+            adapter_id=id(self.adapter),
+            created_at=time.time(),
+            signature="bad_signature" * 4,
+        )
+        with self.assertRaises(ProtocolViolationError):
+            with self.adapter._internal_lifecycle_execution(
+                "resolve_blocker_and_replan", self.delivery_id, _internal_token=forged_ilt
+            ):
+                pass
+
+        # Valid ilt minted internally
+        valid_ilt = self.adapter._mint_internal_lifecycle_token("resolve_blocker_and_replan", self.delivery_id)
+        with self.adapter._internal_lifecycle_execution(
+            "resolve_blocker_and_replan", self.delivery_id, _internal_token=valid_ilt
+        ):
+            pass
+
+        # Replay of already consumed internal token fails closed
+        with self.assertRaises(ProtocolViolationError):
+            with self.adapter._internal_lifecycle_execution(
+                "resolve_blocker_and_replan", self.delivery_id, _internal_token=valid_ilt
+            ):
+                pass
+
+    def test_654860c_06_positive_control_authoritative_resolution_and_lifecycle_integration(self):
+        """6. Positive control: Authoritative methods execute cleanly and authenticated capabilities integrate task."""
+        # 1. Advance to running then blocked
+        disp_id = self._advance_to_running()
+        self.adapter.handle_harness_failure(self.delivery_id, disp_id, reason="tool_crash")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "blocked")
+
+        # 2. Authoritative resolution back to ready
+        self.adapter.resolve_blocker_and_replan(self.delivery_id)
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "ready")
+
+        # 3. Fresh dispatch attempt to running
+        d_id2 = "ctx_654860c_run2"
+        orca_id2 = "orca_654860c_run2"
+        lease2 = self.mgr.acquire_lease("LOCK-PARALLEL-REGISTRY", self.delivery_id, d_id2, now=self.t0 + timedelta(seconds=10))
+        d_id2_ret = self.adapter.create_dispatch(
+            self.delivery_id,
+            orca_task_id=orca_id2,
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease2.fencing_token,
+            lease_id=lease2.lease_id,
+            intended_dispatch_id=d_id2,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope(self.delivery_id, d_id2, phase="implement", orca_task_id=orca_id2, now=self.t0 + timedelta(seconds=10)),
+            now=self.t0 + timedelta(seconds=10),
+        )
+        self.adapter.acknowledge_dispatch(self.delivery_id, d_id2_ret)
+        self.adapter.start_running(self.delivery_id, d_id2_ret)
+        self.adapter.handle_worker_done(
+            self.delivery_id, orca_id2, d_id2_ret, "succeeded",
+            candidate_commit=self.candidate_commit, fencing_token=lease2.fencing_token,
+            now=self.t0 + timedelta(seconds=15),
+        )
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "review")
+
+        # 4. Review dispatch & authenticated evidence issuance
+        rev_disp_id = "ctx_654860c_pos_rev"
+        rev_orca_id = "task_654860c_pos_rev"
+        rev_env = make_execution_envelope(self.delivery_id, rev_disp_id, phase="review", orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=20))
+        self.adapter.create_review_dispatch(
+            self.delivery_id,
+            orca_task_id=rev_orca_id,
+            candidate_commit=self.candidate_commit,
+            intended_dispatch_id=rev_disp_id,
+            dispatch_origin="dely dispatch",
+            execution_envelope=rev_env,
+            now=self.t0 + timedelta(seconds=20),
+        )
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        rev_cap = self.adapter.get_reviewer_capability(rev_disp_id, control_capability=ctrl_cap)
+        rev_ev = self.adapter.issue_review_evidence(
+            self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap
+        )
+        st_rev = self.adapter.handle_review_verdict(self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp_id, review_evidence=rev_ev)
+        self.assertEqual(st_rev, "merge_queued")
+
+        # 5. Integration evidence & gates
+        ctrl_cap2 = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        int_ev = self.adapter.issue_integration_evidence(
+            self.delivery_id, self.candidate_commit, self.approved_base, gates_pass=True, control_capability=ctrl_cap2
+        )
+        st_int = self.adapter.handle_integration_gates(self.delivery_id, True, integration_evidence=int_ev)
+        self.assertEqual(st_int, "integrated")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 
