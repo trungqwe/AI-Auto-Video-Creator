@@ -95,6 +95,7 @@ from delivery_engine import (  # noqa: E402
     KeyStoreHostHandoff,
     HostBoundaryTicketIssuerCapability,
     HostBoundaryTicketIssuer,
+    HostBoundaryBootstrapCapability,
     HostBoundaryTicket,
     HostBoundaryChannel,
     DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH,
@@ -167,12 +168,15 @@ def _launch_test_host_boundary_daemon(host_token: str) -> tuple[int, bytes, subp
         proc.kill()
         raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel")
 
-    return int(port_line.strip()), effective_authkey, proc
+    port = int(port_line.strip())
+    boot_cap = HostBoundaryBootstrapCapability._create_authenticated(port, effective_authkey, clean_token)
+    return port, effective_authkey, proc, boot_cap
 
-_h_port, _h_authkey, _h_proc = _launch_test_host_boundary_daemon(_HOST_BOUNDARY_TOKEN)
-_host_ticket_issuer = HostBoundaryTicketIssuer(_internal_token=_HOST_BOUNDARY_TOKEN)
+_h_port, _h_authkey, _h_proc, _h_boot_cap = _launch_test_host_boundary_daemon(_HOST_BOUNDARY_TOKEN)
+HostBoundaryTicketIssuer._default_bootstrap_capability = _h_boot_cap
+_host_ticket_issuer = HostBoundaryTicketIssuer(_internal_token=_HOST_BOUNDARY_TOKEN, bootstrap_capability=_h_boot_cap)
 _host_ticket = _host_ticket_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
-HostBoundaryChannel.provision_channel(_h_port, _h_authkey, host_ticket=_host_ticket, proc=_h_proc)
+HostBoundaryChannel.provision_channel(_h_port, _h_authkey, host_ticket=_host_ticket, bootstrap_capability=_h_boot_cap, proc=_h_proc)
 
 _test_host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
 
@@ -11574,12 +11578,13 @@ print("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS")
 import sys, os
 from pathlib import Path
 sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
-from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, HostBoundaryTicketIssuer, ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
+from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, HostBoundaryTicketIssuer, HostBoundaryBootstrapCapability, ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
 
 # Host provisions channel endpoint/auth via host mechanism in child process
-child_issuer = HostBoundaryTicketIssuer(_internal_token='{_HOST_BOUNDARY_TOKEN}')
+child_boot_cap = HostBoundaryBootstrapCapability._create_authenticated({_h_port}, {_h_authkey!r}, '{_HOST_BOUNDARY_TOKEN}')
+child_issuer = HostBoundaryTicketIssuer(_internal_token='{_HOST_BOUNDARY_TOKEN}', bootstrap_capability=child_boot_cap)
 child_ticket = child_issuer.issue_ticket({_h_port}, {_h_authkey!r}, _internal_token='{_HOST_BOUNDARY_TOKEN}')
-HostBoundaryChannel.provision_channel({_h_port}, {_h_authkey!r}, host_ticket=child_ticket)
+HostBoundaryChannel.provision_channel({_h_port}, {_h_authkey!r}, host_ticket=child_ticket, bootstrap_capability=child_boot_cap)
 
 # Positive control: authentic host handoff from trusted host issuer successfully provisions boundary
 host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token='{_HOST_BOUNDARY_TOKEN}')
@@ -13515,6 +13520,110 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         )
         self.assertEqual(proc_sub.returncode, 0, f"Child process failed: {proc_sub.stderr}")
         self.assertIn("FORGED_TICKET_REJECTED_PASS", proc_sub.stdout)
+
+    def test_18s_sol_counterexample_rogue_daemon_and_endpoint_rejected_in_fresh_subprocess(self):
+        """18s. Sol Audit Remediation: Rogue daemon and caller-selected endpoint rejected in fresh subprocess.
+        Proves that an in-process caller or worker in a child process cannot start a rogue daemon,
+        mint an unauthorized host ticket, or forge HostBoundaryBootstrapCapability to trick
+        HostBoundaryChannel into starting. HostBoundaryChannel._started remains False fail-closed.
+        """
+        child_rogue_code = (
+            "import sys, secrets, threading, time\n"
+            "from pathlib import Path\n"
+            "sys.path.insert(0, str(Path('docs/parallel-delivery').resolve()))\n"
+            "from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, HostBoundaryTicketIssuer, HostBoundaryBootstrapCapability, ProtocolViolationError\n"
+            "from multiprocessing.connection import Listener\n"
+            "assert HostBoundaryChannel._started is False, 'Channel must be unstarted initially'\n"
+            "\n"
+            "# Step 1: Attacker spins up rogue listener daemon on localhost with attacker credentials\n"
+            "rogue_token = secrets.token_hex(32)\n"
+            "rogue_authkey = secrets.token_bytes(32)\n"
+            "listener = Listener(('127.0.0.1', 0), authkey=rogue_authkey)\n"
+            "rogue_port = listener.address[1]\n"
+            "\n"
+            "def run_rogue_daemon():\n"
+            "    for _ in range(5):\n"
+            "        try:\n"
+            "            conn = listener.accept()\n"
+            "            msg = conn.recv()\n"
+            "            conn.send(True)\n"
+            "            conn.close()\n"
+            "        except Exception:\n"
+            "            break\n"
+            "    listener.close()\n"
+            "\n"
+            "t = threading.Thread(target=run_rogue_daemon, daemon=True)\n"
+            "t.start()\n"
+            "\n"
+            "# Step 2: Attacker attempts to instantiate HostBoundaryTicketIssuer and issue ticket without bootstrap capability\n"
+            "rogue_issuer = HostBoundaryTicketIssuer(_internal_token=rogue_token)\n"
+            "try:\n"
+            "    rogue_issuer.issue_ticket(rogue_port, rogue_authkey, _internal_token=rogue_token)\n"
+            "    assert False, 'Expected issue_ticket without bootstrap capability to fail closed'\n"
+            "except ProtocolViolationError as e:\n"
+            "    assert 'Host ticket issuance rejected' in str(e), f'Unexpected error: {e}'\n"
+            "assert HostBoundaryChannel._started is False, 'Channel _started must remain False'\n"
+            "\n"
+            "# Step 3: Attacker attempts direct construction of HostBoundaryBootstrapCapability\n"
+            "try:\n"
+            "    HostBoundaryBootstrapCapability(rogue_port, rogue_authkey, rogue_token)\n"
+            "    assert False, 'Expected direct construction of HostBoundaryBootstrapCapability to fail closed'\n"
+            "except ProtocolViolationError as e:\n"
+            "    assert 'Caller-selected or direct construction of HostBoundaryBootstrapCapability' in str(e), f'Unexpected error: {e}'\n"
+            "assert HostBoundaryChannel._started is False, 'Channel _started must remain False'\n"
+            "\n"
+            "# Step 4: Attacker attempts subclassing HostBoundaryBootstrapCapability\n"
+            "try:\n"
+            "    class AttackerBootstrap(HostBoundaryBootstrapCapability):\n"
+            "        pass\n"
+            "    assert False, 'Expected subclassing HostBoundaryBootstrapCapability to fail closed'\n"
+            "except ProtocolViolationError as e:\n"
+            "    assert 'Subclassing HostBoundaryBootstrapCapability' in str(e), f'Unexpected error: {e}'\n"
+            "assert HostBoundaryChannel._started is False, 'Channel _started must remain False'\n"
+            "\n"
+            "# Step 5: Attacker attempts object.__new__ bypass to forge HostBoundaryBootstrapCapability\n"
+            "raw_boot = object.__new__(HostBoundaryBootstrapCapability)\n"
+            "object.__setattr__(raw_boot, '_bootstrap_id', 'boot_cap_forged')\n"
+            "object.__setattr__(raw_boot, '_port', rogue_port)\n"
+            "object.__setattr__(raw_boot, '_authkey_hash', '0'*64)\n"
+            "object.__setattr__(raw_boot, '_host_token_hash', '0'*64)\n"
+            "object.__setattr__(raw_boot, '_created_at', time.time())\n"
+            "object.__setattr__(raw_boot, '_signature', 'forged_hmac_signature')\n"
+            "object.__setattr__(raw_boot, '_role', 'HostBoundaryBootstrap')\n"
+            "object.__setattr__(raw_boot, '_consumed', False)\n"
+            "object.__setattr__(raw_boot, '_initialized', True)\n"
+            "try:\n"
+            "    raw_boot.verify(port=rogue_port, authkey=rogue_authkey)\n"
+            "    assert False, 'Expected forged bootstrap capability verification to fail closed'\n"
+            "except ProtocolViolationError as e:\n"
+            "    assert 'cryptographic signature mismatch' in str(e) or 'binding mismatch' in str(e), f'Unexpected error: {e}'\n"
+            "assert HostBoundaryChannel._started is False, 'Channel _started must remain False'\n"
+            "\n"
+            "# Step 6: Attacker attempts provision_channel with forged ticket and endpoint\n"
+            "rogue_accepted = False\n"
+            "try:\n"
+            "    raw_ticket = object.__new__(HostBoundaryTicket)\n"
+            "    object.__setattr__(raw_ticket, '_ticket_id', 'cand-rogue-ticket')\n"
+            "    object.__setattr__(raw_ticket, '_host_token_hash', '0'*64)\n"
+            "    object.__setattr__(raw_ticket, '_created_at', 0.0)\n"
+            "    object.__setattr__(raw_ticket, '_signature', 'sig')\n"
+            "    HostBoundaryChannel.provision_channel(rogue_port, rogue_authkey, host_ticket=raw_ticket)\n"
+            "    rogue_accepted = True\n"
+            "except ProtocolViolationError:\n"
+            "    rogue_accepted = False\n"
+            "assert rogue_accepted is False, 'ROGUE_ENDPOINT_TICKET_ACCEPTED must be False'\n"
+            "assert HostBoundaryChannel._started is False, 'Channel _started must remain False on rejection'\n"
+            "\n"
+            "# Step 7: Emits acceptance evidence token\n"
+            "sys.stdout.write('ROGUE_ENDPOINT_TICKET_REJECTED_PASS\\n')\n"
+        )
+        proc_rogue = subprocess.run(
+            [sys.executable, "-u", "-c", child_rogue_code],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc_rogue.returncode, 0, f"Child process failed: {proc_rogue.stderr}")
+        self.assertIn("ROGUE_ENDPOINT_TICKET_REJECTED_PASS", proc_rogue.stdout)
 
 
 if __name__ == "__main__":

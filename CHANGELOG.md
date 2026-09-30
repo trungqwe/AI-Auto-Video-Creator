@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên d1edb50 (HostBoundaryBootstrapCapability, Neo Chặt Daemon Endpoint/Authkey Provenance & Ngăn Chặn Rogue Daemon/Ticket Trong Tiến Trình Con)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate d1edb5073314fc66488820f8d66ae0655a210fb2 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Năng Lực Khởi Tạo Host Bất Biến (HostBoundaryBootstrapCapability)**:
+    - Xây dựng lớp thẩm quyền HostBoundaryBootstrapCapability do trusted host boundary tạo độc quyền ngoài tiến trình (_create_authenticated); cấm caller in-process khởi tạo trực tiếp (__init__ ném ProtocolViolationError), cấm kế thừa (__init_subclass__ ném ProtocolViolationError), và cấm serialize/deserialize (__reduce__ ném ProtocolViolationError).
+    - Ràng buộc mật mã chặt chẽ giữa bootstrap_id, port, authkey_hash, host_token_hash, chữ ký HMAC-SHA256 với secret nội bộ của host boundary, kiểm tra độ tươi (freshness 300s, max future skew 30s) và cơ chế tiêu thụ đơn dụng (_consume_for_provisioning).
+  - **(2) Ràng Buộc Thẩm Quyền Host Vào HostBoundaryTicketIssuer**:
+    - HostBoundaryTicketIssuer yêu cầu HostBoundaryBootstrapCapability hợp lệ khi cấp vé (issue_ticket). Phương thức issue_ticket đối chiếu bắt buộc port và authkey phải khớp chính xác với port và authkey_hash trong bootstrap capability; mọi trường hợp thiếu capability hoặc sai lệch endpoint đều bị từ chối fail-closed (Host ticket issuance rejected).
+    - Vé HostBoundaryTicket được gắn kèm bootstrap_capability và thẩm tra chữ ký hai chiều khi tiêu thụ.
+  - **(3) Thẩm Định Endpoint & Tiêu Thụ Đơn Dụng Trong provision_channel**:
+    - HostBoundaryChannel.provision_channel yêu cầu bắt buộc phải có HostBoundaryBootstrapCapability (truyền trực tiếp hoặc qua host_ticket.bootstrap_capability).
+    - Xác minh tính toàn vẹn chữ ký HMAC, khớp cổng/khóa, kiểm tra độ tươi, và kiểm tra chống replay qua tập _consumed_bootstrap_ids trước khi cho phép kích hoạt kênh (_started = True).
+    - Nếu endpoint hoặc ticket do caller tự sinh/giả mạo (không có host bootstrap capability hợp lệ), yêu cầu bị từ chối fail-closed, giữ nguyên _started = False và không gây bất kỳ side effect nào (ROGUE_ENDPOINT_TICKET_ACCEPTED == False).
+  - **(4) Bổ Sung Fixture Fresh Subprocess test_18s (395/395 Tests PASS 100%)**:
+    - Bổ sung test_18s_sol_counterexample_rogue_daemon_and_endpoint_rejected_in_fresh_subprocess trong tiến trình con độc lập: caller tự mở listener trên cổng nội bộ với rogue token/authkey, gọi issue_ticket và provision_channel; chứng minh toàn bộ chuỗi tấn công bị chặn đứng fail-closed, HostBoundaryChannel._started giữ nguyên False.
+    - Toàn bộ suite đạt **395/395 tests PASS (100%)**, vượt qua toàn bộ 12 gate validation và release gate.
+
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 0032962 (Unforgeable HostBoundaryTicket, Provenance Verification qua Out-of-Process Daemon, HMAC Capability Binding & Single-Use Replay Protection)
 
 - Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate `0032962130d21dc9b2ddc5f51260cfffb40e9acd` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):

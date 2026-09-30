@@ -1238,6 +1238,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "4_single_use_ticket_consumption_and_replay_rejection_fail_closed": "RESOLVED",
                     "5_discriminating_forgery_and_replay_negative_fixtures_verified": "RESOLVED",
                 },
+                "sol_lead_audit_d1edb50": {
+                    "1_host_boundary_bootstrap_capability_unforgeable_and_direct_construction_forbidden": "RESOLVED",
+                    "2_daemon_endpoint_and_authkey_cryptographically_bound_to_host_bootstrap": "RESOLVED",
+                    "3_ticket_issuer_requires_authentic_bootstrap_capability_fail_closed": "RESOLVED",
+                    "4_provision_channel_verifies_and_consumes_bootstrap_capability_single_use": "RESOLVED",
+                    "5_rogue_daemon_and_endpoint_rejected_in_fresh_subprocess_verified": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

@@ -1589,6 +1589,182 @@ class HostBoundaryTicketIssuerCapability:
                 )
 
 
+_HOST_BOUNDARY_BOOTSTRAP_SECRET: bytes = secrets.token_bytes(32)
+
+
+class HostBoundaryBootstrapCapability:
+    """Unforgeable cryptographic bootstrap capability conferring authority to bind
+    HostBoundaryChannel endpoint and authkey.
+    Issued exclusively by trusted host authority out-of-process.
+    Candidate callers in-process cannot construct, forge, subclass, or replay bootstrap capabilities fail-closed.
+    """
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        raise ProtocolViolationError(
+            "Caller-selected or direct construction of HostBoundaryBootstrapCapability by in-process caller is forbidden fail-closed; "
+            "host boundary bootstrap capability is managed exclusively by trusted host boundary"
+        )
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        raise ProtocolViolationError(
+            f"Subclassing HostBoundaryBootstrapCapability in module {cls.__module__!r} is strictly forbidden fail-closed; "
+            "host boundary bootstrap capability can only be created by trusted external host authority"
+        )
+
+    def __reduce__(self) -> None:
+        raise ProtocolViolationError(
+            "Serialization/deserialization of HostBoundaryBootstrapCapability is strictly forbidden fail-closed"
+        )
+
+    @classmethod
+    def _sign_bootstrap_payload(
+        cls,
+        bootstrap_id: str,
+        port: int,
+        authkey_hash: str,
+        host_token_hash: str,
+        created_at: float,
+    ) -> str:
+        payload = f"HOST_BOOTSTRAP_CAP:{bootstrap_id}:{port}:{authkey_hash}:{host_token_hash}:{created_at}".encode("utf-8")
+        return hmac.new(_HOST_BOUNDARY_BOOTSTRAP_SECRET, payload, hashlib.sha256).hexdigest()
+
+    @classmethod
+    def _create_authenticated(
+        cls,
+        port: int,
+        authkey: bytes,
+        host_token: str,
+        *,
+        bootstrap_id: Optional[str] = None,
+        created_at: Optional[float] = None,
+    ) -> 'HostBoundaryBootstrapCapability':
+        if not isinstance(port, int) or port <= 0 or port > 65535:
+            raise ProtocolViolationError("Invalid host boundary port fail-closed")
+        if not isinstance(authkey, bytes) or len(authkey) < 16:
+            raise ProtocolViolationError("Invalid host boundary authkey fail-closed")
+        clean_token = (
+            host_token.strip()
+            if isinstance(host_token, str)
+            else (host_token.decode("utf-8", errors="replace").strip() if isinstance(host_token, bytes) else "")
+        )
+        if len(clean_token) < 32:
+            raise ProtocolViolationError("host_token must be at least 32 characters fail-closed")
+
+        bid = bootstrap_id or f"boot_cap_{secrets.token_hex(16)}"
+        now = created_at if created_at is not None else time.time()
+        authkey_hash = hashlib.sha256(authkey).hexdigest()
+        host_token_hash = hashlib.sha256(clean_token.encode("utf-8")).hexdigest()
+        sig = cls._sign_bootstrap_payload(bid, port, authkey_hash, host_token_hash, now)
+
+        instance = object.__new__(cls)
+        object.__setattr__(instance, "_bootstrap_id", bid)
+        object.__setattr__(instance, "_port", port)
+        object.__setattr__(instance, "_authkey_hash", authkey_hash)
+        object.__setattr__(instance, "_host_token_hash", host_token_hash)
+        object.__setattr__(instance, "_created_at", now)
+        object.__setattr__(instance, "_signature", sig)
+        object.__setattr__(instance, "_role", "HostBoundaryBootstrap")
+        object.__setattr__(instance, "_consumed", False)
+        object.__setattr__(instance, "_lock", threading.Lock())
+        object.__setattr__(instance, "_initialized", True)
+        return instance
+
+    @property
+    def bootstrap_id(self) -> str:
+        return getattr(self, "_bootstrap_id", "")
+
+    @property
+    def port(self) -> Optional[int]:
+        return getattr(self, "_port", None)
+
+    @property
+    def authkey_hash(self) -> Optional[str]:
+        return getattr(self, "_authkey_hash", None)
+
+    @property
+    def host_token_hash(self) -> Optional[str]:
+        return getattr(self, "_host_token_hash", None)
+
+    @property
+    def created_at(self) -> float:
+        return getattr(self, "_created_at", 0.0)
+
+    @property
+    def signature(self) -> str:
+        return getattr(self, "_signature", "")
+
+    @property
+    def role(self) -> str:
+        return getattr(self, "_role", "HostBoundaryBootstrap")
+
+    def __repr__(self) -> str:
+        bid = getattr(self, "_bootstrap_id", "uninitialized")
+        return f"<HostBoundaryBootstrapCapability bootstrap_id={bid!r}>"
+
+    def __getattr__(self, name: str) -> Any:
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if getattr(self, "_initialized", False):
+            raise AttributeError("HostBoundaryBootstrapCapability is immutable; setting attributes forbidden fail-closed")
+        super().__setattr__(name, value)
+
+    def verify(self, port: Optional[int] = None, authkey: Optional[bytes] = None) -> None:
+        """Verify provenance, unforgeable HMAC signature, port/authkey bindings, freshness, and single-use."""
+        if not getattr(self, "_initialized", False):
+            raise ProtocolViolationError("Uninitialized or forged HostBoundaryBootstrapCapability rejected fail-closed")
+        if getattr(self, "_role", None) != "HostBoundaryBootstrap":
+            raise ProtocolViolationError("HostBoundaryBootstrapCapability role mismatch fail-closed")
+        if port is not None and getattr(self, "_port", None) != port:
+            raise ProtocolViolationError(
+                f"HostBoundaryBootstrapCapability port binding mismatch: expected {self._port}, got {port} fail-closed"
+            )
+        if authkey is not None:
+            expected_auth_hash = hashlib.sha256(authkey).hexdigest()
+            if getattr(self, "_authkey_hash", None) != expected_auth_hash:
+                raise ProtocolViolationError("HostBoundaryBootstrapCapability authkey binding mismatch fail-closed")
+
+        now = time.time()
+        created_at = getattr(self, "_created_at", 0.0)
+        if created_at > now + 30.0:
+            raise ProtocolViolationError(
+                "HostBoundaryBootstrapCapability created in the future beyond acceptable skew fail-closed"
+            )
+        if now - created_at > 300.0:
+            raise ProtocolViolationError(
+                "HostBoundaryBootstrapCapability has expired; freshness violation fail-closed"
+            )
+
+        bid = getattr(self, "_bootstrap_id", "")
+        bport = getattr(self, "_port", 0)
+        ahash = getattr(self, "_authkey_hash", "")
+        thash = getattr(self, "_host_token_hash", "")
+        sig = getattr(self, "_signature", "")
+        expected_sig = self._sign_bootstrap_payload(bid, bport, ahash, thash, created_at)
+        if not hmac.compare_digest(sig, expected_sig):
+            raise ProtocolViolationError(
+                "HostBoundaryBootstrapCapability cryptographic signature mismatch; forged provenance rejected fail-closed"
+            )
+
+    def _consume_for_provisioning(self, target_cls: Any) -> None:
+        if target_cls is not HostBoundaryChannel:
+            raise ProtocolViolationError(
+                "HostBoundaryBootstrapCapability can only be consumed by HostBoundaryChannel fail-closed"
+            )
+        lock = getattr(self, "_lock", None)
+        if lock is None or not getattr(self, "_initialized", False):
+            raise ProtocolViolationError(
+                "Uninitialized or forged HostBoundaryBootstrapCapability cannot be consumed fail-closed"
+            )
+        with lock:
+            if getattr(self, "_consumed", False):
+                raise ProtocolViolationError(
+                    "HostBoundaryBootstrapCapability has already been consumed; single-use replay rejected fail-closed"
+                )
+            self.verify()
+            object.__setattr__(self, "_consumed", True)
+
+
 class HostBoundaryTicket:
     """Opaque cryptographic authorization ticket for host boundary channel provisioning.
     Created exclusively by trusted external host authority out-of-process.
@@ -1621,6 +1797,7 @@ class HostBoundaryTicket:
         authkey_hash: str,
         issuer: 'HostBoundaryTicketIssuer',
         issuer_capability: HostBoundaryTicketIssuerCapability,
+        bootstrap_capability: Optional[HostBoundaryBootstrapCapability] = None,
     ) -> 'HostBoundaryTicket':
         instance = object.__new__(cls)
         object.__setattr__(instance, "_ticket_id", ticket_id)
@@ -1632,6 +1809,7 @@ class HostBoundaryTicket:
         object.__setattr__(instance, "_role", "HostBoundaryTicket")
         object.__setattr__(instance, "_issuer", issuer)
         object.__setattr__(instance, "_issuer_capability", issuer_capability)
+        object.__setattr__(instance, "_bootstrap_capability", bootstrap_capability)
         object.__setattr__(instance, "_consumed", False)
         object.__setattr__(instance, "_lock", threading.Lock())
         object.__setattr__(instance, "_initialized", True)
@@ -1678,6 +1856,10 @@ class HostBoundaryTicket:
     def issuer_capability(self) -> Optional[HostBoundaryTicketIssuerCapability]:
         return getattr(self, "_issuer_capability", None)
 
+    @property
+    def bootstrap_capability(self) -> Optional[HostBoundaryBootstrapCapability]:
+        return getattr(self, "_bootstrap_capability", None)
+
     def __getattr__(self, name: str) -> Any:
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
@@ -1716,11 +1898,14 @@ class HostBoundaryTicketIssuer:
     Direct construction or access by in-process candidate caller without valid host token is strictly forbidden fail-closed.
     """
     _instance: Optional['HostBoundaryTicketIssuer'] = None
+    _default_bootstrap_capability: Optional[HostBoundaryBootstrapCapability] = None
     _lock = threading.RLock()
 
     def __init__(
         self,
         host_token: Optional[str] = None,
+        *,
+        bootstrap_capability: Optional[HostBoundaryBootstrapCapability] = None,
         _internal_token: Optional[Any] = None,
     ) -> None:
         effective_token = _internal_token if _internal_token is not None else host_token
@@ -1740,6 +1925,14 @@ class HostBoundaryTicketIssuer:
             )
         self._secret: bytes = clean.encode("utf-8")
         self._host_token_hash: str = hashlib.sha256(self._secret).hexdigest()
+        effective_bootstrap = bootstrap_capability or self._default_bootstrap_capability
+        if effective_bootstrap is not None:
+            if not isinstance(effective_bootstrap, HostBoundaryBootstrapCapability):
+                raise ProtocolViolationError(
+                    "Invalid bootstrap_capability for HostBoundaryTicketIssuer fail-closed"
+                )
+            effective_bootstrap.verify()
+        self._bootstrap_capability: Optional[HostBoundaryBootstrapCapability] = effective_bootstrap
         self._issued_tickets: Set[str] = set()
         self._consumed_tickets: Set[str] = set()
         self._issued_capabilities: Set[str] = set()
@@ -1748,7 +1941,10 @@ class HostBoundaryTicketIssuer:
 
     @classmethod
     def get_default_host_issuer(
-        cls, _internal_token: Optional[Any] = None
+        cls,
+        _internal_token: Optional[Any] = None,
+        *,
+        bootstrap_capability: Optional[HostBoundaryBootstrapCapability] = None,
     ) -> 'HostBoundaryTicketIssuer':
         """Retrieve host ticket issuer for backward-compatible test fixtures / harness.
         Managed exclusively by trusted host boundary out-of-process.
@@ -1772,8 +1968,13 @@ class HostBoundaryTicketIssuer:
                 "no valid out-of-process host boundary capability configured in environment"
             )
         with cls._lock:
+            if bootstrap_capability is not None:
+                cls._default_bootstrap_capability = bootstrap_capability
             if cls._instance is None:
-                cls._instance = cls(_internal_token=_internal_token)
+                cls._instance = cls(
+                    _internal_token=_internal_token,
+                    bootstrap_capability=bootstrap_capability or cls._default_bootstrap_capability,
+                )
             else:
                 if not hmac.compare_digest(cls._instance._secret, clean.encode("utf-8")):
                     raise ProtocolViolationError(
@@ -1796,6 +1997,7 @@ class HostBoundaryTicketIssuer:
                 if not hmac.compare_digest(cls._instance._secret, clean.encode("utf-8")):
                     raise ProtocolViolationError("Reset of HostBoundaryTicketIssuer with invalid token rejected fail-closed")
             cls._instance = None
+            cls._default_bootstrap_capability = None
 
     def __reduce__(self) -> None:
         raise ProtocolViolationError("Serialization/deserialization of HostBoundaryTicketIssuer is strictly forbidden fail-closed")
@@ -1814,6 +2016,7 @@ class HostBoundaryTicketIssuer:
         authkey: bytes,
         *,
         _internal_token: Optional[Any] = None,
+        bootstrap_capability: Optional[HostBoundaryBootstrapCapability] = None,
     ) -> HostBoundaryTicket:
         """Mint an authentic HostBoundaryTicket bound to unforgeable issuer capability and port/authkey.
         Single-use: cannot replay ticket fail-closed.
@@ -1834,6 +2037,28 @@ class HostBoundaryTicketIssuer:
         )
         if not hmac.compare_digest(self._secret, clean.encode("utf-8")):
             raise ProtocolViolationError("Invalid internal token for ticket issuance fail-closed")
+
+        # Provenance verification: must possess valid host bootstrap capability binding (port, authkey)
+        boot_cap = bootstrap_capability or self._bootstrap_capability or self._default_bootstrap_capability
+        if boot_cap is None:
+            raise ProtocolViolationError(
+                "Host ticket issuance rejected: missing or invalid host bootstrap capability fail-closed"
+            )
+        if not isinstance(boot_cap, HostBoundaryBootstrapCapability):
+            raise ProtocolViolationError(
+                "Host ticket issuance rejected: invalid host bootstrap capability type fail-closed"
+            )
+        if boot_cap.port != port:
+            raise ProtocolViolationError(
+                f"Host ticket issuance rejected: port mismatch against host bootstrap capability: "
+                f"expected {boot_cap.port}, got {port} fail-closed"
+            )
+        expected_auth_hash = hashlib.sha256(authkey).hexdigest()
+        if boot_cap.authkey_hash != expected_auth_hash:
+            raise ProtocolViolationError(
+                "Host ticket issuance rejected: authkey binding mismatch against host bootstrap capability fail-closed"
+            )
+        boot_cap.verify(port=port, authkey=authkey)
 
         # Verify token with out-of-process host boundary daemon at (port, authkey)
         try:
@@ -1882,6 +2107,7 @@ class HostBoundaryTicketIssuer:
             authkey_hash=authkey_hash,
             issuer=self,
             issuer_capability=capability,
+            bootstrap_capability=boot_cap,
         )
 
 
@@ -1935,6 +2161,12 @@ class HostBoundaryTicketIssuer:
         if not hmac.compare_digest(cap.signature, expected_cap_sig):
             raise ProtocolViolationError("HostBoundaryTicket capability signature mismatch fail-closed")
 
+        boot_cap = getattr(ticket, "bootstrap_capability", None)
+        if boot_cap is not None:
+            if not isinstance(boot_cap, HostBoundaryBootstrapCapability):
+                raise ProtocolViolationError("HostBoundaryTicket contains invalid bootstrap capability fail-closed")
+            boot_cap.verify(port=port, authkey=authkey)
+
         with self._lock:
             if ticket.ticket_id in self._consumed_tickets:
                 raise ProtocolViolationError(
@@ -1959,6 +2191,7 @@ class HostBoundaryChannel:
     _authkey: Optional[bytes] = None
     _started: bool = False
     _consumed_ticket_ids: Set[str] = set()
+    _consumed_bootstrap_ids: Set[str] = set()
 
     @classmethod
     def provision_channel(
@@ -1967,6 +2200,7 @@ class HostBoundaryChannel:
         authkey: bytes,
         *,
         host_ticket: Optional[HostBoundaryTicket] = None,
+        bootstrap_capability: Optional[HostBoundaryBootstrapCapability] = None,
         proc: Optional[subprocess.Popen] = None,
     ) -> None:
         """Provision host boundary channel endpoint and authkey exclusively via trusted host mechanism.
@@ -1986,6 +2220,22 @@ class HostBoundaryChannel:
                 raise ProtocolViolationError("Invalid host boundary port fail-closed")
             if not isinstance(authkey, bytes) or len(authkey) < 16:
                 raise ProtocolViolationError("Invalid host boundary authkey fail-closed")
+
+            # Provenance: require valid HostBoundaryBootstrapCapability bound to (port, authkey)
+            effective_boot_cap = bootstrap_capability or getattr(host_ticket, "bootstrap_capability", None)
+            if effective_boot_cap is None:
+                raise ProtocolViolationError(
+                    "HostBoundaryChannel provisioning rejected: missing host boundary bootstrap capability fail-closed"
+                )
+            if not isinstance(effective_boot_cap, HostBoundaryBootstrapCapability):
+                raise ProtocolViolationError(
+                    "HostBoundaryChannel provisioning rejected: invalid host boundary bootstrap capability fail-closed"
+                )
+            if effective_boot_cap.bootstrap_id in cls._consumed_bootstrap_ids:
+                raise ProtocolViolationError(
+                    f"HostBoundaryBootstrapCapability {effective_boot_cap.bootstrap_id!r} has already been consumed fail-closed"
+                )
+            effective_boot_cap.verify(port=port, authkey=authkey)
 
             # Verify that ticket has a valid trusted HostBoundaryTicketIssuer
             issuer = getattr(host_ticket, "_issuer", None)
@@ -2019,6 +2269,8 @@ class HostBoundaryChannel:
                     f"HostBoundaryTicket {host_ticket.ticket_id!r} has already been consumed by channel fail-closed"
                 )
             cls._consumed_ticket_ids.add(host_ticket.ticket_id)
+            effective_boot_cap._consume_for_provisioning(cls)
+            cls._consumed_bootstrap_ids.add(effective_boot_cap.bootstrap_id)
 
             cls._cleanup_process()
             cls._port = port
@@ -2036,6 +2288,7 @@ class HostBoundaryChannel:
         with cls._lock:
             cls._cleanup_process()
             cls._consumed_ticket_ids.clear()
+            cls._consumed_bootstrap_ids.clear()
 
     @classmethod
     def start_host_boundary(
