@@ -615,6 +615,22 @@ Remediation R1 có 42 test acceptance qua, migration tiến/lùi và evidence/ha
     - Mở rộng suite `TestSolRemediationSeparationOfDuties` lên 9 bài test: chứng minh dispatch creator có đủ 7 public IDs vẫn không thể claim capability (`test_sod_06`), caller không thể đọc token/channel từ adapter và không thể giả mạo proof hay dùng Control authority để issue proof (`test_sod_07`), thực thi nghiêm ngặt single-use proof và cấm duplicate issuance (`test_sod_08`), và positive control độc lập với `self.reviewer_secret` hoàn tất toàn bộ vòng đời đến `integrated` (`test_sod_09`).
     - Nâng tổng số test lên 367/367 passed 100%.
 
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 8ceacb4 (Elimination of Literal Credential from Production Module, Trusted Host Boundary Handoff Creation, and Ordinary Caller Handoff Prevention)
+
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `8ceacb41aeb67bbfd1f644b9e252df1db12f58e2` cho bundle `docs/parallel-delivery/`:
+  - **(1) Loại Bỏ Triệt Để Literal Credential và Vault Khỏi Production Module (`delivery_engine.py`)**:
+    - Xóa bỏ hoàn toàn kho lưu trữ `_HOST_HANDOFF_VAULT` và literal credential `test_fixture_reviewer_secret_32b_hex!` khỏi `docs/parallel-delivery/delivery_engine.py`.
+    - Production module không chứa bất kỳ literal reviewer secret hay cơ chế lưu trữ credential mặc định nào; candidate caller không thể inspect hay exfiltrate credential đã biết.
+  - **(2) Chuyển Việc Tạo Handoff và Credential Hoàn Toàn Ra Trusted Host Boundary (`TrustedHostReviewerHandoff`)**:
+    - Chuyển toàn bộ logic khởi tạo handoff authority và credential sang lớp `TrustedHostReviewerHandoff` trực thuộc test harness / trusted host boundary trong `docs/parallel-delivery/test_negative_fixtures.py`, nằm ngoài phạm vi callable hay importable của candidate code.
+    - Lớp cơ sở `ReviewerHostHandoff` trong `delivery_engine.py` từ chối fail-closed mọi nỗ lực khởi tạo trực tiếp không đối số hoặc có đối số từ caller cùng tiến trình (`__init__` raise `ProtocolViolationError`).
+    - Ngăn chặn triệt để hành vi kế thừa trái phép: `__init_subclass__` từ chối fail-closed nếu subclass được định nghĩa trong `delivery_engine` hoặc `__main__`.
+    - Phương thức `ReviewerSessionBoundary.provision_from_host()` kiểm tra nghiêm ngặt: từ chối fail-closed nếu authority được khởi tạo trong module candidate hoặc `__main__`, và yêu cầu credential tiêu thụ phải là `bytes` không rỗng hợp lệ.
+  - **(3) Bộ Fixture Phân Biệt Tự Động 375/375 Tests PASS**:
+    - Bổ sung `test_sod_17_fresh_process_ordinary_caller_cannot_construct_handoff_or_provision_boundary` tái hiện chính xác counterexample của Sol audit trong tiến trình con mới: khẳng định caller thông thường trong tiến trình mới không thể tự tạo `ReviewerHostHandoff`, không thể subclass, không thể gọi `provision_from_host()`, không có literal credential trong production module, `HANDOFF_PROVISIONED=False` và `KNOWN_CREDENTIAL=False`, default boundary giữ nguyên `_reviewer_secret = None`, và không thể mint proof/context.
+    - Cập nhật `test_sod_16` kiểm tra khởi tạo `ReviewerHostHandoff` trực tiếp bị từ chối fail-closed ngay lập tức.
+    - Nâng tổng số test lên 375/375 passed 100%.
+
 ## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau a286e6d (Elimination of In-Process Environment Variable Provisioning, Mandatory ReviewerHostHandoff Authority, and Caller-Set Env Rejection)
 
 - Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `a286e6ddde69ac0f0452c31888d8ad641402f706` cho bundle `docs/parallel-delivery/`:

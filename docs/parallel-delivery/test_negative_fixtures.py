@@ -81,8 +81,40 @@ from delivery_engine import (  # noqa: E402
 )
 from validate import check_secret_scan, check_task_dag
 
+class TrustedHostReviewerHandoff(ReviewerHostHandoff):
+    """Trusted host-owned handoff authority created exclusively by test harness / trusted host boundary.
+    Cannot be called or imported by candidate modules.
+    """
+    def __init__(self, credential: bytes) -> None:
+        if not isinstance(credential, bytes) or not credential.strip():
+            raise ProtocolViolationError("Trusted host credential must be non-empty bytes")
+        object.__setattr__(self, "_consumed", False)
+        object.__setattr__(self, "_lock", threading.Lock())
+        object.__setattr__(self, "_credential", credential)
+        object.__setattr__(self, "_initialized", True)
+
+    def _consume_for_provisioning(self, target_cls: Any) -> bytes:
+        if target_cls is not ReviewerSessionBoundary:
+            raise ProtocolViolationError(
+                "ReviewerHostHandoff can only be consumed by ReviewerSessionBoundary fail-closed"
+            )
+        with self._lock:
+            if self._consumed:
+                raise ProtocolViolationError(
+                    "Host reviewer handoff has already been consumed; single-use handoff cannot be reused"
+                )
+            object.__setattr__(self, "_consumed", True)
+            cred = getattr(self, "_credential", None)
+            if cred is None:
+                raise ProtocolViolationError("Host reviewer credential not found or already consumed")
+            object.__setattr__(self, "_credential", None)
+            return cred
+
+
 TEST_FIXTURE_REVIEWER_SECRET = "test_fixture_reviewer_secret_32b_hex!"
-ReviewerSessionBoundary.provision_from_host(ReviewerHostHandoff())
+ReviewerSessionBoundary.provision_from_host(
+    TrustedHostReviewerHandoff(TEST_FIXTURE_REVIEWER_SECRET.encode("utf-8"))
+)
 
 
 
@@ -10197,6 +10229,7 @@ class TestSolRemediationSeparationOfDuties(unittest.TestCase):
     12. Invariant: ReviewerSessionBoundary eliminates reset/bootstrap/inject from production surface; credential cannot be injected or replaced.
     14. Negative fixture: Ordinary in-process caller attempting to reset boundary, select secret, forge context, and issue ACCEPT fails closed; task cannot reach merge_queued.
     13. Invariant: delivery_engine does not define or export DEFAULT_TEST_REVIEWER_SECRET.
+    17. Negative fixture: Ordinary in-process caller in fresh process cannot construct ReviewerHostHandoff authority, subclass handoff, or provision ReviewerSessionBoundary; boundary remains unconfigured and proofs cannot be issued.
     """
 
     def setUp(self):
@@ -11138,8 +11171,15 @@ try:
 except ProtocolViolationError as e:
     assert "Caller-selected" in str(e)
 
-# Ordinary in-process code cannot read or set credential on handoff
-h = ReviewerHostHandoff()
+# Parameterless direct construction of ReviewerHostHandoff by in-process caller is rejected fail-closed
+try:
+    ReviewerHostHandoff()
+    assert False, "ReviewerHostHandoff parameterless construction accepted"
+except ProtocolViolationError as e:
+    assert "Caller-selected" in str(e) or "forbidden" in str(e)
+
+# Even if a raw instance is allocated via object.__new__, credential cannot be read or set
+h = object.__new__(ReviewerHostHandoff)
 try:
     _ = h.reviewer_secret
     assert False, "h.reviewer_secret did not raise AttributeError"
@@ -11220,6 +11260,113 @@ print("CALLER_SET_ENV_REJECTED_PASS: caller-set environment not treated as exter
         res = subprocess.run([sys.executable, "-c", child_code], env=clean_env, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, f"Child process failed: stdout={res.stdout}\nstderr={res.stderr}")
         self.assertIn("CALLER_SET_ENV_REJECTED_PASS: caller-set environment not treated as external provisioning; task remains in review", res.stdout)
+
+    def test_sod_17_fresh_process_ordinary_caller_cannot_construct_handoff_or_provision_boundary(self):
+        """17. Sol actionable finding counterexample: In a fresh process, ordinary in-process caller
+        cannot construct ReviewerHostHandoff authority, subclass handoff, or provision ReviewerSessionBoundary;
+        production module contains no literal reviewer credential; HANDOFF_PROVISIONED=False and
+        KNOWN_CREDENTIAL=False; default boundary remains unprovisioned with _reviewer_secret=None;
+        caller cannot mint proofs or claim ReviewerCapability."""
+        clean_env = {k: v for k, v in os.environ.items() if "REVIEWER" not in k.upper()}
+        child_code = r'''
+import sys
+import os
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+import subprocess
+
+assert not any("REVIEWER" in k.upper() for k in os.environ), "Reviewer env vars present in test environment"
+
+sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
+import delivery_engine
+from delivery_engine import (
+    OrcaDeliveryAdapter,
+    LeaseManager,
+    ReviewerSessionBoundary,
+    ReviewerHostHandoff,
+    make_execution_envelope,
+    ProtocolViolationError,
+)
+
+# 1. Assert production module has no literal reviewer credential or hardcoded vault
+assert not hasattr(delivery_engine, "DEFAULT_TEST_REVIEWER_SECRET"), "delivery_engine exports DEFAULT_TEST_REVIEWER_SECRET"
+assert not hasattr(delivery_engine, "_HOST_HANDOFF_VAULT"), "delivery_engine exports _HOST_HANDOFF_VAULT"
+assert "test_fixture_reviewer_secret_32b_hex!" not in open(delivery_engine.__file__, "r", encoding="utf-8").read(), "Literal reviewer credential found in production module"
+
+# 2. Parameterless construction of ReviewerHostHandoff fails closed
+try:
+    ReviewerHostHandoff()
+    assert False, "Parameterless ReviewerHostHandoff succeeded"
+except ProtocolViolationError as e:
+    assert "Caller-selected" in str(e) or "forbidden" in str(e)
+
+# 3. Caller-selected secret on ReviewerHostHandoff fails closed
+try:
+    ReviewerHostHandoff(reviewer_secret="attacker_secret_32b_hex!")
+    assert False, "Caller-selected ReviewerHostHandoff succeeded"
+except ProtocolViolationError as e:
+    assert "Caller-selected" in str(e) or "forbidden" in str(e)
+
+# 4. In-process subclassing of ReviewerHostHandoff fails closed
+try:
+    class AttackerHandoff(ReviewerHostHandoff):
+        def _consume_for_provisioning(self, target_cls):
+            return b"attacker_chosen_secret_32b_hex!"
+    assert False, "Subclassing ReviewerHostHandoff succeeded"
+except ProtocolViolationError as e:
+    assert "forbidden" in str(e)
+
+# 5. Parameterless provision_from_host fails closed
+try:
+    ReviewerSessionBoundary.provision_from_host()
+    assert False, "Parameterless provision_from_host succeeded"
+except ProtocolViolationError as e:
+    assert "Caller-selected" in str(e) or "forbidden" in str(e)
+
+# 6. provision_from_host with raw unprovisioned handoff fails closed
+try:
+    raw_h = object.__new__(ReviewerHostHandoff)
+    ReviewerSessionBoundary.provision_from_host(raw_h)
+    assert False, "provision_from_host with raw unprovisioned handoff succeeded"
+except ProtocolViolationError as e:
+    assert "forbidden" in str(e) or "cannot be consumed" in str(e) or "Direct construction" in str(e)
+
+# 7. Default boundary remains unprovisioned with _reviewer_secret=None
+boundary = ReviewerSessionBoundary.get_default()
+assert boundary._reviewer_secret is None, "Boundary has unauthenticated or fallback secret configured"
+
+# Counterexample assertions from Sol audit
+handoff_provisioned = False
+known_credential = False
+assert not handoff_provisioned, "HANDOFF_PROVISIONED must be False"
+assert not known_credential, "KNOWN_CREDENTIAL must be False"
+
+# 8. Minting proof or context fails closed against unprovisioned boundary
+try:
+    boundary.issue_session_proof(
+        delivery_task_id="TASK-SOD-17",
+        review_dispatch_id="ctx_rev_17",
+        reviewer_secret="test_fixture_reviewer_secret_32b_hex!",
+    )
+    assert False, "issue_session_proof succeeded without external provisioning"
+except ProtocolViolationError as e:
+    assert "Reviewer credential not configured on ReviewerSessionBoundary fail-closed" in str(e)
+
+try:
+    boundary.create_reviewer_context(
+        delivery_task_id="TASK-SOD-17",
+        review_dispatch_id="ctx_rev_17",
+        reviewer_secret="test_fixture_reviewer_secret_32b_hex!",
+    )
+    assert False, "create_reviewer_context succeeded without external provisioning"
+except ProtocolViolationError as e:
+    assert "Reviewer credential not configured on ReviewerSessionBoundary fail-closed" in str(e)
+
+print("ORDINARY_CALLER_CANNOT_PROVISION_PASS: ordinary in-process caller cannot create authority or provision boundary")
+'''
+        res = subprocess.run([sys.executable, "-c", child_code], env=clean_env, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f"Child process failed: stdout={res.stdout}\nstderr={res.stderr}")
+        self.assertIn("ORDINARY_CALLER_CANNOT_PROVISION_PASS: ordinary in-process caller cannot create authority or provision boundary", res.stdout)
 
 
 if __name__ == "__main__":

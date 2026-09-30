@@ -1485,24 +1485,25 @@ class ReviewerDeliveryChannel:
             return cap
 
 
-_HOST_HANDOFF_VAULT: Dict[int, bytes] = {}
-
-
 class ReviewerHostHandoff:
     """Opaque host-owned handoff authority conferring reviewer boundary provisioning.
-    Caller-selected credentials are forbidden fail-closed.
-    Ordinary in-process code cannot set or read the underlying credential.
+    Caller-selected credentials and direct in-process construction are forbidden fail-closed.
+    Ordinary in-process callers cannot construct, subclass, read, or set handoff authority.
+    Creation of handoff authority and credentials resides exclusively in trusted external host boundary.
     """
     def __init__(self, *args, **kwargs) -> None:
-        if args or kwargs:
+        raise ProtocolViolationError(
+            "Caller-selected or direct construction of ReviewerHostHandoff by in-process caller is forbidden fail-closed; "
+            "boundary must be provisioned immutably from trusted external host handoff authority"
+        )
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if cls.__module__ in ("delivery_engine", "__main__"):
             raise ProtocolViolationError(
-                "Caller-selected reviewer boundary provisioning forbidden; "
-                "boundary must be provisioned immutably from trusted external host handoff authority"
+                f"Subclassing ReviewerHostHandoff in module {cls.__module__!r} is strictly forbidden fail-closed; "
+                "handoff authority can only be created by trusted external host boundary"
             )
-        object.__setattr__(self, "_consumed", False)
-        object.__setattr__(self, "_lock", threading.Lock())
-        _HOST_HANDOFF_VAULT[id(self)] = b"test_fixture_reviewer_secret_32b_hex!"
-        object.__setattr__(self, "_initialized", True)
 
     @property
     def reviewer_secret(self) -> None:
@@ -1523,20 +1524,10 @@ class ReviewerHostHandoff:
         super().__setattr__(name, value)
 
     def _consume_for_provisioning(self, target_cls: Any) -> bytes:
-        if target_cls is not ReviewerSessionBoundary:
-            raise ProtocolViolationError(
-                "ReviewerHostHandoff can only be consumed by ReviewerSessionBoundary fail-closed"
-            )
-        with self._lock:
-            if self._consumed:
-                raise ProtocolViolationError(
-                    "Host reviewer handoff has already been consumed; single-use handoff cannot be reused"
-                )
-            object.__setattr__(self, "_consumed", True)
-            cred = _HOST_HANDOFF_VAULT.pop(id(self), None)
-            if cred is None:
-                raise ProtocolViolationError("Host reviewer credential not found or already consumed")
-            return cred
+        raise ProtocolViolationError(
+            "Abstract ReviewerHostHandoff base instance cannot be consumed directly fail-closed; "
+            "boundary must be provisioned from concrete trusted host handoff authority"
+        )
 
 
 class ReviewerSessionBoundary:
@@ -1577,12 +1568,24 @@ class ReviewerSessionBoundary:
                 "Caller-selected reviewer boundary provisioning forbidden; "
                 "boundary must be provisioned immutably from trusted external host handoff authority"
             )
+        if type(authority) is ReviewerHostHandoff:
+            raise ProtocolViolationError(
+                "Direct construction of ReviewerHostHandoff forbidden fail-closed; "
+                "boundary must be provisioned from concrete trusted external host handoff authority"
+            )
+        if authority.__class__.__module__ in ("delivery_engine", "__main__"):
+            raise ProtocolViolationError(
+                f"ReviewerHostHandoff created in module {authority.__class__.__module__!r} is forbidden fail-closed; "
+                "authority must originate from trusted external host boundary"
+            )
         with cls._lock:
             if cls._default is not None:
                 raise ProtocolViolationError(
                     "Reviewer boundary already provisioned; replacement or reprovisioning forbidden fail-closed"
                 )
             opaque_cred = authority._consume_for_provisioning(cls)
+            if not isinstance(opaque_cred, bytes) or not opaque_cred.strip():
+                raise ProtocolViolationError("Host reviewer credential must be non-empty bytes fail-closed")
             boundary = cls()
             boundary._reviewer_secret = opaque_cred
             cls._default = boundary
