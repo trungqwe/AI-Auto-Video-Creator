@@ -14,6 +14,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -91,6 +92,7 @@ from delivery_engine import (  # noqa: E402
     KeyStoreHostIssuerCapability,
     KeyStoreHostIssuer,
     KeyStoreHostHandoff,
+    HostBoundaryChannel,
     DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH,
     build_contract_catalog,
     check_harness_tool_compatibility,
@@ -106,10 +108,8 @@ from delivery_engine import (  # noqa: E402
 )
 from validate import check_secret_scan, check_task_dag
 
-_HOST_BOUNDARY_TOKEN = os.environ.get("ORCA_HOST_BOUNDARY_TOKEN")
-if not _HOST_BOUNDARY_TOKEN or len(_HOST_BOUNDARY_TOKEN.strip()) < 32:
-    _HOST_BOUNDARY_TOKEN = secrets.token_hex(32)
-    os.environ["ORCA_HOST_BOUNDARY_TOKEN"] = _HOST_BOUNDARY_TOKEN
+_HOST_BOUNDARY_TOKEN = secrets.token_hex(32)
+HostBoundaryChannel.start_host_boundary(_HOST_BOUNDARY_TOKEN)
 
 _test_host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
 
@@ -11507,14 +11507,14 @@ print("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS")
         self.assertEqual(res_neg.returncode, 0, f"Child process failed: stdout={res_neg.stdout}\nstderr={res_neg.stderr}")
         self.assertIn("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS", res_neg.stdout)
 
-        child_code_pos = r'''
+        child_code_pos = f'''
 import sys, os
 from pathlib import Path
 sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
 from delivery_engine import ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
 
 # Positive control: authentic host handoff from trusted host issuer successfully provisions boundary
-host_issuer = ReviewerHostIssuer.get_default_host_issuer()
+host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token='{_HOST_BOUNDARY_TOKEN}')
 authentic_handoff = host_issuer.issue_handoff(b"authentic_fixture_secret_32b_hex!")
 provisioned_boundary = ReviewerSessionBoundary.provision_from_host(authentic_handoff)
 assert provisioned_boundary._reviewer_secret == b"authentic_fixture_secret_32b_hex!", "Boundary secret mismatch"
@@ -12406,6 +12406,46 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             TrustedKeyStore.provision_from_host(_internal_token=stolen_token)
         self.assertIn("In-process candidate caller cannot bootstrap or provision TrustedKeyStore fail-closed", str(ctx_stolen_prov.exception))
 
+        # 11t. Sol Finding discriminating fixture: candidate sets environment variable ORCA_HOST_BOUNDARY_TOKEN
+        # to an attacker-chosen token and attempts to bootstrap KeyStoreHostIssuer, direct constructor,
+        # issue_handoff, provision_from_host, or ReviewerHostIssuer.
+        # Capability verification is bound strictly to the out-of-process channel/daemon and rejects mutable env fail-closed.
+        attacker_env_token = secrets.token_hex(32)
+        os.environ["ORCA_HOST_BOUNDARY_TOKEN"] = attacker_env_token
+
+        with self.assertRaises(ProtocolViolationError) as ctx_env_iss:
+            KeyStoreHostIssuer.get_default_host_issuer(_internal_token=attacker_env_token)
+        self.assertIn("Access to host keystore issuer by in-process candidate caller is strictly forbidden fail-closed", str(ctx_env_iss.exception))
+
+        with self.assertRaises(ProtocolViolationError) as ctx_env_const:
+            KeyStoreHostIssuer(_internal_token=attacker_env_token)
+        self.assertIn("Direct construction of KeyStoreHostIssuer by in-process caller is forbidden fail-closed", str(ctx_env_const.exception))
+
+        with self.assertRaises(ProtocolViolationError) as ctx_env_ho:
+            host_issuer_auth.issue_handoff({"integ_gatekeeper_v1": attacker_pub}, _internal_token=attacker_env_token)
+        self.assertIn("Minting host handoff by in-process candidate caller is strictly forbidden fail-closed", str(ctx_env_ho.exception))
+
+        with self.assertRaises(ProtocolViolationError) as ctx_env_prov:
+            TrustedKeyStore.provision_from_host(_internal_token=attacker_env_token)
+        self.assertIn("In-process candidate caller cannot bootstrap or provision TrustedKeyStore fail-closed", str(ctx_env_prov.exception))
+
+        with self.assertRaises(ProtocolViolationError) as ctx_env_rev:
+            ReviewerHostIssuer(_internal_token=attacker_env_token)
+        self.assertIn("Direct construction of ReviewerHostIssuer by in-process caller is forbidden fail-closed", str(ctx_env_rev.exception))
+
+        # 11u. Sol Finding exact counterexample: Candidate attempts full exploit chain by setting
+        # os.environ["ORCA_HOST_BOUNDARY_TOKEN"] = attacker_env_token to mint host handoff and provision
+        # attacker keys into TrustedKeyStore.get_default(); rejected fail-closed and default keystore remains unpolluted.
+        with self.assertRaises(ProtocolViolationError):
+            cand_iss = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=attacker_env_token)
+        self.assertEqual(len(TrustedKeyStore.get_default()._pinned_keys), 0)
+
+        # 11v. Candidate attempts direct start_host_boundary invocation fails closed
+        with self.assertRaises(ProtocolViolationError):
+            HostBoundaryChannel.start_host_boundary(secrets.token_hex(32))
+
+        os.environ.pop("ORCA_HOST_BOUNDARY_TOKEN", None)
+
     def test_12_finding_02_integration_envelope_durable_registry_and_counterexamples(self):
         """12. Finding 2: Signed integration envelope consumed atomically via DurableConsumptionRegistry.
         Detects replay, single-use nonce reuse, monotonic fencing token, and temporal validity fail-closed.
@@ -13048,6 +13088,48 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         with self.assertRaises(EnvelopeVerificationError) as ctx_rev_fenc:
             SignedReviewEnvelope.from_dict(bad_rev_fenc)
         self.assertIn("fencing_token must be strict int", str(ctx_rev_fenc.exception))
+
+    def test_17_finding_out_of_process_host_boundary_and_mutable_env_rejection(self):
+        """17. Remediation verification: Trust boundary operates via out-of-process channel.
+        Candidate mutating os.environ cannot forge capability, bootstrap issuer authority,
+        or provision TrustedKeyStore fail-closed.
+        """
+        attacker_token = secrets.token_hex(32)
+        os.environ["ORCA_HOST_BOUNDARY_TOKEN"] = attacker_token
+
+        # 17a. Out-of-process daemon rejects attacker token despite os.environ presence
+        self.assertFalse(HostBoundaryChannel.verify_capability(attacker_token))
+        self.assertFalse(HostBoundaryChannel.verify_capability("arbitrary_forged_token_value_32b_hex!"))
+
+        # 17b. Out-of-process daemon verifies authentic host token
+        self.assertTrue(HostBoundaryChannel.verify_capability(_HOST_BOUNDARY_TOKEN))
+
+        # 17c. KeyStoreHostIssuer rejects candidate-set mutable env token
+        with self.assertRaises(ProtocolViolationError) as ctx_iss:
+            KeyStoreHostIssuer.get_default_host_issuer(_internal_token=attacker_token)
+        self.assertIn("Access to host keystore issuer by in-process candidate caller is strictly forbidden fail-closed", str(ctx_iss.exception))
+
+        # 17d. ReviewerHostIssuer rejects candidate-set mutable env token
+        with self.assertRaises(ProtocolViolationError):
+            ReviewerHostIssuer(_internal_token=attacker_token)
+
+        # 17e. TrustedKeyStore direct provisioning rejects candidate-set mutable env token
+        with self.assertRaises(ProtocolViolationError):
+            TrustedKeyStore.provision_from_host(_internal_token=attacker_token)
+
+        # 17f. Reset for testing rejects candidate-set mutable env token
+        with self.assertRaises(ProtocolViolationError):
+            TrustedKeyStore._reset_for_testing(_internal_token=attacker_token)
+        with self.assertRaises(ProtocolViolationError):
+            KeyStoreHostIssuer._reset_for_testing(_internal_token=attacker_token)
+
+        # 17g. Positive control: Authentic host token succeeds for reset and issuer
+        KeyStoreHostIssuer._reset_for_testing(_internal_token=_HOST_BOUNDARY_TOKEN)
+        TrustedKeyStore._reset_for_testing(_internal_token=_HOST_BOUNDARY_TOKEN)
+        valid_issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
+        self.assertIsNotNone(valid_issuer)
+
+        os.environ.pop("ORCA_HOST_BOUNDARY_TOKEN", None)
 
 
 if __name__ == "__main__":

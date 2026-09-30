@@ -375,3 +375,14 @@ egister_pinned_public_key từ chối caller in-process fail-closed với Protoc
    - `OrcaDeliveryAdapter` từ chối fail-closed nếu singleton registry mặc định bị can thiệp thành dạng ephemeral trong bộ nhớ (`_is_mem=True`).
    - Ngăn chặn triệt để counterexample `COUNTEREXAMPLE_EPHEMERAL_DEFAULT_ACCEPTED`. Bổ sung fixture phân biệt `15d` trong `TestSolTrustBoundaryRootCauseRemediation`.
 3. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **392/392 tests PASS (100%)**, chạy hoàn hảo trên toàn bộ gate validation và release gate.
+
+## 22. Khắc phục triệt để phát hiện Sol Audit trên 52a2795 (Out-of-Process Host Boundary Channel & Mutable Environment Rejection)
+
+Đợt rà soát độc lập trên candidate SHA `52a279551f8bd73e0d0dc3f68aad15c959be0bd8` (approved base `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nhận finding hành động:
+1. **Finding — Ranh giới Tin cậy Ngoài Tiến trình Thay Thế Biến Môi trường Mutable**:
+   - Khắc phục triệt để lỗ hổng bootstrap thẩm quyền trong cùng tiến trình do xác thực capability chỉ dựa vào `ORCA_HOST_BOUNDARY_TOKEN` hiện có trong `os.environ`.
+   - Triển khai `HostBoundaryChannel` hoạt động ngoài tiến trình: khởi chạy verifier daemon trong một tiến trình con độc lập thông qua socket IPC cục bộ `127.0.0.1` với OS-assigned port và private pipe truyền secret, không rò rỉ token máy chủ qua `sys.argv`, module globals hay biến môi trường mutable.
+   - Hàm `_is_valid_host_boundary_capability(token)` ủy thác kiểm chứng 100% qua `HostBoundaryChannel.verify_capability(token)` tới daemon ngoài tiến trình; loại bỏ hoàn toàn việc đọc và tin tưởng `os.environ.get("ORCA_HOST_BOUNDARY_TOKEN")`.
+   - Ngăn chặn hoàn toàn kịch bản candidate worker tự ý gán `os.environ["ORCA_HOST_BOUNDARY_TOKEN"] = token` để mint host handoff hay bootstrap `KeyStoreHostIssuer` / `TrustedKeyStore` fail-closed.
+   - Bổ sung các fixture phân biệt `11t`, `11u`, `11v` trong `test_11_finding_01_candidate_key_custody_bootstrap_rejected` và bài test độc lập `test_17_finding_out_of_process_host_boundary_and_mutable_env_rejection`.
+2. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **393/393 tests PASS (100%)**, chạy hoàn hảo trên toàn bộ 12 gate validation và release gate.

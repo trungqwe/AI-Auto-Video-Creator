@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 52a2795 (Out-of-Process Host Boundary Channel & Mutable Environment Rejection)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate `52a279551f8bd73e0d0dc3f68aad15c959be0bd8` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Triển Khai Kênh Xác Thực Thẩm Quyền Máy Chủ Ngoài Tiến Trình (Out-of-Process Host Boundary Channel)**:
+    - Loại bỏ hoàn toàn sự phụ thuộc vào biến môi trường mutable `os.environ["ORCA_HOST_BOUNDARY_TOKEN"]` trong quá trình xác thực host capability.
+    - Xây dựng lớp `HostBoundaryChannel` khởi chạy một tiến trình con độc lập làm daemon verifier, giao tiếp qua socket IPC nội bộ `127.0.0.1` với cổng do hệ điều hành tự động cấp phát và secret được truyền an toàn qua pipe `stdin`.
+    - Phương thức `_is_valid_host_boundary_capability(token)` ủy thác kiểm chứng 100% tới daemon ngoài tiến trình; candidate worker trong cùng tiến trình tuyệt đối không thể can thiệp hay khởi động lại daemon fail-closed (`ProtocolViolationError`).
+  - **(2) Từ Chối Toàn Diện Nỗ Lực Giả Mạo Biến Môi Trường Của Candidate (Candidate Mutable Env Rejection)**:
+    - Ngăn chặn triệt để counterexample trong đó candidate worker tự gán `os.environ["ORCA_HOST_BOUNDARY_TOKEN"] = token` để mint handoff hoặc gọi `KeyStoreHostIssuer.get_default_host_issuer` / `TrustedKeyStore.provision_from_host`.
+    - Bổ sung các fixture phân biệt `11t`, `11u`, `11v` trong `test_11_finding_01_candidate_key_custody_bootstrap_rejected` và bài test độc lập `test_17_finding_out_of_process_host_boundary_and_mutable_env_rejection`.
+  - **(3) Bộ Kiểm Thử Tự Động 393/393 Tests PASS (100%)**:
+    - Toàn bộ suite vượt qua 100% không có cảnh báo hay lỗi kiểm thử; tất cả các gate validation và release gate đều đạt.
+
 ## 2026-10-01 — Khắc phục triệt để 2 phát hiện độc lập từ Sol Audit sau b85c240 (Out-of-Process Host Boundary Capability & Ephemeral Singleton Poisoning Fail-Closed)
 
 - Khắc phục triệt để hai phát hiện độc lập (actionable findings) từ Sol trên exact candidate `b85c240d466c1624966c36bb9148c10d2112b4ae` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):

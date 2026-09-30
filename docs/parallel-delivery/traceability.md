@@ -96,6 +96,7 @@ Validator phải từ chối:
 - tự bootstrap TrustedKeyStore qua các API công khai của KeyStoreHostIssuer (get_default_host_issuer, issue_handoff, issue_isolated_keystore, provision_from_host) từ tiến trình candidate worker mà không có host boundary capability hợp lệ ngoài tiến trình;
 - khởi tạo OrcaDeliveryAdapter với registry bộ nhớ tạm thời :memory: hoặc cấu hình get_default(':memory:') làm mất dữ liệu tiêu thụ phong bì hoặc fencing token khi restart adapter;
 - phân tích SignedIntegrationEnvelope hoặc SignedReviewEnvelope từ dictionary với kiểu dữ liệu bị ép kiểu lỏng lẻo (gates_pass='false' hoặc kiểu phi-bool/phi-số) vi phạm strict type rejection;
+- tự bootstrap hoặc xác thực host boundary capability thông qua biến môi trường mutable `os.environ` thay vì daemon kênh ngoài tiến trình `HostBoundaryChannel`;
 
 ## 5. Open thresholds giữ nguyên
 
