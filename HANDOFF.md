@@ -4,6 +4,11 @@
 
 - Authority hiện hành giữ nguyên: `M2-P1..P7B_ACCEPTED_CLOSED`; M2-P8/P9 `LOCKED`; M3/Phân hệ A `NOT AUTHORIZED`.
 - Đã thêm [kiến trúc triển khai song song](./docs/parallel-delivery/README.md) ở trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`. Bundle chỉ là docs/config và định nghĩa DAG, contract registry, ownership/lease, Orca worker protocol, merge queue, traceability, security/performance/recovery.
+- Đã khắc phục triệt để toàn bộ phát hiện blocker từ Sol-Lead audit trên 1f90e6c:
+  1. Hạn chế tuyệt đối `issue_review_evidence()` chỉ nhận `ReviewerCapability`: Xóa bỏ hoàn toàn khả năng sử dụng `ControlCapability` (kể cả có task-scoped) để phát hành `ReviewEvidence` trên cả `EvidenceAuthority` và `OrcaDeliveryAdapter`. Mọi caller không cung cấp đúng `ReviewerCapability` đều bị từ chối fail-closed bằng `ProtocolViolationError`, bảo toàn tuyệt đối ranh giới independent review.
+  2. Ràng buộc `expected_role="Reviewer"` trong `verify_capability()`: Khi thẩm định capability trong `issue_review_evidence()`, truyền tường minh `expected_role="Reviewer"`, từ chối ngay lập tức mọi `ControlCapability` hoặc capability sai vai trò.
+  3. Bảo toàn thẩm quyền hợp lệ của Control và bằng chứng tích hợp: `ControlCapability` tiếp tục giữ đầy đủ thẩm quyền mint `ReviewerCapability` qua `issue_reviewer_capability()`/`get_reviewer_capability()` và phát hành `IntegrationEvidence` qua `issue_integration_evidence()` mà không bị hồi quy.
+  4. Bộ kiểm thử tự động đạt 343/343 tests PASS (100%), bổ sung 5 bài kiểm thử độc lập trong `TestSolLeadAudit1f90e6cRemediation` tái hiện và kiểm chứng trọn vẹn các counterexample paths và controls; toàn bộ project gates PASS.
 - Đã khắc phục triệt để toàn bộ phát hiện blocker từ Sol-Lead audit trên 2f56bd3:
   1. Bắt buộc task-scoped ControlCapability cho resolve_blocker_and_replan: Phương thức `resolve_blocker_and_replan()` bắt buộc phải có `ControlCapability` xác thực độc lập có phạm vi tác vụ cụ thể trước khi thực hiện bất kỳ bước mint token hay đột biến trạng thái nào; từ chối fail-closed mọi lời gọi không thẩm quyền, wildcard, mismatched, Reviewer, forged hoặc replayed capability.
   2. Vô hiệu hóa khả năng cấp thẩm quyền của token minting cho caller thông thường: `_mint_internal_lifecycle_token()` cấm mint cho `resolve_blocker_and_replan` và bảo vệ việc gọi trực tiếp bằng `_internal_secret`; `_internal_lifecycle_execution` từ chối fail-closed mọi token nội bộ đối với `resolve_blocker_and_replan`.
@@ -59,8 +64,8 @@
 ## Điểm tiếp tục
 
 Chờ checkpoint thiết kế/independent review riêng cho P8 hoặc checkpoint riêng để pilot kiến trúc parallel delivery trên scope đã được cấp quyền. Không bắt đầu P8 Behavioral RED, P8/P9 implementation, M3 hoặc Phân hệ A từ bundle đề xuất này.
-- Đã khắc phục triệt để toàn bộ phát hiện blocker từ Sol-Lead audit trên 982ed1e:
-  1. Khóa chặt các bề mặt phát hành bằng chứng trước wildcard ControlCapability: `issue_review_evidence()` và `issue_integration_evidence()` trên cả `EvidenceAuthority` và `OrcaDeliveryAdapter` từ chối fail-closed mọi capability có `delivery_task_id` là `None` hoặc `"*"`.
-  2. Khóa chặt `verify_capability()`: từ chối fail-closed mọi `ControlCapability` wildcard (`None` hoặc `"*"`) khi `expected_task_id` được chỉ định.
-  3. Chuẩn hóa toàn bộ helper fixtures và positive controls kiểm thử để truyền tường minh task-scoped `delivery_task_id`.
-  4. Bộ kiểm thử tự động đạt 338/338 tests PASS (100%), bổ sung 5 bài kiểm thử độc lập trong `TestSolLeadAudit982ed1eRemediation` tái hiện và kiểm chứng trọn vẹn counterexamples và positive control; toàn bộ project gates PASS.
+- Đã khắc phục triệt để toàn bộ phát hiện blocker từ Sol-Lead audit trên 1f90e6c:
+  1. Hạn chế tuyệt đối `issue_review_evidence()` chỉ nhận `ReviewerCapability` trên cả `EvidenceAuthority` và `OrcaDeliveryAdapter`, loại bỏ khả năng `ControlCapability` tự phát hành `ReviewEvidence`.
+  2. Truyền tường minh `expected_role="Reviewer"` vào `verify_capability()` khi phát hành review evidence, từ chối fail-closed `ControlCapability`.
+  3. Bảo toàn nguyên vẹn thẩm quyền hợp lệ của `ControlCapability` cho việc mint `ReviewerCapability` và phát hành `IntegrationEvidence`.
+  4. Bộ kiểm thử tự động đạt 343/343 tests PASS (100%), bổ sung 5 bài kiểm thử độc lập trong `TestSolLeadAudit1f90e6cRemediation` tái hiện và kiểm chứng trọn vẹn counterexamples và positive control; toàn bộ project gates PASS.

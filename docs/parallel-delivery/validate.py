@@ -1211,6 +1211,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "2_verify_capability_rejects_wildcard_for_concrete_task": "RESOLVED",
                     "3_discriminating_negative_fixtures_verify_fail_closed_wildcard": "RESOLVED",
                 },
+                "sol_lead_audit_1f90e6c": {
+                    "1_control_capability_forbidden_from_issuing_review_evidence": "RESOLVED",
+                    "2_independent_review_boundary_strictly_enforces_reviewer_capability": "RESOLVED",
+                    "3_discriminating_negative_fixtures_verify_fail_closed_review_issuance": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

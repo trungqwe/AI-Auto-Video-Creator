@@ -1439,22 +1439,26 @@ class EvidenceAuthority:
         reviewer_harness: str = "Claude Code",
         summary: str = "Independent review accepted on exact candidate HEAD",
         now: Optional[datetime] = None,
-        capability: Optional[Union[ReviewerCapability, ControlCapability]] = None,
+        capability: Optional[ReviewerCapability] = None,
         reviewer_capability: Optional[ReviewerCapability] = None,
     ) -> ReviewEvidence:
         effective_cap = reviewer_capability if reviewer_capability is not None else capability
         if effective_cap is None:
             raise ProtocolViolationError(
-                "Review evidence issuance requires an independently authenticated Reviewer or Control capability; "
+                "Review evidence issuance requires an independently authenticated ReviewerCapability; "
                 "unprivileged callers cannot obtain authoritative review evidence"
             )
         if getattr(effective_cap, "capability_id", "").startswith("adapter_internal_"):
             raise ProtocolViolationError(
-                "Internal wildcard capability cannot be used to issue review evidence; independently authenticated capability required"
+                "Internal wildcard capability cannot be used to issue review evidence; independently authenticated ReviewerCapability required"
             )
         if getattr(effective_cap, "delivery_task_id", None) is None or getattr(effective_cap, "delivery_task_id", "") == "*":
             raise ProtocolViolationError(
-                "Wildcard capability cannot be used to issue review evidence; explicit task-scoped capability required"
+                "Wildcard capability cannot be used to issue review evidence; explicit task-scoped ReviewerCapability required"
+            )
+        if not isinstance(effective_cap, ReviewerCapability):
+            raise ProtocolViolationError(
+                f"Review evidence issuance strictly requires ReviewerCapability; {type(effective_cap).__name__} cannot be used to issue review evidence"
             )
         if effective_cap.delivery_task_id != (delivery_task_id.strip() if delivery_task_id else ""):
             raise ProtocolViolationError(
@@ -1462,6 +1466,7 @@ class EvidenceAuthority:
             )
         self.verify_capability(
             effective_cap,
+            expected_role="Reviewer",
             expected_task_id=delivery_task_id.strip() if delivery_task_id else "",
             expected_dispatch_id=review_dispatch_id.strip() if review_dispatch_id else "",
             expected_commit=candidate_commit.strip() if candidate_commit else "",
@@ -1825,8 +1830,8 @@ def make_review_evidence(
     summary: str = "Independent review accepted on exact candidate HEAD",
     now: Optional[datetime] = None,
     authority: Optional[Any] = None,
-    capability: Optional[Any] = None,
-    reviewer_capability: Optional[Any] = None,
+    capability: Optional[ReviewerCapability] = None,
+    reviewer_capability: Optional[ReviewerCapability] = None,
 ) -> ReviewEvidence:
     """Public review evidence factory. When called without an internal authority component,
     it produces unauthenticated evidence that cannot confer lifecycle transition authority."""
@@ -3385,22 +3390,26 @@ class OrcaDeliveryAdapter:
         reviewer_harness: str = "Claude Code",
         summary: str = "Independent review accepted on exact candidate HEAD",
         now: Optional[datetime] = None,
-        capability: Optional[Union[ReviewerCapability, ControlCapability]] = None,
+        capability: Optional[ReviewerCapability] = None,
         reviewer_capability: Optional[ReviewerCapability] = None,
     ) -> ReviewEvidence:
         effective_cap = reviewer_capability if reviewer_capability is not None else capability
         if effective_cap is None:
             raise ProtocolViolationError(
-                "Review evidence issuance requires an independently authenticated Reviewer or Control capability; "
+                "Review evidence issuance requires an independently authenticated ReviewerCapability; "
                 "unprivileged callers cannot obtain authoritative review evidence"
             )
         if getattr(effective_cap, "capability_id", "").startswith("adapter_internal_"):
             raise ProtocolViolationError(
-                "Internal wildcard capability cannot be used to issue review evidence; independently authenticated capability required"
+                "Internal wildcard capability cannot be used to issue review evidence; independently authenticated ReviewerCapability required"
             )
         if getattr(effective_cap, "delivery_task_id", None) is None or getattr(effective_cap, "delivery_task_id", "") == "*":
             raise ProtocolViolationError(
-                "Wildcard capability cannot be used to issue review evidence; explicit task-scoped capability required"
+                "Wildcard capability cannot be used to issue review evidence; explicit task-scoped ReviewerCapability required"
+            )
+        if not isinstance(effective_cap, ReviewerCapability):
+            raise ProtocolViolationError(
+                f"Review evidence issuance strictly requires ReviewerCapability; {type(effective_cap).__name__} cannot be used to issue review evidence"
             )
         if effective_cap.delivery_task_id != (delivery_task_id.strip() if delivery_task_id else ""):
             raise ProtocolViolationError(

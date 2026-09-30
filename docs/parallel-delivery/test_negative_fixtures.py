@@ -9008,3 +9008,238 @@ class TestSolLeadAudit982ed1eRemediation(unittest.TestCase):
             control_capability=ctrl_for_int,
         )
         self.assertIsInstance(int_ev, IntegrationEvidence)
+
+
+# =============================================================================
+# Sol-Lead Audit Remediation Fixtures (after 1f90e6c)
+# =============================================================================
+
+class TestSolLeadAudit1f90e6cRemediation(unittest.TestCase):
+    """Audit remediation fixtures for exact candidate 1f90e6cfd3d3ed829acf20fddd53e3c56fe90f8b:
+    1. Task-scoped ControlCapability cannot be used to issue ReviewEvidence via EvidenceAuthority.
+    2. Task-scoped ControlCapability cannot be used to issue ReviewEvidence via OrcaDeliveryAdapter.
+    3. Task-scoped ControlCapability cannot bypass independent review to reach merge_queued.
+    4. verify_capability with expected_role='Reviewer' rejects ControlCapability fail-closed.
+    5. Positive control: Authenticated ReviewerCapability issues ReviewEvidence, task reaches merge_queued,
+       and task-scoped ControlCapability issues IntegrationEvidence to reach integrated cleanly without regression.
+    """
+
+    def setUp(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        cmd_head = ["git", "rev-parse", "HEAD"]
+        self.candidate_commit = subprocess.run(cmd_head, cwd=ROOT_DIR, capture_output=True, text=True, check=True).stdout.strip()
+        self.approved_base = "4a7c8c921b7e05066505d51b168a02c3fde61317"
+        self.mgr = LeaseManager([
+            {"id": "LOCK-REMED-1F90E6C", "mode": "exclusive", "renewable": True, "lease_seconds": 600},
+        ])
+        self.delivery_id = "TASK-REMED-1F90E6C"
+        self.mgr.set_task_authority(self.delivery_id, "granted")
+        self.control_secret = "secret_remed_1f90e6c_control"
+        self.adapter = OrcaDeliveryAdapter(
+            self.mgr,
+            approved_candidate_commit=self.candidate_commit,
+            git_root=ROOT_DIR,
+            control_secret=self.control_secret,
+        )
+        self.adapter.set_task_authority(self.delivery_id, "granted")
+        self.adapter.set_task_state(self.delivery_id, "ready")
+        self.adapter.register_task_locks(self.delivery_id, ["LOCK-REMED-1F90E6C"])
+        self.ea = self.adapter.evidence_authority
+        self.t0 = datetime(2026, 9, 30, 11, 0, 0, tzinfo=timezone.utc)
+
+    def test_1f90e6c_01_task_scoped_control_capability_rejected_by_evidence_authority_review_issuer(self):
+        """1. Counterexample: Task-scoped ControlCapability rejected fail-closed by EvidenceAuthority.issue_review_evidence."""
+        ctrl_cap = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        self.assertEqual(ctrl_cap.delivery_task_id, self.delivery_id)
+
+        # Passing task-scoped ControlCapability as capability
+        with self.assertRaises(ProtocolViolationError) as ctx1:
+            self.ea.issue_review_evidence(
+                self.delivery_id,
+                "ctx_rev_test_1f90e6c_01",
+                self.candidate_commit,
+                "ACCEPT",
+                capability=ctrl_cap,
+            )
+        self.assertIn("ReviewerCapability", str(ctx1.exception))
+
+        # Fresh task-scoped ControlCapability as reviewer_capability
+        ctrl_cap2 = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        with self.assertRaises(ProtocolViolationError) as ctx2:
+            self.ea.issue_review_evidence(
+                self.delivery_id,
+                "ctx_rev_test_1f90e6c_01",
+                self.candidate_commit,
+                "ACCEPT",
+                reviewer_capability=ctrl_cap2,
+            )
+        self.assertIn("ReviewerCapability", str(ctx2.exception))
+
+    def test_1f90e6c_02_task_scoped_control_capability_rejected_by_adapter_review_issuer(self):
+        """2. Counterexample: Task-scoped ControlCapability rejected fail-closed by OrcaDeliveryAdapter.issue_review_evidence."""
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        self.assertEqual(ctrl_cap.delivery_task_id, self.delivery_id)
+
+        with self.assertRaises(ProtocolViolationError) as ctx1:
+            self.adapter.issue_review_evidence(
+                self.delivery_id,
+                "ctx_rev_test_1f90e6c_02",
+                self.candidate_commit,
+                "ACCEPT",
+                capability=ctrl_cap,
+            )
+        self.assertIn("ReviewerCapability", str(ctx1.exception))
+
+        ctrl_cap2 = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        with self.assertRaises(ProtocolViolationError) as ctx2:
+            self.adapter.issue_review_evidence(
+                self.delivery_id,
+                "ctx_rev_test_1f90e6c_02",
+                self.candidate_commit,
+                "ACCEPT",
+                reviewer_capability=ctrl_cap2,
+            )
+        self.assertIn("ReviewerCapability", str(ctx2.exception))
+
+    def test_1f90e6c_03_control_capability_cannot_bypass_independent_review_to_reach_merge_queued(self):
+        """3. Counterexample: Task-scoped ControlCapability cannot bypass independent review to reach merge_queued."""
+        # 1. Advance task to review
+        worker_disp = "ctx_1f90e6c_w01"
+        worker_orca = "task_orca_1f90e6c_w01"
+        worker_env = make_execution_envelope(self.delivery_id, worker_disp, phase="implement", orca_task_id=worker_orca, now=self.t0)
+        lease = self.mgr.acquire_lease("LOCK-REMED-1F90E6C", self.delivery_id, worker_disp, now=self.t0)
+        self.adapter.create_dispatch(
+            self.delivery_id,
+            orca_task_id=worker_orca,
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease.fencing_token,
+            lease_id=lease.lease_id,
+            intended_dispatch_id=worker_disp,
+            dispatch_origin="dely dispatch",
+            execution_envelope=worker_env,
+            now=self.t0,
+        )
+        self.adapter.acknowledge_dispatch(self.delivery_id, worker_disp)
+        self.adapter.start_running(self.delivery_id, worker_disp)
+        st = self.adapter.handle_worker_done(
+            self.delivery_id, worker_orca, worker_disp, "succeeded",
+            candidate_commit=self.candidate_commit, fencing_token=lease.fencing_token, now=self.t0 + timedelta(seconds=10)
+        )
+        self.assertEqual(st, "review")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "review")
+
+        # 2. Review dispatch registered
+        rev_disp = "ctx_1f90e6c_r01"
+        rev_orca = "task_orca_1f90e6c_r01"
+        rev_env = make_execution_envelope(self.delivery_id, rev_disp, phase="review", orca_task_id=rev_orca, now=self.t0 + timedelta(seconds=15))
+        self.adapter.create_review_dispatch(
+            self.delivery_id,
+            orca_task_id=rev_orca,
+            candidate_commit=self.candidate_commit,
+            intended_dispatch_id=rev_disp,
+            dispatch_origin="dely dispatch",
+            execution_envelope=rev_env,
+            now=self.t0 + timedelta(seconds=15),
+        )
+
+        # 3. Control attempts to directly issue ReviewEvidence using task-scoped ControlCapability
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter.issue_review_evidence(
+                self.delivery_id, rev_disp, self.candidate_commit, "ACCEPT", capability=ctrl_cap
+            )
+
+        # Task state remains strictly in review
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "review")
+
+    def test_1f90e6c_04_verify_capability_with_expected_role_reviewer_rejects_control_capability(self):
+        """4. Counterexample: verify_capability with expected_role='Reviewer' strictly rejects ControlCapability."""
+        ctrl_cap = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.ea.verify_capability(
+                ctrl_cap,
+                expected_role="Reviewer",
+                expected_task_id=self.delivery_id,
+            )
+        self.assertIn("role", str(ctx.exception).lower())
+
+    def test_1f90e6c_05_positive_control_independent_review_boundary_preserved_and_integration_unaffected(self):
+        """5. Positive control: ReviewerCapability issues ReviewEvidence for merge_queued, and ControlCapability issues IntegrationEvidence for integrated."""
+        # 1. Advance task to review
+        worker_disp = "ctx_1f90e6c_w02"
+        worker_orca = "task_orca_1f90e6c_w02"
+        worker_env = make_execution_envelope(self.delivery_id, worker_disp, phase="implement", orca_task_id=worker_orca, now=self.t0)
+        lease = self.mgr.acquire_lease("LOCK-REMED-1F90E6C", self.delivery_id, worker_disp, now=self.t0)
+        self.adapter.create_dispatch(
+            self.delivery_id,
+            orca_task_id=worker_orca,
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease.fencing_token,
+            lease_id=lease.lease_id,
+            intended_dispatch_id=worker_disp,
+            dispatch_origin="dely dispatch",
+            execution_envelope=worker_env,
+            now=self.t0,
+        )
+        self.adapter.acknowledge_dispatch(self.delivery_id, worker_disp)
+        self.adapter.start_running(self.delivery_id, worker_disp)
+        self.adapter.handle_worker_done(
+            self.delivery_id, worker_orca, worker_disp, "succeeded",
+            candidate_commit=self.candidate_commit, fencing_token=lease.fencing_token, now=self.t0 + timedelta(seconds=10)
+        )
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "review")
+
+        # 2. Review dispatch registered
+        rev_disp = "ctx_1f90e6c_r02"
+        rev_orca = "task_orca_1f90e6c_r02"
+        rev_env = make_execution_envelope(self.delivery_id, rev_disp, phase="review", orca_task_id=rev_orca, now=self.t0 + timedelta(seconds=15))
+        self.adapter.create_review_dispatch(
+            self.delivery_id,
+            orca_task_id=rev_orca,
+            candidate_commit=self.candidate_commit,
+            intended_dispatch_id=rev_disp,
+            dispatch_origin="dely dispatch",
+            execution_envelope=rev_env,
+            now=self.t0 + timedelta(seconds=15),
+        )
+
+        # 3. Control authenticates and issues ReviewerCapability bound to review dispatch
+        ctrl_for_rev = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        rev_cap = self.ea.issue_reviewer_capability(
+            self.delivery_id, rev_disp, self.candidate_commit, control_capability=ctrl_for_rev
+        )
+        self.assertIsInstance(rev_cap, ReviewerCapability)
+
+        # 4. Reviewer uses ReviewerCapability to issue ReviewEvidence
+        rev_ev = self.ea.issue_review_evidence(
+            self.delivery_id, rev_disp, self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap, now=self.t0 + timedelta(seconds=18)
+        )
+        self.assertIsInstance(rev_ev, ReviewEvidence)
+
+        # 5. Review evidence transitions task to merge_queued
+        st_rev = self.adapter.handle_review_verdict(
+            self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp, review_evidence=rev_ev, now=self.t0 + timedelta(seconds=20)
+        )
+        self.assertEqual(st_rev, "merge_queued")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "merge_queued")
+
+        # 6. Control uses task-scoped ControlCapability to issue IntegrationEvidence
+        gate_results = {g: True for g in MANDATORY_INTEGRATION_GATES}
+        ctrl_for_int = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        int_ev = self.ea.issue_integration_evidence(
+            delivery_task_id=self.delivery_id,
+            candidate_commit=self.candidate_commit,
+            base_commit=self.approved_base,
+            gates_pass=True,
+            gate_results=gate_results,
+            control_capability=ctrl_for_int,
+            now=self.t0 + timedelta(seconds=25),
+        )
+        self.assertIsInstance(int_ev, IntegrationEvidence)
+
+        # 7. Task integrates cleanly
+        st_int = self.adapter.handle_integration_gates(
+            self.delivery_id, gates_pass=True, integration_evidence=int_ev, now=self.t0 + timedelta(seconds=30)
+        )
+        self.assertEqual(st_int, "integrated")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
