@@ -92,6 +92,7 @@ from delivery_engine import (  # noqa: E402
     KeyStoreHostIssuer,
     KeyStoreHostHandoff,
     _SENTINEL_HOST_TOKEN,
+    DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH,
     build_contract_catalog,
     check_harness_tool_compatibility,
     check_owned_vs_forbidden,
@@ -113,6 +114,23 @@ def TrustedHostReviewerHandoff(credential: bytes) -> ReviewerHostHandoff:
     Cannot be called or imported by candidate modules.
     """
     return _test_host_issuer.issue_handoff(credential)
+
+
+def TrustedHostKeyStoreHandoff(pinned_keys: Mapping[str, bytes], issuer_name: str = "trusted_host") -> KeyStoreHostHandoff:
+    """Trusted host-owned keystore handoff authority created exclusively by test harness / trusted host boundary."""
+    issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_SENTINEL_HOST_TOKEN)
+    return issuer.issue_handoff(pinned_keys, issuer_name=issuer_name, _internal_token=_SENTINEL_HOST_TOKEN)
+
+
+def TrustedHostIsolatedKeyStore(pinned_keys: Mapping[str, bytes]) -> TrustedKeyStore:
+    """Trusted host-owned isolated keystore created exclusively by test harness / trusted host boundary."""
+    issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_SENTINEL_HOST_TOKEN)
+    return issuer.issue_isolated_keystore(pinned_keys, _internal_token=_SENTINEL_HOST_TOKEN)
+
+
+def TrustedHostProvisionKeyStore(handoff: KeyStoreHostHandoff) -> TrustedKeyStore:
+    """Trusted host-owned keystore provisioning executed exclusively by test harness / trusted host boundary."""
+    return TrustedKeyStore.provision_from_host(handoff, _internal_token=_SENTINEL_HOST_TOKEN)
 
 
 TEST_FIXTURE_REVIEWER_SECRET = "test_fixture_reviewer_secret_32b_hex!"
@@ -11536,6 +11554,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
         SharedOrcaExecutionRegistry.reset_default()
         TrustedKeyStore._reset_for_testing(_internal_token=_SENTINEL_HOST_TOKEN)
         KeyStoreHostIssuer._reset_for_testing(_internal_token=_SENTINEL_HOST_TOKEN)
+        DurableConsumptionRegistry.reset_default()
         cmd_head = ["git", "rev-parse", "HEAD"]
         res = subprocess.run(cmd_head, capture_output=True, text=True)
         if res.returncode == 0 and res.stdout.strip():
@@ -11551,6 +11570,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
         SharedOrcaExecutionRegistry.reset_default()
         TrustedKeyStore._reset_for_testing(_internal_token=_SENTINEL_HOST_TOKEN)
         KeyStoreHostIssuer._reset_for_testing(_internal_token=_SENTINEL_HOST_TOKEN)
+        DurableConsumptionRegistry.reset_default()
 
     def test_01_red_evidence_sol_finding_constructor_and_issuer_reproduction(self):
         """1. RED evidence reproduction: Direct construction of ReviewerHostIssuer with caller token
@@ -11631,7 +11651,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
         pub = priv.public_key()
         pub_bytes = pub.public_bytes_raw()
 
-        keystore = KeyStoreHostIssuer.get_default_host_issuer().issue_isolated_keystore({"rev_key_lead_v1": pub_bytes})
+        keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": pub_bytes})
         registry = DurableConsumptionRegistry()
         consumer = TrustedReviewConsumer(keystore, registry)
 
@@ -11703,7 +11723,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
         priv = ed25519.Ed25519PrivateKey.generate()
         pub_bytes = priv.public_key().public_bytes_raw()
 
-        keystore = KeyStoreHostIssuer.get_default_host_issuer().issue_isolated_keystore({"rev_key_lead_v1": pub_bytes})
+        keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": pub_bytes})
         registry = DurableConsumptionRegistry()
         consumer = TrustedReviewConsumer(keystore, registry)
 
@@ -11758,7 +11778,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
         priv = ed25519.Ed25519PrivateKey.generate()
         pub_bytes = priv.public_key().public_bytes_raw()
 
-        keystore = KeyStoreHostIssuer.get_default_host_issuer().issue_isolated_keystore({"rev_key_lead_v1": pub_bytes})
+        keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": pub_bytes})
         registry = DurableConsumptionRegistry()
         consumer = TrustedReviewConsumer(keystore, registry)
 
@@ -11843,7 +11863,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             db_file = Path(tf.name)
 
         try:
-            keystore = KeyStoreHostIssuer.get_default_host_issuer().issue_isolated_keystore({"rev_key_lead_v1": pub_bytes})
+            keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": pub_bytes})
 
             # Session A consumes envelope
             registry_a = DurableConsumptionRegistry(db_path=db_file)
@@ -11935,7 +11955,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
         priv = ed25519.Ed25519PrivateKey.generate()
         pub_bytes = priv.public_key().public_bytes_raw()
 
-        keystore = KeyStoreHostIssuer.get_default_host_issuer().issue_isolated_keystore({"rev_key_lead_v1": pub_bytes})
+        keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": pub_bytes})
         registry = DurableConsumptionRegistry()
         consumer = TrustedReviewConsumer(keystore, registry)
 
@@ -12109,11 +12129,11 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         int_priv = ed25519.Ed25519PrivateKey.generate()
         int_pub_bytes = int_priv.public_key().public_bytes_raw()
 
-        handoff = KeyStoreHostIssuer.get_default_host_issuer().issue_handoff({
+        handoff = TrustedHostKeyStoreHandoff({
             "rev_key_lead_v1": pub_bytes,
             "integ_gatekeeper_v1": int_pub_bytes,
         })
-        TrustedKeyStore.provision_from_host(handoff)
+        TrustedHostProvisionKeyStore(handoff)
 
         lm = LeaseManager([{"id": "LOCK-SOD-20", "mode": "exclusive", "renewable": True, "lease_seconds": 600}])
         adapter = OrcaDeliveryAdapter(
@@ -12243,10 +12263,9 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("Invalid authority for pinned key registration", str(ctx_forged.exception))
 
         # 11d. Candidate attempts to replace/mutate an existing pinned key authority fails closed
-        host_issuer = KeyStoreHostIssuer.get_default_host_issuer()
-        auth_keystore = host_issuer.issue_isolated_keystore({"rev_key_lead_v1": attacker_pub})
+        auth_keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": attacker_pub})
+        handoff = TrustedHostKeyStoreHandoff({"rev_key_lead_v1": attacker_pub})
         with self.assertRaises(ProtocolViolationError) as ctx_replace:
-            handoff = host_issuer.issue_handoff({"rev_key_lead_v1": attacker_pub})
             auth_keystore.register_pinned_public_key("rev_key_lead_v1", attacker_pub, authority=handoff)
         self.assertIn("Cannot replace or mutate existing pinned key authority", str(ctx_replace.exception))
 
@@ -12326,6 +12345,49 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             )
         self.assertIn("Key ID 'integ_gatekeeper_v1' is not registered in TrustedKeyStore fail-closed", str(ctx_counter.exception))
 
+        # 11n. Sol Finding 1: Candidate calls public host API get_default_host_issuer without host token -> fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx_iss_cand:
+            KeyStoreHostIssuer.get_default_host_issuer()
+        self.assertIn("Access to host keystore issuer by in-process candidate caller is strictly forbidden fail-closed", str(ctx_iss_cand.exception))
+
+        with self.assertRaises(ProtocolViolationError) as ctx_iss_fake:
+            KeyStoreHostIssuer.get_default_host_issuer(_internal_token=b"fake_token")
+        self.assertIn("Access to host keystore issuer by in-process candidate caller is strictly forbidden fail-closed", str(ctx_iss_fake.exception))
+
+        # 11o. Sol Finding 1: Candidate calls issue_handoff on host issuer without host token -> fails closed
+        host_issuer_auth = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_SENTINEL_HOST_TOKEN)
+        with self.assertRaises(ProtocolViolationError) as ctx_ho_cand:
+            host_issuer_auth.issue_handoff({"integ_gatekeeper_v1": attacker_pub})
+        self.assertIn("Minting host handoff by in-process candidate caller is strictly forbidden fail-closed", str(ctx_ho_cand.exception))
+
+        with self.assertRaises(ProtocolViolationError) as ctx_ho_fake:
+            host_issuer_auth.issue_handoff({"integ_gatekeeper_v1": attacker_pub}, _internal_token=b"fake_token")
+        self.assertIn("Minting host handoff by in-process candidate caller is strictly forbidden fail-closed", str(ctx_ho_fake.exception))
+
+        # 11p. Sol Finding 1: Candidate calls issue_isolated_keystore without host token -> fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx_iso_cand:
+            host_issuer_auth.issue_isolated_keystore({"integ_gatekeeper_v1": attacker_pub})
+        self.assertIn("Minting isolated keystore by in-process candidate caller is strictly forbidden fail-closed", str(ctx_iso_cand.exception))
+
+        with self.assertRaises(ProtocolViolationError) as ctx_iso_fake:
+            host_issuer_auth.issue_isolated_keystore({"integ_gatekeeper_v1": attacker_pub}, _internal_token=b"fake_token")
+        self.assertIn("Minting isolated keystore by in-process candidate caller is strictly forbidden fail-closed", str(ctx_iso_fake.exception))
+
+        # 11q. Sol Finding 1: Candidate calls provision_from_host without host token -> fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx_prov_cand:
+            TrustedKeyStore.provision_from_host()
+        self.assertIn("In-process candidate caller cannot bootstrap or provision TrustedKeyStore fail-closed", str(ctx_prov_cand.exception))
+
+        with self.assertRaises(ProtocolViolationError) as ctx_prov_fake:
+            TrustedKeyStore.provision_from_host(_internal_token=b"fake_token")
+        self.assertIn("In-process candidate caller cannot bootstrap or provision TrustedKeyStore fail-closed", str(ctx_prov_fake.exception))
+
+        # 11r. Sol Finding 1 exact counterexample: Candidate attempts end-to-end bootstrap via public host API;
+        # fails closed at issuer bootstrap, handoff issuance, and keystore provisioning.
+        # Candidate cannot provision key into TrustedKeyStore.get_default() in-process.
+        with self.assertRaises(ProtocolViolationError):
+            KeyStoreHostIssuer.get_default_host_issuer()
+
     def test_12_finding_02_integration_envelope_durable_registry_and_counterexamples(self):
         """12. Finding 2: Signed integration envelope consumed atomically via DurableConsumptionRegistry.
         Detects replay, single-use nonce reuse, monotonic fencing token, and temporal validity fail-closed.
@@ -12334,7 +12396,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         priv = ed25519.Ed25519PrivateKey.generate()
         pub_bytes = priv.public_key().public_bytes_raw()
 
-        keystore = KeyStoreHostIssuer.get_default_host_issuer().issue_isolated_keystore({"integ_gatekeeper_v1": pub_bytes})
+        keystore = TrustedHostIsolatedKeyStore({"integ_gatekeeper_v1": pub_bytes})
         registry = DurableConsumptionRegistry()
         consumer = TrustedIntegrationConsumer(keystore, registry)
 
@@ -12524,7 +12586,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             db_file = Path(tf.name)
 
         try:
-            keystore = KeyStoreHostIssuer.get_default_host_issuer().issue_isolated_keystore({"integ_gatekeeper_v1": pub_bytes})
+            keystore = TrustedHostIsolatedKeyStore({"integ_gatekeeper_v1": pub_bytes})
 
             # Session A consumes envelope
             registry_a = DurableConsumptionRegistry(db_path=db_file)
@@ -12626,7 +12688,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             db_file = Path(tf.name)
 
         try:
-            keystore = KeyStoreHostIssuer.get_default_host_issuer().issue_isolated_keystore({"integ_gatekeeper_v1": pub_bytes})
+            keystore = TrustedHostIsolatedKeyStore({"integ_gatekeeper_v1": pub_bytes})
             now = time.time()
             payload = {
                 "envelope_id": "int_env_race_01",
@@ -12688,6 +12750,260 @@ print("FRESH_PROCESS_ISOLATION_PASS")
                     db_file.unlink()
                 except Exception:
                     pass
+
+    def test_15_finding_02_adapter_restart_durable_consumption(self):
+        """15. Finding 2: OrcaDeliveryAdapter defaults to durable on-disk SQLite registry;
+        consumed envelopes and monotonic fencing tokens survive adapter restart;
+        caller-selected ephemeral registries are rejected fail-closed.
+        """
+        from cryptography.hazmat.primitives.asymmetric import ed25519
+        priv = ed25519.Ed25519PrivateKey.generate()
+        pub_bytes = priv.public_key().public_bytes_raw()
+        handoff = TrustedHostKeyStoreHandoff({"integ_gatekeeper_v1": pub_bytes})
+        TrustedHostProvisionKeyStore(handoff)
+
+        lm = LeaseManager([{"id": "LOCK-SOD-20", "mode": "exclusive", "renewable": True, "lease_seconds": 600}])
+
+        # 15a. OrcaDeliveryAdapter defaults to durable non-ephemeral SQLite registry
+        adapter_prod = OrcaDeliveryAdapter(
+            lease_manager=lm,
+            approved_candidate_commit=self.candidate_commit,
+            approved_base_commit=self.base_commit,
+        )
+        self.assertFalse(adapter_prod.consumption_registry._is_mem, "Production adapter path must NOT be ephemeral :memory:")
+        self.assertEqual(
+            adapter_prod.consumption_registry.db_path,
+            str(DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH),
+        )
+
+        # 15b. Caller attempting to pass ephemeral in-memory registry is rejected fail-closed
+        ephemeral_reg = DurableConsumptionRegistry(db_path=":memory:")
+        with self.assertRaises(ProtocolViolationError) as ctx_mem:
+            OrcaDeliveryAdapter(
+                lease_manager=lm,
+                approved_candidate_commit=self.candidate_commit,
+                approved_base_commit=self.base_commit,
+                consumption_registry=ephemeral_reg,
+            )
+        self.assertIn("Caller-selected ephemeral consumption registry forbidden", str(ctx_mem.exception))
+
+        with self.assertRaises(ProtocolViolationError) as ctx_mem_path:
+            OrcaDeliveryAdapter(
+                lease_manager=lm,
+                approved_candidate_commit=self.candidate_commit,
+                approved_base_commit=self.base_commit,
+                consumption_db_path=":memory:",
+            )
+        self.assertIn("consumption_db_path cannot be blank or ephemeral", str(ctx_mem_path.exception))
+
+        # 15c. Durable consumption across adapter restart:
+        # Create an isolated temporary SQLite db file to test adapter restart
+        db_file = BUNDLE_DIR / f"test_adapter_restart_{uuid.uuid4().hex}.db"
+        try:
+            adapter_1 = OrcaDeliveryAdapter(
+                lease_manager=lm,
+                approved_candidate_commit=self.candidate_commit,
+                approved_base_commit=self.base_commit,
+                consumption_db_path=db_file,
+            )
+            now = time.time()
+            payload = {
+                "envelope_id": "int_env_adapter_restart_01",
+                "delivery_task_id": self.delivery_id,
+                "candidate_commit": self.candidate_commit,
+                "base_commit": self.base_commit,
+                "gates_pass": True,
+                "gate_results": {g: True for g in MANDATORY_INTEGRATION_GATES},
+                "integration_key_id": "integ_gatekeeper_v1",
+                "nonce": "nonce_adapter_restart_unique_01",
+                "issued_at": now,
+                "expires_at": now + 300.0,
+                "fencing_token": 10,
+            }
+            signed_env = sign_integration_envelope(priv.private_bytes_raw(), payload)
+
+            # Consume on adapter_1
+            res_1 = adapter_1.trusted_integration_consumer.consume_integration_envelope(
+                signed_env,
+                expected_task_id=self.delivery_id,
+                expected_candidate=self.candidate_commit,
+                expected_base=self.base_commit,
+                expected_gates_pass=True,
+                now=now,
+            )
+            self.assertEqual(res_1["envelope_id"], "int_env_adapter_restart_01")
+            self.assertTrue(adapter_1.consumption_registry.is_consumed("int_env_adapter_restart_01"))
+
+            # Restart adapter: simulate new adapter instance pointing to same storage
+            adapter_2 = OrcaDeliveryAdapter(
+                lease_manager=lm,
+                approved_candidate_commit=self.candidate_commit,
+                approved_base_commit=self.base_commit,
+                consumption_db_path=db_file,
+            )
+            self.assertTrue(
+                adapter_2.consumption_registry.is_consumed("int_env_adapter_restart_01"),
+                "Consumed envelope record must survive adapter restart via durable SQLite",
+            )
+            self.assertEqual(
+                adapter_2.consumption_registry.get_last_fencing_token(self.delivery_id, INTEGRATION_ENVELOPE_DOMAIN),
+                10,
+                "Monotonic fencing token must survive adapter restart via durable SQLite",
+            )
+
+            # Replaying the same envelope on adapter_2 must fail with ReplayAttackError
+            with self.assertRaises(ReplayAttackError) as ctx_rep:
+                adapter_2.trusted_integration_consumer.consume_integration_envelope(
+                    signed_env,
+                    expected_task_id=self.delivery_id,
+                    expected_candidate=self.candidate_commit,
+                    expected_base=self.base_commit,
+                    expected_gates_pass=True,
+                    now=now,
+                )
+            self.assertIn("already been consumed", str(ctx_rep.exception))
+
+            # New envelope with stale/equal fencing token (<= 10) on adapter_2 must fail with FencingViolationError
+            stale_payload = dict(payload)
+            stale_payload["envelope_id"] = "int_env_adapter_restart_02"
+            stale_payload["nonce"] = "nonce_adapter_restart_unique_02"
+            stale_payload["fencing_token"] = 10  # stale, equal to last
+            stale_signed = sign_integration_envelope(priv.private_bytes_raw(), stale_payload)
+            with self.assertRaises(FencingViolationError) as ctx_fenc:
+                adapter_2.trusted_integration_consumer.consume_integration_envelope(
+                    stale_signed,
+                    expected_task_id=self.delivery_id,
+                    expected_candidate=self.candidate_commit,
+                    expected_base=self.base_commit,
+                    expected_gates_pass=True,
+                    now=now,
+                )
+            self.assertIn("is stale", str(ctx_fenc.exception))
+
+            # New envelope with advanced fencing token (> 10) on adapter_2 succeeds
+            adv_payload = dict(payload)
+            adv_payload["envelope_id"] = "int_env_adapter_restart_03"
+            adv_payload["nonce"] = "nonce_adapter_restart_unique_03"
+            adv_payload["fencing_token"] = 11  # strictly greater
+            adv_signed = sign_integration_envelope(priv.private_bytes_raw(), adv_payload)
+            res_adv = adapter_2.trusted_integration_consumer.consume_integration_envelope(
+                adv_signed,
+                expected_task_id=self.delivery_id,
+                expected_candidate=self.candidate_commit,
+                expected_base=self.base_commit,
+                expected_gates_pass=True,
+                now=now,
+            )
+            self.assertEqual(res_adv["envelope_id"], "int_env_adapter_restart_03")
+        finally:
+            if db_file.exists():
+                try:
+                    db_file.unlink()
+                except Exception:
+                    pass
+
+    def test_16_finding_03_strict_envelope_type_rejection_no_coercion(self):
+        """16. Finding 3: SignedIntegrationEnvelope.from_dict and SignedReviewEnvelope.from_dict
+        strictly reject non-boolean / non-numeric types fail-closed before any coercion.
+        Payloads with string 'false', numeric booleans, or string numeric fields fail EnvelopeVerificationError.
+        """
+        now = time.time()
+        base_int_payload = {
+            "envelope_id": "int_env_strict_01",
+            "delivery_task_id": self.delivery_id,
+            "candidate_commit": self.candidate_commit,
+            "base_commit": self.base_commit,
+            "gates_pass": True,
+            "gate_results": {g: True for g in MANDATORY_INTEGRATION_GATES},
+            "integration_key_id": "integ_gatekeeper_v1",
+            "nonce": "nonce_strict_type_test_0000000001",
+            "issued_at": now,
+            "expires_at": now + 300.0,
+            "fencing_token": 1,
+            "signature": "mock_sig_32b_hex_placeholder",
+        }
+
+        # 16a. Sol Finding 3 exact counterexample: gates_pass = 'false' (string) MUST NOT coerce to True
+        bad_false = dict(base_int_payload)
+        bad_false["gates_pass"] = "false"
+        with self.assertRaises(EnvelopeVerificationError) as ctx_false:
+            SignedIntegrationEnvelope.from_dict(bad_false)
+        self.assertIn("gates_pass must be strict bool", str(ctx_false.exception))
+
+        # 16b. gates_pass = 'true' (string) rejected
+        bad_true = dict(base_int_payload)
+        bad_true["gates_pass"] = "true"
+        with self.assertRaises(EnvelopeVerificationError) as ctx_true:
+            SignedIntegrationEnvelope.from_dict(bad_true)
+        self.assertIn("gates_pass must be strict bool", str(ctx_true.exception))
+
+        # 16c. gates_pass = 0 / 1 (integers) rejected
+        for bad_val in (0, 1, 2, None, [], {}):
+            bad_num = dict(base_int_payload)
+            bad_num["gates_pass"] = bad_val
+            with self.assertRaises(EnvelopeVerificationError):
+                SignedIntegrationEnvelope.from_dict(bad_num)
+
+        # 16d. gate_results entry with non-bool value rejected
+        bad_gr = dict(base_int_payload)
+        bad_gr["gate_results"] = {"M1-R1-CONTRACT": "true"}
+        with self.assertRaises(EnvelopeVerificationError) as ctx_gr:
+            SignedIntegrationEnvelope.from_dict(bad_gr)
+        self.assertIn("gate_results entries must map str to strict bool", str(ctx_gr.exception))
+
+        # 16e. fencing_token = '1' (string) or bool rejected
+        bad_fenc_str = dict(base_int_payload)
+        bad_fenc_str["fencing_token"] = "1"
+        with self.assertRaises(EnvelopeVerificationError) as ctx_fstr:
+            SignedIntegrationEnvelope.from_dict(bad_fenc_str)
+        self.assertIn("fencing_token must be strict int", str(ctx_fstr.exception))
+
+        bad_fenc_bool = dict(base_int_payload)
+        bad_fenc_bool["fencing_token"] = True
+        with self.assertRaises(EnvelopeVerificationError):
+            SignedIntegrationEnvelope.from_dict(bad_fenc_bool)
+
+        # 16f. issued_at / expires_at non-numeric or bool rejected
+        bad_iss_str = dict(base_int_payload)
+        bad_iss_str["issued_at"] = "100.0"
+        with self.assertRaises(EnvelopeVerificationError) as ctx_iss:
+            SignedIntegrationEnvelope.from_dict(bad_iss_str)
+        self.assertIn("issued_at must be numeric float/int", str(ctx_iss.exception))
+
+        bad_iss_bool = dict(base_int_payload)
+        bad_iss_bool["issued_at"] = True
+        with self.assertRaises(EnvelopeVerificationError):
+            SignedIntegrationEnvelope.from_dict(bad_iss_bool)
+
+        # 16g. SignedReviewEnvelope.from_dict strict numeric and bool rejection
+        base_rev_payload = {
+            "envelope_id": "rev_env_strict_01",
+            "delivery_task_id": self.delivery_id,
+            "review_dispatch_id": self.dispatch_id,
+            "candidate_commit": self.candidate_commit,
+            "base_commit": self.base_commit,
+            "reviewer_route": "cx/gpt-5.6-sol",
+            "reviewer_harness": "Claude Code",
+            "reviewer_key_id": "rev_key_lead_v1",
+            "verdict": "ACCEPT",
+            "summary": "Valid summary",
+            "nonce": "nonce_rev_strict_type_test_00001",
+            "issued_at": now,
+            "expires_at": now + 300.0,
+            "fencing_token": 1,
+            "signature": "mock_sig_32b_hex_placeholder",
+        }
+        bad_rev_iss = dict(base_rev_payload)
+        bad_rev_iss["issued_at"] = "100.0"
+        with self.assertRaises(EnvelopeVerificationError) as ctx_rev_iss:
+            SignedReviewEnvelope.from_dict(bad_rev_iss)
+        self.assertIn("issued_at must be numeric float/int", str(ctx_rev_iss.exception))
+
+        bad_rev_fenc = dict(base_rev_payload)
+        bad_rev_fenc["fencing_token"] = "1"
+        with self.assertRaises(EnvelopeVerificationError) as ctx_rev_fenc:
+            SignedReviewEnvelope.from_dict(bad_rev_fenc)
+        self.assertIn("fencing_token must be strict int", str(ctx_rev_fenc.exception))
 
 
 if __name__ == "__main__":

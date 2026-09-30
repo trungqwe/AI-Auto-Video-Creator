@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-01 ? Kh?c ph?c tri?t ?? 3 ph?t hi?n ??c l?p t? Sol Audit sau 851d23c (Out-of-Process Key Custody Bootstrap Prevention, Durable Adapter Restart Consumption & Strict Envelope Type Rejection)
+
+- Kh?c ph?c tri?t ?? ba ph?t hi?n ??c l?p (actionable findings) t? Sol tr?n exact candidate `851d23c3f7fde7e37891b933547d931706e11417` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) V? Hi?u H?a Public Host API Bootstrap Kh?a Trong C?ng Ti?n Tr?nh (Out-of-Process Key Custody Bootstrap Prevention)**:
+    - ??ng to?n b? c?c API c?ng khai c?a `KeyStoreHostIssuer` (`get_default_host_issuer`, `issue_handoff`, `issue_isolated_keystore`) v? `TrustedKeyStore.provision_from_host` ??i v?i in-process candidate caller b?ng c?ch b?t bu?c token m?y ch? ngo?i ti?n tr?nh `_SENTINEL_HOST_TOKEN`.
+    - M?i n? l?c g?i `KeyStoreHostIssuer.get_default_host_issuer()` ho?c t? mint handoff/keystore m? kh?ng c? `_SENTINEL_HOST_TOKEN` ??u b? t? ch?i fail-closed ngay l?p t?c v?i `ProtocolViolationError`.
+    - Test harness s? d?ng c?c h?m host helper chuy?n bi?t (`TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, `TrustedHostProvisionKeyStore`) ??i di?n cho ranh gi?i m?y ch? b?n ngo?i.
+  - **(2) ??m B?o T?nh B?n V?ng Ti?u Th? C?a Adapter Qua Kh?i ??ng L?i (Durable Adapter Restart Consumption)**:
+    - Lo?i b? ho?n to?n registry b? nh? t?m th?i `:memory:` kh?i ???ng d?n s?n xu?t c?a `OrcaDeliveryAdapter`: adapter m?c ??nh s? d?ng ???ng d?n SQLite b?n v?ng tr?n ? ??a `DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH` (`runtime/orca-consumption-registry.db`) ho?c `consumption_db_path` ???c ch? ??nh.
+    - C?m ti?m caller-selected ephemeral in-memory registry (`_is_mem`) v?o `OrcaDeliveryAdapter` fail-closed.
+    - D? li?u phong b? ?? ti?u th? v? b? ??m monotonic fencing token t?n t?i b?n v?ng qua restart adapter; replay attack v? stale fencing token qua restart b? ph?t hi?n v? ng?n ch?n 100%.
+  - **(3) Lo?i B? ?p Ki?u L?ng L?o & Ki?m Tra Ki?u D? Li?u Nghi?m Ng?t Tr??c Khi X? L? (Strict Envelope Type Rejection)**:
+    - Lo?i b? vi?c ?p ki?u `bool(data.get("gates_pass", False))` trong `SignedIntegrationEnvelope.from_dict`; tri?n khai c? ch? ki?m tra ki?u d? li?u nghi?m ng?t t? ch?i fail-closed `EnvelopeVerificationError` ??i v?i chu?i `'false'`, s? nguy?n `0`/`1`, ho?c b?t k? ki?u d? li?u phi-bool n?o.
+    - B? sung strict type checking cho `gate_results` (b?t bu?c dict v?i gi? tr? strict bool), `issued_at`/`expires_at` (b?t bu?c s? th?c/nguy?n, t? ch?i bool/str), v? `fencing_token` (b?t bu?c strict int, t? ch?i bool/str) cho c? `SignedIntegrationEnvelope` v? `SignedReviewEnvelope`.
+  - **(4) B? Ki?m Th? T? ??ng 392/392 Tests PASS (100%)**:
+    - M? r?ng suite `TestSolTrustBoundaryRootCauseRemediation` l?n 16/16 tests v?i 2 b?i test ph??ng th?c m?i (`test_15_finding_02_adapter_restart_durable_consumption`, `test_16_finding_03_strict_envelope_type_rejection_no_coercion`) v? b? sung c?c nh?nh probe counterexample `11n..11r` cho public host API bootstrap rejection.
+
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit sau d7f0043 (Out-of-Process Pinned Key Custody Provisioning & Durable Integration Envelope Consumption)
 
 - Khắc phục triệt để hai phát hiện trust-boundary từ đợt independent audit của Sol trên exact candidate d7f0043d99c970e3d6efc7a8c392be73b58b27b2 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):

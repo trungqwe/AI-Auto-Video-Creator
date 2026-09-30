@@ -1137,6 +1137,12 @@ DEFAULT_PRODUCTION_REGISTRY_PATH = Path(
         str(_WORKSPACE_ROOT / "runtime" / "orca-execution-registry.json"),
     )
 )
+DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH = Path(
+    os.environ.get(
+        "ORCA_CONSUMPTION_REGISTRY_PATH",
+        str(_WORKSPACE_ROOT / "runtime" / "orca-consumption-registry.db"),
+    )
+)
 
 
 @dataclass(init=False)
@@ -3174,6 +3180,15 @@ class SignedReviewEnvelope:
     def from_dict(cls, data: Dict[str, Any]) -> 'SignedReviewEnvelope':
         if not isinstance(data, dict):
             raise EnvelopeVerificationError(f"SignedReviewEnvelope data must be a dictionary; got {type(data).__name__}")
+        raw_issued_at = data.get("issued_at")
+        if not isinstance(raw_issued_at, (int, float)) or isinstance(raw_issued_at, bool):
+            raise EnvelopeVerificationError("SignedReviewEnvelope issued_at must be numeric float/int")
+        raw_expires_at = data.get("expires_at")
+        if not isinstance(raw_expires_at, (int, float)) or isinstance(raw_expires_at, bool):
+            raise EnvelopeVerificationError("SignedReviewEnvelope expires_at must be numeric float/int")
+        raw_fencing_token = data.get("fencing_token")
+        if type(raw_fencing_token) is not int or isinstance(raw_fencing_token, bool):
+            raise EnvelopeVerificationError("SignedReviewEnvelope fencing_token must be strict int")
         return cls(
             envelope_id=data.get("envelope_id", ""),
             delivery_task_id=data.get("delivery_task_id", ""),
@@ -3186,9 +3201,9 @@ class SignedReviewEnvelope:
             verdict=data.get("verdict", ""),
             summary=data.get("summary", ""),
             nonce=data.get("nonce", ""),
-            issued_at=float(data.get("issued_at", 0.0)),
-            expires_at=float(data.get("expires_at", 0.0)),
-            fencing_token=int(data.get("fencing_token", 0)),
+            issued_at=float(raw_issued_at),
+            expires_at=float(raw_expires_at),
+            fencing_token=int(raw_fencing_token),
             signature=data.get("signature", ""),
             orca_task_id=data.get("orca_task_id", ""),
             terminal_id=data.get("terminal_id", ""),
@@ -3268,18 +3283,38 @@ class SignedIntegrationEnvelope:
     def from_dict(cls, data: Dict[str, Any]) -> 'SignedIntegrationEnvelope':
         if not isinstance(data, dict):
             raise EnvelopeVerificationError(f"SignedIntegrationEnvelope data must be a dictionary; got {type(data).__name__}")
+        raw_gates_pass = data.get("gates_pass")
+        if type(raw_gates_pass) is not bool:
+            raise EnvelopeVerificationError(
+                f"SignedIntegrationEnvelope gates_pass must be strict bool; got {type(raw_gates_pass).__name__}"
+            )
+        raw_gate_results = data.get("gate_results")
+        if not isinstance(raw_gate_results, dict) or not raw_gate_results:
+            raise EnvelopeVerificationError("SignedIntegrationEnvelope gate_results must be non-empty dict")
+        for gk, gv in raw_gate_results.items():
+            if not isinstance(gk, str) or type(gv) is not bool:
+                raise EnvelopeVerificationError("SignedIntegrationEnvelope gate_results entries must map str to strict bool")
+        raw_issued_at = data.get("issued_at")
+        if not isinstance(raw_issued_at, (int, float)) or isinstance(raw_issued_at, bool):
+            raise EnvelopeVerificationError("SignedIntegrationEnvelope issued_at must be numeric float/int")
+        raw_expires_at = data.get("expires_at")
+        if not isinstance(raw_expires_at, (int, float)) or isinstance(raw_expires_at, bool):
+            raise EnvelopeVerificationError("SignedIntegrationEnvelope expires_at must be numeric float/int")
+        raw_fencing_token = data.get("fencing_token")
+        if type(raw_fencing_token) is not int or isinstance(raw_fencing_token, bool):
+            raise EnvelopeVerificationError("SignedIntegrationEnvelope fencing_token must be strict int")
         return cls(
             envelope_id=data.get("envelope_id", ""),
             delivery_task_id=data.get("delivery_task_id", ""),
             candidate_commit=data.get("candidate_commit", ""),
             base_commit=data.get("base_commit", ""),
-            gates_pass=bool(data.get("gates_pass", False)),
-            gate_results=dict(data.get("gate_results", {})),
+            gates_pass=raw_gates_pass,
+            gate_results=dict(raw_gate_results),
             integration_key_id=data.get("integration_key_id", ""),
             nonce=data.get("nonce", ""),
-            issued_at=float(data.get("issued_at", 0.0)),
-            expires_at=float(data.get("expires_at", 0.0)),
-            fencing_token=int(data.get("fencing_token", 0)),
+            issued_at=float(raw_issued_at),
+            expires_at=float(raw_expires_at),
+            fencing_token=int(raw_fencing_token),
             signature=data.get("signature", ""),
             domain=data.get("domain", INTEGRATION_ENVELOPE_DOMAIN),
             version=data.get("version", "v1"),
@@ -3350,10 +3385,18 @@ class KeyStoreHostIssuer:
         self._lock = threading.RLock()
 
     @classmethod
-    def get_default_host_issuer(cls) -> 'KeyStoreHostIssuer':
+    def get_default_host_issuer(
+        cls, _internal_token: Optional[Any] = None
+    ) -> 'KeyStoreHostIssuer':
         """Retrieve simulated host issuer for backward-compatible test fixtures / harness.
-        Confers ZERO production authority; cannot bypass TrustedKeyStore or ProductionActivationGate.
+        Managed exclusively by trusted host boundary out-of-process.
+        Direct access or bootstrap by in-process candidate caller is strictly forbidden fail-closed.
         """
+        if _internal_token is not _SENTINEL_HOST_TOKEN:
+            raise ProtocolViolationError(
+                "Access to host keystore issuer by in-process candidate caller is strictly forbidden fail-closed; "
+                "host keystore issuer authority operates exclusively out-of-process"
+            )
         with cls._lock:
             if cls._instance is None:
                 cls._instance = cls(_internal_token=_SENTINEL_HOST_TOKEN)
@@ -3377,10 +3420,17 @@ class KeyStoreHostIssuer:
         self,
         pinned_keys: Mapping[str, bytes],
         issuer_name: str = "trusted_host",
+        _internal_token: Optional[Any] = None,
     ) -> 'KeyStoreHostHandoff':
         """Mint an authentic KeyStoreHostHandoff bound to an unforgeable issuer capability.
         Single-use: cannot mint multiple handoffs fail-closed.
+        Direct invocation by in-process candidate caller is strictly forbidden fail-closed.
         """
+        if _internal_token is not _SENTINEL_HOST_TOKEN:
+            raise ProtocolViolationError(
+                "Minting host handoff by in-process candidate caller is strictly forbidden fail-closed; "
+                "key custody operates exclusively out-of-process"
+            )
         if not isinstance(pinned_keys, (dict, Mapping)) or not pinned_keys:
             raise ProtocolViolationError("KeyStore pinned_keys must be a non-empty mapping of key_id -> raw public bytes")
         clean_issuer = issuer_name.strip() if isinstance(issuer_name, str) else ""
@@ -3424,8 +3474,19 @@ class KeyStoreHostIssuer:
                 issuer=self,
             )
 
-    def issue_isolated_keystore(self, pinned_keys: Mapping[str, bytes]) -> 'TrustedKeyStore':
-        """Mint an isolated immutable TrustedKeyStore for isolated consumer tests."""
+    def issue_isolated_keystore(
+        self,
+        pinned_keys: Mapping[str, bytes],
+        _internal_token: Optional[Any] = None,
+    ) -> 'TrustedKeyStore':
+        """Mint an isolated immutable TrustedKeyStore for isolated consumer tests.
+        Direct invocation by in-process candidate caller is strictly forbidden fail-closed.
+        """
+        if _internal_token is not _SENTINEL_HOST_TOKEN:
+            raise ProtocolViolationError(
+                "Minting isolated keystore by in-process candidate caller is strictly forbidden fail-closed; "
+                "key custody operates exclusively out-of-process"
+            )
         validated_keys: Dict[str, bytes] = {}
         for kid, kbytes in pinned_keys.items():
             clean_kid = kid.strip() if isinstance(kid, str) else ""
@@ -3588,11 +3649,18 @@ class TrustedKeyStore:
         cls,
         authority: Optional[KeyStoreHostHandoff] = None,
         *args: Any,
+        _internal_token: Optional[Any] = None,
         **kwargs: Any,
     ) -> 'TrustedKeyStore':
         """Provision an immutable TrustedKeyStore from trusted external host handoff authority.
         Once provisioned, pinned keys cannot be selected or replaced by in-process callers.
+        Direct bootstrap or provisioning by in-process candidate caller is strictly forbidden fail-closed.
         """
+        if _internal_token is not _SENTINEL_HOST_TOKEN:
+            raise ProtocolViolationError(
+                "In-process candidate caller cannot bootstrap or provision TrustedKeyStore fail-closed; "
+                "key custody must be provisioned out-of-process by trusted host authority"
+            )
         if args or kwargs or authority is None or not isinstance(authority, KeyStoreHostHandoff):
             raise ProtocolViolationError(
                 "Caller-selected keystore provisioning forbidden; "
@@ -3728,8 +3796,21 @@ class DurableConsumptionRegistry:
     """Atomic, durable registry for tracking consumed envelopes, nonces, and monotonic fencing tokens.
     Guarantees single-use, detects replay attacks, and survives process restarts.
     """
-    def __init__(self, db_path: Optional[Union[str, Path]] = None) -> None:
-        self.db_path = str(db_path) if db_path else ":memory:"
+    _default_instance: Optional['DurableConsumptionRegistry'] = None
+    _default_db_path: Optional[Path] = DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH
+    _class_lock = threading.RLock()
+
+    def __init__(
+        self,
+        db_path: Optional[Union[str, Path]] = None,
+        allow_ephemeral: bool = False,
+    ) -> None:
+        if db_path is not None:
+            self.db_path = str(db_path)
+        elif allow_ephemeral:
+            self.db_path = ":memory:"
+        else:
+            self.db_path = ":memory:"
         self._lock = threading.RLock()
         self._is_mem = (self.db_path in (":memory:", "", None))
         if self._is_mem:
@@ -3737,7 +3818,40 @@ class DurableConsumptionRegistry:
             self._mem_nonces: Set[str] = set()
             self._mem_fencing: Dict[str, int] = {}
         else:
+            p = Path(self.db_path)
+            if not p.parent.exists():
+                try:
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                except OSError:
+                    pass
             self._init_db()
+
+    @classmethod
+    def get_default(
+        cls,
+        db_path: Optional[Union[str, Path]] = None,
+        allow_ephemeral: bool = False,
+    ) -> 'DurableConsumptionRegistry':
+        with cls._class_lock:
+            effective = Path(db_path) if db_path else cls._default_db_path
+            if cls._default_instance is None or (db_path and cls._default_instance.db_path != str(effective)):
+                cls._default_instance = cls(db_path=effective, allow_ephemeral=allow_ephemeral)
+            return cls._default_instance
+
+    @classmethod
+    def reset_default(
+        cls,
+        db_path: Optional[Union[str, Path]] = None,
+        allow_ephemeral: bool = False,
+    ) -> None:
+        with cls._class_lock:
+            effective = Path(db_path) if db_path else cls._default_db_path
+            if effective and Path(effective).is_file():
+                try:
+                    Path(effective).unlink()
+                except OSError:
+                    pass
+            cls._default_instance = cls(db_path=effective, allow_ephemeral=allow_ephemeral) if effective else None
 
     @contextmanager
     def _get_connection(self):
@@ -5465,6 +5579,8 @@ class OrcaDeliveryAdapter:
         control_secret: Optional[str] = None,
         reviewer_boundary: Optional[ReviewerSessionBoundary] = None,
         keystore: Optional[TrustedKeyStore] = None,
+        consumption_registry: Optional[DurableConsumptionRegistry] = None,
+        consumption_db_path: Optional[Union[str, Path]] = None,
     ):
         if approved_candidate_commit is None:
             raise ProtocolViolationError("approved_candidate_commit is mandatory; cannot be None")
@@ -5531,7 +5647,23 @@ class OrcaDeliveryAdapter:
             self._keystore: TrustedKeyStore = keystore
         else:
             self._keystore: TrustedKeyStore = TrustedKeyStore.get_default()
-        self.consumption_registry: DurableConsumptionRegistry = DurableConsumptionRegistry()
+        if consumption_registry is not None:
+            if not isinstance(consumption_registry, DurableConsumptionRegistry):
+                raise ProtocolViolationError("consumption_registry must be an instance of DurableConsumptionRegistry")
+            if consumption_registry._is_mem:
+                raise ProtocolViolationError(
+                    "Caller-selected ephemeral consumption registry forbidden; "
+                    "OrcaDeliveryAdapter strictly requires durable SQLite persistence fail-closed"
+                )
+            self.consumption_registry: DurableConsumptionRegistry = consumption_registry
+        elif consumption_db_path is not None:
+            clean_db_path = str(consumption_db_path).strip()
+            if not clean_db_path or clean_db_path == ":memory:":
+                raise ProtocolViolationError("consumption_db_path cannot be blank or ephemeral ':memory:' fail-closed")
+            self.consumption_registry: DurableConsumptionRegistry = DurableConsumptionRegistry(db_path=clean_db_path)
+        else:
+            self.consumption_registry: DurableConsumptionRegistry = DurableConsumptionRegistry.get_default()
+
         self.trusted_review_consumer: TrustedReviewConsumer = TrustedReviewConsumer(
             keystore=self._keystore, registry=self.consumption_registry
         )

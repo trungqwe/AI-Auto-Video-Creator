@@ -333,7 +333,7 @@ Hệ thống đã triển khai toàn diện giải pháp kiến trúc ngoài ti�
 3. **Phong bì ký số (Signed Review & Integration Envelopes)**: Domain separation (`PARALLEL_DELIVERY_REVIEW_ENVELOPE_V1` / `PARALLEL_DELIVERY_INTEGRATION_ENVELOPE_V1`), canonical serialization RFC 8785, candidate SHA, dispatch ID, route attestation, nonce, temporal window, monotonic fencing token.
 4. **Sổ đăng ký tiêu thụ bền vững (DurableConsumptionRegistry)**: Quản lý atomic trên SQLite, ngăn chặn tuyệt đối replay, tái sử dụng nonce, stale retry, và tranh chấp đồng thời kể cả qua restart tiến trình.
 5. **Khóa kích hoạt Production (ProductionActivationGate)**: Khóa fail-closed `PRODUCTION_ACTIVATION_BLOCKED` (`NOT_PROVISIONED`) khi hệ thống chưa được trang bị đủ 4 điều kiện hạ tầng: `OS_USER_ISOLATION`, `PRIVATE_KEY_ACL_RESTRICTION`, `DEDICATED_RUNNER`, `PROTECTED_BRANCH_POLICY`.
-6. **Bộ kiểm thử toàn diện**: 10 bài test mới trong `TestSolTrustBoundaryRootCauseRemediation` (RED evidence, worker monkey-patching failure, asymmetric Ed25519 signature tamper rejection, key revocation, single-use replay protection, SQLite restart durability, temporal validity, production gate fail-closed, fresh subprocess isolation, và positive control full lifecycle) nâng tổng số bài test lên **390/390 tests PASS 100%**.
+6. **Bộ kiểm thử toàn diện**: 10 bài test mới trong `TestSolTrustBoundaryRootCauseRemediation` (RED evidence, worker monkey-patching failure, asymmetric Ed25519 signature tamper rejection, key revocation, single-use replay protection, SQLite restart durability, temporal validity, production gate fail-closed, fresh subprocess isolation, và positive control full lifecycle) nâng tổng số bài test lên **392/392 tests PASS 100%**.
 ## 19. Khắc phục triệt để phát hiện Sol Audit sau d7f0043 (Out-of-Process Pinned Key Custody & Durable Integration Consumption)
 
 Đợt rà soát độc lập trên candidate SHA d7f0043d99c970e3d6efc7a8c392be73b58b27b2 (approved base 4a7c8c921b7e05066505d51b168a02c3fde61317) ghi nhận 2 finding ranh giới tin cậy cần khắc phục trước khi ACCEPT:
@@ -348,3 +348,20 @@ egister_pinned_public_key từ chối caller in-process fail-closed với Protoc
    - Kiểm tra toàn diện temporal validity (expires_at, issued_at <= now + 30.0s), ràng buộc danh tính (expected_task_id, expected_candidate, expected_base), chống phát lại (envelope_id single-use), chống tái sử dụng 
 once, và monotonic fencing token theo miền (	ask_fencing).
    - Đảm bảo tính bền vững qua restart tiến trình với SQLite và an toàn tương tranh đa luồng (10 luồng đồng thời: đúng 1 luồng thành công, 9 luồng bị chặn bởi ReplayAttackError).
+
+## 20. Kh?c ph?c tri?t ?? 3 ph?t hi?n ??c l?p t? Sol Audit sau 851d23c (Out-of-Process Key Custody Bootstrap Prevention, Durable Adapter Restart Consumption & Strict Envelope Type Rejection)
+
+??t r? so?t ??c l?p tr?n candidate SHA `851d23c3f7fde7e37891b933547d931706e11417` (approved base `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nh?n 3 finding h?nh ??ng (actionable findings) c?n kh?c ph?c tri?t ??:
+1. **Finding 1 ? V? hi?u h?a Public Host API Bootstrap Kh?a Trong C?ng Ti?n Tr?nh**:
+   - `KeyStoreHostIssuer.get_default_host_issuer`, `issue_handoff`, `issue_isolated_keystore`, v? `TrustedKeyStore.provision_from_host` b?t bu?c token m?y ch? ngo?i ti?n tr?nh `_SENTINEL_HOST_TOKEN`.
+   - Ng?n ch?n tri?t ?? k?ch b?n counterexample trong ?? candidate worker t? sinh c?p kh?a Ed25519, g?i public host API ?? mint handoff v? t? n?p v?o `TrustedKeyStore` trong c?ng ti?n tr?nh.
+   - Test harness s? d?ng c?c helper m?y ch? chuy?n bi?t (`TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, `TrustedHostProvisionKeyStore`).
+2. **Finding 2 ? T?nh B?n V?ng Ti?u Th? c?a OrcaDeliveryAdapter Qua Kh?i ??ng L?i**:
+   - Kh?i t?o m?c ??nh c?a `OrcaDeliveryAdapter` chuy?n sang s? d?ng ???ng d?n SQLite b?n v?ng tr?n ? ??a `DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH` (`runtime/orca-consumption-registry.db`) ho?c `consumption_db_path` ???c ch? ??nh.
+   - Lo?i b? ho?n to?n fallback v? `:memory:` trong production adapter path; c?m ti?m ephemeral in-memory registry (`_is_mem`) fail-closed.
+   - B?n ghi ti?u th? phong b? v? monotonic fencing token t?n t?i b?n v?ng qua restart adapter; ng?n ch?n ho?n to?n replay attack v? stale fencing token qua restart.
+3. **Finding 3 ? Strict Type Rejection Tr??c Coercion Trong SignedIntegrationEnvelope**:
+   - `SignedIntegrationEnvelope.from_dict` t? ch?i fail-closed `EnvelopeVerificationError` ??i v?i chu?i `'false'`, s? nguy?n, ho?c b?t k? ki?u phi-bool n?o tr??c khi th?c hi?n b?t k? chuy?n ??i ki?u d? li?u n?o.
+   - B? sung strict type checking cho `gate_results` (strict bool values), `issued_at`/`expires_at` (numeric float/int, c?m bool/str), v? `fencing_token` (strict int, c?m bool/str) cho c? review envelope v? integration envelope.
+4. **B? ki?m th? to?n di?n**: N?ng t?ng s? b?i test l?n **392/392 tests PASS 100%**, b? sung `test_15`, `test_16` v? c?c probe `11n..11r` trong `TestSolTrustBoundaryRootCauseRemediation`.
+
