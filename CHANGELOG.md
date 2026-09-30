@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 0032962 (Unforgeable HostBoundaryTicket, Provenance Verification qua Out-of-Process Daemon, HMAC Capability Binding & Single-Use Replay Protection)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate `0032962130d21dc9b2ddc5f51260cfffb40e9acd` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Vô Hiệu Hóa Khởi Tạo Trực Tiếp & Kế Thừa HostBoundaryTicket**:
+    - `HostBoundaryTicket` được chuyển đổi thành lớp thẩm quyền bất biến; cấm tuyệt đối khởi tạo trực tiếp từ caller trong tiến trình (`__init__` ném `ProtocolViolationError`), cấm kế thừa (`__init_subclass__` ném `ProtocolViolationError`), và cấm serialize/deserialize (`__reduce__` ném `ProtocolViolationError`). Chỉ cho phép khởi tạo nội bộ thông qua factory method có xác thực `_create_authenticated`.
+  - **(2) Ràng Buộc Chữ Ký Mật Mã HMAC & HostBoundaryTicketIssuerCapability**:
+    - `HostBoundaryTicketIssuer` quản lý private host secret ngoài tiến trình, cấp phát `HostBoundaryTicket` đi kèm `HostBoundaryTicketIssuerCapability` có chữ ký HMAC-SHA256 liên kết chặt với `ticket_id`, `port`, `authkey_hash`, authority id, và timestamp kiểm tra độ tươi (freshness window 300s).
+    - Phương thức `issue_ticket` yêu cầu token nội bộ hợp lệ và xác thực tính xác thực của token với daemon máy chủ ngoài tiến trình trước khi cấp vé.
+  - **(3) Xác Minh Provenance Hai Chiều Qua Out-of-Process Host Daemon Trong provision_channel**:
+    - `HostBoundaryChannel.provision_channel` bắt buộc ticket phải có `_issuer` thuộc kiểu `HostBoundaryTicketIssuer`.
+    - Kết nối trực tiếp tới daemon máy chủ tại `(127.0.0.1, port)` với `authkey` để xác minh secret của issuer trước khi chấp nhận cấu hình kênh; từ chối fail-closed mọi issuer tự sinh hoặc token không khớp (`FORGED_TICKET_ACCEPTED == False`).
+  - **(4) Chống Replay Ticket Đơn Dụng (Single-Use Consumption Protection)**:
+    - Áp dụng kiểm tra đơn dụng đa tầng: `HostBoundaryTicket` tự đánh dấu `_consumed = True` khi được tiêu thụ, `HostBoundaryTicketIssuer` ghi nhận và từ chối các ticket đã dùng trong `_consumed_tickets`, và `HostBoundaryChannel` duy trì tập `_consumed_ticket_ids` nhằm ngăn chặn tuyệt đối mọi nỗ lực tái sử dụng ticket đã cấp.
+  - **(5) Bộ Fixture Kiểm Thử Chuyên Sâu test_18 (394/394 Tests PASS 100%)**:
+    - Bổ sung `test_18_finding_sol_host_boundary_ticket_forgery_and_replay_rejection` với 13 trường hợp kiểm thử (18a-18m) bao quát từ chối trực tiếp, kế thừa, bypass bằng `object.__new__`, issuer giả mạo, can thiệp chữ ký, sai cổng/authkey, hết hạn timestamp, replay attack, pickle serialization và chuỗi exploit trong tiến trình con độc lập.
+    - Toàn bộ suite đạt **394/394 tests PASS (100%)**, vượt qua toàn bộ 12 gate validation và release gate.
+
+
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 62d7643 (Out-of-Process Host Boundary Provisioning & Loại bỏ Inspect/Mutable Env Fallback)
 
 - Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate `62d7643f4c8ef474fd065edb1c026fa09fdb10d7` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):

@@ -1555,32 +1555,386 @@ class ReviewerDeliveryChannel:
 
 
 @dataclass(frozen=True)
-class HostBoundaryTicket:
-    """Cryptographic authorization ticket for host boundary channel provisioning.
-    Created exclusively by trusted external host authority out-of-process.
-    Candidate workers in-process cannot forge or bootstrap tickets fail-closed.
+class HostBoundaryTicketIssuerCapability:
+    """Unforgeable cryptographic capability issued exclusively by HostBoundaryTicketIssuer.
+    Confers authority to provision host boundary channel.
     """
-    ticket_id: str
-    host_token_hash: str
+    capability_id: str
+    issuer_name: str
+    authority_id: int
     created_at: float
-    signature: str = ""
-    role: str = "HostBoundaryTicket"
+    signature: str
+    role: str = "HostBoundaryTicketIssuer"
+    ticket_id: str = ""
 
     def __post_init__(self) -> None:
-        for field_name in ("ticket_id", "host_token_hash", "signature"):
+        for field_name in ("capability_id", "issuer_name", "signature"):
             val = getattr(self, field_name, None)
             if not isinstance(val, str) or not val.strip() or val != val.strip():
                 raise ProtocolViolationError(
-                    f"HostBoundaryTicket field {field_name!r} must be non-empty unpadded string"
+                    f"HostBoundaryTicketIssuerCapability field {field_name!r} must be non-empty unpadded string"
                 )
-        if self.role != "HostBoundaryTicket":
+        if self.role != "HostBoundaryTicketIssuer":
             raise ProtocolViolationError(
-                f"HostBoundaryTicket role must be 'HostBoundaryTicket'; got {self.role!r}"
+                f"HostBoundaryTicketIssuerCapability role must be 'HostBoundaryTicketIssuer'; got {self.role!r}"
             )
-        if not isinstance(self.created_at, (int, float)) or self.created_at < 0:
+        if type(self.created_at) is bool or not isinstance(self.created_at, (int, float)) or self.created_at < 0:
             raise ProtocolViolationError(
-                "HostBoundaryTicket created_at must be non-negative int or float"
+                "HostBoundaryTicketIssuerCapability created_at must be non-negative int or float"
             )
+        if self.ticket_id:
+            if not isinstance(self.ticket_id, str) or not self.ticket_id.strip() or self.ticket_id != self.ticket_id.strip():
+                raise ProtocolViolationError(
+                    "HostBoundaryTicketIssuerCapability ticket_id must be non-empty unpadded string when provided"
+                )
+
+
+class HostBoundaryTicket:
+    """Opaque cryptographic authorization ticket for host boundary channel provisioning.
+    Created exclusively by trusted external host authority out-of-process.
+    Candidate workers in-process cannot construct, forge, subclass, or replay tickets fail-closed.
+    """
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        raise ProtocolViolationError(
+            "Caller-selected or direct construction of HostBoundaryTicket by in-process caller is forbidden fail-closed; "
+            "host boundary ticket must be issued by trusted external host authority"
+        )
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        raise ProtocolViolationError(
+            f"Subclassing HostBoundaryTicket in module {cls.__module__!r} is strictly forbidden fail-closed; "
+            "host boundary ticket can only be created by trusted external host authority"
+        )
+
+    def __reduce__(self) -> None:
+        raise ProtocolViolationError("Serialization/deserialization of HostBoundaryTicket is strictly forbidden fail-closed")
+
+    @classmethod
+    def _create_authenticated(
+        cls,
+        ticket_id: str,
+        host_token_hash: str,
+        created_at: float,
+        signature: str,
+        port: int,
+        authkey_hash: str,
+        issuer: 'HostBoundaryTicketIssuer',
+        issuer_capability: HostBoundaryTicketIssuerCapability,
+    ) -> 'HostBoundaryTicket':
+        instance = object.__new__(cls)
+        object.__setattr__(instance, "_ticket_id", ticket_id)
+        object.__setattr__(instance, "_host_token_hash", host_token_hash)
+        object.__setattr__(instance, "_created_at", created_at)
+        object.__setattr__(instance, "_signature", signature)
+        object.__setattr__(instance, "_port", port)
+        object.__setattr__(instance, "_authkey_hash", authkey_hash)
+        object.__setattr__(instance, "_role", "HostBoundaryTicket")
+        object.__setattr__(instance, "_issuer", issuer)
+        object.__setattr__(instance, "_issuer_capability", issuer_capability)
+        object.__setattr__(instance, "_consumed", False)
+        object.__setattr__(instance, "_lock", threading.Lock())
+        object.__setattr__(instance, "_initialized", True)
+        return instance
+
+    @property
+    def ticket_id(self) -> str:
+        return getattr(self, "_ticket_id", "")
+
+    @property
+    def host_token_hash(self) -> str:
+        return getattr(self, "_host_token_hash", "")
+
+    @property
+    def created_at(self) -> float:
+        return getattr(self, "_created_at", 0.0)
+
+    @property
+    def signature(self) -> str:
+        return getattr(self, "_signature", "")
+
+    def __repr__(self) -> str:
+        tid = getattr(self, "_ticket_id", "uninitialized")
+        return f"<HostBoundaryTicket ticket_id={tid!r}>"
+
+    @property
+    def role(self) -> str:
+        return getattr(self, "_role", "HostBoundaryTicket")
+
+    @property
+    def port(self) -> Optional[int]:
+        return getattr(self, "_port", None)
+
+    @property
+    def authkey_hash(self) -> Optional[str]:
+        return getattr(self, "_authkey_hash", None)
+
+    @property
+    def authority_id(self) -> Optional[int]:
+        issuer = getattr(self, "_issuer", None)
+        return id(issuer) if issuer is not None else None
+
+    @property
+    def issuer_capability(self) -> Optional[HostBoundaryTicketIssuerCapability]:
+        return getattr(self, "_issuer_capability", None)
+
+    def __getattr__(self, name: str) -> Any:
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if getattr(self, "_initialized", False):
+            raise AttributeError("Host boundary ticket is immutable; setting attributes forbidden fail-closed")
+        super().__setattr__(name, value)
+
+    def _consume_for_provisioning(self, target_cls: Any, port: int, authkey: bytes) -> None:
+        if target_cls is not HostBoundaryChannel:
+            raise ProtocolViolationError(
+                "HostBoundaryTicket can only be consumed by HostBoundaryChannel fail-closed"
+            )
+        lock = getattr(self, "_lock", None)
+        if lock is None or not getattr(self, "_initialized", False):
+            raise ProtocolViolationError(
+                "Uninitialized or forged HostBoundaryTicket cannot be consumed fail-closed"
+            )
+        with lock:
+            if getattr(self, "_consumed", False):
+                raise ProtocolViolationError(
+                    "Host boundary ticket has already been consumed; single-use ticket cannot be reused fail-closed"
+                )
+            issuer = getattr(self, "_issuer", None)
+            if issuer is None or not isinstance(issuer, HostBoundaryTicketIssuer):
+                raise ProtocolViolationError(
+                    "HostBoundaryTicket provenance invalid; missing trusted HostBoundaryTicketIssuer fail-closed"
+                )
+            issuer.verify_and_consume_ticket(self, port=port, authkey=authkey)
+            object.__setattr__(self, "_consumed", True)
+
+
+class HostBoundaryTicketIssuer:
+    """Host-owned issuer capable of minting HostBoundaryTicket authorization tokens.
+    Operates outside the candidate worker boundary with a private host token/secret.
+    Direct construction or access by in-process candidate caller without valid host token is strictly forbidden fail-closed.
+    """
+    _instance: Optional['HostBoundaryTicketIssuer'] = None
+    _lock = threading.RLock()
+
+    def __init__(
+        self,
+        host_token: Optional[str] = None,
+        _internal_token: Optional[Any] = None,
+    ) -> None:
+        effective_token = _internal_token if _internal_token is not None else host_token
+        if not effective_token or not isinstance(effective_token, (str, bytes)):
+            raise ProtocolViolationError(
+                "Direct construction of HostBoundaryTicketIssuer by in-process caller is forbidden fail-closed; "
+                "host ticket issuer authority is managed exclusively by trusted host boundary"
+            )
+        clean = (
+            effective_token.strip()
+            if isinstance(effective_token, str)
+            else effective_token.decode("utf-8", errors="replace").strip()
+        )
+        if len(clean) < 32:
+            raise ProtocolViolationError(
+                "host_token must be non-empty string with at least 32 characters fail-closed"
+            )
+        self._secret: bytes = clean.encode("utf-8")
+        self._host_token_hash: str = hashlib.sha256(self._secret).hexdigest()
+        self._issued_tickets: Set[str] = set()
+        self._consumed_tickets: Set[str] = set()
+        self._issued_capabilities: Set[str] = set()
+        self._consumed_capabilities: Set[str] = set()
+        self._lock = threading.RLock()
+
+    @classmethod
+    def get_default_host_issuer(
+        cls, _internal_token: Optional[Any] = None
+    ) -> 'HostBoundaryTicketIssuer':
+        """Retrieve host ticket issuer for backward-compatible test fixtures / harness.
+        Managed exclusively by trusted host boundary out-of-process.
+        Direct access or bootstrap by in-process candidate caller without valid token is strictly forbidden fail-closed.
+        """
+        if not _internal_token or not isinstance(_internal_token, (str, bytes)):
+            raise ProtocolViolationError(
+                "Access to host ticket issuer by in-process candidate caller is strictly forbidden fail-closed; "
+                "host ticket issuer authority operates exclusively out-of-process"
+            )
+        clean = (
+            _internal_token.strip()
+            if isinstance(_internal_token, str)
+            else _internal_token.decode("utf-8", errors="replace").strip()
+        )
+        if len(clean) < 32:
+            raise ProtocolViolationError("Invalid internal host token fail-closed")
+        if not _is_valid_host_boundary_capability(_internal_token):
+            raise ProtocolViolationError(
+                "Access to host ticket issuer is forbidden fail-closed: "
+                "no valid out-of-process host boundary capability configured in environment"
+            )
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = cls(_internal_token=_internal_token)
+            else:
+                if not hmac.compare_digest(cls._instance._secret, clean.encode("utf-8")):
+                    raise ProtocolViolationError(
+                        "Access to host ticket issuer with invalid token rejected fail-closed"
+                    )
+            return cls._instance
+
+    @classmethod
+    def _reset_for_testing(cls, _internal_token: Optional[Any] = None) -> None:
+        """Reset the singleton instance for isolated test executions."""
+        if not _internal_token or not isinstance(_internal_token, (str, bytes)):
+            raise ProtocolViolationError("Direct reset of HostBoundaryTicketIssuer by in-process caller is forbidden fail-closed")
+        with cls._lock:
+            if cls._instance is not None:
+                clean = (
+                    _internal_token.strip()
+                    if isinstance(_internal_token, str)
+                    else _internal_token.decode("utf-8", errors="replace").strip()
+                )
+                if not hmac.compare_digest(cls._instance._secret, clean.encode("utf-8")):
+                    raise ProtocolViolationError("Reset of HostBoundaryTicketIssuer with invalid token rejected fail-closed")
+            cls._instance = None
+
+    def __reduce__(self) -> None:
+        raise ProtocolViolationError("Serialization/deserialization of HostBoundaryTicketIssuer is strictly forbidden fail-closed")
+
+    def _sign_ticket(self, ticket_id: str, port: int, authkey_hash: str, created_at: float) -> str:
+        payload = f"HOST_BOUNDARY_TICKET:{ticket_id}:{port}:{authkey_hash}:{self._host_token_hash}:{id(self)}:{created_at}".encode("utf-8")
+        return hmac.new(self._secret, payload, hashlib.sha256).hexdigest()
+
+    def _sign_issuer_capability(self, cap_id: str, created_at: float, ticket_id: str) -> str:
+        payload = f"HOST_TICKET_CAP:{cap_id}:HostBoundaryTicketIssuer:{id(self)}:{created_at}:{ticket_id}".encode("utf-8")
+        return hmac.new(self._secret, payload, hashlib.sha256).hexdigest()
+
+    def issue_ticket(
+        self,
+        port: int,
+        authkey: bytes,
+        *,
+        _internal_token: Optional[Any] = None,
+    ) -> HostBoundaryTicket:
+        """Mint an authentic HostBoundaryTicket bound to unforgeable issuer capability and port/authkey.
+        Single-use: cannot replay ticket fail-closed.
+        """
+        if not isinstance(port, int) or port <= 0 or port > 65535:
+            raise ProtocolViolationError("Invalid port fail-closed")
+        if not isinstance(authkey, bytes) or len(authkey) < 16:
+            raise ProtocolViolationError("Invalid authkey fail-closed")
+        if not _internal_token or not isinstance(_internal_token, (str, bytes)):
+            raise ProtocolViolationError(
+                "Ticket issuance requires authentic host token fail-closed; "
+                "in-process caller cannot mint host boundary tickets"
+            )
+        clean = (
+            _internal_token.strip()
+            if isinstance(_internal_token, str)
+            else _internal_token.decode("utf-8", errors="replace").strip()
+        )
+        if not hmac.compare_digest(self._secret, clean.encode("utf-8")):
+            raise ProtocolViolationError("Invalid internal token for ticket issuance fail-closed")
+
+        # Verify token with out-of-process host boundary daemon at (port, authkey)
+        try:
+            from multiprocessing.connection import Client
+            conn = Client(("127.0.0.1", port), authkey=authkey)
+            conn.send(self._secret)
+            daemon_verified = conn.recv()
+            conn.close()
+            if daemon_verified is not True:
+                raise ProtocolViolationError(
+                    "Host ticket issuance rejected: internal token is not authentic to host boundary daemon fail-closed"
+                )
+        except ProtocolViolationError:
+            raise
+        except Exception as e:
+            raise ProtocolViolationError(
+                f"Failed to verify ticket against host boundary daemon at port {port}: {e} fail-closed"
+            ) from e
+
+        ticket_id = f"ticket_hbound_{secrets.token_hex(16)}"
+        created_at = time.time()
+        authkey_hash = hashlib.sha256(authkey).hexdigest()
+        cap_id = f"cap_ticket_issuer_{secrets.token_hex(16)}"
+
+        cap_sig = self._sign_issuer_capability(cap_id, created_at, ticket_id)
+        capability = HostBoundaryTicketIssuerCapability(
+            capability_id=cap_id,
+            issuer_name="HostBoundaryTicketIssuer",
+            authority_id=id(self),
+            created_at=created_at,
+            signature=cap_sig,
+            ticket_id=ticket_id,
+        )
+        ticket_sig = self._sign_ticket(ticket_id, port, authkey_hash, created_at)
+
+        with self._lock:
+            self._issued_tickets.add(ticket_id)
+            self._issued_capabilities.add(cap_id)
+
+        return HostBoundaryTicket._create_authenticated(
+            ticket_id=ticket_id,
+            host_token_hash=self._host_token_hash,
+            created_at=created_at,
+            signature=ticket_sig,
+            port=port,
+            authkey_hash=authkey_hash,
+            issuer=self,
+            issuer_capability=capability,
+        )
+
+
+    def verify_and_consume_ticket(
+        self, ticket: HostBoundaryTicket, port: int, authkey: bytes
+    ) -> None:
+        """Verify provenance, unforgeable cryptographic signature, port/authkey bindings,
+        and freshness of HostBoundaryTicket, and consume it single-use.
+        """
+        if ticket is None or not isinstance(ticket, HostBoundaryTicket):
+            raise ProtocolViolationError("Expected valid HostBoundaryTicket fail-closed")
+        if ticket.authority_id != id(self):
+            raise ProtocolViolationError(
+                "HostBoundaryTicket authority_id mismatch; foreign issuer rejected fail-closed"
+            )
+        if ticket.port != port:
+            raise ProtocolViolationError(
+                f"HostBoundaryTicket port binding mismatch: expected {ticket.port}, got {port} fail-closed"
+            )
+        authkey_hash = hashlib.sha256(authkey).hexdigest()
+        if ticket.authkey_hash != authkey_hash:
+            raise ProtocolViolationError(
+                "HostBoundaryTicket authkey binding mismatch fail-closed"
+            )
+        if abs(time.time() - ticket.created_at) > 300.0:
+            raise ProtocolViolationError(
+                "HostBoundaryTicket has expired; freshness violation fail-closed"
+            )
+        expected_sig = self._sign_ticket(ticket.ticket_id, port, authkey_hash, ticket.created_at)
+        if not hmac.compare_digest(ticket.signature, expected_sig):
+            raise ProtocolViolationError(
+                "HostBoundaryTicket cryptographic signature mismatch; forged provenance rejected fail-closed"
+            )
+        cap = ticket.issuer_capability
+        if cap is None or not isinstance(cap, HostBoundaryTicketIssuerCapability):
+            raise ProtocolViolationError("HostBoundaryTicket missing valid HostBoundaryTicketIssuerCapability fail-closed")
+        if cap.authority_id != id(self) or cap.ticket_id != ticket.ticket_id:
+            raise ProtocolViolationError("HostBoundaryTicket capability binding mismatch fail-closed")
+        expected_cap_sig = self._sign_issuer_capability(cap.capability_id, cap.created_at, ticket.ticket_id)
+        if not hmac.compare_digest(cap.signature, expected_cap_sig):
+            raise ProtocolViolationError("HostBoundaryTicket capability signature mismatch fail-closed")
+
+        with self._lock:
+            if ticket.ticket_id in self._consumed_tickets:
+                raise ProtocolViolationError(
+                    f"HostBoundaryTicket {ticket.ticket_id!r} has already been consumed; single-use replay rejected fail-closed"
+                )
+            if ticket.ticket_id not in self._issued_tickets:
+                raise ProtocolViolationError(
+                    f"HostBoundaryTicket {ticket.ticket_id!r} was not issued by this host authority fail-closed"
+                )
+            self._consumed_tickets.add(ticket.ticket_id)
+            self._consumed_capabilities.add(cap.capability_id)
 
 
 class HostBoundaryChannel:
@@ -1593,6 +1947,7 @@ class HostBoundaryChannel:
     _port: Optional[int] = None
     _authkey: Optional[bytes] = None
     _started: bool = False
+    _consumed_ticket_ids: Set[str] = set()
 
     @classmethod
     def provision_channel(
@@ -1621,6 +1976,39 @@ class HostBoundaryChannel:
             if not isinstance(authkey, bytes) or len(authkey) < 16:
                 raise ProtocolViolationError("Invalid host boundary authkey fail-closed")
 
+            # Verify that ticket has a valid trusted HostBoundaryTicketIssuer
+            issuer = getattr(host_ticket, "_issuer", None)
+            if issuer is None or not isinstance(issuer, HostBoundaryTicketIssuer):
+                raise ProtocolViolationError(
+                    "HostBoundaryTicket provenance invalid; missing trusted HostBoundaryTicketIssuer fail-closed"
+                )
+
+            # Verify that the ticket issuer possesses the authentic host secret accepted by the daemon at (port, authkey)
+            try:
+                from multiprocessing.connection import Client
+                conn = Client(("127.0.0.1", port), authkey=authkey)
+                conn.send(issuer._secret)
+                daemon_verified = conn.recv()
+                conn.close()
+                if daemon_verified is not True:
+                    raise ProtocolViolationError(
+                        "HostBoundaryTicket issuer secret was rejected by out-of-process host boundary daemon fail-closed"
+                    )
+            except ProtocolViolationError:
+                raise
+            except Exception as e:
+                raise ProtocolViolationError(
+                    f"Failed to verify HostBoundaryTicket against host boundary daemon at port {port}: {e} fail-closed"
+                ) from e
+
+            # Consume and verify ticket via host issuer / ticket mechanism fail-closed
+            host_ticket._consume_for_provisioning(cls, port=port, authkey=authkey)
+            if host_ticket.ticket_id in cls._consumed_ticket_ids:
+                raise ProtocolViolationError(
+                    f"HostBoundaryTicket {host_ticket.ticket_id!r} has already been consumed by channel fail-closed"
+                )
+            cls._consumed_ticket_ids.add(host_ticket.ticket_id)
+
             cls._cleanup_process()
             cls._port = port
             cls._authkey = authkey
@@ -1628,6 +2016,15 @@ class HostBoundaryChannel:
             cls._started = True
             if proc is not None:
                 atexit.register(cls._cleanup_process)
+
+    @classmethod
+    def _reset_for_testing(cls, _internal_token: Optional[Any] = None) -> None:
+        """Reset channel state for isolated testing."""
+        if not _is_valid_host_boundary_capability(_internal_token):
+            raise ProtocolViolationError("Direct reset of HostBoundaryChannel by in-process caller is forbidden fail-closed")
+        with cls._lock:
+            cls._cleanup_process()
+            cls._consumed_ticket_ids.clear()
 
     @classmethod
     def start_host_boundary(

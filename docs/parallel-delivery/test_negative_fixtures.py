@@ -93,6 +93,8 @@ from delivery_engine import (  # noqa: E402
     KeyStoreHostIssuerCapability,
     KeyStoreHostIssuer,
     KeyStoreHostHandoff,
+    HostBoundaryTicketIssuerCapability,
+    HostBoundaryTicketIssuer,
     HostBoundaryTicket,
     HostBoundaryChannel,
     DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH,
@@ -168,12 +170,8 @@ def _launch_test_host_boundary_daemon(host_token: str) -> tuple[int, bytes, subp
     return int(port_line.strip()), effective_authkey, proc
 
 _h_port, _h_authkey, _h_proc = _launch_test_host_boundary_daemon(_HOST_BOUNDARY_TOKEN)
-_host_ticket = HostBoundaryTicket(
-    ticket_id=secrets.token_hex(16),
-    host_token_hash=hashlib.sha256(_HOST_BOUNDARY_TOKEN.encode("utf-8")).hexdigest(),
-    created_at=time.time(),
-    signature=secrets.token_hex(32),
-)
+_host_ticket_issuer = HostBoundaryTicketIssuer(_internal_token=_HOST_BOUNDARY_TOKEN)
+_host_ticket = _host_ticket_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
 HostBoundaryChannel.provision_channel(_h_port, _h_authkey, host_ticket=_host_ticket, proc=_h_proc)
 
 _test_host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
@@ -11576,15 +11574,11 @@ print("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS")
 import sys, os
 from pathlib import Path
 sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
-from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
+from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, HostBoundaryTicketIssuer, ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
 
 # Host provisions channel endpoint/auth via host mechanism in child process
-child_ticket = HostBoundaryTicket(
-    ticket_id='{_host_ticket.ticket_id}',
-    host_token_hash='{_host_ticket.host_token_hash}',
-    created_at={_host_ticket.created_at},
-    signature='{_host_ticket.signature}',
-)
+child_issuer = HostBoundaryTicketIssuer(_internal_token='{_HOST_BOUNDARY_TOKEN}')
+child_ticket = child_issuer.issue_ticket({_h_port}, {_h_authkey!r}, _internal_token='{_HOST_BOUNDARY_TOKEN}')
 HostBoundaryChannel.provision_channel({_h_port}, {_h_authkey!r}, host_ticket=child_ticket)
 
 # Positive control: authentic host handoff from trusted host issuer successfully provisions boundary
@@ -13274,6 +13268,18 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    assert False, 'Direct provision_channel without host ticket must fail closed'\n"
             "except ProtocolViolationError:\n"
             "    pass\n"
+            "try:\n"
+            "    from delivery_engine import HostBoundaryTicket\n"
+            "    HostBoundaryTicket(ticket_id='fake', host_token_hash='0'*64, created_at=0.0, signature='fake')\n"
+            "    assert False, 'Direct HostBoundaryTicket creation must fail closed'\n"
+            "except ProtocolViolationError:\n"
+            "    pass\n"
+            "try:\n"
+            "    from delivery_engine import HostBoundaryTicketIssuer\n"
+            "    HostBoundaryTicketIssuer.get_default_host_issuer(_internal_token=attacker_token)\n"
+            "    assert False, 'HostBoundaryTicketIssuer without host secret must fail closed'\n"
+            "except ProtocolViolationError:\n"
+            "    pass\n"
             "bootstrap_accepted = False\n"
             "try:\n"
             "    cand_iss = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=attacker_token)\n"
@@ -13296,6 +13302,141 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("MAIN_BOOTSTRAP_REJECTED_PASS", proc_main.stdout)
 
         os.environ.pop("ORCA_HOST_BOUNDARY_TOKEN", None)
+
+    def test_18_finding_sol_host_boundary_ticket_forgery_and_replay_rejection(self):
+        """18. Sol Audit Finding Remediation: HostBoundaryTicket forgery and replay rejection.
+        HostBoundaryTicket cannot be forged, constructed directly, subclassed, deserialized,
+        or replayed fail-closed; HostBoundaryChannel strictly authenticates ticket provenance.
+        """
+        # 18a. Sol counterexample: Direct construction of HostBoundaryTicket fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx_dir:
+            HostBoundaryTicket(
+                ticket_id="candidate-ticket",
+                host_token_hash="0" * 64,
+                created_at=0.0,
+                signature="candidate-signature",
+            )
+        self.assertIn("Caller-selected or direct construction of HostBoundaryTicket by in-process caller is forbidden fail-closed", str(ctx_dir.exception))
+
+        # 18b. Subclassing HostBoundaryTicket fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx_sub:
+            class ForgedHostBoundaryTicket(HostBoundaryTicket):
+                pass
+        self.assertIn("Subclassing HostBoundaryTicket", str(ctx_sub.exception))
+
+        # 18c. Bypass via object.__new__ with Sol counterexample parameters rejected fail-closed
+        raw_ticket = object.__new__(HostBoundaryTicket)
+        object.__setattr__(raw_ticket, "_ticket_id", "candidate-ticket")
+        object.__setattr__(raw_ticket, "_host_token_hash", "0" * 64)
+        object.__setattr__(raw_ticket, "_created_at", 0.0)
+        object.__setattr__(raw_ticket, "_signature", "candidate-signature")
+        with self.assertRaises(ProtocolViolationError) as ctx_consume:
+            raw_ticket._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+        self.assertIn("Uninitialized or forged HostBoundaryTicket cannot be consumed fail-closed", str(ctx_consume.exception))
+
+        # 18d. HostBoundaryTicketIssuer direct construction without valid host token fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx_iss:
+            HostBoundaryTicketIssuer()
+        self.assertIn("Direct construction of HostBoundaryTicketIssuer by in-process caller is forbidden fail-closed", str(ctx_iss.exception))
+
+        # 18e. HostBoundaryTicketIssuer rejects token shorter than 32 characters
+        with self.assertRaises(ProtocolViolationError) as ctx_short:
+            HostBoundaryTicketIssuer(_internal_token="short_token")
+        self.assertIn("at least 32 characters", str(ctx_short.exception))
+
+        # 18f. Ticket minted with attacker issuer rejected by provision_channel against authentic host daemon
+        child_att_code = (
+            f"import sys, secrets\n"
+            f"from pathlib import Path\n"
+            f"sys.path.insert(0, str(Path('docs/parallel-delivery').resolve()))\n"
+            f"from delivery_engine import HostBoundaryChannel, HostBoundaryTicketIssuer, ProtocolViolationError\n"
+            f"attacker_token = secrets.token_hex(32)\n"
+            f"attacker_issuer = HostBoundaryTicketIssuer(_internal_token=attacker_token)\n"
+            f"try:\n"
+            f"    attacker_ticket = attacker_issuer.issue_ticket({_h_port}, {_h_authkey!r}, _internal_token=attacker_token)\n"
+            f"    HostBoundaryChannel.provision_channel({_h_port}, {_h_authkey!r}, host_ticket=attacker_ticket)\n"
+            f"    assert False, 'Expected failure'\n"
+            f"except ProtocolViolationError as e:\n"
+            f"    assert ('Host ticket issuance rejected' in str(e) or 'HostBoundaryTicket issuer secret was rejected' in str(e)), str(e)\n"
+            f"sys.stdout.write('ATTACKER_DAEMON_REJECTED_PASS\\n')\n"
+        )
+        proc_att = subprocess.run(
+            [sys.executable, "-u", "-c", child_att_code],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc_att.returncode, 0, f"Child process failed: {proc_att.stderr}")
+        self.assertIn("ATTACKER_DAEMON_REJECTED_PASS", proc_att.stdout)
+
+        # 18g. Ticket with forged HMAC signature is rejected fail-closed
+        valid_issuer = HostBoundaryTicketIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
+        legit_ticket = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        object.__setattr__(legit_ticket, "_signature", "deadbeef" * 8)
+        with self.assertRaises(ProtocolViolationError) as ctx_sig:
+            legit_ticket._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+        self.assertIn("cryptographic signature mismatch", str(ctx_sig.exception))
+
+        # 18h. Ticket with port binding mismatch is rejected fail-closed
+        legit_ticket2 = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        with self.assertRaises(ProtocolViolationError) as ctx_port:
+            legit_ticket2._consume_for_provisioning(HostBoundaryChannel, _h_port + 1, _h_authkey)
+        self.assertIn("port binding mismatch", str(ctx_port.exception))
+
+        # 18i. Ticket with authkey binding mismatch is rejected fail-closed
+        legit_ticket3 = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        with self.assertRaises(ProtocolViolationError) as ctx_auth:
+            legit_ticket3._consume_for_provisioning(HostBoundaryChannel, _h_port, b"wrong_authkey_32b_length_bytes!")
+        self.assertIn("authkey binding mismatch", str(ctx_auth.exception))
+
+        # 18j. Ticket with expired timestamp (> 300s) is rejected fail-closed
+        legit_ticket4 = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        object.__setattr__(legit_ticket4, "_created_at", time.time() - 301.0)
+        with self.assertRaises(ProtocolViolationError) as ctx_exp:
+            legit_ticket4._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+        self.assertIn("has expired", str(ctx_exp.exception))
+
+        # 18k. Single-use replay protection: consumed ticket cannot be reused fail-closed
+        legit_ticket5 = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        legit_ticket5._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+        self.assertTrue(getattr(legit_ticket5, "_consumed", False))
+        with self.assertRaises(ProtocolViolationError) as ctx_replay:
+            legit_ticket5._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+        self.assertIn("single-use ticket cannot be reused fail-closed", str(ctx_replay.exception))
+
+        # 18l. Serialization/deserialization rejected fail-closed
+        import pickle
+        with self.assertRaises(ProtocolViolationError):
+            pickle.dumps(legit_ticket5)
+        with self.assertRaises(ProtocolViolationError):
+            pickle.dumps(valid_issuer)
+
+        # 18m. Fresh child process attempting full exploit chain with forged ticket is rejected fail-closed
+        child_forged_code = (
+            "import sys, secrets\n"
+            "from pathlib import Path\n"
+            "sys.path.insert(0, str(Path('docs/parallel-delivery').resolve()))\n"
+            "from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, HostBoundaryTicketIssuer, ProtocolViolationError\n"
+            "forged_accepted = False\n"
+            "try:\n"
+            "    raw_t = object.__new__(HostBoundaryTicket)\n"
+            "    object.__setattr__(raw_t, '_ticket_id', 'cand-sub-ticket')\n"
+            "    object.__setattr__(raw_t, '_host_token_hash', '0'*64)\n"
+            "    object.__setattr__(raw_t, '_created_at', 0.0)\n"
+            "    object.__setattr__(raw_t, '_signature', 'sig')\n"
+            "    HostBoundaryChannel.provision_channel(9999, b'authkey16bytes!!', host_ticket=raw_t)\n"
+            "    forged_accepted = True\n"
+            "except ProtocolViolationError:\n"
+            "    forged_accepted = False\n"
+            "assert forged_accepted is False, 'FORGED_TICKET_ACCEPTED must be False'\n"
+            "sys.stdout.write('FORGED_TICKET_REJECTED_PASS\\n')\n"
+        )
+        proc_sub = subprocess.run(
+            [sys.executable, "-u", "-c", child_forged_code],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc_sub.returncode, 0, f"Child process failed: {proc_sub.stderr}")
+        self.assertIn("FORGED_TICKET_REJECTED_PASS", proc_sub.stdout)
 
 
 if __name__ == "__main__":

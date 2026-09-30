@@ -402,3 +402,23 @@ egister_pinned_public_key từ chối caller in-process fail-closed với Protoc
 4. **Finding 4 — Fresh-Subprocess Assertions Khóa Chặt Full Exploit Chain**:
    - Bổ sung 3 fixture phân biệt 17h, 17i, 17j trong `test_17` bao gồm các assertion trong tiến trình con độc lập từ chối cả giả mạo biến môi trường endpoint (`ENV_ENDPOINT_ACCEPTED == False`) lẫn bootstrap thẩm quyền từ caller `__main__` (`MAIN_START_ACCEPTED == False`, `CANDIDATE_BOOTSTRAP_ACCEPTED == False`, `TrustedKeyStore` rỗng).
 5. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **393/393 tests PASS (100%)**, chạy hoàn hảo trên toàn bộ 12 gate validation và release gate.
+
+## 24. Khắc phục triệt để phát hiện Sol Audit trên 0032962 (Unforgeable HostBoundaryTicket, Provenance Verification qua Out-of-Process Daemon, HMAC Capability Binding & Single-Use Replay Protection)
+
+Đợt rà soát độc lập trên candidate SHA `0032962130d21dc9b2ddc5f51260cfffb40e9acd` (approved base `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nhận finding actionable:
+`HostBoundaryTicket` là dataclass công khai, `provision_channel()` chỉ kiểm tra isinstance/field shape rồi chấp nhận ticket tự tạo, không xác minh chữ ký, provenance, host-issued capability hoặc single-use; counterexample an toàn `HostBoundaryTicket(ticket_id='candidate-ticket', host_token_hash='0'*64, created_at=0.0, signature='candidate-signature')` với port/authkey hợp lệ đã làm `_started=True` (`FORGED_TICKET_ACCEPTED=True`).
+
+Biện pháp khắc phục triệt để:
+1. **Finding 1 — Vô hiệu hóa khởi tạo trực tiếp và kế thừa HostBoundaryTicket**:
+   - `HostBoundaryTicket` được chuyển thành lớp thẩm quyền bất biến; cấm khởi tạo trực tiếp bằng caller in-process (`__init__` ném `ProtocolViolationError`), cấm kế thừa (`__init_subclass__` ném `ProtocolViolationError`), và cấm serialize/deserialize (`__reduce__` ném `ProtocolViolationError`). Chỉ cho phép khởi tạo nội bộ thông qua factory method có xác thực `_create_authenticated`.
+2. **Finding 2 — Ràng buộc chữ ký mật mã HMAC và năng lực HostBoundaryTicketIssuerCapability**:
+   - `HostBoundaryTicketIssuer` độc lập quản lý secret ngoài tiến trình, cấp phát `HostBoundaryTicket` đi kèm `HostBoundaryTicketIssuerCapability` có chữ ký HMAC-SHA256 liên kết chặt với `ticket_id`, `port`, `authkey_hash`, authority id, và timestamp kiểm tra độ tươi (freshness window 300s).
+   - Phương thức `issue_ticket` yêu cầu token nội bộ hợp lệ và xác thực tính xác thực của token với daemon máy chủ ngoài tiến trình trước khi cấp vé.
+3. **Finding 3 — Xác minh Provenance hai chiều qua Out-of-Process Host Daemon trong provision_channel**:
+   - `HostBoundaryChannel.provision_channel` bắt buộc ticket phải có `_issuer` thuộc kiểu `HostBoundaryTicketIssuer`.
+   - Kết nối trực tiếp tới daemon máy chủ tại `(127.0.0.1, port)` với `authkey` để xác minh secret của issuer trước khi chấp nhận cấu hình kênh; từ chối fail-closed mọi issuer tự sinh hoặc token không khớp (`FORGED_TICKET_ACCEPTED == False`).
+4. **Finding 4 — Chống Replay Ticket đơn dụng (Single-Use Consumption Protection)**:
+   - Áp dụng kiểm tra đơn dụng đa tầng: `HostBoundaryTicket` tự đánh dấu `_consumed = True` khi được tiêu thụ, `HostBoundaryTicketIssuer` ghi nhận và từ chối các ticket đã dùng trong `_consumed_tickets`, và `HostBoundaryChannel` duy trì tập `_consumed_ticket_ids` nhằm ngăn chặn tuyệt đối mọi nỗ lực tái sử dụng ticket đã cấp.
+5. **Finding 5 — Bộ fixture kiểm thử chuyên sâu test_18**:
+   - Bổ sung `test_18_finding_sol_host_boundary_ticket_forgery_and_replay_rejection` với 13 trường hợp kiểm thử (18a-18m) bao quát từ chối trực tiếp, kế thừa, bypass bằng `object.__new__`, issuer giả mạo, can thiệp chữ ký, sai cổng/authkey, hết hạn timestamp, replay attack, pickle serialization và chuỗi exploit trong tiến trình con độc lập.
+6. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **394/394 tests PASS (100%)**, chạy hoàn hảo trên toàn bộ 12 gate validation và release gate.

@@ -1231,6 +1231,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "3_atomic_verify_and_consume_capability_preventing_concurrent_double_issuance": "RESOLVED",
                     "4_discriminating_negative_and_concurrency_fixtures_verified": "RESOLVED",
                 },
+                "sol_lead_audit_0032962": {
+                    "1_host_boundary_ticket_direct_construction_and_subclassing_forbidden_fail_closed": "RESOLVED",
+                    "2_cryptographic_capability_hmac_binding_and_freshness_enforced": "RESOLVED",
+                    "3_ticket_provenance_verified_against_out_of_process_host_boundary_daemon": "RESOLVED",
+                    "4_single_use_ticket_consumption_and_replay_rejection_fail_closed": "RESOLVED",
+                    "5_discriminating_forgery_and_replay_negative_fixtures_verified": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},
