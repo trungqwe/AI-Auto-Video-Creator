@@ -1310,7 +1310,6 @@ class ControlCapability:
 
 
 
-DEFAULT_TEST_REVIEWER_SECRET = "test_reviewer_secret_32b_hex_default!"
 
 
 @dataclass(frozen=True)
@@ -1496,7 +1495,12 @@ class ReviewerSessionBoundary:
 
     def __init__(self, reviewer_secret: Optional[str] = None) -> None:
         self._boundary_secret: bytes = secrets.token_bytes(32)
-        self._reviewer_secret: bytes = (reviewer_secret or DEFAULT_TEST_REVIEWER_SECRET).encode("utf-8")
+        if reviewer_secret is not None:
+            if not isinstance(reviewer_secret, str) or not reviewer_secret.strip():
+                raise ProtocolViolationError("reviewer_secret must be a non-empty string when provided")
+            self._reviewer_secret: Optional[bytes] = reviewer_secret.strip().encode("utf-8")
+        else:
+            self._reviewer_secret: Optional[bytes] = None
         self._channels: Dict[str, ReviewerDeliveryChannel] = {}
         self._minted_proofs: Dict[str, ReviewerSessionProof] = {}
         self._consumed_proofs: Set[str] = set()
@@ -1508,8 +1512,57 @@ class ReviewerSessionBoundary:
             if cls._default is None:
                 cls._default = cls(reviewer_secret=reviewer_secret)
             elif reviewer_secret is not None:
-                cls._default._reviewer_secret = reviewer_secret.encode("utf-8")
+                raise ProtocolViolationError(
+                    "Cannot mutate reviewer credential of already initialized ReviewerSessionBoundary; "
+                    "singleton credential replacement forbidden fail-closed"
+                )
             return cls._default
+
+    def inject_reviewer_credential(self, reviewer_secret: str) -> None:
+        """Inject reviewer-owned credential from trusted session bootstrap.
+        Cannot be accessed or modified by Control plane or callers once set.
+        """
+        if not reviewer_secret or not isinstance(reviewer_secret, str) or not reviewer_secret.strip():
+            raise ProtocolViolationError(
+                "reviewer_secret is mandatory to bootstrap reviewer credential fail-closed"
+            )
+        with self._lock:
+            if self._reviewer_secret is not None:
+                raise ProtocolViolationError(
+                    "Reviewer credential already configured on ReviewerSessionBoundary; "
+                    "credential mutation or replacement forbidden fail-closed"
+                )
+            self._reviewer_secret = reviewer_secret.strip().encode("utf-8")
+
+    def bootstrap_reviewer_credential(self, reviewer_secret: str) -> None:
+        """Alias for inject_reviewer_credential for trusted reviewer session bootstrap."""
+        self.inject_reviewer_credential(reviewer_secret)
+
+    def bootstrap_reviewer_capability(
+        self,
+        delivery_task_id: str,
+        review_dispatch_id: str,
+        reviewer_secret: str,
+        orca_task_id: Optional[str] = None,
+        terminal_id: Optional[str] = None,
+        candidate_commit: Optional[str] = None,
+        reviewer_principal: str = "cx/gpt-5.6-sol",
+        harness: str = "Claude Code",
+        session_id: Optional[str] = None,
+    ) -> ReviewerCapability:
+        """Inject / claim ReviewerCapability directly from trusted reviewer session bootstrap."""
+        rev_ctx = self.create_reviewer_context(
+            delivery_task_id=delivery_task_id,
+            review_dispatch_id=review_dispatch_id,
+            orca_task_id=orca_task_id,
+            terminal_id=terminal_id,
+            candidate_commit=candidate_commit,
+            reviewer_principal=reviewer_principal,
+            harness=harness,
+            session_id=session_id,
+            reviewer_secret=reviewer_secret,
+        )
+        return self.claim_capability(rev_ctx)
 
     @classmethod
     def reset_default(cls) -> None:
@@ -1581,10 +1634,16 @@ class ReviewerSessionBoundary:
             raise ProtocolViolationError(
                 "Control authority cannot issue ReviewerSessionProof; separation of duties strictly separates Control from Reviewer"
             )
-        eff_secret = reviewer_secret if reviewer_secret is not None else DEFAULT_TEST_REVIEWER_SECRET
-        if not eff_secret or not isinstance(eff_secret, str):
-            raise ProtocolViolationError("reviewer_secret is mandatory to issue ReviewerSessionProof")
-        if not hmac.compare_digest(eff_secret.strip().encode("utf-8"), self._reviewer_secret):
+        if reviewer_secret is None or not isinstance(reviewer_secret, str) or not reviewer_secret.strip():
+            raise ProtocolViolationError(
+                "reviewer_secret is mandatory to issue ReviewerSessionProof; omitted secret rejected fail-closed"
+            )
+        if self._reviewer_secret is None:
+            raise ProtocolViolationError(
+                "Reviewer credential not configured on ReviewerSessionBoundary fail-closed; "
+                "trusted session bootstrap must inject reviewer credential before issuing session proofs"
+            )
+        if not hmac.compare_digest(reviewer_secret.strip().encode("utf-8"), self._reviewer_secret):
             raise ProtocolViolationError("Invalid reviewer secret; cannot issue ReviewerSessionProof fail-closed")
 
         clean_did = review_dispatch_id.strip() if isinstance(review_dispatch_id, str) else ""
@@ -1646,6 +1705,10 @@ class ReviewerSessionBoundary:
         session_id: Optional[str] = None,
         reviewer_secret: Optional[str] = None,
     ) -> ReviewerContext:
+        if reviewer_secret is None or not isinstance(reviewer_secret, str) or not reviewer_secret.strip():
+            raise ProtocolViolationError(
+                "reviewer_secret is mandatory to create ReviewerContext; omitted secret rejected fail-closed"
+            )
         proof = self.issue_session_proof(
             delivery_task_id=delivery_task_id,
             review_dispatch_id=review_dispatch_id,

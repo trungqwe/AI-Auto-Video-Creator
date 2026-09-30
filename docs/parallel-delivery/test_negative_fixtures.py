@@ -62,7 +62,6 @@ from delivery_engine import (  # noqa: E402
     _InternalReviewerMintToken,
     ReviewerSessionBoundary,
     ReviewerSessionProof,
-    DEFAULT_TEST_REVIEWER_SECRET,
     make_review_evidence,
     make_integration_evidence,
     MANDATORY_INTEGRATION_GATES,
@@ -79,6 +78,9 @@ from delivery_engine import (  # noqa: E402
     validate_task_traceability_and_readiness,
 )
 from validate import check_secret_scan, check_task_dag
+
+TEST_FIXTURE_REVIEWER_SECRET = "test_fixture_reviewer_secret_32b_hex!"
+
 
 
 class TestF1ExactContractBinding(unittest.TestCase):
@@ -263,6 +265,13 @@ class TestF4OrcaMappingAndLifecycle(unittest.TestCase):
         self.adapter.set_task_state("PD-PILOT-CONTROL", "ready")
         self.adapter.register_task_locks("PD-PILOT-CONTROL", ["LOCK-PARALLEL-REGISTRY"])
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        ReviewerSessionBoundary.reset_default()
     def _create_dispatch_helper(self, delivery_id="PD-PILOT-CONTROL", orca_task_id=None):
         if orca_task_id is None:
             self._dispatch_counter = getattr(self, "_dispatch_counter", 0) + 1
@@ -343,6 +352,7 @@ class TestF4OrcaMappingAndLifecycle(unittest.TestCase):
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         rev_ev = self.adapter.issue_review_evidence(delivery_id, rev_disp, self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap)
@@ -1443,6 +1453,13 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
         self.adapter.register_task_locks("TASK-A", ["R3-LOCK-EXCL"])
         self.adapter.register_task_locks("TASK-B", ["R3-LOCK-CAP"])
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        ReviewerSessionBoundary.reset_default()
     def test_r3_01_acquire_rejects_unregistered_authority_override(self):
         """1. Caller cannot grant implicit authority or override unregistered authority at acquire."""
         with self.assertRaises(LockLeaseError) as ctx:
@@ -1737,6 +1754,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
             delivery_task_id="TASK-A",
             review_dispatch_id=rev_disp,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         rev_ev = self.adapter.issue_review_evidence("TASK-A", rev_disp, self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap)
@@ -1874,6 +1892,13 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
         self.known_owners = {"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "CROSS-CUTTING-CONTRACT-OWNER"}
         self.known_requirements = {"QR-MNT-002", "QR-MNT-003", "QR-COMP-003", "FR-UI-001"}
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        ReviewerSessionBoundary.reset_default()
     def test_r4_01_per_live_allocation_fencing_concurrent_valid(self):
         """1. Positive control: capacity lease allocates isolated slots and concurrent valid fencing tokens."""
         lease_1 = self.mgr.acquire_lease("R4-LOCK-CAP", "TASK-A", "ctx-a", units=1)
@@ -2134,6 +2159,7 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
             delivery_task_id="TASK-A",
             review_dispatch_id=rev_disp,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         rev_ev = self.adapter.issue_review_evidence("TASK-A", rev_disp, self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap)
@@ -2938,7 +2964,11 @@ class TestSolRoundSixCounterexamples(unittest.TestCase):
         self.adapter.register_task_locks("TASK-A", ["R6-LOCK-EXCL"])
         self.adapter.register_task_locks("TASK-B", ["R6-LOCK-CAP4"])
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
     def tearDown(self):
+        ReviewerSessionBoundary.reset_default()
         SharedOrcaExecutionRegistry.reset_default()
 
     def _issue_valid_review_evidence(self, delivery_id, rev_disp_id, candidate_commit, verdict="ACCEPT", now=None):
@@ -2947,7 +2977,7 @@ class TestSolRoundSixCounterexamples(unittest.TestCase):
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=candidate_commit,
-            reviewer_secret=getattr(self, "reviewer_secret", DEFAULT_TEST_REVIEWER_SECRET),
+            reviewer_secret=getattr(self, "reviewer_secret", TEST_FIXTURE_REVIEWER_SECRET),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -6624,7 +6654,11 @@ class TestAstraRound18Remediation(unittest.TestCase):
         self.t0 = datetime.now(timezone.utc)
         self.lease = self.mgr.acquire_lease("LOCK-A18", self.delivery_id, self.intended_disp, lease_seconds=10, now=self.t0)
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
     def tearDown(self):
+        ReviewerSessionBoundary.reset_default()
         SharedOrcaExecutionRegistry.reset_default()
     def _issue_valid_review_evidence(self, delivery_id, rev_disp_id, candidate_commit, verdict="ACCEPT", now=None):
         boundary = ReviewerSessionBoundary.get_default()
@@ -6632,7 +6666,7 @@ class TestAstraRound18Remediation(unittest.TestCase):
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=candidate_commit,
-            reviewer_secret=getattr(self, "reviewer_secret", DEFAULT_TEST_REVIEWER_SECRET),
+            reviewer_secret=getattr(self, "reviewer_secret", TEST_FIXTURE_REVIEWER_SECRET),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -6743,6 +6777,7 @@ class TestAstraRound18Remediation(unittest.TestCase):
         st_int = self.adapter.handle_integration_gates(self.delivery_id, True, integration_evidence=int_ev)
         self.assertEqual(st_int, "integrated")
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
+
 
     # -------------------------------------------------------------------------
     # 2. Contradictory evidence aliases tests
@@ -6998,7 +7033,11 @@ class TestSolRound18Remediation(unittest.TestCase):
         self.adapter.set_task_authority(self.delivery_id, "granted")
         self.adapter.set_task_state(self.delivery_id, "ready")
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
     def tearDown(self):
+        ReviewerSessionBoundary.reset_default()
         p = Path(self.tmp_storage)
         if p.exists():
             try:
@@ -7012,7 +7051,7 @@ class TestSolRound18Remediation(unittest.TestCase):
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=candidate_commit,
-            reviewer_secret=getattr(self, "reviewer_secret", DEFAULT_TEST_REVIEWER_SECRET),
+            reviewer_secret=getattr(self, "reviewer_secret", TEST_FIXTURE_REVIEWER_SECRET),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -7363,7 +7402,11 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
         self.adapter.set_task_authority(self.delivery_id, "granted")
         self.adapter.set_task_state(self.delivery_id, "ready")
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
     def tearDown(self):
+        ReviewerSessionBoundary.reset_default()
         p = Path(self.tmp_storage)
         if p.exists():
             try:
@@ -7377,7 +7420,7 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=candidate_commit,
-            reviewer_secret=getattr(self, "reviewer_secret", DEFAULT_TEST_REVIEWER_SECRET),
+            reviewer_secret=getattr(self, "reviewer_secret", TEST_FIXTURE_REVIEWER_SECRET),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -7687,7 +7730,11 @@ class TestSolLeadReviewDa26686Remediation(unittest.TestCase):
         self.adapter.set_task_authority(self.delivery_id, "granted")
         self.adapter.set_task_state(self.delivery_id, "ready")
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
     def tearDown(self):
+        ReviewerSessionBoundary.reset_default()
         p = Path(self.tmp_storage)
         if p.exists():
             try:
@@ -7701,7 +7748,7 @@ class TestSolLeadReviewDa26686Remediation(unittest.TestCase):
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=candidate_commit,
-            reviewer_secret=getattr(self, "reviewer_secret", DEFAULT_TEST_REVIEWER_SECRET),
+            reviewer_secret=getattr(self, "reviewer_secret", TEST_FIXTURE_REVIEWER_SECRET),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -8044,7 +8091,11 @@ class TestSolLeadReview36092d0Remediation(unittest.TestCase):
         self.adapter.set_task_authority(self.delivery_id, "granted")
         self.adapter.set_task_state(self.delivery_id, "ready")
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
     def tearDown(self):
+        ReviewerSessionBoundary.reset_default()
         p = Path(self.tmp_storage)
         if p.exists():
             try:
@@ -8220,6 +8271,7 @@ class TestSolLeadReview36092d0Remediation(unittest.TestCase):
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         rev_cap = adapter.claim_reviewer_capability(rev_ctx)
         self.assertIsInstance(rev_cap, ReviewerCapability)
@@ -8306,6 +8358,7 @@ class TestSolLeadReview36092d0Remediation(unittest.TestCase):
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
 
@@ -8376,7 +8429,11 @@ class TestSolLeadAudit654860cRemediation(unittest.TestCase):
         self.adapter.set_task_authority(self.delivery_id, "granted")
         self.adapter.set_task_state(self.delivery_id, "ready")
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
     def tearDown(self):
+        ReviewerSessionBoundary.reset_default()
         p = Path(self.tmp_storage)
         if p.exists():
             try:
@@ -8603,6 +8660,7 @@ class TestSolLeadAudit654860cRemediation(unittest.TestCase):
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         rev_ev = self.adapter.issue_review_evidence(
@@ -8661,6 +8719,13 @@ class TestSolLeadAudit2f56bd3Remediation(unittest.TestCase):
         self.ea = self.adapter.evidence_authority
         self.t0 = datetime(2026, 9, 30, 10, 0, 0, tzinfo=timezone.utc)
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        ReviewerSessionBoundary.reset_default()
     def _advance_to_blocked(self, orca_id="orca_2f56bd3_01", disp_id="ctx_2f56bd3_01"):
         lease = self.mgr.acquire_lease("LOCK-REMED-2F56BD3", self.delivery_id, disp_id, now=self.t0)
         disp = self.adapter.create_dispatch(
@@ -8918,6 +8983,7 @@ class TestSolLeadAudit2f56bd3Remediation(unittest.TestCase):
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         rev_ev = self.ea.issue_review_evidence(
@@ -8980,6 +9046,13 @@ class TestSolLeadAudit982ed1eRemediation(unittest.TestCase):
         self.ea = self.adapter.evidence_authority
         self.t0 = datetime(2026, 9, 30, 10, 0, 0, tzinfo=timezone.utc)
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        ReviewerSessionBoundary.reset_default()
     def test_982ed1e_01_wildcard_control_capability_rejected_by_evidence_authority_integration_issuer(self):
         """1. Counterexample: Legitimate wildcard ControlCapability (delivery_task_id=None) rejected by EvidenceAuthority.issue_integration_evidence."""
         wildcard_cap = self.ea.issue_control_capability(self.control_secret, delivery_task_id=None)
@@ -9087,6 +9160,7 @@ class TestSolLeadAudit982ed1eRemediation(unittest.TestCase):
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         self.assertEqual(rev_cap.delivery_task_id, self.delivery_id)
@@ -9148,6 +9222,13 @@ class TestSolLeadAudit1f90e6cRemediation(unittest.TestCase):
         self.ea = self.adapter.evidence_authority
         self.t0 = datetime(2026, 9, 30, 11, 0, 0, tzinfo=timezone.utc)
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        ReviewerSessionBoundary.reset_default()
     def test_1f90e6c_01_task_scoped_control_capability_rejected_by_evidence_authority_review_issuer(self):
         """1. Counterexample: Task-scoped ControlCapability rejected fail-closed by EvidenceAuthority.issue_review_evidence."""
         ctrl_cap = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
@@ -9310,6 +9391,7 @@ class TestSolLeadAudit1f90e6cRemediation(unittest.TestCase):
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         rev_cap = self.ea.issue_reviewer_capability(
             self.delivery_id, rev_disp, self.candidate_commit, reviewer_context=rev_ctx
@@ -9394,7 +9476,11 @@ class TestSolLeadAuditEab4cabRemediation(unittest.TestCase):
         self.adapter.register_task_locks(self.delivery_id, ["LOCK-EAB4CAB-REMED"])
         self.ea = self.adapter.evidence_authority
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
     def tearDown(self):
+        ReviewerSessionBoundary.reset_default()
         SharedOrcaExecutionRegistry.reset_default()
 
     def _advance_to_review(self):
@@ -9565,6 +9651,7 @@ class TestSolLeadAuditEab4cabRemediation(unittest.TestCase):
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         self.assertIsInstance(rev_cap, ReviewerCapability)
@@ -9579,6 +9666,7 @@ class TestSolLeadAuditEab4cabRemediation(unittest.TestCase):
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
 
@@ -9696,6 +9784,7 @@ class TestSolLeadAuditEab4cabRemediation(unittest.TestCase):
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         self.assertIsInstance(rev_cap, ReviewerCapability)
@@ -9776,7 +9865,11 @@ class TestSolLeadAuditA189e50Remediation(unittest.TestCase):
         self.adapter.register_task_locks(self.delivery_id, ["LOCK-A189E50-REMED"])
         self.ea = self.adapter.evidence_authority
 
+        ReviewerSessionBoundary.reset_default()
+        self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
+        self.boundary = ReviewerSessionBoundary.get_default(reviewer_secret=self.reviewer_secret)
     def tearDown(self):
+        ReviewerSessionBoundary.reset_default()
         SharedOrcaExecutionRegistry.reset_default()
 
     def _advance_to_review(self):
@@ -9877,6 +9970,7 @@ class TestSolLeadAuditA189e50Remediation(unittest.TestCase):
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
 
         # First claim via context succeeds
@@ -9945,6 +10039,7 @@ class TestSolLeadAuditA189e50Remediation(unittest.TestCase):
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         cap = self.adapter.claim_reviewer_capability(rev_ctx)
         self.assertIsInstance(cap, ReviewerCapability)
@@ -9996,6 +10091,7 @@ class TestSolLeadAuditA189e50Remediation(unittest.TestCase):
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         cap = self.adapter.claim_reviewer_capability(rev_ctx)
         self.assertIsInstance(cap, ReviewerCapability)
@@ -10060,6 +10156,7 @@ class TestSolLeadAuditA189e50Remediation(unittest.TestCase):
             delivery_task_id=self.delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=self.candidate_commit,
+            reviewer_secret=self.reviewer_secret,
         )
         rev_cap = self.adapter.deliver_reviewer_capability(rev_ctx)
         self.assertIsInstance(rev_cap, ReviewerCapability)
@@ -10121,6 +10218,12 @@ class TestSolRemediationSeparationOfDuties(unittest.TestCase):
     5. Negative fixture: Dispatch creator cannot issue ACCEPT verdict or advance task to merge_queued without an authenticated reviewer claiming ReviewerCapability.
     6. Negative fixture: Mismatched terminal or Orca dispatch ID in ReviewerContext fails closed when claiming ReviewerCapability.
     7. Positive fixture: Authenticated independent reviewer context (cx/gpt-5.6-sol on Claude Code) successfully claims ReviewerCapability, issues ACCEPT verdict, and advances task to merge_queued.
+    8. Invariant: ReviewerSessionProof is strictly single-use; replayed proof and duplicated proof issuance are rejected.
+    9. Positive control: Authenticated independent reviewer boundary completes review ACCEPT, integration gates pass, and task reaches integrated.
+    10. Negative fixture: Omitted reviewer_secret fails closed, preventing ReviewerSessionProof minting and lifecycle advancement.
+    11. Negative fixture: Singleton secret replacement via get_default fails closed against active boundary.
+    12. Invariant: Trusted session bootstrap injects reviewer credential; subsequent replacement fails closed.
+    13. Invariant: delivery_engine does not define or export DEFAULT_TEST_REVIEWER_SECRET.
     """
 
     def setUp(self):
@@ -10557,3 +10660,180 @@ class TestSolRemediationSeparationOfDuties(unittest.TestCase):
         )
         self.assertEqual(st_int, "integrated")
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
+
+    def test_sod_10_omitted_reviewer_secret_fails_closed_preventing_proof_minting_and_lifecycle_advance(self):
+        """10. Negative fixture: Caller attempting to mint proof or context with omitted secret fails closed; task cannot advance."""
+        self._advance_to_review()
+        rev_disp_id = "ctx_sod_rev_10"
+        rev_env = make_execution_envelope(
+            self.delivery_id, rev_disp_id, phase="review",
+            orca_task_id="task_orca_sod_rev_10", now=self.t0 + timedelta(seconds=5)
+        )
+        res_id = self.adapter.create_review_dispatch(
+            self.delivery_id,
+            orca_task_id="task_orca_sod_rev_10",
+            candidate_commit=self.candidate_commit,
+            intended_dispatch_id=rev_disp_id,
+            dispatch_origin="dely dispatch",
+            execution_envelope=rev_env,
+            now=self.t0 + timedelta(seconds=5),
+        )
+
+        # 1. issue_session_proof with omitted secret (None) fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx1:
+            self.boundary.issue_session_proof(
+                self.delivery_id,
+                res_id,
+                reviewer_secret=None,
+            )
+        self.assertIn("reviewer_secret is mandatory", str(ctx1.exception))
+        self.assertIn("omitted secret rejected fail-closed", str(ctx1.exception))
+
+        # 2. issue_session_proof with empty/whitespace secret fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx2:
+            self.boundary.issue_session_proof(
+                self.delivery_id,
+                res_id,
+                reviewer_secret="   ",
+            )
+        self.assertIn("reviewer_secret is mandatory", str(ctx2.exception))
+
+        # 3. create_reviewer_context with omitted secret (None) fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx3:
+            self.boundary.create_reviewer_context(
+                delivery_task_id=self.delivery_id,
+                review_dispatch_id=res_id,
+                candidate_commit=self.candidate_commit,
+                reviewer_secret=None,
+            )
+        self.assertIn("reviewer_secret is mandatory", str(ctx3.exception))
+        self.assertIn("omitted secret rejected fail-closed", str(ctx3.exception))
+
+        # 4. Caller cannot issue review evidence or advance task without secret
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "review")
+
+    def test_sod_11_singleton_secret_replacement_via_get_default_fails_closed(self):
+        """11. Negative fixture: Caller attempting to replace credential of existing singleton via get_default fails closed."""
+        self._advance_to_review()
+        rev_disp_id = "ctx_sod_rev_11"
+        rev_env = make_execution_envelope(
+            self.delivery_id, rev_disp_id, phase="review",
+            orca_task_id="task_orca_sod_rev_11", now=self.t0 + timedelta(seconds=5)
+        )
+        res_id = self.adapter.create_review_dispatch(
+            self.delivery_id,
+            orca_task_id="task_orca_sod_rev_11",
+            candidate_commit=self.candidate_commit,
+            intended_dispatch_id=rev_disp_id,
+            dispatch_origin="dely dispatch",
+            execution_envelope=rev_env,
+            now=self.t0 + timedelta(seconds=5),
+        )
+
+        # Attacker attempts to replace singleton secret on active boundary
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            ReviewerSessionBoundary.get_default(reviewer_secret="attacker_replacement_secret_32b")
+        self.assertIn("Cannot mutate reviewer credential of already initialized ReviewerSessionBoundary", str(ctx.exception))
+        self.assertIn("singleton credential replacement forbidden fail-closed", str(ctx.exception))
+
+        # Boundary secret is untouched
+        self.assertEqual(self.boundary._reviewer_secret, self.reviewer_secret.encode("utf-8"))
+
+        # Attacker cannot issue proof with replacement secret
+        with self.assertRaises(ProtocolViolationError) as ctx2:
+            self.boundary.issue_session_proof(
+                self.delivery_id,
+                res_id,
+                reviewer_secret="attacker_replacement_secret_32b",
+            )
+        self.assertIn("Invalid reviewer secret", str(ctx2.exception))
+
+        # Legitimate reviewer with authentic secret succeeds
+        legit_proof = self.boundary.issue_session_proof(
+            self.delivery_id,
+            res_id,
+            reviewer_secret=self.reviewer_secret,
+        )
+        self.assertIsInstance(legit_proof, ReviewerSessionProof)
+
+    def test_sod_12_trusted_session_bootstrap_credential_injection_and_immutability(self):
+        """12. Invariant: Trusted session bootstrap injects reviewer credential; subsequent replacement fails closed."""
+        ReviewerSessionBoundary.reset_default()
+        try:
+            # 1. Boundary initialized without credential
+            unconfigured_boundary = ReviewerSessionBoundary()
+            self.assertIsNone(unconfigured_boundary._reviewer_secret)
+
+            # Attempting to issue proof on unconfigured boundary fails closed
+            with self.assertRaises(ProtocolViolationError) as ctx1:
+                unconfigured_boundary.issue_session_proof(
+                    self.delivery_id,
+                    "ctx_bootstrap_test_01",
+                    reviewer_secret="some_secret_value",
+                )
+            self.assertIn("Reviewer credential not configured on ReviewerSessionBoundary fail-closed", str(ctx1.exception))
+
+            # 2. Trusted session bootstrap injects reviewer credential
+            bootstrap_secret = "trusted_bootstrap_reviewer_secret_32b"
+            unconfigured_boundary.inject_reviewer_credential(bootstrap_secret)
+            self.assertEqual(unconfigured_boundary._reviewer_secret, bootstrap_secret.encode("utf-8"))
+
+            # 3. Second injection attempt fails closed (immutable once set)
+            with self.assertRaises(ProtocolViolationError) as ctx2:
+                unconfigured_boundary.inject_reviewer_credential("malicious_second_secret")
+            self.assertIn("Reviewer credential already configured on ReviewerSessionBoundary", str(ctx2.exception))
+
+            # 4. Deposit and claim via bootstrap_reviewer_capability
+            ReviewerSessionBoundary._default = unconfigured_boundary
+            self._advance_to_review()
+            rev_disp_id = "ctx_bootstrap_test_02"
+            rev_env = make_execution_envelope(
+                self.delivery_id,
+                rev_disp_id,
+                phase="review",
+                orca_task_id="task_orca_bootstrap_02",
+                now=self.t0 + timedelta(seconds=5),
+            )
+            res_id = self.adapter.create_review_dispatch(
+                delivery_task_id=self.delivery_id,
+                orca_task_id="task_orca_bootstrap_02",
+                candidate_commit=self.candidate_commit,
+                intended_dispatch_id=rev_disp_id,
+                dispatch_origin="dely dispatch",
+                execution_envelope=rev_env,
+                now=self.t0 + timedelta(seconds=5),
+            )
+            self.assertEqual(res_id, rev_disp_id)
+
+            # Claiming with wrong secret fails closed
+            with self.assertRaises(ProtocolViolationError):
+                unconfigured_boundary.bootstrap_reviewer_capability(
+                    delivery_task_id=self.delivery_id,
+                    review_dispatch_id=res_id,
+                    reviewer_secret="attacker_wrong_secret",
+                    orca_task_id="task_orca_bootstrap_02",
+                    terminal_id=rev_env.live_terminal_evidence.archive_reference,
+                    candidate_commit=self.candidate_commit,
+                )
+
+            # Claiming with injected bootstrap secret succeeds
+            claimed_cap = unconfigured_boundary.bootstrap_reviewer_capability(
+                delivery_task_id=self.delivery_id,
+                review_dispatch_id=res_id,
+                reviewer_secret=bootstrap_secret,
+                orca_task_id="task_orca_bootstrap_02",
+                terminal_id=rev_env.live_terminal_evidence.archive_reference,
+                candidate_commit=self.candidate_commit,
+            )
+            self.assertIsInstance(claimed_cap, ReviewerCapability)
+            self.assertEqual(claimed_cap.role, "Reviewer")
+            self.assertEqual(claimed_cap.review_dispatch_id, res_id)
+        finally:
+            ReviewerSessionBoundary.reset_default()
+
+    def test_sod_13_no_public_default_reviewer_secret_in_delivery_engine(self):
+        """13. Invariant: delivery_engine does not define or export DEFAULT_TEST_REVIEWER_SECRET."""
+        import delivery_engine
+        self.assertFalse(hasattr(delivery_engine, "DEFAULT_TEST_REVIEWER_SECRET"))
+        self.assertNotIn("DEFAULT_TEST_REVIEWER_SECRET", dir(delivery_engine))
+

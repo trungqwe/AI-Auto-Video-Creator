@@ -4,6 +4,12 @@
 
 - Authority hiện hành giữ nguyên: `M2-P1..P7B_ACCEPTED_CLOSED`; M2-P8/P9 `LOCKED`; M3/Phân hệ A `NOT AUTHORIZED`.
 - Đã thêm [kiến trúc triển khai song song](./docs/parallel-delivery/README.md) ở trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`. Bundle chỉ là docs/config và định nghĩa DAG, contract registry, ownership/lease, Orca worker protocol, merge queue, traceability, security/performance/recovery.
+- Đã khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate 358571a:
+  1. Xóa bỏ hoàn toàn hằng số mặc định công khai `DEFAULT_TEST_REVIEWER_SECRET` khỏi `docs/parallel-delivery/delivery_engine.py`; `ReviewerSessionBoundary` không fallback về secret mặc định.
+  2. Ngăn chặn triệt để đột biến credential singleton: `ReviewerSessionBoundary.get_default()` từ chối fail-closed nếu caller cố gắng ghi đè credential của boundary đã khởi tạo.
+  3. Triển khai cơ chế trusted reviewer session bootstrap (`inject_reviewer_credential`, `bootstrap_reviewer_credential`, `bootstrap_reviewer_capability`) với tính chất bất biến (immutable once set) không thể truy cập hoặc thay thế từ Control plane hay caller bên ngoài.
+  4. Bắt buộc `reviewer_secret` hợp lệ khi phát hành `ReviewerSessionProof` và `ReviewerContext`; từ chối fail-closed đối với secret bị bỏ qua (`None`), chuỗi rỗng, boundary chưa cấu hình credential hoặc sai digest HMAC.
+  5. Bộ kiểm thử tự động đạt 371/371 tests PASS (100%), bổ sung 4 bài test phân biệt độc lập trong `TestSolRemediationSeparationOfDuties` bao quát toàn bộ negative và invariant fixtures.
 - Đã khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate 82efe33:
   1. Chuyển capability delivery sang ranh giới do reviewer session sở hữu (`ReviewerSessionBoundary`), hoàn toàn độc lập với Control plane và adapter-visible state.
   2. Xóa bỏ hoàn toàn thuộc tính `_reviewer_delivery_channels` khỏi `OrcaDeliveryAdapter` và xóa bỏ `reviewer_auth_token` khỏi channel, bảo đảm adapter không để lộ bearer token hay capability-bearing channel cho Control.
@@ -86,8 +92,3 @@
 ## Điểm tiếp tục
 
 Chờ checkpoint thiết kế/independent review riêng cho P8 hoặc checkpoint riêng để pilot kiến trúc parallel delivery trên scope đã được cấp quyền. Không bắt đầu P8 Behavioral RED, P8/P9 implementation, M3 hoặc Phân hệ A từ bundle đề xuất này.
-- Đã khắc phục triệt để toàn bộ phát hiện blocker từ Sol-Lead audit trên 1f90e6c:
-  1. Hạn chế tuyệt đối `issue_review_evidence()` chỉ nhận `ReviewerCapability` trên cả `EvidenceAuthority` và `OrcaDeliveryAdapter`, loại bỏ khả năng `ControlCapability` tự phát hành `ReviewEvidence`.
-  2. Truyền tường minh `expected_role="Reviewer"` vào `verify_capability()` khi phát hành review evidence, từ chối fail-closed `ControlCapability`.
-  3. Bảo toàn nguyên vẹn thẩm quyền hợp lệ của `ControlCapability` cho việc mint `ReviewerCapability` và phát hành `IntegrationEvidence`.
-  4. Bộ kiểm thử tự động đạt 343/343 tests PASS (100%), bổ sung 5 bài kiểm thử độc lập trong `TestSolLeadAudit1f90e6cRemediation` tái hiện và kiểm chứng trọn vẹn counterexamples và positive control; toàn bộ project gates PASS.

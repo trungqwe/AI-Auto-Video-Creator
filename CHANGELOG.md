@@ -596,21 +596,38 @@ Remediation R1 có 42 test acceptance qua, migration tiến/lùi và evidence/ha
   - **(4) Bộ Fixture Phân Biệt Tự Động 364/364 Tests PASS**: Bổ sung suite kiểm thử `TestSolRemediationSeparationOfDuties` với 6 bài test độc lập chứng minh Separation of Duties chặt chẽ (dispatch creator không thể claim capability hay issue ACCEPT; context giả mạo bị từ chối fail-closed; positive control trong ReviewerContext độc lập hoàn tất chuyển trạng thái `merge_queued`), nâng tổng số test lên 364/364 passed 100%.
   - **(5) Khắc Phục Lỗi Whitespace Và Hiển Thị Tiếng Việt**: Sửa toàn bộ 5 lỗi whitespace tại `CHANGELOG.md:589`, `docs/parallel-delivery/README.md:3-4`, `docs/parallel-delivery/protocol.md:329` và `docs/parallel-delivery/test_negative_fixtures.py`, đồng thời khôi phục tiếng Việt đầy đủ dấu tại `HANDOFF.md`.
 
-## 2026-09-30 ? Kh?c ph?c ph?t hi?n Sol-Lead audit sau 82efe33 (Reviewer Session Boundary, Elimination of Reviewer Channels from Adapter, and Opaque Single-Use Session Proofs)
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 82efe33 (Reviewer Session Boundary, Elimination of Reviewer Channels from Adapter, and Opaque Single-Use Session Proofs)
 
-- Kh?c ph?c tri?t ?? ph?t hi?n blocker ki?n tr?c t? Sol-Lead audit tr?n exact candidate `82efe33a88a37616347517a5d8a5481c3a69bc29` cho bundle `docs/parallel-delivery/`:
-  - **(1) Chuy?n Capability Delivery Sang Ranh Gi?i Do Reviewer Session S? H?u (Reviewer Session Boundary Ownership)**:
-    - Tri?n khai `ReviewerSessionBoundary` qu?n l? ??c l?p vi?c c?p ph?t `ReviewerCapability`, t?ch bi?t ho?n to?n kh?i Control plane v? state hi?n th? tr?n `OrcaDeliveryAdapter`.
-    - X?a b? tri?t ?? thu?c t?nh `_reviewer_delivery_channels` kh?i `OrcaDeliveryAdapter`. Adapter kh?ng c?n l?u gi? channel, bearer token hay reviewer capabilities trong state c? th? ??c b?i Control.
-    - X?a b? ho?n to?n property `reviewer_auth_token` kh?i `ReviewerDeliveryChannel`.
-  - **(2) B?t Bu?c Opaque Single-Use Reviewer-Session Proof C? Ch? K? M?t M? (Mandatory Opaque Single-Use ReviewerSessionProof)**:
-    - Tri?n khai dataclass `ReviewerSessionProof` mang token ng?u nhi?n v? ch? k? HMAC b? m?t do `ReviewerSessionBoundary` s? h?u (`_boundary_secret`).
-    - Proof ???c bind ch?t ch? v?i: `delivery_task_id`, `review_dispatch_id`, `orca_task_id`, `terminal_id`/`session_id`, `candidate_commit`, `reviewer_route` ("cx/gpt-5.6-sol"), v? `reviewer_harness` ("Claude Code").
-    - Thao t?c ph?t h?nh proof (`issue_session_proof`) y?u c?u `reviewer_secret` h?p l?; nghi?m c?m Control authority ph?t h?nh proof (`control_capability` ho?c `control_secret` b? t? ch?i fail-closed).
-  - **(3) Ch?n ??ng T? D?ng Context B?ng Public Identifiers & Ch?ng Gi? M?o / Replay (Rejection of Self-Constructed Contexts, Forgery, and Proof Replay)**:
-    - `ReviewerDeliveryChannel.claim_capability()` b?t bu?c ph?i c? `ReviewerSessionProof` ?? ???c x?c th?c; t? ch?i fail-closed n?u caller t? d?ng `ReviewerContext` ch? b?ng c?c ??nh danh c?ng khai (public IDs).
-    - Ki?m tra v? ti?u th? proof nguy?n t? d??i kh?a; t? ch?i fail-closed m?i n? l?c t?i s? d?ng (replay) proof ?? ti?u th? ho?c ph?t h?nh tr?ng l?p proof cho c?ng m?t review dispatch.
-    - `OrcaDeliveryAdapter.claim_reviewer_capability()` t? ch?i fail-closed n?u caller cung c?p token c? (`reviewer_auth_token`).
-  - **(4) B? Fixture Ph?n Bi?t T? ??ng 367/367 Tests PASS**:
-    - M? r?ng suite `TestSolRemediationSeparationOfDuties` l?n 9 b?i test: ch?ng minh dispatch creator c? ?? 7 public IDs v?n kh?ng th? claim capability (`test_sod_06`), caller kh?ng th? ??c token/channel t? adapter v? kh?ng th? gi? m?o proof hay d?ng Control authority ?? issue proof (`test_sod_07`), th?c thi nghi?m ng?t single-use proof v? c?m duplicate issuance (`test_sod_08`), v? positive control ??c l?p v?i `self.reviewer_secret` ho?n t?t to?n b? v?ng ??i ??n `integrated` (`test_sod_09`).
-    - N?ng t?ng s? test l?n 367/367 passed 100%.
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `82efe33a88a37616347517a5d8a5481c3a69bc29` cho bundle `docs/parallel-delivery/`:
+  - **(1) Chuyển Capability Delivery Sang Ranh Giới Do Reviewer Session Sở Hữu (Reviewer Session Boundary Ownership)**:
+    - Triển khai `ReviewerSessionBoundary` quản lý độc lập việc cấp phát `ReviewerCapability`, tách biệt hoàn toàn khỏi Control plane và state hiển thị trên `OrcaDeliveryAdapter`.
+    - Xóa bỏ triệt để thuộc tính `_reviewer_delivery_channels` khỏi `OrcaDeliveryAdapter`. Adapter không còn lưu giữ channel, bearer token hay reviewer capabilities trong state có thể đọc bởi Control.
+    - Xóa bỏ hoàn toàn property `reviewer_auth_token` khỏi `ReviewerDeliveryChannel`.
+  - **(2) Bắt Buộc Opaque Single-Use Reviewer-Session Proof Có Chữ Ký Mật Mã (Mandatory Opaque Single-Use ReviewerSessionProof)**:
+    - Triển khai dataclass `ReviewerSessionProof` mang token ngẫu nhiên và chữ ký HMAC bí mật do `ReviewerSessionBoundary` sở hữu (`_boundary_secret`).
+    - Proof được bind chặt chẽ với: `delivery_task_id`, `review_dispatch_id`, `orca_task_id`, `terminal_id`/`session_id`, `candidate_commit`, `reviewer_route` ("cx/gpt-5.6-sol"), và `reviewer_harness` ("Claude Code").
+    - Thao tác phát hành proof (`issue_session_proof`) yêu cầu `reviewer_secret` hợp lệ; nghiêm cấm Control authority phát hành proof (`control_capability` hoặc `control_secret` bị từ chối fail-closed).
+  - **(3) Chặn Đứng Tự Dựng Context Bằng Public Identifiers & Chống Giả Mạo / Replay (Rejection of Self-Constructed Contexts, Forgery, and Proof Replay)**:
+    - `ReviewerDeliveryChannel.claim_capability()` bắt buộc phải có `ReviewerSessionProof` đã được xác thực; từ chối fail-closed nếu caller tự dựng `ReviewerContext` chỉ bằng các định danh công khai (public IDs).
+    - Kiểm tra và tiêu thụ proof nguyên tử dưới khóa; từ chối fail-closed mọi nỗ lực tái sử dụng (replay) proof đã tiêu thụ hoặc phát hành trùng lặp proof cho cùng một review dispatch.
+    - `OrcaDeliveryAdapter.claim_reviewer_capability()` từ chối fail-closed nếu caller cung cấp token cũ (`reviewer_auth_token`).
+  - **(4) Bộ Fixture Phân Biệt Tự Động 367/367 Tests PASS**:
+    - Mở rộng suite `TestSolRemediationSeparationOfDuties` lên 9 bài test: chứng minh dispatch creator có đủ 7 public IDs vẫn không thể claim capability (`test_sod_06`), caller không thể đọc token/channel từ adapter và không thể giả mạo proof hay dùng Control authority để issue proof (`test_sod_07`), thực thi nghiêm ngặt single-use proof và cấm duplicate issuance (`test_sod_08`), và positive control độc lập với `self.reviewer_secret` hoàn tất toàn bộ vòng đời đến `integrated` (`test_sod_09`).
+    - Nâng tổng số test lên 367/367 passed 100%.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 358571a (Elimination of Public Default Reviewer Secret, Immutable Boundary Credentials, and Trusted Session Bootstrap)
+
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `358571a0be3bf9dc39dbeccc624e48cba5936fbf` cho bundle `docs/parallel-delivery/`:
+  - **(1) Xóa Bỏ Hoàn Toàn Hằng Số Mặc Định Công Khai (Elimination of Public Default Reviewer Secret)**:
+    - Xóa bỏ triệt để hằng số `DEFAULT_TEST_REVIEWER_SECRET` khỏi `docs/parallel-delivery/delivery_engine.py`.
+    - `ReviewerSessionBoundary.__init__` không sử dụng bất kỳ secret mặc định nào; `_reviewer_secret` mặc định là `None`.
+  - **(2) Ngăn Chặn Thay Thế Credential Singleton (Immutable Boundary Credentials & Fail-Closed Replacement)**:
+    - `ReviewerSessionBoundary.get_default()` từ chối fail-closed nếu caller truyền `reviewer_secret` khi singleton đã được khởi tạo (`ProtocolViolationError("Cannot mutate reviewer credential of already initialized ReviewerSessionBoundary; singleton credential replacement forbidden fail-closed")`).
+  - **(3) Cấp Phát Và Tiêm Credential Qua Trusted Session Bootstrap (Trusted Reviewer Session Bootstrap)**:
+    - Bổ sung các phương thức `inject_reviewer_credential()`, `bootstrap_reviewer_credential()`, và `bootstrap_reviewer_capability()` trên `ReviewerSessionBoundary`.
+    - Sau khi đã thiết lập secret lần đầu, mọi nỗ lực tiêm lại hoặc ghi đè credential đều bị từ chối fail-closed.
+  - **(4) Bắt Buộc Có Reviewer Secret Hợp Lệ Khi Phát Hành Proof Và Ngữ Cảnh (Mandatory Secret For Proof Issuance)**:
+    - `issue_session_proof()` và `create_reviewer_context()` từ chối fail-closed khi `reviewer_secret` bị bỏ qua (`None` hoặc chuỗi rỗng), khi boundary chưa được cấu hình credential, hoặc khi secret không khớp mã băm HMAC digest.
+  - **(5) Bộ Fixture Phân Biệt Tự Động 371/371 Tests PASS**:
+    - Bổ sung 4 fixture kiểm thử mới vào `TestSolRemediationSeparationOfDuties`: `test_sod_10` (omitted reviewer secret fails closed), `test_sod_11` (singleton secret replacement via get_default fails closed), `test_sod_12` (trusted session bootstrap injection and immutability), `test_sod_13` (absence of DEFAULT_TEST_REVIEWER_SECRET in delivery_engine).
+    - Nâng tổng số test lên 371/371 passed 100%.
