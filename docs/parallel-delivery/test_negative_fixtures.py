@@ -364,8 +364,9 @@ class TestF4OrcaMappingAndLifecycle(unittest.TestCase):
         # Leases must be released on blocker
         self.assertEqual(len(self.lease_mgr.active_leases), 0)
 
-        # Resolve blocker
-        self.adapter.resolve_blocker_and_replan(delivery_id)
+        # Resolve blocker with authenticated task-scoped Control capability
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=delivery_id)
+        self.adapter.resolve_blocker_and_replan(delivery_id, capability=ctrl_cap)
         self.assertEqual(self.adapter.get_task_state(delivery_id), "ready")
 
         # Create fresh dispatch
@@ -400,7 +401,8 @@ class TestF4OrcaMappingAndLifecycle(unittest.TestCase):
             delivery_id, "task_orca_001", dispatch_1, "failed",
             candidate_commit=self.candidate_commit, fencing_token=lease_1.fencing_token,
         )
-        self.adapter.resolve_blocker_and_replan(delivery_id)
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=delivery_id)
+        self.adapter.resolve_blocker_and_replan(delivery_id, capability=ctrl_cap)
         dispatch_2, lease_2 = self._create_dispatch_helper(delivery_id)
 
         # Late result from dispatch_1 arrives
@@ -4185,8 +4187,11 @@ class TestSolRound11HarnessFailureLeaseSafety(unittest.TestCase):
         adapter.handle_worker_done("TASK-REPLAN", "orca_first", disp1, "failed", candidate_commit=self.candidate_commit, fencing_token=lease1.fencing_token)
         self.assertEqual(adapter.get_task_state("TASK-REPLAN"), "blocked")
 
-        # Replan and redispatch as Dispatch 2
-        adapter.resolve_blocker_and_replan("TASK-REPLAN")
+        # Replan and redispatch as Dispatch 2 with authenticated Control capability
+        r11_control_secret = "secret_r11_control"
+        adapter.evidence_authority._control_secret = r11_control_secret.encode("utf-8")
+        ctrl_cap = adapter.issue_control_capability(r11_control_secret, delivery_task_id="TASK-REPLAN")
+        adapter.resolve_blocker_and_replan("TASK-REPLAN", capability=ctrl_cap)
         self.assertEqual(adapter.get_task_state("TASK-REPLAN"), "ready")
         lease2 = mgr.acquire_lease("R11-LOCK-REPLAN", "TASK-REPLAN", "ctx_second")
         disp2 = adapter.create_dispatch(
@@ -8468,19 +8473,31 @@ class TestSolLeadAudit654860cRemediation(unittest.TestCase):
             ):
                 pass
 
-        # Valid ilt minted internally
-        valid_ilt = self.adapter._mint_internal_lifecycle_token("resolve_blocker_and_replan", self.delivery_id)
+        # Valid ilt minted internally with internal secret
+        valid_ilt = self.adapter._mint_internal_lifecycle_token(
+            "start_running", self.delivery_id, _internal_secret=self.adapter._internal_exec_secret
+        )
         with self.adapter._internal_lifecycle_execution(
-            "resolve_blocker_and_replan", self.delivery_id, _internal_token=valid_ilt
+            "start_running", self.delivery_id, _internal_token=valid_ilt
         ):
             pass
 
         # Replay of already consumed internal token fails closed
         with self.assertRaises(ProtocolViolationError):
             with self.adapter._internal_lifecycle_execution(
-                "resolve_blocker_and_replan", self.delivery_id, _internal_token=valid_ilt
+                "start_running", self.delivery_id, _internal_token=valid_ilt
             ):
                 pass
+
+        # Direct external minting without secret rejected
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter._mint_internal_lifecycle_token("start_running", self.delivery_id)
+
+        # Minting internal token for resolve_blocker_and_replan strictly rejected
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter._mint_internal_lifecycle_token(
+                "resolve_blocker_and_replan", self.delivery_id, _internal_secret=self.adapter._internal_exec_secret
+            )
 
     def test_654860c_06_positive_control_authoritative_resolution_and_lifecycle_integration(self):
         """6. Positive control: Authoritative methods execute cleanly and authenticated capabilities integrate task."""
@@ -8489,8 +8506,9 @@ class TestSolLeadAudit654860cRemediation(unittest.TestCase):
         self.adapter.handle_harness_failure(self.delivery_id, disp_id, reason="tool_crash")
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "blocked")
 
-        # 2. Authoritative resolution back to ready
-        self.adapter.resolve_blocker_and_replan(self.delivery_id)
+        # 2. Authoritative resolution back to ready with authenticated Control capability
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        self.adapter.resolve_blocker_and_replan(self.delivery_id, capability=ctrl_cap)
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "ready")
 
         # 3. Fresh dispatch attempt to running
@@ -8552,3 +8570,310 @@ if __name__ == "__main__":
     unittest.main(verbosity=2)
 
 
+
+
+import uuid
+
+
+class TestSolLeadAudit2f56bd3Remediation(unittest.TestCase):
+    """Audit remediation for exact candidate 2f56bd36a87daa2ef2db579e5bbf90e8ab088bc6:
+    - Path 1: Ordinary caller cannot mint internal lifecycle token or transition blocked -> ready via _internal_lifecycle_execution
+    - Path 2: Unauthenticated resolve_blocker_and_replan fails closed; task remains blocked
+    - Rejects wildcard, mismatched, Reviewer, forged, or replayed capabilities for replan
+    - Token minting cannot confer authority to ordinary same-process callers
+    - Positive control: Authenticated task-scoped Control capability successfully resolves blocker and replans
+    """
+
+    def setUp(self):
+        SharedOrcaExecutionRegistry.reset_default()
+        cmd_head = ["git", "rev-parse", "HEAD"]
+        self.candidate_commit = subprocess.run(cmd_head, cwd=ROOT_DIR, capture_output=True, text=True, check=True).stdout.strip()
+        self.mgr = LeaseManager([
+            {"id": "LOCK-REMED-2F56BD3", "mode": "exclusive", "renewable": True, "lease_seconds": 600},
+        ])
+        self.delivery_id = "TASK-REMED-2F56BD3"
+        self.mgr.set_task_authority(self.delivery_id, "granted")
+        self.control_secret = "secret_remed_2f56bd3_control"
+        self.adapter = OrcaDeliveryAdapter(
+            self.mgr,
+            approved_candidate_commit=self.candidate_commit,
+            git_root=ROOT_DIR,
+            control_secret=self.control_secret,
+        )
+        self.adapter.set_task_authority(self.delivery_id, "granted")
+        self.adapter.set_task_state(self.delivery_id, "ready")
+        self.adapter.register_task_locks(self.delivery_id, ["LOCK-REMED-2F56BD3"])
+        self.ea = self.adapter.evidence_authority
+        self.t0 = datetime(2026, 9, 30, 10, 0, 0, tzinfo=timezone.utc)
+
+    def _advance_to_blocked(self, orca_id="orca_2f56bd3_01", disp_id="ctx_2f56bd3_01"):
+        lease = self.mgr.acquire_lease("LOCK-REMED-2F56BD3", self.delivery_id, disp_id, now=self.t0)
+        disp = self.adapter.create_dispatch(
+            self.delivery_id,
+            orca_task_id=orca_id,
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease.fencing_token,
+            lease_id=lease.lease_id,
+            intended_dispatch_id=disp_id,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope(self.delivery_id, disp_id, phase="implement", orca_task_id=orca_id, now=self.t0),
+            now=self.t0,
+        )
+        self.adapter.acknowledge_dispatch(self.delivery_id, disp)
+        self.adapter.start_running(self.delivery_id, disp)
+        self.adapter.handle_worker_done(
+            self.delivery_id, orca_id, disp, "failed",
+            candidate_commit=self.candidate_commit, fencing_token=lease.fencing_token,
+            now=self.t0 + timedelta(seconds=5),
+        )
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "blocked")
+        return disp, lease
+
+    def test_2f56bd3_01_ordinary_caller_cannot_mint_internal_token_to_transition_blocked_to_ready(self):
+        """1. Counterexample (Path 1): Ordinary caller attempting to mint token and transition blocked -> ready fails closed."""
+        self._advance_to_blocked()
+
+        # Direct external minting for resolve_blocker_and_replan is forbidden
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter._mint_internal_lifecycle_token("resolve_blocker_and_replan", self.delivery_id)
+
+        # Direct external minting without internal secret is forbidden
+        with self.assertRaises(ProtocolViolationError):
+            self.adapter._mint_internal_lifecycle_token("start_running", self.delivery_id)
+
+        # Even if an _InternalLifecycleToken is somehow forged or constructed, _internal_lifecycle_execution rejects it
+        from delivery_engine import _InternalLifecycleToken
+        forged_tok = _InternalLifecycleToken(
+            token_id="ilt_forged_bypass_01",
+            handler="resolve_blocker_and_replan",
+            task_id=self.delivery_id,
+            adapter_id=id(self.adapter),
+            created_at=time.time(),
+            signature="forged_signature_bytes" * 4,
+        )
+        with self.assertRaises(ProtocolViolationError):
+            with self.adapter._internal_lifecycle_execution(
+                "resolve_blocker_and_replan", self.delivery_id, _internal_token=forged_tok
+            ):
+                token = self.adapter._mint_transition_token("resolve_blocker_and_replan", self.delivery_id, "ready")
+                with self.adapter._authorized_transition_scope(
+                    self.delivery_id, "ready", handler="resolve_blocker_and_replan", _token=token
+                ):
+                    self.adapter.transition_task_state(self.delivery_id, "ready")
+
+        # Task remains blocked
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "blocked")
+        self.assertNotEqual(self.adapter.get_task_state(self.delivery_id), "ready")
+
+    def test_2f56bd3_02_unauthenticated_resolve_blocker_and_replan_fails_closed(self):
+        """2. Counterexample (Path 2): Unauthenticated resolve_blocker_and_replan fails closed; task remains blocked."""
+        self._advance_to_blocked()
+
+        # Ordinary caller calls resolve_blocker_and_replan without capability
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.resolve_blocker_and_replan(self.delivery_id)
+        self.assertIn("independently authenticated task-scoped Control capability", str(ctx.exception))
+
+        # Explicit None capability also rejected
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.resolve_blocker_and_replan(self.delivery_id, capability=None)
+        self.assertIn("independently authenticated task-scoped Control capability", str(ctx.exception))
+
+        # Task state remains blocked
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "blocked")
+        self.assertNotEqual(self.adapter.get_task_state(self.delivery_id), "ready")
+
+    def test_2f56bd3_03_wildcard_or_mismatched_or_reviewer_capability_rejected_for_replan(self):
+        """3. Counterexample: Wildcard, mismatched task, or ReviewerCapability rejected for replan."""
+        self._advance_to_blocked()
+
+        # Wildcard capability (delivery_task_id=None / "*") rejected
+        wildcard_cap = self.ea.issue_control_capability(self.control_secret, delivery_task_id=None)
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.resolve_blocker_and_replan(self.delivery_id, capability=wildcard_cap)
+        self.assertIn("Wildcard capability cannot be used", str(ctx.exception))
+
+        # Mismatched task capability rejected
+        mismatched_cap = self.ea.issue_control_capability(self.control_secret, delivery_task_id="OTHER-TASK-ID")
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.resolve_blocker_and_replan(self.delivery_id, capability=mismatched_cap)
+        self.assertIn("mismatch", str(ctx.exception))
+
+        # ReviewerCapability rejected (role/type mismatch)
+        rev_disp_id = "ctx_rev_test_01"
+        rev_cap = self.ea._mint_reviewer_capability_internal(
+            delivery_task_id=self.delivery_id,
+            review_dispatch_id=rev_disp_id,
+            candidate_commit=self.candidate_commit,
+        )
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.resolve_blocker_and_replan(self.delivery_id, capability=rev_cap)
+        self.assertIn("Invalid capability type", str(ctx.exception))
+
+        # Task remains blocked
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "blocked")
+
+    def test_2f56bd3_04_forged_or_replayed_control_capability_rejected_for_replan(self):
+        """4. Counterexample: Forged or replayed ControlCapability rejected fail closed."""
+        self._advance_to_blocked()
+
+        # Unissued / fabricated capability rejected
+        fabricated_cap = ControlCapability(
+            capability_id=f"ctrl_cap_forged_{uuid.uuid4().hex}",
+            role="Control",
+            delivery_task_id=self.delivery_id,
+            authority_id=id(self.ea),
+            created_at=time.time(),
+            signature="bad_forged_signature" * 4,
+        )
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.resolve_blocker_and_replan(self.delivery_id, capability=fabricated_cap)
+        self.assertIn("was not issued by internal evidence authority", str(ctx.exception))
+
+        # Tampered signature on issued capability rejected
+        valid_issued = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        tampered_cap = ControlCapability(
+            capability_id=valid_issued.capability_id,
+            role=valid_issued.role,
+            delivery_task_id=valid_issued.delivery_task_id,
+            authority_id=valid_issued.authority_id,
+            created_at=valid_issued.created_at,
+            signature="tampered_signature_bits" * 3,
+        )
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.resolve_blocker_and_replan(self.delivery_id, capability=tampered_cap)
+        self.assertIn("signature mismatch", str(ctx.exception))
+
+        # Valid capability succeeds
+        valid_cap = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        self.adapter.resolve_blocker_and_replan(self.delivery_id, capability=valid_cap)
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "ready")
+
+        # Put back to blocked for replay test
+        lease2 = self.mgr.acquire_lease("LOCK-REMED-2F56BD3", self.delivery_id, "ctx_2f56bd3_02", now=self.t0 + timedelta(seconds=10))
+        disp2 = self.adapter.create_dispatch(
+            self.delivery_id,
+            orca_task_id="orca_2f56bd3_02",
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease2.fencing_token,
+            lease_id=lease2.lease_id,
+            intended_dispatch_id="ctx_2f56bd3_02",
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope(self.delivery_id, "ctx_2f56bd3_02", phase="implement", orca_task_id="orca_2f56bd3_02", now=self.t0 + timedelta(seconds=10)),
+            now=self.t0 + timedelta(seconds=10),
+        )
+        self.adapter.acknowledge_dispatch(self.delivery_id, disp2)
+        self.adapter.start_running(self.delivery_id, disp2)
+        self.adapter.handle_worker_done(
+            self.delivery_id, "orca_2f56bd3_02", disp2, "failed",
+            candidate_commit=self.candidate_commit, fencing_token=lease2.fencing_token,
+            now=self.t0 + timedelta(seconds=15),
+        )
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "blocked")
+
+        # Replay of already consumed valid_cap fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.resolve_blocker_and_replan(self.delivery_id, capability=valid_cap)
+        self.assertIn("already been consumed", str(ctx.exception))
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "blocked")
+
+    def test_2f56bd3_05_internal_token_minting_unable_to_confer_authority_to_ordinary_caller(self):
+        """5. Counterexample: Token minting cannot confer authority to ordinary same-process callers."""
+        self._advance_to_blocked()
+
+        # Calling _mint_internal_lifecycle_token directly without internal secret raises ProtocolViolationError
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter._mint_internal_lifecycle_token("start_running", self.delivery_id)
+        self.assertIn("Direct external calling", str(ctx.exception))
+
+        # Minting internal token for resolve_blocker_and_replan raises ProtocolViolationError even with secret
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter._mint_internal_lifecycle_token(
+                "resolve_blocker_and_replan", self.delivery_id, _internal_secret=self.adapter._internal_exec_secret
+            )
+        self.assertIn("Cannot mint internal lifecycle token for 'resolve_blocker_and_replan'", str(ctx.exception))
+
+        # Even with another valid internal token, passing it for resolve_blocker_and_replan to _internal_lifecycle_execution fails
+        valid_disp_ilt = self.adapter._mint_internal_lifecycle_token(
+            "create_dispatch", self.delivery_id, _internal_secret=self.adapter._internal_exec_secret
+        )
+        with self.assertRaises(ProtocolViolationError):
+            with self.adapter._internal_lifecycle_execution(
+                "resolve_blocker_and_replan", self.delivery_id, _internal_token=valid_disp_ilt
+            ):
+                pass
+
+        # Transitioning to ready/planned requires resolve_blocker_and_replan and ControlCapability
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "blocked")
+
+    def test_2f56bd3_06_positive_control_authenticated_control_capability_resolves_and_integrates(self):
+        """6. Positive control: Authenticated ControlCapability resolves blocker and task integrates cleanly."""
+        self._advance_to_blocked()
+
+        # 1. Authoritative resolution back to ready with authenticated ControlCapability
+        ctrl_cap = self.adapter.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        self.adapter.resolve_blocker_and_replan(self.delivery_id, capability=ctrl_cap)
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "ready")
+
+        # 2. Fresh dispatch attempt to running
+        d_id2 = "ctx_2f56bd3_run2"
+        orca_id2 = "orca_2f56bd3_run2"
+        lease2 = self.mgr.acquire_lease("LOCK-REMED-2F56BD3", self.delivery_id, d_id2, now=self.t0 + timedelta(seconds=10))
+        d_id2_ret = self.adapter.create_dispatch(
+            self.delivery_id,
+            orca_task_id=orca_id2,
+            candidate_commit=self.candidate_commit,
+            fencing_token=lease2.fencing_token,
+            lease_id=lease2.lease_id,
+            intended_dispatch_id=d_id2,
+            dispatch_origin="dely dispatch",
+            execution_envelope=make_execution_envelope(self.delivery_id, d_id2, phase="implement", orca_task_id=orca_id2, now=self.t0 + timedelta(seconds=10)),
+            now=self.t0 + timedelta(seconds=10),
+        )
+        self.adapter.acknowledge_dispatch(self.delivery_id, d_id2_ret)
+        self.adapter.start_running(self.delivery_id, d_id2_ret)
+        self.adapter.handle_worker_done(
+            self.delivery_id, orca_id2, d_id2_ret, "succeeded",
+            candidate_commit=self.candidate_commit, fencing_token=lease2.fencing_token,
+            now=self.t0 + timedelta(seconds=20),
+        )
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "review")
+
+        # 3. Independent review dispatch and verdict ACCEPT
+        rev_disp_id = "ctx_2f56bd3_rev2"
+        rev_env = make_execution_envelope(self.delivery_id, rev_disp_id, phase="review", orca_task_id="orca_2f56bd3_rev2", now=self.t0 + timedelta(seconds=25))
+        self.adapter.create_review_dispatch(
+            self.delivery_id,
+            orca_task_id="orca_2f56bd3_rev2",
+            candidate_commit=self.candidate_commit,
+            intended_dispatch_id=rev_disp_id,
+            dispatch_origin="dely dispatch",
+            execution_envelope=rev_env,
+            now=self.t0 + timedelta(seconds=25),
+        )
+        ctrl_for_rev = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        rev_cap = self.ea.issue_reviewer_capability(
+            self.delivery_id, rev_disp_id, self.candidate_commit, control_capability=ctrl_for_rev
+        )
+        rev_ev = self.ea.issue_review_evidence(
+            self.delivery_id, rev_disp_id, self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap
+        )
+        self.adapter.handle_review_verdict(
+            self.delivery_id, "ACCEPT", review_dispatch_id=rev_disp_id, review_evidence=rev_ev
+        )
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "merge_queued")
+
+        # 4. Integration gates pass with ControlCapability
+        gate_results = {g: True for g in MANDATORY_INTEGRATION_GATES}
+        ctrl_for_int = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        int_ev = self.ea.issue_integration_evidence(
+            delivery_task_id=self.delivery_id,
+            candidate_commit=self.candidate_commit,
+            base_commit="4a7c8c921b7e05066505d51b168a02c3fde61317",
+            gates_pass=True,
+            gate_results=gate_results,
+            control_capability=ctrl_for_int,
+        )
+        state = self.adapter.handle_integration_gates(self.delivery_id, gates_pass=True, integration_evidence=int_ev)
+        self.assertEqual(state, "integrated")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")

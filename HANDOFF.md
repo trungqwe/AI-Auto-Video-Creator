@@ -4,6 +4,11 @@
 
 - Authority hiện hành giữ nguyên: `M2-P1..P7B_ACCEPTED_CLOSED`; M2-P8/P9 `LOCKED`; M3/Phân hệ A `NOT AUTHORIZED`.
 - Đã thêm [kiến trúc triển khai song song](./docs/parallel-delivery/README.md) ở trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`. Bundle chỉ là docs/config và định nghĩa DAG, contract registry, ownership/lease, Orca worker protocol, merge queue, traceability, security/performance/recovery.
+- Đã khắc phục triệt để toàn bộ phát hiện blocker từ Sol-Lead audit trên 2f56bd3:
+  1. Bắt buộc task-scoped ControlCapability cho resolve_blocker_and_replan: Phương thức `resolve_blocker_and_replan()` bắt buộc phải có `ControlCapability` xác thực độc lập có phạm vi tác vụ cụ thể trước khi thực hiện bất kỳ bước mint token hay đột biến trạng thái nào; từ chối fail-closed mọi lời gọi không thẩm quyền, wildcard, mismatched, Reviewer, forged hoặc replayed capability.
+  2. Vô hiệu hóa khả năng cấp thẩm quyền của token minting cho caller thông thường: `_mint_internal_lifecycle_token()` cấm mint cho `resolve_blocker_and_replan` và bảo vệ việc gọi trực tiếp bằng `_internal_secret`; `_internal_lifecycle_execution` từ chối fail-closed mọi token nội bộ đối với `resolve_blocker_and_replan`.
+  3. Khóa chặt kiểm tra thẩm quyền chuyển trạng thái: `transition_task_state()` bắt buộc phải có `ControlCapability` đã xác thực trong context khi chuyển sang `ready` hoặc `planned`.
+  4. Bộ kiểm thử tự động đạt 333/333 tests PASS (100%), bổ sung 6 bài kiểm thử độc lập trong `TestSolLeadAudit2f56bd3Remediation` tái hiện và kiểm chứng trọn vẹn 2 counterexample paths và controls; toàn bộ project gates PASS.
 - Đã khắc phục triệt để toàn bộ phát hiện blocker từ Sol-Lead audit trên 654860c:
   1. Loại bỏ hoàn toàn capability wildcard khỏi module state: Xóa bỏ triệt để WeakKeyDictionary _ADAPTER_INTERNAL_CAPABILITIES cấp module và phương thức _mint_internal_control_capability() / _internal_capabilities trong EvidenceAuthority; caller cùng process không thể lấy hoặc trích xuất capability wildcard nội bộ.
   2. Bảo vệ ranh giới vòng đời nội bộ bằng token tạm thời dùng một lần: Dataclass _InternalLifecycleToken được ký HMAC unforgeable bằng _internal_exec_secret riêng của adapter, kiểm tra tính toàn vẹn và tiêu thụ ngay lập tức (_consumed_internal_tokens) cho toàn bộ 8 lifecycle handler nội bộ.
