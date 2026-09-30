@@ -1906,7 +1906,16 @@ class HostBoundaryTicketIssuer:
             raise ProtocolViolationError(
                 "HostBoundaryTicket authkey binding mismatch fail-closed"
             )
-        if abs(time.time() - ticket.created_at) > 300.0:
+        if getattr(ticket, "role", None) != "HostBoundaryTicket":
+            raise ProtocolViolationError(
+                "HostBoundaryTicket role mismatch; invalid audience fail-closed"
+            )
+        now = time.time()
+        if ticket.created_at > now + 30.0:
+            raise ProtocolViolationError(
+                "HostBoundaryTicket created in the future beyond acceptable skew fail-closed"
+            )
+        if now - ticket.created_at > 300.0:
             raise ProtocolViolationError(
                 "HostBoundaryTicket has expired; freshness violation fail-closed"
             )
@@ -1918,6 +1927,8 @@ class HostBoundaryTicketIssuer:
         cap = ticket.issuer_capability
         if cap is None or not isinstance(cap, HostBoundaryTicketIssuerCapability):
             raise ProtocolViolationError("HostBoundaryTicket missing valid HostBoundaryTicketIssuerCapability fail-closed")
+        if getattr(cap, "role", None) != "HostBoundaryTicketIssuer":
+            raise ProtocolViolationError("HostBoundaryTicket capability role mismatch fail-closed")
         if cap.authority_id != id(self) or cap.ticket_id != ticket.ticket_id:
             raise ProtocolViolationError("HostBoundaryTicket capability binding mismatch fail-closed")
         expected_cap_sig = self._sign_issuer_capability(cap.capability_id, cap.created_at, ticket.ticket_id)

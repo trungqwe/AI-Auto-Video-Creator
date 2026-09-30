@@ -13324,7 +13324,42 @@ print("FRESH_PROCESS_ISOLATION_PASS")
                 pass
         self.assertIn("Subclassing HostBoundaryTicket", str(ctx_sub.exception))
 
-        # 18c. Bypass via object.__new__ with Sol counterexample parameters rejected fail-closed
+        # 18c. Malformed DTO checks on HostBoundaryTicketIssuerCapability
+        with self.assertRaises(ProtocolViolationError):
+            HostBoundaryTicketIssuerCapability(
+                capability_id="",
+                issuer_name="HostBoundaryTicketIssuer",
+                authority_id=1,
+                created_at=time.time(),
+                signature="sig",
+            )
+        with self.assertRaises(ProtocolViolationError):
+            HostBoundaryTicketIssuerCapability(
+                capability_id="cap1",
+                issuer_name="HostBoundaryTicketIssuer",
+                authority_id=1,
+                created_at=True,
+                signature="sig",
+            )
+        with self.assertRaises(ProtocolViolationError):
+            HostBoundaryTicketIssuerCapability(
+                capability_id="cap1",
+                issuer_name="HostBoundaryTicketIssuer",
+                authority_id=1,
+                created_at=-1.0,
+                signature="sig",
+            )
+        with self.assertRaises(ProtocolViolationError):
+            HostBoundaryTicketIssuerCapability(
+                capability_id="cap1",
+                issuer_name="HostBoundaryTicketIssuer",
+                authority_id=1,
+                created_at=time.time(),
+                signature="sig",
+                role="WrongRole",
+            )
+
+        # 18d. Bypass via object.__new__ with Sol counterexample parameters rejected fail-closed
         raw_ticket = object.__new__(HostBoundaryTicket)
         object.__setattr__(raw_ticket, "_ticket_id", "candidate-ticket")
         object.__setattr__(raw_ticket, "_host_token_hash", "0" * 64)
@@ -13334,22 +13369,32 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             raw_ticket._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
         self.assertIn("Uninitialized or forged HostBoundaryTicket cannot be consumed fail-closed", str(ctx_consume.exception))
 
-        # 18d. HostBoundaryTicketIssuer direct construction without valid host token fails closed
+        # 18e. HostBoundaryTicketIssuer direct construction without valid host token fails closed
         with self.assertRaises(ProtocolViolationError) as ctx_iss:
             HostBoundaryTicketIssuer()
         self.assertIn("Direct construction of HostBoundaryTicketIssuer by in-process caller is forbidden fail-closed", str(ctx_iss.exception))
 
-        # 18e. HostBoundaryTicketIssuer rejects token shorter than 32 characters
+        # 18f. HostBoundaryTicketIssuer rejects token shorter than 32 characters
         with self.assertRaises(ProtocolViolationError) as ctx_short:
             HostBoundaryTicketIssuer(_internal_token="short_token")
         self.assertIn("at least 32 characters", str(ctx_short.exception))
 
-        # 18f. Ticket minted with attacker issuer rejected by provision_channel against authentic host daemon
+        # 18g. Trust-root tampering/monkeypatch: replace _issuer on ticket with foreign or fake issuer
+        valid_issuer = HostBoundaryTicketIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
+        tampered_ticket = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        fake_issuer = HostBoundaryTicketIssuer(_internal_token="fake_issuer_token_32_bytes_long!")
+        object.__setattr__(tampered_ticket, "_issuer", fake_issuer)
+        with self.assertRaises(ProtocolViolationError) as ctx_tamp:
+            tampered_ticket._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+        self.assertTrue("forged provenance rejected fail-closed" in str(ctx_tamp.exception) or "foreign issuer rejected" in str(ctx_tamp.exception), str(ctx_tamp.exception))
+
+        # 18h. Ticket minted with attacker issuer rejected by provision_channel against authentic host daemon in child process
         child_att_code = (
             f"import sys, secrets\n"
             f"from pathlib import Path\n"
             f"sys.path.insert(0, str(Path('docs/parallel-delivery').resolve()))\n"
             f"from delivery_engine import HostBoundaryChannel, HostBoundaryTicketIssuer, ProtocolViolationError\n"
+            f"assert HostBoundaryChannel._started is False, 'Channel must be unstarted initially'\n"
             f"attacker_token = secrets.token_hex(32)\n"
             f"attacker_issuer = HostBoundaryTicketIssuer(_internal_token=attacker_token)\n"
             f"try:\n"
@@ -13358,6 +13403,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             f"    assert False, 'Expected failure'\n"
             f"except ProtocolViolationError as e:\n"
             f"    assert ('Host ticket issuance rejected' in str(e) or 'HostBoundaryTicket issuer secret was rejected' in str(e)), str(e)\n"
+            f"assert HostBoundaryChannel._started is False, 'Channel _started must remain False on rejection'\n"
             f"sys.stdout.write('ATTACKER_DAEMON_REJECTED_PASS\\n')\n"
         )
         proc_att = subprocess.run(
@@ -13368,34 +13414,47 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertEqual(proc_att.returncode, 0, f"Child process failed: {proc_att.stderr}")
         self.assertIn("ATTACKER_DAEMON_REJECTED_PASS", proc_att.stdout)
 
-        # 18g. Ticket with forged HMAC signature is rejected fail-closed
-        valid_issuer = HostBoundaryTicketIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
+        # 18i. Ticket with forged HMAC signature is rejected fail-closed
         legit_ticket = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
         object.__setattr__(legit_ticket, "_signature", "deadbeef" * 8)
         with self.assertRaises(ProtocolViolationError) as ctx_sig:
             legit_ticket._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
         self.assertIn("cryptographic signature mismatch", str(ctx_sig.exception))
 
-        # 18h. Ticket with port binding mismatch is rejected fail-closed
+        # 18j. Ticket with port binding mismatch is rejected fail-closed
         legit_ticket2 = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
         with self.assertRaises(ProtocolViolationError) as ctx_port:
             legit_ticket2._consume_for_provisioning(HostBoundaryChannel, _h_port + 1, _h_authkey)
         self.assertIn("port binding mismatch", str(ctx_port.exception))
 
-        # 18i. Ticket with authkey binding mismatch is rejected fail-closed
+        # 18k. Ticket with authkey binding mismatch is rejected fail-closed
         legit_ticket3 = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
         with self.assertRaises(ProtocolViolationError) as ctx_auth:
             legit_ticket3._consume_for_provisioning(HostBoundaryChannel, _h_port, b"wrong_authkey_32b_length_bytes!")
         self.assertIn("authkey binding mismatch", str(ctx_auth.exception))
 
-        # 18j. Ticket with expired timestamp (> 300s) is rejected fail-closed
+        # 18l. Wrong audience/role: manipulated role rejected fail-closed
+        wrong_role_ticket = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        object.__setattr__(wrong_role_ticket, "_role", "WrongAudienceRole")
+        with self.assertRaises(ProtocolViolationError) as ctx_role:
+            wrong_role_ticket._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+        self.assertIn("role mismatch", str(ctx_role.exception))
+
+        # 18m. Temporal validity — expired ticket (created_at 301s in past) is rejected fail-closed
         legit_ticket4 = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
         object.__setattr__(legit_ticket4, "_created_at", time.time() - 301.0)
         with self.assertRaises(ProtocolViolationError) as ctx_exp:
             legit_ticket4._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
         self.assertIn("has expired", str(ctx_exp.exception))
 
-        # 18k. Single-use replay protection: consumed ticket cannot be reused fail-closed
+        # 18n. Temporal validity — future ticket beyond skew (created_at 35s in future) is rejected fail-closed
+        future_ticket = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        object.__setattr__(future_ticket, "_created_at", time.time() + 35.0)
+        with self.assertRaises(ProtocolViolationError) as ctx_fut:
+            future_ticket._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+        self.assertIn("future beyond acceptable skew", str(ctx_fut.exception))
+
+        # 18o. Single-use sequential replay protection: consumed ticket cannot be reused fail-closed
         legit_ticket5 = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
         legit_ticket5._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
         self.assertTrue(getattr(legit_ticket5, "_consumed", False))
@@ -13403,19 +13462,37 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             legit_ticket5._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
         self.assertIn("single-use ticket cannot be reused fail-closed", str(ctx_replay.exception))
 
-        # 18l. Serialization/deserialization rejected fail-closed
+        # 18p. Concurrent replay: 10 threads racing to consume the same ticket simultaneously
+        concurrent_ticket = valid_issuer.issue_ticket(_h_port, _h_authkey, _internal_token=_HOST_BOUNDARY_TOKEN)
+        results = []
+        barrier = threading.Barrier(10)
+        def racer():
+            barrier.wait()
+            try:
+                concurrent_ticket._consume_for_provisioning(HostBoundaryChannel, _h_port, _h_authkey)
+                results.append("SUCCESS")
+            except ProtocolViolationError as e:
+                results.append(f"FAIL:{e}")
+        threads = [threading.Thread(target=racer) for _ in range(10)]
+        for t in threads: t.start()
+        for t in threads: t.join()
+        self.assertEqual(results.count("SUCCESS"), 1, f"Expected exactly 1 success, got {results.count('SUCCESS')}")
+        self.assertEqual(len(results), 10)
+
+        # 18q. Serialization/deserialization rejected fail-closed
         import pickle
         with self.assertRaises(ProtocolViolationError):
             pickle.dumps(legit_ticket5)
         with self.assertRaises(ProtocolViolationError):
             pickle.dumps(valid_issuer)
 
-        # 18m. Fresh child process attempting full exploit chain with forged ticket is rejected fail-closed
+        # 18r. Fresh child process attempting full exploit chain with forged ticket is rejected fail-closed
         child_forged_code = (
             "import sys, secrets\n"
             "from pathlib import Path\n"
             "sys.path.insert(0, str(Path('docs/parallel-delivery').resolve()))\n"
             "from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, HostBoundaryTicketIssuer, ProtocolViolationError\n"
+            "assert HostBoundaryChannel._started is False, 'Channel must be unstarted initially'\n"
             "forged_accepted = False\n"
             "try:\n"
             "    raw_t = object.__new__(HostBoundaryTicket)\n"
@@ -13428,6 +13505,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "except ProtocolViolationError:\n"
             "    forged_accepted = False\n"
             "assert forged_accepted is False, 'FORGED_TICKET_ACCEPTED must be False'\n"
+            "assert HostBoundaryChannel._started is False, 'Channel _started must remain False on rejection'\n"
             "sys.stdout.write('FORGED_TICKET_REJECTED_PASS\\n')\n"
         )
         proc_sub = subprocess.run(
