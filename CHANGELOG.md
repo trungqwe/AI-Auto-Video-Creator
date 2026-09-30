@@ -615,6 +615,23 @@ Remediation R1 có 42 test acceptance qua, migration tiến/lùi và evidence/ha
     - Mở rộng suite `TestSolRemediationSeparationOfDuties` lên 9 bài test: chứng minh dispatch creator có đủ 7 public IDs vẫn không thể claim capability (`test_sod_06`), caller không thể đọc token/channel từ adapter và không thể giả mạo proof hay dùng Control authority để issue proof (`test_sod_07`), thực thi nghiêm ngặt single-use proof và cấm duplicate issuance (`test_sod_08`), và positive control độc lập với `self.reviewer_secret` hoàn tất toàn bộ vòng đời đến `integrated` (`test_sod_09`).
     - Nâng tổng số test lên 367/367 passed 100%.
 
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau a286e6d (Elimination of In-Process Environment Variable Provisioning, Mandatory ReviewerHostHandoff Authority, and Caller-Set Env Rejection)
+
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `a286e6ddde69ac0f0452c31888d8ad641402f706` cho bundle `docs/parallel-delivery/`:
+  - **(1) Loại Bỏ Triệt Để Việc Tự Đọc Biến Môi Trường Cùng Tiến Trình Khỏi provision_from_host()**:
+    - Xóa bỏ hoàn toàn việc đọc `os.environ` (`ORCA_REVIEWER_SESSION_SECRET`, `ORCA_REVIEWER_SECRET`, `DELY_REVIEWER_SESSION_SECRET`, `REVIEWER_SESSION_SECRET`) trong `ReviewerSessionBoundary.provision_from_host()`.
+    - Caller trong cùng tiến trình không thể đặt biến môi trường rồi gọi `get_default()` hoặc `provision_from_host()` để trở thành nguồn credential.
+    - Mọi lời gọi không tham số `provision_from_host()` hoặc truyền caller-selected secret đều bị từ chối fail-closed với `ProtocolViolationError("Caller-selected reviewer boundary provisioning forbidden; boundary must be provisioned immutably from trusted external host handoff authority")`.
+  - **(2) Bắt Buộc Authority Opaque Do External Host Sở Hữu (ReviewerHostHandoff)**:
+    - Bổ sung lớp `ReviewerHostHandoff` đại diện cho handoff authority bất biến do host bên ngoài cấp phát; từ chối fail-closed mọi tham số caller tự chọn khi khởi tạo.
+    - Credential được lưu trữ cách ly hoàn toàn trong vault nội bộ (`_HOST_HANDOFF_VAULT`), bảo vệ bằng thuộc tính `@property reviewer_secret` và `__setattr__` chặn in-process caller đọc hay gán giá trị (`AttributeError`).
+    - Chỉ cho phép `ReviewerSessionBoundary` tiêu thụ duy nhất 1 lần (`_consume_for_provisioning`); mọi nỗ lực tái sử dụng đều bị từ chối fail-closed.
+    - `ReviewerSessionBoundary.get_default()` không tự động provision từ môi trường; nếu host chưa cấp phát handoff, ranh giới khởi tạo với `_reviewer_secret = None`.
+  - **(3) Bộ Fixture Phân Biệt Tự Động 374/374 Tests PASS**:
+    - Bổ sung `test_sod_16_fresh_process_caller_set_environment_not_treated_as_external_provisioning` tái hiện chính xác counterexample của Sol audit trong tiến trình con mới: chủ động đặt các biến môi trường reviewer, chứng minh ranh giới mặc định vẫn giữ `_reviewer_secret = None`, không nhận caller-set environment làm host provisioning, từ chối mọi nỗ lực mint proof hay context với caller-set secret, và task an toàn giữ nguyên trạng thái `review`.
+    - Cập nhật harness test suite sử dụng `ReviewerSessionBoundary.provision_from_host(ReviewerHostHandoff())` thay cho việc gán biến môi trường cấp module.
+    - Nâng tổng số test lên 374/374 passed 100%.
+
 ## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau a518501 (Elimination of Fallback Reviewer Secret, Public Caller-Selected Provisioning Prevention, and Mandatory Host-Owned Boundary)
 
 - Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `a5185012fa21a0727c0b36de28e86917494b3591` cho bundle `docs/parallel-delivery/`:

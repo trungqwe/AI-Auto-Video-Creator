@@ -4,6 +4,11 @@
 
 - Authority hiện hành giữ nguyên: `M2-P1..P7B_ACCEPTED_CLOSED`; M2-P8/P9 `LOCKED`; M3/Phân hệ A `NOT AUTHORIZED`.
 - Đã thêm [kiến trúc triển khai song song](./docs/parallel-delivery/README.md) ở trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`. Bundle chỉ là docs/config và định nghĩa DAG, contract registry, ownership/lease, Orca worker protocol, merge queue, traceability, security/performance/recovery.
+- Đã khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate a286e6d:
+  1. Loại bỏ triệt để việc đọc biến môi trường cùng tiến trình khỏi provision_from_host(): Xóa bỏ hoàn toàn việc đọc `os.environ` (`ORCA_REVIEWER_SESSION_SECRET`, `ORCA_REVIEWER_SECRET`, `DELY_REVIEWER_SESSION_SECRET`, `REVIEWER_SESSION_SECRET`); caller trong cùng tiến trình đặt biến môi trường không thể trở thành nguồn credential hay cấp phát boundary.
+  2. Bắt buộc authority opaque do host sở hữu (ReviewerHostHandoff): Ranh giới `ReviewerSessionBoundary.provision_from_host()` bắt buộc phải có `ReviewerHostHandoff`; cấm caller tự chọn secret, cấm gọi không tham số; credential lưu cách ly trong vault nội bộ, chặn in-process caller đọc hay gán giá trị (`AttributeError`).
+  3. get_default() không tự động provision từ môi trường: Ranh giới mặc định khi chưa có host handoff giữ nguyên `_reviewer_secret = None`, từ chối fail-closed mọi nỗ lực mint proof hoặc context.
+  4. Bộ kiểm thử tự động đạt 374/374 tests PASS (100%), bổ sung `test_sod_16` tái hiện counterexample trong tiến trình con mới chủ động đặt biến môi trường, chứng minh ranh giới từ chối fail-closed và task giữ nguyên trạng thái review.
 - Đã khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate a518501:
   1. Xóa bỏ hoàn toàn fallback secret literal khỏi mã nguồn production: Xóa bỏ triệt để test_fixture_reviewer_secret_32b_hex! khỏi ReviewerSessionBoundary.provision_from_host(); trong tiến trình mới không có biến môi trường từ host, ranh giới khởi tạo với _reviewer_secret = None và từ chối fail-closed mọi nỗ lực mint proof hay context.
   2. Ngăn chặn tuyệt đối public caller-selected provisioning: ReviewerSessionBoundary.provision_from_host() từ chối fail-closed nếu caller truyền bất kỳ tham số nào.

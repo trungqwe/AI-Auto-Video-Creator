@@ -61,6 +61,7 @@ from delivery_engine import (  # noqa: E402
     ReviewDispatchHandle,
     ReviewerDeliveryChannel,
     _InternalReviewerMintToken,
+    ReviewerHostHandoff,
     ReviewerSessionBoundary,
     ReviewerSessionProof,
     make_review_evidence,
@@ -81,7 +82,7 @@ from delivery_engine import (  # noqa: E402
 from validate import check_secret_scan, check_task_dag
 
 TEST_FIXTURE_REVIEWER_SECRET = "test_fixture_reviewer_secret_32b_hex!"
-os.environ.setdefault("ORCA_REVIEWER_SESSION_SECRET", TEST_FIXTURE_REVIEWER_SECRET)
+ReviewerSessionBoundary.provision_from_host(ReviewerHostHandoff())
 
 
 
@@ -10895,6 +10896,7 @@ from delivery_engine import (
     OrcaDeliveryAdapter,
     LeaseManager,
     ReviewerSessionBoundary,
+    ReviewerHostHandoff,
     make_execution_envelope,
     SharedOrcaExecutionRegistry,
     ProtocolViolationError,
@@ -10928,7 +10930,21 @@ try:
     ReviewerSessionBoundary.provision_from_host(reviewer_secret="attacker_secret")
     assert False, "provision_from_host accepted caller-selected secret"
 except ProtocolViolationError as e:
-    assert "Caller-selected" in str(e) or "already provisioned" in str(e)
+    assert "Caller-selected" in str(e) or "already provisioned" in str(e) or "unforgeable" in str(e)
+
+# Parameterless provision_from_host is rejected fail-closed
+try:
+    ReviewerSessionBoundary.provision_from_host()
+    assert False, "parameterless provision_from_host succeeded without authority"
+except ProtocolViolationError as e:
+    assert "Caller-selected" in str(e) or "unforgeable" in str(e)
+
+# Caller-selected authority is rejected fail-closed
+try:
+    ReviewerHostHandoff(reviewer_secret="attacker_chosen_secret")
+    assert False, "ReviewerHostHandoff accepted caller-selected secret"
+except ProtocolViolationError as e:
+    assert "Caller-selected" in str(e)
 
 # Caller-selected boundary passed to OrcaDeliveryAdapter is rejected fail-closed
 attacker_boundary = ReviewerSessionBoundary(reviewer_secret="attacker_chosen_secret")
@@ -11036,6 +11052,174 @@ print("FRESH_PROCESS_PASS: task safely remains in review")
         res = subprocess.run([sys.executable, "-c", child_code], env=clean_env, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, f"Child process failed: stdout={res.stdout}\nstderr={res.stderr}")
         self.assertIn("FRESH_PROCESS_PASS: task safely remains in review", res.stdout)
+
+    def test_sod_16_fresh_process_caller_set_environment_not_treated_as_external_provisioning(self):
+        """16. Sol actionable finding counterexample: In a fresh process, caller setting reviewer
+        environment variables (ORCA_REVIEWER_SESSION_SECRET, etc.) is NOT treated as external host provisioning;
+        default boundary remains unprovisioned with _reviewer_secret=None; caller-selected provisioning
+        is rejected fail-closed; proofs cannot be minted; task remains strictly in review state."""
+        clean_env = {k: v for k, v in os.environ.items() if "REVIEWER" not in k.upper()}
+        child_code = r'''
+import sys
+import os
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+import subprocess
+
+# Caller deliberately sets environment variables in same process
+synthetic_secret = "attacker_synthetic_secret_32b_hex!"
+os.environ["ORCA_REVIEWER_SESSION_SECRET"] = synthetic_secret
+os.environ["ORCA_REVIEWER_SECRET"] = synthetic_secret
+os.environ["DELY_REVIEWER_SESSION_SECRET"] = synthetic_secret
+os.environ["REVIEWER_SESSION_SECRET"] = synthetic_secret
+
+sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
+import delivery_engine
+from delivery_engine import (
+    OrcaDeliveryAdapter,
+    LeaseManager,
+    ReviewerSessionBoundary,
+    ReviewerHostHandoff,
+    make_execution_envelope,
+    SharedOrcaExecutionRegistry,
+    ProtocolViolationError,
+)
+
+assert not hasattr(delivery_engine, "DEFAULT_TEST_REVIEWER_SECRET"), "delivery_engine exports DEFAULT_TEST_REVIEWER_SECRET"
+
+delivery_id = "TASK-SOD-16"
+disp_id = "ctx_sod_16_impl"
+cmd_head = ["git", "rev-parse", "HEAD"]
+candidate = subprocess.run(cmd_head, capture_output=True, text=True, check=True).stdout.strip()
+t0 = datetime(2026, 9, 30, 10, 0, 0, tzinfo=timezone.utc)
+
+mgr = LeaseManager([{"id": "LOCK-SOD-16", "mode": "exclusive", "renewable": True, "lease_seconds": 600}])
+mgr.set_task_authority(delivery_id, "granted")
+lease = mgr.acquire_lease("LOCK-SOD-16", delivery_id, disp_id, now=t0)
+
+# Default boundary and adapter in fresh process with caller-set environment
+b = ReviewerSessionBoundary.get_default()
+assert b._reviewer_secret is None, f"Boundary accepted caller-set environment secret: {b._reviewer_secret}"
+assert b._reviewer_secret != synthetic_secret.encode("utf-8"), "Boundary secret matches caller-set secret"
+
+# Ordinary in-process code cannot read reviewer_secret
+try:
+    _ = b.reviewer_secret
+    assert False, "b.reviewer_secret did not raise AttributeError"
+except AttributeError:
+    pass
+
+adapter = OrcaDeliveryAdapter(
+    mgr,
+    approved_candidate_commit=candidate,
+    git_root=Path(".").resolve(),
+    control_secret="test_control_secret_32b_hex!",
+)
+assert adapter.reviewer_boundary._reviewer_secret is None, "Adapter boundary accepted caller-set environment secret"
+
+# Caller-selected provisioning via provision_from_host is rejected fail-closed
+try:
+    ReviewerSessionBoundary.provision_from_host(reviewer_secret=synthetic_secret)
+    assert False, "provision_from_host accepted caller-selected secret"
+except ProtocolViolationError as e:
+    assert "Caller-selected" in str(e) or "unforgeable" in str(e)
+
+# Parameterless provision_from_host is rejected fail-closed (does not read os.environ)
+try:
+    ReviewerSessionBoundary.provision_from_host()
+    assert False, "parameterless provision_from_host succeeded without authority"
+except ProtocolViolationError as e:
+    assert "Caller-selected" in str(e) or "unforgeable" in str(e)
+
+# Caller-selected authority is rejected fail-closed
+try:
+    ReviewerHostHandoff(reviewer_secret=synthetic_secret)
+    assert False, "ReviewerHostHandoff accepted caller-selected secret"
+except ProtocolViolationError as e:
+    assert "Caller-selected" in str(e)
+
+# Ordinary in-process code cannot read or set credential on handoff
+h = ReviewerHostHandoff()
+try:
+    _ = h.reviewer_secret
+    assert False, "h.reviewer_secret did not raise AttributeError"
+except AttributeError:
+    pass
+
+try:
+    h.reviewer_secret = synthetic_secret
+    assert False, "Setting h.reviewer_secret did not raise AttributeError"
+except AttributeError:
+    pass
+
+# Advance implement phase to worker_done succeeded
+adapter.set_task_authority(delivery_id, "granted")
+adapter.set_task_state(delivery_id, "ready")
+adapter.register_task_locks(delivery_id, ["LOCK-SOD-16"])
+
+disp_env = make_execution_envelope(delivery_id, disp_id, phase="implement", orca_task_id="task_impl_16", now=t0)
+d_id = adapter.create_dispatch(
+    delivery_id,
+    orca_task_id="task_impl_16",
+    candidate_commit=candidate,
+    intended_dispatch_id=disp_id,
+    lease_id=lease.lease_id,
+    fencing_token=lease.fencing_token,
+    dispatch_origin="dely dispatch",
+    execution_envelope=disp_env,
+    now=t0,
+)
+adapter.acknowledge_dispatch(delivery_id, d_id)
+adapter.start_running(delivery_id, d_id)
+adapter.handle_worker_done(delivery_id, "task_impl_16", d_id, "succeeded", candidate_commit=candidate, fencing_token=lease.fencing_token, now=t0 + timedelta(seconds=1))
+
+assert adapter.get_task_state(delivery_id) == "review", f"Expected review state, got {adapter.get_task_state(delivery_id)}"
+
+# Create review dispatch
+rev_disp_id = "ctx_rev_16"
+rev_env = make_execution_envelope(delivery_id, rev_disp_id, phase="review", orca_task_id="task_rev_16", now=t0 + timedelta(seconds=2))
+res_id = adapter.create_review_dispatch(
+    delivery_id,
+    orca_task_id="task_rev_16",
+    candidate_commit=candidate,
+    intended_dispatch_id=rev_disp_id,
+    dispatch_origin="dely dispatch",
+    execution_envelope=rev_env,
+    now=t0 + timedelta(seconds=2),
+)
+
+# Attempting to mint proof or context with caller-set environment secret fails closed
+try:
+    adapter.reviewer_boundary.create_reviewer_context(
+        delivery_task_id=delivery_id,
+        review_dispatch_id=res_id,
+        orca_task_id="task_rev_16",
+        terminal_id=rev_env.live_terminal_evidence.archive_reference,
+        candidate_commit=candidate,
+        reviewer_secret=synthetic_secret,
+    )
+    assert False, "create_reviewer_context succeeded with caller-set synthetic secret"
+except ProtocolViolationError as e:
+    assert "Reviewer credential not configured on ReviewerSessionBoundary fail-closed" in str(e)
+
+try:
+    adapter.reviewer_boundary.issue_session_proof(
+        delivery_task_id=delivery_id,
+        review_dispatch_id=res_id,
+        reviewer_secret=synthetic_secret,
+    )
+    assert False, "issue_session_proof succeeded with caller-set synthetic secret"
+except ProtocolViolationError as e:
+    assert "Reviewer credential not configured on ReviewerSessionBoundary fail-closed" in str(e)
+
+# Task remains strictly in review state; cannot reach merge_queued
+final_state = adapter.get_task_state(delivery_id)
+assert final_state == "review", f"Expected task to remain in 'review', but got {final_state}"
+print("CALLER_SET_ENV_REJECTED_PASS: caller-set environment not treated as external provisioning; task remains in review")
+'''
+        res = subprocess.run([sys.executable, "-c", child_code], env=clean_env, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f"Child process failed: stdout={res.stdout}\nstderr={res.stderr}")
+        self.assertIn("CALLER_SET_ENV_REJECTED_PASS: caller-set environment not treated as external provisioning; task remains in review", res.stdout)
 
 
 if __name__ == "__main__":
