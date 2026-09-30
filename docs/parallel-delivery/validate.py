@@ -1222,6 +1222,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "3_zero_side_effect_validation_before_state_mutation_for_review_and_integration": "RESOLVED",
                     "4_discriminating_negative_fixtures_verify_fail_closed_and_zero_side_effects": "RESOLVED",
                 },
+                "sol_lead_audit_a189e50": {
+                    "1_reviewer_authenticated_delivery_channel_and_forbidden_bare_retrieval": "RESOLVED",
+                    "2_elimination_of_reviewer_mint_secret_attribute_and_duplicate_minting_prevention": "RESOLVED",
+                    "3_atomic_verify_and_consume_capability_preventing_concurrent_double_issuance": "RESOLVED",
+                    "4_discriminating_negative_and_concurrency_fixtures_verified": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

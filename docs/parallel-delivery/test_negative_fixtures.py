@@ -16,6 +16,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -55,6 +56,8 @@ from delivery_engine import (  # noqa: E402
     IntegrationEvidence,
     ReviewerCapability,
     ControlCapability,
+    ReviewDispatchHandle,
+    ReviewerDeliveryChannel,
     _InternalReviewerMintToken,
     make_review_evidence,
     make_integration_evidence,
@@ -323,7 +326,7 @@ class TestF4OrcaMappingAndLifecycle(unittest.TestCase):
         rev_disp = "ctx_f4_review_001"
         rev_orca = "task_orca_review_001"
         rev_env = make_execution_envelope(delivery_id, rev_disp, phase="review", orca_task_id=rev_orca)
-        self.adapter.create_review_dispatch(
+        rev_disp = self.adapter.create_review_dispatch(
             delivery_id,
             orca_task_id=rev_orca,
             candidate_commit=self.candidate_commit,
@@ -1711,7 +1714,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
         rev_disp = "ctx_r3_16_review"
         rev_orca = "task_orca_r3_16_rev"
         rev_env = make_execution_envelope("TASK-A", rev_disp, phase="review", orca_task_id=rev_orca)
-        self.adapter.create_review_dispatch(
+        rev_disp = self.adapter.create_review_dispatch(
             "TASK-A",
             orca_task_id=rev_orca,
             candidate_commit=self.candidate_commit,
@@ -2102,7 +2105,7 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
         rev_disp = "ctx_r4_09_review"
         rev_orca = "task_orca_r4_09_rev"
         rev_env = make_execution_envelope("TASK-A", rev_disp, phase="review", orca_task_id=rev_orca)
-        self.adapter.create_review_dispatch(
+        rev_disp = self.adapter.create_review_dispatch(
             "TASK-A",
             orca_task_id=rev_orca,
             candidate_commit=self.candidate_commit,
@@ -6687,7 +6690,7 @@ class TestAstraRound18Remediation(unittest.TestCase):
         rev_disp = "ctx_a18_07_review"
         rev_orca = "task_orca_a18_07_rev"
         rev_env = make_execution_envelope(self.delivery_id, rev_disp, phase="review", orca_task_id=rev_orca)
-        self.adapter.create_review_dispatch(
+        rev_disp = self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id=rev_orca,
             candidate_commit=self.candidate_commit,
@@ -7244,7 +7247,7 @@ class TestSolRound18Remediation(unittest.TestCase):
         rev_disp_id = "ctx_sol_r18_review_001"
         rev_orca_id = "task_sol_r18_review_001"
         rev_env = make_execution_envelope(self.delivery_id, rev_disp_id, phase="review", orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=5))
-        self.adapter.create_review_dispatch(
+        rev_disp_id = self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id=rev_orca_id,
             candidate_commit=self.candidate_commit,
@@ -7400,7 +7403,7 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
         rev_disp_id = "ctx_sol_lead_rev_002"
         rev_orca_id = "task_sol_lead_rev_002"
         rev_env = make_execution_envelope(self.delivery_id, rev_disp_id, phase="review", orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=5))
-        self.adapter.create_review_dispatch(
+        rev_disp_id = self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id=rev_orca_id,
             candidate_commit=self.candidate_commit,
@@ -7430,7 +7433,7 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
         rev_disp_id = "ctx_sol_lead_rev_003"
         rev_orca_id = "task_sol_lead_rev_003"
         rev_env = make_execution_envelope(self.delivery_id, rev_disp_id, phase="review", orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=5))
-        self.adapter.create_review_dispatch(
+        rev_disp_id = self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id=rev_orca_id,
             candidate_commit=self.candidate_commit,
@@ -7458,7 +7461,7 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
         rev_disp_id = "ctx_sol_lead_rev_004"
         rev_orca_id = "task_sol_lead_rev_004"
         rev_env = make_execution_envelope(self.delivery_id, rev_disp_id, phase="review", orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=5))
-        self.adapter.create_review_dispatch(
+        rev_disp_id = self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id=rev_orca_id,
             candidate_commit=self.candidate_commit,
@@ -7575,7 +7578,7 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
         rev_disp_id = "ctx_sol_lead_rev_pos"
         rev_orca_id = "task_sol_lead_rev_pos"
         rev_env = make_execution_envelope(self.delivery_id, rev_disp_id, phase="review", orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=5))
-        self.adapter.create_review_dispatch(
+        rev_disp_id = self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id=rev_orca_id,
             candidate_commit=self.candidate_commit,
@@ -7688,7 +7691,7 @@ class TestSolLeadReviewDa26686Remediation(unittest.TestCase):
             self.delivery_id, rev_disp_id, phase="review",
             orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=5)
         )
-        self.adapter.create_review_dispatch(
+        return self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id=rev_orca_id,
             candidate_commit=self.candidate_commit,
@@ -7697,7 +7700,6 @@ class TestSolLeadReviewDa26686Remediation(unittest.TestCase):
             execution_envelope=rev_env,
             now=self.t0 + timedelta(seconds=5),
         )
-        return rev_disp_id
 
     # -------------------------------------------------------------------------
     # Finding 1: Evidence provenance caller-controlled and stale evidence accepted
@@ -8030,7 +8032,7 @@ class TestSolLeadReview36092d0Remediation(unittest.TestCase):
             self.delivery_id, rev_disp_id, phase="review",
             orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=5)
         )
-        self.adapter.create_review_dispatch(
+        return self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id=rev_orca_id,
             candidate_commit=self.candidate_commit,
@@ -8039,7 +8041,6 @@ class TestSolLeadReview36092d0Remediation(unittest.TestCase):
             execution_envelope=rev_env,
             now=self.t0 + timedelta(seconds=5),
         )
-        return rev_disp_id
 
     # Finding 1: Public evidence issuers let ordinary adapter caller obtain signed evidence
     def test_36092d0_01_ordinary_adapter_caller_cannot_issue_review_evidence_without_reviewer_capability(self):
@@ -8147,7 +8148,7 @@ class TestSolLeadReview36092d0Remediation(unittest.TestCase):
         rev_disp_id = "ctx_36092d0_pos_rev"
         rev_orca_id = "task_36092d0_pos_rev"
         rev_env = make_execution_envelope(self.delivery_id, rev_disp_id, phase="review", orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=5))
-        adapter.create_review_dispatch(
+        rev_disp_id = adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id=rev_orca_id,
             candidate_commit=self.candidate_commit,
@@ -8348,7 +8349,7 @@ class TestSolLeadAudit654860cRemediation(unittest.TestCase):
             self.delivery_id, rev_disp_id, phase="review",
             orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=5)
         )
-        self.adapter.create_review_dispatch(
+        return self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id=rev_orca_id,
             candidate_commit=self.candidate_commit,
@@ -8357,7 +8358,6 @@ class TestSolLeadAudit654860cRemediation(unittest.TestCase):
             execution_envelope=rev_env,
             now=self.t0 + timedelta(seconds=5),
         )
-        return rev_disp_id
 
     def test_654860c_01_module_global_adapter_internal_capabilities_removed_and_unindexed(self):
         """1. Counterexample: _ADAPTER_INTERNAL_CAPABILITIES is removed from module state and cannot be indexed."""
@@ -8520,7 +8520,7 @@ class TestSolLeadAudit654860cRemediation(unittest.TestCase):
         rev_disp_id = "ctx_654860c_pos_rev"
         rev_orca_id = "task_654860c_pos_rev"
         rev_env = make_execution_envelope(self.delivery_id, rev_disp_id, phase="review", orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=20))
-        self.adapter.create_review_dispatch(
+        rev_disp_id = self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id=rev_orca_id,
             candidate_commit=self.candidate_commit,
@@ -8829,7 +8829,7 @@ class TestSolLeadAudit2f56bd3Remediation(unittest.TestCase):
         # 3. Independent review dispatch and verdict ACCEPT
         rev_disp_id = "ctx_2f56bd3_rev2"
         rev_env = make_execution_envelope(self.delivery_id, rev_disp_id, phase="review", orca_task_id="orca_2f56bd3_rev2", now=self.t0 + timedelta(seconds=25))
-        self.adapter.create_review_dispatch(
+        rev_disp_id = self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id="orca_2f56bd3_rev2",
             candidate_commit=self.candidate_commit,
@@ -8992,7 +8992,7 @@ class TestSolLeadAudit982ed1eRemediation(unittest.TestCase):
             now=self.t0 + timedelta(seconds=3),
         )
         rev_env = make_execution_envelope(self.delivery_id, "ctx_rev_pos_01", phase="review", orca_task_id="task_orca_pos_01", now=self.t0 + timedelta(seconds=5))
-        self.adapter.create_review_dispatch(
+        rev_disp = self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id="task_orca_pos_01",
             candidate_commit=self.candidate_commit,
@@ -9002,13 +9002,13 @@ class TestSolLeadAudit982ed1eRemediation(unittest.TestCase):
             now=self.t0 + timedelta(seconds=5),
         )
         rev_cap = self.ea.issue_reviewer_capability(
-            self.delivery_id, "ctx_rev_pos_01", self.candidate_commit
+            self.delivery_id, rev_disp, self.candidate_commit
         )
         self.assertEqual(rev_cap.delivery_task_id, self.delivery_id)
 
         # Review evidence issued with ReviewerCapability
         rev_ev = self.ea.issue_review_evidence(
-            self.delivery_id, "ctx_rev_pos_01", self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap
+            self.delivery_id, rev_disp, self.candidate_commit, "ACCEPT", reviewer_capability=rev_cap
         )
         self.assertIsInstance(rev_ev, ReviewEvidence)
 
@@ -9148,7 +9148,7 @@ class TestSolLeadAudit1f90e6cRemediation(unittest.TestCase):
         rev_disp = "ctx_1f90e6c_r01"
         rev_orca = "task_orca_1f90e6c_r01"
         rev_env = make_execution_envelope(self.delivery_id, rev_disp, phase="review", orca_task_id=rev_orca, now=self.t0 + timedelta(seconds=15))
-        self.adapter.create_review_dispatch(
+        rev_disp = self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id=rev_orca,
             candidate_commit=self.candidate_commit,
@@ -9209,7 +9209,7 @@ class TestSolLeadAudit1f90e6cRemediation(unittest.TestCase):
         rev_disp = "ctx_1f90e6c_r02"
         rev_orca = "task_orca_1f90e6c_r02"
         rev_env = make_execution_envelope(self.delivery_id, rev_disp, phase="review", orca_task_id=rev_orca, now=self.t0 + timedelta(seconds=15))
-        self.adapter.create_review_dispatch(
+        rev_disp = self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id=rev_orca,
             candidate_commit=self.candidate_commit,
@@ -9336,7 +9336,7 @@ class TestSolLeadAuditEab4cabRemediation(unittest.TestCase):
             self.delivery_id, rev_disp_id, phase="review",
             orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=5)
         )
-        self.adapter.create_review_dispatch(
+        return self.adapter.create_review_dispatch(
             self.delivery_id,
             orca_task_id=rev_orca_id,
             candidate_commit=self.candidate_commit,
@@ -9345,7 +9345,6 @@ class TestSolLeadAuditEab4cabRemediation(unittest.TestCase):
             execution_envelope=rev_env,
             now=self.t0 + timedelta(seconds=5),
         )
-        return rev_disp_id
 
     def test_eab4cab_01_ordinary_caller_cannot_mint_reviewer_capability_directly(self):
         """1. Finding 1 Counterexample: Direct external calling of _mint_reviewer_capability_internal or _create_reviewer_mint_token rejected."""
@@ -9630,6 +9629,344 @@ class TestSolLeadAuditEab4cabRemediation(unittest.TestCase):
         # 6. Complete integration
         st_int = self.adapter.handle_integration_gates(
             self.delivery_id, gates_pass=True, integration_evidence=int_ev, now=self.t0 + timedelta(seconds=20)
+        )
+        self.assertEqual(st_int, "integrated")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
+
+
+
+class TestSolLeadAuditA189e50Remediation(unittest.TestCase):
+    """
+    Test suite verifying remediation of Sol-Lead independent audit on exact candidate a189e50:
+    Finding 1: Bare get_reviewer_capability retrieval eliminated; delivery capability across reviewer-authenticated boundary.
+    Finding 2: Elimination of _reviewer_mint_secret attribute and prevention of duplicate reviewer capability minting.
+    Finding 3: Atomic verify_and_consume_capability preventing concurrent double review evidence issuance.
+    """
+
+    def setUp(self):
+        self.delivery_id = "TASK-A189E50-REMED"
+        self.orca_task_id = "task_orca_a189e50_impl_01"
+        self.intended_disp = "ctx_a189e50_impl_01"
+        cmd_head = ["git", "rev-parse", "HEAD"]
+        self.candidate_commit = subprocess.run(cmd_head, cwd=ROOT_DIR, capture_output=True, text=True, check=True).stdout.strip()
+        self.approved_base = "4a7c8c921b7e05066505d51b168a02c3fde61317"
+        self.t0 = datetime(2026, 9, 30, 10, 0, 0, tzinfo=timezone.utc)
+        self.mgr = LeaseManager([
+            {"id": "LOCK-A189E50-REMED", "mode": "exclusive", "renewable": True, "lease_seconds": 600},
+        ])
+        self.mgr.set_task_authority(self.delivery_id, "granted")
+        self.lease = self.mgr.acquire_lease("LOCK-A189E50-REMED", self.delivery_id, self.intended_disp, now=self.t0)
+        self.registry = SharedOrcaExecutionRegistry.get_default()
+        self.control_secret = "test_control_secret_a189e50_32b_!"
+        self.adapter = OrcaDeliveryAdapter(
+            self.mgr,
+            approved_candidate_commit=self.candidate_commit,
+            git_root=ROOT_DIR,
+            control_secret=self.control_secret,
+        )
+        self.adapter.set_task_authority(self.delivery_id, "granted")
+        self.adapter.set_task_state(self.delivery_id, "ready")
+        self.adapter.register_task_locks(self.delivery_id, ["LOCK-A189E50-REMED"])
+        self.ea = self.adapter.evidence_authority
+
+    def tearDown(self):
+        SharedOrcaExecutionRegistry.reset_default()
+
+    def _advance_to_review(self):
+        disp_env = make_execution_envelope(self.delivery_id, self.intended_disp, phase="implement", orca_task_id=self.orca_task_id, now=self.t0)
+        disp_id = self.adapter.create_dispatch(
+            self.delivery_id,
+            orca_task_id=self.orca_task_id,
+            candidate_commit=self.candidate_commit,
+            intended_dispatch_id=self.intended_disp,
+            lease_id=self.lease.lease_id,
+            fencing_token=self.lease.fencing_token,
+            dispatch_origin="dely dispatch",
+            execution_envelope=disp_env,
+            now=self.t0,
+        )
+        self.adapter.acknowledge_dispatch(self.delivery_id, disp_id)
+        self.adapter.start_running(self.delivery_id, disp_id)
+        self.adapter.handle_worker_done(
+            self.delivery_id,
+            self.orca_task_id,
+            disp_id,
+            "succeeded",
+            candidate_commit=self.candidate_commit,
+            fencing_token=self.lease.fencing_token,
+            now=self.t0 + timedelta(seconds=3),
+        )
+
+    def _create_review_dispatch(self, rev_disp_id="ctx_a189e50_rev_01", rev_orca_id="task_orca_a189e50_rev_01"):
+        rev_env = make_execution_envelope(
+            self.delivery_id, rev_disp_id, phase="review",
+            orca_task_id=rev_orca_id, now=self.t0 + timedelta(seconds=5)
+        )
+        return self.adapter.create_review_dispatch(
+            self.delivery_id,
+            orca_task_id=rev_orca_id,
+            candidate_commit=self.candidate_commit,
+            intended_dispatch_id=rev_disp_id,
+            dispatch_origin="dely dispatch",
+            execution_envelope=rev_env,
+            now=self.t0 + timedelta(seconds=5),
+        )
+
+    def test_a189e50_01_bare_get_reviewer_capability_without_reviewer_auth_rejected(self):
+        """1. Finding 1 Counterexample: Caller in same process cannot perform bare retrieval of ReviewerCapability by dispatch ID string."""
+        self._advance_to_review()
+        rev_handle = self._create_review_dispatch()
+        plain_disp_id = str(rev_handle)
+
+        # Bare retrieval with plain string ID without reviewer authentication is rejected fail closed
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.get_reviewer_capability(plain_disp_id)
+        self.assertIn("Bare retrieval of ReviewerCapability without reviewer authentication is forbidden", str(ctx.exception))
+
+        with self.assertRaises(ProtocolViolationError) as ctx2:
+            self.ea.get_reviewer_capability(plain_disp_id)
+        self.assertIn("Bare retrieval of ReviewerCapability without reviewer authentication is forbidden", str(ctx2.exception))
+
+        # Bare retrieval with wrong auth token is rejected fail closed
+        with self.assertRaises(ProtocolViolationError) as ctx3:
+            self.adapter.get_reviewer_capability(plain_disp_id, reviewer_auth_token="wrong_token_hex_value")
+        self.assertIn("Invalid reviewer_auth_token", str(ctx3.exception))
+
+    def test_a189e50_02_control_authority_cannot_claim_or_retrieve_reviewer_capability(self):
+        """2. Finding 1 Invariant: Control authority cannot obtain ReviewerCapability even when providing dispatch handle or token."""
+        self._advance_to_review()
+        rev_handle = self._create_review_dispatch()
+        ctrl_cap = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+
+        # Control passing control_capability to adapter.get_reviewer_capability
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.adapter.get_reviewer_capability(rev_handle, control_capability=ctrl_cap)
+        self.assertIn("Control authority cannot issue or hold ReviewerCapability", str(ctx.exception))
+
+        # Control passing control_secret to adapter.get_reviewer_capability
+        with self.assertRaises(ProtocolViolationError) as ctx2:
+            self.adapter.get_reviewer_capability(rev_handle, control_secret=self.control_secret)
+        self.assertIn("Control authority cannot issue or hold ReviewerCapability", str(ctx2.exception))
+
+        # Control passing control_capability to handle.claim_reviewer_capability
+        with self.assertRaises(ProtocolViolationError) as ctx3:
+            rev_handle.claim_reviewer_capability(control_capability=ctrl_cap)
+        self.assertIn("Control authority cannot issue or hold ReviewerCapability", str(ctx3.exception))
+
+        # Control passing control_secret to handle.claim_reviewer_capability
+        with self.assertRaises(ProtocolViolationError) as ctx4:
+            rev_handle.claim_reviewer_capability(control_secret=self.control_secret)
+        self.assertIn("Control authority cannot issue or hold ReviewerCapability", str(ctx4.exception))
+
+    def test_a189e50_03_reviewer_delivery_channel_single_use_enforcement(self):
+        """3. Finding 1 Invariant: ReviewerDeliveryChannel enforces strictly single-use capability delivery."""
+        self._advance_to_review()
+        rev_handle = self._create_review_dispatch()
+
+        # First claim via handle succeeds
+        cap = rev_handle.claim_reviewer_capability()
+        self.assertIsInstance(cap, ReviewerCapability)
+        self.assertEqual(cap.delivery_task_id, self.delivery_id)
+        self.assertEqual(cap.role, "Reviewer")
+
+        # Second claim via handle is rejected fail closed
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            rev_handle.claim_reviewer_capability()
+        self.assertIn("has already been claimed; single-use delivery channel cannot be reused", str(ctx.exception))
+
+        # Second claim via adapter is also rejected fail closed
+        with self.assertRaises(ProtocolViolationError) as ctx2:
+            self.adapter.get_reviewer_capability(rev_handle)
+        self.assertIn("has already been claimed; single-use delivery channel cannot be reused", str(ctx2.exception))
+
+    def test_a189e50_04_no_reviewer_mint_secret_attribute_and_mint_token_external_call_forbidden(self):
+        """4. Finding 2 Counterexample: _reviewer_mint_secret attribute removed; external mint token creation strictly forbidden."""
+        self._advance_to_review()
+        # Check attribute does not exist on EvidenceAuthority
+        self.assertFalse(hasattr(self.ea, "_reviewer_mint_secret"))
+        self.assertFalse(hasattr(self.adapter.evidence_authority, "_reviewer_mint_secret"))
+
+        # Direct external call to _create_reviewer_mint_token fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx:
+            self.ea._create_reviewer_mint_token(self.delivery_id, "ctx_fake_disp", self.candidate_commit)
+        self.assertIn("Direct external calling of _create_reviewer_mint_token is forbidden", str(ctx.exception))
+
+        # Passing _internal_secret to _create_reviewer_mint_token fails closed
+        with self.assertRaises(ProtocolViolationError) as ctx2:
+            self.ea._create_reviewer_mint_token(self.delivery_id, "ctx_fake_disp", self.candidate_commit, _internal_secret=b"dummy")
+        self.assertIn("Direct external calling of _create_reviewer_mint_token is forbidden", str(ctx2.exception))
+
+    def test_a189e50_05_duplicate_reviewer_capability_minting_for_same_dispatch_forbidden(self):
+        """5. Finding 2 Invariant: Cannot mint duplicate ReviewerCapability or mint token for the same review dispatch."""
+        self._advance_to_review()
+        rev_handle = self._create_review_dispatch()
+
+        # Review dispatch has already been minted. Trying to mint again for same dispatch is forbidden
+        self.adapter._executing_lifecycle_handler = "create_review_dispatch"
+        self.adapter._executing_lifecycle_task_id = self.delivery_id
+        self.adapter._executing_review_dispatch = str(rev_handle)
+        try:
+            with self.assertRaises(ProtocolViolationError) as ctx:
+                self.ea._create_reviewer_mint_token(self.delivery_id, str(rev_handle), self.candidate_commit)
+            self.assertIn("duplicate minting is forbidden", str(ctx.exception))
+        finally:
+            self.adapter._executing_lifecycle_handler = None
+            self.adapter._executing_lifecycle_task_id = None
+            self.adapter._executing_review_dispatch = None
+
+    def test_a189e50_06_concurrent_threads_cannot_issue_two_review_evidences_from_single_capability(self):
+        """6. Finding 3 Concurrency Fixture: Atomic verify_and_consume_capability prevents two threads from issuing ReviewEvidence from one capability."""
+        self._advance_to_review()
+        rev_handle = self._create_review_dispatch()
+        cap = rev_handle.claim_reviewer_capability()
+        self.assertIsInstance(cap, ReviewerCapability)
+
+        num_threads = 4
+        barrier = threading.Barrier(num_threads)
+        results = []
+        errors = []
+        lock = threading.Lock()
+
+        def worker():
+            barrier.wait()  # Synchronize threads to fire concurrently
+            try:
+                ev = self.ea.issue_review_evidence(
+                    self.delivery_id,
+                    str(rev_handle),
+                    self.candidate_commit,
+                    verdict="ACCEPT",
+                    reviewer_capability=cap,
+                )
+                with lock:
+                    results.append(ev)
+            except ProtocolViolationError as exc:
+                with lock:
+                    errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(num_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Exactly 1 thread must succeed, and the other 3 threads must fail closed
+        self.assertEqual(len(results), 1, "Exactly one thread must succeed in issuing ReviewEvidence")
+        self.assertEqual(len(errors), num_threads - 1, "All other threads must receive ProtocolViolationError")
+        for err in errors:
+            self.assertIn("has already been consumed", str(err))
+
+        # Check evidence ID registered in authority exactly once
+        self.assertIn(results[0].evidence_id, self.ea._issued_evidence_ids)
+        self.assertIn(cap.capability_id, self.ea._consumed_capabilities)
+
+    def test_a189e50_07_malformed_review_evidence_request_has_zero_side_effects_on_capability(self):
+        """7. Finding 3 Invariant: Malformed review evidence request fails before verify_and_consume; capability remains valid."""
+        self._advance_to_review()
+        rev_handle = self._create_review_dispatch()
+        cap = rev_handle.claim_reviewer_capability()
+        self.assertIsInstance(cap, ReviewerCapability)
+
+        # 1. Invalid verdict fails before consumption
+        with self.assertRaises(ProtocolViolationError) as ctx1:
+            self.ea.issue_review_evidence(
+                self.delivery_id,
+                str(rev_handle),
+                self.candidate_commit,
+                verdict="INVALID_VERDICT",
+                reviewer_capability=cap,
+            )
+        self.assertIn("Invalid review verdict", str(ctx1.exception))
+        self.assertNotIn(cap.capability_id, self.ea._consumed_capabilities)
+
+        # 2. Invalid commit format fails before consumption
+        with self.assertRaises(ProtocolViolationError) as ctx2:
+            self.ea.issue_review_evidence(
+                self.delivery_id,
+                str(rev_handle),
+                "not-a-valid-sha",
+                verdict="ACCEPT",
+                reviewer_capability=cap,
+            )
+        self.assertIn("must be an immutable full 40-character commit SHA", str(ctx2.exception))
+        self.assertNotIn(cap.capability_id, self.ea._consumed_capabilities)
+
+        # 3. Valid issuance succeeds with untouched capability
+        ev = self.ea.issue_review_evidence(
+            self.delivery_id,
+            str(rev_handle),
+            self.candidate_commit,
+            verdict="ACCEPT",
+            reviewer_capability=cap,
+        )
+        self.assertIsInstance(ev, ReviewEvidence)
+        self.assertIn(cap.capability_id, self.ea._consumed_capabilities)
+
+        # 4. Subsequent issuance fails because capability is now consumed
+        with self.assertRaises(ProtocolViolationError) as ctx3:
+            self.ea.issue_review_evidence(
+                self.delivery_id,
+                str(rev_handle),
+                self.candidate_commit,
+                verdict="ACCEPT",
+                reviewer_capability=cap,
+            )
+        self.assertIn("has already been consumed", str(ctx3.exception))
+
+    def test_a189e50_08_positive_control_end_to_end_lifecycle_with_reviewer_authenticated_channel(self):
+        """8. Positive control: Full end-to-end lifecycle progression using reviewer-authenticated delivery channel and atomic capability consumption."""
+        self._advance_to_review()
+
+        # 1. Dispatch review
+        rev_handle = self._create_review_dispatch()
+        self.assertIsInstance(rev_handle, ReviewDispatchHandle)
+
+        # 2. Reviewer claims capability from authenticated channel
+        rev_cap = rev_handle.claim_reviewer_capability()
+        self.assertIsInstance(rev_cap, ReviewerCapability)
+
+        # 3. Reviewer issues ReviewEvidence
+        rev_ev = self.ea.issue_review_evidence(
+            self.delivery_id,
+            str(rev_handle),
+            self.candidate_commit,
+            verdict="ACCEPT",
+            reviewer_capability=rev_cap,
+            now=self.t0 + timedelta(seconds=10),
+        )
+        self.assertIsInstance(rev_ev, ReviewEvidence)
+
+        # 4. Adapter transitions to merge_queued
+        st_rev = self.adapter.handle_review_verdict(
+            self.delivery_id,
+            "ACCEPT",
+            review_dispatch_id=str(rev_handle),
+            review_evidence=rev_ev,
+            now=self.t0 + timedelta(seconds=12),
+        )
+        self.assertEqual(st_rev, "merge_queued")
+        self.assertEqual(self.adapter.get_task_state(self.delivery_id), "merge_queued")
+
+        # 5. Control issues ControlCapability and IntegrationEvidence
+        ctrl_cap = self.ea.issue_control_capability(self.control_secret, delivery_task_id=self.delivery_id)
+        gate_results = {g: True for g in MANDATORY_INTEGRATION_GATES}
+        int_ev = self.ea.issue_integration_evidence(
+            delivery_task_id=self.delivery_id,
+            candidate_commit=self.candidate_commit,
+            base_commit=self.approved_base,
+            gates_pass=True,
+            gate_results=gate_results,
+            control_capability=ctrl_cap,
+            integrated_by="Control",
+            now=self.t0 + timedelta(seconds=15),
+        )
+        self.assertIsInstance(int_ev, IntegrationEvidence)
+
+        # 6. Adapter transitions to integrated
+        st_int = self.adapter.handle_integration_gates(
+            self.delivery_id,
+            gates_pass=True,
+            integration_evidence=int_ev,
+            now=self.t0 + timedelta(seconds=20),
         )
         self.assertEqual(st_int, "integrated")
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")

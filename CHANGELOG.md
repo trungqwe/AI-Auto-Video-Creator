@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-30 ? Kh?c ph?c ph?t hi?n Sol-Lead audit sau a189e50 (Reviewer Authenticated Delivery Channel, Removal of _reviewer_mint_secret, Atomic Verify-and-Consume Capability)
+
+- Kh?c ph?c tri?t ?? ba ph?t hi?n blocker t? Sol-Lead independent audit tr?n exact candidate `a189e501d2eec58f7891cb35d46fbc176c2e2ea8` cho bundle `docs/parallel-delivery/`:
+  - **(1) Lo?i B? Ho?n To?n Bare Retrieval & B?o V? Giao Nh?n Qua K?nh Reviewer-Authenticated (Reviewer Authenticated Delivery Channel)**:
+    - Tri?n khai `ReviewerDeliveryChannel` v? `ReviewDispatchHandle` mang `reviewer_auth_token` b?o m?t cao (32-byte hex) v? c? ch? single-use `_claimed`.
+    - `get_reviewer_capability()` v? `claim_reviewer_capability()` tr?n c? `EvidenceAuthority` v? `OrcaDeliveryAdapter` t? ch?i fail-closed n?u g?i tr?n b?ng ID chu?i m? kh?ng c? x?c th?c (`ReviewDispatchHandle` ho?c `reviewer_auth_token`), lo?i b? ho?n to?n kh? n?ng caller c?ng ti?n tr?nh t? l?y `ReviewerCapability` b?ng dispatch ID tr?n.
+    - Ti?p t?c t? ch?i fail-closed tuy?t ??i n?u caller cung c?p `control_capability` ho?c `control_secret`, b?o to?n ranh gi?i ??c l?p gi?a Control v? Reviewer.
+  - **(2) X?a B? Ho?n To?n Thu?c T?nh `_reviewer_mint_secret` & Ch?n Mint Tr?ng L?p (Elimination of _reviewer_mint_secret and Duplicate Minting Prevention)**:
+    - X?a b? tri?t ?? thu?c t?nh `self._reviewer_mint_secret` tr?n `EvidenceAuthority`; vi?c k? mint token s? d?ng tr?c ti?p b? m?t `_secret` c?a authority m? kh?ng m? b? m?t secret ra ngo?i.
+    - Ph??ng th?c `_create_reviewer_mint_token()` c?m truy?n `_internal_secret` v? ch? cho ph?p th?c thi b?n trong ng? c?nh v?ng ??i ch?nh th?c `create_review_dispatch`.
+    - B? sung t?p h?p `self._minted_review_dispatches: Set[str]` ?? ki?m so?t exactly-once minting cho t?ng review dispatch; t? ch?i fail-closed m?i n? l?c mint l?i capability th? hai cho c?ng m?t review dispatch.
+  - **(3) H?p Nh?t Verify-and-Consume Th?nh Thao T?c Nguy?n T? (Atomic verify_and_consume_capability Preventing Concurrent Double Issuance)**:
+    - N?ng c?p kh?a `self._lock` c?a `EvidenceAuthority` th?nh `threading.RLock()`.
+    - Tri?n khai ph??ng th?c nguy?n t? `verify_and_consume_capability()` th?c hi?n x?c th?c v? ti?u th? capability ngay l?p t?c d??i m?t kh?a duy nh?t.
+    - C? `issue_review_evidence()` v? `issue_integration_evidence()` ??u g?i `verify_and_consume_capability()` nguy?n t? sau khi ?? ho?n th?nh 100% vi?c ki?m tra tham s? (??nh d?ng commit SHA, verdict, summary, routing, mandatory gates), ng?n ch?n tri?t ?? t?nh tr?ng hai thread ch?y song song c?ng ph?t h?nh hai evidence t? m?t capability, ??ng th?i b?o ??m t?nh ch?t zero side effects khi request malformed.
+  - **(4) B? Fixture Ph?n Bi?t T? ??ng 358/358 Tests PASS**:
+    - B? sung l?p ki?m th? `TestSolLeadAuditA189e50Remediation` v?i 8 b?i ki?m th? ??c l?p bao ph? to?n di?n c? 3 finding (t? ch?i bare retrieval, c?m Control claim ReviewerCapability, ki?m so?t single-use channel, x?c nh?n kh?ng t?n t?i `_reviewer_mint_secret`, c?m duplicate minting, ki?m th? ?a lu?ng concurrency v?i `threading.Barrier`, ki?m th? zero side effects khi request malformed, v? positive control to?n tr?nh), n?ng t?ng s? test l?n 358/358 passed 100%.
+
 ## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau eab4cab (Unforgeable Reviewer Mint Token, Authenticated Dispatch Binding, Separation of ReviewerCapability from Control, Zero-Side-Effect Validation)
 
 - Khắc phục triệt để hai phát hiện blocker từ Sol-Lead independent audit trên exact candidate `eab4cab060a469ecfec7793a15368e635988033b` cho bundle `docs/parallel-delivery/`:
