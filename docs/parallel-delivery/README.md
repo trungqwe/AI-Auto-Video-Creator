@@ -386,3 +386,19 @@ egister_pinned_public_key từ chối caller in-process fail-closed với Protoc
    - Ngăn chặn hoàn toàn kịch bản candidate worker tự ý gán `os.environ["ORCA_HOST_BOUNDARY_TOKEN"] = token` để mint host handoff hay bootstrap `KeyStoreHostIssuer` / `TrustedKeyStore` fail-closed.
    - Bổ sung các fixture phân biệt `11t`, `11u`, `11v` trong `test_11_finding_01_candidate_key_custody_bootstrap_rejected` và bài test độc lập `test_17_finding_out_of_process_host_boundary_and_mutable_env_rejection`.
 2. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **393/393 tests PASS (100%)**, chạy hoàn hảo trên toàn bộ 12 gate validation và release gate.
+
+## 23. Khắc phục triệt để phát hiện Sol Audit trên 62d7643 (Out-of-Process Host Channel Provisioning, Loại bỏ Inspect/Module-Name & Mutable Env Endpoint Fallback)
+
+Đợt rà soát độc lập trên candidate SHA `62d7643f4c8ef474fd065edb1c026fa09fdb10d7` (approved base `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nhận finding hành động:
+1. **Finding 1 — Loại Bỏ Hoàn Toàn Kiểm Tra Tin Cậy Dựa Trên Inspect / Module-Name**:
+   - Xóa bỏ `import inspect`, không sử dụng `caller_frame`, `caller_mod` hay `caller_file` để cấp đặc quyền cho caller `__main__` hay test harness.
+   - `HostBoundaryChannel.start_host_boundary` bị vô hiệu hóa fail-closed đối với mọi candidate worker in-process (`ProtocolViolationError`), ngăn caller `__main__` tự chạy daemon với token tự chọn (`MAIN_START_ACCEPTED == False`).
+2. **Finding 2 — Loại Bỏ Mutable Environment Endpoint Fallback**:
+   - Loại bỏ hoàn toàn fallback về `_ORCA_HOST_BOUNDARY_PORT` / `_ORCA_HOST_BOUNDARY_AUTHKEY` từ `os.environ` trong `HostBoundaryChannel.verify_capability` và không ghi biến môi trường này. Mọi nỗ lực dựng rogue listener qua env đều bị từ chối fail-closed (`ENV_ENDPOINT_ACCEPTED == False`).
+3. **Finding 3 — Cấp Phát Channel Endpoint/Auth Qua Cơ Chế Host (HostBoundaryTicket)**:
+   - Giới thiệu `HostBoundaryTicket` cryptographic authorization ticket được tạo ngoài tiến trình bởi trusted host authority.
+   - `HostBoundaryChannel.provision_channel(port, authkey, *, host_ticket, proc)` chỉ nhận cấu hình hợp lệ khi có `HostBoundaryTicket`; candidate không thể tự sinh hay giả mạo ticket.
+   - `_cleanup_process` chỉ gửi lệnh ngắt daemon nếu tiến trình hiện hành sở hữu `proc` (`proc is not None`), bảo vệ an toàn cho daemon máy chủ dùng chung qua các tiến trình con.
+4. **Finding 4 — Fresh-Subprocess Assertions Khóa Chặt Full Exploit Chain**:
+   - Bổ sung 3 fixture phân biệt 17h, 17i, 17j trong `test_17` bao gồm các assertion trong tiến trình con độc lập từ chối cả giả mạo biến môi trường endpoint (`ENV_ENDPOINT_ACCEPTED == False`) lẫn bootstrap thẩm quyền từ caller `__main__` (`MAIN_START_ACCEPTED == False`, `CANDIDATE_BOOTSTRAP_ACCEPTED == False`, `TrustedKeyStore` rỗng).
+5. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **393/393 tests PASS (100%)**, chạy hoàn hảo trên toàn bộ 12 gate validation và release gate.

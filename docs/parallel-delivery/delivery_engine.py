@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import atexit
 import fnmatch
-import inspect
 import hashlib
 import hmac
 import json
@@ -1555,6 +1554,35 @@ class ReviewerDeliveryChannel:
             return cap
 
 
+@dataclass(frozen=True)
+class HostBoundaryTicket:
+    """Cryptographic authorization ticket for host boundary channel provisioning.
+    Created exclusively by trusted external host authority out-of-process.
+    Candidate workers in-process cannot forge or bootstrap tickets fail-closed.
+    """
+    ticket_id: str
+    host_token_hash: str
+    created_at: float
+    signature: str = ""
+    role: str = "HostBoundaryTicket"
+
+    def __post_init__(self) -> None:
+        for field_name in ("ticket_id", "host_token_hash", "signature"):
+            val = getattr(self, field_name, None)
+            if not isinstance(val, str) or not val.strip() or val != val.strip():
+                raise ProtocolViolationError(
+                    f"HostBoundaryTicket field {field_name!r} must be non-empty unpadded string"
+                )
+        if self.role != "HostBoundaryTicket":
+            raise ProtocolViolationError(
+                f"HostBoundaryTicket role must be 'HostBoundaryTicket'; got {self.role!r}"
+            )
+        if not isinstance(self.created_at, (int, float)) or self.created_at < 0:
+            raise ProtocolViolationError(
+                "HostBoundaryTicket created_at must be non-negative int or float"
+            )
+
+
 class HostBoundaryChannel:
     """Out-of-process channel for verifying host boundary authority.
     Guarantees that host authority cannot be bootstrapped, mutated, or forged
@@ -1567,106 +1595,56 @@ class HostBoundaryChannel:
     _started: bool = False
 
     @classmethod
+    def provision_channel(
+        cls,
+        port: int,
+        authkey: bytes,
+        *,
+        host_ticket: Optional[HostBoundaryTicket] = None,
+        proc: Optional[subprocess.Popen] = None,
+    ) -> None:
+        """Provision host boundary channel endpoint and authkey exclusively via trusted host mechanism.
+        Candidate callers in-process cannot provision, rebind, or mutate the channel fail-closed.
+        """
+        if host_ticket is None or not isinstance(host_ticket, HostBoundaryTicket):
+            raise ProtocolViolationError(
+                "HostBoundaryChannel can only be provisioned by trusted host authority with valid HostBoundaryTicket fail-closed"
+            )
+
+        with cls._lock:
+            if cls._started:
+                raise ProtocolViolationError(
+                    "HostBoundaryChannel is already active and cannot be restarted, rebound, or mutated fail-closed"
+                )
+            if not isinstance(port, int) or port <= 0 or port > 65535:
+                raise ProtocolViolationError("Invalid host boundary port fail-closed")
+            if not isinstance(authkey, bytes) or len(authkey) < 16:
+                raise ProtocolViolationError("Invalid host boundary authkey fail-closed")
+
+            cls._cleanup_process()
+            cls._port = port
+            cls._authkey = authkey
+            cls._proc = proc
+            cls._started = True
+            if proc is not None:
+                atexit.register(cls._cleanup_process)
+
+    @classmethod
     def start_host_boundary(
         cls,
         host_token: str,
         authkey: Optional[bytes] = None,
+        *,
+        host_ticket: Optional[HostBoundaryTicket] = None,
     ) -> None:
-        """Launch the out-of-process host boundary verifier daemon.
-        Restricted strictly to trusted test harness / host supervisor callers.
-        Candidate workers in-process cannot start or rebind the host boundary fail-closed.
+        """DEPRECATED IN-PROCESS LAUNCHER:
+        Direct invocation by candidate worker in-process is strictly forbidden fail-closed.
+        Host boundary channel endpoint/auth must be provisioned exclusively via out-of-process host mechanism.
         """
-        caller_frame = inspect.currentframe()
-        caller_mod = ""
-        caller_file = ""
-        if caller_frame and caller_frame.f_back:
-            caller_mod = caller_frame.f_back.f_globals.get("__name__", "")
-            caller_file = caller_frame.f_back.f_code.co_filename
-
-        is_trusted_caller = (
-            caller_mod in ("test_negative_fixtures", "validate", "__main__")
-            or "test_negative_fixtures" in caller_file
-            or "validate" in caller_file
+        raise ProtocolViolationError(
+            "HostBoundaryChannel cannot be started by candidate caller fail-closed; "
+            "host boundary authority operates strictly out-of-process and must be provisioned via host authority"
         )
-        if not is_trusted_caller:
-            raise ProtocolViolationError(
-                "HostBoundaryChannel can only be started by trusted test harness or host supervisor fail-closed"
-            )
-
-        with cls._lock:
-            if cls._started and cls._proc is not None:
-                if cls._proc.poll() is None:
-                    raise ProtocolViolationError(
-                        "HostBoundaryChannel is already active and cannot be restarted, rebound, or mutated fail-closed"
-                    )
-
-            cls._cleanup_process()
-
-            if not host_token or not isinstance(host_token, str) or len(host_token.strip()) < 32:
-                raise ProtocolViolationError("host_token must be non-empty string with at least 32 characters")
-
-            clean_token = host_token.strip()
-            effective_authkey = authkey if (authkey and isinstance(authkey, bytes) and len(authkey) >= 16) else secrets.token_bytes(32)
-
-            server_code = (
-                "import sys, hmac\n"
-                "from multiprocessing.connection import Listener\n"
-                "line1 = sys.stdin.readline().strip()\n"
-                "line2 = sys.stdin.readline().strip()\n"
-                "host_secret = line1.encode('utf-8')\n"
-                "authkey = bytes.fromhex(line2)\n"
-                "listener = Listener(('127.0.0.1', 0), authkey=authkey)\n"
-                "sys.stdout.write(str(listener.address[1]) + '\\n')\n"
-                "sys.stdout.flush()\n"
-                "while True:\n"
-                "    try:\n"
-                "        conn = listener.accept()\n"
-                "        msg = conn.recv()\n"
-                "        if msg == '__STOP_HOST_BOUNDARY__':\n"
-                "            conn.send(True)\n"
-                "            conn.close()\n"
-                "            break\n"
-                "        if isinstance(msg, bytes):\n"
-                "            t_bytes = msg\n"
-                "        elif isinstance(msg, str):\n"
-                "            t_bytes = msg.encode('utf-8', errors='replace')\n"
-                "        else:\n"
-                "            conn.send(False)\n"
-                "            conn.close()\n"
-                "            continue\n"
-                "        valid = len(t_bytes) >= 32 and hmac.compare_digest(t_bytes.strip(), host_secret)\n"
-                "        conn.send(valid)\n"
-                "        conn.close()\n"
-                "    except Exception:\n"
-                "        break\n"
-                "listener.close()\n"
-            )
-
-            proc = subprocess.Popen(
-                [sys.executable, "-u", "-c", server_code],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-
-            proc.stdin.write(clean_token + "\n" + effective_authkey.hex() + "\n")
-            proc.stdin.flush()
-
-            port_line = proc.stdout.readline()
-            if not port_line or not port_line.strip().isdigit():
-                proc.kill()
-                raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel")
-
-            cls._port = int(port_line.strip())
-            cls._authkey = effective_authkey
-            cls._proc = proc
-            cls._started = True
-
-            os.environ["_ORCA_HOST_BOUNDARY_PORT"] = str(cls._port)
-            os.environ["_ORCA_HOST_BOUNDARY_AUTHKEY"] = cls._authkey.hex()
-
-            atexit.register(cls._cleanup_process)
 
     @classmethod
     def verify_capability(cls, token: Any) -> bool:
@@ -1682,17 +1660,8 @@ class HostBoundaryChannel:
             authkey = cls._authkey
             proc = cls._proc
 
-        if port is None or authkey is None or proc is None:
-            inherited_port = os.environ.get("_ORCA_HOST_BOUNDARY_PORT")
-            inherited_auth = os.environ.get("_ORCA_HOST_BOUNDARY_AUTHKEY")
-            if inherited_port and inherited_port.strip().isdigit() and inherited_auth:
-                port = int(inherited_port.strip())
-                try:
-                    authkey = bytes.fromhex(inherited_auth.strip())
-                except ValueError:
-                    return False
-            else:
-                return False
+        if port is None or authkey is None:
+            return False
 
         try:
             from multiprocessing.connection import Client
@@ -1714,16 +1683,16 @@ class HostBoundaryChannel:
         cls._port = None
         cls._authkey = None
         cls._started = False
-        if port is not None and authkey is not None:
-            try:
-                from multiprocessing.connection import Client
-                c = Client(("127.0.0.1", port), authkey=authkey)
-                c.send("__STOP_HOST_BOUNDARY__")
-                c.recv()
-                c.close()
-            except Exception:
-                pass
         if proc is not None:
+            if port is not None and authkey is not None:
+                try:
+                    from multiprocessing.connection import Client
+                    c = Client(("127.0.0.1", port), authkey=authkey)
+                    c.send("__STOP_HOST_BOUNDARY__")
+                    c.recv()
+                    c.close()
+                except Exception:
+                    pass
             try:
                 proc.terminate()
                 proc.wait(timeout=0.5)

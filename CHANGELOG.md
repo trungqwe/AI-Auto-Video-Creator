@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 62d7643 (Out-of-Process Host Boundary Provisioning & Loại bỏ Inspect/Mutable Env Fallback)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate `62d7643f4c8ef474fd065edb1c026fa09fdb10d7` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Loại Bỏ Hoàn Toàn Kiểm Tra Tin Cậy Dựa Trên Inspect / Module-Name**:
+    - Xóa bỏ `import inspect` và việc dựa vào `caller_mod in ("test_negative_fixtures", "validate", "__main__")` hay `caller_file`.
+    - Khóa chặt `HostBoundaryChannel.start_host_boundary` fail-closed với `ProtocolViolationError` đối với mọi caller candidate trong tiến trình (`MAIN_START_ACCEPTED == False`).
+  - **(2) Loại Bỏ Hoàn Toàn Fallback Cổng/Auth Từ Biến Môi Trường Mutable**:
+    - Xóa bỏ việc đọc `_ORCA_HOST_BOUNDARY_PORT` và `_ORCA_HOST_BOUNDARY_AUTHKEY` từ `os.environ` trong `HostBoundaryChannel.verify_capability` và xóa việc ghi biến môi trường này; không cho phép caller tự tạo rogue listener trong biến môi trường (`ENV_ENDPOINT_ACCEPTED == False`).
+  - **(3) Cấp Phát Channel Endpoint/Auth Qua Cơ Chế Host Bất Biến (HostBoundaryTicket)**:
+    - Định nghĩa `HostBoundaryTicket` cryptographic authorization ticket chỉ được tạo ngoài tiến trình bởi trusted host authority.
+    - Cung cấp `HostBoundaryChannel.provision_channel(port, authkey, *, host_ticket, proc)` bắt buộc phải có host ticket hợp lệ; candidate caller không thể giả mạo ticket hay rebind channel.
+    - Đảm bảo `_cleanup_process` chỉ gửi lệnh dừng daemon khi tiến trình hiện hành thực sự sở hữu `proc` (`proc is not None`), ngăn các tiến trình con vô tình ngắt daemon máy chủ dùng chung.
+  - **(4) Bổ Sung Fresh-Subprocess Assertions Ngăn Chặn Full Exploit Chain**:
+    - Bổ sung các fixture phân biệt 17h, 17i, 17j trong `test_17` bao gồm các assertion trong tiến trình con độc lập từ chối cả giả mạo biến môi trường endpoint (`ENV_ENDPOINT_ACCEPTED == False`) lẫn bootstrap thẩm quyền từ caller `__main__` (`MAIN_START_ACCEPTED == False`, `CANDIDATE_BOOTSTRAP_ACCEPTED == False`, `assert len(TrustedKeyStore.get_default()._pinned_keys) == 0`).
+  - **(5) Bộ Kiểm Thử Tự Động 393/393 Tests PASS (100%)**:
+    - Toàn bộ 393 fixture vượt qua 100% không có cảnh báo hay lỗi kiểm thử; tất cả 12 gate validation và release gate đều đạt.
+
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 52a2795 (Out-of-Process Host Boundary Channel & Mutable Environment Rejection)
 
 - Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate `52a279551f8bd73e0d0dc3f68aad15c959be0bd8` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):

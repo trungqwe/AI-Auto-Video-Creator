@@ -12,6 +12,7 @@ Tests all six findings (F1 to F6) with both negative counterexamples and positiv
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import secrets
@@ -92,6 +93,7 @@ from delivery_engine import (  # noqa: E402
     KeyStoreHostIssuerCapability,
     KeyStoreHostIssuer,
     KeyStoreHostHandoff,
+    HostBoundaryTicket,
     HostBoundaryChannel,
     DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH,
     build_contract_catalog,
@@ -109,7 +111,70 @@ from delivery_engine import (  # noqa: E402
 from validate import check_secret_scan, check_task_dag
 
 _HOST_BOUNDARY_TOKEN = secrets.token_hex(32)
-HostBoundaryChannel.start_host_boundary(_HOST_BOUNDARY_TOKEN)
+
+def _launch_test_host_boundary_daemon(host_token: str) -> tuple[int, bytes, subprocess.Popen]:
+    clean_token = host_token.strip()
+    effective_authkey = secrets.token_bytes(32)
+    server_code = (
+        "import sys, hmac\n"
+        "from multiprocessing.connection import Listener\n"
+        "line1 = sys.stdin.readline().strip()\n"
+        "line2 = sys.stdin.readline().strip()\n"
+        "host_secret = line1.encode('utf-8')\n"
+        "authkey = bytes.fromhex(line2)\n"
+        "listener = Listener(('127.0.0.1', 0), authkey=authkey)\n"
+        "sys.stdout.write(str(listener.address[1]) + '\\n')\n"
+        "sys.stdout.flush()\n"
+        "while True:\n"
+        "    try:\n"
+        "        conn = listener.accept()\n"
+        "        msg = conn.recv()\n"
+        "        if msg == '__STOP_HOST_BOUNDARY__':\n"
+        "            conn.send(True)\n"
+        "            conn.close()\n"
+        "            break\n"
+        "        if isinstance(msg, bytes):\n"
+        "            t_bytes = msg\n"
+        "        elif isinstance(msg, str):\n"
+        "            t_bytes = msg.encode('utf-8', errors='replace')\n"
+        "        else:\n"
+        "            conn.send(False)\n"
+        "            conn.close()\n"
+        "            continue\n"
+        "        valid = len(t_bytes) >= 32 and hmac.compare_digest(t_bytes.strip(), host_secret)\n"
+        "        conn.send(valid)\n"
+        "        conn.close()\n"
+        "    except Exception:\n"
+        "        break\n"
+        "listener.close()\n"
+    )
+
+    proc = subprocess.Popen(
+        [sys.executable, "-u", "-c", server_code],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    proc.stdin.write(clean_token + "\n" + effective_authkey.hex() + "\n")
+    proc.stdin.flush()
+
+    port_line = proc.stdout.readline()
+    if not port_line or not port_line.strip().isdigit():
+        proc.kill()
+        raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel")
+
+    return int(port_line.strip()), effective_authkey, proc
+
+_h_port, _h_authkey, _h_proc = _launch_test_host_boundary_daemon(_HOST_BOUNDARY_TOKEN)
+_host_ticket = HostBoundaryTicket(
+    ticket_id=secrets.token_hex(16),
+    host_token_hash=hashlib.sha256(_HOST_BOUNDARY_TOKEN.encode("utf-8")).hexdigest(),
+    created_at=time.time(),
+    signature=secrets.token_hex(32),
+)
+HostBoundaryChannel.provision_channel(_h_port, _h_authkey, host_ticket=_host_ticket, proc=_h_proc)
 
 _test_host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
 
@@ -11511,7 +11576,16 @@ print("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS")
 import sys, os
 from pathlib import Path
 sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
-from delivery_engine import ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
+from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
+
+# Host provisions channel endpoint/auth via host mechanism in child process
+child_ticket = HostBoundaryTicket(
+    ticket_id='{_host_ticket.ticket_id}',
+    host_token_hash='{_host_ticket.host_token_hash}',
+    created_at={_host_ticket.created_at},
+    signature='{_host_ticket.signature}',
+)
+HostBoundaryChannel.provision_channel({_h_port}, {_h_authkey!r}, host_ticket=child_ticket)
 
 # Positive control: authentic host handoff from trusted host issuer successfully provisions boundary
 host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token='{_HOST_BOUNDARY_TOKEN}')
@@ -13128,6 +13202,98 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         TrustedKeyStore._reset_for_testing(_internal_token=_HOST_BOUNDARY_TOKEN)
         valid_issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_HOST_BOUNDARY_TOKEN)
         self.assertIsNotNone(valid_issuer)
+
+        # 17h. In-process candidate attempts env endpoint forgery by setting _ORCA_HOST_BOUNDARY_PORT / _ORCA_HOST_BOUNDARY_AUTHKEY
+        os.environ["_ORCA_HOST_BOUNDARY_PORT"] = "65530"
+        os.environ["_ORCA_HOST_BOUNDARY_AUTHKEY"] = secrets.token_hex(16)
+        # verify_capability does not read or trust mutable environment variables: authentic token succeeds against provisioned daemon
+        self.assertTrue(HostBoundaryChannel.verify_capability(_HOST_BOUNDARY_TOKEN))
+        self.assertFalse(HostBoundaryChannel.verify_capability(attacker_token))
+        os.environ.pop("_ORCA_HOST_BOUNDARY_PORT", None)
+        os.environ.pop("_ORCA_HOST_BOUNDARY_AUTHKEY", None)
+
+        # 17i. Fresh subprocess attempting mutable environment endpoint forgery rejected fail-closed
+        # Attacker starts a rogue listener and injects _ORCA_HOST_BOUNDARY_PORT in subprocess env
+        sub_env_code = (
+            "import os, sys, threading, secrets\n"
+            "from multiprocessing.connection import Listener\n"
+            "sys.path.insert(0, 'docs/parallel-delivery')\n"
+            "from delivery_engine import HostBoundaryChannel, KeyStoreHostIssuer, TrustedKeyStore, ProtocolViolationError\n"
+            "rogue_authkey = b'fake_authkey_16b!'\n"
+            "listener = Listener(('127.0.0.1', 0), authkey=rogue_authkey)\n"
+            "rogue_port = listener.address[1]\n"
+            "def run_rogue():\n"
+            "    while True:\n"
+            "        try:\n"
+            "            conn = listener.accept()\n"
+            "            msg = conn.recv()\n"
+            "            conn.send(True)\n"
+            "            conn.close()\n"
+            "        except Exception:\n"
+            "            break\n"
+            "t = threading.Thread(target=run_rogue, daemon=True)\n"
+            "t.start()\n"
+            "os.environ['_ORCA_HOST_BOUNDARY_PORT'] = str(rogue_port)\n"
+            "os.environ['_ORCA_HOST_BOUNDARY_AUTHKEY'] = rogue_authkey.hex()\n"
+            "# Assert env endpoint is rejected fail-closed:\n"
+            "cand_accepted = HostBoundaryChannel.verify_capability('attacker_token_val')\n"
+            "assert cand_accepted is False, f'ENV_ENDPOINT_ACCEPTED must be False, got {cand_accepted}'\n"
+            "try:\n"
+            "    KeyStoreHostIssuer.get_default_host_issuer(_internal_token='attacker_token_val')\n"
+            "    assert False, 'Expected ProtocolViolationError from unprovisioned host issuer'\n"
+            "except ProtocolViolationError:\n"
+            "    pass\n"
+            "assert len(TrustedKeyStore.get_default()._pinned_keys) == 0, 'TrustedKeyStore must remain empty'\n"
+            "listener.close()\n"
+            "sys.stdout.write('ENV_ENDPOINT_REJECTED_PASS\\n')\n"
+        )
+        proc_env = subprocess.run(
+            [sys.executable, "-u", "-c", sub_env_code],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc_env.returncode, 0, f"Fresh subprocess env endpoint forgery test failed: {proc_env.stderr}\nstdout: {proc_env.stdout}")
+        self.assertIn("ENV_ENDPOINT_REJECTED_PASS", proc_env.stdout)
+
+        # 17j. Fresh subprocess running as __main__ attempting bootstrap and full exploit chain rejected fail-closed
+        sub_main_code = (
+            "import os, sys, secrets\n"
+            "sys.path.insert(0, 'docs/parallel-delivery')\n"
+            "from delivery_engine import HostBoundaryChannel, KeyStoreHostIssuer, TrustedKeyStore, ProtocolViolationError\n"
+            "attacker_token = secrets.token_hex(32)\n"
+            "main_started = False\n"
+            "try:\n"
+            "    HostBoundaryChannel.start_host_boundary(attacker_token)\n"
+            "    main_started = True\n"
+            "except ProtocolViolationError:\n"
+            "    main_started = False\n"
+            "assert main_started is False, 'MAIN_START_ACCEPTED must be False'\n"
+            "try:\n"
+            "    HostBoundaryChannel.provision_channel(9999, b'invalid_authkey_16b')\n"
+            "    assert False, 'Direct provision_channel without host ticket must fail closed'\n"
+            "except ProtocolViolationError:\n"
+            "    pass\n"
+            "bootstrap_accepted = False\n"
+            "try:\n"
+            "    cand_iss = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=attacker_token)\n"
+            "    handoff = cand_iss.issue_handoff({'attacker_key': b'x' * 32}, issuer_name='attacker', _internal_token=attacker_token)\n"
+            "    TrustedKeyStore.provision_from_host(handoff, _internal_token=attacker_token)\n"
+            "    bootstrap_accepted = True\n"
+            "except ProtocolViolationError:\n"
+            "    bootstrap_accepted = False\n"
+            "assert bootstrap_accepted is False, 'CANDIDATE_BOOTSTRAP_ACCEPTED must be False'\n"
+            "assert len(TrustedKeyStore.get_default()._pinned_keys) == 0, 'TrustedKeyStore must remain empty'\n"
+            "sys.stdout.write('MAIN_BOOTSTRAP_REJECTED_PASS\\n')\n"
+        )
+        proc_main = subprocess.run(
+            [sys.executable, "-u", "-c", sub_main_code],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc_main.returncode, 0, f"Fresh subprocess __main__ bootstrap test failed: {proc_main.stderr}\nstdout: {proc_main.stdout}")
+        self.assertIn("MAIN_BOOTSTRAP_REJECTED_PASS", proc_main.stdout)
 
         os.environ.pop("ORCA_HOST_BOUNDARY_TOKEN", None)
 

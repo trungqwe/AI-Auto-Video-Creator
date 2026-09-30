@@ -97,6 +97,7 @@ Validator phải từ chối:
 - khởi tạo OrcaDeliveryAdapter với registry bộ nhớ tạm thời :memory: hoặc cấu hình get_default(':memory:') làm mất dữ liệu tiêu thụ phong bì hoặc fencing token khi restart adapter;
 - phân tích SignedIntegrationEnvelope hoặc SignedReviewEnvelope từ dictionary với kiểu dữ liệu bị ép kiểu lỏng lẻo (gates_pass='false' hoặc kiểu phi-bool/phi-số) vi phạm strict type rejection;
 - tự bootstrap hoặc xác thực host boundary capability thông qua biến môi trường mutable `os.environ` thay vì daemon kênh ngoài tiến trình `HostBoundaryChannel`;
+- tự khởi chạy hoặc cấu hình lại HostBoundaryChannel từ tiến trình con hoặc caller __main__ mà không có HostBoundaryTicket hợp lệ do host ngoài tiến trình cấp phát, hoặc nỗ lực giả mạo channel endpoint qua biến môi trường mutable;
 
 ## 5. Open thresholds giữ nguyên
 
