@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-01 - Khắc phục triệt để phát hiện Sol Audit trên f4ad8d5 (Yêu cầu Supervisor Capability được ký số cho Đăng ký Dispatch ngoài tiến trình, Chặn hoàn toàn Đăng ký Caller-Controlled với Exact Candidate Head)
+
+- Khắc phục triệt để phát hiện độc lập ROOT_ARCHITECTURE từ Sol trên exact candidate `f4ad8d5516ec9935de718f4cc6b4621f162140a5` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Thiết lập SupervisorDispatchCapability bất biến & unforgeable**: Bổ sung `SupervisorDispatchCapability` trong `delivery_engine.py` mang chữ ký số Ed25519 được cấp phát độc quyền bởi host supervisor out-of-process; nghiêm cấm khởi tạo trực tiếp, kế thừa, tuần tự hóa hoặc giả mạo fail-closed.
+  - **(2) Phân quyền Đăng ký Dispatch bắt buộc Supervisor Capability**: Chuyển endpoint IPC `REGISTER_DISPATCH` và helper `TrustedHostRegisterDispatch` trong `test_host_boundary_harness.py` sang yêu cầu bắt buộc `supervisor_capability`; thẩm định chữ ký số host, ràng buộc binding tham số (`delivery_task_id`, `dispatch_id`, `candidate_commit`, `base_commit`, `role`, `phase`, `fencing_token`), kiểm tra độ tươi thời gian và tiêu thụ một lần (single-use).
+  - **(3) Chặn hoàn toàn Đăng ký Caller-Controlled với Exact Candidate Head**: Mọi nỗ lực từ phía candidate caller nhằm tự tạo bản ghi dispatch với exact candidate HEAD mà không có supervisor capability đều bị từ chối fail-closed ngay lập tức (`ProtocolViolationError`), triệt tiêu hoàn toàn khả năng candidate tự tạo provenance và xin cấp phong bì duyệt `ACCEPT`.
+  - **(4) Ma trận Kiểm thử Toàn diện trong `test_20`**: Kiểm chứng từ chối đăng ký candidate caller không thẩm quyền, từ chối capability giả mạo, từ chối timestamp tương lai, từ chối override mismatch, từ chối replay tuần tự và đồng thời; positive control luân chuyển phong bì duyệt hợp lệ đạt PASS 100%.
+  - **(5) Kết quả kiểm thử**: Toàn bộ 404 test fixtures đạt PASS 100%; cổng kích hoạt sản xuất duy trì `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
+
 ## 2026-10-01 - Khắc phục triệt để phát hiện Sol Audit trên 218e2ee (Loại bỏ biến môi trường PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE và Khóa chặt Candidate Authority bất biến)
 
 - Khắc phục triệt để phát hiện độc lập ROOT_ARCHITECTURE từ Sol trên exact candidate `218e2ee77fce3c16778fdaf56c977968e22fdb03` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):

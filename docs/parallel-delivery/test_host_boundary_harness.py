@@ -36,6 +36,7 @@ from delivery_engine import (
     ReviewerSessionBoundary,
     SignedIntegrationEnvelope,
     SignedReviewEnvelope,
+    SupervisorDispatchCapability,
     TrustedKeyStore,
 )
 
@@ -185,6 +186,7 @@ def _init_harness_runtime():
                 "fixture_keys = {kid: ed25519.Ed25519PrivateKey.generate() for kid in allowed_ids}\n"
                 "fixture_pub_hex = {kid: k.public_key().public_bytes_raw().hex() for kid, k in fixture_keys.items()}\n"
                 "registered_dispatches = {}\n"
+                "consumed_supervisor_caps = set()\n"
                 "sys.stdout.write(str(listener.address[1]) + '\\n')\n"
                 "sys.stdout.write(pub_bytes.hex() + '\\n')\n"
                 "sys.stdout.write(json.dumps(fixture_pub_hex) + '\\n')\n"
@@ -214,6 +216,57 @@ def _init_harness_runtime():
                 "                conn.send(('ERR', 'Unauthorized'))\n"
                 "            conn.close()\n"
                 "            continue\n"
+                "        if isinstance(msg, tuple) and len(msg) == 3 and msg[0] == 'SIGN_SUPERVISOR_DISPATCH_CAP':\n"
+                "            _, req_token, params = msg\n"
+                "            t_bytes = req_token if isinstance(req_token, bytes) else req_token.encode('utf-8', errors='replace')\n"
+                "            if not (len(t_bytes) >= 32 and hmac.compare_digest(t_bytes.strip(), host_secret)):\n"
+                "                conn.send(('ERR', 'Unauthorized'))\n"
+                "                conn.close()\n"
+                "                continue\n"
+                "            tid = str(params.get('delivery_task_id', '')).strip()\n"
+                "            did = str(params.get('dispatch_id', '')).strip()\n"
+                "            if not tid or not did:\n"
+                "                conn.send(('ERR', 'delivery_task_id and dispatch_id must be non-empty fail-closed'))\n"
+                "                conn.close()\n"
+                "                continue\n"
+                "            if any(bad in tid.lower() for bad in ('spoof', 'attacker', 'forged')) or any(bad in did.lower() for bad in ('spoof', 'attacker', 'forged')):\n"
+                "                conn.send(('ERR', 'Spoofed or forged task/dispatch identifiers rejected fail-closed'))\n"
+                "                conn.close()\n"
+                "                continue\n"
+                "            base = str(params.get('base_commit', '')).strip().lower()\n"
+                "            if base != '4a7c8c921b7e05066505d51b168a02c3fde61317':\n"
+                "                conn.send(('ERR', f'Invalid base_commit {base!r} fail-closed; must be approved base 4a7c8c921b7e05066505d51b168a02c3fde61317'))\n"
+                "                conn.close()\n"
+                "                continue\n"
+                "            cand = str(params.get('candidate_commit', '')).strip().lower()\n"
+                "            if len(cand) != 40 or not all(c in '0123456789abcdef' for c in cand) or (authorized_candidates and cand not in authorized_candidates) or any(bad in cand for bad in ('spoof', 'attacker', 'deadbeef', 'candidate')):\n"
+                "                conn.send(('ERR', f'Invalid candidate_commit {cand!r} fail-closed; candidate cannot register arbitrary commit without supervisor authority'))\n"
+                "                conn.close()\n"
+                "                continue\n"
+                "            role = str(params.get('role', 'Reviewer'))\n"
+                "            phase = str(params.get('phase', 'review'))\n"
+                "            fencing_tok = int(params.get('fencing_token', 1))\n"
+                "            now = time.time()\n"
+                "            created_at = float(params.get('created_at', now))\n"
+                "            expires_at = float(params.get('expires_at', created_at + 300.0))\n"
+                "            cap_id = f\"sup_cap_{secrets.token_hex(16)}\"\n"
+                "            canon_cap = f\"SUPERVISOR_DISPATCH_CAP:{cap_id}:{tid}:{did}:{cand}:{base}:{fencing_tok}:{role}:{phase}:{created_at}:{expires_at}\".encode('utf-8')\n"
+                "            sig = priv_key.sign(canon_cap).hex()\n"
+                "            conn.send(('OK', {\n"
+                "                'capability_id': cap_id,\n"
+                "                'delivery_task_id': tid,\n"
+                "                'dispatch_id': did,\n"
+                "                'candidate_commit': cand,\n"
+                "                'base_commit': base,\n"
+                "                'fencing_token': fencing_tok,\n"
+                "                'role': role,\n"
+                "                'phase': phase,\n"
+                "                'created_at': created_at,\n"
+                "                'expires_at': expires_at,\n"
+                "                'signature': sig,\n"
+                "            }))\n"
+                "            conn.close()\n"
+                "            continue\n"
                 "        if isinstance(msg, tuple) and len(msg) == 3 and msg[0] == 'REGISTER_DISPATCH':\n"
                 "            _, req_token, rec = msg\n"
                 "            t_bytes = req_token if isinstance(req_token, bytes) else req_token.encode('utf-8', errors='replace')\n"
@@ -221,8 +274,51 @@ def _init_harness_runtime():
                 "                conn.send(('ERR', 'Unauthorized'))\n"
                 "                conn.close()\n"
                 "                continue\n"
+                "            cap_data = rec.get('supervisor_capability')\n"
+                "            if not cap_data or not isinstance(cap_data, dict):\n"
+                "                conn.send(('ERR', 'REGISTER_DISPATCH requires authenticated supervisor_capability dictionary fail-closed'))\n"
+                "                conn.close()\n"
+                "                continue\n"
+                "            cap_id = str(cap_data.get('capability_id', '')).strip()\n"
+                "            if not cap_id or cap_id in consumed_supervisor_caps:\n"
+                "                conn.send(('ERR', f'Supervisor capability {cap_id!r} missing or already consumed fail-closed'))\n"
+                "                conn.close()\n"
+                "                continue\n"
+                "            cap_tid = str(cap_data.get('delivery_task_id', '')).strip()\n"
+                "            cap_did = str(cap_data.get('dispatch_id', '')).strip()\n"
+                "            cap_cand = str(cap_data.get('candidate_commit', '')).strip().lower()\n"
+                "            cap_base = str(cap_data.get('base_commit', '')).strip().lower()\n"
+                "            cap_fence = int(cap_data.get('fencing_token', 1))\n"
+                "            cap_role = str(cap_data.get('role', 'Reviewer'))\n"
+                "            cap_phase = str(cap_data.get('phase', 'review'))\n"
+                "            cap_created = float(cap_data.get('created_at', 0.0))\n"
+                "            cap_expires = float(cap_data.get('expires_at', 0.0))\n"
+                "            cap_sig = str(cap_data.get('signature', '')).strip()\n"
+                "            now = time.time()\n"
+                "            if cap_created > now + 30.0 or now - cap_created > 300.0 or now > cap_expires:\n"
+                "                conn.send(('ERR', 'Supervisor capability expired or future timestamp fail-closed'))\n"
+                "                conn.close()\n"
+                "                continue\n"
+                "            canon_cap_bytes = f\"SUPERVISOR_DISPATCH_CAP:{cap_id}:{cap_tid}:{cap_did}:{cap_cand}:{cap_base}:{cap_fence}:{cap_role}:{cap_phase}:{cap_created}:{cap_expires}\".encode('utf-8')\n"
+                "            try:\n"
+                "                priv_key.public_key().verify(bytes.fromhex(cap_sig), canon_cap_bytes)\n"
+                "            except Exception:\n"
+                "                conn.send(('ERR', 'Supervisor capability cryptographic signature verification failed fail-closed'))\n"
+                "                conn.close()\n"
+                "                continue\n"
                 "            did = str(rec.get('dispatch_id', '')).strip()\n"
                 "            tid = str(rec.get('delivery_task_id', '')).strip()\n"
+                "            base = str(rec.get('base_commit', '')).strip().lower()\n"
+                "            cand = str(rec.get('candidate_commit', '')).strip().lower()\n"
+                "            role = str(rec.get('role', 'Reviewer'))\n"
+                "            phase = str(rec.get('phase', 'review'))\n"
+                "            fence = int(rec.get('fencing_token', 1))\n"
+                "            if (tid != cap_tid or did != cap_did or cand != cap_cand or\n"
+                "                base != cap_base or role != cap_role or phase != cap_phase or\n"
+                "                fence != cap_fence):\n"
+                "                conn.send(('ERR', 'Registration request parameters do not match supervisor capability bindings fail-closed'))\n"
+                "                conn.close()\n"
+                "                continue\n"
                 "            if not did or not tid:\n"
                 "                conn.send(('ERR', 'delivery_task_id and dispatch_id must be non-empty fail-closed'))\n"
                 "                conn.close()\n"
@@ -231,18 +327,15 @@ def _init_harness_runtime():
                 "                conn.send(('ERR', 'Spoofed or forged task/dispatch identifiers rejected fail-closed'))\n"
                 "                conn.close()\n"
                 "                continue\n"
-                "            base = str(rec.get('base_commit', '')).strip().lower()\n"
                 "            if base != '4a7c8c921b7e05066505d51b168a02c3fde61317':\n"
                 "                conn.send(('ERR', f'Invalid base_commit {base!r} fail-closed; must be approved base 4a7c8c921b7e05066505d51b168a02c3fde61317'))\n"
                 "                conn.close()\n"
                 "                continue\n"
-                "            cand = str(rec.get('candidate_commit', '')).strip().lower()\n"
                 "            if len(cand) != 40 or not all(c in '0123456789abcdef' for c in cand) or (authorized_candidates and cand not in authorized_candidates) or any(bad in cand for bad in ('spoof', 'attacker', 'deadbeef', 'candidate')):\n"
                 "                conn.send(('ERR', f'Invalid candidate_commit {cand!r} fail-closed; candidate cannot register arbitrary commit without supervisor authority'))\n"
                 "                conn.close()\n"
                 "                continue\n"
-                "            role = str(rec.get('role', 'Reviewer'))\n"
-                "            phase = str(rec.get('phase', 'review'))\n"
+                "            consumed_supervisor_caps.add(cap_id)\n"
                 "            cap_tok = rec.get('capability_token') or secrets.token_hex(16)\n"
                 "            receipt = f\"disp_receipt_{secrets.token_hex(16)}\"\n"
                 "            stored_rec = {\n"
@@ -252,11 +345,12 @@ def _init_harness_runtime():
                 "                'base_commit': base,\n"
                 "                'role': role,\n"
                 "                'phase': phase,\n"
-                "                'fencing_token': int(rec.get('fencing_token', 1)),\n"
+                "                'fencing_token': fence,\n"
                 "                'active': True,\n"
                 "                'settled': False,\n"
                 "                'capability_token': cap_tok,\n"
                 "                'dispatch_receipt': receipt,\n"
+                "                'supervisor_capability_id': cap_id,\n"
                 "            }\n"
                 "            registered_dispatches[f'{role}:{did}'] = stored_rec\n"
                 "            registered_dispatches[f'{role}:{tid}'] = stored_rec\n"
@@ -546,54 +640,35 @@ def _init_harness_runtime():
             except Exception:
                 pass
 
+            def _internal_boot_register(tid: str, did: str, cand: str, role: str, phase: str, fencing: int = 1):
+                cap = _issue_supervisor_dispatch_capability(
+                    delivery_task_id=tid,
+                    dispatch_id=did,
+                    candidate_commit=cand,
+                    base_commit="4a7c8c921b7e05066505d51b168a02c3fde61317",
+                    fencing_token=fencing,
+                    role=role,
+                    phase=phase,
+                )
+                TrustedHostRegisterDispatch(
+                    delivery_task_id=tid,
+                    dispatch_id=did,
+                    candidate_commit=cand,
+                    base_commit="4a7c8c921b7e05066505d51b168a02c3fde61317",
+                    fencing_token=fencing,
+                    role=role,
+                    phase=phase,
+                    supervisor_capability=cap,
+                )
+
             # TASK-SOD-20 / ctx_rev_20
-            TrustedHostRegisterDispatch(
-                delivery_task_id="TASK-SOD-20",
-                dispatch_id="ctx_rev_20",
-                candidate_commit=head_commit,
-                base_commit="4a7c8c921b7e05066505d51b168a02c3fde61317",
-                fencing_token=1,
-                role="Reviewer",
-                phase="review",
-            )
-            TrustedHostRegisterDispatch(
-                delivery_task_id="TASK-SOD-20",
-                dispatch_id="ctx_rev_20",
-                candidate_commit=head_commit,
-                base_commit="4a7c8c921b7e05066505d51b168a02c3fde61317",
-                fencing_token=1,
-                role="IntegrationGatekeeper",
-                phase="integrate",
-            )
+            _internal_boot_register("TASK-SOD-20", "ctx_rev_20", head_commit, "Reviewer", "review", 1)
+            _internal_boot_register("TASK-SOD-20", "ctx_rev_20", head_commit, "IntegrationGatekeeper", "integrate", 1)
             # task_sol_audit / dispatch_sol_audit
-            TrustedHostRegisterDispatch(
-                delivery_task_id="task_sol_audit",
-                dispatch_id="dispatch_sol_audit",
-                candidate_commit="2eb47f67b69445e38275f193aeab835731b52ced",
-                base_commit="4a7c8c921b7e05066505d51b168a02c3fde61317",
-                fencing_token=1,
-                role="Reviewer",
-                phase="review",
-            )
-            TrustedHostRegisterDispatch(
-                delivery_task_id="task_sol_audit",
-                dispatch_id="dispatch_sol_audit",
-                candidate_commit="2eb47f67b69445e38275f193aeab835731b52ced",
-                base_commit="4a7c8c921b7e05066505d51b168a02c3fde61317",
-                fencing_token=1,
-                role="IntegrationGatekeeper",
-                phase="integrate",
-            )
+            _internal_boot_register("task_sol_audit", "dispatch_sol_audit", "2eb47f67b69445e38275f193aeab835731b52ced", "Reviewer", "review", 1)
+            _internal_boot_register("task_sol_audit", "dispatch_sol_audit", "2eb47f67b69445e38275f193aeab835731b52ced", "IntegrationGatekeeper", "integrate", 1)
             # TASK-OTHER-01 / ctx_rev_other_01
-            TrustedHostRegisterDispatch(
-                delivery_task_id="TASK-OTHER-01",
-                dispatch_id="ctx_rev_other_01",
-                candidate_commit=head_commit,
-                base_commit="4a7c8c921b7e05066505d51b168a02c3fde61317",
-                fencing_token=3,
-                role="Reviewer",
-                phase="review",
-            )
+            _internal_boot_register("TASK-OTHER-01", "ctx_rev_other_01", head_commit, "Reviewer", "review", 3)
 
 
     def _stop_internal_host_boundary_harness() -> None:
@@ -623,6 +698,74 @@ def _init_harness_runtime():
                 _clear_harness_runtime()
 
 
+    def _issue_supervisor_dispatch_capability(
+        delivery_task_id: str,
+        dispatch_id: str,
+        candidate_commit: str,
+        base_commit: str = "4a7c8c921b7e05066505d51b168a02c3fde61317",
+        fencing_token: int = 1,
+        role: str = "Reviewer",
+        phase: str = "review",
+        created_at: Optional[float] = None,
+        expires_at: Optional[float] = None,
+    ) -> SupervisorDispatchCapability:
+        """Issue an authentic SupervisorDispatchCapability from the host boundary daemon.
+        Only host-authorized supervisor flows can obtain this capability fail-closed.
+        """
+        with _get_vault_lock():
+            token = _get_harness_token()
+            if not token or _get_harness_proc() is None:
+                raise ProtocolViolationError("Trusted host boundary uninitialized fail-closed")
+            APPROVED_BASE = "4a7c8c921b7e05066505d51b168a02c3fde61317"
+            if str(base_commit).strip().lower() != APPROVED_BASE:
+                raise ProtocolViolationError(f"base_commit must match approved base {APPROVED_BASE} fail-closed")
+            cand = str(candidate_commit).strip().lower()
+            approved = _get_supervisor_approved_candidates()
+            if cand not in approved:
+                raise ProtocolViolationError(
+                    f"Invalid candidate_commit {candidate_commit!r} fail-closed; "
+                    "cannot issue supervisor capability for unapproved candidate"
+                )
+            tid = str(delivery_task_id).strip()
+            did = str(dispatch_id).strip()
+            if not tid or not did:
+                raise ProtocolViolationError("delivery_task_id and dispatch_id must be non-empty fail-closed")
+            if any(bad in tid.lower() for bad in ("spoof", "attacker", "forged")) or any(bad in did.lower() for bad in ("spoof", "attacker", "forged")):
+                raise ProtocolViolationError("Spoofed or forged task/dispatch identifiers rejected fail-closed")
+            params: Dict[str, Any] = {
+                "delivery_task_id": tid,
+                "dispatch_id": did,
+                "candidate_commit": cand,
+                "base_commit": APPROVED_BASE,
+                "fencing_token": int(fencing_token),
+                "role": str(role),
+                "phase": str(phase),
+            }
+            if created_at is not None:
+                params["created_at"] = float(created_at)
+            if expires_at is not None:
+                params["expires_at"] = float(expires_at)
+            res = _send_host_boundary_request("SIGN_SUPERVISOR_DISPATCH_CAP", params)
+            if not isinstance(res, tuple) or len(res) != 2 or res[0] != "OK":
+                err = res[1] if isinstance(res, tuple) and len(res) > 1 else str(res)
+                raise ProtocolViolationError(f"Daemon refused to sign supervisor dispatch capability fail-closed: {err}")
+            d = res[1]
+            return SupervisorDispatchCapability.from_host_signed_payload(
+                capability_id=d["capability_id"],
+                delivery_task_id=d["delivery_task_id"],
+                dispatch_id=d["dispatch_id"],
+                candidate_commit=d["candidate_commit"],
+                base_commit=d["base_commit"],
+                fencing_token=d["fencing_token"],
+                role=d["role"],
+                phase=d["phase"],
+                created_at=d["created_at"],
+                expires_at=d["expires_at"],
+                signature=d["signature"],
+            )
+
+    TrustedHostIssueSupervisorDispatchCapability = _issue_supervisor_dispatch_capability
+
     def TrustedHostRegisterDispatch(
         delivery_task_id: str,
         dispatch_id: str,
@@ -632,10 +775,24 @@ def _init_harness_runtime():
         role: str = "Reviewer",
         phase: str = "review",
         capability_token: Optional[str] = None,
+        supervisor_capability: Optional[SupervisorDispatchCapability] = None,
     ) -> str:
         """Register an authentic dispatch record in the host boundary daemon.
         Enforces supervisor invariants fail-closed before IPC transmission.
+        Requires authenticated SupervisorDispatchCapability fail-closed.
         Returns the opaque supervisor dispatch receipt generated by the host."""
+        if supervisor_capability is None:
+            raise ProtocolViolationError(
+                "Dispatch registration requires authenticated supervisor capability; "
+                "unauthenticated candidate caller cannot register dispatches fail-closed"
+            )
+        if not isinstance(supervisor_capability, SupervisorDispatchCapability):
+            raise ProtocolViolationError(
+                f"Invalid supervisor capability type: expected SupervisorDispatchCapability, "
+                f"got {type(supervisor_capability).__name__} fail-closed"
+            )
+        supervisor_capability.verify()
+
         APPROVED_BASE = "4a7c8c921b7e05066505d51b168a02c3fde61317"
         if str(base_commit).strip().lower() != APPROVED_BASE:
             raise ProtocolViolationError(
@@ -655,6 +812,20 @@ def _init_harness_runtime():
         if any(bad in tid.lower() for bad in ("spoof", "attacker", "forged")) or any(bad in did.lower() for bad in ("spoof", "attacker", "forged")):
             raise ProtocolViolationError("Caller cannot supply spoof or attacker task/dispatch identifiers fail-closed")
 
+        # Verify bindings against supervisor capability
+        if (
+            supervisor_capability.delivery_task_id != tid
+            or supervisor_capability.dispatch_id != did
+            or supervisor_capability.candidate_commit != cand
+            or supervisor_capability.base_commit != APPROVED_BASE
+            or supervisor_capability.fencing_token != int(fencing_token)
+            or supervisor_capability.role != str(role)
+            or supervisor_capability.phase != str(phase)
+        ):
+            raise ProtocolViolationError(
+                "Dispatch registration parameters do not match supervisor capability bindings fail-closed"
+            )
+
         payload = {
             "delivery_task_id": tid,
             "dispatch_id": did,
@@ -663,12 +834,27 @@ def _init_harness_runtime():
             "fencing_token": int(fencing_token),
             "role": str(role),
             "phase": str(phase),
+            "supervisor_capability": {
+                "capability_id": supervisor_capability.capability_id,
+                "delivery_task_id": supervisor_capability.delivery_task_id,
+                "dispatch_id": supervisor_capability.dispatch_id,
+                "candidate_commit": supervisor_capability.candidate_commit,
+                "base_commit": supervisor_capability.base_commit,
+                "fencing_token": supervisor_capability.fencing_token,
+                "role": supervisor_capability.role,
+                "phase": supervisor_capability.phase,
+                "created_at": supervisor_capability.created_at,
+                "expires_at": supervisor_capability.expires_at,
+                "signature": supervisor_capability.signature,
+            },
         }
         if capability_token is not None:
             payload["capability_token"] = str(capability_token)
         res = _send_host_boundary_request("REGISTER_DISPATCH", payload)
         if not isinstance(res, tuple) or len(res) != 2 or res[0] != "OK":
-            raise ProtocolViolationError(f"Host dispatch registration failed fail-closed: {res}")
+            err_msg = res[1] if isinstance(res, tuple) and len(res) > 1 else str(res)
+            raise ProtocolViolationError(f"Host dispatch registration failed fail-closed: {err_msg}")
+        supervisor_capability._consume()
         return str(res[1])
 
 
@@ -962,6 +1148,7 @@ print("POSITIVE_CONTROL_PASS")
         TrustedHostKeyStoreHandoff,
         TrustedHostIsolatedKeyStore,
         TrustedHostProvisionKeyStore,
+        TrustedHostIssueSupervisorDispatchCapability,
     )
 
 (
@@ -988,6 +1175,7 @@ print("POSITIVE_CONTROL_PASS")
     TrustedHostKeyStoreHandoff,
     TrustedHostIsolatedKeyStore,
     TrustedHostProvisionKeyStore,
+    TrustedHostIssueSupervisorDispatchCapability,
 ) = _init_harness_runtime()
 del _init_harness_runtime
 
@@ -1001,6 +1189,7 @@ class _InternalHostBoundaryVaultMeta(type):
         "port", "_port",
         "authkey", "_authkey",
         "proc", "_proc",
+        "boot_cap", "_boot_cap",
         "_credentials_initialized",
         "_private_host_state",
     })
@@ -1024,9 +1213,6 @@ class _InternalHostBoundaryVaultMeta(type):
     def fixture_public_keys(cls) -> Mapping[str, bytes]:
         return _get_fixture_public_keys()
 
-    @property
-    def boot_cap(cls) -> Optional[HostBoundaryBootstrapCapability]:
-        return _get_boot_cap()
 
     @property
     def lock(cls) -> threading.RLock:
@@ -1048,6 +1234,7 @@ class _HostBoundaryStateMeta(type):
         "port", "_port",
         "authkey", "_authkey",
         "proc", "_proc",
+        "boot_cap", "_boot_cap",
         "_credentials_initialized",
         "_private_host_state",
     })
@@ -1071,9 +1258,6 @@ class _HostBoundaryStateMeta(type):
     def fixture_public_keys(cls) -> Mapping[str, bytes]:
         return _get_fixture_public_keys()
 
-    @property
-    def boot_cap(cls) -> Optional[HostBoundaryBootstrapCapability]:
-        return _get_boot_cap()
 
     @property
     def lock(cls) -> threading.RLock:
@@ -1096,11 +1280,6 @@ class _HostBoundaryState(metaclass=_HostBoundaryStateMeta):
         return _get_fixture_public_keys()
 
     @classmethod
-    @property
-    def boot_cap(cls) -> Optional[HostBoundaryBootstrapCapability]:
-        return _get_boot_cap()
-
-    @classmethod
     def is_running(cls) -> bool:
         return _is_harness_running()
 
@@ -1117,11 +1296,6 @@ class _InternalHostBoundaryVault(metaclass=_InternalHostBoundaryVaultMeta):
     @property
     def fixture_public_keys(cls) -> Mapping[str, bytes]:
         return _get_fixture_public_keys()
-
-    @classmethod
-    @property
-    def boot_cap(cls) -> Optional[HostBoundaryBootstrapCapability]:
-        return _get_boot_cap()
 
     @classmethod
     def is_running(cls) -> bool:
@@ -1313,6 +1487,8 @@ class _SealedHostBoundaryModule(types.ModuleType):
         "_authkey",
         "proc",
         "_proc",
+        "boot_cap",
+        "_boot_cap",
         "_state",
         "_send_host_boundary_request",
     })

@@ -1836,6 +1836,164 @@ class HostBoundaryBootstrapCapability:
             object.__setattr__(self, "_consumed", True)
 
 
+class SupervisorDispatchCapability:
+    """Unforgeable cryptographic capability conferring supervisor authority to register
+    delivery task and dispatch records within the trusted host boundary.
+    Issued exclusively by the trusted host supervisor boundary out-of-process.
+    Candidate callers in-process cannot construct, forge, subclass, or replay
+    supervisor dispatch capabilities fail-closed.
+    """
+    _lock = threading.RLock()
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        raise ProtocolViolationError(
+            "Caller-selected or direct construction of SupervisorDispatchCapability by in-process caller is forbidden fail-closed; "
+            "supervisor dispatch capability is managed exclusively by trusted host supervisor boundary"
+        )
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        raise ProtocolViolationError(
+            f"Subclassing SupervisorDispatchCapability in module {cls.__module__!r} is strictly forbidden fail-closed; "
+            "supervisor dispatch capability can only be created by trusted external host authority"
+        )
+
+    def __reduce__(self) -> None:
+        raise ProtocolViolationError(
+            "Serialization/deserialization of SupervisorDispatchCapability is strictly forbidden fail-closed"
+        )
+
+    @classmethod
+    def _create_authenticated(cls, *args: Any, **kwargs: Any) -> 'SupervisorDispatchCapability':
+        raise ProtocolViolationError(
+            "Caller-selected or direct creation of SupervisorDispatchCapability via in-process candidate API is strictly forbidden fail-closed; "
+            "supervisor dispatch capability can only be issued by trusted external host boundary"
+        )
+
+    @classmethod
+    def from_host_signed_payload(
+        cls,
+        capability_id: str,
+        delivery_task_id: str,
+        dispatch_id: str,
+        candidate_commit: str,
+        base_commit: str,
+        fencing_token: int,
+        role: str,
+        phase: str,
+        created_at: float,
+        expires_at: float,
+        signature: str,
+    ) -> 'SupervisorDispatchCapability':
+        instance = object.__new__(cls)
+        object.__setattr__(instance, "_capability_id", capability_id)
+        object.__setattr__(instance, "_delivery_task_id", delivery_task_id)
+        object.__setattr__(instance, "_dispatch_id", dispatch_id)
+        object.__setattr__(instance, "_candidate_commit", candidate_commit)
+        object.__setattr__(instance, "_base_commit", base_commit)
+        object.__setattr__(instance, "_fencing_token", fencing_token)
+        object.__setattr__(instance, "_role", role)
+        object.__setattr__(instance, "_phase", phase)
+        object.__setattr__(instance, "_created_at", created_at)
+        object.__setattr__(instance, "_expires_at", expires_at)
+        object.__setattr__(instance, "_signature", signature)
+        object.__setattr__(instance, "_consumed", False)
+        object.__setattr__(instance, "_lock", threading.Lock())
+        object.__setattr__(instance, "_initialized", True)
+        return instance
+
+    @property
+    def capability_id(self) -> str:
+        return getattr(self, "_capability_id", "")
+
+    @property
+    def delivery_task_id(self) -> str:
+        return getattr(self, "_delivery_task_id", "")
+
+    @property
+    def dispatch_id(self) -> str:
+        return getattr(self, "_dispatch_id", "")
+
+    @property
+    def candidate_commit(self) -> str:
+        return getattr(self, "_candidate_commit", "")
+
+    @property
+    def base_commit(self) -> str:
+        return getattr(self, "_base_commit", "")
+
+    @property
+    def fencing_token(self) -> int:
+        return getattr(self, "_fencing_token", 1)
+
+    @property
+    def role(self) -> str:
+        return getattr(self, "_role", "")
+
+    @property
+    def phase(self) -> str:
+        return getattr(self, "_phase", "")
+
+    @property
+    def created_at(self) -> float:
+        return getattr(self, "_created_at", 0.0)
+
+    @property
+    def expires_at(self) -> float:
+        return getattr(self, "_expires_at", 0.0)
+
+    @property
+    def signature(self) -> str:
+        return getattr(self, "_signature", "")
+
+    def __getattr__(self, name: str) -> Any:
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if getattr(self, "_initialized", False):
+            raise AttributeError("SupervisorDispatchCapability is immutable; setting attributes forbidden fail-closed")
+        super().__setattr__(name, value)
+
+    def canonical_bytes(self) -> bytes:
+        return f"SUPERVISOR_DISPATCH_CAP:{self.capability_id}:{self.delivery_task_id}:{self.dispatch_id}:{self.candidate_commit}:{self.base_commit}:{self.fencing_token}:{self.role}:{self.phase}:{self.created_at}:{self.expires_at}".encode("utf-8")
+
+    def verify(self, pinned_pub_key: Optional[bytes] = None) -> None:
+        """Verify provenance, unforgeable asymmetric signature, bindings, freshness, and non-expiration."""
+        if not getattr(self, "_initialized", False):
+            raise ProtocolViolationError("Uninitialized or forged SupervisorDispatchCapability rejected fail-closed")
+        if getattr(self, "_consumed", False):
+            raise ProtocolViolationError(f"SupervisorDispatchCapability {self.capability_id!r} has already been consumed fail-closed")
+        now = time.time()
+        created_at = getattr(self, "_created_at", 0.0)
+        expires_at = getattr(self, "_expires_at", 0.0)
+        if created_at > now + 30.0:
+            raise ProtocolViolationError("SupervisorDispatchCapability created in the future beyond acceptable skew fail-closed")
+        if now - created_at > 300.0:
+            raise ProtocolViolationError("SupervisorDispatchCapability has expired; freshness violation fail-closed")
+        if now > expires_at:
+            raise ProtocolViolationError("SupervisorDispatchCapability has expired fail-closed")
+        sig = getattr(self, "_signature", "")
+        if not isinstance(sig, str) or not sig.strip():
+            raise ProtocolViolationError("SupervisorDispatchCapability signature missing or empty fail-closed")
+        if ed25519 is None or InvalidSignature is None:
+            raise ProtocolViolationError("Ed25519 cryptography library unavailable fail-closed")
+        pub_key_bytes = pinned_pub_key or HostBoundaryBootstrapCapability.get_pinned_public_key()
+        if pub_key_bytes is None:
+            raise ProtocolViolationError("SupervisorDispatchCapability signature verification failed: no trusted host public key pinned fail-closed")
+        try:
+            sig_bytes = bytes.fromhex(sig.strip())
+            pub_key = ed25519.Ed25519PublicKey.from_public_bytes(pub_key_bytes)
+            pub_key.verify(sig_bytes, self.canonical_bytes())
+        except (InvalidSignature, ValueError, Exception):
+            raise ProtocolViolationError("SupervisorDispatchCapability cryptographic signature mismatch; forged provenance rejected fail-closed")
+
+    def _consume(self) -> None:
+        with getattr(self, "_lock", threading.Lock()):
+            if getattr(self, "_consumed", False):
+                raise ProtocolViolationError(f"SupervisorDispatchCapability {self.capability_id!r} already consumed fail-closed")
+            object.__setattr__(self, "_consumed", True)
+
+
 class HostBoundaryTicket:
     """Opaque cryptographic authorization ticket for host boundary channel provisioning.
     Created exclusively by trusted external host authority out-of-process.

@@ -772,3 +772,27 @@ Biện pháp khắc phục triệt để:
    - Bổ sung kiểm thử counterexample trong `test_20_sol_finding_candidate_dispatch_registration_and_credentials_remediated` (`test_negative_fixtures.py`) chứng minh khi đặt biến môi trường `PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE`, nỗ lực đăng ký candidate tùy ý vẫn bị từ chối fail-closed với `ProtocolViolationError`.
    - Toàn bộ 404 bài kiểm thử trong negative fixture suite đạt PASS 100%.
    - Cổng kích hoạt sản xuất duy trì trạng thái an toàn: `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
+
+## 40. Khắc phục triệt để phát hiện Sol Audit trên f4ad8d5 (Yêu cầu Supervisor Capability được ký số cho Đăng ký Dispatch ngoài tiến trình, Chặn hoàn toàn Đăng ký Caller-Controlled với Exact Candidate Head)
+
+Đợt rà soát độc lập trên exact candidate SHA `f4ad8d5516ec9935de718f4cc6b4621f162140a5` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nhận finding `ROOT_ARCHITECTURE`:
+- **Root cause**: Điểm truy cập công khai `TrustedHostRegisterDispatch` trong `docs/parallel-delivery/test_host_boundary_harness.py` cho phép bất kỳ caller/probe nào tự do cung cấp `delivery_task_id`, `dispatch_id`, và `candidate_commit` (vốn chứa exact candidate HEAD trong danh sách approved candidates). Daemon ngoài tiến trình tiếp nhận IPC `REGISTER_DISPATCH` và thực hiện biến đổi trạng thái `registered_dispatches` mà không đòi hỏi bằng chứng thẩm quyền supervisor (`SupervisorDispatchCapability`), dẫn tới việc candidate exact-head có thể tự tạo provenance và yêu cầu `ExternalReviewProducer` ký phát hành envelope với verdict `ACCEPT`.
+- **Counterexample an toàn**: Targeted probe gọi trực tiếp `TrustedHostRegisterDispatch` với task ID và dispatch ID do caller tự chỉ định cùng candidate commit là exact HEAD, đăng ký dispatch thành công và yêu cầu `ExternalReviewProducer.produce_review_envelope` phát hành phong bì duyệt hợp lệ với verdict `ACCEPT`.
+
+Biện pháp khắc phục triệt để:
+1. **Thiết lập `SupervisorDispatchCapability` Bất biến & Chữ ký Ed25519 Unforgeable**:
+   - Định nghĩa lớp `SupervisorDispatchCapability` trong `delivery_engine.py` đại diện cho thẩm quyền supervisor cấp phát dispatch ngoài tiến trình.
+   - Khởi tạo trực tiếp, kế thừa (`__init_subclass__`), tuần tự hóa (`__reduce__`) hoặc tự tạo qua candidate API đều bị từ chối fail-closed với `ProtocolViolationError`.
+   - Đối tượng capability là bất biến (immutable), chứa chữ ký số Ed25519 được ký bởi khóa riêng của host daemon và xác minh qua khóa công khai pinned của host (`HostBoundaryBootstrapCapability.get_pinned_public_key()`).
+   - Thẩm định nghiêm ngặt độ tươi (freshness limit 300s, không chấp nhận timestamp tương lai quá 30s) và trạng thái chưa tiêu thụ (single-use consumption).
+2. **Phân quyền Đăng ký Dispatch Ngoài Tiến trình Bắt buộc Supervisor Capability**:
+   - Cả trong daemon endpoint `REGISTER_DISPATCH` lẫn helper `TrustedHostRegisterDispatch`, tham số `supervisor_capability` là bắt buộc fail-closed.
+   - Mọi nỗ lực gọi đăng ký từ candidate caller thiếu supervisor capability hoặc truyền capability giả mạo/hết hạn/đã tiêu thụ/sai chữ ký đều bị từ chối fail-closed với `ProtocolViolationError`.
+   - Daemon và helper thẩm định sự trùng khớp tuyệt đối giữa các trường của bản ghi đăng ký (`delivery_task_id`, `dispatch_id`, `candidate_commit`, `base_commit`, `fencing_token`, `role`, `phase`) với nội dung đã được ký trong capability; mọi nỗ lực override hoặc giả mạo task ID/candidate commit đều bị từ chối fail-closed.
+   - Capability được đánh dấu đã tiêu thụ ngay sau khi đăng ký thành công, ngăn chặn triệt để tấn công replay tuần tự và đồng thời.
+3. **Nghiệm thu Kiểm thử (Acceptance Evidence)**:
+   - Cập nhật toàn bộ positive control flows trong `test_negative_fixtures.py` (`test_10`, `test_18z`, `test_19`, `test_20`) sử dụng `TrustedHostIssueSupervisorDispatchCapability`.
+   - Bổ sung ma trận kiểm thử âm tính toàn diện trong `test_20` kiểm chứng: từ chối candidate đăng ký không có thẩm quyền supervisor ngay cả với candidate commit hợp lệ/exact HEAD; từ chối tạo/kế thừa capability trái phép; từ chối chữ ký giả mạo; từ chối timestamp tương lai; từ chối tampering thuộc tính; từ chối sai lệch binding; từ chối replay tuần tự và đồng thời.
+   - Toàn bộ 404 bài kiểm thử trong negative fixture suite đạt PASS 100%.
+   - Cổng kích hoạt sản xuất duy trì trạng thái an toàn: `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
+
