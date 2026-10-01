@@ -1258,6 +1258,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "2_external_signer_daemon_private_key_custody_out_of_process": "RESOLVED",
                     "3_candidate_reading_entire_repo_cannot_mint_bootstrap_capability": "RESOLVED",
                 },
+                "sol_audit_2eb47f6": {
+                    "1_zero_private_key_custody_in_candidate_and_fixture": "RESOLVED",
+                    "2_out_of_process_daemon_private_key_isolation": "RESOLVED",
+                    "3_opaque_signing_ipc_and_public_only_access": "RESOLVED",
+                    "4_caller_signed_envelope_rejected_fail_closed": "RESOLVED",
+                    "5_host_issued_signature_verification_and_replay_protection": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

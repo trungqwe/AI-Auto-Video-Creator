@@ -618,3 +618,39 @@ Bi?n ph�p kh?c ph?c tri?t d?:
 5. **Finding 5 � Ni�m Phong To�n Di?n Trong `_SealedFixtureModule`**:
    - B? sung `get_fixture_authority_keypair`, `get_fixture_authority_public_key`, `TrustedHostFixturePrivateKey`, `TrustedHostFixturePublicKey`, `_validate_and_resolve_fixture_pinned_keys` v�o `_SEALED_ATTRS` v� b? l?c ti?n t?, ngan ch?n tri?t d? candidate d?c qua fixture module.
 6. **B? ki?m th? to�n di?n**: To�n b? **401/401 tests PASS (100%)**, 12/12 validation checks PASS, b?o d?m an to�n tuy?t d?i tr�n m?i c?ng th?m d?nh v� release gate.
+
+## 34. Khắc phục triệt để phát hiện Sol Audit trên 2eb47f6 (Loại bỏ hoàn toàn Private Key khỏi In-Process/Fixture, Cơ chế ký mờ qua IPC và Quản lý khóa ngoài tiến trình)
+
+Đợt rà soát độc lập trên exact candidate SHA `2eb47f67b69445e38275f193aeab835731b52ced` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nhận finding actionable:
+`docs/parallel-delivery/test_host_boundary_harness.py:231-252` xuất `get_fixture_authority_keypair` và `TrustedHostFixturePrivateKey`, trả về đối tượng khóa riêng tư Ed25519 từ `_InternalHostBoundaryVault.fixture_keypairs`. Điều này vi phạm ranh giới tin cậy máy chủ host trong `security-performance-recovery.md:166-170,189-195` vì candidate worker có thể đọc khóa riêng và tự ký phong bì duyệt hợp lệ (`FORGED_REVIEW_ACCEPTED ACCEPT True`). Cơ chế chống replay không khắc phục được việc mất quyền lưu ký khóa riêng.
+
+Biện pháp khắc phục triệt để:
+1. **Finding 1 — Loại bỏ hoàn toàn Private Key khỏi Candidate / Fixture Runtime**:
+   - Khóa riêng tư Ed25519 cho toàn bộ fixture authorities (`rev_key_lead_v1`, `integ_gatekeeper_v1`, `control_authority_v1`) được tạo và lưu trữ độc quyền bên trong tiến trình con daemon ngoài tiến trình (`server_code` của `_InternalHostBoundaryVault.proc`).
+   - Xóa bỏ hoàn toàn thuộc tính `_InternalHostBoundaryVault.fixture_keypairs`. Harness và client chỉ nhận các byte khóa công khai (`fixture_public_keys` dạng `MappingProxyType`) qua stdout khi khởi tạo.
+   - Xóa bỏ hoàn toàn các hàm truy cập khóa riêng: `get_fixture_authority_keypair` và bí danh `TrustedHostFixturePrivateKey`. Mọi nỗ lực import hoặc truy cập các symbol này đều bị từ chối fail-closed với `ImportError` hoặc `AttributeError`.
+
+2. **Finding 2 — Cơ chế ký mờ qua IPC (Opaque Signing IPC) ngoài tiến trình**:
+   - Bổ sung lệnh IPC `SIGN_FIXTURE_PAYLOAD` vào vòng lặp daemon của `HostBoundaryChannel`. Daemon chỉ chấp nhận yêu cầu ký khi token khớp với `host_secret` (kiểm tra qua `hmac.compare_digest`), `key_id` nằm trong danh sách `ALLOWED_FIXTURE_KEY_IDS` và payload là dạng bytes.
+   - Cung cấp các helper ký mờ:
+     + `host_sign_fixture_payload(key_id, payload)` / `TrustedHostSignFixturePayload`
+     + `host_sign_review_envelope(envelope, key_id)` / `TrustedHostSignReviewEnvelope`
+     + `host_sign_integration_envelope(envelope, key_id)` / `TrustedHostSignIntegrationEnvelope`
+   - Các helper này yêu cầu daemon đã được khởi tạo trong test harness, ném `ProtocolViolationError` fail-closed nếu bị gọi ngoài lifecycle kiểm thử.
+
+3. **Finding 3 — Cập nhật toàn diện bộ kiểm thử negative fixtures**:
+   - Cập nhật các bài kiểm tra (`test_03`, `test_04`, `test_05`, `test_06`, `test_07`, `test_10`, `test_11`, `test_12`, `test_13`, `test_14`) trong `docs/parallel-delivery/test_negative_fixtures.py` để sử dụng `host_sign_review_envelope` và `host_sign_integration_envelope`.
+
+4. **Finding 4 — Kiểm chứng hồi quy trong tiến trình con độc lập (`test_18z`)**:
+   - Bổ sung `test_18z_sol_finding_fixture_authority_private_key_custody_remediated`:
+     + Khẳng định tiến trình con mới không thể import `get_fixture_authority_keypair` hoặc `TrustedHostFixturePrivateKey` (`ImportError`).
+     + Khẳng định `_InternalHostBoundaryVault` không chứa bất kỳ `fixture_keypairs` nào.
+     + Tái hiện counterexample: phong bì do candidate tự ký bằng khóa tự sinh bị `TrustedReviewConsumer` từ chối dứt khoát với `EnvelopeVerificationError` (`FORGED_REVIEW_ACCEPTED=False`).
+     + Khẳng định phong bì ký qua IPC máy chủ host được xác minh thành công (`verdict == ACCEPT`).
+     + Khẳng định cơ chế chống replay đơn lẻ và đồng thời hoạt động chính xác (1 ACCEPT, 1 ReplayAttackError).
+     + Khẳng định `ProductionActivationGate.STATUS` duy trì `PRODUCTION_ACTIVATION_BLOCKED`.
+     + Khẳng định dọn dẹp sạch tiến trình sau khi dừng harness (`proc is None`, public keys rỗng).
+
+5. **Finding 5 — Niêm phong chặt chẽ trong `_SealedFixtureModule`**:
+   - Bổ sung các helper ký mờ (`host_sign_fixture_payload`, `host_sign_review_envelope`, `host_sign_integration_envelope`, `TrustedHostSignFixturePayload`, `TrustedHostSignReviewEnvelope`, `TrustedHostSignIntegrationEnvelope`) vào `_SEALED_ATTRS`, ngăn chặn triệt để candidate truy cập qua module fixture.
+

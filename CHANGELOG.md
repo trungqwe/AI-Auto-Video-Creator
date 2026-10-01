@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 2eb47f6 (Loại bỏ hoàn toàn Private Key khỏi In-Process/Fixture, Cơ chế ký mờ qua IPC và Quản lý khóa ngoài tiến trình)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate `2eb47f67b69445e38275f193aeab835731b52ced` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Loại bỏ hoàn toàn Private Key khỏi In-Process/Fixture**: Khóa riêng tư Ed25519 được tạo và lưu trữ độc quyền bên trong tiến trình daemon ngoài tiến trình; xóa bỏ `_InternalHostBoundaryVault.fixture_keypairs`, `get_fixture_authority_keypair`, `TrustedHostFixturePrivateKey`.
+  - **(2) Cơ chế ký mờ qua IPC (Opaque Signing IPC)**: Bổ sung lệnh `SIGN_FIXTURE_PAYLOAD` vào daemon với xác thực HMAC bằng host token; cung cấp các helper `host_sign_fixture_payload`, `host_sign_review_envelope`, `host_sign_integration_envelope`.
+  - **(3) Cập nhật Negative Fixtures**: Toàn bộ các bài kiểm thử ký phong bì chuyển sang sử dụng helper ký mờ; thêm `test_18z` kiểm chứng toàn diện các tiêu chí nghiệm thu của reviewer Sol.
+  - **(4) Niêm phong sealed module**: Bổ sung các helper ký mờ vào `_SEALED_ATTRS` trong `_SealedFixtureModule`.
+
 ## 2026-10-01 � Kh?c ph?c tri?t d? ph�t hi?n Sol Audit tr�n b5af69c (Key Custody Invariant, C?p Ph�t Pinned Key Material B?t Bi?n & T? Ch?i Caller-Selected Bytes)
 
 - Kh?c ph?c tri?t d? ph�t hi?n d?c l?p (actionable finding) t? Sol tr�n exact candidate b5af69c7b81733df99ace98731bbd06ffee1bd1a (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):

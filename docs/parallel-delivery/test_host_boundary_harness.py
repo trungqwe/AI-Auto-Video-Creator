@@ -10,6 +10,7 @@ Custom key minting is strictly rejected fail-closed.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import secrets
 import subprocess
@@ -31,6 +32,8 @@ from delivery_engine import (
     ReviewerHostHandoff,
     ReviewerHostIssuer,
     ReviewerSessionBoundary,
+    SignedIntegrationEnvelope,
+    SignedReviewEnvelope,
     TrustedKeyStore,
 )
 
@@ -52,7 +55,6 @@ class _InternalHostBoundaryVault:
     proc: Optional[subprocess.Popen] = None
     boot_cap: Optional[HostBoundaryBootstrapCapability] = None
     test_host_issuer: Optional[ReviewerHostIssuer] = None
-    fixture_keypairs: Dict[str, Any] = {}
     fixture_public_keys: Mapping[str, bytes] = MappingProxyType({})
     lock = threading.RLock()
 
@@ -64,23 +66,32 @@ def _ensure_internal_host_boundary_harness() -> None:
 
         clean_token = secrets.token_hex(32)
         effective_authkey = secrets.token_bytes(32)
+        allowed_ids_json = json.dumps(sorted(ALLOWED_FIXTURE_KEY_IDS))
         server_code = (
-            "import sys, hmac\n"
+            "import sys, hmac, json\n"
             "from multiprocessing.connection import Listener\n"
             "from cryptography.hazmat.primitives.asymmetric import ed25519\n"
             "line1 = sys.stdin.readline().strip()\n"
             "line2 = sys.stdin.readline().strip()\n"
+            "line3 = sys.stdin.readline().strip()\n"
             "host_secret = line1.encode('utf-8')\n"
             "authkey = bytes.fromhex(line2)\n"
+            "allowed_ids = json.loads(line3) if line3 else ['control_authority_v1', 'integ_gatekeeper_v1', 'rev_key_lead_v1']\n"
             "listener = Listener(('127.0.0.1', 0), authkey=authkey)\n"
             "priv_key = ed25519.Ed25519PrivateKey.generate()\n"
             "pub_bytes = priv_key.public_key().public_bytes_raw()\n"
+            "fixture_keys = {kid: ed25519.Ed25519PrivateKey.generate() for kid in allowed_ids}\n"
+            "fixture_pub_hex = {kid: k.public_key().public_bytes_raw().hex() for kid, k in fixture_keys.items()}\n"
             "sys.stdout.write(str(listener.address[1]) + '\\n')\n"
             "sys.stdout.write(pub_bytes.hex() + '\\n')\n"
+            "sys.stdout.write(json.dumps(fixture_pub_hex) + '\\n')\n"
             "sys.stdout.flush()\n"
             "while True:\n"
             "    try:\n"
             "        conn = listener.accept()\n"
+            "    except Exception:\n"
+            "        continue\n"
+            "    try:\n"
             "        msg = conn.recv()\n"
             "        if msg == '__STOP_HOST_BOUNDARY__':\n"
             "            conn.send(True)\n"
@@ -92,6 +103,19 @@ def _ensure_internal_host_boundary_harness() -> None:
             "            if len(t_bytes) >= 32 and hmac.compare_digest(t_bytes.strip(), host_secret):\n"
             "                sig = priv_key.sign(payload).hex()\n"
             "                conn.send(('OK', sig))\n"
+            "            else:\n"
+            "                conn.send(('ERR', 'Unauthorized'))\n"
+            "            conn.close()\n"
+            "            continue\n"
+            "        if isinstance(msg, tuple) and len(msg) == 4 and msg[0] == 'SIGN_FIXTURE_PAYLOAD':\n"
+            "            _, req_token, kid, payload = msg\n"
+            "            t_bytes = req_token if isinstance(req_token, bytes) else req_token.encode('utf-8', errors='replace')\n"
+            "            if len(t_bytes) >= 32 and hmac.compare_digest(t_bytes.strip(), host_secret):\n"
+            "                if kid in fixture_keys and isinstance(payload, bytes):\n"
+            "                    sig = fixture_keys[kid].sign(payload).hex()\n"
+            "                    conn.send(('OK', sig))\n"
+            "                else:\n"
+            "                    conn.send(('ERR', 'Unknown key ID or invalid payload'))\n"
             "            else:\n"
             "                conn.send(('ERR', 'Unauthorized'))\n"
             "            conn.close()\n"
@@ -108,7 +132,10 @@ def _ensure_internal_host_boundary_harness() -> None:
             "        conn.send(valid)\n"
             "        conn.close()\n"
             "    except Exception:\n"
-            "        break\n"
+            "        try:\n"
+            "            conn.close()\n"
+            "        except Exception:\n"
+            "            pass\n"
             "listener.close()\n"
         )
 
@@ -119,7 +146,7 @@ def _ensure_internal_host_boundary_harness() -> None:
             stderr=subprocess.PIPE,
             text=True,
         )
-        proc.stdin.write(clean_token + "\n" + effective_authkey.hex() + "\n")
+        proc.stdin.write(clean_token + "\n" + effective_authkey.hex() + "\n" + allowed_ids_json + "\n")
         proc.stdin.flush()
 
         port_line = proc.stdout.readline()
@@ -133,6 +160,13 @@ def _ensure_internal_host_boundary_harness() -> None:
             proc.kill()
             raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel public key")
         pub_bytes = bytes.fromhex(pub_line.strip())
+
+        fixture_pub_line = proc.stdout.readline()
+        if not fixture_pub_line:
+            proc.kill()
+            raise ProtocolViolationError("Failed to initialize fixture public keys from host boundary channel")
+        fixture_pub_hex_dict = json.loads(fixture_pub_line.strip())
+        fixture_public_keys = {kid: bytes.fromhex(h) for kid, h in fixture_pub_hex_dict.items()}
 
         HostBoundaryChannel._port = port
         HostBoundaryChannel._authkey = effective_authkey
@@ -177,21 +211,12 @@ def _ensure_internal_host_boundary_harness() -> None:
                 test_host_issuer.issue_handoff(TEST_FIXTURE_REVIEWER_SECRET.encode("utf-8"))
             )
 
-        from cryptography.hazmat.primitives.asymmetric import ed25519
-        fixture_keypairs: Dict[str, Any] = {}
-        fixture_public_keys: Dict[str, bytes] = {}
-        for kid in sorted(ALLOWED_FIXTURE_KEY_IDS):
-            kp = ed25519.Ed25519PrivateKey.generate()
-            fixture_keypairs[kid] = kp
-            fixture_public_keys[kid] = kp.public_key().public_bytes_raw()
-
         _InternalHostBoundaryVault.port = port
         _InternalHostBoundaryVault.authkey = effective_authkey
         _InternalHostBoundaryVault.token = clean_token
         _InternalHostBoundaryVault.proc = proc
         _InternalHostBoundaryVault.boot_cap = boot_cap
         _InternalHostBoundaryVault.test_host_issuer = test_host_issuer
-        _InternalHostBoundaryVault.fixture_keypairs = fixture_keypairs
         _InternalHostBoundaryVault.fixture_public_keys = MappingProxyType(fixture_public_keys)
 
 
@@ -218,7 +243,6 @@ def _stop_internal_host_boundary_harness() -> None:
                 except Exception:
                     pass
             _InternalHostBoundaryVault.proc = None
-            _InternalHostBoundaryVault.fixture_keypairs = {}
             _InternalHostBoundaryVault.fixture_public_keys = MappingProxyType({})
 
 
@@ -228,14 +252,73 @@ def TrustedHostReviewerHandoff(credential: bytes) -> ReviewerHostHandoff:
     return _InternalHostBoundaryVault.test_host_issuer.issue_handoff(credential)
 
 
-def get_fixture_authority_keypair(key_id: str) -> Any:
-    """Retrieve the host-allocated immutable private signing key for an authentic test authority."""
+def host_sign_fixture_payload(key_id: str, payload: bytes) -> str:
+    """Request trusted host daemon to sign arbitrary bytes using the authentic host authority key."""
     token = _InternalHostBoundaryVault.token
-    if not token or _InternalHostBoundaryVault.proc is None:
-        raise ProtocolViolationError("Trusted host fixture keypair uninitialized fail-closed; caller cannot invoke host helper outside test harness")
+    proc = _InternalHostBoundaryVault.proc
+    port = _InternalHostBoundaryVault.port
+    authkey = _InternalHostBoundaryVault.authkey
+    if not token or proc is None or proc.poll() is not None or not port or not authkey:
+        raise ProtocolViolationError(
+            "Trusted host boundary daemon uninitialized or terminated fail-closed; "
+            "caller cannot invoke host signing outside test harness"
+        )
     if key_id not in ALLOWED_FIXTURE_KEY_IDS:
-        raise ProtocolViolationError(f"Custom key ID {key_id!r} is strictly forbidden fail-closed; candidate cannot mint custom-key authority")
-    return _InternalHostBoundaryVault.fixture_keypairs[key_id]
+        raise ProtocolViolationError(
+            f"Custom key ID {key_id!r} is strictly forbidden fail-closed; candidate cannot mint custom-key authority"
+        )
+    if not isinstance(payload, bytes):
+        raise ProtocolViolationError("Signing payload must be bytes fail-closed")
+
+    from multiprocessing.connection import Client
+    conn = Client(("127.0.0.1", port), authkey=authkey)
+    conn.send(("SIGN_FIXTURE_PAYLOAD", token, key_id, payload))
+    res = conn.recv()
+    conn.close()
+    if not isinstance(res, tuple) or len(res) != 2 or res[0] != "OK":
+        raise ProtocolViolationError(f"Trusted host daemon signing failed fail-closed: {res!r}")
+    return res[1]
+
+
+TrustedHostSignFixturePayload = host_sign_fixture_payload
+
+
+def host_sign_review_envelope(
+    envelope: Union[SignedReviewEnvelope, Dict[str, Any]],
+    key_id: str = "rev_key_lead_v1",
+) -> SignedReviewEnvelope:
+    """Request trusted host daemon to sign a review envelope using an authentic reviewer authority key."""
+    if isinstance(envelope, SignedReviewEnvelope):
+        env = envelope
+    else:
+        env = SignedReviewEnvelope.from_dict(envelope)
+    canonical = env.canonical_bytes()
+    sig = host_sign_fixture_payload(key_id, canonical)
+    data = env.to_dict()
+    data["signature"] = sig
+    return SignedReviewEnvelope.from_dict(data)
+
+
+TrustedHostSignReviewEnvelope = host_sign_review_envelope
+
+
+def host_sign_integration_envelope(
+    envelope: Union[SignedIntegrationEnvelope, Dict[str, Any]],
+    key_id: str = "integ_gatekeeper_v1",
+) -> SignedIntegrationEnvelope:
+    """Request trusted host daemon to sign an integration envelope using an authentic gatekeeper authority key."""
+    if isinstance(envelope, SignedIntegrationEnvelope):
+        env = envelope
+    else:
+        env = SignedIntegrationEnvelope.from_dict(envelope)
+    canonical = env.canonical_bytes()
+    sig = host_sign_fixture_payload(key_id, canonical)
+    data = env.to_dict()
+    data["signature"] = sig
+    return SignedIntegrationEnvelope.from_dict(data)
+
+
+TrustedHostSignIntegrationEnvelope = host_sign_integration_envelope
 
 
 def get_fixture_authority_public_key(key_id: str) -> bytes:
@@ -248,7 +331,6 @@ def get_fixture_authority_public_key(key_id: str) -> bytes:
     return _InternalHostBoundaryVault.fixture_public_keys[key_id]
 
 
-TrustedHostFixturePrivateKey = get_fixture_authority_keypair
 TrustedHostFixturePublicKey = get_fixture_authority_public_key
 
 
