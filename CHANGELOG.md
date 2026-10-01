@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên aae7646 (Đóng Kín Hoàn Toàn Trusted Harness & Context Khỏi Candidate-Readable Fixtures, Loại Bỏ Mọi Credential/Endpoint Accessors & Bổ Sung Negative Assertion test_18x)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate aae7646079e76fd6f58f141bc0fdf4474f2c4a4a (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Loại Bỏ Hoàn Toàn Context-Helper & Accessor Khỏi Candidate-Readable Fixture**:
+    - Trong `docs/parallel-delivery/test_negative_fixtures.py`, loại bỏ hoàn toàn `_TestHostBoundaryContext`, `_ensure_test_host_boundary_harness`, và `_stop_test_host_boundary_harness` khỏi giao diện callable/attribute của module.
+    - Đóng gói toàn bộ state nội bộ và helper của test harness thành `_InternalHostBoundaryVault`, `_ensure_internal_host_boundary_harness`, và `_stop_internal_host_boundary_harness`, chỉ phục vụ nội bộ runner khi thực thi `setUpModule()` / `tearDownModule()`.
+  - **(2) Đóng Kín Boundary Bằng `_SealedFixtureModule`**:
+    - Thiết lập lớp module `_SealedFixtureModule(types.ModuleType)` chặn tuyệt đối mọi truy cập ngoài tới các symbol context/helper/credentials (`_SEALED_ATTRS`).
+    - Mọi nỗ lực truy cập thuộc tính ngoài hoặc gọi helper ném `AttributeError` fail-closed.
+    - Lọc bỏ hoàn toàn các symbol sealed khỏi `__dict__` và `dir()` của module, bảo đảm `hasattr` trả về `False`, `getattr(..., None)` trả về `None`, và `from test_negative_fixtures import ...` ném `ImportError`.
+  - **(3) Fixture Phân Biệt test_18x (Fresh Subprocess Fixture Context Authority Bị Từ Chối Fail-Closed)**:
+    - Bổ sung bài kiểm tra `test_18x_sol_finding_candidate_fixture_context_authority_rejected_in_fresh_subprocess`: chứng minh trong tiến trình con độc lập, candidate import fixture không thể truy cập `_TestHostBoundaryContext`, `_ensure_test_host_boundary_harness`, `token`, `port`, hay `authkey`.
+    - Tái hiện counterexample an toàn: candidate tìm cách gọi helper, lấy context, reset testing và ghim khóa công khai; khẳng định toàn bộ chuỗi bị chặn đứng fail-closed, `CANDIDATE_FIXTURE_CONTEXT_AUTHORITY_ACCEPTED` bằng `False`, khóa ghim giữ nguyên `None`, và phát sinh bằng chứng `SOL_FIXTURE_CONTEXT_AUTHORITY_REJECTED_PASS`.
+  - **(4) Bộ Kiểm Thử & Cổng Thẩm Định Toàn Diện**:
+    - Toàn bộ bộ kiểm thử tự động đạt **400/400 tests PASS (100%)**.
+    - Tất cả 12 cổng thẩm định release gate đạt PASS tuyệt đối; trạng thái kích hoạt production mode tiếp tục bị khóa chặt fail-closed (`PRODUCTION_ACTIVATION_BLOCKED`).
+
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên f5b1360 (Loại Bỏ Hoàn Toàn Nhánh Fallback Endpoint Caller-Selected Trong Pin Trusted Host Public Key, Ràng Buộc Thẩm Quyền 100% Qua HostBoundaryChannel Ngoài Tiến Trình & Bổ Sung Negative Fixture test_18w)
 
 - Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate f5b136099ff0b2236362c29a7a1ed5d154a19fe3 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
