@@ -3,8 +3,8 @@
   "status": "PASS",
   "attestation": {
     "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
-    "candidate_commit": "9965bc0cb1ec3d068cccdc20149634814465389a",
-    "parent_commit": "9965bc0cb1ec3d068cccdc20149634814465389a",
+    "candidate_commit": "f897c0d9388b69e2b0478c4810a9aed89858b581",
+    "parent_commit": "f897c0d9388b69e2b0478c4810a9aed89858b581",
     "wrapper_commit": "HEAD",
     "candidate_is_actual_head": false,
     "committed_changes_count": 21,
@@ -189,10 +189,17 @@
       "1_complete_elimination_of_private_signing_key_from_repository": "RESOLVED",
       "2_external_signer_daemon_private_key_custody_out_of_process": "RESOLVED",
       "3_candidate_reading_entire_repo_cannot_mint_bootstrap_capability": "RESOLVED"
+    },
+    "sol_audit_2eb47f6": {
+      "1_zero_private_key_custody_in_candidate_and_fixture": "RESOLVED",
+      "2_out_of_process_daemon_private_key_isolation": "RESOLVED",
+      "3_opaque_signing_ipc_and_public_only_access": "RESOLVED",
+      "4_caller_signed_envelope_rejected_fail_closed": "RESOLVED",
+      "5_host_issued_signature_verification_and_replay_protection": "RESOLVED"
     }
   },
   "fixture_stats": {
-    "tests_run": 401,
+    "tests_run": 402,
     "failures": 0,
     "errors": 0,
     "passed": true
@@ -273,12 +280,12 @@
     "operating-model.md": "288086ccde6a380f91a3f921334d5fa673d437805478926e44aa6d455a7dd92b",
     "ownership-and-locks.yaml": "ca060cf8603f0d98370260dadc088d22e63850b7ae324280c2262008b14760c2",
     "protocol.md": "d485e6131f0ac34c18bcb662581273b7c844ac291f40a14b5de33e6c725ec690",
-    "README.md": "9180e29a2ec5f49e5914e47ddb91b81554348b7840ebe68abced6a6c4dcd7570",
+    "README.md": "799c67d949740c5e1d2c70070ea6f771083d1eea25e06953cc501f2d91e56e27",
     "security-performance-recovery.md": "951ac4fac152f319a799cbe1ac7185a27906b4a313abf8a76e1e8abeb9b986c5",
     "task-dag.yaml": "5b3e45b3a52d654cc29800abdb4819746bf9fe0b71548b76cc2f1f0a5254f906",
-    "test_host_boundary_harness.py": "901fda88a4d7383295642d1127fc594e096baa5f98b4aaa5fbd57f04fd21cadd",
-    "test_negative_fixtures.py": "9c6e04a3f5d7e8d5989d7f0d3d4db606e78f2a5ee4b6932ff92914946e10b162",
+    "test_host_boundary_harness.py": "c5891ee7720ee5ae0c153f16330aba1d129b40a36eda71d905e71fb05ebccb22",
+    "test_negative_fixtures.py": "f65f8ef0d6233107ae9526f2a63695e2e2fc6de89b36a87f1cce69f3d82a3ba2",
     "traceability.md": "61665d966fba4b72fb82ff2b0fff30833ba83e9025fcc98c301db7cc48977859",
-    "validate.py": "44782f901ebb7e7817cc7bc239421f169292f677b6e4dfdcb0615d826f13afca"
+    "validate.py": "0b20e4172577ea966e0408973018068dfd40a169304544169cefbf90c63e98ca"
   }
 }
