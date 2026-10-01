@@ -4668,6 +4668,11 @@ class TrustedKeyStore:
         with self._lock:
             self._revoked_keys.add(clean_kid)
 
+    def has_key(self, key_id: str) -> bool:
+        clean_kid = key_id.strip() if isinstance(key_id, str) else ""
+        with self._lock:
+            return clean_kid in self._pinned_keys and clean_kid not in self._revoked_keys
+
     def is_revoked(self, key_id: str) -> bool:
         with self._lock:
             return key_id in self._revoked_keys
@@ -5041,6 +5046,31 @@ class DurableConsumptionRegistry:
                         max_tok = row[0]
                 return max_tok
 
+    def snapshot(self) -> Dict[str, Any]:
+        """Return an immutable snapshot of consumed envelope IDs, nonces, and fencing state."""
+        with self._lock:
+            if self._is_mem:
+                return {
+                    "consumed_count": len(self._mem_consumed),
+                    "consumed_ids": set(self._mem_consumed),
+                    "nonces_count": len(self._mem_nonces),
+                    "fencing": dict(self._mem_fencing),
+                }
+            with self._get_connection() as conn:
+                consumed = {row[0] for row in conn.execute("SELECT envelope_id FROM consumed_envelopes").fetchall()}
+                nonces = {row[0] for row in conn.execute("SELECT nonce FROM consumed_envelopes").fetchall()}
+                fencing = {row[0]: row[1] for row in conn.execute("SELECT delivery_task_id, last_fencing_token FROM task_fencing").fetchall()}
+                return {
+                    "consumed_count": len(consumed),
+                    "consumed_ids": consumed,
+                    "nonces_count": len(nonces),
+                    "fencing": fencing,
+                }
+
+ALLOWED_REVIEWER_KEY_IDS: FrozenSet[str] = frozenset({"rev_key_lead_v1"})
+ALLOWED_INTEGRATION_KEY_IDS: FrozenSet[str] = frozenset({"integ_gatekeeper_v1"})
+
+
 class TrustedReviewConsumer:
     """Out-of-process trusted review verification consumer.
     Verifies asymmetrically-signed envelopes using pinned public keys from TrustedKeyStore
@@ -5061,6 +5091,7 @@ class TrustedReviewConsumer:
         expected_task_id: str,
         expected_candidate: str,
         expected_dispatch_id: str,
+        expected_key_id: Optional[str] = None,
         now: Optional[float] = None,
     ) -> Dict[str, Any]:
         if isinstance(envelope_data, SignedReviewEnvelope):
@@ -5083,6 +5114,29 @@ class TrustedReviewConsumer:
         if env.verdict not in ("ACCEPT", "CHANGES_REQUESTED", "BLOCKED"):
             raise EnvelopeVerificationError(f"Invalid review verdict: {env.verdict!r}")
 
+        pinned_expected_key = (expected_key_id or "rev_key_lead_v1").strip()
+        if pinned_expected_key not in ALLOWED_REVIEWER_KEY_IDS:
+            raise EnvelopeVerificationError(
+                f"Expected reviewer key {pinned_expected_key!r} is not an authorized reviewer authority key fail-closed"
+            )
+        if env.reviewer_key_id != pinned_expected_key:
+            raise EnvelopeVerificationError(
+                f"Reviewer key ID mismatch: expected {pinned_expected_key!r}, got {env.reviewer_key_id!r} fail-closed; "
+                "foreign or unauthorized role key rejected before signature verification"
+            )
+        if env.reviewer_key_id in ("control_authority_v1", "integ_gatekeeper_v1"):
+            raise EnvelopeVerificationError(
+                f"Key {env.reviewer_key_id!r} cannot be used as a reviewer authority key fail-closed"
+            )
+        if self.keystore.is_revoked(pinned_expected_key):
+            raise EnvelopeVerificationError(
+                f"Key {pinned_expected_key!r} has been revoked fail-closed"
+            )
+        if not self.keystore.has_key(pinned_expected_key):
+            raise EnvelopeVerificationError(
+                f"Key ID {pinned_expected_key!r} is not registered in TrustedKeyStore fail-closed"
+            )
+
         if not env.signature or not isinstance(env.signature, str):
             raise EnvelopeVerificationError("Envelope missing cryptographic signature fail-closed")
         try:
@@ -5091,7 +5145,7 @@ class TrustedReviewConsumer:
             raise EnvelopeVerificationError("Envelope signature is not valid hex")
 
         canonical_bytes = env.canonical_bytes()
-        valid = self.keystore.verify_signature(env.reviewer_key_id, canonical_bytes, sig_bytes)
+        valid = self.keystore.verify_signature(pinned_expected_key, canonical_bytes, sig_bytes)
         if not valid:
             raise EnvelopeVerificationError("Cryptographic signature mismatch; untrusted reviewer provenance rejected fail-closed")
 
@@ -5133,6 +5187,7 @@ class TrustedIntegrationConsumer:
         expected_candidate: str,
         expected_base: str,
         expected_gates_pass: bool,
+        expected_key_id: Optional[str] = None,
         now: Optional[float] = None,
     ) -> Dict[str, Any]:
         if isinstance(envelope_data, SignedIntegrationEnvelope):
@@ -5157,6 +5212,29 @@ class TrustedIntegrationConsumer:
         if env.gates_pass != expected_gates_pass:
             raise EnvelopeVerificationError(f"Integration gates_pass mismatch: expected {expected_gates_pass!r}, got {env.gates_pass!r}")
 
+        pinned_expected_key = (expected_key_id or "integ_gatekeeper_v1").strip()
+        if pinned_expected_key not in ALLOWED_INTEGRATION_KEY_IDS:
+            raise EnvelopeVerificationError(
+                f"Expected integration key {pinned_expected_key!r} is not an authorized integration authority key fail-closed"
+            )
+        if env.integration_key_id != pinned_expected_key:
+            raise EnvelopeVerificationError(
+                f"Integration key ID mismatch: expected {pinned_expected_key!r}, got {env.integration_key_id!r} fail-closed; "
+                "foreign or unauthorized role key rejected before signature verification"
+            )
+        if env.integration_key_id in ("control_authority_v1", "rev_key_lead_v1"):
+            raise EnvelopeVerificationError(
+                f"Key {env.integration_key_id!r} cannot be used as an integration authority key fail-closed"
+            )
+        if self.keystore.is_revoked(pinned_expected_key):
+            raise EnvelopeVerificationError(
+                f"Key {pinned_expected_key!r} has been revoked fail-closed"
+            )
+        if not self.keystore.has_key(pinned_expected_key):
+            raise EnvelopeVerificationError(
+                f"Key ID {pinned_expected_key!r} is not registered in TrustedKeyStore fail-closed"
+            )
+
         if not env.signature or not isinstance(env.signature, str):
             raise EnvelopeVerificationError("Integration envelope missing cryptographic signature fail-closed")
         try:
@@ -5165,7 +5243,7 @@ class TrustedIntegrationConsumer:
             raise EnvelopeVerificationError("Integration envelope signature is not valid hex")
 
         canonical_bytes = env.canonical_bytes()
-        valid = self.keystore.verify_signature(env.integration_key_id, canonical_bytes, sig_bytes)
+        valid = self.keystore.verify_signature(pinned_expected_key, canonical_bytes, sig_bytes)
         if not valid:
             raise EnvelopeVerificationError("Cryptographic signature mismatch; untrusted integration provenance rejected fail-closed")
 

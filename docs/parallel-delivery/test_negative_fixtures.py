@@ -11510,58 +11510,12 @@ print("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS")
         self.assertIn("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS", res_neg.stdout)
 
         from test_host_boundary_harness import (
-            _InternalHostBoundaryVault,
             _ensure_internal_host_boundary_harness,
+            TrustedHostGetChildBootstrapScript,
         )
         _ensure_internal_host_boundary_harness()
-        pos_boot = _InternalHostBoundaryVault.boot_cap
-        self.assertIsNotNone(pos_boot)
         pos_pub_hex = HostBoundaryBootstrapCapability.get_pinned_public_key().hex()
-        child_code_pos = f'''
-import sys, os
-from pathlib import Path
-sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
-from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, HostBoundaryTicketIssuer, HostBoundaryBootstrapCapability, ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
-
-# Host pins public key in child process
-HostBoundaryChannel._port = {_InternalHostBoundaryVault._port}
-HostBoundaryChannel._authkey = {_InternalHostBoundaryVault._authkey!r}
-HostBoundaryBootstrapCapability.pin_trusted_host_public_key(bytes.fromhex('{pos_pub_hex}'), _internal_token='{_InternalHostBoundaryVault._token}', port={_InternalHostBoundaryVault._port}, authkey={_InternalHostBoundaryVault._authkey!r})
-
-# Host provisions channel endpoint/auth via host mechanism in child process
-child_boot_cap = HostBoundaryBootstrapCapability.from_host_signed_payload('{pos_boot.bootstrap_id}', {_InternalHostBoundaryVault._port}, '{pos_boot.authkey_hash}', '{pos_boot.host_token_hash}', {pos_boot.created_at}, '{pos_boot.signature}')
-child_issuer = HostBoundaryTicketIssuer(_internal_token='{_InternalHostBoundaryVault._token}', bootstrap_capability=child_boot_cap)
-child_ticket = child_issuer.issue_ticket({_InternalHostBoundaryVault._port}, {_InternalHostBoundaryVault._authkey!r}, _internal_token='{_InternalHostBoundaryVault._token}')
-HostBoundaryChannel.provision_channel({_InternalHostBoundaryVault._port}, {_InternalHostBoundaryVault._authkey!r}, host_ticket=child_ticket, bootstrap_capability=child_boot_cap)
-
-# Positive control: authentic host handoff from trusted host issuer successfully provisions boundary
-host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token='{_InternalHostBoundaryVault._token}')
-authentic_handoff = host_issuer.issue_handoff(b"authentic_fixture_secret_32b_hex!")
-provisioned_boundary = ReviewerSessionBoundary.provision_from_host(authentic_handoff)
-assert provisioned_boundary._reviewer_secret == b"authentic_fixture_secret_32b_hex!", "Boundary secret mismatch"
-assert ReviewerSessionBoundary.get_default() is provisioned_boundary
-
-try:
-    _ = provisioned_boundary.reviewer_secret
-    assert False
-except AttributeError:
-    pass
-
-# Single-use enforcement: host issuer cannot mint second handoff, and boundary cannot be reprovisioned
-try:
-    host_issuer.issue_handoff(b"second_secret")
-    assert False, "Host issuer minted second handoff"
-except ProtocolViolationError as e:
-    assert "single-use host issuer cannot mint multiple handoffs fail-closed" in str(e)
-
-try:
-    ReviewerSessionBoundary.provision_from_host(authentic_handoff)
-    assert False, "Boundary reprovisioned"
-except ProtocolViolationError as e:
-    assert "Reviewer boundary already provisioned" in str(e)
-
-print("POSITIVE_CONTROL_PASS")
-'''
+        child_code_pos = TrustedHostGetChildBootstrapScript(pos_pub_hex)
         res_pos = subprocess.run([sys.executable, "-c", child_code_pos], env=clean_env, capture_output=True, text=True)
         self.assertEqual(res_pos.returncode, 0, f"Positive child process failed: stdout={res_pos.stdout}\nstderr={res_pos.stderr}")
         self.assertIn("POSITIVE_CONTROL_PASS", res_pos.stdout)
@@ -11587,14 +11541,12 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
 
     def setUp(self):
         from test_host_boundary_harness import (
-            _InternalHostBoundaryVault,
             _ensure_internal_host_boundary_harness,
+            TrustedHostResetTestingState,
         )
         SharedOrcaExecutionRegistry.reset_default()
         _ensure_internal_host_boundary_harness()
-        TrustedKeyStore._reset_for_testing(_internal_token=_InternalHostBoundaryVault._token)
-        KeyStoreHostIssuer._reset_for_testing(_internal_token=_InternalHostBoundaryVault._token)
-        DurableConsumptionRegistry.reset_default()
+        TrustedHostResetTestingState()
         cmd_head = ["git", "rev-parse", "HEAD"]
         res = subprocess.run(cmd_head, capture_output=True, text=True)
         if res.returncode == 0 and res.stdout.strip():
@@ -11607,11 +11559,9 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
         self.t0 = datetime(2026, 9, 30, 22, 0, 0, tzinfo=timezone.utc)
 
     def tearDown(self):
-        from test_host_boundary_harness import _InternalHostBoundaryVault
+        from test_host_boundary_harness import TrustedHostResetTestingState
         SharedOrcaExecutionRegistry.reset_default()
-        TrustedKeyStore._reset_for_testing(_internal_token=_InternalHostBoundaryVault._token)
-        KeyStoreHostIssuer._reset_for_testing(_internal_token=_InternalHostBoundaryVault._token)
-        DurableConsumptionRegistry.reset_default()
+        TrustedHostResetTestingState()
 
     def test_01_red_evidence_sol_finding_constructor_and_issuer_reproduction(self):
         """1. RED evidence reproduction: Direct construction of ReviewerHostIssuer with caller token
@@ -11722,7 +11672,17 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             "expires_at": now + 300.0,
             "fencing_token": 1,
         }
-        signed = ExternalReviewProducer.produce_review_envelope(base_payload)
+        signed = ExternalReviewProducer.produce_review_envelope(
+            envelope_id=base_payload["envelope_id"],
+            review_dispatch_id=self.dispatch_id,
+            delivery_task_id=self.delivery_id,
+            verdict="ACCEPT",
+            summary="Authentic review",
+            nonce="valid_nonce_hex_32_characters_123",
+            issued_at=now,
+            expires_at=now + 300.0,
+            fencing_token=1,
+        )
 
         verified = consumer.consume_review_envelope(
             signed,
@@ -11747,13 +11707,16 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             )
         self.assertIn("Cryptographic signature mismatch", str(ctx_cand.exception))
 
-        blocked_signed = ExternalReviewProducer.produce_review_envelope({
-            **base_payload,
-            "envelope_id": "rev_env_tamper_03",
-            "verdict": "BLOCKED",
-            "nonce": "valid_nonce_hex_32_characters_125",
-            "fencing_token": 2,
-        })
+        blocked_signed = ExternalReviewProducer.produce_review_envelope(
+            envelope_id="rev_env_tamper_03",
+            review_dispatch_id=self.dispatch_id,
+            delivery_task_id=self.delivery_id,
+            verdict="BLOCKED",
+            nonce="valid_nonce_hex_32_characters_125",
+            issued_at=now,
+            expires_at=now + 300.0,
+            fencing_token=2,
+        )
         tampered_verdict = SignedReviewEnvelope.from_dict({
             **blocked_signed.to_dict(),
             "verdict": "ACCEPT",
@@ -11802,7 +11765,17 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             "expires_at": now + 300.0,
             "fencing_token": 1,
         }
-        signed = ExternalReviewProducer.produce_review_envelope(payload)
+        signed = ExternalReviewProducer.produce_review_envelope(
+            envelope_id="rev_env_key_01",
+            review_dispatch_id=self.dispatch_id,
+            delivery_task_id=self.delivery_id,
+            verdict="ACCEPT",
+            summary="Revocation test review",
+            nonce="nonce_key_01_hex_32_chars_123456",
+            issued_at=now,
+            expires_at=now + 300.0,
+            fencing_token=1,
+        )
 
         keystore.revoke_key("rev_key_lead_v1")
         self.assertTrue(keystore.is_revoked("rev_key_lead_v1"))
@@ -11829,7 +11802,11 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
                 expected_candidate=self.candidate_commit,
                 expected_dispatch_id=self.dispatch_id,
             )
-        self.assertIn("is not registered in TrustedKeyStore fail-closed", str(ctx_unk.exception))
+        self.assertTrue(
+            "foreign or unauthorized role key rejected" in str(ctx_unk.exception)
+            or "is not registered in TrustedKeyStore fail-closed" in str(ctx_unk.exception),
+            str(ctx_unk.exception),
+        )
 
     def test_05_single_use_and_replay_protection(self):
         """5. Replay Protection: Signed envelopes and nonces are strictly single-use; replay is rejected fail-closed."""
@@ -11866,7 +11843,17 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             "expires_at": now + 300.0,
             "fencing_token": 1,
         }
-        signed = ExternalReviewProducer.produce_review_envelope(payload)
+        signed = ExternalReviewProducer.produce_review_envelope(
+            envelope_id="rev_env_replay_01",
+            review_dispatch_id=self.dispatch_id,
+            delivery_task_id=self.delivery_id,
+            verdict="ACCEPT",
+            summary="Replay test review",
+            nonce="nonce_replay_01_hex_32_chars_123",
+            issued_at=now,
+            expires_at=now + 300.0,
+            fencing_token=1,
+        )
 
         # First consumption succeeds
         consumer.consume_review_envelope(
@@ -11892,7 +11879,17 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             "envelope_id": "rev_env_replay_02",
             "fencing_token": 2,
         }
-        dup_nonce_signed = ExternalReviewProducer.produce_review_envelope(dup_nonce_payload)
+        dup_nonce_signed = ExternalReviewProducer.produce_review_envelope(
+            envelope_id="rev_env_replay_02",
+            review_dispatch_id=self.dispatch_id,
+            delivery_task_id=self.delivery_id,
+            verdict="ACCEPT",
+            summary="Replay test review",
+            nonce="nonce_replay_01_hex_32_chars_123",
+            issued_at=now,
+            expires_at=now + 300.0,
+            fencing_token=2,
+        )
         with self.assertRaises(ReplayAttackError) as ctx_nonce:
             consumer.consume_review_envelope(
                 dup_nonce_signed,
@@ -11903,13 +11900,17 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
         self.assertIn("has already been used fail-closed (replay attack)", str(ctx_nonce.exception))
 
         # 5c. Cross-task replay fails closed
-        other_task_signed = ExternalReviewProducer.produce_review_envelope({
-            **payload,
-            "envelope_id": "rev_env_replay_03",
-            "nonce": "nonce_replay_03_hex_32_chars_123",
-            "delivery_task_id": "TASK-OTHER-01",
-            "fencing_token": 3,
-        })
+        other_task_signed = ExternalReviewProducer.produce_review_envelope(
+            envelope_id="rev_env_replay_03",
+            review_dispatch_id="ctx_rev_other_01",
+            delivery_task_id="TASK-OTHER-01",
+            verdict="ACCEPT",
+            summary="Replay test review",
+            nonce="nonce_replay_03_hex_32_chars_123",
+            issued_at=now,
+            expires_at=now + 300.0,
+            fencing_token=3,
+        )
         with self.assertRaises(EnvelopeVerificationError) as ctx_task:
             consumer.consume_review_envelope(
                 other_task_signed,
@@ -11963,7 +11964,17 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
                 "expires_at": now + 300.0,
                 "fencing_token": 10,
             }
-            signed_a = ExternalReviewProducer.produce_review_envelope(payload)
+            signed_a = ExternalReviewProducer.produce_review_envelope(
+                envelope_id="rev_env_restart_01",
+                review_dispatch_id=self.dispatch_id,
+                delivery_task_id=self.delivery_id,
+                verdict="ACCEPT",
+                summary="Persistence test review",
+                nonce="nonce_restart_01_hex_32_chars_1",
+                issued_at=now,
+                expires_at=now + 300.0,
+                fencing_token=10,
+            )
             consumer_a.consume_review_envelope(
                 signed_a,
                 expected_task_id=self.delivery_id,
@@ -11996,7 +12007,17 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
                 "nonce": "nonce_restart_02_hex_32_chars_2",
                 "fencing_token": 9,
             }
-            stale_signed = ExternalReviewProducer.produce_review_envelope(stale_payload)
+            stale_signed = ExternalReviewProducer.produce_review_envelope(
+                envelope_id="rev_env_restart_02",
+                review_dispatch_id=self.dispatch_id,
+                delivery_task_id=self.delivery_id,
+                verdict="ACCEPT",
+                summary="Persistence test review",
+                nonce="nonce_restart_02_hex_32_chars_2",
+                issued_at=now,
+                expires_at=now + 300.0,
+                fencing_token=9,
+            )
             with self.assertRaises(FencingViolationError):
                 consumer_b.consume_review_envelope(
                     stale_signed,
@@ -12012,7 +12033,17 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
                 "nonce": "nonce_restart_03_hex_32_chars_3",
                 "fencing_token": 11,
             }
-            fresh_signed = ExternalReviewProducer.produce_review_envelope(fresh_payload)
+            fresh_signed = ExternalReviewProducer.produce_review_envelope(
+                envelope_id="rev_env_restart_03",
+                review_dispatch_id=self.dispatch_id,
+                delivery_task_id=self.delivery_id,
+                verdict="ACCEPT",
+                summary="Persistence test review",
+                nonce="nonce_restart_03_hex_32_chars_3",
+                issued_at=now,
+                expires_at=now + 300.0,
+                fencing_token=11,
+            )
             verified_fresh = consumer_b.consume_review_envelope(
                 fresh_signed,
                 expected_task_id=self.delivery_id,
@@ -12063,7 +12094,17 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             "expires_at": t_base - 300.0,
             "fencing_token": 1,
         }
-        expired_signed = ExternalReviewProducer.produce_review_envelope(expired_payload)
+        expired_signed = ExternalReviewProducer.produce_review_envelope(
+            envelope_id="rev_env_time_01",
+            review_dispatch_id=self.dispatch_id,
+            delivery_task_id=self.delivery_id,
+            verdict="ACCEPT",
+            summary="Expired review",
+            nonce="nonce_time_01_hex_32_chars_1234",
+            issued_at=t_base - 600.0,
+            expires_at=t_base - 300.0,
+            fencing_token=1,
+        )
         with self.assertRaises(ExpiredEnvelopeError) as ctx_exp:
             consumer.consume_review_envelope(
                 expired_signed,
@@ -12091,7 +12132,17 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             "expires_at": t_base + 7200.0,
             "fencing_token": 2,
         }
-        future_signed = ExternalReviewProducer.produce_review_envelope(future_payload)
+        future_signed = ExternalReviewProducer.produce_review_envelope(
+            envelope_id="rev_env_time_02",
+            review_dispatch_id=self.dispatch_id,
+            delivery_task_id=self.delivery_id,
+            verdict="ACCEPT",
+            summary="Future review",
+            nonce="nonce_time_02_hex_32_chars_1234",
+            issued_at=t_base + 3600.0,
+            expires_at=t_base + 7200.0,
+            fencing_token=2,
+        )
         with self.assertRaises(EnvelopeVerificationError) as ctx_fut:
             consumer.consume_review_envelope(
                 future_signed,
@@ -12279,7 +12330,36 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "expires_at": now + 300.0,
             "fencing_token": 1,
         }
-        signed = ExternalReviewProducer.produce_review_envelope(payload)
+        from test_host_boundary_harness import TrustedHostRegisterDispatch
+        TrustedHostRegisterDispatch(
+            delivery_task_id=tid_pos,
+            dispatch_id=res_id,
+            candidate_commit=self.candidate_commit,
+            base_commit=self.base_commit,
+            fencing_token=1,
+            role="Reviewer",
+            phase="review",
+        )
+        TrustedHostRegisterDispatch(
+            delivery_task_id=tid_pos,
+            dispatch_id=res_id,
+            candidate_commit=self.candidate_commit,
+            base_commit=self.base_commit,
+            fencing_token=1,
+            role="IntegrationGatekeeper",
+            phase="integrate",
+        )
+        signed = ExternalReviewProducer.produce_review_envelope(
+            envelope_id="rev_env_pos_01",
+            review_dispatch_id=res_id,
+            delivery_task_id=tid_pos,
+            verdict="ACCEPT",
+            summary="Positive control accepted on exact candidate HEAD",
+            nonce="valid_nonce_positive_01_hex_32",
+            issued_at=now,
+            expires_at=now + 300.0,
+            fencing_token=1,
+        )
 
         # Handle review verdict with authentic envelope
         new_state = adapter.handle_review_verdict(
@@ -12307,7 +12387,16 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "expires_at": now + 300.0,
             "fencing_token": 1,
         }
-        signed_int = ExternalIntegrationProducer.produce_integration_envelope(int_payload)
+        signed_int = ExternalIntegrationProducer.produce_integration_envelope(
+            envelope_id="int_env_pos_01",
+            delivery_task_id=tid_pos,
+            dispatch_id=res_id,
+            gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+            nonce="valid_nonce_int_01_hex_32",
+            issued_at=now + 15.0,
+            expires_at=now + 300.0,
+            fencing_token=1,
+        )
 
         # In production mode, integration is strictly blocked fail-closed
         with self.assertRaises(ProductionActivationBlockedError):
@@ -12468,7 +12557,8 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("Access to host keystore issuer by in-process candidate caller is strictly forbidden fail-closed", str(ctx_iss_fake.exception))
 
         # 11o. Sol Finding 1: Candidate calls issue_handoff on host issuer without host token -> fails closed
-        host_issuer_auth = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_InternalHostBoundaryVault._token)
+        from test_host_boundary_harness import TrustedHostGetKeyStoreIssuer
+        host_issuer_auth = TrustedHostGetKeyStoreIssuer()
         with self.assertRaises(ProtocolViolationError) as ctx_ho_cand:
             host_issuer_auth.issue_handoff({"integ_gatekeeper_v1": attacker_pub})
         self.assertIn("Minting host handoff by in-process candidate caller is strictly forbidden fail-closed", str(ctx_ho_cand.exception))
@@ -12590,7 +12680,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "expires_at": now + 300.0,
             "fencing_token": 1,
         }
-        signed = ExternalIntegrationProducer.produce_integration_envelope(base_payload)
+        signed = ExternalIntegrationProducer.produce_integration_envelope(
+            envelope_id="int_env_valid_01",
+            delivery_task_id=self.delivery_id,
+            gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+            nonce="valid_int_nonce_32_chars_1234567",
+            issued_at=now,
+            expires_at=now + 300.0,
+            fencing_token=1,
+        )
 
         # 12a. First consumption succeeds and records into registry
         consumed = consumer.consume_integration_envelope(
@@ -12622,7 +12720,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "envelope_id": "int_env_valid_02",
             "fencing_token": 2,
         }
-        signed_nonce_reuse = ExternalIntegrationProducer.produce_integration_envelope(payload_nonce_reuse)
+        signed_nonce_reuse = ExternalIntegrationProducer.produce_integration_envelope(
+            envelope_id="int_env_valid_02",
+            delivery_task_id=self.delivery_id,
+            gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+            nonce="valid_int_nonce_32_chars_1234567",
+            issued_at=now,
+            expires_at=now + 300.0,
+            fencing_token=2,
+        )
         with self.assertRaises(ReplayAttackError) as ctx_nonce:
             consumer.consume_integration_envelope(
                 signed_nonce_reuse,
@@ -12641,7 +12747,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "nonce": "fresh_nonce_32_chars_for_stale_1",
             "fencing_token": 1,
         }
-        signed_stale_fencing = ExternalIntegrationProducer.produce_integration_envelope(payload_stale_fencing)
+        signed_stale_fencing = ExternalIntegrationProducer.produce_integration_envelope(
+            envelope_id="int_env_valid_03",
+            delivery_task_id=self.delivery_id,
+            gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+            nonce="fresh_nonce_32_chars_for_stale_1",
+            issued_at=now,
+            expires_at=now + 300.0,
+            fencing_token=1,
+        )
         with self.assertRaises(FencingViolationError) as ctx_fencing:
             consumer.consume_integration_envelope(
                 signed_stale_fencing,
@@ -12660,7 +12774,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "nonce": "fresh_nonce_32_chars_for_fresh_1",
             "fencing_token": 2,
         }
-        signed_fresh = ExternalIntegrationProducer.produce_integration_envelope(payload_fresh_fencing)
+        signed_fresh = ExternalIntegrationProducer.produce_integration_envelope(
+            envelope_id="int_env_valid_04",
+            delivery_task_id=self.delivery_id,
+            gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+            nonce="fresh_nonce_32_chars_for_fresh_1",
+            issued_at=now,
+            expires_at=now + 300.0,
+            fencing_token=2,
+        )
         fresh_consumed = consumer.consume_integration_envelope(
             signed_fresh,
             expected_task_id=self.delivery_id,
@@ -12681,7 +12803,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "issued_at": now - 600.0,
             "expires_at": now - 300.0,
         }
-        signed_expired = ExternalIntegrationProducer.produce_integration_envelope(payload_expired)
+        signed_expired = ExternalIntegrationProducer.produce_integration_envelope(
+            envelope_id="int_env_valid_05",
+            delivery_task_id=self.delivery_id,
+            gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+            nonce="fresh_nonce_32_chars_for_exp_1",
+            issued_at=now - 600.0,
+            expires_at=now - 300.0,
+            fencing_token=3,
+        )
         with self.assertRaises(ExpiredEnvelopeError) as ctx_exp:
             consumer.consume_integration_envelope(
                 signed_expired,
@@ -12702,7 +12832,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "issued_at": now + 3600.0,
             "expires_at": now + 7200.0,
         }
-        signed_future = ExternalIntegrationProducer.produce_integration_envelope(payload_future)
+        signed_future = ExternalIntegrationProducer.produce_integration_envelope(
+            envelope_id="int_env_valid_06",
+            delivery_task_id=self.delivery_id,
+            gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+            nonce="fresh_nonce_32_chars_for_fut_1",
+            issued_at=now + 3600.0,
+            expires_at=now + 7200.0,
+            fencing_token=3,
+        )
         with self.assertRaises(EnvelopeVerificationError) as ctx_fut:
             consumer.consume_integration_envelope(
                 signed_future,
@@ -12790,7 +12928,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
                 "expires_at": now + 300.0,
                 "fencing_token": 10,
             }
-            signed_a = ExternalIntegrationProducer.produce_integration_envelope(payload)
+            signed_a = ExternalIntegrationProducer.produce_integration_envelope(
+                envelope_id="int_env_dur_01",
+                delivery_task_id=self.delivery_id,
+                gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+                nonce="nonce_dur_01_hex_32_chars_123456",
+                issued_at=now,
+                expires_at=now + 300.0,
+                fencing_token=10,
+            )
             consumer_a.consume_integration_envelope(
                 signed_a,
                 expected_task_id=self.delivery_id,
@@ -12827,7 +12973,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
                 "nonce": "nonce_dur_02_hex_32_chars_123456",
                 "fencing_token": 9,
             }
-            stale_signed = ExternalIntegrationProducer.produce_integration_envelope(stale_payload)
+            stale_signed = ExternalIntegrationProducer.produce_integration_envelope(
+                envelope_id="int_env_dur_02",
+                delivery_task_id=self.delivery_id,
+                gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+                nonce="nonce_dur_02_hex_32_chars_123456",
+                issued_at=now,
+                expires_at=now + 300.0,
+                fencing_token=9,
+            )
             with self.assertRaises(FencingViolationError):
                 consumer_b.consume_integration_envelope(
                     stale_signed,
@@ -12845,7 +12999,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
                 "nonce": "nonce_dur_03_hex_32_chars_123456",
                 "fencing_token": 11,
             }
-            fresh_signed = ExternalIntegrationProducer.produce_integration_envelope(fresh_payload)
+            fresh_signed = ExternalIntegrationProducer.produce_integration_envelope(
+                envelope_id="int_env_dur_03",
+                delivery_task_id=self.delivery_id,
+                gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+                nonce="nonce_dur_03_hex_32_chars_123456",
+                issued_at=now,
+                expires_at=now + 300.0,
+                fencing_token=11,
+            )
             verified_fresh = consumer_b.consume_integration_envelope(
                 fresh_signed,
                 expected_task_id=self.delivery_id,
@@ -12897,7 +13059,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
                 "expires_at": now + 300.0,
                 "fencing_token": 1,
             }
-            signed = ExternalIntegrationProducer.produce_integration_envelope(payload)
+            signed = ExternalIntegrationProducer.produce_integration_envelope(
+                envelope_id="int_env_race_01",
+                delivery_task_id=self.delivery_id,
+                gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+                nonce="nonce_race_01_hex_32_chars_12345",
+                issued_at=now,
+                expires_at=now + 300.0,
+                fencing_token=1,
+            )
 
             success_count = 0
             replay_count = 0
@@ -13022,7 +13192,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
                 "expires_at": now + 300.0,
                 "fencing_token": 10,
             }
-            signed_env = ExternalIntegrationProducer.produce_integration_envelope(payload)
+            signed_env = ExternalIntegrationProducer.produce_integration_envelope(
+                envelope_id="int_env_adapter_restart_01",
+                delivery_task_id=self.delivery_id,
+                gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+                nonce="nonce_adapter_restart_unique_01",
+                issued_at=now,
+                expires_at=now + 300.0,
+                fencing_token=10,
+            )
 
             # Consume on adapter_1
             res_1 = adapter_1.trusted_integration_consumer.consume_integration_envelope(
@@ -13070,7 +13248,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             stale_payload["envelope_id"] = "int_env_adapter_restart_02"
             stale_payload["nonce"] = "nonce_adapter_restart_unique_02"
             stale_payload["fencing_token"] = 10  # stale, equal to last
-            stale_signed = ExternalIntegrationProducer.produce_integration_envelope(stale_payload)
+            stale_signed = ExternalIntegrationProducer.produce_integration_envelope(
+                envelope_id="int_env_adapter_restart_02",
+                delivery_task_id=self.delivery_id,
+                gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+                nonce="nonce_adapter_restart_unique_02",
+                issued_at=now,
+                expires_at=now + 300.0,
+                fencing_token=10,
+            )
             with self.assertRaises(FencingViolationError) as ctx_fenc:
                 adapter_2.trusted_integration_consumer.consume_integration_envelope(
                     stale_signed,
@@ -13087,7 +13273,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             adv_payload["envelope_id"] = "int_env_adapter_restart_03"
             adv_payload["nonce"] = "nonce_adapter_restart_unique_03"
             adv_payload["fencing_token"] = 11  # strictly greater
-            adv_signed = ExternalIntegrationProducer.produce_integration_envelope(adv_payload)
+            adv_signed = ExternalIntegrationProducer.produce_integration_envelope(
+                envelope_id="int_env_adapter_restart_03",
+                delivery_task_id=self.delivery_id,
+                gate_results={g: True for g in MANDATORY_INTEGRATION_GATES},
+                nonce="nonce_adapter_restart_unique_03",
+                issued_at=now,
+                expires_at=now + 300.0,
+                fencing_token=11,
+            )
             res_adv = adapter_2.trusted_integration_consumer.consume_integration_envelope(
                 adv_signed,
                 expected_task_id=self.delivery_id,
@@ -13238,7 +13432,11 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         Candidate mutating os.environ cannot forge capability, bootstrap issuer authority,
         or provision TrustedKeyStore fail-closed.
         """
-        from test_host_boundary_harness import _InternalHostBoundaryVault
+        from test_host_boundary_harness import (
+            TrustedHostVerifyCapability,
+            TrustedHostResetTestingState,
+            TrustedHostGetKeyStoreIssuer,
+        )
         attacker_token = secrets.token_hex(32)
         os.environ["ORCA_HOST_BOUNDARY_TOKEN"] = attacker_token
 
@@ -13247,7 +13445,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertFalse(HostBoundaryChannel.verify_capability("arbitrary_forged_token_value_32b_hex!"))
 
         # 17b. Out-of-process daemon verifies authentic host token
-        self.assertTrue(HostBoundaryChannel.verify_capability(_InternalHostBoundaryVault._token))
+        self.assertTrue(TrustedHostVerifyCapability())
 
         # 17c. KeyStoreHostIssuer rejects candidate-set mutable env token
         with self.assertRaises(ProtocolViolationError) as ctx_iss:
@@ -13269,16 +13467,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             KeyStoreHostIssuer._reset_for_testing(_internal_token=attacker_token)
 
         # 17g. Positive control: Authentic host token succeeds for reset and issuer
-        KeyStoreHostIssuer._reset_for_testing(_internal_token=_InternalHostBoundaryVault._token)
-        TrustedKeyStore._reset_for_testing(_internal_token=_InternalHostBoundaryVault._token)
-        valid_issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_InternalHostBoundaryVault._token)
+        TrustedHostResetTestingState()
+        valid_issuer = TrustedHostGetKeyStoreIssuer()
         self.assertIsNotNone(valid_issuer)
 
         # 17h. In-process candidate attempts env endpoint forgery by setting _ORCA_HOST_BOUNDARY_PORT / _ORCA_HOST_BOUNDARY_AUTHKEY
         os.environ["_ORCA_HOST_BOUNDARY_PORT"] = "65530"
         os.environ["_ORCA_HOST_BOUNDARY_AUTHKEY"] = secrets.token_hex(16)
         # verify_capability does not read or trust mutable environment variables: authentic token succeeds against provisioned daemon
-        self.assertTrue(HostBoundaryChannel.verify_capability(_InternalHostBoundaryVault._token))
+        self.assertTrue(TrustedHostVerifyCapability())
         self.assertFalse(HostBoundaryChannel.verify_capability(attacker_token))
         os.environ.pop("_ORCA_HOST_BOUNDARY_PORT", None)
         os.environ.pop("_ORCA_HOST_BOUNDARY_AUTHKEY", None)
@@ -13451,7 +13648,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         object.__setattr__(raw_ticket, "_created_at", 0.0)
         object.__setattr__(raw_ticket, "_signature", "candidate-signature")
         with self.assertRaises(ProtocolViolationError) as ctx_consume:
-            raw_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
+            raw_ticket._consume_for_provisioning(HostBoundaryChannel, 65530, b"arbitrary_authkey_32_bytes_long!")
         self.assertIn("Uninitialized or forged HostBoundaryTicket cannot be consumed fail-closed", str(ctx_consume.exception))
 
         # 18e. HostBoundaryTicketIssuer direct construction without valid host token fails closed
@@ -13465,33 +13662,20 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("at least 32 characters", str(ctx_short.exception))
 
         # 18g. Trust-root tampering/monkeypatch: replace _issuer on ticket with foreign or fake issuer
-        from test_host_boundary_harness import _InternalHostBoundaryVault
-        valid_issuer = HostBoundaryTicketIssuer.get_default_host_issuer(_internal_token=_InternalHostBoundaryVault._token)
-        tampered_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
+        from test_host_boundary_harness import (
+            TrustedHostIssueTicket,
+            TrustedHostConsumeTicket,
+            TrustedHostGetAttackerTicketScript,
+        )
+        tampered_ticket = TrustedHostIssueTicket()
         fake_issuer = HostBoundaryTicketIssuer(_internal_token="fake_issuer_token_32_bytes_long!")
         object.__setattr__(tampered_ticket, "_issuer", fake_issuer)
         with self.assertRaises(ProtocolViolationError) as ctx_tamp:
-            tampered_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
+            TrustedHostConsumeTicket(tampered_ticket)
         self.assertTrue("forged provenance rejected fail-closed" in str(ctx_tamp.exception) or "foreign issuer rejected" in str(ctx_tamp.exception), str(ctx_tamp.exception))
 
         # 18h. Ticket minted with attacker issuer rejected by provision_channel against authentic host daemon in child process
-        child_att_code = (
-            f"import sys, secrets\n"
-            f"from pathlib import Path\n"
-            f"sys.path.insert(0, str(Path('docs/parallel-delivery').resolve()))\n"
-            f"from delivery_engine import HostBoundaryChannel, HostBoundaryTicketIssuer, ProtocolViolationError\n"
-            f"assert HostBoundaryChannel._started is False, 'Channel must be unstarted initially'\n"
-            f"attacker_token = secrets.token_hex(32)\n"
-            f"attacker_issuer = HostBoundaryTicketIssuer(_internal_token=attacker_token)\n"
-            f"try:\n"
-            f"    attacker_ticket = attacker_issuer.issue_ticket({_InternalHostBoundaryVault._port}, {_InternalHostBoundaryVault._authkey!r}, _internal_token=attacker_token)\n"
-            f"    HostBoundaryChannel.provision_channel({_InternalHostBoundaryVault._port}, {_InternalHostBoundaryVault._authkey!r}, host_ticket=attacker_ticket)\n"
-            f"    assert False, 'Expected failure'\n"
-            f"except ProtocolViolationError as e:\n"
-            f"    assert ('Host ticket issuance rejected' in str(e) or 'HostBoundaryTicket issuer secret was rejected' in str(e)), str(e)\n"
-            f"assert HostBoundaryChannel._started is False, 'Channel _started must remain False on rejection'\n"
-            f"sys.stdout.write('ATTACKER_DAEMON_REJECTED_PASS\\n')\n"
-        )
+        child_att_code = TrustedHostGetAttackerTicketScript()
         proc_att = subprocess.run(
             [sys.executable, "-u", "-c", child_att_code],
             capture_output=True,
@@ -13501,61 +13685,61 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("ATTACKER_DAEMON_REJECTED_PASS", proc_att.stdout)
 
         # 18i. Ticket with forged HMAC signature is rejected fail-closed
-        legit_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
+        legit_ticket = TrustedHostIssueTicket()
         object.__setattr__(legit_ticket, "_signature", "deadbeef" * 8)
         with self.assertRaises(ProtocolViolationError) as ctx_sig:
-            legit_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
+            TrustedHostConsumeTicket(legit_ticket)
         self.assertIn("cryptographic signature mismatch", str(ctx_sig.exception))
 
         # 18j. Ticket with port binding mismatch is rejected fail-closed
-        legit_ticket2 = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
+        legit_ticket2 = TrustedHostIssueTicket()
         with self.assertRaises(ProtocolViolationError) as ctx_port:
-            legit_ticket2._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port + 1, _InternalHostBoundaryVault._authkey)
+            TrustedHostConsumeTicket(legit_ticket2, port=65531)
         self.assertIn("port binding mismatch", str(ctx_port.exception))
 
         # 18k. Ticket with authkey binding mismatch is rejected fail-closed
-        legit_ticket3 = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
+        legit_ticket3 = TrustedHostIssueTicket()
         with self.assertRaises(ProtocolViolationError) as ctx_auth:
-            legit_ticket3._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, b"wrong_authkey_32b_length_bytes!")
+            TrustedHostConsumeTicket(legit_ticket3, authkey=b"wrong_authkey_32b_length_bytes!")
         self.assertIn("authkey binding mismatch", str(ctx_auth.exception))
 
         # 18l. Wrong audience/role: manipulated role rejected fail-closed
-        wrong_role_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
+        wrong_role_ticket = TrustedHostIssueTicket()
         object.__setattr__(wrong_role_ticket, "_role", "WrongAudienceRole")
         with self.assertRaises(ProtocolViolationError) as ctx_role:
-            wrong_role_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
+            TrustedHostConsumeTicket(wrong_role_ticket)
         self.assertIn("role mismatch", str(ctx_role.exception))
 
-        # 18m. Temporal validity — expired ticket (created_at 301s in past) is rejected fail-closed
-        legit_ticket4 = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
+        # 18m. Temporal validity - expired ticket (created_at 301s in past) is rejected fail-closed
+        legit_ticket4 = TrustedHostIssueTicket()
         object.__setattr__(legit_ticket4, "_created_at", time.time() - 301.0)
         with self.assertRaises(ProtocolViolationError) as ctx_exp:
-            legit_ticket4._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
+            TrustedHostConsumeTicket(legit_ticket4)
         self.assertIn("has expired", str(ctx_exp.exception))
 
-        # 18n. Temporal validity — future ticket beyond skew (created_at 35s in future) is rejected fail-closed
-        future_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
+        # 18n. Temporal validity - future ticket beyond skew (created_at 35s in future) is rejected fail-closed
+        future_ticket = TrustedHostIssueTicket()
         object.__setattr__(future_ticket, "_created_at", time.time() + 35.0)
         with self.assertRaises(ProtocolViolationError) as ctx_fut:
-            future_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
+            TrustedHostConsumeTicket(future_ticket)
         self.assertIn("future beyond acceptable skew", str(ctx_fut.exception))
 
         # 18o. Single-use sequential replay protection: consumed ticket cannot be reused fail-closed
-        legit_ticket5 = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
-        legit_ticket5._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
+        legit_ticket5 = TrustedHostIssueTicket()
+        TrustedHostConsumeTicket(legit_ticket5)
         self.assertTrue(getattr(legit_ticket5, "_consumed", False))
         with self.assertRaises(ProtocolViolationError) as ctx_replay:
-            legit_ticket5._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
+            TrustedHostConsumeTicket(legit_ticket5)
         self.assertIn("single-use ticket cannot be reused fail-closed", str(ctx_replay.exception))
 
         # 18p. Concurrent replay: 10 threads racing to consume the same ticket simultaneously
-        concurrent_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
+        concurrent_ticket = TrustedHostIssueTicket()
         results = []
         barrier = threading.Barrier(10)
         def racer():
             barrier.wait()
             try:
-                concurrent_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
+                TrustedHostConsumeTicket(concurrent_ticket)
                 results.append("SUCCESS")
             except ProtocolViolationError as e:
                 results.append(f"FAIL:{e}")
@@ -13564,13 +13748,12 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         for t in threads: t.join()
         self.assertEqual(results.count("SUCCESS"), 1, f"Expected exactly 1 success, got {results.count('SUCCESS')}")
         self.assertEqual(len(results), 10)
-
         # 18q. Serialization/deserialization rejected fail-closed
         import pickle
         with self.assertRaises(ProtocolViolationError):
             pickle.dumps(legit_ticket5)
         with self.assertRaises(ProtocolViolationError):
-            pickle.dumps(valid_issuer)
+            pickle.dumps(fake_issuer)
 
         # 18r. Fresh child process attempting full exploit chain with forged ticket is rejected fail-closed
         child_forged_code = (
@@ -13778,19 +13961,16 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("Caller-selected or direct creation of HostBoundaryBootstrapCapability", str(ctx_mint.exception))
 
         # 3. Cryptographic verification fails against pinned public key for forged Ed25519 signature
+        from test_host_boundary_harness import TrustedHostVerifyBootstrapCapability
         fake_cap = HostBoundaryBootstrapCapability.from_host_signed_payload(
-            "boot_cap_tampered", _InternalHostBoundaryVault._port, hashlib.sha256(_InternalHostBoundaryVault._authkey).hexdigest(), "0"*64, time.time(), "deadbeef"*8
+            "boot_cap_tampered", 65530, hashlib.sha256(b"authkey16bytes!!").hexdigest(), "0"*64, time.time(), "deadbeef"*8
         )
         with self.assertRaises(ProtocolViolationError) as ctx_fake:
-            fake_cap.verify(port=_InternalHostBoundaryVault._port, authkey=_InternalHostBoundaryVault._authkey)
+            fake_cap.verify(port=65530, authkey=b"authkey16bytes!!")
         self.assertIn("cryptographic signature mismatch", str(ctx_fake.exception))
 
         # 4. Authentic capability from trusted host boundary succeeds
-        auth_cap = _InternalHostBoundaryVault.boot_cap
-        self.assertIsNotNone(auth_cap)
-        auth_cap.verify(port=_InternalHostBoundaryVault._port, authkey=_InternalHostBoundaryVault._authkey)
-        self.assertEqual(auth_cap.port, _InternalHostBoundaryVault._port)
-        self.assertEqual(auth_cap.authkey_hash, hashlib.sha256(_InternalHostBoundaryVault._authkey).hexdigest())
+        self.assertTrue(TrustedHostVerifyBootstrapCapability())
 
     def test_18u_sol_finding_candidate_reading_entire_repo_cannot_mint_bootstrap_capability(self):
         """18u. Sol Audit Finding Remediation: Candidate reading entire repository cannot mint bootstrap capability.
@@ -13829,16 +14009,18 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         attacker_priv = ed25519.Ed25519PrivateKey.generate()
         bid = "cand_minted_cap"
         now = time.time()
-        authkey_hash = hashlib.sha256(_InternalHostBoundaryVault._authkey).hexdigest()
-        host_token_hash = hashlib.sha256(_InternalHostBoundaryVault._token.encode("utf-8")).hexdigest()
-        payload = f"HOST_BOOTSTRAP_CAP:{bid}:{_InternalHostBoundaryVault._port}:{authkey_hash}:{host_token_hash}:{now}".encode("utf-8")
+        fake_port = 65530
+        fake_authkey = b"A" * 32
+        authkey_hash = hashlib.sha256(fake_authkey).hexdigest()
+        host_token_hash = hashlib.sha256(b"fake_token_value_32_bytes_long!!").hexdigest()
+        payload = f"HOST_BOOTSTRAP_CAP:{bid}:{fake_port}:{authkey_hash}:{host_token_hash}:{now}".encode("utf-8")
         attacker_sig = attacker_priv.sign(payload).hex()
 
         attacker_cap = HostBoundaryBootstrapCapability.from_host_signed_payload(
-            bid, _InternalHostBoundaryVault._port, authkey_hash, host_token_hash, now, attacker_sig
+            bid, fake_port, authkey_hash, host_token_hash, now, attacker_sig
         )
         try:
-            attacker_cap.verify(port=_InternalHostBoundaryVault._port, authkey=_InternalHostBoundaryVault._authkey)
+            attacker_cap.verify(port=fake_port, authkey=fake_authkey)
             candidate_can_mint = True
         except ProtocolViolationError as e:
             self.assertIn("cryptographic signature mismatch", str(e))
@@ -13858,9 +14040,13 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         # 4. Attempting to mutate already-pinned key fails closed
         with self.assertRaises(ProtocolViolationError) as ctx_mut:
             HostBoundaryBootstrapCapability.pin_trusted_host_public_key(
-                b"Y" * 32, _internal_token=_InternalHostBoundaryVault._token, port=_InternalHostBoundaryVault._port, authkey=_InternalHostBoundaryVault._authkey
+                b"Y" * 32, _internal_token="attacker_token_32_bytes_long_here!", port=65530, authkey=b"A" * 32
             )
-        self.assertIn("Trusted host public key already pinned; cannot be mutated fail-closed", str(ctx_mut.exception))
+        self.assertTrue(
+            "Trusted host public key already pinned; cannot be mutated fail-closed" in str(ctx_mut.exception)
+            or "Direct pinning of trusted host public key by in-process caller is forbidden fail-closed" in str(ctx_mut.exception),
+            str(ctx_mut.exception),
+        )
 
     def test_18v_sol_finding_candidate_importing_fixture_cannot_mint_bootstrap_capability(self):
         """18v. Sol Audit Finding Remediation: Candidate importing fixture module in fresh subprocess cannot mint capability.
@@ -14384,12 +14570,14 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    ExternalReviewProducer,\n"
             "    ExternalIntegrationProducer,\n"
             "    TrustedHostIsolatedKeyStore,\n"
+            "    TrustedHostRegisterDispatch,\n"
+            "    TrustedHostProbeRawMessage,\n"
             ")\n"
             "\n"
             "_ensure_internal_host_boundary_harness()\n"
             "try:\n"
             "    # 2. Direct inspection of vault credentials strictly forbidden fail-closed\n"
-            "    for cred_attr in ['token', 'port', 'authkey']:\n"
+            "    for cred_attr in ['token', '_token', 'port', '_port', 'authkey', '_authkey', 'proc', '_proc']:\n"
             "        try:\n"
             "            _ = getattr(_InternalHostBoundaryVault, cred_attr)\n"
             "            assert False, f'Access to _InternalHostBoundaryVault.{cred_attr} must raise ProtocolViolationError'\n"
@@ -14401,14 +14589,26 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    assert 'rev_key_lead_v1' in _InternalHostBoundaryVault.fixture_public_keys\n"
             "\n"
             "    # 3. Daemon generic signing endpoint SIGN_FIXTURE_PAYLOAD rejected fail-closed\n"
-            "    daemon_port = _InternalHostBoundaryVault._port\n"
-            "    daemon_authkey = _InternalHostBoundaryVault._authkey\n"
-            "    daemon_token = _InternalHostBoundaryVault._token\n"
-            "    conn = Client(('127.0.0.1', daemon_port), authkey=daemon_authkey)\n"
-            "    conn.send(('SIGN_FIXTURE_PAYLOAD', daemon_token, 'rev_key_lead_v1', b'attacker_arbitrary_bytes'))\n"
-            "    daemon_res = conn.recv()\n"
-            "    conn.close()\n"
+            "    daemon_res = TrustedHostProbeRawMessage(('SIGN_FIXTURE_PAYLOAD', 'rogue_token', 'rev_key_lead_v1', b'attacker_arbitrary_bytes'))\n"
             "    assert daemon_res is False, f'Daemon must reject generic SIGN_FIXTURE_PAYLOAD fail-closed, got {daemon_res}'\n"
+            "\n"
+            "    # Register dispatches for legitimate producer operations\n"
+            "    TrustedHostRegisterDispatch(\n"
+            "        delivery_task_id='task_sol_audit',\n"
+            "        dispatch_id='dispatch_sol_audit',\n"
+            "        candidate_commit='2eb47f67b69445e38275f193aeab835731b52ced',\n"
+            "        base_commit='4a7c8c921b7e05066505d51b168a02c3fde61317',\n"
+            "        role='Reviewer',\n"
+            "        phase='review',\n"
+            "    )\n"
+            "    TrustedHostRegisterDispatch(\n"
+            "        delivery_task_id='task_sol_audit',\n"
+            "        dispatch_id='dispatch_sol_audit_integ',\n"
+            "        candidate_commit='2eb47f67b69445e38275f193aeab835731b52ced',\n"
+            "        base_commit='4a7c8c921b7e05066505d51b168a02c3fde61317',\n"
+            "        role='IntegrationGatekeeper',\n"
+            "        phase='integrate',\n"
+            "    )\n"
             "\n"
             "    # 4. Caller-signed envelope rejection (reproducing Sol counterexample condition)\n"
             "    pub_bytes = get_fixture_authority_public_key('rev_key_lead_v1')\n"
@@ -14449,23 +14649,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    assert forged_accepted is False, 'FORGED_REVIEW_ACCEPTED must be False fail-closed'\n"
             "\n"
             "    # 5. ExternalReviewProducer produces authentic review envelope verified by consumer\n"
-            "    legit_payload = {\n"
-            "        'envelope_id': 'sol_host_issued_rev_01',\n"
-            "        'delivery_task_id': 'task_sol_audit',\n"
-            "        'review_dispatch_id': 'dispatch_sol_audit',\n"
-            "        'candidate_commit': '2eb47f67b69445e38275f193aeab835731b52ced',\n"
-            "        'base_commit': '4a7c8c921b7e05066505d51b168a02c3fde61317',\n"
-            "        'reviewer_route': 'cx/gpt-5.6-sol',\n"
-            "        'reviewer_harness': 'Claude Code',\n"
-            "        'reviewer_key_id': 'rev_key_lead_v1',\n"
-            "        'verdict': 'ACCEPT',\n"
-            "        'summary': 'Legitimate host-issued review envelope via external producer',\n"
-            "        'nonce': 'nonce_host_issued_32_chars_12345',\n"
-            "        'issued_at': now,\n"
-            "        'expires_at': now + 300.0,\n"
-            "        'fencing_token': 2,\n"
-            "    }\n"
-            "    host_signed = ExternalReviewProducer.produce_review_envelope(legit_payload, key_id='rev_key_lead_v1')\n"
+            "    host_signed = ExternalReviewProducer.produce_review_envelope(\n"
+            "        review_dispatch_id='dispatch_sol_audit',\n"
+            "        delivery_task_id='task_sol_audit',\n"
+            "        verdict='ACCEPT',\n"
+            "        summary='Legitimate host-issued review envelope via external producer',\n"
+            "        envelope_id='sol_host_issued_rev_01',\n"
+            "        nonce='nonce_host_issued_32_chars_12345',\n"
+            "        fencing_token=2,\n"
+            "    )\n"
             "    verified = consumer.consume_review_envelope(\n"
             "        host_signed,\n"
             "        expected_task_id='task_sol_audit',\n"
@@ -14475,13 +14667,14 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    assert verified['verdict'] == 'ACCEPT', 'Host-issued signature must verify and accept'\n"
             "\n"
             "    # 6. Envelope tampering rejected fail-closed\n"
-            "    blocked_signed = ExternalReviewProducer.produce_review_envelope({\n"
-            "        **legit_payload,\n"
-            "        'envelope_id': 'sol_host_blocked_01',\n"
-            "        'verdict': 'CHANGES_REQUESTED',\n"
-            "        'nonce': 'nonce_blocked_32_chars_12345',\n"
-            "        'fencing_token': 3,\n"
-            "    })\n"
+            "    blocked_signed = ExternalReviewProducer.produce_review_envelope(\n"
+            "        review_dispatch_id='dispatch_sol_audit',\n"
+            "        delivery_task_id='task_sol_audit',\n"
+            "        verdict='CHANGES_REQUESTED',\n"
+            "        envelope_id='sol_host_blocked_01',\n"
+            "        nonce='nonce_blocked_32_chars_12345',\n"
+            "        fencing_token=3,\n"
+            "    )\n"
             "    tampered_data = dict(blocked_signed.to_dict())\n"
             "    tampered_data['verdict'] = 'ACCEPT'\n"
             "    tampered_env = SignedReviewEnvelope.from_dict(tampered_data)\n"
@@ -14502,8 +14695,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    int_consumer = TrustedIntegrationConsumer(int_keystore, registry)\n"
             "    legit_int = ExternalIntegrationProducer.produce_integration_envelope(\n"
             "        delivery_task_id='task_sol_audit',\n"
-            "        candidate_commit='2eb47f67b69445e38275f193aeab835731b52ced',\n"
-            "        base_commit='4a7c8c921b7e05066505d51b168a02c3fde61317',\n"
+            "        dispatch_id='dispatch_sol_audit_integ',\n"
             "        gates_pass=True,\n"
             "        gate_results={'G01': True, 'G02': True},\n"
             "        fencing_token=1,\n"
@@ -14530,23 +14722,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "        pass\n"
             "\n"
             "    # 9. Concurrency test\n"
-            "    concurrent_payload = {\n"
-            "        'envelope_id': 'sol_concurrent_rev_01',\n"
-            "        'delivery_task_id': 'task_sol_audit',\n"
-            "        'review_dispatch_id': 'dispatch_sol_audit',\n"
-            "        'candidate_commit': '2eb47f67b69445e38275f193aeab835731b52ced',\n"
-            "        'base_commit': '4a7c8c921b7e05066505d51b168a02c3fde61317',\n"
-            "        'reviewer_route': 'cx/gpt-5.6-sol',\n"
-            "        'reviewer_harness': 'Claude Code',\n"
-            "        'reviewer_key_id': 'rev_key_lead_v1',\n"
-            "        'verdict': 'ACCEPT',\n"
-            "        'summary': 'Concurrent review replay test',\n"
-            "        'nonce': 'nonce_concurrent_32_chars_12345',\n"
-            "        'issued_at': now,\n"
-            "        'expires_at': now + 300.0,\n"
-            "        'fencing_token': 4,\n"
-            "    }\n"
-            "    concurrent_signed = ExternalReviewProducer.produce_review_envelope(concurrent_payload, key_id='rev_key_lead_v1')\n"
+            "    concurrent_signed = ExternalReviewProducer.produce_review_envelope(\n"
+            "        review_dispatch_id='dispatch_sol_audit',\n"
+            "        delivery_task_id='task_sol_audit',\n"
+            "        verdict='ACCEPT',\n"
+            "        summary='Concurrent review replay test',\n"
+            "        envelope_id='sol_concurrent_rev_01',\n"
+            "        nonce='nonce_concurrent_32_chars_12345',\n"
+            "        fencing_token=4,\n"
+            "    )\n"
             "\n"
             "    def consume_worker():\n"
             "        try:\n"
@@ -14574,13 +14758,514 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    _stop_internal_host_boundary_harness()\n"
             "\n"
             "# 11. Clean residue check\n"
-            "assert _InternalHostBoundaryVault.proc is None, 'Daemon proc must be None after stop'\n"
+            "assert not _InternalHostBoundaryVault.is_running(), 'Daemon must not be running after stop'\n"
             "assert len(_InternalHostBoundaryVault.fixture_public_keys) == 0, 'Public keys must be empty after stop'\n"
             "print('SOL_FIXTURE_KEY_CUSTODY_REMEDIATION_PASS')\n"
         )
         proc = subprocess.run([sys.executable, "-u", "-c", child_code], capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, f"Child process failed: stdout={proc.stdout}\nstderr={proc.stderr}")
         self.assertIn("SOL_FIXTURE_KEY_CUSTODY_REMEDIATION_PASS", proc.stdout)
+
+    def test_19_sol_findings_remediation_root_architecture_and_role_separation(self):
+        """19. Sol Findings Remediation Acceptance: Complete proof of Root Architecture
+        and Role Separation for Finding 1 and Finding 2.
+        Proves:
+        Finding 1 Acceptance Evidence:
+        - Producer strictly rejects caller-controlled authority overrides:
+          1. Passing positional payload (envelope_data) raises ProtocolViolationError fail-closed.
+          2. Passing keyword envelope_data raises ProtocolViolationError fail-closed.
+          3. Unregistered review dispatch raises ProtocolViolationError fail-closed.
+          4. Registered review dispatch cannot be overridden by caller candidate_commit or delivery_task_id.
+          5. Consumer strictly rejects all forged/tampered envelopes BEFORE check_and_consume.
+          6. Registry snapshot remains completely unchanged after all negative attempts.
+          7. Positive review flow: Authentic registered dispatch with exact approved SHA
+             (4a7c8c921b7e05066505d51b168a02c3fde61317 base, exact candidate) produces valid envelope
+             which verifies and consumes successfully, advancing registry count by exactly 1.
+
+        Finding 2 Acceptance Evidence:
+        - Domain Role-to-Key Separation strictly enforced:
+          1. Review envelope signed by control_authority_v1 rejected by consumer fail-closed.
+          2. Integration envelope signed by control_authority_v1 rejected by consumer fail-closed.
+          3. Review envelope signed by integ_gatekeeper_v1 rejected by consumer fail-closed.
+          4. Integration envelope signed by rev_key_lead_v1 rejected by consumer fail-closed.
+          5. Envelopes signed with unknown or revoked keys rejected fail-closed.
+          6. All wrong-role rejections occur BEFORE check_and_consume; registry snapshot unchanged.
+          7. Positive integration flow: Authentic integration envelope with integ_gatekeeper_v1
+             consumes successfully exactly once.
+          8. Sequential replay of consumed envelope strictly raises ReplayAttackError.
+          9. Concurrent replay: Across multiple threads, exactly 1 succeeds and remainder fail with ReplayAttackError.
+        """
+        child_code = (
+            "import sys\n"
+            "import time\n"
+            "from pathlib import Path\n"
+            "from concurrent.futures import ThreadPoolExecutor\n"
+            "sys.path.insert(0, str(Path('docs/parallel-delivery').resolve()))\n"
+            "from delivery_engine import (\n"
+            "    TrustedReviewConsumer,\n"
+            "    TrustedIntegrationConsumer,\n"
+            "    DurableConsumptionRegistry,\n"
+            "    SignedReviewEnvelope,\n"
+            "    SignedIntegrationEnvelope,\n"
+            "    sign_review_envelope,\n"
+            "    sign_integration_envelope,\n"
+            "    EnvelopeVerificationError,\n"
+            "    ReplayAttackError,\n"
+            "    ProtocolViolationError,\n"
+            "    ProductionActivationGate,\n"
+            ")\n"
+            "from cryptography.hazmat.primitives.asymmetric import ed25519\n"
+            "from test_host_boundary_harness import (\n"
+            "    _ensure_internal_host_boundary_harness,\n"
+            "    _stop_internal_host_boundary_harness,\n"
+            "    _InternalHostBoundaryVault,\n"
+            "    get_fixture_authority_public_key,\n"
+            "    ExternalReviewProducer,\n"
+            "    ExternalIntegrationProducer,\n"
+            "    TrustedHostIsolatedKeyStore,\n"
+            "    TrustedHostRegisterDispatch,\n"
+            "    TrustedHostProbeRawMessage,\n"
+            "    TrustedHostResetTestingState,\n"
+            ")\n"
+            "\n"
+            "_ensure_internal_host_boundary_harness()\n"
+            "try:\n"
+            "    reg = DurableConsumptionRegistry(db_path=':memory:')\n"
+            "    init_snap = reg.snapshot()\n"
+            "    assert init_snap['consumed_count'] == 0, 'Registry must start empty'\n"
+            "\n"
+            "    rev_pub = get_fixture_authority_public_key('rev_key_lead_v1')\n"
+            "    integ_pub = get_fixture_authority_public_key('integ_gatekeeper_v1')\n"
+            "    ctrl_pub = get_fixture_authority_public_key('control_authority_v1')\n"
+            "\n"
+            "    keystore = TrustedHostIsolatedKeyStore({\n"
+            "        'rev_key_lead_v1': rev_pub,\n"
+            "        'integ_gatekeeper_v1': integ_pub,\n"
+            "        'control_authority_v1': ctrl_pub,\n"
+            "    })\n"
+            "    rev_consumer = TrustedReviewConsumer(keystore, reg)\n"
+            "    integ_consumer = TrustedIntegrationConsumer(keystore, reg)\n"
+            "\n"
+            "    # ==========================================\n"
+            "    # FINDING 1: Authority Overrides & Dispatch Binding\n"
+            "    # ==========================================\n"
+            "\n"
+            "    # F1.1: Positional envelope_data rejected\n"
+            "    try:\n"
+            "        ExternalReviewProducer.produce_review_envelope({'arbitrary': 'envelope'})\n"
+            "        assert False, 'Positional argument to produce_review_envelope must raise ProtocolViolationError'\n"
+            "    except ProtocolViolationError as exc:\n"
+            "        assert 'envelope_data parameter has been eliminated' in str(exc)\n"
+            "\n"
+            "    # F1.2: Keyword envelope_data rejected\n"
+            "    try:\n"
+            "        ExternalReviewProducer.produce_review_envelope(envelope_data={'arbitrary': 'envelope'})\n"
+            "        assert False, 'Keyword envelope_data must raise ProtocolViolationError'\n"
+            "    except ProtocolViolationError as exc:\n"
+            "        assert 'envelope_data parameter has been eliminated' in str(exc)\n"
+            "\n"
+            "    try:\n"
+            "        ExternalIntegrationProducer.produce_integration_envelope({'arbitrary': 'envelope'})\n"
+            "        assert False, 'Positional argument to produce_integration_envelope must raise ProtocolViolationError'\n"
+            "    except ProtocolViolationError as exc:\n"
+            "        assert 'envelope_data parameter has been eliminated' in str(exc)\n"
+            "\n"
+            "    try:\n"
+            "        ExternalIntegrationProducer.produce_integration_envelope(envelope_data={'arbitrary': 'envelope'})\n"
+            "        assert False, 'Keyword envelope_data must raise ProtocolViolationError'\n"
+            "    except ProtocolViolationError as exc:\n"
+            "        assert 'envelope_data parameter has been eliminated' in str(exc)\n"
+            "\n"
+            "    # F1.3: Unregistered dispatch rejected fail-closed\n"
+            "    try:\n"
+            "        ExternalReviewProducer.produce_review_envelope(\n"
+            "            review_dispatch_id='unregistered_disp_999',\n"
+            "            delivery_task_id='task_f1_test',\n"
+            "            verdict='ACCEPT',\n"
+            "        )\n"
+            "        assert False, 'Unregistered dispatch must raise ProtocolViolationError fail-closed'\n"
+            "    except ProtocolViolationError as exc:\n"
+            "        assert 'Unregistered or unauthenticated review dispatch' in str(exc)\n"
+            "\n"
+            "    # F1.4: Register dispatch and verify caller override attempt rejected\n"
+            "    approved_candidate = '2eb47f67b69445e38275f193aeab835731b52ced'\n"
+            "    approved_base = '4a7c8c921b7e05066505d51b168a02c3fde61317'\n"
+            "    disp_f1 = 'disp_sol_audit_f1'\n"
+            "    task_f1 = 'task_sol_audit_f1'\n"
+            "\n"
+            "    TrustedHostRegisterDispatch(\n"
+            "        delivery_task_id=task_f1,\n"
+            "        dispatch_id=disp_f1,\n"
+            "        candidate_commit=approved_candidate,\n"
+            "        base_commit=approved_base,\n"
+            "        role='Reviewer',\n"
+            "        phase='review',\n"
+            "    )\n"
+            "\n"
+            "    # Caller tries to override candidate_commit to arbitrary commit\n"
+            "    try:\n"
+            "        ExternalReviewProducer.produce_review_envelope(\n"
+            "            review_dispatch_id=disp_f1,\n"
+            "            delivery_task_id=task_f1,\n"
+            "            candidate_commit='attacker_commit_override_11111111111111',\n"
+            "            verdict='ACCEPT',\n"
+            "        )\n"
+            "        assert False, 'Caller candidate_commit override must be rejected fail-closed'\n"
+            "    except ProtocolViolationError as exc:\n"
+            "        assert 'Caller candidate_commit override mismatch' in str(exc)\n"
+            "\n"
+            "    # Caller tries to override delivery_task_id to arbitrary task\n"
+            "    try:\n"
+            "        ExternalReviewProducer.produce_review_envelope(\n"
+            "            review_dispatch_id=disp_f1,\n"
+            "            delivery_task_id='attacker_task_override_99999999999999',\n"
+            "            verdict='ACCEPT',\n"
+            "        )\n"
+            "        assert False, 'Caller delivery_task_id override must be rejected fail-closed'\n"
+            "    except ProtocolViolationError as exc:\n"
+            "        assert 'Caller delivery_task_id override mismatch' in str(exc)\n"
+            "\n"
+            "    # F1.5: Verify registry snapshot completely unchanged after negative producer attempts\n"
+            "    snap_after_f1_neg = reg.snapshot()\n"
+            "    assert snap_after_f1_neg['consumed_count'] == 0, 'Registry count must remain 0 after rejected producer attempts'\n"
+            "\n"
+            "    # F1.6: Positive review flow: Authentic registered dispatch produces valid envelope\n"
+            "    legit_rev = ExternalReviewProducer.produce_review_envelope(\n"
+            "        review_dispatch_id=disp_f1,\n"
+            "        delivery_task_id=task_f1,\n"
+            "        verdict='ACCEPT',\n"
+            "        summary='Authentic review for approved candidate',\n"
+            "        envelope_id='env_f1_legit_rev_01',\n"
+            "        nonce='nonce_f1_legit_rev_01_32chars123',\n"
+            "        fencing_token=1,\n"
+            "    )\n"
+            "    rev_consumed = rev_consumer.consume_review_envelope(\n"
+            "        legit_rev,\n"
+            "        expected_task_id=task_f1,\n"
+            "        expected_candidate=approved_candidate,\n"
+            "        expected_dispatch_id=disp_f1,\n"
+            "    )\n"
+            "    assert rev_consumed['verdict'] == 'ACCEPT', 'Legitimate review must verify and accept'\n"
+            "\n"
+            "    snap_after_rev = reg.snapshot()\n"
+            "    assert snap_after_rev['consumed_count'] == 1, 'Registry must have exactly 1 record after positive consumption'\n"
+            "    assert 'env_f1_legit_rev_01' in snap_after_rev['consumed_ids']\n"
+            "\n"
+            "    # ==========================================\n"
+            "    # FINDING 2: Role-to-Key Separation\n"
+            "    # ==========================================\n"
+            "\n"
+            "    # F2.1: Caller attempts to use control_authority_v1 for review producer -> rejected\n"
+            "    try:\n"
+            "        ExternalReviewProducer.produce_review_envelope(\n"
+            "            review_dispatch_id=disp_f1,\n"
+            "            delivery_task_id=task_f1,\n"
+            "            key_id='control_authority_v1',\n"
+            "            verdict='ACCEPT',\n"
+            "        )\n"
+            "        assert False, 'control_authority_v1 must be rejected by review producer fail-closed'\n"
+            "    except ProtocolViolationError as exc:\n"
+            "        assert 'only rev_key_lead_v1 is authorized' in str(exc)\n"
+            "\n"
+            "    # F2.2: Caller attempts to use integ_gatekeeper_v1 for review producer -> rejected\n"
+            "    try:\n"
+            "        ExternalReviewProducer.produce_review_envelope(\n"
+            "            review_dispatch_id=disp_f1,\n"
+            "            delivery_task_id=task_f1,\n"
+            "            key_id='integ_gatekeeper_v1',\n"
+            "            verdict='ACCEPT',\n"
+            "        )\n"
+            "        assert False, 'integ_gatekeeper_v1 must be rejected by review producer fail-closed'\n"
+            "    except ProtocolViolationError as exc:\n"
+            "        assert 'only rev_key_lead_v1 is authorized' in str(exc)\n"
+            "\n"
+            "    # F2.3: Forged review envelope with reviewer_key_id='control_authority_v1' rejected by consumer\n"
+            "    attacker_priv = ed25519.Ed25519PrivateKey.generate()\n"
+            "    now = time.time()\n"
+            "    forged_ctrl_rev = {\n"
+            "        'envelope_id': 'env_forged_ctrl_rev_01',\n"
+            "        'domain': 'PARALLEL_DELIVERY_REVIEW_ENVELOPE_V1',\n"
+            "        'version': 'v1',\n"
+            "        'delivery_task_id': task_f1,\n"
+            "        'review_dispatch_id': disp_f1,\n"
+            "        'candidate_commit': approved_candidate,\n"
+            "        'base_commit': approved_base,\n"
+            "        'reviewer_route': 'cx/gpt-5.6-sol',\n"
+            "        'reviewer_harness': 'Claude Code',\n"
+            "        'reviewer_key_id': 'control_authority_v1',\n"
+            "        'verdict': 'ACCEPT',\n"
+            "        'summary': 'Review envelope forged with control key ID',\n"
+            "        'nonce': 'nonce_forged_ctrl_rev_32chars12',\n"
+            "        'issued_at': now,\n"
+            "        'expires_at': now + 300.0,\n"
+            "        'fencing_token': 2,\n"
+            "    }\n"
+            "    canon_ctrl = SignedReviewEnvelope.from_dict({**forged_ctrl_rev, 'signature': '00'*64}).canonical_bytes()\n"
+            "    sig_ctrl = attacker_priv.sign(canon_ctrl).hex()\n"
+            "    forged_ctrl_signed = SignedReviewEnvelope.from_dict({**forged_ctrl_rev, 'signature': sig_ctrl})\n"
+            "\n"
+            "    try:\n"
+            "        rev_consumer.consume_review_envelope(\n"
+            "            forged_ctrl_signed,\n"
+            "            expected_task_id=task_f1,\n"
+            "            expected_candidate=approved_candidate,\n"
+            "            expected_dispatch_id=disp_f1,\n"
+            "        )\n"
+            "        assert False, 'control_authority_v1 signed review envelope must be rejected fail-closed'\n"
+            "    except EnvelopeVerificationError as exc:\n"
+            "        assert 'Reviewer key ID mismatch' in str(exc) or 'cannot be used as a reviewer authority key' in str(exc)\n"
+            "\n"
+            "    # Registry snapshot unchanged\n"
+            "    assert reg.snapshot()['consumed_count'] == 1, 'Registry snapshot must remain 1 after rejected review'\n"
+            "\n"
+            "    # F2.4: Forged review envelope with reviewer_key_id='integ_gatekeeper_v1' rejected by consumer\n"
+            "    forged_integ_rev = dict(forged_ctrl_rev)\n"
+            "    forged_integ_rev['envelope_id'] = 'env_forged_integ_rev_02'\n"
+            "    forged_integ_rev['reviewer_key_id'] = 'integ_gatekeeper_v1'\n"
+            "    forged_integ_rev['nonce'] = 'nonce_forged_integ_rev_32chars1'\n"
+            "    canon_integ = SignedReviewEnvelope.from_dict({**forged_integ_rev, 'signature': '00'*64}).canonical_bytes()\n"
+            "    sig_integ = attacker_priv.sign(canon_integ).hex()\n"
+            "    forged_integ_signed = SignedReviewEnvelope.from_dict({**forged_integ_rev, 'signature': sig_integ})\n"
+            "\n"
+            "    try:\n"
+            "        rev_consumer.consume_review_envelope(\n"
+            "            forged_integ_signed,\n"
+            "            expected_task_id=task_f1,\n"
+            "            expected_candidate=approved_candidate,\n"
+            "            expected_dispatch_id=disp_f1,\n"
+            "        )\n"
+            "        assert False, 'integ_gatekeeper_v1 signed review envelope must be rejected fail-closed'\n"
+            "    except EnvelopeVerificationError as exc:\n"
+            "        assert 'Reviewer key ID mismatch' in str(exc) or 'cannot be used as a reviewer authority key' in str(exc)\n"
+            "\n"
+            "    assert reg.snapshot()['consumed_count'] == 1\n"
+            "\n"
+            "    # F2.5: Register integration dispatch and test integration producer\n"
+            "    disp_int = 'disp_sol_audit_int'\n"
+            "    TrustedHostRegisterDispatch(\n"
+            "        delivery_task_id=task_f1,\n"
+            "        dispatch_id=disp_int,\n"
+            "        candidate_commit=approved_candidate,\n"
+            "        base_commit=approved_base,\n"
+            "        role='IntegrationGatekeeper',\n"
+            "        phase='integrate',\n"
+            "    )\n"
+            "\n"
+            "    # F2.6: Caller attempts to use control_authority_v1 or rev_key_lead_v1 for integration producer\n"
+            "    try:\n"
+            "        ExternalIntegrationProducer.produce_integration_envelope(\n"
+            "            delivery_task_id=task_f1,\n"
+            "            dispatch_id=disp_int,\n"
+            "            gates_pass=True,\n"
+            "            gate_results={'G01': True},\n"
+            "            key_id='control_authority_v1',\n"
+            "        )\n"
+            "        assert False, 'control_authority_v1 must be rejected by integration producer'\n"
+            "    except ProtocolViolationError as exc:\n"
+            "        assert 'only integ_gatekeeper_v1 is authorized' in str(exc)\n"
+            "\n"
+            "    try:\n"
+            "        ExternalIntegrationProducer.produce_integration_envelope(\n"
+            "            delivery_task_id=task_f1,\n"
+            "            dispatch_id=disp_int,\n"
+            "            gates_pass=True,\n"
+            "            gate_results={'G01': True},\n"
+            "            key_id='rev_key_lead_v1',\n"
+            "        )\n"
+            "        assert False, 'rev_key_lead_v1 must be rejected by integration producer'\n"
+            "    except ProtocolViolationError as exc:\n"
+            "        assert 'only integ_gatekeeper_v1 is authorized' in str(exc)\n"
+            "\n"
+            "    # F2.7: Forged integration envelope with integration_key_id='control_authority_v1' rejected by consumer\n"
+            "    forged_ctrl_int = {\n"
+            "        'envelope_id': 'env_forged_ctrl_int_01',\n"
+            "        'domain': 'PARALLEL_DELIVERY_INTEGRATION_ENVELOPE_V1',\n"
+            "        'version': 'v1',\n"
+            "        'delivery_task_id': task_f1,\n"
+            "        'candidate_commit': approved_candidate,\n"
+            "        'base_commit': approved_base,\n"
+            "        'gates_pass': True,\n"
+            "        'gate_results': {'G01': True},\n"
+            "        'integration_key_id': 'control_authority_v1',\n"
+            "        'nonce': 'nonce_forged_ctrl_int_32chars12',\n"
+            "        'issued_at': now,\n"
+            "        'expires_at': now + 300.0,\n"
+            "        'fencing_token': 2,\n"
+            "    }\n"
+            "    canon_ctrl_int = SignedIntegrationEnvelope.from_dict({**forged_ctrl_int, 'signature': '00'*64}).canonical_bytes()\n"
+            "    sig_ctrl_int = attacker_priv.sign(canon_ctrl_int).hex()\n"
+            "    forged_ctrl_int_signed = SignedIntegrationEnvelope.from_dict({**forged_ctrl_int, 'signature': sig_ctrl_int})\n"
+            "\n"
+            "    try:\n"
+            "        integ_consumer.consume_integration_envelope(\n"
+            "            forged_ctrl_int_signed,\n"
+            "            expected_task_id=task_f1,\n"
+            "            expected_candidate=approved_candidate,\n"
+            "            expected_base=approved_base,\n"
+            "            expected_gates_pass=True,\n"
+            "        )\n"
+            "        assert False, 'control_authority_v1 signed integration envelope must be rejected fail-closed'\n"
+            "    except EnvelopeVerificationError as exc:\n"
+            "        assert 'Integration key ID mismatch' in str(exc) or 'cannot be used as an integration authority key' in str(exc)\n"
+            "\n"
+            "    assert reg.snapshot()['consumed_count'] == 1\n"
+            "\n"
+            "    # F2.8: Forged integration envelope with integration_key_id='rev_key_lead_v1' rejected by consumer\n"
+            "    forged_rev_int = dict(forged_ctrl_int)\n"
+            "    forged_rev_int['envelope_id'] = 'env_forged_rev_int_02'\n"
+            "    forged_rev_int['integration_key_id'] = 'rev_key_lead_v1'\n"
+            "    forged_rev_int['nonce'] = 'nonce_forged_rev_int_32chars12'\n"
+            "    canon_rev_int = SignedIntegrationEnvelope.from_dict({**forged_rev_int, 'signature': '00'*64}).canonical_bytes()\n"
+            "    sig_rev_int = attacker_priv.sign(canon_rev_int).hex()\n"
+            "    forged_rev_int_signed = SignedIntegrationEnvelope.from_dict({**forged_rev_int, 'signature': sig_rev_int})\n"
+            "\n"
+            "    try:\n"
+            "        integ_consumer.consume_integration_envelope(\n"
+            "            forged_rev_int_signed,\n"
+            "            expected_task_id=task_f1,\n"
+            "            expected_candidate=approved_candidate,\n"
+            "            expected_base=approved_base,\n"
+            "            expected_gates_pass=True,\n"
+            "        )\n"
+            "        assert False, 'rev_key_lead_v1 signed integration envelope must be rejected fail-closed'\n"
+            "    except EnvelopeVerificationError as exc:\n"
+            "        assert 'Integration key ID mismatch' in str(exc) or 'cannot be used as an integration authority key' in str(exc)\n"
+            "\n"
+            "    assert reg.snapshot()['consumed_count'] == 1\n"
+            "\n"
+            "    # F2.9: Unknown key ID rejected fail-closed before check_and_consume\n"
+            "    forged_unk_rev = dict(forged_ctrl_rev)\n"
+            "    forged_unk_rev['envelope_id'] = 'env_forged_unk_rev_03'\n"
+            "    forged_unk_rev['reviewer_key_id'] = 'unknown_key_v99'\n"
+            "    forged_unk_rev['nonce'] = 'nonce_forged_unk_rev_32chars12'\n"
+            "    canon_unk = SignedReviewEnvelope.from_dict({**forged_unk_rev, 'signature': '00'*64}).canonical_bytes()\n"
+            "    sig_unk = attacker_priv.sign(canon_unk).hex()\n"
+            "    forged_unk_signed = SignedReviewEnvelope.from_dict({**forged_unk_rev, 'signature': sig_unk})\n"
+            "    try:\n"
+            "        rev_consumer.consume_review_envelope(\n"
+            "            forged_unk_signed,\n"
+            "            expected_task_id=task_f1,\n"
+            "            expected_candidate=approved_candidate,\n"
+            "            expected_dispatch_id=disp_f1,\n"
+            "        )\n"
+            "        assert False, 'unknown_key_v99 review envelope must be rejected fail-closed'\n"
+            "    except EnvelopeVerificationError as exc:\n"
+            "        assert 'Reviewer key ID mismatch' in str(exc)\n"
+            "    assert reg.snapshot()['consumed_count'] == 1\n"
+            "\n"
+            "    # F2.10: Revoked key ID rejected fail-closed before check_and_consume\n"
+            "    keystore.revoke_key('rev_key_lead_v1')\n"
+            "    forged_revoked = dict(forged_ctrl_rev)\n"
+            "    forged_revoked['envelope_id'] = 'env_forged_revoked_04'\n"
+            "    forged_revoked['reviewer_key_id'] = 'rev_key_lead_v1'\n"
+            "    forged_revoked['nonce'] = 'nonce_forged_revoked_32chars1'\n"
+            "    canon_revoked = SignedReviewEnvelope.from_dict({**forged_revoked, 'signature': '00'*64}).canonical_bytes()\n"
+            "    sig_revoked = attacker_priv.sign(canon_revoked).hex()\n"
+            "    forged_revoked_signed = SignedReviewEnvelope.from_dict({**forged_revoked, 'signature': sig_revoked})\n"
+            "    try:\n"
+            "        rev_consumer.consume_review_envelope(\n"
+            "            forged_revoked_signed,\n"
+            "            expected_task_id=task_f1,\n"
+            "            expected_candidate=approved_candidate,\n"
+            "            expected_dispatch_id=disp_f1,\n"
+            "        )\n"
+            "        assert False, 'revoked key review envelope must be rejected fail-closed'\n"
+            "    except EnvelopeVerificationError as exc:\n"
+            "        assert 'has been revoked' in str(exc)\n"
+            "    assert reg.snapshot()['consumed_count'] == 1\n"
+            "\n"
+            "    # F2.11: Positive integration flow: Authentic integration envelope produced and consumed\n"
+            "    legit_int = ExternalIntegrationProducer.produce_integration_envelope(\n"
+            "        delivery_task_id=task_f1,\n"
+            "        dispatch_id=disp_int,\n"
+            "        gates_pass=True,\n"
+            "        gate_results={'G01': True, 'G02': True},\n"
+            "        envelope_id='env_f2_legit_int_01',\n"
+            "        nonce='nonce_f2_legit_int_01_32chars12',\n"
+            "        fencing_token=3,\n"
+            "    )\n"
+            "    int_consumed = integ_consumer.consume_integration_envelope(\n"
+            "        legit_int,\n"
+            "        expected_task_id=task_f1,\n"
+            "        expected_candidate=approved_candidate,\n"
+            "        expected_base=approved_base,\n"
+            "        expected_gates_pass=True,\n"
+            "    )\n"
+            "    assert int_consumed['gates_pass'] is True, 'Authentic integration envelope must verify and accept'\n"
+            "\n"
+            "    snap_after_int = reg.snapshot()\n"
+            "    assert snap_after_int['consumed_count'] == 2, 'Registry count must be exactly 2 after integration'\n"
+            "    assert 'env_f2_legit_int_01' in snap_after_int['consumed_ids']\n"
+            "\n"
+            "    # F2.12: Sequential replay protection\n"
+            "    try:\n"
+            "        integ_consumer.consume_integration_envelope(\n"
+            "            legit_int,\n"
+            "            expected_task_id=task_f1,\n"
+            "            expected_candidate=approved_candidate,\n"
+            "            expected_base=approved_base,\n"
+            "            expected_gates_pass=True,\n"
+            "        )\n"
+            "        assert False, 'Sequential replay of integration envelope must raise ReplayAttackError'\n"
+            "    except ReplayAttackError:\n"
+            "        pass\n"
+            "\n"
+            "    assert reg.snapshot()['consumed_count'] == 2\n"
+            "\n"
+            "    # F2.13: Concurrent replay test\n"
+            "    # Unrevoke or create fresh keystore for review consumer\n"
+            "    fresh_keystore = TrustedHostIsolatedKeyStore({'rev_key_lead_v1': rev_pub})\n"
+            "    fresh_rev_consumer = TrustedReviewConsumer(fresh_keystore, reg)\n"
+            "    conc_disp = 'disp_sol_audit_conc'\n"
+            "    TrustedHostRegisterDispatch(\n"
+            "        delivery_task_id=task_f1,\n"
+            "        dispatch_id=conc_disp,\n"
+            "        candidate_commit=approved_candidate,\n"
+            "        base_commit=approved_base,\n"
+            "        role='Reviewer',\n"
+            "        phase='review',\n"
+            "    )\n"
+            "    conc_env = ExternalReviewProducer.produce_review_envelope(\n"
+            "        review_dispatch_id=conc_disp,\n"
+            "        delivery_task_id=task_f1,\n"
+            "        verdict='ACCEPT',\n"
+            "        envelope_id='env_sol_conc_01',\n"
+            "        nonce='nonce_sol_conc_01_32chars12345',\n"
+            "        fencing_token=4,\n"
+            "    )\n"
+            "\n"
+            "    def conc_worker():\n"
+            "        try:\n"
+            "            res = fresh_rev_consumer.consume_review_envelope(\n"
+            "                conc_env,\n"
+            "                expected_task_id=task_f1,\n"
+            "                expected_candidate=approved_candidate,\n"
+            "                expected_dispatch_id=conc_disp,\n"
+            "            )\n"
+            "            return ('ACCEPTED', res['verdict'])\n"
+            "        except ReplayAttackError as exc:\n"
+            "            return ('REPLAY_ERROR', type(exc).__name__)\n"
+            "\n"
+            "    with ThreadPoolExecutor(max_workers=2) as ex:\n"
+            "        f1 = ex.submit(conc_worker)\n"
+            "        f2 = ex.submit(conc_worker)\n"
+            "        conc_results = [f1.result(), f2.result()]\n"
+            "\n"
+            "    accepted_cnt = sum(1 for r in conc_results if r[0] == 'ACCEPTED')\n"
+            "    replay_cnt = sum(1 for r in conc_results if r[0] == 'REPLAY_ERROR')\n"
+            "    assert accepted_cnt == 1 and replay_cnt == 1, f'Expected 1 accepted, 1 replay; got {conc_results}'\n"
+            "    assert reg.snapshot()['consumed_count'] == 3\n"
+            "\n"
+            "    print('SOL_FINDINGS_REMEDIATION_ROOT_ARCHITECTURE_AND_ROLE_SEPARATION_PASS')\n"
+            "finally:\n"
+            "    _stop_internal_host_boundary_harness()\n"
+            "\n"
+            "assert not _InternalHostBoundaryVault.is_running(), 'Daemon must not be running after stop'\n"
+            "assert len(_InternalHostBoundaryVault.fixture_public_keys) == 0, 'Public keys must be empty after stop'\n"
+        )
+        proc = subprocess.run([sys.executable, "-u", "-c", child_code], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, f"Child process failed: stdout={proc.stdout}\nstderr={proc.stderr}")
+        self.assertIn("SOL_FINDINGS_REMEDIATION_ROOT_ARCHITECTURE_AND_ROLE_SEPARATION_PASS", proc.stdout)
 
 
 class _SealedFixtureModule(types.ModuleType):

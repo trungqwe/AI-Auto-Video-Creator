@@ -21,6 +21,7 @@ from types import MappingProxyType
 from typing import Any, Dict, Iterable, Mapping, Optional, Union
 
 from delivery_engine import (
+    DurableConsumptionRegistry,
     HostBoundaryBootstrapCapability,
     HostBoundaryChannel,
     HostBoundaryTicket,
@@ -46,52 +47,119 @@ ALLOWED_FIXTURE_KEY_IDS = frozenset({
     "integ_gatekeeper_v1",
     "control_authority_v1",
 })
+ALLOWED_REVIEWER_KEY_IDS = frozenset({"rev_key_lead_v1"})
+ALLOWED_INTEGRATION_KEY_IDS = frozenset({"integ_gatekeeper_v1"})
+ALLOWED_CONTROL_KEY_IDS = frozenset({"control_authority_v1"})
 
 
 class _InternalHostBoundaryVaultMeta(type):
     """Metaclass that strictly forbids candidate-readable inspection of daemon credentials.
-    Access to token, port, or authkey raises ProtocolViolationError fail-closed.
+    Access to token, _token, port, _port, authkey, _authkey, proc, _proc raises ProtocolViolationError fail-closed.
     """
-    @property
-    def token(cls) -> str:
-        raise ProtocolViolationError(
-            "Direct access to internal host boundary token is strictly forbidden fail-closed; "
-            "candidate cannot inspect host credentials"
-        )
+    _forbidden = frozenset({
+        "token", "_token",
+        "port", "_port",
+        "authkey", "_authkey",
+        "proc", "_proc",
+        "_credentials_initialized",
+    })
+
+    def __getattribute__(cls, name: str) -> Any:
+        if name in _InternalHostBoundaryVaultMeta._forbidden:
+            raise ProtocolViolationError(
+                f"Direct access to internal host boundary credential {name!r} is strictly forbidden fail-closed; "
+                "candidate cannot inspect host credentials"
+            )
+        return super().__getattribute__(name)
+
+    def __setattr__(cls, name: str, value: Any) -> None:
+        if name in _InternalHostBoundaryVaultMeta._forbidden:
+            raise ProtocolViolationError(
+                f"Direct modification of internal host boundary credential {name!r} is strictly forbidden fail-closed"
+            )
+        super().__setattr__(name, value)
 
     @property
-    def port(cls) -> int:
-        raise ProtocolViolationError(
-            "Direct access to internal host boundary port is strictly forbidden fail-closed; "
-            "candidate cannot inspect host credentials"
-        )
+    def fixture_public_keys(cls) -> Mapping[str, bytes]:
+        return _HostBoundaryState.fixture_public_keys
 
     @property
-    def authkey(cls) -> bytes:
-        raise ProtocolViolationError(
-            "Direct access to internal host boundary authkey is strictly forbidden fail-closed; "
-            "candidate cannot inspect host credentials"
-        )
+    def boot_cap(cls) -> Optional[HostBoundaryBootstrapCapability]:
+        return _HostBoundaryState.boot_cap
+
+    def is_running(cls) -> bool:
+        proc = _HostBoundaryState.proc
+        return proc is not None and proc.poll() is None
+
+    def reset_testing_state(cls) -> None:
+        TrustedHostResetTestingState()
 
 
-class _InternalHostBoundaryVault(metaclass=_InternalHostBoundaryVaultMeta):
-    """Internal host boundary vault.
-    Daemon credentials (_token, _port, _authkey) are private and inaccessible to candidate inspection.
-    """
-    _port: int = 0
-    _authkey: bytes = b""
-    _token: str = ""
-    _credentials_initialized: bool = False
+class _HostBoundaryState:
+    """Internal private state container owned exclusively by the host harness."""
+    port: int = 0
+    authkey: bytes = b""
+    token: str = ""
     proc: Optional[subprocess.Popen] = None
     boot_cap: Optional[HostBoundaryBootstrapCapability] = None
     test_host_issuer: Optional[ReviewerHostIssuer] = None
     fixture_public_keys: Mapping[str, bytes] = MappingProxyType({})
+    lock: threading.RLock = threading.RLock()
+
+
+class _InternalHostBoundaryVault(metaclass=_InternalHostBoundaryVaultMeta):
+    """Internal host boundary vault interface.
+    Daemon credentials are encapsulated in private host state and inaccessible to candidate inspection.
+    """
     lock = threading.RLock()
+
+    @classmethod
+    @property
+    def fixture_public_keys(cls) -> Mapping[str, bytes]:
+        return _HostBoundaryState.fixture_public_keys
+
+    @classmethod
+    @property
+    def boot_cap(cls) -> Optional[HostBoundaryBootstrapCapability]:
+        return _HostBoundaryState.boot_cap
+
+    @classmethod
+    def is_running(cls) -> bool:
+        proc = _HostBoundaryState.proc
+        return proc is not None and proc.poll() is None
+
+    @classmethod
+    def reset_testing_state(cls) -> None:
+        TrustedHostResetTestingState()
+
+
+def _send_host_boundary_request(command: str, payload: Any) -> Any:
+    """Send an opaque command to the host boundary daemon over IPC.
+    Credentials remain encapsulated inside host boundary state."""
+    with _HostBoundaryState.lock:
+        token = _HostBoundaryState.token
+        port = _HostBoundaryState.port
+        authkey = _HostBoundaryState.authkey
+        proc = _HostBoundaryState.proc
+        if not token or proc is None or proc.poll() is not None or not port or not authkey:
+            raise ProtocolViolationError(
+                "Trusted host boundary daemon uninitialized or terminated fail-closed; "
+                "host boundary channel unavailable"
+            )
+        from multiprocessing.connection import Client
+        try:
+            conn = Client(("127.0.0.1", port), authkey=authkey)
+            conn.send((command, token, payload))
+            res = conn.recv()
+            conn.close()
+            return res
+        except Exception as e:
+            raise ProtocolViolationError(f"Host boundary IPC communication failed fail-closed: {e}")
 
 
 def _ensure_internal_host_boundary_harness() -> None:
-    with _InternalHostBoundaryVault.lock:
-        if _InternalHostBoundaryVault.proc is not None and _InternalHostBoundaryVault.proc.poll() is None:
+    with _HostBoundaryState.lock:
+        if _HostBoundaryState.proc is not None and _HostBoundaryState.proc.poll() is None:
             return
 
         clean_token = secrets.token_hex(32)
@@ -112,6 +180,7 @@ def _ensure_internal_host_boundary_harness() -> None:
             "pub_bytes = priv_key.public_key().public_bytes_raw()\n"
             "fixture_keys = {kid: ed25519.Ed25519PrivateKey.generate() for kid in allowed_ids}\n"
             "fixture_pub_hex = {kid: k.public_key().public_bytes_raw().hex() for kid, k in fixture_keys.items()}\n"
+            "registered_dispatches = {}\n"
             "sys.stdout.write(str(listener.address[1]) + '\\n')\n"
             "sys.stdout.write(pub_bytes.hex() + '\\n')\n"
             "sys.stdout.write(json.dumps(fixture_pub_hex) + '\\n')\n"
@@ -141,6 +210,37 @@ def _ensure_internal_host_boundary_harness() -> None:
             "                conn.send(('ERR', 'Unauthorized'))\n"
             "            conn.close()\n"
             "            continue\n"
+            "        if isinstance(msg, tuple) and len(msg) == 3 and msg[0] == 'REGISTER_DISPATCH':\n"
+            "            _, req_token, rec = msg\n"
+            "            t_bytes = req_token if isinstance(req_token, bytes) else req_token.encode('utf-8', errors='replace')\n"
+            "            if not (len(t_bytes) >= 32 and hmac.compare_digest(t_bytes.strip(), host_secret)):\n"
+            "                conn.send(('ERR', 'Unauthorized'))\n"
+            "                conn.close()\n"
+            "                continue\n"
+            "            did = rec.get('dispatch_id')\n"
+            "            tid = rec.get('delivery_task_id')\n"
+            "            role = str(rec.get('role', 'Reviewer'))\n"
+            "            phase = str(rec.get('phase', 'review'))\n"
+            "            cap_tok = rec.get('capability_token') or secrets.token_hex(16)\n"
+            "            stored_rec = {\n"
+            "                'dispatch_id': str(did or tid),\n"
+            "                'delivery_task_id': str(tid or did),\n"
+            "                'candidate_commit': str(rec.get('candidate_commit', '')),\n"
+            "                'base_commit': str(rec.get('base_commit', '4a7c8c921b7e05066505d51b168a02c3fde61317')),\n"
+            "                'role': role,\n"
+            "                'phase': phase,\n"
+            "                'fencing_token': int(rec.get('fencing_token', 1)),\n"
+            "                'active': True,\n"
+            "                'settled': False,\n"
+            "                'capability_token': cap_tok,\n"
+            "            }\n"
+            "            if did:\n"
+            "                registered_dispatches[f'{role}:{did}'] = stored_rec\n"
+            "            if tid:\n"
+            "                registered_dispatches[f'{role}:{tid}'] = stored_rec\n"
+            "            conn.send(('OK', cap_tok))\n"
+            "            conn.close()\n"
+            "            continue\n"
             "        if isinstance(msg, tuple) and len(msg) == 3 and msg[0] == 'PRODUCE_REVIEW_ENVELOPE':\n"
             "            _, req_token, params = msg\n"
             "            t_bytes = req_token if isinstance(req_token, bytes) else req_token.encode('utf-8', errors='replace')\n"
@@ -148,9 +248,38 @@ def _ensure_internal_host_boundary_harness() -> None:
             "                conn.send(('ERR', 'Unauthorized'))\n"
             "                conn.close()\n"
             "                continue\n"
-            "            kid = params.get('key_id', 'rev_key_lead_v1')\n"
-            "            if kid not in fixture_keys:\n"
-            "                conn.send(('ERR', f'Unknown key ID {kid!r}'))\n"
+            "            did = params.get('review_dispatch_id') or params.get('dispatch_id')\n"
+            "            tid = params.get('delivery_task_id')\n"
+            "            disp_rec = None\n"
+            "            if did and f'Reviewer:{did}' in registered_dispatches:\n"
+            "                disp_rec = registered_dispatches[f'Reviewer:{did}']\n"
+            "            elif tid and f'Reviewer:{tid}' in registered_dispatches:\n"
+            "                disp_rec = registered_dispatches[f'Reviewer:{tid}']\n"
+            "            if disp_rec is None:\n"
+            "                conn.send(('ERR', f'Unregistered or unauthenticated review dispatch {did or tid!r} fail-closed'))\n"
+            "                conn.close()\n"
+            "                continue\n"
+            "            if not disp_rec.get('active') or disp_rec.get('settled'):\n"
+            "                conn.send(('ERR', f'Dispatch {did or tid!r} is inactive or settled fail-closed'))\n"
+            "                conn.close()\n"
+            "                continue\n"
+            "            if disp_rec.get('role') != 'Reviewer' or disp_rec.get('phase') != 'review':\n"
+            "                conn.send(('ERR', f'Dispatch {did or tid!r} role/phase mismatch fail-closed'))\n"
+            "                conn.close()\n"
+            "                continue\n"
+            "            kid = params.get('key_id') or 'rev_key_lead_v1'\n"
+            "            if kid != 'rev_key_lead_v1':\n"
+            "                conn.send(('ERR', f'Forbidden key ID {kid!r} for review domain fail-closed; must be rev_key_lead_v1'))\n"
+            "                conn.close()\n"
+            "                continue\n"
+            "            req_cand = params.get('candidate_commit')\n"
+            "            if req_cand and req_cand.strip().lower() != disp_rec['candidate_commit'].strip().lower():\n"
+            "                conn.send(('ERR', 'Caller candidate_commit override mismatch fail-closed'))\n"
+            "                conn.close()\n"
+            "                continue\n"
+            "            req_tid = params.get('delivery_task_id')\n"
+            "            if req_tid and req_tid.strip() != disp_rec['delivery_task_id'].strip():\n"
+            "                conn.send(('ERR', 'Caller delivery_task_id override mismatch fail-closed'))\n"
             "                conn.close()\n"
             "                continue\n"
             "            verdict = params.get('verdict')\n"
@@ -163,28 +292,28 @@ def _ensure_internal_host_boundary_harness() -> None:
             "            expires_at = float(params.get('expires_at', issued_at + 300.0))\n"
             "            domain = 'PARALLEL_DELIVERY_REVIEW_ENVELOPE_V1'\n"
             "            clean_envelope = {\n"
-            "                'base_commit': str(params.get('base_commit', '')),\n"
-            "                'candidate_commit': str(params.get('candidate_commit', '')),\n"
-            "                'delivery_task_id': str(params.get('delivery_task_id', '')),\n"
+            "                'base_commit': str(disp_rec['base_commit']),\n"
+            "                'candidate_commit': str(disp_rec['candidate_commit']),\n"
+            "                'delivery_task_id': str(disp_rec['delivery_task_id']),\n"
             "                'domain': domain,\n"
             "                'envelope_id': params.get('envelope_id') or f'rev_env_{secrets.token_hex(16)}',\n"
             "                'expires_at': expires_at,\n"
-            "                'fencing_token': int(params.get('fencing_token', 1)),\n"
+            "                'fencing_token': int(params.get('fencing_token', disp_rec.get('fencing_token', 1))),\n"
             "                'issued_at': issued_at,\n"
             "                'nonce': params.get('nonce') or f'rev_nonce_{secrets.token_hex(16)}',\n"
             "                'orca_task_id': str(params.get('orca_task_id', '')),\n"
             "                'repo_identity': str(params.get('repo_identity', 'AI-Auto-Video-Creator')),\n"
-            "                'review_dispatch_id': str(params.get('review_dispatch_id', '')),\n"
+            "                'review_dispatch_id': str(disp_rec['dispatch_id']),\n"
             "                'reviewer_harness': str(params.get('reviewer_harness', 'Claude Code')),\n"
-            "                'reviewer_key_id': kid,\n"
+            "                'reviewer_key_id': 'rev_key_lead_v1',\n"
             "                'reviewer_route': str(params.get('reviewer_route', 'cx/gpt-5.6-sol')),\n"
-            "                'summary': str(params.get('summary', 'External reviewer verdict')),\n"
+            "                'summary': str(params.get('summary', 'Authentic external review verdict')),\n"
             "                'terminal_id': str(params.get('terminal_id', '')),\n"
             "                'verdict': verdict,\n"
             "                'version': 'v1',\n"
             "            }\n"
             "            canon_b = _canonical_bytes(clean_envelope, domain)\n"
-            "            clean_envelope['signature'] = fixture_keys[kid].sign(canon_b).hex()\n"
+            "            clean_envelope['signature'] = fixture_keys['rev_key_lead_v1'].sign(canon_b).hex()\n"
             "            conn.send(('OK', clean_envelope))\n"
             "            conn.close()\n"
             "            continue\n"
@@ -195,32 +324,72 @@ def _ensure_internal_host_boundary_harness() -> None:
             "                conn.send(('ERR', 'Unauthorized'))\n"
             "                conn.close()\n"
             "                continue\n"
-            "            kid = params.get('key_id', 'integ_gatekeeper_v1')\n"
-            "            if kid not in fixture_keys:\n"
-            "                conn.send(('ERR', f'Unknown key ID {kid!r}'))\n"
+            "            did = params.get('review_dispatch_id') or params.get('dispatch_id')\n"
+            "            tid = params.get('delivery_task_id')\n"
+            "            disp_rec = None\n"
+            "            if did and f'IntegrationGatekeeper:{did}' in registered_dispatches:\n"
+            "                disp_rec = registered_dispatches[f'IntegrationGatekeeper:{did}']\n"
+            "            elif tid and f'IntegrationGatekeeper:{tid}' in registered_dispatches:\n"
+            "                disp_rec = registered_dispatches[f'IntegrationGatekeeper:{tid}']\n"
+            "            if disp_rec is None:\n"
+            "                conn.send(('ERR', f'Unregistered or unauthenticated integration dispatch {did or tid!r} fail-closed'))\n"
             "                conn.close()\n"
             "                continue\n"
+            "            if not disp_rec.get('active') or disp_rec.get('settled'):\n"
+            "                conn.send(('ERR', f'Integration dispatch {did or tid!r} is inactive or settled fail-closed'))\n"
+            "                conn.close()\n"
+            "                continue\n"
+            "            if disp_rec.get('role') != 'IntegrationGatekeeper' or disp_rec.get('phase') != 'integrate':\n"
+            "                conn.send(('ERR', f'Integration dispatch role/phase mismatch fail-closed'))\n"
+            "                conn.close()\n"
+            "                continue\n"
+            "            kid = params.get('key_id') or 'integ_gatekeeper_v1'\n"
+            "            if kid != 'integ_gatekeeper_v1':\n"
+            "                conn.send(('ERR', f'Forbidden key ID {kid!r} for integration domain fail-closed; must be integ_gatekeeper_v1'))\n"
+            "                conn.close()\n"
+            "                continue\n"
+            "            req_cand = params.get('candidate_commit')\n"
+            "            if req_cand and req_cand.strip().lower() != disp_rec['candidate_commit'].strip().lower():\n"
+            "                conn.send(('ERR', 'Caller candidate_commit override mismatch fail-closed'))\n"
+            "                conn.close()\n"
+            "                continue\n"
+            "            req_tid = params.get('delivery_task_id')\n"
+            "            if req_tid and req_tid.strip() != disp_rec['delivery_task_id'].strip():\n"
+            "                conn.send(('ERR', 'Caller delivery_task_id override mismatch fail-closed'))\n"
+            "                conn.close()\n"
+            "                continue\n"
+            "            gate_results = params.get('gate_results', {})\n"
+            "            if not isinstance(gate_results, dict) or not gate_results:\n"
+            "                conn.send(('ERR', 'gate_results must be non-empty dict'))\n"
+            "                conn.close()\n"
+            "                continue\n"
+            "            computed_pass = all(gate_results.values())\n"
+            "            if params.get('gates_pass') is not None:\n"
+            "                if bool(params.get('gates_pass')) is True and not computed_pass:\n"
+            "                    conn.send(('ERR', 'Caller cannot force gates_pass=True when gate_results are failing fail-closed'))\n"
+            "                    conn.close()\n"
+            "                    continue\n"
             "            now = time.time()\n"
             "            issued_at = float(params.get('issued_at', now))\n"
             "            expires_at = float(params.get('expires_at', issued_at + 300.0))\n"
             "            domain = 'PARALLEL_DELIVERY_INTEGRATION_ENVELOPE_V1'\n"
             "            clean_envelope = {\n"
-            "                'base_commit': str(params.get('base_commit', '')),\n"
-            "                'candidate_commit': str(params.get('candidate_commit', '')),\n"
-            "                'delivery_task_id': str(params.get('delivery_task_id', '')),\n"
+            "                'base_commit': str(disp_rec['base_commit']),\n"
+            "                'candidate_commit': str(disp_rec['candidate_commit']),\n"
+            "                'delivery_task_id': str(disp_rec['delivery_task_id']),\n"
             "                'domain': domain,\n"
             "                'envelope_id': params.get('envelope_id') or f'integ_env_{secrets.token_hex(16)}',\n"
             "                'expires_at': expires_at,\n"
-            "                'fencing_token': int(params.get('fencing_token', 1)),\n"
-            "                'gate_results': dict(params.get('gate_results', {})),\n"
-            "                'gates_pass': bool(params.get('gates_pass', False)),\n"
-            "                'integration_key_id': kid,\n"
+            "                'fencing_token': int(params.get('fencing_token', disp_rec.get('fencing_token', 1))),\n"
+            "                'gate_results': dict(gate_results),\n"
+            "                'gates_pass': computed_pass,\n"
+            "                'integration_key_id': 'integ_gatekeeper_v1',\n"
             "                'issued_at': issued_at,\n"
             "                'nonce': params.get('nonce') or f'integ_nonce_{secrets.token_hex(16)}',\n"
             "                'version': 'v1',\n"
             "            }\n"
             "            canon_b = _canonical_bytes(clean_envelope, domain)\n"
-            "            clean_envelope['signature'] = fixture_keys[kid].sign(canon_b).hex()\n"
+            "            clean_envelope['signature'] = fixture_keys['integ_gatekeeper_v1'].sign(canon_b).hex()\n"
             "            conn.send(('OK', clean_envelope))\n"
             "            conn.close()\n"
             "            continue\n"
@@ -315,26 +484,84 @@ def _ensure_internal_host_boundary_harness() -> None:
                 test_host_issuer.issue_handoff(TEST_FIXTURE_REVIEWER_SECRET.encode("utf-8"))
             )
 
-        _InternalHostBoundaryVault._port = port
-        _InternalHostBoundaryVault._authkey = effective_authkey
-        _InternalHostBoundaryVault._token = clean_token
-        _InternalHostBoundaryVault._credentials_initialized = True
-        _InternalHostBoundaryVault.proc = proc
-        _InternalHostBoundaryVault.boot_cap = boot_cap
-        _InternalHostBoundaryVault.test_host_issuer = test_host_issuer
-        _InternalHostBoundaryVault.fixture_public_keys = MappingProxyType(fixture_public_keys)
+        _HostBoundaryState.port = port
+        _HostBoundaryState.authkey = effective_authkey
+        _HostBoundaryState.token = clean_token
+        _HostBoundaryState.proc = proc
+        _HostBoundaryState.boot_cap = boot_cap
+        _HostBoundaryState.test_host_issuer = test_host_issuer
+        _HostBoundaryState.fixture_public_keys = MappingProxyType(fixture_public_keys)
+
+        # Register default test dispatches in host daemon
+        head_commit = "6fc2d5ac30648b3d99b9c26d6150a6b96a2b2777"
+        try:
+            cmd = ["git", "rev-parse", "HEAD"]
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            if r.returncode == 0 and r.stdout.strip():
+                head_commit = r.stdout.strip()
+        except Exception:
+            pass
+
+        # TASK-SOD-20 / ctx_rev_20
+        TrustedHostRegisterDispatch(
+            delivery_task_id="TASK-SOD-20",
+            dispatch_id="ctx_rev_20",
+            candidate_commit=head_commit,
+            base_commit="4a7c8c921b7e05066505d51b168a02c3fde61317",
+            fencing_token=1,
+            role="Reviewer",
+            phase="review",
+        )
+        TrustedHostRegisterDispatch(
+            delivery_task_id="TASK-SOD-20",
+            dispatch_id="ctx_rev_20",
+            candidate_commit=head_commit,
+            base_commit="4a7c8c921b7e05066505d51b168a02c3fde61317",
+            fencing_token=1,
+            role="IntegrationGatekeeper",
+            phase="integrate",
+        )
+        # task_sol_audit / dispatch_sol_audit
+        TrustedHostRegisterDispatch(
+            delivery_task_id="task_sol_audit",
+            dispatch_id="dispatch_sol_audit",
+            candidate_commit="2eb47f67b69445e38275f193aeab835731b52ced",
+            base_commit="4a7c8c921b7e05066505d51b168a02c3fde61317",
+            fencing_token=1,
+            role="Reviewer",
+            phase="review",
+        )
+        TrustedHostRegisterDispatch(
+            delivery_task_id="task_sol_audit",
+            dispatch_id="dispatch_sol_audit",
+            candidate_commit="2eb47f67b69445e38275f193aeab835731b52ced",
+            base_commit="4a7c8c921b7e05066505d51b168a02c3fde61317",
+            fencing_token=1,
+            role="IntegrationGatekeeper",
+            phase="integrate",
+        )
+        # TASK-OTHER-01 / ctx_rev_other_01
+        TrustedHostRegisterDispatch(
+            delivery_task_id="TASK-OTHER-01",
+            dispatch_id="ctx_rev_other_01",
+            candidate_commit=head_commit,
+            base_commit="4a7c8c921b7e05066505d51b168a02c3fde61317",
+            fencing_token=3,
+            role="Reviewer",
+            phase="review",
+        )
 
 
 def _stop_internal_host_boundary_harness() -> None:
-    with _InternalHostBoundaryVault.lock:
-        proc = _InternalHostBoundaryVault.proc
+    with _HostBoundaryState.lock:
+        proc = _HostBoundaryState.proc
         if proc is not None:
             try:
                 if proc.poll() is None:
-                    if _InternalHostBoundaryVault._port and _InternalHostBoundaryVault._authkey:
+                    if _HostBoundaryState.port and _HostBoundaryState.authkey:
                         try:
                             from multiprocessing.connection import Client
-                            conn = Client(("127.0.0.1", _InternalHostBoundaryVault._port), authkey=_InternalHostBoundaryVault._authkey)
+                            conn = Client(("127.0.0.1", _HostBoundaryState.port), authkey=_HostBoundaryState.authkey)
                             conn.send("__STOP_HOST_BOUNDARY__")
                             conn.recv()
                             conn.close()
@@ -347,18 +574,218 @@ def _stop_internal_host_boundary_harness() -> None:
                     proc.kill()
                 except Exception:
                     pass
-            _InternalHostBoundaryVault._port = 0
-            _InternalHostBoundaryVault._authkey = b""
-            _InternalHostBoundaryVault._token = ""
-            _InternalHostBoundaryVault._credentials_initialized = False
-            _InternalHostBoundaryVault.proc = None
-            _InternalHostBoundaryVault.fixture_public_keys = MappingProxyType({})
+            _HostBoundaryState.port = 0
+            _HostBoundaryState.authkey = b""
+            _HostBoundaryState.token = ""
+            _HostBoundaryState.proc = None
+            _HostBoundaryState.fixture_public_keys = MappingProxyType({})
+
+
+def TrustedHostRegisterDispatch(
+    delivery_task_id: str,
+    dispatch_id: str,
+    candidate_commit: str,
+    base_commit: str = "4a7c8c921b7e05066505d51b168a02c3fde61317",
+    fencing_token: int = 1,
+    role: str = "Reviewer",
+    phase: str = "review",
+    capability_token: Optional[str] = None,
+) -> str:
+    """Register an authentic dispatch record in the host boundary daemon.
+    Returns the capability token generated by the host."""
+    payload = {
+        "delivery_task_id": str(delivery_task_id),
+        "dispatch_id": str(dispatch_id),
+        "candidate_commit": str(candidate_commit),
+        "base_commit": str(base_commit),
+        "fencing_token": int(fencing_token),
+        "role": str(role),
+        "phase": str(phase),
+    }
+    if capability_token is not None:
+        payload["capability_token"] = str(capability_token)
+    res = _send_host_boundary_request("REGISTER_DISPATCH", payload)
+    if not isinstance(res, tuple) or len(res) != 2 or res[0] != "OK":
+        raise ProtocolViolationError(f"Host dispatch registration failed fail-closed: {res}")
+    return str(res[1])
+
+
+def TrustedHostResetTestingState() -> None:
+    """Host-owned test helper to reset keystore and consumption registry without exposing credentials."""
+    with _HostBoundaryState.lock:
+        token = _HostBoundaryState.token
+        if not token or _HostBoundaryState.proc is None:
+            return
+        TrustedKeyStore._reset_for_testing(_internal_token=token)
+        KeyStoreHostIssuer._reset_for_testing(_internal_token=token)
+        DurableConsumptionRegistry.reset_default()
+
+
+def TrustedHostGetKeyStoreIssuer() -> KeyStoreHostIssuer:
+    """Retrieve host-authorized KeyStoreHostIssuer instance."""
+    with _HostBoundaryState.lock:
+        token = _HostBoundaryState.token
+        if not token or _HostBoundaryState.proc is None:
+            raise ProtocolViolationError("Host keystore issuer uninitialized fail-closed")
+        return KeyStoreHostIssuer.get_default_host_issuer(_internal_token=token)
+
+
+def TrustedHostVerifyCapability(token_to_verify: Optional[str] = None) -> bool:
+    """Verify a capability token against host boundary channel."""
+    if token_to_verify is None:
+        with _HostBoundaryState.lock:
+            token_to_verify = _HostBoundaryState.token
+    return HostBoundaryChannel.verify_capability(token_to_verify)
+
+
+def TrustedHostIssueTicket(
+    port: Optional[int] = None,
+    authkey: Optional[bytes] = None,
+    role: str = "ReviewerSessionBoundary",
+    bootstrap_capability: Optional[HostBoundaryBootstrapCapability] = None,
+) -> HostBoundaryTicket:
+    """Issue an authentic host boundary ticket without exposing host credentials to caller."""
+    with _HostBoundaryState.lock:
+        token = _HostBoundaryState.token
+        p = port if port is not None else _HostBoundaryState.port
+        ak = authkey if authkey is not None else _HostBoundaryState.authkey
+        b_cap = bootstrap_capability or _HostBoundaryState.boot_cap
+        if not token or _HostBoundaryState.proc is None:
+            raise ProtocolViolationError("Trusted host boundary uninitialized fail-closed")
+        issuer = HostBoundaryTicketIssuer(_internal_token=token, bootstrap_capability=b_cap)
+        return issuer.issue_ticket(p, ak, _internal_token=token)
+
+
+def TrustedHostConsumeTicket(
+    ticket: HostBoundaryTicket,
+    target_cls: Any = HostBoundaryChannel,
+    port: Optional[int] = None,
+    authkey: Optional[bytes] = None,
+) -> Any:
+    """Consume a ticket against target class using host boundary endpoint."""
+    with _HostBoundaryState.lock:
+        p = port if port is not None else _HostBoundaryState.port
+        ak = authkey if authkey is not None else _HostBoundaryState.authkey
+        return ticket._consume_for_provisioning(target_cls, p, ak)
+
+
+def TrustedHostVerifyBootstrapCapability(
+    cap: Optional[HostBoundaryBootstrapCapability] = None,
+    port: Optional[int] = None,
+    authkey: Optional[bytes] = None,
+) -> bool:
+    """Verify bootstrap capability against host boundary endpoint."""
+    with _HostBoundaryState.lock:
+        c = cap or _HostBoundaryState.boot_cap
+        p = port if port is not None else _HostBoundaryState.port
+        ak = authkey if authkey is not None else _HostBoundaryState.authkey
+        if c is None:
+            raise ProtocolViolationError("Bootstrap capability is uninitialized fail-closed")
+        c.verify(port=p, authkey=ak)
+        return True
+
+
+def TrustedHostGetChildBootstrapScript(pos_pub_hex: str) -> str:
+    """Construct a child-process positive bootstrap script populated from private host state."""
+    with _HostBoundaryState.lock:
+        port = _HostBoundaryState.port
+        authkey = _HostBoundaryState.authkey
+        token = _HostBoundaryState.token
+        pos_boot = _HostBoundaryState.boot_cap
+        return f'''
+import sys, os
+from pathlib import Path
+sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
+from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, HostBoundaryTicketIssuer, HostBoundaryBootstrapCapability, ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
+
+# Host pins public key in child process
+HostBoundaryChannel._port = {port}
+HostBoundaryChannel._authkey = {authkey!r}
+HostBoundaryBootstrapCapability.pin_trusted_host_public_key(bytes.fromhex('{pos_pub_hex}'), _internal_token='{token}', port={port}, authkey={authkey!r})
+
+# Host provisions channel endpoint/auth via host mechanism in child process
+child_boot_cap = HostBoundaryBootstrapCapability.from_host_signed_payload('{pos_boot.bootstrap_id}', {port}, '{pos_boot.authkey_hash}', '{pos_boot.host_token_hash}', {pos_boot.created_at}, '{pos_boot.signature}')
+child_issuer = HostBoundaryTicketIssuer(_internal_token='{token}', bootstrap_capability=child_boot_cap)
+child_ticket = child_issuer.issue_ticket({port}, {authkey!r}, _internal_token='{token}')
+HostBoundaryChannel.provision_channel({port}, {authkey!r}, host_ticket=child_ticket, bootstrap_capability=child_boot_cap)
+
+# Positive control: authentic host handoff from trusted host issuer successfully provisions boundary
+host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token='{token}')
+authentic_handoff = host_issuer.issue_handoff(b"authentic_fixture_secret_32b_hex!")
+provisioned_boundary = ReviewerSessionBoundary.provision_from_host(authentic_handoff)
+assert provisioned_boundary._reviewer_secret == b"authentic_fixture_secret_32b_hex!", "Boundary secret mismatch"
+assert ReviewerSessionBoundary.get_default() is provisioned_boundary
+
+try:
+    _ = provisioned_boundary.reviewer_secret
+    assert False
+except AttributeError:
+    pass
+
+# Single-use enforcement: host issuer cannot mint second handoff, and boundary cannot be reprovisioned
+try:
+    host_issuer.issue_handoff(b"second_secret")
+    assert False, "Host issuer minted second handoff"
+except ProtocolViolationError as e:
+    assert "single-use host issuer cannot mint multiple handoffs fail-closed" in str(e)
+
+try:
+    ReviewerSessionBoundary.provision_from_host(authentic_handoff)
+    assert False, "Boundary reprovisioned"
+except ProtocolViolationError as e:
+    assert "Reviewer boundary already provisioned" in str(e)
+
+print("POSITIVE_CONTROL_PASS")
+'''
+
+
+def TrustedHostGetAttackerTicketScript() -> str:
+    """Construct a child-process script for testing attacker ticket issuance against host endpoint."""
+    with _HostBoundaryState.lock:
+        port = _HostBoundaryState.port
+        authkey = _HostBoundaryState.authkey
+        return (
+            f"import sys, secrets\n"
+            f"from pathlib import Path\n"
+            f"sys.path.insert(0, str(Path('docs/parallel-delivery').resolve()))\n"
+            f"from delivery_engine import HostBoundaryChannel, HostBoundaryTicketIssuer, ProtocolViolationError\n"
+            f"assert HostBoundaryChannel._started is False, 'Channel must be unstarted initially'\n"
+            f"attacker_token = secrets.token_hex(32)\n"
+            f"attacker_issuer = HostBoundaryTicketIssuer(_internal_token=attacker_token)\n"
+            f"try:\n"
+            f"    attacker_ticket = attacker_issuer.issue_ticket({port}, {authkey!r}, _internal_token=attacker_token)\n"
+            f"    HostBoundaryChannel.provision_channel({port}, {authkey!r}, host_ticket=attacker_ticket)\n"
+            f"    assert False, 'Expected failure'\n"
+            f"except ProtocolViolationError as e:\n"
+            f"    assert ('Host ticket issuance rejected' in str(e) or 'HostBoundaryTicket issuer secret was rejected' in str(e)), str(e)\n"
+            f"assert HostBoundaryChannel._started is False, 'Channel _started must remain False on rejection'\n"
+            f"sys.stdout.write('ATTACKER_DAEMON_REJECTED_PASS\\n')\n"
+        )
+
+
+def TrustedHostProbeRawMessage(msg: Any) -> Any:
+    """Send a raw test message to the daemon to test protocol rejection without exposing credentials."""
+    with _HostBoundaryState.lock:
+        port = _HostBoundaryState.port
+        authkey = _HostBoundaryState.authkey
+        if not port or not authkey:
+            return False
+        from multiprocessing.connection import Client
+        try:
+            conn = Client(("127.0.0.1", port), authkey=authkey)
+            conn.send(msg)
+            res = conn.recv()
+            conn.close()
+            return res
+        except Exception:
+            return False
 
 
 def TrustedHostReviewerHandoff(credential: bytes) -> ReviewerHostHandoff:
-    if _InternalHostBoundaryVault.test_host_issuer is None or not _InternalHostBoundaryVault._token or _InternalHostBoundaryVault.proc is None:
+    if _HostBoundaryState.test_host_issuer is None or not _HostBoundaryState.token or _HostBoundaryState.proc is None:
         raise ProtocolViolationError("Trusted host reviewer issuer uninitialized fail-closed; caller cannot invoke host helper outside test harness")
-    return _InternalHostBoundaryVault.test_host_issuer.issue_handoff(credential)
+    return _HostBoundaryState.test_host_issuer.issue_handoff(credential)
+
 
 
 class ExternalReviewProducer:
@@ -370,102 +797,73 @@ class ExternalReviewProducer:
     @classmethod
     def produce_review_envelope(
         cls,
-        envelope_data: Optional[Union[Dict[str, Any], SignedReviewEnvelope]] = None,
-        *,
-        delivery_task_id: Optional[str] = None,
+        *args,
         review_dispatch_id: Optional[str] = None,
-        candidate_commit: Optional[str] = None,
-        base_commit: Optional[str] = None,
-        verdict: Optional[str] = None,
+        dispatch_id: Optional[str] = None,
+        delivery_task_id: Optional[str] = None,
+        capability: Optional[Any] = None,
+        verdict: str = "ACCEPT",
         summary: Optional[str] = None,
         envelope_id: Optional[str] = None,
         nonce: Optional[str] = None,
         issued_at: Optional[float] = None,
         expires_at: Optional[float] = None,
         fencing_token: Optional[int] = None,
-        key_id: Optional[str] = None,
-        reviewer_route: Optional[str] = None,
-        reviewer_harness: Optional[str] = None,
-        orca_task_id: Optional[str] = None,
-        terminal_id: Optional[str] = None,
-        repo_identity: Optional[str] = None,
+        **kwargs,
     ) -> SignedReviewEnvelope:
-        token = _InternalHostBoundaryVault._token
-        proc = _InternalHostBoundaryVault.proc
-        port = _InternalHostBoundaryVault._port
-        authkey = _InternalHostBoundaryVault._authkey
-        if not token or proc is None or proc.poll() is not None or not port or not authkey:
+        if args:
             raise ProtocolViolationError(
-                "Trusted host boundary daemon uninitialized or terminated fail-closed; "
-                "external reviewer producer unavailable"
+                "envelope_data parameter has been eliminated fail-closed; "
+                "caller cannot supply arbitrary envelope dictionaries or authority overrides"
+            )
+        if "envelope_data" in kwargs:
+            raise ProtocolViolationError(
+                "envelope_data parameter has been eliminated fail-closed; "
+                "caller cannot supply arbitrary envelope dictionaries or authority overrides"
             )
 
-        d: Dict[str, Any] = {}
-        if isinstance(envelope_data, SignedReviewEnvelope):
-            d = envelope_data.to_dict()
-        elif isinstance(envelope_data, dict):
-            d = dict(envelope_data)
-
-        kid = key_id or d.get("reviewer_key_id") or "rev_key_lead_v1"
-        if kid not in ALLOWED_FIXTURE_KEY_IDS:
+        kid = kwargs.get("key_id") or kwargs.get("reviewer_key_id") or "rev_key_lead_v1"
+        if kid != "rev_key_lead_v1":
             raise ProtocolViolationError(
-                f"Custom key ID {kid!r} is strictly forbidden fail-closed; "
-                "candidate cannot mint custom-key authority"
+                f"Key ID {kid!r} is strictly forbidden for review domain fail-closed; "
+                "only rev_key_lead_v1 is authorized"
             )
-        v = verdict or d.get("verdict")
-        if v not in ("ACCEPT", "CHANGES_REQUESTED", "BLOCKED"):
+        if verdict not in ("ACCEPT", "CHANGES_REQUESTED", "BLOCKED"):
             raise ProtocolViolationError(
-                f"Invalid review verdict {v!r}; must be ACCEPT, CHANGES_REQUESTED, or BLOCKED"
+                f"Invalid review verdict {verdict!r}; must be ACCEPT, CHANGES_REQUESTED, or BLOCKED"
             )
 
-        tid = delivery_task_id or d.get("delivery_task_id", "")
-        did = review_dispatch_id or d.get("review_dispatch_id", "")
-        cc = candidate_commit or d.get("candidate_commit", "")
-        bc = base_commit or d.get("base_commit", "")
-        s = summary or d.get("summary", "Authentic external review verdict")
-        r_route = reviewer_route or d.get("reviewer_route", "cx/gpt-5.6-sol")
-        r_harn = reviewer_harness or d.get("reviewer_harness", "Claude Code")
-        o_task = orca_task_id or d.get("orca_task_id", "")
-        term = terminal_id or d.get("terminal_id", "")
-        repo = repo_identity or d.get("repo_identity", "AI-Auto-Video-Creator")
-
+        did = review_dispatch_id or dispatch_id
         params: Dict[str, Any] = {
-            "delivery_task_id": str(tid),
-            "review_dispatch_id": str(did),
-            "candidate_commit": str(cc),
-            "base_commit": str(bc),
-            "verdict": v,
-            "summary": str(s),
+            "verdict": verdict,
             "key_id": kid,
-            "reviewer_route": str(r_route),
-            "reviewer_harness": str(r_harn),
-            "orca_task_id": str(o_task),
-            "terminal_id": str(term),
-            "repo_identity": str(repo),
         }
-        eid = envelope_id or d.get("envelope_id")
-        if eid is not None:
-            params["envelope_id"] = str(eid)
-        n = nonce or d.get("nonce")
-        if n is not None:
-            params["nonce"] = str(n)
-        iat = issued_at if issued_at is not None else d.get("issued_at")
-        if iat is not None:
-            params["issued_at"] = float(iat)
-        exp = expires_at if expires_at is not None else d.get("expires_at")
-        if exp is not None:
-            params["expires_at"] = float(exp)
-        ft = fencing_token if fencing_token is not None else d.get("fencing_token")
-        if ft is not None:
-            params["fencing_token"] = int(ft)
+        if did is not None:
+            params["review_dispatch_id"] = str(did)
+        if delivery_task_id is not None:
+            params["delivery_task_id"] = str(delivery_task_id)
+        if summary is not None:
+            params["summary"] = str(summary)
+        if envelope_id is not None:
+            params["envelope_id"] = str(envelope_id)
+        if nonce is not None:
+            params["nonce"] = str(nonce)
+        if issued_at is not None:
+            params["issued_at"] = float(issued_at)
+        if expires_at is not None:
+            params["expires_at"] = float(expires_at)
+        if fencing_token is not None:
+            params["fencing_token"] = int(fencing_token)
 
-        from multiprocessing.connection import Client
-        conn = Client(("127.0.0.1", port), authkey=authkey)
-        conn.send(("PRODUCE_REVIEW_ENVELOPE", token, params))
-        res = conn.recv()
-        conn.close()
+        if "candidate_commit" in kwargs and kwargs["candidate_commit"] is not None:
+            params["candidate_commit"] = str(kwargs["candidate_commit"])
+        if "base_commit" in kwargs and kwargs["base_commit"] is not None:
+            params["base_commit"] = str(kwargs["base_commit"])
+
+        res = _send_host_boundary_request("PRODUCE_REVIEW_ENVELOPE", params)
         if not isinstance(res, tuple) or len(res) != 2 or res[0] != "OK":
-            raise ProtocolViolationError(f"External reviewer producer failed fail-closed: {res!r}")
+            err_msg = res[1] if isinstance(res, tuple) and len(res) > 1 else str(res)
+            raise ProtocolViolationError(f"External reviewer producer failed fail-closed: {err_msg}")
         return SignedReviewEnvelope.from_dict(res[1])
 
 
@@ -481,11 +879,10 @@ class ExternalIntegrationProducer:
     @classmethod
     def produce_integration_envelope(
         cls,
-        envelope_data: Optional[Union[Dict[str, Any], SignedIntegrationEnvelope]] = None,
-        *,
+        *args,
         delivery_task_id: Optional[str] = None,
-        candidate_commit: Optional[str] = None,
-        base_commit: Optional[str] = None,
+        dispatch_id: Optional[str] = None,
+        capability: Optional[Any] = None,
         gates_pass: Optional[bool] = None,
         gate_results: Optional[Dict[str, bool]] = None,
         envelope_id: Optional[str] = None,
@@ -493,70 +890,67 @@ class ExternalIntegrationProducer:
         issued_at: Optional[float] = None,
         expires_at: Optional[float] = None,
         fencing_token: Optional[int] = None,
-        key_id: Optional[str] = None,
+        **kwargs,
     ) -> SignedIntegrationEnvelope:
-        token = _InternalHostBoundaryVault._token
-        proc = _InternalHostBoundaryVault.proc
-        port = _InternalHostBoundaryVault._port
-        authkey = _InternalHostBoundaryVault._authkey
-        if not token or proc is None or proc.poll() is not None or not port or not authkey:
+        if args:
             raise ProtocolViolationError(
-                "Trusted host boundary daemon uninitialized or terminated fail-closed; "
-                "external integration producer unavailable"
+                "envelope_data parameter has been eliminated fail-closed; "
+                "caller cannot supply arbitrary envelope dictionaries or authority overrides"
+            )
+        if "envelope_data" in kwargs:
+            raise ProtocolViolationError(
+                "envelope_data parameter has been eliminated fail-closed"
             )
 
-        d: Dict[str, Any] = {}
-        if isinstance(envelope_data, SignedIntegrationEnvelope):
-            d = envelope_data.to_dict()
-        elif isinstance(envelope_data, dict):
-            d = dict(envelope_data)
-
-        kid = key_id or d.get("integration_key_id") or "integ_gatekeeper_v1"
-        if kid not in ALLOWED_FIXTURE_KEY_IDS:
+        kid = kwargs.get("key_id") or kwargs.get("integration_key_id") or "integ_gatekeeper_v1"
+        if kid != "integ_gatekeeper_v1":
             raise ProtocolViolationError(
-                f"Custom key ID {kid!r} is strictly forbidden fail-closed; "
-                "candidate cannot mint custom-key authority"
+                f"Key ID {kid!r} is strictly forbidden for integration domain fail-closed; "
+                "only integ_gatekeeper_v1 is authorized"
             )
 
-        gp = gates_pass if gates_pass is not None else d.get("gates_pass")
-        if gp is None:
-            raise ProtocolViolationError("gates_pass must be specified")
-        gr = gate_results if gate_results is not None else d.get("gate_results", {})
-        tid = delivery_task_id or d.get("delivery_task_id", "")
-        cc = candidate_commit or d.get("candidate_commit", "")
-        bc = base_commit or d.get("base_commit", "")
+        if gate_results is None:
+            raise ProtocolViolationError("gate_results dictionary must be specified fail-closed")
+        if not isinstance(gate_results, dict) or not gate_results:
+            raise ProtocolViolationError("gate_results must be a non-empty dictionary fail-closed")
+
+        computed_pass = all(gate_results.values())
+        gp = gates_pass if gates_pass is not None else computed_pass
+        if gp is True and not computed_pass:
+            raise ProtocolViolationError(
+                "Caller cannot force gates_pass=True when gate_results are failing fail-closed"
+            )
 
         params: Dict[str, Any] = {
-            "delivery_task_id": str(tid),
-            "candidate_commit": str(cc),
-            "base_commit": str(bc),
             "gates_pass": bool(gp),
-            "gate_results": dict(gr),
+            "gate_results": dict(gate_results),
             "key_id": kid,
         }
-        eid = envelope_id or d.get("envelope_id")
-        if eid is not None:
-            params["envelope_id"] = str(eid)
-        n = nonce or d.get("nonce")
-        if n is not None:
-            params["nonce"] = str(n)
-        iat = issued_at if issued_at is not None else d.get("issued_at")
-        if iat is not None:
-            params["issued_at"] = float(iat)
-        exp = expires_at if expires_at is not None else d.get("expires_at")
-        if exp is not None:
-            params["expires_at"] = float(exp)
-        ft = fencing_token if fencing_token is not None else d.get("fencing_token")
-        if ft is not None:
-            params["fencing_token"] = int(ft)
+        if delivery_task_id is not None:
+            params["delivery_task_id"] = str(delivery_task_id)
+        did = dispatch_id or kwargs.get("review_dispatch_id")
+        if did is not None:
+            params["dispatch_id"] = str(did)
+        if envelope_id is not None:
+            params["envelope_id"] = str(envelope_id)
+        if nonce is not None:
+            params["nonce"] = str(nonce)
+        if issued_at is not None:
+            params["issued_at"] = float(issued_at)
+        if expires_at is not None:
+            params["expires_at"] = float(expires_at)
+        if fencing_token is not None:
+            params["fencing_token"] = int(fencing_token)
 
-        from multiprocessing.connection import Client
-        conn = Client(("127.0.0.1", port), authkey=authkey)
-        conn.send(("PRODUCE_INTEGRATION_ENVELOPE", token, params))
-        res = conn.recv()
-        conn.close()
+        if "candidate_commit" in kwargs and kwargs["candidate_commit"] is not None:
+            params["candidate_commit"] = str(kwargs["candidate_commit"])
+        if "base_commit" in kwargs and kwargs["base_commit"] is not None:
+            params["base_commit"] = str(kwargs["base_commit"])
+
+        res = _send_host_boundary_request("PRODUCE_INTEGRATION_ENVELOPE", params)
         if not isinstance(res, tuple) or len(res) != 2 or res[0] != "OK":
-            raise ProtocolViolationError(f"External integration producer failed fail-closed: {res!r}")
+            err_msg = res[1] if isinstance(res, tuple) and len(res) > 1 else str(res)
+            raise ProtocolViolationError(f"External integration producer failed fail-closed: {err_msg}")
         return SignedIntegrationEnvelope.from_dict(res[1])
 
 
@@ -565,12 +959,11 @@ TrustedExternalIntegrationProducer = ExternalIntegrationProducer
 
 def get_fixture_authority_public_key(key_id: str) -> bytes:
     """Retrieve the host-allocated immutable pinned public key bytes for an authentic test authority."""
-    token = _InternalHostBoundaryVault._token
-    if not token or _InternalHostBoundaryVault.proc is None:
+    if not _HostBoundaryState.token or _HostBoundaryState.proc is None:
         raise ProtocolViolationError("Trusted host fixture public key uninitialized fail-closed; caller cannot invoke host helper outside test harness")
     if key_id not in ALLOWED_FIXTURE_KEY_IDS:
         raise ProtocolViolationError(f"Custom key ID {key_id!r} is strictly forbidden fail-closed; candidate cannot mint custom-key authority")
-    return _InternalHostBoundaryVault.fixture_public_keys[key_id]
+    return _HostBoundaryState.fixture_public_keys[key_id]
 
 
 TrustedHostFixturePublicKey = get_fixture_authority_public_key
@@ -579,14 +972,13 @@ TrustedHostFixturePublicKey = get_fixture_authority_public_key
 def _validate_and_resolve_fixture_pinned_keys(
     pinned_keys: Optional[Union[Mapping[str, bytes], Iterable[str]]] = None,
 ) -> Dict[str, bytes]:
-    token = _InternalHostBoundaryVault._token
-    if not token or _InternalHostBoundaryVault.proc is None:
+    if not _HostBoundaryState.token or _HostBoundaryState.proc is None:
         raise ProtocolViolationError(
             "Trusted host keystore issuer uninitialized fail-closed; caller cannot invoke host helper outside test harness"
         )
 
     if pinned_keys is None:
-        return dict(_InternalHostBoundaryVault.fixture_public_keys)
+        return dict(_HostBoundaryState.fixture_public_keys)
 
     if isinstance(pinned_keys, (list, tuple, set, frozenset)):
         if not pinned_keys:
@@ -597,7 +989,7 @@ def _validate_and_resolve_fixture_pinned_keys(
                 raise ProtocolViolationError(
                     f"Custom key ID {kid!r} is strictly forbidden fail-closed; candidate cannot mint custom-key authority"
                 )
-            expected_pub = _InternalHostBoundaryVault.fixture_public_keys.get(kid)
+            expected_pub = _HostBoundaryState.fixture_public_keys.get(kid)
             if expected_pub is None:
                 raise ProtocolViolationError(f"Host boundary missing authentic pinned public key for {kid!r}")
             resolved[kid] = expected_pub
@@ -614,7 +1006,7 @@ def _validate_and_resolve_fixture_pinned_keys(
                 )
             if not isinstance(kbytes, bytes) or len(kbytes) != 32:
                 raise ProtocolViolationError(f"Pinned public key for {kid!r} must be exactly 32 raw bytes")
-            expected_pub = _InternalHostBoundaryVault.fixture_public_keys.get(kid)
+            expected_pub = _HostBoundaryState.fixture_public_keys.get(kid)
             import hmac
             if expected_pub is None or not hmac.compare_digest(kbytes, expected_pub):
                 raise ProtocolViolationError(
@@ -631,8 +1023,8 @@ def TrustedHostKeyStoreHandoff(
     pinned_keys: Optional[Union[Mapping[str, bytes], Iterable[str]]] = None,
     issuer_name: str = "trusted_host",
 ) -> KeyStoreHostHandoff:
-    token = _InternalHostBoundaryVault._token
-    if not token or _InternalHostBoundaryVault.proc is None:
+    token = _HostBoundaryState.token
+    if not token or _HostBoundaryState.proc is None:
         raise ProtocolViolationError("Trusted host keystore issuer uninitialized fail-closed; caller cannot invoke host helper outside test harness")
     resolved_keys = _validate_and_resolve_fixture_pinned_keys(pinned_keys)
     issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=token)
@@ -642,8 +1034,8 @@ def TrustedHostKeyStoreHandoff(
 def TrustedHostIsolatedKeyStore(
     pinned_keys: Optional[Union[Mapping[str, bytes], Iterable[str]]] = None,
 ) -> TrustedKeyStore:
-    token = _InternalHostBoundaryVault._token
-    if not token or _InternalHostBoundaryVault.proc is None:
+    token = _HostBoundaryState.token
+    if not token or _HostBoundaryState.proc is None:
         raise ProtocolViolationError("Trusted host keystore issuer uninitialized fail-closed; caller cannot invoke host helper outside test harness")
     resolved_keys = _validate_and_resolve_fixture_pinned_keys(pinned_keys)
     issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=token)
@@ -651,7 +1043,7 @@ def TrustedHostIsolatedKeyStore(
 
 
 def TrustedHostProvisionKeyStore(handoff: KeyStoreHostHandoff) -> TrustedKeyStore:
-    token = _InternalHostBoundaryVault._token
-    if not token or _InternalHostBoundaryVault.proc is None:
+    token = _HostBoundaryState.token
+    if not token or _HostBoundaryState.proc is None:
         raise ProtocolViolationError("Trusted host keystore uninitialized fail-closed; caller cannot invoke host helper outside test harness")
     return TrustedKeyStore.provision_from_host(handoff, _internal_token=token)

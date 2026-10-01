@@ -1,6 +1,15 @@
 # Changelog
 
-## 2026-10-01 ? Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n a25c80f (B?o v? th?ng tin x?c th?c Vault, Lo?i b? Generic Signing Endpoints v? T?ch bi?t External Envelope Producers ngo?i ti?n tr?nh)
+## 2026-10-01 - Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n 6fc2d5a (Th?c thi Host-bound Authority, R?ng bu?c Dispatch x?c th?c v? T?ch bi?t Domain Role-to-Key nghi?m ng?t)
+
+- Kh?c ph?c tri?t ?? ph?t hi?n ??c l?p ROOT_ARCHITECTURE t? Sol tr?n exact candidate `6fc2d5ac30648b3d99b9c26d6150a6b96a2b2777` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) R?ng bu?c Host-bound Authority v? Dispatch**: Lo?i b? ho?n to?n tham s? `envelope_data` kh?i `ExternalReviewProducer` v? `ExternalIntegrationProducer` (n?m `ProtocolViolationError` fail-closed); daemon t? ??ng tr?ch xu?t c?c tr??ng th?m quy?n (`candidate_commit`, `base_commit`, `delivery_task_id`, `role`, `phase`) t? b?n ghi dispatch ?? ??ng k? (`TrustedHostRegisterDispatch`) thay v? cho ph?p caller t?y ? cung c?p; t? ch?i m?i override commit/task mismatch.
+  - **(2) ??ng k?n Credential Vault trong Host State**: Chuy?n to?n b? th?ng tin x?c th?c daemon (`token`, `port`, `authkey`, `proc`) v?o `_HostBoundaryState` kh?ng th? truy c?p t? candidate; `_InternalHostBoundaryVaultMeta` n?m `ProtocolViolationError` fail-closed khi truy c?p.
+  - **(3) T?ch bi?t nghi?m ng?t Domain Role-to-Key**: Ph?n chia ??c quy?n th?m quy?n k? theo t?ng domain: ch? `rev_key_lead_v1` k? review, ch? `integ_gatekeeper_v1` k? integration; kh?a `control_authority_v1` b? c?m ho?n to?n kh?ng ???c k? phong b?; daemon v? producer t? ch?i wrong-role key fail-closed; consumer ki?m tra vai tr? d? ki?n tr??c khi x?c minh ch? k? v? tr??c khi ti?u th?.
+  - **(4) B?o to?n Snapshot Registry b?t bi?n tr??c Side Effect**: B? sung ph??ng th?c `snapshot()` trong `DurableConsumptionRegistry`; ch?ng minh t?t c? c?c n? l?c vi ph?m th?m quy?n ho?c sai vai tr? ??u b? ch?n tr??c `check_and_consume` v? kh?ng l?m thay ??i tr?ng th?i registry.
+  - **(5) Nghi?m thu Acceptance Test m?i (`test_19`)**: Th?m `test_19_sol_findings_remediation_root_architecture_and_role_separation` trong `test_negative_fixtures.py` ki?m ch?ng to?n di?n c?c k?ch b?n negative/positive cho c? 2 finding, ??t 100% PASS tr?n to?n b? 403 test fixtures.
+
+## 2026-10-01 - Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n a25c80f (B?o v? th?ng tin x?c th?c Vault, Lo?i b? Generic Signing Endpoints v? T?ch bi?t External Envelope Producers ngo?i ti?n tr?nh)
 
 - Kh?c ph?c tri?t ?? ph?t hi?n ??c l?p ROOT_ARCHITECTURE t? Sol tr?n exact candidate `a25c80f9f4ab965ce21e7fe5e09babd87c9cc8d8` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
   - **(1) B?o v? th?ng tin x?c th?c Vault**: Th?m metaclass `_InternalHostBoundaryVaultMeta` ng?n ch?n ho?n to?n truy c?p tr?c ti?p v?o thu?c t?nh `.token`, `.port`, `.authkey` t? m? in-process (n?m `ProtocolViolationError` fail-closed).

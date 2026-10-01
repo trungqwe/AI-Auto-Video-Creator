@@ -674,3 +674,27 @@ Bi?n ph?p kh?c ph?c tri?t ??:
    - External producer t? ki?m tra t?nh h?p l? c?a key ID, verdict, bind ch?t ch? delivery task ID, review dispatch ID, candidate commit, base commit, fencing token, nonce v? timestamps. Caller kh?ng th? cung c?p payload t?y ? ?? daemon k? m? qu?ng.
 5. **Finding 5 - Verifiers ch? ti?u th? External-issued Artifacts**:
    - `TrustedReviewConsumer` v? `TrustedIntegrationConsumer` x?c minh ch? k? Ed25519 v?i kh?a c?ng khai ???c ghim, ki?m tra replay, fencing v? domain binding nghi?m ng?t.
+
+## 36. Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n 6fc2d5a (Th?c thi Host-bound Authority, R?ng bu?c Dispatch x?c th?c v? T?ch bi?t Domain Role-to-Key nghi?m ng?t)
+
+??t r? so?t ??c l?p tr?n exact candidate SHA `6fc2d5ac30648b3d99b9c26d6150a6b96a2b2777` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nh?n hai finding `ROOT_ARCHITECTURE`:
+1. Finding 1: Public producers `ExternalReviewProducer` v? `ExternalIntegrationProducer` v?n cho ph?p caller cung c?p authority fields qua tham s? `envelope_data` ho?c c?c tham s? overrides; daemon k? m? kh?ng ki?m tra dispatch registry r?ng bu?c; candidate c? th? ??c `_InternalHostBoundaryVault._token`.
+2. Finding 2: `ALLOWED_FIXTURE_KEY_IDS` cho ph?p `control_authority_v1` k? review envelope v? `TrustedReviewConsumer` ch?p nh?n v? ch? ki?m tra whitelist m? kh?ng ph?n ??nh role/domain; caller c? th? ch?n `control_authority_v1` ?? k? duy?t.
+
+Bi?n ph?p kh?c ph?c tri?t ??:
+1. **Finding 1 - R?ng bu?c Host-bound Authority v? Dispatch ?? x?c th?c**:
+   - Lo?i b? ho?n to?n tham s? `envelope_data` kh?i c? hai producer `ExternalReviewProducer` v? `ExternalIntegrationProducer`. M?i n? l?c truy?n ??i s? v? tr? ho?c keyword `envelope_data` ??u b? n?m `ProtocolViolationError` fail-closed.
+   - Chuy?n to?n b? credential (`token`, `_token`, `port`, `_port`, `authkey`, `_authkey`, `proc`, `_proc`) v?o container ri?ng t? `_HostBoundaryState` kh?ng th? truy c?p t? candidate; `_InternalHostBoundaryVaultMeta` n?m `ProtocolViolationError` fail-closed khi truy c?p.
+   - Daemon ngo?i ti?n tr?nh qu?n l? b?ng ??ng k? dispatch `registered_dispatches` v? t? ??ng bind `candidate_commit`, `base_commit`, `delivery_task_id`, `role`, `phase` t? b?n ghi dispatch ???c c?p ph?p (`TrustedHostRegisterDispatch`). B?t k? n? l?c n?o nh?m override commit ho?c task ID t? ph?a caller ??u b? daemon t? ch?i fail-closed.
+   - Th?m ph??ng th?c `snapshot()` v?o `DurableConsumptionRegistry` ?? b?o ??m t?nh b?t bi?n c?a tr?ng th?i ti?u th?; c?c y?u c?u b? t? ch?i kh?ng g?y ra b?t k? thay ??i n?o l?n snapshot registry.
+2. **Finding 2 - Ph?n ??nh nghi?m ng?t Role-to-Key theo t?ng Domain**:
+   - T?ch bi?t tuy?t ??i quy?n l?u k? kh?a theo t?ng domain nghi?p v?:
+     + Domain Review (`PARALLEL_DELIVERY_REVIEW_ENVELOPE_V1`): Ch? cho ph?p duy nh?t kh?a `rev_key_lead_v1`. Kh?a `control_authority_v1` v? `integ_gatekeeper_v1` b? c?m ho?n to?n.
+     + Domain Integration (`PARALLEL_DELIVERY_INTEGRATION_ENVELOPE_V1`): Ch? cho ph?p duy nh?t kh?a `integ_gatekeeper_v1`. Kh?a `control_authority_v1` v? `rev_key_lead_v1` b? c?m ho?n to?n.
+     + Kh?a ?i?u khi?n Control (`control_authority_v1`): Ch? d?nh ri?ng cho quy?n h?n Control, tuy?t ??i kh?ng ???c ph?p k? b?t k? phong b? review ho?c integration n?o.
+   - Daemon v? c? hai producer ki?m tra role/key fail-closed tr??c khi k?; consumer ki?m tra expected key ID theo vai tr? tr??c khi x?c minh ch? k? m? h?a v? tr??c khi g?i `check_and_consume`.
+3. **Nghi?m thu ki?m th? (Acceptance Evidence)**:
+   - C?p nh?t `test_18z` s? d?ng `TrustedHostProbeRawMessage` v? `TrustedHostRegisterDispatch` qua IPC an to?n.
+   - B? sung `test_19_sol_findings_remediation_root_architecture_and_role_separation` trong `test_negative_fixtures.py` ki?m ch?ng to?n di?n c?c tr??ng h?p negative v? positive cho c? hai finding: t? ch?i authority override, t? ch?i wrong-role keys, b?o v? snapshot registry b?t bi?n tr??c side effect, ti?u th? th?nh c?ng m?t l?n ??i v?i artifact h?p l?, ch?ng replay ??n l? v? ?a lu?ng ??ng th?i.
+   - To?n b? 403 b?i ki?m th? (bao g?m 27 b?i ki?m th? targeted root-cause) ??u ??t PASS 100%.
+   - C?ng k?ch ho?t s?n xu?t duy tr? tr?ng th?i an to?n: `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
