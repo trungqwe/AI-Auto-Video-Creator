@@ -549,3 +549,23 @@ Biện pháp khắc phục triệt để:
      + Tái hiện counterexample an toàn: candidate tìm cách gọi helper, lấy context, reset testing và ghim khóa công khai; khẳng định toàn bộ chuỗi bị chặn đứng fail-closed, `CANDIDATE_FIXTURE_CONTEXT_AUTHORITY_ACCEPTED` bằng `False`, khóa ghim giữ nguyên `None`, và phát sinh bằng chứng `SOL_FIXTURE_CONTEXT_AUTHORITY_REJECTED_PASS`.
 4. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **400/400 tests PASS (100%)**, bảo đảm an toàn tuyệt đối trên mọi cổng thẩm định và release gate.
 
+## 31. Khắc phục triệt để phát hiện Sol Audit trên 8003c13 (Đóng Kín Hoàn Toàn Bốn Helper Trusted Host Khỏi Candidate-Readable Fixtures, Khử Khả Năng Tự Sinh Khóa Cho Keystore & Bổ Sung Negative Assertion `test_18y`)
+
+Đợt rà soát độc lập trên exact candidate SHA `8003c13bd76e49cbd562dc6ab785299cd68161c7` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nhận finding actionable:
+`docs/parallel-delivery/test_negative_fixtures.py:291-315`: bốn helper `TrustedHostReviewerHandoff`, `TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore` và `TrustedHostProvisionKeyStore` vẫn lộ qua `hasattr/dir/__dict__`; fresh subprocess candidate gọi `TrustedHostIsolatedKeyStore` với public key tự sinh rồi xác minh chữ ký bằng private key tương ứng, đạt `CANDIDATE_PUBLIC_HELPER_CUSTOM_KEY_ACCEPTED=True`, vi phạm invariant candidate không thể tự chọn/mint pinned-key authority.
+
+Biện pháp khắc phục triệt để:
+1. **Finding 1 — Đóng Kín Bốn Helper Trusted Host Khỏi Candidate-Readable Fixture Qua `_SealedFixtureModule`**:
+   - Thêm đầy đủ 4 helper `TrustedHostReviewerHandoff`, `TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, `TrustedHostProvisionKeyStore` vào danh sách `_SEALED_ATTRS` trong `_SealedFixtureModule`.
+   - Mở rộng các bộ lọc `__getattribute__`, `__dict__`, và `dir()` trong `_SealedFixtureModule` để chặn tuyệt đối và loại bỏ toàn bộ các thuộc tính bắt đầu bằng `TrustedHost`.
+   - Khi candidate import `test_negative_fixtures as f`, mọi truy cập thuộc tính ném `AttributeError("Access to ... is forbidden fail-closed; trusted host harness is sealed within test runner")`, `hasattr` trả về `False`, `getattr(..., None)` trả về `None`, và `from test_negative_fixtures import ...` ném `ImportError`.
+2. **Finding 2 — Khử Triệt Để Khả Năng Kích Hoạt Ngầm Daemon Máy Chủ Của Helper**:
+   - Trong `TrustedHostReviewerHandoff`, `TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, và `TrustedHostProvisionKeyStore`, loại bỏ lệnh gọi tự động `_ensure_internal_host_boundary_harness()`.
+   - Các helper này yêu cầu nghiêm ngặt context harness đã được khởi tạo trong runner (`_InternalHostBoundaryVault.token` và `_InternalHostBoundaryVault.proc is not None`), ném `ProtocolViolationError("...; caller cannot invoke host helper outside test harness")` fail-closed nếu bị gọi ngoài lifecycle kiểm thử.
+3. **Finding 3 — Fixture Phân Biệt `test_18y` (Fresh Subprocess Custom Key Authority Bị Từ Chối Fail-Closed)**:
+   - Bổ sung bài kiểm tra `test_18y_sol_finding_candidate_custom_key_authority_rejected_in_fresh_subprocess`:
+     + Trong fresh subprocess, candidate import `test_negative_fixtures as f`.
+     + Khẳng định `f` không chứa bất kỳ helper nào trong số `TrustedHostReviewerHandoff`, `TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, hay `TrustedHostProvisionKeyStore` qua `hasattr`, `dir()`, hay `__dict__`.
+     + Khẳng định truy cập trực tiếp ném `AttributeError`, `from-import` ném `ImportError`.
+     + Tái hiện counterexample an toàn: candidate tự sinh cặp khóa Ed25519, cố gắng gọi `TrustedHostIsolatedKeyStore` để mint keystore với public key tự chọn và xác minh chữ ký; khẳng định toàn bộ nỗ lực bị chặn fail-closed, `CANDIDATE_PUBLIC_HELPER_CUSTOM_KEY_ACCEPTED` bằng `False`, và phát sinh bằng chứng `SOL_CUSTOM_KEY_AUTHORITY_REJECTED_PASS`.
+4. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **401/401 tests PASS (100%)**, bảo đảm an toàn tuyệt đối trên mọi cổng thẩm định và release gate.

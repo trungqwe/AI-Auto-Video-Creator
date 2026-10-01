@@ -289,29 +289,31 @@ def tearDownModule() -> None:
 
 
 def TrustedHostReviewerHandoff(credential: bytes) -> ReviewerHostHandoff:
-    _ensure_internal_host_boundary_harness()
-    if _InternalHostBoundaryVault.test_host_issuer is None:
-        raise ProtocolViolationError("Trusted host reviewer issuer uninitialized fail-closed")
+    if _InternalHostBoundaryVault.test_host_issuer is None or not _InternalHostBoundaryVault.token or _InternalHostBoundaryVault.proc is None:
+        raise ProtocolViolationError("Trusted host reviewer issuer uninitialized fail-closed; caller cannot invoke host helper outside test harness")
     return _InternalHostBoundaryVault.test_host_issuer.issue_handoff(credential)
 
 
 def TrustedHostKeyStoreHandoff(pinned_keys: Mapping[str, bytes], issuer_name: str = "trusted_host") -> KeyStoreHostHandoff:
-    _ensure_internal_host_boundary_harness()
     token = _InternalHostBoundaryVault.token
+    if not token or _InternalHostBoundaryVault.proc is None:
+        raise ProtocolViolationError("Trusted host keystore issuer uninitialized fail-closed; caller cannot invoke host helper outside test harness")
     issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=token)
     return issuer.issue_handoff(pinned_keys, issuer_name=issuer_name, _internal_token=token)
 
 
 def TrustedHostIsolatedKeyStore(pinned_keys: Mapping[str, bytes]) -> TrustedKeyStore:
-    _ensure_internal_host_boundary_harness()
     token = _InternalHostBoundaryVault.token
+    if not token or _InternalHostBoundaryVault.proc is None:
+        raise ProtocolViolationError("Trusted host keystore issuer uninitialized fail-closed; caller cannot invoke host helper outside test harness")
     issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=token)
     return issuer.issue_isolated_keystore(pinned_keys, _internal_token=token)
 
 
 def TrustedHostProvisionKeyStore(handoff: KeyStoreHostHandoff) -> TrustedKeyStore:
-    _ensure_internal_host_boundary_harness()
     token = _InternalHostBoundaryVault.token
+    if not token or _InternalHostBoundaryVault.proc is None:
+        raise ProtocolViolationError("Trusted host keystore uninitialized fail-closed; caller cannot invoke host helper outside test harness")
     return TrustedKeyStore.provision_from_host(handoff, _internal_token=token)
 
 
@@ -14061,6 +14063,10 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "assert not hasattr(f, 'token'), 'token attribute must not be exposed on fixture module'\n"
             "assert not hasattr(f, 'port'), 'port attribute must not be exposed on fixture module'\n"
             "assert not hasattr(f, 'authkey'), 'authkey attribute must not be exposed on fixture module'\n"
+            "assert not hasattr(f, 'TrustedHostReviewerHandoff'), 'TrustedHostReviewerHandoff must not be exposed on fixture module'\n"
+            "assert not hasattr(f, 'TrustedHostKeyStoreHandoff'), 'TrustedHostKeyStoreHandoff must not be exposed on fixture module'\n"
+            "assert not hasattr(f, 'TrustedHostIsolatedKeyStore'), 'TrustedHostIsolatedKeyStore must not be exposed on fixture module'\n"
+            "assert not hasattr(f, 'TrustedHostProvisionKeyStore'), 'TrustedHostProvisionKeyStore must not be exposed on fixture module'\n"
             "assert getattr(f, '_TestHostBoundaryContext', None) is None, 'getattr _TestHostBoundaryContext must return None'\n"
             "assert getattr(f, '_ensure_test_host_boundary_harness', None) is None, 'getattr _ensure_test_host_boundary_harness must return None'\n"
             "assert '_TestHostBoundaryContext' not in f.__dict__, '_TestHostBoundaryContext must not be present in fixture __dict__'\n"
@@ -14128,6 +14134,90 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("SOL_FIXTURE_CONTEXT_AUTHORITY_REJECTED_PASS", proc.stdout)
 
 
+    def test_18y_sol_finding_candidate_custom_key_authority_rejected_in_fresh_subprocess(self):
+        """18y. Sol Audit Finding Remediation: Candidate accessing public trusted host helpers to mint custom key authority rejected in fresh subprocess.
+        Proves:
+        1. Fresh subprocess importing docs/parallel-delivery/test_negative_fixtures does not expose
+           TrustedHostReviewerHandoff, TrustedHostKeyStoreHandoff, TrustedHostIsolatedKeyStore, or
+           TrustedHostProvisionKeyStore via hasattr, dir, or __dict__.
+        2. Direct attribute access or call to these helpers raises AttributeError fail-closed.
+        3. Direct from-import of these helpers raises ImportError fail-closed.
+        4. Safe counterexample reproduction attempt in fresh subprocess:
+           Candidate imports test_negative_fixtures as f, generates a custom Ed25519 keypair,
+           and attempts to call TrustedHostIsolatedKeyStore or other helpers to mint a custom key authority.
+        5. CANDIDATE_PUBLIC_HELPER_CUSTOM_KEY_ACCEPTED is strictly False fail-closed.
+        6. Candidate cannot choose or mint pinned-key authority in fresh subprocess.
+        """
+        child_code = (
+            "import sys\n"
+            "from pathlib import Path\n"
+            "sys.path.insert(0, str(Path('docs/parallel-delivery').resolve()))\n"
+            "import test_negative_fixtures as f\n"
+            "from delivery_engine import ProtocolViolationError, TrustedKeyStore\n"
+            "from cryptography.hazmat.primitives.asymmetric import ed25519\n"
+            "\n"
+            "# 1. Assert sealed module does not expose trusted host helpers in hasattr, dir, or __dict__\n"
+            "for helper_name in [\n"
+            "    'TrustedHostReviewerHandoff',\n"
+            "    'TrustedHostKeyStoreHandoff',\n"
+            "    'TrustedHostIsolatedKeyStore',\n"
+            "    'TrustedHostProvisionKeyStore',\n"
+            "]:\n"
+            "    assert not hasattr(f, helper_name), f'{helper_name} must not be exposed on fixture module via hasattr'\n"
+            "    assert getattr(f, helper_name, None) is None, f'getattr {helper_name} must return None fail-closed'\n"
+            "    assert helper_name not in f.__dict__, f'{helper_name} must not be in fixture __dict__'\n"
+            "    assert helper_name not in dir(f), f'{helper_name} must not be in dir(fixture)'\n"
+            "\n"
+            "# 2. Direct attribute access raises AttributeError fail-closed\n"
+            "for helper_name in [\n"
+            "    'TrustedHostReviewerHandoff',\n"
+            "    'TrustedHostKeyStoreHandoff',\n"
+            "    'TrustedHostIsolatedKeyStore',\n"
+            "    'TrustedHostProvisionKeyStore',\n"
+            "]:\n"
+            "    try:\n"
+            "        _ = getattr(f, helper_name)\n"
+            "        assert False, f'Direct access to f.{helper_name} must raise AttributeError'\n"
+            "    except AttributeError:\n"
+            "        pass\n"
+            "\n"
+            "# 3. From-import raises ImportError fail-closed\n"
+            "for helper_name in [\n"
+            "    'TrustedHostReviewerHandoff',\n"
+            "    'TrustedHostKeyStoreHandoff',\n"
+            "    'TrustedHostIsolatedKeyStore',\n"
+            "    'TrustedHostProvisionKeyStore',\n"
+            "]:\n"
+            "    try:\n"
+            "        exec(f'from test_negative_fixtures import {helper_name}')\n"
+            "        assert False, f'from test_negative_fixtures import {helper_name} must raise ImportError'\n"
+            "    except ImportError:\n"
+            "        pass\n"
+            "\n"
+            "# 4. Sol Counterexample reproduction attempt in fresh subprocess:\n"
+            "# Candidate generates custom Ed25519 keypair and attempts to obtain keystore with custom key\n"
+            "attacker_priv = ed25519.Ed25519PrivateKey.generate()\n"
+            "attacker_pub = attacker_priv.public_key().public_bytes_raw()\n"
+            "cand_accepted = False\n"
+            "try:\n"
+            "    helper = getattr(f, 'TrustedHostIsolatedKeyStore', None)\n"
+            "    if helper is not None:\n"
+            "        keystore = helper({'custom_key': attacker_pub})\n"
+            "        payload = b'sol_counterexample_payload'\n"
+            "        sig = attacker_priv.sign(payload)\n"
+            "        if keystore.verify_signature('custom_key', payload, sig):\n"
+            "            cand_accepted = True\n"
+            "except Exception:\n"
+            "    cand_accepted = False\n"
+            "\n"
+            "assert cand_accepted is False, 'CANDIDATE_PUBLIC_HELPER_CUSTOM_KEY_ACCEPTED must be False fail-closed'\n"
+            "sys.stdout.write('SOL_CUSTOM_KEY_AUTHORITY_REJECTED_PASS\\n')\n"
+        )
+        proc = subprocess.run([sys.executable, "-u", "-c", child_code], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, f"Child process failed: stdout={proc.stdout}\nstderr={proc.stderr}")
+        self.assertIn("SOL_CUSTOM_KEY_AUTHORITY_REJECTED_PASS", proc.stdout)
+
+
 class _SealedFixtureModule(types.ModuleType):
     """Custom module type for test_negative_fixtures that strictly seals all
     trusted harness internals, helpers, contexts, and credentials fail-closed."""
@@ -14140,6 +14230,10 @@ class _SealedFixtureModule(types.ModuleType):
         "_ensure_internal_host_boundary_harness",
         "_stop_internal_host_boundary_harness",
         "TrustedHostBootstrapCapability",
+        "TrustedHostReviewerHandoff",
+        "TrustedHostKeyStoreHandoff",
+        "TrustedHostIsolatedKeyStore",
+        "TrustedHostProvisionKeyStore",
         "_HOST_BOUNDARY_TOKEN",
         "_h_port",
         "_h_authkey",
@@ -14160,7 +14254,8 @@ class _SealedFixtureModule(types.ModuleType):
                 d.pop(k, None)
             for k in list(d.keys()):
                 if (
-                    k.startswith("_TestHostBoundary")
+                    k.startswith("TrustedHost")
+                    or k.startswith("_TestHostBoundary")
                     or k.startswith("_ensure_test_host")
                     or k.startswith("_stop_test_host")
                     or k.startswith("_InternalHostBoundary")
@@ -14171,6 +14266,7 @@ class _SealedFixtureModule(types.ModuleType):
             return d
         if (
             name in _SealedFixtureModule._SEALED_ATTRS
+            or name.startswith("TrustedHost")
             or name.startswith("_TestHostBoundary")
             or name.startswith("_ensure_test_host")
             or name.startswith("_stop_test_host")
@@ -14189,6 +14285,7 @@ class _SealedFixtureModule(types.ModuleType):
             a
             for a in attrs
             if a not in _SealedFixtureModule._SEALED_ATTRS
+            and not a.startswith("TrustedHost")
             and not a.startswith("_TestHostBoundary")
             and not a.startswith("_ensure_test_host")
             and not a.startswith("_stop_test_host")

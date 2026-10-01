@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 8003c13 (Đóng Kín Hoàn Toàn Bốn Helper Trusted Host Khỏi Candidate-Readable Fixtures, Khử Khả Năng Tự Sinh Khóa Cho Keystore & Bổ Sung Negative Assertion test_18y)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate 8003c13bd76e49cbd562dc6ab785299cd68161c7 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Đóng Kín Bốn Helper Trusted Host Khỏi Candidate-Readable Fixture**:
+    - Trong `docs/parallel-delivery/test_negative_fixtures.py`, bổ sung đầy đủ 4 helper `TrustedHostReviewerHandoff`, `TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, và `TrustedHostProvisionKeyStore` vào `_SEALED_ATTRS` của `_SealedFixtureModule`.
+    - Mở rộng logic niêm phong trong `__getattribute__`, `__dict__`, và `dir()` để chặn mọi thuộc tính bắt đầu bằng `TrustedHost`, ném `AttributeError` fail-closed, trả về `False` khi kiểm tra bằng `hasattr`, `None` khi gọi `getattr(..., None)`, và ném `ImportError` khi `from-import`.
+  - **(2) Khử Triệt Để Khả Năng Kích Hoạt Ngầm Daemon Máy Chủ Của Helper**:
+    - Loại bỏ lệnh gọi tự động `_ensure_internal_host_boundary_harness()` khỏi 4 helper trusted host; yêu cầu ngữ cảnh harness đã được khởi tạo trong runner (`_InternalHostBoundaryVault.token` và `_InternalHostBoundaryVault.proc is not None`).
+    - Ngăn chặn triệt để tình huống candidate gọi helper để kích hoạt daemon ngầm và lấy token runtime ngoài quy trình kiểm thử.
+  - **(3) Fixture Phân Biệt test_18y (Fresh Subprocess Custom Key Authority Bị Từ Chối Fail-Closed)**:
+    - Bổ sung bài kiểm tra `test_18y_sol_finding_candidate_custom_key_authority_rejected_in_fresh_subprocess`: chứng minh trong tiến trình con độc lập, candidate import fixture không thể nhận diện hay gọi bất kỳ helper nào qua `hasattr`, `dir()`, hay `__dict__`.
+    - Tái hiện kịch bản counterexample an toàn: candidate tự sinh cặp khóa Ed25519 và nỗ lực gọi `TrustedHostIsolatedKeyStore` để mint keystore với public key tự chọn; khẳng định toàn bộ nỗ lực bị chặn fail-closed, `CANDIDATE_PUBLIC_HELPER_CUSTOM_KEY_ACCEPTED` bằng `False`, và phát sinh bằng chứng `SOL_CUSTOM_KEY_AUTHORITY_REJECTED_PASS`.
+  - **(4) Bộ Kiểm Thử & Cổng Thẩm Định Toàn Diện**:
+    - Toàn bộ bộ kiểm thử tự động đạt **401/401 tests PASS (100%)**.
+    - Tất cả 12 cổng thẩm định release gate đạt PASS tuyệt đối; trạng thái kích hoạt production mode tiếp tục bị khóa chặt fail-closed (`PRODUCTION_ACTIVATION_BLOCKED`).
+
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên aae7646 (Đóng Kín Hoàn Toàn Trusted Harness & Context Khỏi Candidate-Readable Fixtures, Loại Bỏ Mọi Credential/Endpoint Accessors & Bổ Sung Negative Assertion test_18x)
 
 - Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate aae7646079e76fd6f58f141bc0fdf4474f2c4a4a (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
