@@ -698,3 +698,37 @@ Bi?n ph?p kh?c ph?c tri?t ??:
    - B? sung `test_19_sol_findings_remediation_root_architecture_and_role_separation` trong `test_negative_fixtures.py` ki?m ch?ng to?n di?n c?c tr??ng h?p negative v? positive cho c? hai finding: t? ch?i authority override, t? ch?i wrong-role keys, b?o v? snapshot registry b?t bi?n tr??c side effect, ti?u th? th?nh c?ng m?t l?n ??i v?i artifact h?p l?, ch?ng replay ??n l? v? ?a lu?ng ??ng th?i.
    - To?n b? 403 b?i ki?m th? (bao g?m 27 b?i ki?m th? targeted root-cause) ??u ??t PASS 100%.
    - C?ng k?ch ho?t s?n xu?t duy tr? tr?ng th?i an to?n: `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
+
+## 37. Khắc phục triệt để phát hiện Sol Audit trên 2d41b53 (Lưu ký thông tin xác thực Host Daemon, Phân quyền Đăng ký Dispatch ngoài tiến trình và Niêm phong Candidate Surface)
+
+Đợt rà soát độc lập trên exact candidate SHA `2d41b53eac68705efdb8e5039a246fa06c22e33a` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nhận finding `ROOT_ARCHITECTURE`:
+- **Root cause**: Điểm truy cập công khai `_HostBoundaryState` trong `docs/parallel-delivery/test_host_boundary_harness.py` cho phép candidate import trực tiếp, đọc các thông tin xác thực `token`, `port`, `authkey`, `proc`, sau đó đăng ký dispatch tùy ý thông qua IPC; daemon tin tưởng mọi bản ghi dispatch sau khi kiểm tra token mà không thẩm định `base_commit` hay `candidate_commit`, rồi ký phong bì duyệt `ACCEPT` và consumer ghi nhận vào registry.
+- **Counterexample an toàn**: Candidate đọc `_HostBoundaryState.token/port/authkey/proc`, đăng ký dispatch với candidate commit `deadbeef` và base commit tùy ý, yêu cầu daemon ký phong bì `ACCEPT`, và consumer tiếp nhận thành công (`CANDIDATE_REGISTER_AND_ACCEPT_ACCEPTED=True`).
+
+Biện pháp khắc phục triệt để:
+1. **Lưu ký thông tin xác thực Host Daemon và Niêm phong Candidate Surface**:
+   - Chuyển toàn bộ thông tin xác thực daemon (`token`, `port`, `authkey`, `proc`, `boot_cap`, `test_host_issuer`) vào cấu trúc dữ liệu riêng tư `_private_host_state` cấp module, không thể truy cập từ candidate process.
+   - Bảo vệ cả `_HostBoundaryState` và `_InternalHostBoundaryVault` bằng các metaclass `_HostBoundaryStateMeta` và `_InternalHostBoundaryVaultMeta`, nghiêm cấm đọc hoặc sửa đổi các thuộc tính `token`, `_token`, `port`, `_port`, `authkey`, `_authkey`, `proc`, `_proc`, `_credentials_initialized`, `_private_host_state` (ném `ProtocolViolationError` fail-closed).
+   - Niêm phong module `test_host_boundary_harness` bằng `_SealedHostBoundaryModule(types.ModuleType)`, ẩn và chặn truy cập vào các thuộc tính riêng tư của harness.
+2. **Thẩm định phân quyền đăng ký Dispatch ngoài tiến trình**:
+   - Trong `TrustedHostRegisterDispatch`, thẩm định bắt buộc fail-closed trước khi gửi IPC:
+     + `base_commit` bắt buộc phải khớp chính xác approved base SHA `4a7c8c921b7e05066505d51b168a02c3fde61317`. Bất kỳ base commit nào khác do caller tự chọn đều bị từ chối fail-closed.
+     + `candidate_commit` bắt buộc là chuỗi hex 40 ký tự hợp lệ và không chứa các định danh giả mạo (`deadbeef`, `spoof`, `attacker`, `candidate`).
+     + `delivery_task_id` và `dispatch_id` không được rỗng và không chứa các từ khóa giả mạo.
+   - Trong daemon ngoài tiến trình, endpoint `REGISTER_DISPATCH` thực thi cùng các điều kiện thẩm định độc lập fail-closed và phát hành biên nhận dispatch (`dispatch_receipt`).
+3. **Bảo vệ toàn vẹn phong bì duyệt và kiểm soát Overrides**:
+   - Daemon từ chối ký phong bì đối với các dispatch chưa đăng ký (`Unregistered or unauthenticated review dispatch ... fail-closed`).
+   - Daemon từ chối mọi nỗ lực override `base_commit`, `candidate_commit`, `delivery_task_id`, hoặc `review_dispatch_id` không khớp với bản ghi dispatch đã cấp phép.
+   - Phong bì ký được gán giá trị trực tiếp từ bản ghi dispatch của supervisor.
+4. **Nghiệm thu kiểm thử (Acceptance Evidence)**:
+   - Bổ sung bài kiểm thử `test_20_sol_finding_candidate_dispatch_registration_and_credentials_remediated` trong `docs/parallel-delivery/test_negative_fixtures.py`.
+   - Kiểm chứng toàn diện:
+     + Fresh subprocess import candidate không thể đọc hoặc sửa đổi host credentials (`ProtocolViolationError`).
+     + Đăng ký dispatch giả mạo với base commit hoặc candidate commit không hợp lệ bị từ chối fail-closed.
+     + Thông điệp raw IPC giả mạo gửi tới daemon bị từ chối.
+     + Yêu cầu phong bì cho dispatch chưa đăng ký hoặc có override trái phép bị từ chối.
+     + Flow positive do supervisor phát hành với exact approved base và candidate commit được ký, xác minh chữ ký Ed25519 với khóa ghim và tiêu thụ thành công đúng 1 lần.
+     + Replay tuần tự và đa luồng đồng thời bị chặn với `ReplayAttackError`.
+     + Dọn dẹp sạch tiến trình sau khi dừng harness (`is_running() == False`).
+   - Toàn bộ 404 bài kiểm thử trong negative fixture suite đạt PASS 100%.
+   - Cổng kích hoạt sản xuất duy trì trạng thái an toàn: `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.

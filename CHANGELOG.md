@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-01 - Khắc phục triệt để phát hiện Sol Audit trên 2d41b53 (Lưu ký thông tin xác thực Host Daemon, Phân quyền Đăng ký Dispatch ngoài tiến trình và Niêm phong Candidate Surface)
+
+- Khắc phục triệt để phát hiện độc lập ROOT_ARCHITECTURE từ Sol trên exact candidate `2d41b53eac68705efdb8e5039a246fa06c22e33a` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Lưu ký thông tin xác thực Host Daemon & Niêm phong Candidate Surface**: Đóng gói toàn bộ thông tin xác thực daemon (`token`, `port`, `authkey`, `proc`, `boot_cap`, `test_host_issuer`) vào `_private_host_state` cấp module; bảo vệ `_HostBoundaryState` và `_InternalHostBoundaryVault` bằng metaclass `_HostBoundaryStateMeta` và `_InternalHostBoundaryVaultMeta`, nghiêm cấm đọc hoặc sửa đổi credentials fail-closed (`ProtocolViolationError`); niêm phong module `test_host_boundary_harness` bằng `_SealedHostBoundaryModule(types.ModuleType)` ẩn hoàn toàn private attributes.
+  - **(2) Phân quyền Đăng ký Dispatch ngoài tiến trình**: Trong `TrustedHostRegisterDispatch` và daemon endpoint `REGISTER_DISPATCH`, thực thi thẩm định fail-closed bắt buộc: `base_commit` phải khớp chính xác approved base `4a7c8c921b7e05066505d51b168a02c3fde61317`; `candidate_commit` phải là hex 40 ký tự hợp lệ và không chứa từ khóa giả mạo (`deadbeef`, `spoof`, `attacker`, `candidate`); `delivery_task_id` và `dispatch_id` không chứa từ khóa giả mạo; daemon phát hành `dispatch_receipt`.
+  - **(3) Kiểm soát Overrides và Bảo vệ toàn vẹn Phong bì**: Daemon ngoài tiến trình từ chối ký phong bì duyệt cho các dispatch chưa được đăng ký; từ chối mọi override không khớp giữa yêu cầu của caller và bản ghi dispatch của supervisor (`base_commit`, `candidate_commit`, `delivery_task_id`, `review_dispatch_id`).
+  - **(4) Nghiệm thu Acceptance Test mới (`test_20`)**: Bổ sung `test_20_sol_finding_candidate_dispatch_registration_and_credentials_remediated` trong `test_negative_fixtures.py` kiểm chứng toàn diện các trường hợp negative (chặn đọc/ghi credentials, từ chối đăng ký dispatch với base/candidate/task giả mạo, từ chối raw IPC, từ chối overrides) và positive (supervisor đăng ký dispatch hợp lệ, ký phong bì, consumer xác minh và tiêu thụ, chống replay tuần tự và đồng thời).
+  - **(5) Kết quả kiểm thử**: Toàn bộ 404 test fixtures đạt PASS 100%; cổng kích hoạt sản xuất duy trì `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
+
 ## 2026-10-01 - Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n 6fc2d5a (Th?c thi Host-bound Authority, R?ng bu?c Dispatch x?c th?c v? T?ch bi?t Domain Role-to-Key nghi?m ng?t)
 
 - Kh?c ph?c tri?t ?? ph?t hi?n ??c l?p ROOT_ARCHITECTURE t? Sol tr?n exact candidate `6fc2d5ac30648b3d99b9c26d6150a6b96a2b2777` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):

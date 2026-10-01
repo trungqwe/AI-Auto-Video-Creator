@@ -1,27 +1,25 @@
-# B?n giao phi?n l?m vi?c
+# Bàn giao phiên làm việc
 
-## ?? quy?t ??nh
+## Đã quyết định
 
-- Gi? nguy?n ranh gi?i th?m quy?n: M2-P1..P7B_ACCEPTED_CLOSED; M2-P8/P9 LOCKED; M3/Ph?n h? A NOT AUTHORIZED; ProductionActivationGate duy tr? PRODUCTION_ACTIVATION_BLOCKED.
-- Kh?c ph?c tri?t ?? 2 ph?t hi?n ROOT_ARCHITECTURE t? Sol Audit tr?n exact candidate 6fc2d5ac30648b3d99b9c26d6150a6b96a2b2777 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
-  1. Finding 1 - Th?m quy?n m?y ch? host v? li?n k?t Dispatch: Lo?i b? tham s? envelope_data c?ng m?i authority override kh?i ExternalReviewProducer v? ExternalIntegrationProducer; r?ng bu?c y?u c?u k? v?o b?n ghi dispatch ?? x?c th?c (TrustedHostRegisterDispatch); daemon l?y candidate commit, base commit v? task ID tr?c ti?p t? dispatch; ??ng g?i to?n b? credential v?o _HostBoundaryState private v? ch?n truy c?p qua _InternalHostBoundaryVaultMeta.
-  2. Finding 2 - T?ch bi?t Role-to-Key theo domain: Ch? 
-ev_key_lead_v1 ???c ph?p k? review; ch? integ_gatekeeper_v1 ???c ph?p k? integration; control_authority_v1 b? c?m ho?n to?n kh?ng ???c k? envelope; daemon v? producer t? ch?i wrong-role key fail-closed; consumer ki?m tra expected key ID theo vai tr? tr??c khi x?c minh ch? k? v? tr??c khi ghi nh?n registry.
-  3. T?nh b?t bi?n c?a Registry: B? sung ph??ng th?c snapshot() trong DurableConsumptionRegistry; ch?ng minh c?c y?u c?u b? t? ch?i kh?ng g?y ra b?t k? side effect hay mutation n?o l?n registry.
-  4. Nghi?m thu ki?m th?: To?n b? 403 test fixtures (bao g?m 	est_18z c?p nh?t v? 	est_19 m?i) ??u ??t PASS 100%.
+- Giữ nguyên ranh giới thẩm quyền: M2-P1..P7B_ACCEPTED_CLOSED; M2-P8/P9 LOCKED; M3/Phân hệ A NOT AUTHORIZED; ProductionActivationGate duy trì PRODUCTION_ACTIVATION_BLOCKED.
+- Khắc phục triệt để phát hiện ROOT_ARCHITECTURE từ Sol Audit trên exact candidate 2d41b53eac68705efdb8e5039a246fa06c22e33a (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  1. Lưu ký thông tin xác thực Host Daemon: Đóng gói toàn bộ token, port, authkey, proc vào _private_host_state cấp module; bảo vệ _HostBoundaryState và _InternalHostBoundaryVault bằng metaclass ném ProtocolViolationError fail-closed khi truy cập; niêm phong module bằng _SealedHostBoundaryModule.
+  2. Thẩm định phân quyền đăng ký Dispatch: TrustedHostRegisterDispatch và daemon IPC endpoint thẩm định bắt buộc base_commit == 4a7c8c921b7e05066505d51b168a02c3fde61317, candidate_commit là 40-hex hợp lệ không chứa từ khóa giả mạo, task/dispatch ID không chứa từ khóa giả mạo; daemon cấp phát dispatch_receipt.
+  3. Kiểm soát Overrides & Ký phong bì: Daemon từ chối dispatch chưa đăng ký và từ chối mọi override không khớp; gán metadata trực tiếp từ bản ghi dispatch của supervisor.
+  4. Nghiệm thu kiểm thử: Bổ sung test_20 trong test_negative_fixtures.py; toàn bộ 404 test fixtures (bao gồm 28/28 bài kiểm thử targeted TestSolTrustBoundaryRootCauseRemediation) đều đạt PASS 100%.
 
-## Ch?a quy?t ??nh
+## Chưa quyết định
 
-- Milestone M2-P8, M2-P9 v? Milestone M3/Ph?n h? A ti?p t?c b? kh?a ch?t t?i khi c? quy?t ??nh ph? duy?t v? user checkpoint ri?ng.
+- Milestone M2-P8, M2-P9 và Milestone M3/Phân hệ A tiếp tục bị khóa chặt tới khi có quyết định phê duyệt và user checkpoint riêng.
 
-## T?p c?n ??c ti?p
+## Tệp cần đọc tiếp
 
-- docs/parallel-delivery/README.md (M?c 36: Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n 6fc2d5a).
-- docs/parallel-delivery/delivery_engine.py (C? ch? ph?n t?ch key theo role, ghim expected key v? snapshot registry).
-- docs/parallel-delivery/test_host_boundary_harness.py (B?o v? th?ng tin x?c th?c Vault, dispatch registry v? producers).
-- docs/parallel-delivery/test_negative_fixtures.py (Test 18z v? 19 ki?m ch?ng nghi?m thu).
-- CHANGELOG.md (Nh?t k? thay ??i chi ti?t).
+- docs/parallel-delivery/README.md (Mục 37: Khắc phục triệt để phát hiện Sol Audit trên 2d41b53).
+- docs/parallel-delivery/test_host_boundary_harness.py (Bảo vệ thông tin xác thực Host Daemon, niêm phong module và thẩm định đăng ký dispatch).
+- docs/parallel-delivery/test_negative_fixtures.py (Test 20 kiểm chứng nghiệm thu).
+- CHANGELOG.md (Nhật ký thay đổi chi tiết).
 
-## ?i?m ti?p t?c
+## Điểm tiếp tục
 
-- Ch? ??t ??nh gi? ??c l?p ti?p theo t? reviewer Sol tr?n exact candidate SHA m?i sau khi commit, t?i t?o attestation v? push.
+- Chờ đợt đánh giá độc lập tiếp theo từ reviewer Sol trên exact candidate SHA mới sau khi commit, tái tạo attestation và push.
