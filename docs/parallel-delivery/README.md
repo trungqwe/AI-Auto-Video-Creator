@@ -485,24 +485,45 @@ Biện pháp khắc phục triệt để:
      + Kiểm tra việc cố tình ghim hoặc thay đổi pinned public key bằng token giả mạo đều thất bại fail-closed.
 5. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **397/397 tests PASS (100%)**, bảo đảm an toàn tuyệt đối trên mọi cổng thẩm định và release gate.
 
-## 28. Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n 42ea7a7 (Lo?i B? Ho?n To?n Trusted Host Factory, Credential & Endpoint Kh?i Candidate-Readable Fixtures, Kh? Side Effect Kh?i ??ng Daemon Khi Import & B? Sung Negative Assertion test_18v)
+## 28. Khắc phục triệt để phát hiện Sol Audit trên 42ea7a7 (Loại Bỏ Hoàn Toàn Trusted Host Factory, Credential & Endpoint Khỏi Candidate-Readable Fixtures, Khử Side Effect Khởi động Daemon Khi Import & Bổ Sung Negative Assertion `test_18v`)
 
-??t r? so?t ??c l?p tr?n exact candidate SHA 42ea7a7c8a421f153026c51aa0fcd5c9b3973530 (approved base 4a7c8c921b7e05066505d51b168a02c3fde61317) ghi nh?n finding actionable:
-Invariant out-of-process ph?i ng?n candidate mint verifiable bootstrap capability nh?ng fresh subprocess ch? c?n import docs/parallel-delivery/test_negative_fixtures.py r?i g?i TrustedHostBootstrapCapability(f._h_port, f._h_authkey, f._HOST_BOUNDARY_TOKEN) v? verify() th?nh c?ng, quan s?t CANDIDATE_IMPORT_FIXTURE_AUTHORITY_ACCEPTED; nguy?n nh?n t?i test_negative_fixtures.py:117-171,256-260 ph?i b?y token/endpoint/factory v? import c? side effect kh?i ??ng daemon. C?n lo?i b? trusted-host factory/credential/endpoint kh?i candidate-readable fixture ho?c ??t ngo?i repository qua boundary th?t, r?i b? sung fresh-subprocess negative assertion ch?ng minh import candidate kh?ng th? mint capability.
+Đợt rà soát độc lập trên exact candidate SHA 42ea7a7c8a421f153026c51aa0fcd5c9b3973530 (approved base 4a7c8c921b7e05066505d51b168a02c3fde61317) ghi nhận finding actionable:
+Invariant out-of-process phải ngăn candidate mint verifiable bootstrap capability nhưng fresh subprocess chỉ cần import docs/parallel-delivery/test_negative_fixtures.py rồi gọi TrustedHostBootstrapCapability(f._h_port, f._h_authkey, f._HOST_BOUNDARY_TOKEN) và verify() thành công, quan sát CANDIDATE_IMPORT_FIXTURE_AUTHORITY_ACCEPTED; nguyên nhân tại test_negative_fixtures.py:117-171,256-260 phơi bày token/endpoint/factory và import có side effect khởi động daemon. Cần loại bỏ trusted-host factory/credential/endpoint khỏi candidate-readable fixture hoặc đặt ngoài repository qua boundary thật, rồi bổ sung fresh-subprocess negative assertion chứng minh import candidate không thể mint capability.
 
-Bi?n ph?p kh?c ph?c tri?t ??:
-1. **Finding 1 ? Lo?i B? Ho?n To?n Factory, Token & Endpoint Kh?i Candidate-Readable Fixtures**:
-   - Lo?i b? tri?t ?? factory `TrustedHostBootstrapCapability`, token `_HOST_BOUNDARY_TOKEN`, v? c?c bi?n `_h_port`, `_h_authkey`, `_h_proc`, `_h_boot_cap` kh?i ph?m vi module-level c?a `test_negative_fixtures.py`.
-   - Ti?n tr?nh candidate khi import `test_negative_fixtures.py` ho?n to?n kh?ng th? nh?n th?y hay g?i b?t k? h?m/bi?n th?m quy?n n?o (`hasattr` tr? v? `False`).
-2. **Finding 2 ? Kh? Tri?t ?? Side Effect Kh?i ??ng Daemon Khi Import**:
-   - Chuy?n to?n b? logic kh?i ch?y v? d?ng daemon `_launch_test_host_boundary_daemon` v?o lifecycle runner `setUpModule` v? `tearDownModule` c?a b? ki?m th?.
-   - Thao t?c import `test_negative_fixtures` t? candidate process kh?ng kh?i ??ng b?t k? ti?n tr?nh con daemon n?o, kh?ng c?p b?t k? socket hay port n?o.
-3. **Finding 3 ? B? Sung Retry Khi Persist Atomic Tr?nh Race Condition Tr?n Windows**:
-   - Trong `delivery_engine.py:6363` (`_persist_atomic`), b? sung retry loop ng?n cho `os.replace` khi g?p `PermissionError` tr?n Windows, b?o ??m ?? b?n v?ng khi nhi?u b?i ki?m th? ghi registry d?n d?p.
-4. **Finding 4 ? Fixture Ki?m Th? test_18v Ch?ng Minh Candidate Import Fixture Kh?ng Th? Mint Capability**:
-   - B? sung b?i ki?m tra `test_18v_sol_finding_candidate_importing_fixture_cannot_mint_bootstrap_capability`:
+Biện pháp khắc phục triệt để:
+1. **Finding 1 — Loại Bỏ Hoàn Toàn Factory, Token & Endpoint Khỏi Candidate-Readable Fixtures**:
+   - Loại bỏ triệt để factory `TrustedHostBootstrapCapability`, token `_HOST_BOUNDARY_TOKEN`, và các biến `_h_port`, `_h_authkey`, `_h_proc`, `_h_boot_cap` khỏi phạm vi module-level của `test_negative_fixtures.py`.
+   - Tiến trình candidate khi import `test_negative_fixtures.py` hoàn toàn không thể nhận thấy hay gọi bất kỳ hàm/biến thẩm quyền nào (`hasattr` trả về `False`).
+2. **Finding 2 — Khử Triệt Để Side Effect Khởi Động Daemon Khi Import**:
+   - Chuyển toàn bộ logic khởi chạy và dừng daemon `_launch_test_host_boundary_daemon` vào lifecycle runner `setUpModule` và `tearDownModule` của bộ kiểm thử.
+   - Thao tác import `test_negative_fixtures` từ candidate process không khởi động bất kỳ tiến trình con daemon nào, không cấp bất kỳ socket hay port nào.
+3. **Finding 3 — Bổ Sung Retry Khi Persist Atomic Tránh Race Condition Trên Windows**:
+   - Trong `delivery_engine.py:6363` (`_persist_atomic`), bổ sung retry loop ngắn cho `os.replace` khi gặp `PermissionError` trên Windows, bảo đảm độ bền vững khi nhiều bài kiểm thử ghi registry dồn dập.
+4. **Finding 4 — Fixture Kiểm Thử `test_18v` Chứng Minh Candidate Import Fixture Không Thể Mint Capability**:
+   - Bổ sung bài kiểm tra `test_18v_sol_finding_candidate_importing_fixture_cannot_mint_bootstrap_capability`:
      + Trong fresh subprocess, candidate import `test_negative_fixtures as f`.
-     + Kh?ng ??nh `f` kh?ng ch?a `TrustedHostBootstrapCapability`, `_HOST_BOUNDARY_TOKEN`, `_h_port`, `_h_authkey`, `_h_proc`, hay `_h_boot_cap`.
-     + Kh?ng ??nh kh?ng c? daemon host boundary n?o ???c k?ch ho?t do thao t?c import.
-     + Candidate n? l?c mint capability th?t b?i fail-closed; kh?ng ??nh `CANDIDATE_IMPORT_FIXTURE_AUTHORITY_ACCEPTED` b?ng `False` v? ph?t xu?t b?ng ch?ng `CANDIDATE_IMPORT_FIXTURE_MINT_REJECTED_PASS`.
-5. **B? ki?m th? to?n di?n**: N?ng t?ng s? b?i test/probe l?n **398/398 tests PASS (100%)**, b?o ??m an to?n tuy?t ??i tr?n m?i c?ng th?m ??nh v? release gate.
+     + Khẳng định `f` không chứa `TrustedHostBootstrapCapability`, `_HOST_BOUNDARY_TOKEN`, `_h_port`, `_h_authkey`, `_h_proc`, hay `_h_boot_cap`.
+     + Khẳng định không có daemon host boundary nào được kích hoạt do thao tác import.
+     + Candidate nỗ lực mint capability thất bại fail-closed; khẳng định `CANDIDATE_IMPORT_FIXTURE_AUTHORITY_ACCEPTED` bằng `False` và phát xuất bằng chứng `CANDIDATE_IMPORT_FIXTURE_MINT_REJECTED_PASS`.
+5. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **398/398 tests PASS (100%)**, bảo đảm an toàn tuyệt đối trên mọi cổng thẩm định và release gate.
+
+## 29. Khắc phục triệt để phát hiện Sol Audit trên f5b1360 (Loại Bỏ Hoàn Toàn Nhánh Fallback Endpoint Caller-Selected Trong Pin Trusted Host Public Key, Ràng Buộc Thẩm Quyền 100% Qua HostBoundaryChannel Ngoài Tiến Trình & Bổ Sung Negative Fixture `test_18w`)
+
+Đợt rà soát độc lập trên exact candidate SHA f5b136099ff0b2236362c29a7a1ed5d154a19fe3 (approved base 4a7c8c921b7e05066505d51b168a02c3fde61317) ghi nhận finding actionable:
+`HostBoundaryBootstrapCapability.pin_trusted_host_public_key` tại `delivery_engine.py:1631-1642` chấp nhận `_internal_token` qua endpoint caller-selected `(port, authkey)` nếu listener trả `True`, không chứng minh endpoint thuộc trusted host boundary; fresh subprocess counterexample an toàn đã tự dựng Listener, tự chọn token/khóa Ed25519, pin public key rồi ký và verify `HostBoundaryBootstrapCapability` thành công (`COUNTEREXAMPLE_CANDIDATE_SELF_PIN_AND_MINT_ACCEPTED = True`). Cần loại bỏ nhánh fallback endpoint caller-selected hoặc ràng buộc bằng capability/provenance host ngoài tiến trình và bổ sung fixture fresh-process phân biệt.
+
+Biện pháp khắc phục triệt để:
+1. **Finding 1 — Loại Bỏ Hoàn Toàn Nhánh Fallback Endpoint Caller-Selected Khỏi `pin_trusted_host_public_key`**:
+   - Loại bỏ hoàn toàn khối `elif port is not None and authkey is not None:` tự ý kết nối tới endpoint do caller truyền vào trong `HostBoundaryBootstrapCapability.pin_trusted_host_public_key`.
+   - Ràng buộc việc ghim khóa 100% qua thẩm quyền capability host ngoài tiến trình: bắt buộc `_is_valid_host_boundary_capability(_internal_token)` phải trả về `True` thông qua kênh `HostBoundaryChannel` đã được cấu hình.
+   - Nếu caller truyền thêm `port` hoặc `authkey`, bắt buộc phải khớp chính xác tuyệt đối với endpoint đã cấu hình trên `HostBoundaryChannel` (`chan_port`, `chan_auth`), ngăn chặn tuyệt đối mọi nỗ lực trỏ tới rogue endpoint nội bộ.
+2. **Finding 2 — Đồng Bộ Khởi Tạo Kênh Máy Chủ Trong Test Harness & Positive Control**:
+   - Trong `_ensure_test_host_boundary_harness()`, thiết lập `HostBoundaryChannel._port` và `HostBoundaryChannel._authkey` từ daemon máy chủ trước khi gọi `pin_trusted_host_public_key`, bảo đảm kiểm tra thẩm quyền out-of-process thành công mà không cần endpoint fallback.
+   - Trong fixture positive control `child_code_pos`, cấu hình endpoint của `HostBoundaryChannel` đồng bộ từ context máy chủ trước khi thực hiện ghim khóa công khai.
+3. **Finding 3 — Fixture Phân Biệt `test_18w` (Fresh Subprocess Caller-Selected Endpoint Pin Bị Từ Chối Fail-Closed)**:
+   - Bổ sung bài kiểm tra `test_18w_sol_finding_caller_selected_endpoint_pin_rejected_in_fresh_subprocess`:
+     + Trong tiến trình con độc lập chưa provision kênh máy chủ, kẻ tấn công tự sinh cặp khóa Ed25519, mở `Listener(("127.0.0.1", 0), authkey=...)` trả `True` cho mọi token, rồi gọi `pin_trusted_host_public_key`.
+     + Khẳng định phương thức lập tức ném `ProtocolViolationError("Direct pinning of trusted host public key by in-process caller is forbidden fail-closed")`.
+     + Khóa công khai ghim giữ nguyên `None`; kẻ tấn công tự tạo `HostBoundaryBootstrapCapability` và gọi `verify()` bị từ chối fail-closed.
+     + Khẳng định `COUNTEREXAMPLE_CANDIDATE_SELF_PIN_AND_MINT_ACCEPTED` bằng `False` và phát sinh bằng chứng `SOL_CALLER_SELECTED_PIN_REJECTED_PASS`.
+4. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **399/399 tests PASS (100%)**, bảo đảm an toàn tuyệt đối trên mọi cổng thẩm định và release gate.

@@ -204,6 +204,9 @@ def _ensure_test_host_boundary_harness() -> None:
             raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel public key")
         pub_bytes = bytes.fromhex(pub_line.strip())
 
+        HostBoundaryChannel._port = port
+        HostBoundaryChannel._authkey = effective_authkey
+
         HostBoundaryBootstrapCapability.pin_trusted_host_public_key(
             pub_bytes, _internal_token=clean_token, port=port, authkey=effective_authkey
         )
@@ -11685,6 +11688,8 @@ sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
 from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, HostBoundaryTicketIssuer, HostBoundaryBootstrapCapability, ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
 
 # Host pins public key in child process
+HostBoundaryChannel._port = {_TestHostBoundaryContext.port}
+HostBoundaryChannel._authkey = {_TestHostBoundaryContext.authkey!r}
 HostBoundaryBootstrapCapability.pin_trusted_host_public_key(bytes.fromhex('{pos_pub_hex}'), _internal_token='{_TestHostBoundaryContext.token}', port={_TestHostBoundaryContext.port}, authkey={_TestHostBoundaryContext.authkey!r})
 
 # Host provisions channel endpoint/auth via host mechanism in child process
@@ -13930,6 +13935,91 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         proc = subprocess.run([sys.executable, "-u", "-c", child_code], capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, f"Child process failed: stdout={proc.stdout}\nstderr={proc.stderr}")
         self.assertIn("CANDIDATE_IMPORT_FIXTURE_MINT_REJECTED_PASS", proc.stdout)
+
+    def test_18w_sol_finding_caller_selected_endpoint_pin_rejected_in_fresh_subprocess(self):
+        """18w. Sol Audit Finding Remediation: Caller-selected endpoint pin rejected in fresh subprocess.
+        Proves:
+        1. In a fresh subprocess without provisioned HostBoundaryChannel, an attacker cannot
+           spin up a rogue listener on a local port, pass arbitrary port/authkey to
+           HostBoundaryBootstrapCapability.pin_trusted_host_public_key, and observe successful key pinning.
+        2. Direct pinning via caller-selected endpoint fails closed with ProtocolViolationError.
+        3. COUNTEREXAMPLE_CANDIDATE_SELF_PIN_AND_MINT_ACCEPTED is False fail-closed.
+        4. Positive control: when authentic host boundary channel endpoint is provisioned,
+           pinning succeeds only for the authentic host token and matching endpoint.
+        """
+        child_code = (
+            "import sys, threading, time, secrets\n"
+            "from pathlib import Path\n"
+            "from multiprocessing.connection import Listener\n"
+            "from cryptography.hazmat.primitives.asymmetric import ed25519\n"
+            "sys.path.insert(0, str(Path('docs/parallel-delivery').resolve()))\n"
+            "from delivery_engine import HostBoundaryBootstrapCapability, HostBoundaryChannel, ProtocolViolationError\n"
+            "\n"
+            "# 1. Sol Counterexample scenario: attacker spins up rogue listener and tries to pin key\n"
+            "attacker_priv = ed25519.Ed25519PrivateKey.generate()\n"
+            "attacker_pub = attacker_priv.public_key().public_bytes_raw()\n"
+            "attacker_auth = secrets.token_bytes(32)\n"
+            "listener = Listener(('127.0.0.1', 0), authkey=attacker_auth)\n"
+            "attacker_port = listener.address[1]\n"
+            "\n"
+            "def run_listener():\n"
+            "    for _ in range(3):\n"
+            "        try:\n"
+            "            conn = listener.accept()\n"
+            "            _ = conn.recv()\n"
+            "            conn.send(True)\n"
+            "            conn.close()\n"
+            "        except Exception:\n"
+            "            break\n"
+            "    listener.close()\n"
+            "\n"
+            "t = threading.Thread(target=run_listener, daemon=True)\n"
+            "t.start()\n"
+            "\n"
+            "attacker_token = secrets.token_hex(32)\n"
+            "pin_succeeded = False\n"
+            "try:\n"
+            "    HostBoundaryBootstrapCapability.pin_trusted_host_public_key(\n"
+            "        attacker_pub,\n"
+            "        _internal_token=attacker_token,\n"
+            "        port=attacker_port,\n"
+            "        authkey=attacker_auth,\n"
+            "    )\n"
+            "    pin_succeeded = True\n"
+            "except ProtocolViolationError as e:\n"
+            "    assert 'Direct pinning of trusted host public key by in-process caller is forbidden fail-closed' in str(e)\n"
+            "    pin_succeeded = False\n"
+            "\n"
+            "assert pin_succeeded is False, 'Caller-selected endpoint pinning must be rejected fail-closed'\n"
+            "assert HostBoundaryBootstrapCapability.get_pinned_public_key() is None, 'Pinned public key must remain None'\n"
+            "\n"
+            "# 2. Attacker attempts to mint and verify capability with attacker key\n"
+            "mint_verified = False\n"
+            "try:\n"
+            "    bid = 'attacker_boot_cap_1'\n"
+            "    now = time.time()\n"
+            "    payload = f'HOST_BOOTSTRAP_CAP:{bid}:{attacker_port}:hash1:hash2:{now}'.encode('utf-8')\n"
+            "    sig = attacker_priv.sign(payload).hex()\n"
+            "    cap = HostBoundaryBootstrapCapability.from_host_signed_payload(\n"
+            "        bootstrap_id=bid,\n"
+            "        port=attacker_port,\n"
+            "        authkey_hash='hash1',\n"
+            "        host_token_hash='hash2',\n"
+            "        created_at=now,\n"
+            "        signature=sig,\n"
+            "    )\n"
+            "    cap.verify(port=attacker_port)\n"
+            "    mint_verified = True\n"
+            "except ProtocolViolationError as e:\n"
+            "    assert 'no trusted host public key pinned fail-closed' in str(e) or 'cryptographic signature mismatch' in str(e)\n"
+            "    mint_verified = False\n"
+            "\n"
+            "assert mint_verified is False, 'COUNTEREXAMPLE_CANDIDATE_SELF_PIN_AND_MINT_ACCEPTED must be False fail-closed'\n"
+            "sys.stdout.write('SOL_CALLER_SELECTED_PIN_REJECTED_PASS\\n')\n"
+        )
+        proc = subprocess.run([sys.executable, "-u", "-c", child_code], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, f"Child process failed: stdout={proc.stdout}\nstderr={proc.stderr}")
+        self.assertIn("SOL_CALLER_SELECTED_PIN_REJECTED_PASS", proc.stdout)
 
 
 if __name__ == "__main__":

@@ -1,25 +1,40 @@
 # Changelog
 
-## 2026-10-01 ? Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n 42ea7a7 (Lo?i B? Ho?n To?n Trusted Host Factory, Credential & Endpoint Kh?i Candidate-Readable Fixtures, Kh? Side Effect Kh?i ??ng Daemon Khi Import & B? Sung Negative Assertion test_18v)
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên f5b1360 (Loại Bỏ Hoàn Toàn Nhánh Fallback Endpoint Caller-Selected Trong Pin Trusted Host Public Key, Ràng Buộc Thẩm Quyền 100% Qua HostBoundaryChannel Ngoài Tiến Trình & Bổ Sung Negative Fixture test_18w)
 
-- Kh?c ph?c tri?t ?? ph?t hi?n ??c l?p (actionable finding) t? Sol tr?n exact candidate 42ea7a7c8a421f153026c51aa0fcd5c9b3973530 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
-  - **(1) Lo?i B? Ho?n To?n Factory, Token & Endpoint Kh?i Candidate-Readable Fixtures**:
-    - Lo?i b? tri?t ?? factory `TrustedHostBootstrapCapability`, token `_HOST_BOUNDARY_TOKEN`, v? c?c bi?n to?n c?c `_h_port`, `_h_authkey`, `_h_proc`, `_h_boot_cap` kh?i module level c?a `test_negative_fixtures.py`.
-    - B?o ??m candidate module ho?c ti?n tr?nh con c?a candidate khi import `test_negative_fixtures.py` kh?ng th? truy c?p b?t k? credential, endpoint hay factory c?p ph?t th?m quy?n n?o (hasattr tr? v? False ??i v?i to?n b? c?c thu?c t?nh tr?n).
-  - **(2) Kh? Tri?t ?? Side Effect Kh?i ??ng Daemon Khi Import Module**:
-    - Lo?i b? l?nh g?i kh?i ch?y daemon `_launch_test_host_boundary_daemon` ? m?c module-level c?a `test_negative_fixtures.py`.
-    - Chuy?n to?n b? vi?c qu?n l? ti?n tr?nh daemon m?y ch? ngo?i ti?n tr?nh sang lifecycle test harness (`setUpModule` v? `tearDownModule` c?a unittest runner), b?o ??m thao t?c import ??n thu?n trong candidate process kh?ng c? b?t k? side effect kh?i ch?y daemon hay m? socket n?o.
-  - **(3) B? Sung C? Ch? Retry Khi Persist Atomic Tr?nh Race Condition Tr?n Windows**:
-    - Trong `delivery_engine.py:6363` (`_persist_atomic`), b? sung retry loop ng?n (t?i ?a 5 l?n v?i backoff 10ms) cho thao t?c `os.replace(tmp_path, self.storage_path)` khi g?p `PermissionError` [WinError 5] do c? ch? file locking t?m th?i c?a Windows trong c?c ??t ghi ??ng th?i d?n d?p.
-  - **(4) Fixture Ph?n Bi?t test_18v (Fresh Subprocess Import Fixture Kh?ng Th? Mint Capability)**:
-    - B? sung `test_18v_sol_finding_candidate_importing_fixture_cannot_mint_bootstrap_capability`:
-      - Trong ti?n tr?nh con ??c l?p ho?n to?n m?i (fresh subprocess), candidate import `test_negative_fixtures as f`.
-      - Kh?ng ??nh `f` kh?ng ph?i b?y `TrustedHostBootstrapCapability`, `_HOST_BOUNDARY_TOKEN`, `_h_port`, `_h_authkey`, `_h_proc`, hay `_h_boot_cap`.
-      - Kh?ng ??nh thao t?c import kh?ng kh?i ??ng daemon m?y ch? ngo?i ti?n tr?nh.
-      - Candidate n? l?c g?i factory ho?c mint verifiable bootstrap capability th?t b?i fail-closed.
-      - Ch?ng minh `CANDIDATE_IMPORT_FIXTURE_AUTHORITY_ACCEPTED` kh?ng th? ??t ???c, x?c l?p b?ng ch?ng `CANDIDATE_IMPORT_FIXTURE_MINT_REJECTED_PASS`.
-  - **(5) To?n B? 398/398 Tests PASS (100%)**:
-    - To?n b? 398 automated fixtures ??t PASS tuy?t ??i tr?n m?i c?ng ki?m th? c?a project.
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate f5b136099ff0b2236362c29a7a1ed5d154a19fe3 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Loại Bỏ Hoàn Toàn Nhánh Fallback Endpoint Caller-Selected Khỏi `pin_trusted_host_public_key`**:
+    - Trong `delivery_engine.py:1631-1642`, loại bỏ hoàn toàn khối `elif port is not None and authkey is not None:` tự ý kết nối tới endpoint do caller truyền vào để ghim khóa công khai của caller khi listener trả `True`.
+    - Ràng buộc việc ghim khóa 100% qua thẩm quyền capability host ngoài tiến trình: bắt buộc `_is_valid_host_boundary_capability(_internal_token)` phải trả về `True` thông qua kênh `HostBoundaryChannel` đã cấu hình. Nếu caller truyền thêm `port` hoặc `authkey`, bắt buộc phải khớp chính xác tuyệt đối với endpoint đã cấu hình trên `HostBoundaryChannel` (`chan_port`, `chan_auth`), ngăn chặn tuyệt đối mọi nỗ lực trỏ tới rogue endpoint nội bộ.
+  - **(2) Đồng Bộ Khởi Tạo Kênh Máy Chủ Trong Test Harness & Positive Control**:
+    - Trong `_ensure_test_host_boundary_harness()`, thiết lập `HostBoundaryChannel._port` và `HostBoundaryChannel._authkey` từ daemon máy chủ trước khi gọi `pin_trusted_host_public_key`, bảo đảm kiểm tra thẩm quyền out-of-process thành công mà không cần fallback endpoint.
+    - Trong fixture positive control `child_code_pos`, cấu hình endpoint của `HostBoundaryChannel` đồng bộ từ context máy chủ trước khi thực hiện ghim khóa công khai.
+  - **(3) Fixture Phân Biệt test_18w (Fresh Subprocess Caller-Selected Endpoint Pin Bị Từ Chối Fail-Closed)**:
+    - Bổ sung bài kiểm tra `test_18w_sol_finding_caller_selected_endpoint_pin_rejected_in_fresh_subprocess`: chứng minh trong tiến trình con độc lập, kẻ tấn công tự mở rogue listener tại cổng cục bộ và gọi `pin_trusted_host_public_key` bị từ chối lập tức với `ProtocolViolationError`, khóa công khai ghim giữ nguyên `None`, tự mint `HostBoundaryBootstrapCapability` bị verify từ chối fail-closed, và `COUNTEREXAMPLE_CANDIDATE_SELF_PIN_AND_MINT_ACCEPTED` bằng `False` (phát sinh bằng chứng `SOL_CALLER_SELECTED_PIN_REJECTED_PASS`).
+  - **(4) Bộ Kiểm Thử & Cổng Thẩm Định Toàn Diện**:
+    - Toàn bộ bộ kiểm thử tự động đạt **399/399 tests PASS (100%)**.
+    - Tất cả 12 cổng thẩm định release gate đạt PASS tuyệt đối; trạng thái kích hoạt production mode tiếp tục bị khóa chặt fail-closed (`PRODUCTION_ACTIVATION_BLOCKED`).
+
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 42ea7a7 (Loại Bỏ Hoàn Toàn Trusted Host Factory, Credential & Endpoint Khỏi Candidate-Readable Fixtures, Khử Side Effect Khởi Động Daemon Khi Import & Bổ Sung Negative Assertion test_18v)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate 42ea7a7c8a421f153026c51aa0fcd5c9b3973530 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Loại Bỏ Hoàn Toàn Factory, Token & Endpoint Khỏi Candidate-Readable Fixtures**:
+    - Loại bỏ triệt để factory `TrustedHostBootstrapCapability`, token `_HOST_BOUNDARY_TOKEN`, và các biến toàn cục `_h_port`, `_h_authkey`, `_h_proc`, `_h_boot_cap` khỏi module level của `test_negative_fixtures.py`.
+    - Bảo đảm candidate module hoặc tiến trình con của candidate khi import `test_negative_fixtures.py` không thể truy cập bất kỳ credential, endpoint hay factory cấp phát thẩm quyền nào (hasattr trả về False đối với toàn bộ các thuộc tính trên).
+  - **(2) Khử Triệt Để Side Effect Khởi Động Daemon Khi Import Module**:
+    - Loại bỏ lệnh gọi khởi chạy daemon `_launch_test_host_boundary_daemon` ở mức module-level của `test_negative_fixtures.py`.
+    - Chuyển toàn bộ việc quản lý tiến trình daemon máy chủ ngoài tiến trình sang lifecycle test harness (`setUpModule` và `tearDownModule` của unittest runner), bảo đảm thao tác import đơn thuần trong candidate process không có bất kỳ side effect khởi chạy daemon hay mở socket nào.
+  - **(3) Bổ Sung Cơ Chế Retry Khi Persist Atomic Tránh Race Condition Trên Windows**:
+    - Trong `delivery_engine.py:6363` (`_persist_atomic`), bổ sung retry loop ngắn (tối đa 5 lần với backoff 10ms) cho thao tác `os.replace(tmp_path, self.storage_path)` khi gặp `PermissionError` [WinError 5] do cơ chế file locking tạm thời của Windows trong các đợt ghi đồng thời dồn dập.
+  - **(4) Fixture Phân Biệt test_18v (Fresh Subprocess Import Fixture Không Thể Mint Capability)**:
+    - Bổ sung `test_18v_sol_finding_candidate_importing_fixture_cannot_mint_bootstrap_capability`:
+      - Trong tiến trình con độc lập hoàn toàn mới (fresh subprocess), candidate import `test_negative_fixtures as f`.
+      - Khẳng định `f` không phơi bày `TrustedHostBootstrapCapability`, `_HOST_BOUNDARY_TOKEN`, `_h_port`, `_h_authkey`, `_h_proc`, hay `_h_boot_cap`.
+      - Khẳng định thao tác import không khởi động daemon máy chủ ngoài tiến trình.
+      - Candidate nỗ lực gọi factory hoặc mint verifiable bootstrap capability thất bại fail-closed.
+      - Chứng minh `CANDIDATE_IMPORT_FIXTURE_AUTHORITY_ACCEPTED` không thể đạt được, xác lập bằng chứng `CANDIDATE_IMPORT_FIXTURE_MINT_REJECTED_PASS`.
+  - **(5) Toàn Bộ 398/398 Tests PASS (100%)**:
+    - Toàn bộ 398 automated fixtures đạt PASS tuyệt đối trên mọi cổng kiểm thử của project.
 
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 2798fd6 (External Signer Daemon Ngoài Tiến Trình, Loại Bỏ Hoàn Toàn Private Key Khỏi Repository & Ngăn Chặn Mint Capability Khi Quét Toàn Bộ Mã Nguồn)
 

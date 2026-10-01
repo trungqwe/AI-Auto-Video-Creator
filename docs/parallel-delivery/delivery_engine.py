@@ -1630,15 +1630,15 @@ class HostBoundaryBootstrapCapability:
         is_valid = False
         if _is_valid_host_boundary_capability(_internal_token):
             is_valid = True
-        elif port is not None and authkey is not None and isinstance(port, int) and isinstance(authkey, bytes):
-            try:
-                from multiprocessing.connection import Client
-                conn = Client(("127.0.0.1", port), authkey=authkey)
-                conn.send(clean)
-                res = conn.recv()
-                conn.close()
-                is_valid = bool(res is True)
-            except Exception:
+        if port is not None or authkey is not None:
+            with HostBoundaryChannel._lock:
+                chan_port = HostBoundaryChannel._port
+                chan_auth = HostBoundaryChannel._authkey
+            if chan_port is None or chan_auth is None:
+                is_valid = False
+            elif port is not None and port != chan_port:
+                is_valid = False
+            elif authkey is not None and authkey != chan_auth:
                 is_valid = False
 
         if not is_valid:
