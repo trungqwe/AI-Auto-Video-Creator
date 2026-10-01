@@ -53,6 +53,7 @@ Khi có mâu thuẫn, dừng node bị ảnh hưởng ở `needs_replan` hoặc 
 | [`validate.py`](./validate.py) | Công cụ thẩm định bundle, DAG, registry, locks, scope, fixtures | Có |
 | [`delivery_engine.py`](./delivery_engine.py) | Module thực thi lõi cho contract binding, lease manager, Orca adapter và harness compatibility | Có |
 | [`test_negative_fixtures.py`](./test_negative_fixtures.py) | Suite kiểm thử negative fixtures tự động cho 6 findings Astra round 1 và probes Sol review | Có |
+| [`test_host_boundary_harness.py`](./test_host_boundary_harness.py) | Module harness và daemon boundary cô lập cho test keystore/credential nằm ngoài candidate surface | Có |
 
 YAML dùng YAML 1.2, UTF-8 không BOM. Giá trị enum và identifier dùng tiếng Anh; mô tả cho người dùng dùng tiếng Việt.
 
@@ -569,3 +570,26 @@ Biện pháp khắc phục triệt để:
      + Khẳng định truy cập trực tiếp ném `AttributeError`, `from-import` ném `ImportError`.
      + Tái hiện counterexample an toàn: candidate tự sinh cặp khóa Ed25519, cố gắng gọi `TrustedHostIsolatedKeyStore` để mint keystore với public key tự chọn và xác minh chữ ký; khẳng định toàn bộ nỗ lực bị chặn fail-closed, `CANDIDATE_PUBLIC_HELPER_CUSTOM_KEY_ACCEPTED` bằng `False`, và phát sinh bằng chứng `SOL_CUSTOM_KEY_AUTHORITY_REJECTED_PASS`.
 4. **Bộ kiểm thử toàn diện**: Nâng tổng số bài test/probe lên **401/401 tests PASS (100%)**, bảo đảm an toàn tuyệt đối trên mọi cổng thẩm định và release gate.
+
+## 32. Khắc phục triệt để phát hiện Sol Audit trên a7d9820 (Tách Biệt Hoàn Toàn Test Harness Ra Module Riêng Biệt, Vô Hiệu Hóa Bypass Raw Module Dictionary & Khử Triệt Để Quyền Tự Cấp Khóa)
+
+Đợt rà soát độc lập trên exact candidate SHA `a7d982095108f7028ec208117d95231a62d55988` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nhận finding actionable:
+Cơ chế niêm phong tại `docs/parallel-delivery/test_negative_fixtures.py:14221-14298` chỉ override truy cập thuộc tính thông thường, nhưng caller vẫn lấy raw namespace bằng `types.ModuleType.__getattribute__(f, '__dict__')`, gọi `raw['setUpModule']()`, lấy `raw['TrustedHostIsolatedKeyStore']` và cấp keystore bằng public key Ed25519 tự chọn; minimal safe assertion quan sát `RAW_MODULE_DICT_CUSTOM_KEY_ACCEPTED=True` với exit code 7, trái invariant candidate không thể truy cập helper hay mint custom-key authority và cho thấy `test_18y` hiện chưa phân biệt bypass qua base descriptor.
+
+Biện pháp khắc phục triệt để:
+1. **Finding 1 — Tách Rời Hoàn Toàn Test Harness Ra Khỏi Candidate-Readable Module**:
+   - Chuyển toàn bộ `_InternalHostBoundaryVault`, `_ensure_internal_host_boundary_harness`, `_stop_internal_host_boundary_harness`, cùng 4 helper (`TrustedHostReviewerHandoff`, `TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, `TrustedHostProvisionKeyStore`) và `TEST_FIXTURE_REVIEWER_SECRET` sang tệp riêng biệt `docs/parallel-delivery/test_host_boundary_harness.py`.
+   - Xóa bỏ hoàn toàn `setUpModule`, `tearDownModule`, các helper, credential và secret khỏi module-level của `docs/parallel-delivery/test_negative_fixtures.py`.
+   - Vô hiệu hóa triệt để kỹ thuật bypass qua base descriptor `types.ModuleType.__getattribute__(f, '__dict__')`: raw dictionary của module `test_negative_fixtures` hoàn toàn không chứa bất kỳ lifecycle authority, helper hay credential nào.
+2. **Finding 2 — Khử Triệt Để Quyền Tự Cấp Khóa Bằng Whitelist Bất Biến**:
+   - Trong `test_host_boundary_harness.py`, bổ sung danh sách whitelist bất biến `ALLOWED_FIXTURE_KEY_IDS = frozenset({"rev_key_lead_v1", "integ_gatekeeper_v1", "control_authority_v1"})`.
+   - Mọi nỗ lực mint hoặc provision keystore với custom key ID (ví dụ: `'custom_key'`) đều bị từ chối lập tức với `ProtocolViolationError` fail-closed.
+3. **Finding 3 — Khởi Tạo Ranh Giới Ở Cấp Test Runner**:
+   - Tích hợp việc khởi tạo và dọn dẹp daemon `test_host_boundary_harness` vào `validate.py:run_negative_fixture_suite()` và entrypoint `__main__`, bảo đảm harness chỉ hoạt động dưới sự kiểm soát của runner kiểm thử và độc lập tuyệt đối với candidate import.
+4. **Finding 4 — Cập Nhật Fixture Phân Biệt `test_18y` (Regression Bypass Base Descriptor)**:
+   - Cập nhật bài kiểm tra `test_18y_sol_finding_candidate_custom_key_authority_rejected_in_fresh_subprocess`:
+     + Trong tiến trình con độc lập, candidate trích xuất raw namespace bằng `types.ModuleType.__getattribute__(f, '__dict__')`.
+     + Khẳng định toàn bộ 10 symbol nhạy cảm (`setUpModule`, `tearDownModule`, `TrustedHost...`, `_InternalHostBoundaryVault`, `_ensure_internal_host_boundary_harness`, `_stop_internal_host_boundary_harness`, `TEST_FIXTURE_REVIEWER_SECRET`) đều hoàn toàn vắng mặt trong raw dictionary.
+     + Tái hiện nỗ lực gọi `raw.get('setUpModule')` và `raw.get('TrustedHostIsolatedKeyStore')` để mint keystore với public key tự chọn; khẳng định `RAW_MODULE_DICT_CUSTOM_KEY_ACCEPTED` luôn là `False` fail-closed.
+     + Khẳng định gọi trực tiếp `TrustedHostIsolatedKeyStore` với custom key cũng luôn bị từ chối fail-closed.
+5. **Bộ kiểm thử toàn diện**: Toàn bộ bộ kiểm thử tự động đạt **401/401 tests PASS (100%)**, bảo đảm an toàn tuyệt đối trên mọi cổng thẩm định và release gate.

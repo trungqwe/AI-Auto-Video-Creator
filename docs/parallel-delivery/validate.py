@@ -725,24 +725,32 @@ def run_negative_fixture_suite() -> Tuple[list[str], dict[str, Any]]:
     if "ORCA_HOST_BOUNDARY_TOKEN" not in os.environ or len(os.environ["ORCA_HOST_BOUNDARY_TOKEN"].strip()) < 32:
         import secrets
         os.environ["ORCA_HOST_BOUNDARY_TOKEN"] = secrets.token_hex(32)
-    import test_negative_fixtures
+    from test_host_boundary_harness import (
+        _ensure_internal_host_boundary_harness,
+        _stop_internal_host_boundary_harness,
+    )
+    _ensure_internal_host_boundary_harness()
+    try:
+        import test_negative_fixtures
 
-    suite = unittest.defaultTestLoader.loadTestsFromModule(test_negative_fixtures)
-    runner = unittest.TextTestRunner(stream=sys.stdout, verbosity=1)
-    result = runner.run(suite)
+        suite = unittest.defaultTestLoader.loadTestsFromModule(test_negative_fixtures)
+        runner = unittest.TextTestRunner(stream=sys.stdout, verbosity=1)
+        result = runner.run(suite)
 
-    stats = {
-        "tests_run": result.testsRun,
-        "failures": len(result.failures),
-        "errors": len(result.errors),
-        "passed": result.wasSuccessful(),
-    }
+        stats = {
+            "tests_run": result.testsRun,
+            "failures": len(result.failures),
+            "errors": len(result.errors),
+            "passed": result.wasSuccessful(),
+        }
 
-    if not result.wasSuccessful():
-        for test, trace in result.failures + result.errors:
-            errors.append(f"Fixture {test}: {trace.splitlines()[-1]}")
+        if not result.wasSuccessful():
+            for test, trace in result.failures + result.errors:
+                errors.append(f"Fixture {test}: {trace.splitlines()[-1]}")
 
-    return errors, stats
+        return errors, stats
+    finally:
+        _stop_internal_host_boundary_harness()
 
 
 SECRET_PATTERNS = [

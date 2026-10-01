@@ -115,207 +115,6 @@ from delivery_engine import (  # noqa: E402
 )
 from validate import check_secret_scan, check_task_dag
 
-TEST_FIXTURE_REVIEWER_SECRET = "test_fixture_reviewer_secret_32b_hex!"
-
-
-class _InternalHostBoundaryVault:
-    port: int = 0
-    authkey: bytes = b""
-    token: str = ""
-    proc: Optional[subprocess.Popen] = None
-    boot_cap: Optional[HostBoundaryBootstrapCapability] = None
-    test_host_issuer: Optional[ReviewerHostIssuer] = None
-    lock = threading.RLock()
-
-
-def _ensure_internal_host_boundary_harness() -> None:
-    with _InternalHostBoundaryVault.lock:
-        if _InternalHostBoundaryVault.proc is not None and _InternalHostBoundaryVault.proc.poll() is None:
-            return
-
-        clean_token = secrets.token_hex(32)
-        effective_authkey = secrets.token_bytes(32)
-        server_code = (
-            "import sys, hmac\n"
-            "from multiprocessing.connection import Listener\n"
-            "from cryptography.hazmat.primitives.asymmetric import ed25519\n"
-            "line1 = sys.stdin.readline().strip()\n"
-            "line2 = sys.stdin.readline().strip()\n"
-            "host_secret = line1.encode('utf-8')\n"
-            "authkey = bytes.fromhex(line2)\n"
-            "listener = Listener(('127.0.0.1', 0), authkey=authkey)\n"
-            "priv_key = ed25519.Ed25519PrivateKey.generate()\n"
-            "pub_bytes = priv_key.public_key().public_bytes_raw()\n"
-            "sys.stdout.write(str(listener.address[1]) + '\\n')\n"
-            "sys.stdout.write(pub_bytes.hex() + '\\n')\n"
-            "sys.stdout.flush()\n"
-            "while True:\n"
-            "    try:\n"
-            "        conn = listener.accept()\n"
-            "        msg = conn.recv()\n"
-            "        if msg == '__STOP_HOST_BOUNDARY__':\n"
-            "            conn.send(True)\n"
-            "            conn.close()\n"
-            "            break\n"
-            "        if isinstance(msg, tuple) and len(msg) == 3 and msg[0] == 'SIGN_BOOTSTRAP_CAP':\n"
-            "            _, req_token, payload = msg\n"
-            "            t_bytes = req_token if isinstance(req_token, bytes) else req_token.encode('utf-8', errors='replace')\n"
-            "            if len(t_bytes) >= 32 and hmac.compare_digest(t_bytes.strip(), host_secret):\n"
-            "                sig = priv_key.sign(payload).hex()\n"
-            "                conn.send(('OK', sig))\n"
-            "            else:\n"
-            "                conn.send(('ERR', 'Unauthorized'))\n"
-            "            conn.close()\n"
-            "            continue\n"
-            "        if isinstance(msg, bytes):\n"
-            "            t_bytes = msg\n"
-            "        elif isinstance(msg, str):\n"
-            "            t_bytes = msg.encode('utf-8', errors='replace')\n"
-            "        else:\n"
-            "            conn.send(False)\n"
-            "            conn.close()\n"
-            "            continue\n"
-            "        valid = len(t_bytes) >= 32 and hmac.compare_digest(t_bytes.strip(), host_secret)\n"
-            "        conn.send(valid)\n"
-            "        conn.close()\n"
-            "    except Exception:\n"
-            "        break\n"
-            "listener.close()\n"
-        )
-
-        proc = subprocess.Popen(
-            [sys.executable, "-u", "-c", server_code],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        proc.stdin.write(clean_token + "\n" + effective_authkey.hex() + "\n")
-        proc.stdin.flush()
-
-        port_line = proc.stdout.readline()
-        if not port_line or not port_line.strip().isdigit():
-            proc.kill()
-            raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel port")
-        port = int(port_line.strip())
-
-        pub_line = proc.stdout.readline()
-        if not pub_line or len(pub_line.strip()) != 64:
-            proc.kill()
-            raise ProtocolViolationError("Failed to initialize out-of-process host boundary channel public key")
-        pub_bytes = bytes.fromhex(pub_line.strip())
-
-        HostBoundaryChannel._port = port
-        HostBoundaryChannel._authkey = effective_authkey
-
-        HostBoundaryBootstrapCapability.pin_trusted_host_public_key(
-            pub_bytes, _internal_token=clean_token, port=port, authkey=effective_authkey
-        )
-
-        bid = f"boot_cap_{secrets.token_hex(16)}"
-        now = time.time()
-        authkey_hash = hashlib.sha256(effective_authkey).hexdigest()
-        host_token_hash = hashlib.sha256(clean_token.encode("utf-8")).hexdigest()
-        payload = f"HOST_BOOTSTRAP_CAP:{bid}:{port}:{authkey_hash}:{host_token_hash}:{now}".encode("utf-8")
-
-        from multiprocessing.connection import Client
-        conn = Client(("127.0.0.1", port), authkey=effective_authkey)
-        conn.send(("SIGN_BOOTSTRAP_CAP", clean_token, payload))
-        res = conn.recv()
-        conn.close()
-        if not isinstance(res, tuple) or len(res) != 2 or res[0] != "OK":
-            proc.kill()
-            raise ProtocolViolationError("Trusted host boundary daemon refused to sign initial bootstrap capability fail-closed")
-        sig = res[1]
-
-        boot_cap = HostBoundaryBootstrapCapability.from_host_signed_payload(
-            bootstrap_id=bid,
-            port=port,
-            authkey_hash=authkey_hash,
-            host_token_hash=host_token_hash,
-            created_at=now,
-            signature=sig,
-        )
-
-        HostBoundaryTicketIssuer._default_bootstrap_capability = boot_cap
-        host_ticket_issuer = HostBoundaryTicketIssuer(_internal_token=clean_token, bootstrap_capability=boot_cap)
-        host_ticket = host_ticket_issuer.issue_ticket(port, effective_authkey, _internal_token=clean_token)
-        HostBoundaryChannel.provision_channel(port, effective_authkey, host_ticket=host_ticket, bootstrap_capability=boot_cap, proc=proc)
-
-        test_host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token=clean_token)
-        ReviewerSessionBoundary.provision_from_host(
-            test_host_issuer.issue_handoff(TEST_FIXTURE_REVIEWER_SECRET.encode("utf-8"))
-        )
-
-        _InternalHostBoundaryVault.port = port
-        _InternalHostBoundaryVault.authkey = effective_authkey
-        _InternalHostBoundaryVault.token = clean_token
-        _InternalHostBoundaryVault.proc = proc
-        _InternalHostBoundaryVault.boot_cap = boot_cap
-        _InternalHostBoundaryVault.test_host_issuer = test_host_issuer
-
-
-def _stop_internal_host_boundary_harness() -> None:
-    with _InternalHostBoundaryVault.lock:
-        proc = _InternalHostBoundaryVault.proc
-        if proc is not None:
-            try:
-                if proc.poll() is None:
-                    if _InternalHostBoundaryVault.port and _InternalHostBoundaryVault.authkey:
-                        try:
-                            from multiprocessing.connection import Client
-                            conn = Client(("127.0.0.1", _InternalHostBoundaryVault.port), authkey=_InternalHostBoundaryVault.authkey)
-                            conn.send("__STOP_HOST_BOUNDARY__")
-                            conn.recv()
-                            conn.close()
-                        except Exception:
-                            pass
-                    proc.terminate()
-                    proc.wait(timeout=2.0)
-            except Exception:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
-            _InternalHostBoundaryVault.proc = None
-
-
-def setUpModule() -> None:
-    _ensure_internal_host_boundary_harness()
-
-
-def tearDownModule() -> None:
-    _stop_internal_host_boundary_harness()
-
-
-def TrustedHostReviewerHandoff(credential: bytes) -> ReviewerHostHandoff:
-    if _InternalHostBoundaryVault.test_host_issuer is None or not _InternalHostBoundaryVault.token or _InternalHostBoundaryVault.proc is None:
-        raise ProtocolViolationError("Trusted host reviewer issuer uninitialized fail-closed; caller cannot invoke host helper outside test harness")
-    return _InternalHostBoundaryVault.test_host_issuer.issue_handoff(credential)
-
-
-def TrustedHostKeyStoreHandoff(pinned_keys: Mapping[str, bytes], issuer_name: str = "trusted_host") -> KeyStoreHostHandoff:
-    token = _InternalHostBoundaryVault.token
-    if not token or _InternalHostBoundaryVault.proc is None:
-        raise ProtocolViolationError("Trusted host keystore issuer uninitialized fail-closed; caller cannot invoke host helper outside test harness")
-    issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=token)
-    return issuer.issue_handoff(pinned_keys, issuer_name=issuer_name, _internal_token=token)
-
-
-def TrustedHostIsolatedKeyStore(pinned_keys: Mapping[str, bytes]) -> TrustedKeyStore:
-    token = _InternalHostBoundaryVault.token
-    if not token or _InternalHostBoundaryVault.proc is None:
-        raise ProtocolViolationError("Trusted host keystore issuer uninitialized fail-closed; caller cannot invoke host helper outside test harness")
-    issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=token)
-    return issuer.issue_isolated_keystore(pinned_keys, _internal_token=token)
-
-
-def TrustedHostProvisionKeyStore(handoff: KeyStoreHostHandoff) -> TrustedKeyStore:
-    token = _InternalHostBoundaryVault.token
-    if not token or _InternalHostBoundaryVault.proc is None:
-        raise ProtocolViolationError("Trusted host keystore uninitialized fail-closed; caller cannot invoke host helper outside test harness")
-    return TrustedKeyStore.provision_from_host(handoff, _internal_token=token)
-
 
 
 class TestF1ExactContractBinding(unittest.TestCase):
@@ -500,6 +299,7 @@ class TestF4OrcaMappingAndLifecycle(unittest.TestCase):
         self.adapter.set_task_state("PD-PILOT-CONTROL", "ready")
         self.adapter.register_task_locks("PD-PILOT-CONTROL", ["LOCK-PARALLEL-REGISTRY"])
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
 
@@ -1686,6 +1486,7 @@ class TestSolRoundThreeCounterexamples(unittest.TestCase):
         self.adapter.register_task_locks("TASK-A", ["R3-LOCK-EXCL"])
         self.adapter.register_task_locks("TASK-B", ["R3-LOCK-CAP"])
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
 
@@ -2123,6 +1924,7 @@ class TestSolRoundFourCounterexamples(unittest.TestCase):
         self.known_owners = {"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "CROSS-CUTTING-CONTRACT-OWNER"}
         self.known_requirements = {"QR-MNT-002", "QR-MNT-003", "QR-COMP-003", "FR-UI-001"}
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
 
@@ -3193,6 +2995,7 @@ class TestSolRoundSixCounterexamples(unittest.TestCase):
         self.adapter.register_task_locks("TASK-A", ["R6-LOCK-EXCL"])
         self.adapter.register_task_locks("TASK-B", ["R6-LOCK-CAP4"])
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
     def tearDown(self):
@@ -3204,7 +3007,7 @@ class TestSolRoundSixCounterexamples(unittest.TestCase):
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=candidate_commit,
-            reviewer_secret=getattr(self, "reviewer_secret", TEST_FIXTURE_REVIEWER_SECRET),
+            reviewer_secret=getattr(self, "reviewer_secret", "test_fixture_reviewer_secret_32b_hex!"),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -6881,6 +6684,7 @@ class TestAstraRound18Remediation(unittest.TestCase):
         self.t0 = datetime.now(timezone.utc)
         self.lease = self.mgr.acquire_lease("LOCK-A18", self.delivery_id, self.intended_disp, lease_seconds=10, now=self.t0)
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
     def tearDown(self):
@@ -6891,7 +6695,7 @@ class TestAstraRound18Remediation(unittest.TestCase):
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=candidate_commit,
-            reviewer_secret=getattr(self, "reviewer_secret", TEST_FIXTURE_REVIEWER_SECRET),
+            reviewer_secret=getattr(self, "reviewer_secret", "test_fixture_reviewer_secret_32b_hex!"),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -7258,6 +7062,7 @@ class TestSolRound18Remediation(unittest.TestCase):
         self.adapter.set_task_authority(self.delivery_id, "granted")
         self.adapter.set_task_state(self.delivery_id, "ready")
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
     def tearDown(self):
@@ -7274,7 +7079,7 @@ class TestSolRound18Remediation(unittest.TestCase):
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=candidate_commit,
-            reviewer_secret=getattr(self, "reviewer_secret", TEST_FIXTURE_REVIEWER_SECRET),
+            reviewer_secret=getattr(self, "reviewer_secret", "test_fixture_reviewer_secret_32b_hex!"),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -7625,6 +7430,7 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
         self.adapter.set_task_authority(self.delivery_id, "granted")
         self.adapter.set_task_state(self.delivery_id, "ready")
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
     def tearDown(self):
@@ -7641,7 +7447,7 @@ class TestSolLeadReview43c96aaRemediation(unittest.TestCase):
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=candidate_commit,
-            reviewer_secret=getattr(self, "reviewer_secret", TEST_FIXTURE_REVIEWER_SECRET),
+            reviewer_secret=getattr(self, "reviewer_secret", "test_fixture_reviewer_secret_32b_hex!"),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -7951,6 +7757,7 @@ class TestSolLeadReviewDa26686Remediation(unittest.TestCase):
         self.adapter.set_task_authority(self.delivery_id, "granted")
         self.adapter.set_task_state(self.delivery_id, "ready")
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
     def tearDown(self):
@@ -7967,7 +7774,7 @@ class TestSolLeadReviewDa26686Remediation(unittest.TestCase):
             delivery_task_id=delivery_id,
             review_dispatch_id=rev_disp_id,
             candidate_commit=candidate_commit,
-            reviewer_secret=getattr(self, "reviewer_secret", TEST_FIXTURE_REVIEWER_SECRET),
+            reviewer_secret=getattr(self, "reviewer_secret", "test_fixture_reviewer_secret_32b_hex!"),
         )
         rev_cap = self.adapter.claim_reviewer_capability(rev_ctx)
         return self.adapter.issue_review_evidence(delivery_id, rev_disp_id, candidate_commit, verdict=verdict, reviewer_capability=rev_cap, now=now)
@@ -8310,6 +8117,7 @@ class TestSolLeadReview36092d0Remediation(unittest.TestCase):
         self.adapter.set_task_authority(self.delivery_id, "granted")
         self.adapter.set_task_state(self.delivery_id, "ready")
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
     def tearDown(self):
@@ -8646,6 +8454,7 @@ class TestSolLeadAudit654860cRemediation(unittest.TestCase):
         self.adapter.set_task_authority(self.delivery_id, "granted")
         self.adapter.set_task_state(self.delivery_id, "ready")
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
     def tearDown(self):
@@ -8933,6 +8742,7 @@ class TestSolLeadAudit2f56bd3Remediation(unittest.TestCase):
         self.ea = self.adapter.evidence_authority
         self.t0 = datetime(2026, 9, 30, 10, 0, 0, tzinfo=timezone.utc)
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
 
@@ -9258,6 +9068,7 @@ class TestSolLeadAudit982ed1eRemediation(unittest.TestCase):
         self.ea = self.adapter.evidence_authority
         self.t0 = datetime(2026, 9, 30, 10, 0, 0, tzinfo=timezone.utc)
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
 
@@ -9432,6 +9243,7 @@ class TestSolLeadAudit1f90e6cRemediation(unittest.TestCase):
         self.ea = self.adapter.evidence_authority
         self.t0 = datetime(2026, 9, 30, 11, 0, 0, tzinfo=timezone.utc)
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
 
@@ -9684,6 +9496,7 @@ class TestSolLeadAuditEab4cabRemediation(unittest.TestCase):
         self.adapter.register_task_locks(self.delivery_id, ["LOCK-EAB4CAB-REMED"])
         self.ea = self.adapter.evidence_authority
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
     def tearDown(self):
@@ -10071,6 +9884,7 @@ class TestSolLeadAuditA189e50Remediation(unittest.TestCase):
         self.adapter.register_task_locks(self.delivery_id, ["LOCK-A189E50-REMED"])
         self.ea = self.adapter.evidence_authority
 
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
     def tearDown(self):
@@ -10413,6 +10227,11 @@ class TestSolLeadAuditA189e50Remediation(unittest.TestCase):
         self.assertEqual(self.adapter.get_task_state(self.delivery_id), "integrated")
 
 class TestSolRemediationSeparationOfDuties(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from test_host_boundary_harness import _ensure_internal_host_boundary_harness
+        _ensure_internal_host_boundary_harness()
+
     """
     Test suite verifying strict Separation of Duties for review dispatch and capability delivery:
     1. Negative fixture: create_review_dispatch() returns bare dispatch_id string only; caller receives neither bearer token nor ReviewDispatchHandle.
@@ -10447,6 +10266,7 @@ class TestSolRemediationSeparationOfDuties(unittest.TestCase):
         self.lease = self.mgr.acquire_lease("LOCK-SOD-REMED", self.delivery_id, self.intended_disp, now=self.t0)
         self.registry = SharedOrcaExecutionRegistry.get_default()
         self.control_secret = "test_control_secret_sod_32b_hex!"
+        from test_host_boundary_harness import TEST_FIXTURE_REVIEWER_SECRET
         self.reviewer_secret = TEST_FIXTURE_REVIEWER_SECRET
         self.boundary = ReviewerSessionBoundary.get_default()
         self.adapter = OrcaDeliveryAdapter(
@@ -11573,6 +11393,14 @@ print("ORDINARY_CALLER_CANNOT_PROVISION_PASS: ordinary in-process caller cannot 
         (e.g. __module__ = 'attacker_module') cannot subclass ReviewerHostHandoff, cannot bypass boundary
         with unauthenticated handoff, cannot forge issuer capabilities, and default boundary remains unprovisioned;
         while in an independent fresh process, authentic host handoff with unforgeable issuer capability successfully provisions."""
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+            TrustedHostReviewerHandoff,
+            TrustedHostKeyStoreHandoff,
+            TrustedHostIsolatedKeyStore,
+            TrustedHostProvisionKeyStore,
+        )
         clean_env = {k: v for k, v in os.environ.items() if "REVIEWER" not in k.upper()}
         child_code_neg = r'''
 import sys
@@ -11681,6 +11509,11 @@ print("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS")
         self.assertEqual(res_neg.returncode, 0, f"Child process failed: stdout={res_neg.stdout}\nstderr={res_neg.stderr}")
         self.assertIn("OUTSIDE_MODULE_ATTACKER_HANDOFF_REJECTED_PASS", res_neg.stdout)
 
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+        )
+        _ensure_internal_host_boundary_harness()
         pos_boot = _InternalHostBoundaryVault.boot_cap
         self.assertIsNotNone(pos_boot)
         pos_pub_hex = HostBoundaryBootstrapCapability.get_pinned_public_key().hex()
@@ -11742,7 +11575,21 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
     and fail-closed PRODUCTION_ACTIVATION_BLOCKED state.
     """
 
+    @classmethod
+    def setUpClass(cls):
+        from test_host_boundary_harness import _ensure_internal_host_boundary_harness
+        _ensure_internal_host_boundary_harness()
+
+    @classmethod
+    def tearDownClass(cls):
+        from test_host_boundary_harness import _stop_internal_host_boundary_harness
+        _stop_internal_host_boundary_harness()
+
     def setUp(self):
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+        )
         SharedOrcaExecutionRegistry.reset_default()
         _ensure_internal_host_boundary_harness()
         TrustedKeyStore._reset_for_testing(_internal_token=_InternalHostBoundaryVault.token)
@@ -11760,6 +11607,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
         self.t0 = datetime(2026, 9, 30, 22, 0, 0, tzinfo=timezone.utc)
 
     def tearDown(self):
+        from test_host_boundary_harness import _InternalHostBoundaryVault
         SharedOrcaExecutionRegistry.reset_default()
         TrustedKeyStore._reset_for_testing(_internal_token=_InternalHostBoundaryVault.token)
         KeyStoreHostIssuer._reset_for_testing(_internal_token=_InternalHostBoundaryVault.token)
@@ -11839,11 +11687,23 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
     def test_03_asymmetric_signature_verification_and_tamper_rejection(self):
         """3. Asymmetric Cryptography: Authentic Ed25519 signature verified with pinned public key;
         tampering with ANY field fails verification fail-closed."""
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+            TrustedHostReviewerHandoff,
+            TrustedHostKeyStoreHandoff,
+            TrustedHostIsolatedKeyStore,
+            TrustedHostProvisionKeyStore,
+        )
         from cryptography.hazmat.primitives.asymmetric import ed25519
         priv = ed25519.Ed25519PrivateKey.generate()
         pub = priv.public_key()
         pub_bytes = pub.public_bytes_raw()
 
+        from test_host_boundary_harness import TrustedHostIsolatedKeyStore
+        from test_host_boundary_harness import TrustedHostIsolatedKeyStore
+        from test_host_boundary_harness import TrustedHostIsolatedKeyStore
+        from test_host_boundary_harness import TrustedHostIsolatedKeyStore
         keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": pub_bytes})
         registry = DurableConsumptionRegistry()
         consumer = TrustedReviewConsumer(keystore, registry)
@@ -11912,6 +11772,14 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
 
     def test_04_wrong_or_revoked_key_id_rejected(self):
         """4. Trust Root: Envelopes signed with unknown key_id or revoked key_id are strictly rejected fail-closed."""
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+            TrustedHostReviewerHandoff,
+            TrustedHostKeyStoreHandoff,
+            TrustedHostIsolatedKeyStore,
+            TrustedHostProvisionKeyStore,
+        )
         from cryptography.hazmat.primitives.asymmetric import ed25519
         priv = ed25519.Ed25519PrivateKey.generate()
         pub_bytes = priv.public_key().public_bytes_raw()
@@ -11967,6 +11835,14 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
 
     def test_05_single_use_and_replay_protection(self):
         """5. Replay Protection: Signed envelopes and nonces are strictly single-use; replay is rejected fail-closed."""
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+            TrustedHostReviewerHandoff,
+            TrustedHostKeyStoreHandoff,
+            TrustedHostIsolatedKeyStore,
+            TrustedHostProvisionKeyStore,
+        )
         from cryptography.hazmat.primitives.asymmetric import ed25519
         priv = ed25519.Ed25519PrivateKey.generate()
         pub_bytes = priv.public_key().public_bytes_raw()
@@ -12047,6 +11923,14 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
 
     def test_06_durability_across_process_restart_with_sqlite(self):
         """6. Durability: Consumption records and monotonic fencing survive registry/process restart."""
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+            TrustedHostReviewerHandoff,
+            TrustedHostKeyStoreHandoff,
+            TrustedHostIsolatedKeyStore,
+            TrustedHostProvisionKeyStore,
+        )
         import tempfile
         from cryptography.hazmat.primitives.asymmetric import ed25519
         priv = ed25519.Ed25519PrivateKey.generate()
@@ -12056,6 +11940,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             db_file = Path(tf.name)
 
         try:
+            from test_host_boundary_harness import TrustedHostIsolatedKeyStore
             keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": pub_bytes})
 
             # Session A consumes envelope
@@ -12144,6 +12029,14 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
 
     def test_07_temporal_validity_expiration_and_future_invalid(self):
         """7. Temporal validity: Expired envelopes and future-invalid envelopes fail closed."""
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+            TrustedHostReviewerHandoff,
+            TrustedHostKeyStoreHandoff,
+            TrustedHostIsolatedKeyStore,
+            TrustedHostProvisionKeyStore,
+        )
         from cryptography.hazmat.primitives.asymmetric import ed25519
         priv = ed25519.Ed25519PrivateKey.generate()
         pub_bytes = priv.public_key().public_bytes_raw()
@@ -12314,6 +12207,14 @@ print("FRESH_PROCESS_ISOLATION_PASS")
     def test_10_positive_control_full_lifecycle_with_asymmetric_envelope(self):
         """10. Positive Control: Authentic reviewer keypair signs valid envelope;
         adapter consumes envelope, transitions to merge_queued, and reference integration passes."""
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+            TrustedHostReviewerHandoff,
+            TrustedHostKeyStoreHandoff,
+            TrustedHostIsolatedKeyStore,
+            TrustedHostProvisionKeyStore,
+        )
         from cryptography.hazmat.primitives.asymmetric import ed25519
         priv = ed25519.Ed25519PrivateKey.generate()
         pub_bytes = priv.public_key().public_bytes_raw()
@@ -12322,6 +12223,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         int_priv = ed25519.Ed25519PrivateKey.generate()
         int_pub_bytes = int_priv.public_key().public_bytes_raw()
 
+        from test_host_boundary_harness import TrustedHostKeyStoreHandoff, TrustedHostProvisionKeyStore
         handoff = TrustedHostKeyStoreHandoff({
             "rev_key_lead_v1": pub_bytes,
             "integ_gatekeeper_v1": int_pub_bytes,
@@ -12428,6 +12330,14 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         """11. Finding 1: Key custody cannot be bootstrapped or mutated by candidate worker in-process.
         Direct registration, unauthorized authority, key replacement, and mapping mutation fail closed.
         """
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+            TrustedHostReviewerHandoff,
+            TrustedHostKeyStoreHandoff,
+            TrustedHostIsolatedKeyStore,
+            TrustedHostProvisionKeyStore,
+        )
         from cryptography.hazmat.primitives.asymmetric import ed25519
         attacker_priv = ed25519.Ed25519PrivateKey.generate()
         attacker_pub = attacker_priv.public_key().public_bytes_raw()
@@ -12456,6 +12366,11 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("Invalid authority for pinned key registration", str(ctx_forged.exception))
 
         # 11d. Candidate attempts to replace/mutate an existing pinned key authority fails closed
+        from test_host_boundary_harness import (
+            TrustedHostIsolatedKeyStore,
+            TrustedHostKeyStoreHandoff,
+            _InternalHostBoundaryVault,
+        )
         auth_keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": attacker_pub})
         handoff = TrustedHostKeyStoreHandoff({"rev_key_lead_v1": attacker_pub})
         with self.assertRaises(ProtocolViolationError) as ctx_replace:
@@ -12639,10 +12554,19 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         """12. Finding 2: Signed integration envelope consumed atomically via DurableConsumptionRegistry.
         Detects replay, single-use nonce reuse, monotonic fencing token, and temporal validity fail-closed.
         """
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+            TrustedHostReviewerHandoff,
+            TrustedHostKeyStoreHandoff,
+            TrustedHostIsolatedKeyStore,
+            TrustedHostProvisionKeyStore,
+        )
         from cryptography.hazmat.primitives.asymmetric import ed25519
         priv = ed25519.Ed25519PrivateKey.generate()
         pub_bytes = priv.public_key().public_bytes_raw()
 
+        from test_host_boundary_harness import TrustedHostIsolatedKeyStore
         keystore = TrustedHostIsolatedKeyStore({"integ_gatekeeper_v1": pub_bytes})
         registry = DurableConsumptionRegistry()
         consumer = TrustedIntegrationConsumer(keystore, registry)
@@ -12825,6 +12749,14 @@ print("FRESH_PROCESS_ISOLATION_PASS")
 
     def test_13_finding_02_integration_sqlite_durability_and_restart(self):
         """13. Finding 2: Integration consumption records survive SQLite process/registry restart."""
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+            TrustedHostReviewerHandoff,
+            TrustedHostKeyStoreHandoff,
+            TrustedHostIsolatedKeyStore,
+            TrustedHostProvisionKeyStore,
+        )
         from cryptography.hazmat.primitives.asymmetric import ed25519
         priv = ed25519.Ed25519PrivateKey.generate()
         pub_bytes = priv.public_key().public_bytes_raw()
@@ -12833,6 +12765,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             db_file = Path(tf.name)
 
         try:
+            from test_host_boundary_harness import TrustedHostIsolatedKeyStore
             keystore = TrustedHostIsolatedKeyStore({"integ_gatekeeper_v1": pub_bytes})
 
             # Session A consumes envelope
@@ -12927,6 +12860,14 @@ print("FRESH_PROCESS_ISOLATION_PASS")
 
     def test_14_finding_02_integration_concurrency_race(self):
         """14. Finding 2: Concurrency: Exactly one concurrent thread succeeds in consuming envelope; all others fail closed with ReplayAttackError."""
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+            TrustedHostReviewerHandoff,
+            TrustedHostKeyStoreHandoff,
+            TrustedHostIsolatedKeyStore,
+            TrustedHostProvisionKeyStore,
+        )
         from cryptography.hazmat.primitives.asymmetric import ed25519
         priv = ed25519.Ed25519PrivateKey.generate()
         pub_bytes = priv.public_key().public_bytes_raw()
@@ -12935,6 +12876,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             db_file = Path(tf.name)
 
         try:
+            from test_host_boundary_harness import TrustedHostIsolatedKeyStore
             keystore = TrustedHostIsolatedKeyStore({"integ_gatekeeper_v1": pub_bytes})
             now = time.time()
             payload = {
@@ -13003,9 +12945,18 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         consumed envelopes and monotonic fencing tokens survive adapter restart;
         caller-selected ephemeral registries are rejected fail-closed.
         """
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+            TrustedHostReviewerHandoff,
+            TrustedHostKeyStoreHandoff,
+            TrustedHostIsolatedKeyStore,
+            TrustedHostProvisionKeyStore,
+        )
         from cryptography.hazmat.primitives.asymmetric import ed25519
         priv = ed25519.Ed25519PrivateKey.generate()
         pub_bytes = priv.public_key().public_bytes_raw()
+        from test_host_boundary_harness import TrustedHostKeyStoreHandoff, TrustedHostProvisionKeyStore
         handoff = TrustedHostKeyStoreHandoff({"integ_gatekeeper_v1": pub_bytes})
         TrustedHostProvisionKeyStore(handoff)
 
@@ -13283,6 +13234,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         Candidate mutating os.environ cannot forge capability, bootstrap issuer authority,
         or provision TrustedKeyStore fail-closed.
         """
+        from test_host_boundary_harness import _InternalHostBoundaryVault
         attacker_token = secrets.token_hex(32)
         os.environ["ORCA_HOST_BOUNDARY_TOKEN"] = attacker_token
 
@@ -13429,6 +13381,14 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         HostBoundaryTicket cannot be forged, constructed directly, subclassed, deserialized,
         or replayed fail-closed; HostBoundaryChannel strictly authenticates ticket provenance.
         """
+        from test_host_boundary_harness import (
+            _InternalHostBoundaryVault,
+            _ensure_internal_host_boundary_harness,
+            TrustedHostReviewerHandoff,
+            TrustedHostKeyStoreHandoff,
+            TrustedHostIsolatedKeyStore,
+            TrustedHostProvisionKeyStore,
+        )
         # 18a. Sol counterexample: Direct construction of HostBoundaryTicket fails closed
         with self.assertRaises(ProtocolViolationError) as ctx_dir:
             HostBoundaryTicket(
@@ -13501,6 +13461,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("at least 32 characters", str(ctx_short.exception))
 
         # 18g. Trust-root tampering/monkeypatch: replace _issuer on ticket with foreign or fake issuer
+        from test_host_boundary_harness import _InternalHostBoundaryVault
         valid_issuer = HostBoundaryTicketIssuer.get_default_host_issuer(_internal_token=_InternalHostBoundaryVault.token)
         tampered_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey, _internal_token=_InternalHostBoundaryVault.token)
         fake_issuer = HostBoundaryTicketIssuer(_internal_token="fake_issuer_token_32_bytes_long!")
@@ -13792,6 +13753,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         6. Fixture module completely eliminates TrustedHostBootstrapCapability factory, _HOST_BOUNDARY_TOKEN,
            _h_port, _h_authkey, _h_proc, and _h_boot_cap from module exports.
         """
+        from test_host_boundary_harness import _InternalHostBoundaryVault
         import delivery_engine
         fixture_module = sys.modules[__name__]
 
@@ -13837,6 +13799,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         3. HostBoundaryBootstrapCapability rejects all candidate-minted / forged capabilities fail-closed.
         4. External signer architecture guarantees private key custody remains exclusively out-of-process in the daemon.
         """
+        from test_host_boundary_harness import _InternalHostBoundaryVault
         # 1. Verify no private signing key exists in git-tracked files of docs/parallel-delivery
         tracked_res = subprocess.run(["git", "ls-files", "docs/parallel-delivery"], cwd=ROOT_DIR, capture_output=True, text=True, check=True)
         tracked_files = [ROOT_DIR / f.strip() for f in tracked_res.stdout.splitlines() if f.strip()]
@@ -14135,21 +14098,29 @@ print("FRESH_PROCESS_ISOLATION_PASS")
 
 
     def test_18y_sol_finding_candidate_custom_key_authority_rejected_in_fresh_subprocess(self):
-        """18y. Sol Audit Finding Remediation: Candidate accessing public trusted host helpers to mint custom key authority rejected in fresh subprocess.
+        """18y. Sol Audit Finding Remediation: Candidate accessing public trusted host helpers or raw module __dict__ to mint custom key authority rejected in fresh subprocess.
         Proves:
         1. Fresh subprocess importing docs/parallel-delivery/test_negative_fixtures does not expose
-           TrustedHostReviewerHandoff, TrustedHostKeyStoreHandoff, TrustedHostIsolatedKeyStore, or
-           TrustedHostProvisionKeyStore via hasattr, dir, or __dict__.
+           TrustedHostReviewerHandoff, TrustedHostKeyStoreHandoff, TrustedHostIsolatedKeyStore,
+           TrustedHostProvisionKeyStore, setUpModule, tearDownModule, _InternalHostBoundaryVault,
+           _ensure_internal_host_boundary_harness, or _stop_internal_host_boundary_harness via
+           hasattr, dir, getattr, or raw types.ModuleType.__getattribute__(f, '__dict__').
         2. Direct attribute access or call to these helpers raises AttributeError fail-closed.
         3. Direct from-import of these helpers raises ImportError fail-closed.
-        4. Safe counterexample reproduction attempt in fresh subprocess:
+        4. Raw module dictionary bypass attempt:
+           Candidate extracts raw module namespace via types.ModuleType.__getattribute__(f, '__dict__'),
+           verifies that lifecycle authority (setUpModule), credentials (_InternalHostBoundaryVault),
+           and keystore helpers (TrustedHostIsolatedKeyStore) are strictly absent fail-closed.
+        5. Sol Counterexample reproduction attempt in fresh subprocess:
            Candidate imports test_negative_fixtures as f, generates a custom Ed25519 keypair,
-           and attempts to call TrustedHostIsolatedKeyStore or other helpers to mint a custom key authority.
-        5. CANDIDATE_PUBLIC_HELPER_CUSTOM_KEY_ACCEPTED is strictly False fail-closed.
-        6. Candidate cannot choose or mint pinned-key authority in fresh subprocess.
+           and attempts to call raw.get('setUpModule') and raw.get('TrustedHostIsolatedKeyStore')
+           or direct helper to mint a custom key authority.
+        6. RAW_MODULE_DICT_CUSTOM_KEY_ACCEPTED is strictly False fail-closed.
+        7. Custom key verification always rejected fail-closed; candidate cannot choose or mint pinned-key authority.
         """
         child_code = (
             "import sys\n"
+            "import types\n"
             "from pathlib import Path\n"
             "sys.path.insert(0, str(Path('docs/parallel-delivery').resolve()))\n"
             "import test_negative_fixtures as f\n"
@@ -14162,6 +14133,12 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    'TrustedHostKeyStoreHandoff',\n"
             "    'TrustedHostIsolatedKeyStore',\n"
             "    'TrustedHostProvisionKeyStore',\n"
+            "    'setUpModule',\n"
+            "    'tearDownModule',\n"
+            "    '_InternalHostBoundaryVault',\n"
+            "    '_ensure_internal_host_boundary_harness',\n"
+            "    '_stop_internal_host_boundary_harness',\n"
+            "    'TEST_FIXTURE_REVIEWER_SECRET',\n"
             "]:\n"
             "    assert not hasattr(f, helper_name), f'{helper_name} must not be exposed on fixture module via hasattr'\n"
             "    assert getattr(f, helper_name, None) is None, f'getattr {helper_name} must return None fail-closed'\n"
@@ -14174,6 +14151,8 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    'TrustedHostKeyStoreHandoff',\n"
             "    'TrustedHostIsolatedKeyStore',\n"
             "    'TrustedHostProvisionKeyStore',\n"
+            "    'setUpModule',\n"
+            "    'tearDownModule',\n"
             "]:\n"
             "    try:\n"
             "        _ = getattr(f, helper_name)\n"
@@ -14187,6 +14166,8 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    'TrustedHostKeyStoreHandoff',\n"
             "    'TrustedHostIsolatedKeyStore',\n"
             "    'TrustedHostProvisionKeyStore',\n"
+            "    'setUpModule',\n"
+            "    'tearDownModule',\n"
             "]:\n"
             "    try:\n"
             "        exec(f'from test_negative_fixtures import {helper_name}')\n"
@@ -14194,23 +14175,55 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    except ImportError:\n"
             "        pass\n"
             "\n"
-            "# 4. Sol Counterexample reproduction attempt in fresh subprocess:\n"
-            "# Candidate generates custom Ed25519 keypair and attempts to obtain keystore with custom key\n"
+            "# 4. Sol Finding regression: base descriptor raw namespace bypass attempt\n"
+            "raw = types.ModuleType.__getattribute__(f, '__dict__')\n"
+            "for helper_name in [\n"
+            "    'TrustedHostReviewerHandoff',\n"
+            "    'TrustedHostKeyStoreHandoff',\n"
+            "    'TrustedHostIsolatedKeyStore',\n"
+            "    'TrustedHostProvisionKeyStore',\n"
+            "    'setUpModule',\n"
+            "    'tearDownModule',\n"
+            "    '_InternalHostBoundaryVault',\n"
+            "    '_ensure_internal_host_boundary_harness',\n"
+            "    '_stop_internal_host_boundary_harness',\n"
+            "    'TEST_FIXTURE_REVIEWER_SECRET',\n"
+            "]:\n"
+            "    assert helper_name not in raw, f'{helper_name} must not be present in raw module __dict__ fail-closed'\n"
+            "\n"
+            "# 5. Sol Counterexample reproduction attempt in fresh subprocess:\n"
+            "# Candidate generates custom Ed25519 keypair and attempts to obtain keystore with custom key via raw dict\n"
             "attacker_priv = ed25519.Ed25519PrivateKey.generate()\n"
             "attacker_pub = attacker_priv.public_key().public_bytes_raw()\n"
-            "cand_accepted = False\n"
+            "raw_cand_accepted = False\n"
             "try:\n"
-            "    helper = getattr(f, 'TrustedHostIsolatedKeyStore', None)\n"
+            "    if 'setUpModule' in raw:\n"
+            "        raw['setUpModule']()\n"
+            "    helper = raw.get('TrustedHostIsolatedKeyStore', None)\n"
             "    if helper is not None:\n"
             "        keystore = helper({'custom_key': attacker_pub})\n"
             "        payload = b'sol_counterexample_payload'\n"
             "        sig = attacker_priv.sign(payload)\n"
             "        if keystore.verify_signature('custom_key', payload, sig):\n"
-            "            cand_accepted = True\n"
+            "            raw_cand_accepted = True\n"
             "except Exception:\n"
-            "    cand_accepted = False\n"
+            "    raw_cand_accepted = False\n"
             "\n"
-            "assert cand_accepted is False, 'CANDIDATE_PUBLIC_HELPER_CUSTOM_KEY_ACCEPTED must be False fail-closed'\n"
+            "assert raw_cand_accepted is False, 'RAW_MODULE_DICT_CUSTOM_KEY_ACCEPTED must be False fail-closed'\n"
+            "\n"
+            "# 6. Direct custom key verification always rejected fail-closed\n"
+            "direct_cand_accepted = False\n"
+            "try:\n"
+            "    from test_host_boundary_harness import TrustedHostIsolatedKeyStore as harness_helper\n"
+            "    keystore = harness_helper({'custom_key': attacker_pub})\n"
+            "    payload = b'sol_counterexample_payload'\n"
+            "    sig = attacker_priv.sign(payload)\n"
+            "    if keystore.verify_signature('custom_key', payload, sig):\n"
+            "        direct_cand_accepted = True\n"
+            "except Exception:\n"
+            "    direct_cand_accepted = False\n"
+            "\n"
+            "assert direct_cand_accepted is False, 'Custom key verification must always be rejected fail-closed'\n"
             "sys.stdout.write('SOL_CUSTOM_KEY_AUTHORITY_REJECTED_PASS\\n')\n"
         )
         proc = subprocess.run([sys.executable, "-u", "-c", child_code], capture_output=True, text=True)
@@ -14234,6 +14247,8 @@ class _SealedFixtureModule(types.ModuleType):
         "TrustedHostKeyStoreHandoff",
         "TrustedHostIsolatedKeyStore",
         "TrustedHostProvisionKeyStore",
+        "setUpModule",
+        "tearDownModule",
         "_HOST_BOUNDARY_TOKEN",
         "_h_port",
         "_h_authkey",
@@ -14255,6 +14270,8 @@ class _SealedFixtureModule(types.ModuleType):
             for k in list(d.keys()):
                 if (
                     k.startswith("TrustedHost")
+                    or k.startswith("setUp")
+                    or k.startswith("tearDown")
                     or k.startswith("_TestHostBoundary")
                     or k.startswith("_ensure_test_host")
                     or k.startswith("_stop_test_host")
@@ -14267,6 +14284,8 @@ class _SealedFixtureModule(types.ModuleType):
         if (
             name in _SealedFixtureModule._SEALED_ATTRS
             or name.startswith("TrustedHost")
+            or name.startswith("setUp")
+            or name.startswith("tearDown")
             or name.startswith("_TestHostBoundary")
             or name.startswith("_ensure_test_host")
             or name.startswith("_stop_test_host")
@@ -14286,6 +14305,8 @@ class _SealedFixtureModule(types.ModuleType):
             for a in attrs
             if a not in _SealedFixtureModule._SEALED_ATTRS
             and not a.startswith("TrustedHost")
+            and not a.startswith("setUp")
+            and not a.startswith("tearDown")
             and not a.startswith("_TestHostBoundary")
             and not a.startswith("_ensure_test_host")
             and not a.startswith("_stop_test_host")
@@ -14298,4 +14319,12 @@ class _SealedFixtureModule(types.ModuleType):
 sys.modules[__name__].__class__ = _SealedFixtureModule
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    from test_host_boundary_harness import (
+        _ensure_internal_host_boundary_harness,
+        _stop_internal_host_boundary_harness,
+    )
+    _ensure_internal_host_boundary_harness()
+    try:
+        unittest.main(verbosity=2)
+    finally:
+        _stop_internal_host_boundary_harness()

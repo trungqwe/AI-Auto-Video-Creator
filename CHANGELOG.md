@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên a7d9820 (Tách Biệt Hoàn Toàn Test Harness Ra Module Riêng Biệt, Vô Hiệu Hóa Bypass Raw Module Dictionary & Khử Triệt Để Quyền Tự Cấp Khóa)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate a7d982095108f7028ec208117d95231a62d55988 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Tách Rời Hoàn Toàn Test Harness Ra Khỏi Candidate-Readable Module**:
+    - Chuyển toàn bộ `_InternalHostBoundaryVault`, `_ensure_internal_host_boundary_harness`, `_stop_internal_host_boundary_harness`, cùng 4 helper (`TrustedHostReviewerHandoff`, `TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, `TrustedHostProvisionKeyStore`) và `TEST_FIXTURE_REVIEWER_SECRET` sang tệp riêng biệt `docs/parallel-delivery/test_host_boundary_harness.py`.
+    - Xóa bỏ hoàn toàn `setUpModule`, `tearDownModule`, các helper, credential và secret khỏi module-level của `docs/parallel-delivery/test_negative_fixtures.py`.
+    - Chặn đứng hoàn toàn kỹ thuật bypass qua base descriptor `types.ModuleType.__getattribute__(f, '__dict__')`: raw dictionary của module `test_negative_fixtures` hoàn toàn không chứa bất kỳ lifecycle authority, helper hay credential nào.
+  - **(2) Khử Triệt Để Quyền Tự Cấp Khóa Bằng Whitelist Bất Biến**:
+    - Trong `test_host_boundary_harness.py`, bổ sung danh sách whitelist bất biến `ALLOWED_FIXTURE_KEY_IDS = frozenset({"rev_key_lead_v1", "integ_gatekeeper_v1", "control_authority_v1"})`.
+    - Mọi nỗ lực mint hoặc provision keystore với custom key ID (ví dụ: `'custom_key'`) đều bị từ chối lập tức với `ProtocolViolationError` fail-closed.
+  - **(3) Khởi Tạo Ranh Giới Ở Cấp Test Runner**:
+    - Tích hợp việc khởi tạo và dọn dẹp daemon `test_host_boundary_harness` vào `validate.py:run_negative_fixture_suite()` và entrypoint `__main__`, bảo đảm harness chỉ hoạt động dưới sự kiểm soát của runner kiểm thử và độc lập tuyệt đối với candidate import.
+  - **(4) Cập Nhật Fixture Phân Biệt test_18y (Regression Bypass Base Descriptor)**:
+    - Cập nhật bài kiểm tra `test_18y_sol_finding_candidate_custom_key_authority_rejected_in_fresh_subprocess`:
+      + Trong tiến trình con độc lập, candidate trích xuất raw namespace bằng `types.ModuleType.__getattribute__(f, '__dict__')`.
+      + Khẳng định toàn bộ 10 symbol nhạy cảm (`setUpModule`, `tearDownModule`, `TrustedHost...`, `_InternalHostBoundaryVault`, `_ensure_internal_host_boundary_harness`, `_stop_internal_host_boundary_harness`, `TEST_FIXTURE_REVIEWER_SECRET`) đều hoàn toàn vắng mặt trong raw dictionary.
+      + Tái hiện nỗ lực gọi `raw.get('setUpModule')` và `raw.get('TrustedHostIsolatedKeyStore')` để mint keystore với public key tự chọn; khẳng định `RAW_MODULE_DICT_CUSTOM_KEY_ACCEPTED` luôn là `False` fail-closed.
+      + Khẳng định gọi trực tiếp `TrustedHostIsolatedKeyStore` với custom key cũng luôn bị từ chối fail-closed.
+  - **(5) Toàn Bộ Bộ Kiểm Thử & Cổng Thẩm Định PASS 100%**:
+    - Toàn bộ **401/401 tests PASS (100%)**.
+    - Tất cả 12 cổng thẩm định release gate đạt PASS tuyệt đối; trạng thái kích hoạt production mode tiếp tục bị khóa chặt fail-closed (`PRODUCTION_ACTIVATION_BLOCKED`).
+
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 8003c13 (Đóng Kín Hoàn Toàn Bốn Helper Trusted Host Khỏi Candidate-Readable Fixtures, Khử Khả Năng Tự Sinh Khóa Cho Keystore & Bổ Sung Negative Assertion test_18y)
 
 - Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate 8003c13bd76e49cbd562dc6ab785299cd68161c7 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
