@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-01 - Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n 218e2ee (Lo?i b? bi?n m?i tr??ng PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE v? Kh?a ch?t Candidate Authority b?t bi?n)
+
+- Kh?c ph?c tri?t ?? ph?t hi?n ??c l?p ROOT_ARCHITECTURE t? Sol tr?n exact candidate `218e2ee77fce3c16778fdaf56c977968e22fdb03` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Lo?i b? bi?n m?i tr??ng Caller-Controlled**: X?a b? ho?n to?n vi?c ??c `os.environ.get("PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE")` trong h?m `_init_harness_runtime()` c?a `test_host_boundary_harness.py`. Ng?n ch?n tri?t ?? k?ch b?n caller / ti?n tr?nh con t? ? inject candidate commit SHA t?y ? qua bi?n m?i tr??ng ?? n?i l?ng whitelist authorized candidates c?a daemon host.
+  - **(2) Kh?a ch?t t?p Candidate Authority b?t bi?n fail-closed**: T?p `approved_candidates` ???c c? ??nh l? immutable `frozenset({head_commit, sol_audit_commit})` do host supervisor ph? chu?n tr??c; kh?ng ch?p nh?n b?t k? ngu?n ??u v?o n?o t? caller ho?c m?i tr??ng ti?n tr?nh con.
+  - **(3) B? sung Ki?m th? Counterexample trong `test_20`**: Th?m b?i ki?m tra targeted kh?ng ??nh r?ng ngay c? khi caller thi?t l?p `os.environ['PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE'] = '0123456789abcdef0123456789abcdef01234567'`, daemon host ho?n to?n ph?t l? v? n?m `ProtocolViolationError` fail-closed khi g?i `TrustedHostRegisterDispatch`.
+  - **(4) K?t qu? ki?m th?**: To?n b? 404 test fixtures ??t PASS 100%; c?ng k?ch ho?t s?n xu?t duy tr? `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
+
 ## 2026-10-01 - Khắc phục triệt để phát hiện Sol Audit trên 6a6972f (Đóng gói hoàn toàn Host Daemon Runtime, Loại bỏ _private_host_state khỏi Module Dict và Chặn đăng ký Candidate tùy ý)
 
 - Khắc phục triệt để phát hiện độc lập ROOT_ARCHITECTURE từ Sol trên exact candidate `6a6972f43c4f8b87b3b3553907ba9a73c15b2a8b` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):

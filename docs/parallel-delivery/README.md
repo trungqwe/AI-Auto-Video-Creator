@@ -754,3 +754,21 @@ Biện pháp khắc phục triệt để:
    - Bổ sung assert kiểm tra `types.ModuleType.__getattribute__(h, "__dict__")` và tái hiện counterexample từ chối đăng ký candidate tùy ý trong `test_20_sol_finding_candidate_dispatch_registration_and_credentials_remediated` (`test_negative_fixtures.py`).
    - Toàn bộ 404 bài kiểm thử trong negative fixture suite đạt PASS 100%.
    - Cổng kích hoạt sản xuất duy trì trạng thái an toàn: `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
+
+## 39. Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n 218e2ee (Lo?i b? bi?n m?i tr??ng PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE v? Kh?a ch?t Candidate Authority b?t bi?n)
+
+??t r? so?t ??c l?p tr?n exact candidate SHA `218e2ee77fce3c16778fdaf56c977968e22fdb03` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nh?n finding `ROOT_ARCHITECTURE`:
+- **Root cause**: Trong `test_host_boundary_harness.py`, h?m `_init_harness_runtime()` ??c bi?n m?i tr??ng `PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE`. Do ??, b?t k? caller ho?c ti?n tr?nh con n?o c?ng c? th? t? ? ??t bi?n m?i tr??ng n?y tr??c khi daemon kh?i t?o ?? m? r?ng danh s?ch `approved_candidates`, t? ?? cho ph?p ??ng k? candidate commit t?y ? v? y?u c?u `ExternalReviewProducer` k? ph?t h?nh envelope.
+- **Counterexample an to?n**: Candidate thi?t l?p `os.environ['PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE'] = '0123456789abcdef0123456789abcdef01234567'`, sau ?? g?i `TrustedHostRegisterDispatch` v?i candidate commit n?y. Daemon ch?p nh?n v? ph?t h?nh dispatch receipt `disp_receipt_...` th?nh c?ng.
+
+Bi?n ph?p kh?c ph?c tri?t ??:
+1. **Lo?i b? bi?n m?i tr??ng Caller-Controlled**:
+   - X?a b? ho?n to?n vi?c ??c `os.environ.get("PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE")` trong `test_host_boundary_harness.py`.
+   - Ng?n ch?n ho?n to?n m?i n? l?c m? r?ng danh s?ch candidate tin c?y th?ng qua bi?n m?i tr??ng.
+2. **Kh?a ch?t t?p Candidate Authority b?t bi?n**:
+   - T?p `approved_candidates` ???c kh?a ch?t d??i d?ng immutable `frozenset({head_commit, sol_audit_commit})` do host supervisor ph? chu?n tr??c.
+   - H?m `TrustedHostRegisterDispatch` th?m ??nh nghi?m ng?t: candidate commit b?t bu?c ph?i thu?c t?p n?y; m?i gi? tr? kh?c ??u b? t? ch?i fail-closed v?i `ProtocolViolationError`.
+3. **Nghi?m thu ki?m th? (Acceptance Evidence)**:
+   - B? sung ki?m th? counterexample trong `test_20_sol_finding_candidate_dispatch_registration_and_credentials_remediated` (`test_negative_fixtures.py`) ch?ng minh khi ??t bi?n m?i tr??ng `PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE`, n? l?c ??ng k? candidate t?y ? v?n b? t? ch?i fail-closed v?i `ProtocolViolationError`.
+   - To?n b? 404 b?i ki?m th? trong negative fixture suite ??t PASS 100%.
+   - C?ng k?ch ho?t s?n xu?t duy tr? tr?ng th?i an to?n: `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.

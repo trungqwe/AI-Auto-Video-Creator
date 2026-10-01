@@ -67,10 +67,7 @@ def _init_harness_runtime():
         pass
 
     sol_audit_commit = "2eb47f67b69445e38275f193aeab835731b52ced".lower()
-    candidates = {head_commit, sol_audit_commit}
-    env_cand = os.environ.get("PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE", "").strip().lower()
-    if len(env_cand) == 40 and all(c in "0123456789abcdef" for c in env_cand):
-        candidates.add(env_cand)
+    candidates = frozenset({head_commit, sol_audit_commit})
 
     _state: Dict[str, Any] = {
         "port": 0,
