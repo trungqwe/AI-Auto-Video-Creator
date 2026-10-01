@@ -1,24 +1,24 @@
-# B?n giao phi?n l?m vi?c
+# Bàn giao phiên làm việc
 
-## ?? quy?t ??nh
+## Đã quyết định
 
-- Gi? nguy?n ranh gi?i th?m quy?n: M2-P1..P7B_ACCEPTED_CLOSED; M2-P8/P9 LOCKED; M3/Ph?n h? A NOT AUTHORIZED; ProductionActivationGate duy tr? PRODUCTION_ACTIVATION_BLOCKED.
-- Kh?c ph?c tri?t ?? ph?t hi?n ROOT_ARCHITECTURE t? Sol Audit tr?n exact candidate 218e2ee77fce3c16778fdaf56c977968e22fdb03 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
-  1. Lo?i b? bi?n m?i tr??ng PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE: Kh?ng cho ph?p caller / ti?n tr?nh con m? r?ng danh s?ch candidate ???c ph?p ??ng k? qua environment variables trong `_init_harness_runtime()`.
-  2. Kh?a ch?t t?p authorized candidate b?t bi?n: Daemon host ch? c?ng nh?n immutable set do supervisor ph? chu?n t?nh `{head_commit, sol_audit_commit}` fail-closed.
-  3. Nghi?m thu ki?m th?: M? r?ng `test_20` ki?m tra tr?c ti?p counterexample thi?t l?p bi?n m?i tr??ng v? kh?ng ??nh t? ch?i fail-closed v?i `ProtocolViolationError`; to?n b? 404 test fixtures ??t PASS 100%.
+- Giữ nguyên ranh giới thẩm quyền: M2-P1..P7B_ACCEPTED_CLOSED; M2-P8/P9 LOCKED; M3/Phân hệ A NOT AUTHORIZED; ProductionActivationGate duy trì PRODUCTION_ACTIVATION_BLOCKED.
+- Khắc phục triệt để phát hiện ROOT_ARCHITECTURE từ Sol Audit trên exact candidate 218e2ee77fce3c16778fdaf56c977968e22fdb03 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  1. Loại bỏ biến môi trường PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE: Không cho phép caller / tiến trình con mở rộng danh sách candidate được phép đăng ký qua environment variables trong `_init_harness_runtime()`.
+  2. Khóa chặt tập authorized candidate bất biến: Daemon host chỉ công nhận immutable set do supervisor phê chuẩn tĩnh `{head_commit, sol_audit_commit}` fail-closed.
+  3. Nghiệm thu kiểm thử: Mở rộng `test_20` kiểm tra trực tiếp counterexample thiết lập biến môi trường và khẳng định từ chối fail-closed với `ProtocolViolationError`; toàn bộ 404 test fixtures đạt PASS 100%.
 
-## Ch?a quy?t ??nh
+## Chưa quyết định
 
-- Milestone M2-P8, M2-P9 v? Milestone M3/Ph?n h? A ti?p t?c b? kh?a ch?t t?i khi c? quy?t ??nh ph? duy?t v? user checkpoint ri?ng.
+- Milestone M2-P8, M2-P9 và Milestone M3/Phân hệ A tiếp tục bị khóa chặt tới khi có quyết định phê duyệt và user checkpoint riêng.
 
-## T?p c?n ??c ti?p
+## Tệp cần đọc tiếp
 
-- docs/parallel-delivery/README.md (M?c 39: Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n 218e2ee).
-- docs/parallel-delivery/test_host_boundary_harness.py (B?o v? candidate authority b?t bi?n kh?ng ph? thu?c caller environment).
-- docs/parallel-delivery/test_negative_fixtures.py (Test 20 ki?m ch?ng counterexample bi?n m?i tr??ng b? t? ch?i).
-- CHANGELOG.md (Nh?t k? thay ??i chi ti?t).
+- docs/parallel-delivery/README.md (Mục 39: Khắc phục triệt để phát hiện Sol Audit trên 218e2ee).
+- docs/parallel-delivery/test_host_boundary_harness.py (Bảo vệ candidate authority bất biến không phụ thuộc caller environment).
+- docs/parallel-delivery/test_negative_fixtures.py (Test 20 kiểm chứng counterexample biến môi trường bị từ chối).
+- CHANGELOG.md (Nhật ký thay đổi chi tiết).
 
-## ?i?m ti?p t?c
+## Điểm tiếp tục
 
-- Ch? ??t ??nh gi? ??c l?p ti?p theo t? reviewer Sol tr?n exact candidate SHA m?i sau khi commit, t?i t?o attestation v? push.
+- Chờ đợt đánh giá độc lập tiếp theo từ reviewer Sol trên exact candidate SHA mới sau khi commit, tái tạo attestation và push.

@@ -67,6 +67,9 @@ def _init_harness_runtime():
         pass
 
     sol_audit_commit = "2eb47f67b69445e38275f193aeab835731b52ced".lower()
+    # Immutable supervisor-owned authorized candidates set.
+    # Caller-controlled environment variables (including PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE)
+    # are strictly forbidden from expanding registration authority fail-closed.
     candidates = frozenset({head_commit, sol_audit_commit})
 
     _state: Dict[str, Any] = {
