@@ -3,8 +3,8 @@
   "status": "PASS",
   "attestation": {
     "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
-    "candidate_commit": "f897c0d9388b69e2b0478c4810a9aed89858b581",
-    "parent_commit": "f897c0d9388b69e2b0478c4810a9aed89858b581",
+    "candidate_commit": "b5dad8ea292828c73a7c2605cf968e47edecb97b",
+    "parent_commit": "b5dad8ea292828c73a7c2605cf968e47edecb97b",
     "wrapper_commit": "HEAD",
     "candidate_is_actual_head": false,
     "committed_changes_count": 21,
@@ -196,6 +196,13 @@
       "3_opaque_signing_ipc_and_public_only_access": "RESOLVED",
       "4_caller_signed_envelope_rejected_fail_closed": "RESOLVED",
       "5_host_issued_signature_verification_and_replay_protection": "RESOLVED"
+    },
+    "sol_audit_a25c80f": {
+      "1_vault_credentials_protected_against_direct_inspection": "RESOLVED",
+      "2_daemon_generic_signing_endpoint_eliminated_fail_closed": "RESOLVED",
+      "3_generic_signing_functions_removed_from_candidate_surface": "RESOLVED",
+      "4_external_producers_construct_and_bind_envelopes_out_of_process": "RESOLVED",
+      "5_verifier_consumes_authentic_external_issued_artifacts_only": "RESOLVED"
     }
   },
   "fixture_stats": {
@@ -280,12 +287,12 @@
     "operating-model.md": "288086ccde6a380f91a3f921334d5fa673d437805478926e44aa6d455a7dd92b",
     "ownership-and-locks.yaml": "ca060cf8603f0d98370260dadc088d22e63850b7ae324280c2262008b14760c2",
     "protocol.md": "d485e6131f0ac34c18bcb662581273b7c844ac291f40a14b5de33e6c725ec690",
-    "README.md": "799c67d949740c5e1d2c70070ea6f771083d1eea25e06953cc501f2d91e56e27",
+    "README.md": "487854a187954a232887c3177b31c2cc988395c2401c63a137d4c639a6b93e67",
     "security-performance-recovery.md": "951ac4fac152f319a799cbe1ac7185a27906b4a313abf8a76e1e8abeb9b986c5",
     "task-dag.yaml": "5b3e45b3a52d654cc29800abdb4819746bf9fe0b71548b76cc2f1f0a5254f906",
-    "test_host_boundary_harness.py": "c5891ee7720ee5ae0c153f16330aba1d129b40a36eda71d905e71fb05ebccb22",
-    "test_negative_fixtures.py": "f65f8ef0d6233107ae9526f2a63695e2e2fc6de89b36a87f1cce69f3d82a3ba2",
+    "test_host_boundary_harness.py": "3cdc1b9ca803aa31f2fabb12e354f3df4da4bab85fc3c9d6b0baca8f7b650d6b",
+    "test_negative_fixtures.py": "59af0df889d93c2675ac49fa6626f193c0d88310fd7725b44f87a02a86882d3f",
     "traceability.md": "61665d966fba4b72fb82ff2b0fff30833ba83e9025fcc98c301db7cc48977859",
-    "validate.py": "0b20e4172577ea966e0408973018068dfd40a169304544169cefbf90c63e98ca"
+    "validate.py": "eec5bbeff8e018ecfbaecc640850dcfddd04039c56c085845fafcff5c1a11d55"
   }
 }
