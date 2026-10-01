@@ -755,20 +755,20 @@ Biện pháp khắc phục triệt để:
    - Toàn bộ 404 bài kiểm thử trong negative fixture suite đạt PASS 100%.
    - Cổng kích hoạt sản xuất duy trì trạng thái an toàn: `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
 
-## 39. Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n 218e2ee (Lo?i b? bi?n m?i tr??ng PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE v? Kh?a ch?t Candidate Authority b?t bi?n)
+## 39. Khắc phục triệt để phát hiện Sol Audit trên 218e2ee (Loại bỏ biến môi trường PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE và Khóa chặt Candidate Authority bất biến)
 
-??t r? so?t ??c l?p tr?n exact candidate SHA `218e2ee77fce3c16778fdaf56c977968e22fdb03` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nh?n finding `ROOT_ARCHITECTURE`:
-- **Root cause**: Trong `test_host_boundary_harness.py`, h?m `_init_harness_runtime()` ??c bi?n m?i tr??ng `PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE`. Do ??, b?t k? caller ho?c ti?n tr?nh con n?o c?ng c? th? t? ? ??t bi?n m?i tr??ng n?y tr??c khi daemon kh?i t?o ?? m? r?ng danh s?ch `approved_candidates`, t? ?? cho ph?p ??ng k? candidate commit t?y ? v? y?u c?u `ExternalReviewProducer` k? ph?t h?nh envelope.
-- **Counterexample an to?n**: Candidate thi?t l?p `os.environ['PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE'] = '0123456789abcdef0123456789abcdef01234567'`, sau ?? g?i `TrustedHostRegisterDispatch` v?i candidate commit n?y. Daemon ch?p nh?n v? ph?t h?nh dispatch receipt `disp_receipt_...` th?nh c?ng.
+Đợt rà soát độc lập trên exact candidate SHA `218e2ee77fce3c16778fdaf56c977968e22fdb03` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nhận finding `ROOT_ARCHITECTURE`:
+- **Root cause**: Trong `test_host_boundary_harness.py`, hàm `_init_harness_runtime()` đọc biến môi trường `PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE`. Do đó, bất kỳ caller hoặc tiến trình con nào cũng có thể tự ý đặt biến môi trường này trước khi daemon khởi tạo để mở rộng danh sách `approved_candidates`, từ đó cho phép đăng ký candidate commit tùy ý và yêu cầu `ExternalReviewProducer` ký phát hành envelope.
+- **Counterexample an toàn**: Candidate thiết lập `os.environ['PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE'] = '0123456789abcdef0123456789abcdef01234567'`, sau đó gọi `TrustedHostRegisterDispatch` với candidate commit này. Daemon chấp nhận và phát hành dispatch receipt `disp_receipt_...` thành công.
 
-Bi?n ph?p kh?c ph?c tri?t ??:
-1. **Lo?i b? bi?n m?i tr??ng Caller-Controlled**:
-   - X?a b? ho?n to?n vi?c ??c `os.environ.get("PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE")` trong `test_host_boundary_harness.py`.
-   - Ng?n ch?n ho?n to?n m?i n? l?c m? r?ng danh s?ch candidate tin c?y th?ng qua bi?n m?i tr??ng.
-2. **Kh?a ch?t t?p Candidate Authority b?t bi?n**:
-   - T?p `approved_candidates` ???c kh?a ch?t d??i d?ng immutable `frozenset({head_commit, sol_audit_commit})` do host supervisor ph? chu?n tr??c.
-   - H?m `TrustedHostRegisterDispatch` th?m ??nh nghi?m ng?t: candidate commit b?t bu?c ph?i thu?c t?p n?y; m?i gi? tr? kh?c ??u b? t? ch?i fail-closed v?i `ProtocolViolationError`.
-3. **Nghi?m thu ki?m th? (Acceptance Evidence)**:
-   - B? sung ki?m th? counterexample trong `test_20_sol_finding_candidate_dispatch_registration_and_credentials_remediated` (`test_negative_fixtures.py`) ch?ng minh khi ??t bi?n m?i tr??ng `PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE`, n? l?c ??ng k? candidate t?y ? v?n b? t? ch?i fail-closed v?i `ProtocolViolationError`.
-   - To?n b? 404 b?i ki?m th? trong negative fixture suite ??t PASS 100%.
-   - C?ng k?ch ho?t s?n xu?t duy tr? tr?ng th?i an to?n: `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
+Biện pháp khắc phục triệt để:
+1. **Loại bỏ biến môi trường Caller-Controlled**:
+   - Xóa bỏ hoàn toàn việc đọc `os.environ.get("PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE")` trong `test_host_boundary_harness.py`.
+   - Ngăn chặn hoàn toàn mọi nỗ lực mở rộng danh sách candidate tin cậy thông qua biến môi trường.
+2. **Khóa chặt tập Candidate Authority bất biến**:
+   - Tập `approved_candidates` được khóa chặt dưới dạng immutable `frozenset({head_commit, sol_audit_commit})` do host supervisor phê chuẩn trước.
+   - Hàm `TrustedHostRegisterDispatch` thẩm định nghiêm ngặt: candidate commit bắt buộc phải thuộc tập này; mọi giá trị khác đều bị từ chối fail-closed với `ProtocolViolationError`.
+3. **Nghiệm thu kiểm thử (Acceptance Evidence)**:
+   - Bổ sung kiểm thử counterexample trong `test_20_sol_finding_candidate_dispatch_registration_and_credentials_remediated` (`test_negative_fixtures.py`) chứng minh khi đặt biến môi trường `PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE`, nỗ lực đăng ký candidate tùy ý vẫn bị từ chối fail-closed với `ProtocolViolationError`.
+   - Toàn bộ 404 bài kiểm thử trong negative fixture suite đạt PASS 100%.
+   - Cổng kích hoạt sản xuất duy trì trạng thái an toàn: `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
