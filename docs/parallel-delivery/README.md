@@ -654,3 +654,23 @@ Biện pháp khắc phục triệt để:
 5. **Finding 5 — Niêm phong chặt chẽ trong `_SealedFixtureModule`**:
    - Bổ sung các helper ký mờ (`host_sign_fixture_payload`, `host_sign_review_envelope`, `host_sign_integration_envelope`, `TrustedHostSignFixturePayload`, `TrustedHostSignReviewEnvelope`, `TrustedHostSignIntegrationEnvelope`) vào `_SEALED_ATTRS`, ngăn chặn triệt để candidate truy cập qua module fixture.
 
+## 35. Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n a25c80f (B?o v? th?ng tin x?c th?c Vault, Lo?i b? Generic Signing Endpoints v? T?ch bi?t External Envelope Producers ngo?i ti?n tr?nh)
+
+??t r? so?t ??c l?p tr?n exact candidate SHA `a25c80f9f4ab965ce21e7fe5e09babd87c9cc8d8` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nh?n finding `ROOT_ARCHITECTURE`:
+Candidate-readable `test_host_boundary_harness.py:255-318` v?n gi? `token`, `port`, `authkey` trong `_InternalHostBoundaryVault:50-58` v? expose c?c h?m k? `host_sign_fixture_payload`, `host_sign_review_envelope`, `host_sign_integration_envelope` nh?n arbitrary payload. Do ?? candidate c? th? t? ch?n `verdict=ACCEPT`, delivery task, review dispatch, commit SHA r?i y?u c?u daemon k?; `TrustedReviewConsumer.consume_review_envelope()` ch?p nh?n v? ghi consumption registry. Root cause l? signer authority/provenance/ownership ch?a t?ch kh?i candidate d? private key ?? ? trong daemon.
+
+Bi?n ph?p kh?c ph?c tri?t ??:
+1. **Finding 1 - B?o v? th?ng tin x?c th?c Vault tr??c truy c?p tr?c ti?p**:
+   - `_InternalHostBoundaryVault` ???c b?o v? b?ng metaclass `_InternalHostBoundaryVaultMeta`.
+   - B?t k? truy c?p tr?c ti?p n?o v?o `.token`, `.port`, `.authkey` t? m? ngu?n in-process ??u b? n?m `ProtocolViolationError` fail-closed.
+2. **Finding 2 - Lo?i b? ho?n to?n Generic Signing Endpoint kh?i Daemon ngo?i ti?n tr?nh**:
+   - L?nh IPC `SIGN_FIXTURE_PAYLOAD` b? lo?i b? ho?n to?n kh?i daemon ngo?i ti?n tr?nh; daemon tr? v? `False` fail-closed n?u nh?n l?nh k? payload bytes t?y ?.
+3. **Finding 3 - Lo?i b? ho?n to?n c?c h?m generic signing kh?i b? m?t Candidate**:
+   - X?a b? ho?n to?n 6 h?m k? m? generic kh?i module export c?a `test_host_boundary_harness.py`: `host_sign_fixture_payload`, `TrustedHostSignFixturePayload`, `host_sign_review_envelope`, `TrustedHostSignReviewEnvelope`, `host_sign_integration_envelope`, `TrustedHostSignIntegrationEnvelope`.
+   - C? g?ng import c?c h?m n?y s? n?m `ImportError` fail-closed.
+4. **Finding 4 - Chuy?n quy?n kh?i t?o v? k? Envelope sang External Producers ngo?i ti?n tr?nh**:
+   - Cung c?p `ExternalReviewProducer` v? `ExternalIntegrationProducer` (c?ng c?c b? danh `TrustedExternalReviewProducer`, `TrustedExternalIntegrationProducer`).
+   - Vi?c d?ng canonical payload v? k? b?t ??i x?ng Ed25519 ???c th?c hi?n ho?n to?n b?n trong ranh gi?i an to?n c?a daemon ngo?i ti?n tr?nh (`PRODUCE_REVIEW_ENVELOPE`, `PRODUCE_INTEGRATION_ENVELOPE`).
+   - External producer t? ki?m tra t?nh h?p l? c?a key ID, verdict, bind ch?t ch? delivery task ID, review dispatch ID, candidate commit, base commit, fencing token, nonce v? timestamps. Caller kh?ng th? cung c?p payload t?y ? ?? daemon k? m? qu?ng.
+5. **Finding 5 - Verifiers ch? ti?u th? External-issued Artifacts**:
+   - `TrustedReviewConsumer` v? `TrustedIntegrationConsumer` x?c minh ch? k? Ed25519 v?i kh?a c?ng khai ???c ghim, ki?m tra replay, fencing v? domain binding nghi?m ng?t.

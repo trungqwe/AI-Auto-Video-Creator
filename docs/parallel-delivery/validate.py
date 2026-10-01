@@ -1265,6 +1265,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "4_caller_signed_envelope_rejected_fail_closed": "RESOLVED",
                     "5_host_issued_signature_verification_and_replay_protection": "RESOLVED",
                 },
+                "sol_audit_a25c80f": {
+                    "1_vault_credentials_protected_against_direct_inspection": "RESOLVED",
+                    "2_daemon_generic_signing_endpoint_eliminated_fail_closed": "RESOLVED",
+                    "3_generic_signing_functions_removed_from_candidate_surface": "RESOLVED",
+                    "4_external_producers_construct_and_bind_envelopes_out_of_process": "RESOLVED",
+                    "5_verifier_consumes_authentic_external_issued_artifacts_only": "RESOLVED",
+                },
             },
             "fixture_stats": fixture_stats,
             "checks": {name: {"status": "PASS" if not values else "FAIL", "errors": values} for name, values in checks.items()},

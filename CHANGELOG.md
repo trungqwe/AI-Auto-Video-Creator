@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-01 ? Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n a25c80f (B?o v? th?ng tin x?c th?c Vault, Lo?i b? Generic Signing Endpoints v? T?ch bi?t External Envelope Producers ngo?i ti?n tr?nh)
+
+- Kh?c ph?c tri?t ?? ph?t hi?n ??c l?p ROOT_ARCHITECTURE t? Sol tr?n exact candidate `a25c80f9f4ab965ce21e7fe5e09babd87c9cc8d8` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) B?o v? th?ng tin x?c th?c Vault**: Th?m metaclass `_InternalHostBoundaryVaultMeta` ng?n ch?n ho?n to?n truy c?p tr?c ti?p v?o thu?c t?nh `.token`, `.port`, `.authkey` t? m? in-process (n?m `ProtocolViolationError` fail-closed).
+  - **(2) Lo?i b? Generic Signing Endpoint**: Daemon ngo?i ti?n tr?nh t? ch?i l?nh `SIGN_FIXTURE_PAYLOAD` fail-closed, kh?ng k? b?t k? payload bytes t?y ? n?o t? caller.
+  - **(3) Lo?i b? Generic Signing Functions**: X?a b? ho?n to?n 6 h?m k? m? generic (`host_sign_fixture_payload`, `host_sign_review_envelope`, `host_sign_integration_envelope` v? c?c b? danh `TrustedHostSign*`) kh?i b? m?t candidate; c? g?ng import b? ch?n b?i `ImportError` fail-closed.
+  - **(4) Chuy?n Envelope Construction sang External Producers**: B? sung `ExternalReviewProducer` v? `ExternalIntegrationProducer` (c?ng b? danh `TrustedExternal*`); daemon ngo?i ti?n tr?nh t? d?ng canonical envelope v? t? bind metadata, ng?n ch?n ho?n to?n kh? n?ng candidate t? ch? t?o v? xin ch? k? cho arbitrary payload.
+  - **(5) C?p nh?t v? m? r?ng Negative Fixtures**: C?p nh?t to?n b? c?c b?i ki?m th? k? phong b? trong `test_negative_fixtures.py` sang external producers; m? r?ng `test_18z` ki?m ch?ng 11 ti?u ch? b?o m?t to?n di?n.
+
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 2eb47f6 (Loại bỏ hoàn toàn Private Key khỏi In-Process/Fixture, Cơ chế ký mờ qua IPC và Quản lý khóa ngoài tiến trình)
 
 - Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate `2eb47f67b69445e38275f193aeab835731b52ced` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):

@@ -11524,18 +11524,18 @@ sys.path.insert(0, str(Path("docs/parallel-delivery").resolve()))
 from delivery_engine import HostBoundaryChannel, HostBoundaryTicket, HostBoundaryTicketIssuer, HostBoundaryBootstrapCapability, ReviewerHostIssuer, ReviewerSessionBoundary, ProtocolViolationError
 
 # Host pins public key in child process
-HostBoundaryChannel._port = {_InternalHostBoundaryVault.port}
-HostBoundaryChannel._authkey = {_InternalHostBoundaryVault.authkey!r}
-HostBoundaryBootstrapCapability.pin_trusted_host_public_key(bytes.fromhex('{pos_pub_hex}'), _internal_token='{_InternalHostBoundaryVault.token}', port={_InternalHostBoundaryVault.port}, authkey={_InternalHostBoundaryVault.authkey!r})
+HostBoundaryChannel._port = {_InternalHostBoundaryVault._port}
+HostBoundaryChannel._authkey = {_InternalHostBoundaryVault._authkey!r}
+HostBoundaryBootstrapCapability.pin_trusted_host_public_key(bytes.fromhex('{pos_pub_hex}'), _internal_token='{_InternalHostBoundaryVault._token}', port={_InternalHostBoundaryVault._port}, authkey={_InternalHostBoundaryVault._authkey!r})
 
 # Host provisions channel endpoint/auth via host mechanism in child process
-child_boot_cap = HostBoundaryBootstrapCapability.from_host_signed_payload('{pos_boot.bootstrap_id}', {_InternalHostBoundaryVault.port}, '{pos_boot.authkey_hash}', '{pos_boot.host_token_hash}', {pos_boot.created_at}, '{pos_boot.signature}')
-child_issuer = HostBoundaryTicketIssuer(_internal_token='{_InternalHostBoundaryVault.token}', bootstrap_capability=child_boot_cap)
-child_ticket = child_issuer.issue_ticket({_InternalHostBoundaryVault.port}, {_InternalHostBoundaryVault.authkey!r}, _internal_token='{_InternalHostBoundaryVault.token}')
-HostBoundaryChannel.provision_channel({_InternalHostBoundaryVault.port}, {_InternalHostBoundaryVault.authkey!r}, host_ticket=child_ticket, bootstrap_capability=child_boot_cap)
+child_boot_cap = HostBoundaryBootstrapCapability.from_host_signed_payload('{pos_boot.bootstrap_id}', {_InternalHostBoundaryVault._port}, '{pos_boot.authkey_hash}', '{pos_boot.host_token_hash}', {pos_boot.created_at}, '{pos_boot.signature}')
+child_issuer = HostBoundaryTicketIssuer(_internal_token='{_InternalHostBoundaryVault._token}', bootstrap_capability=child_boot_cap)
+child_ticket = child_issuer.issue_ticket({_InternalHostBoundaryVault._port}, {_InternalHostBoundaryVault._authkey!r}, _internal_token='{_InternalHostBoundaryVault._token}')
+HostBoundaryChannel.provision_channel({_InternalHostBoundaryVault._port}, {_InternalHostBoundaryVault._authkey!r}, host_ticket=child_ticket, bootstrap_capability=child_boot_cap)
 
 # Positive control: authentic host handoff from trusted host issuer successfully provisions boundary
-host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token='{_InternalHostBoundaryVault.token}')
+host_issuer = ReviewerHostIssuer.get_default_host_issuer(_internal_token='{_InternalHostBoundaryVault._token}')
 authentic_handoff = host_issuer.issue_handoff(b"authentic_fixture_secret_32b_hex!")
 provisioned_boundary = ReviewerSessionBoundary.provision_from_host(authentic_handoff)
 assert provisioned_boundary._reviewer_secret == b"authentic_fixture_secret_32b_hex!", "Boundary secret mismatch"
@@ -11592,8 +11592,8 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
         )
         SharedOrcaExecutionRegistry.reset_default()
         _ensure_internal_host_boundary_harness()
-        TrustedKeyStore._reset_for_testing(_internal_token=_InternalHostBoundaryVault.token)
-        KeyStoreHostIssuer._reset_for_testing(_internal_token=_InternalHostBoundaryVault.token)
+        TrustedKeyStore._reset_for_testing(_internal_token=_InternalHostBoundaryVault._token)
+        KeyStoreHostIssuer._reset_for_testing(_internal_token=_InternalHostBoundaryVault._token)
         DurableConsumptionRegistry.reset_default()
         cmd_head = ["git", "rev-parse", "HEAD"]
         res = subprocess.run(cmd_head, capture_output=True, text=True)
@@ -11609,8 +11609,8 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
     def tearDown(self):
         from test_host_boundary_harness import _InternalHostBoundaryVault
         SharedOrcaExecutionRegistry.reset_default()
-        TrustedKeyStore._reset_for_testing(_internal_token=_InternalHostBoundaryVault.token)
-        KeyStoreHostIssuer._reset_for_testing(_internal_token=_InternalHostBoundaryVault.token)
+        TrustedKeyStore._reset_for_testing(_internal_token=_InternalHostBoundaryVault._token)
+        KeyStoreHostIssuer._reset_for_testing(_internal_token=_InternalHostBoundaryVault._token)
         DurableConsumptionRegistry.reset_default()
 
     def test_01_red_evidence_sol_finding_constructor_and_issuer_reproduction(self):
@@ -11698,7 +11698,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
         from test_host_boundary_harness import (
             TrustedHostIsolatedKeyStore,
             get_fixture_authority_public_key,
-            host_sign_review_envelope,
+            ExternalReviewProducer,
         )
         pub_bytes = get_fixture_authority_public_key("rev_key_lead_v1")
         keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": pub_bytes})
@@ -11722,7 +11722,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             "expires_at": now + 300.0,
             "fencing_token": 1,
         }
-        signed = host_sign_review_envelope(base_payload)
+        signed = ExternalReviewProducer.produce_review_envelope(base_payload)
 
         verified = consumer.consume_review_envelope(
             signed,
@@ -11747,7 +11747,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             )
         self.assertIn("Cryptographic signature mismatch", str(ctx_cand.exception))
 
-        blocked_signed = host_sign_review_envelope({
+        blocked_signed = ExternalReviewProducer.produce_review_envelope({
             **base_payload,
             "envelope_id": "rev_env_tamper_03",
             "verdict": "BLOCKED",
@@ -11777,7 +11777,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
             get_fixture_authority_public_key,
-            host_sign_review_envelope,
+            ExternalReviewProducer,
         )
         pub_bytes = get_fixture_authority_public_key("rev_key_lead_v1")
 
@@ -11802,7 +11802,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             "expires_at": now + 300.0,
             "fencing_token": 1,
         }
-        signed = host_sign_review_envelope(payload)
+        signed = ExternalReviewProducer.produce_review_envelope(payload)
 
         keystore.revoke_key("rev_key_lead_v1")
         self.assertTrue(keystore.is_revoked("rev_key_lead_v1"))
@@ -11815,12 +11815,13 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             )
         self.assertIn("has been revoked fail-closed", str(ctx_rev.exception))
 
-        unknown_signed = host_sign_review_envelope({
-            **payload,
+        from delivery_engine import SignedReviewEnvelope
+        unknown_signed = SignedReviewEnvelope.from_dict({
+            **signed.to_dict(),
             "envelope_id": "rev_env_key_02",
             "reviewer_key_id": "unknown_attacker_key",
             "nonce": "nonce_key_02_hex_32_chars_123456",
-        }, key_id="rev_key_lead_v1")
+        })
         with self.assertRaises(ProtocolViolationError) as ctx_unk:
             consumer.consume_review_envelope(
                 unknown_signed,
@@ -11840,7 +11841,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
             get_fixture_authority_public_key,
-            host_sign_review_envelope,
+            ExternalReviewProducer,
         )
         pub_bytes = get_fixture_authority_public_key("rev_key_lead_v1")
 
@@ -11865,7 +11866,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             "expires_at": now + 300.0,
             "fencing_token": 1,
         }
-        signed = host_sign_review_envelope(payload)
+        signed = ExternalReviewProducer.produce_review_envelope(payload)
 
         # First consumption succeeds
         consumer.consume_review_envelope(
@@ -11891,7 +11892,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             "envelope_id": "rev_env_replay_02",
             "fencing_token": 2,
         }
-        dup_nonce_signed = host_sign_review_envelope(dup_nonce_payload)
+        dup_nonce_signed = ExternalReviewProducer.produce_review_envelope(dup_nonce_payload)
         with self.assertRaises(ReplayAttackError) as ctx_nonce:
             consumer.consume_review_envelope(
                 dup_nonce_signed,
@@ -11902,7 +11903,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
         self.assertIn("has already been used fail-closed (replay attack)", str(ctx_nonce.exception))
 
         # 5c. Cross-task replay fails closed
-        other_task_signed = host_sign_review_envelope({
+        other_task_signed = ExternalReviewProducer.produce_review_envelope({
             **payload,
             "envelope_id": "rev_env_replay_03",
             "nonce": "nonce_replay_03_hex_32_chars_123",
@@ -11931,7 +11932,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
         import tempfile
         from test_host_boundary_harness import (
             get_fixture_authority_public_key,
-            host_sign_review_envelope,
+            ExternalReviewProducer,
         )
         pub_bytes = get_fixture_authority_public_key("rev_key_lead_v1")
 
@@ -11962,7 +11963,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
                 "expires_at": now + 300.0,
                 "fencing_token": 10,
             }
-            signed_a = host_sign_review_envelope(payload)
+            signed_a = ExternalReviewProducer.produce_review_envelope(payload)
             consumer_a.consume_review_envelope(
                 signed_a,
                 expected_task_id=self.delivery_id,
@@ -11995,7 +11996,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
                 "nonce": "nonce_restart_02_hex_32_chars_2",
                 "fencing_token": 9,
             }
-            stale_signed = host_sign_review_envelope(stale_payload)
+            stale_signed = ExternalReviewProducer.produce_review_envelope(stale_payload)
             with self.assertRaises(FencingViolationError):
                 consumer_b.consume_review_envelope(
                     stale_signed,
@@ -12011,7 +12012,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
                 "nonce": "nonce_restart_03_hex_32_chars_3",
                 "fencing_token": 11,
             }
-            fresh_signed = host_sign_review_envelope(fresh_payload)
+            fresh_signed = ExternalReviewProducer.produce_review_envelope(fresh_payload)
             verified_fresh = consumer_b.consume_review_envelope(
                 fresh_signed,
                 expected_task_id=self.delivery_id,
@@ -12036,7 +12037,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
             get_fixture_authority_public_key,
-            host_sign_review_envelope,
+            ExternalReviewProducer,
         )
         pub_bytes = get_fixture_authority_public_key("rev_key_lead_v1")
 
@@ -12062,7 +12063,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             "expires_at": t_base - 300.0,
             "fencing_token": 1,
         }
-        expired_signed = host_sign_review_envelope(expired_payload)
+        expired_signed = ExternalReviewProducer.produce_review_envelope(expired_payload)
         with self.assertRaises(ExpiredEnvelopeError) as ctx_exp:
             consumer.consume_review_envelope(
                 expired_signed,
@@ -12090,7 +12091,7 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             "expires_at": t_base + 7200.0,
             "fencing_token": 2,
         }
-        future_signed = host_sign_review_envelope(future_payload)
+        future_signed = ExternalReviewProducer.produce_review_envelope(future_payload)
         with self.assertRaises(EnvelopeVerificationError) as ctx_fut:
             consumer.consume_review_envelope(
                 future_signed,
@@ -12218,8 +12219,8 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             TrustedHostKeyStoreHandoff,
             TrustedHostProvisionKeyStore,
             get_fixture_authority_public_key,
-            host_sign_review_envelope,
-            host_sign_integration_envelope,
+            ExternalReviewProducer,
+            ExternalIntegrationProducer,
         )
         pub_bytes = get_fixture_authority_public_key("rev_key_lead_v1")
 
@@ -12278,7 +12279,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "expires_at": now + 300.0,
             "fencing_token": 1,
         }
-        signed = host_sign_review_envelope(payload)
+        signed = ExternalReviewProducer.produce_review_envelope(payload)
 
         # Handle review verdict with authentic envelope
         new_state = adapter.handle_review_verdict(
@@ -12306,7 +12307,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "expires_at": now + 300.0,
             "fencing_token": 1,
         }
-        signed_int = host_sign_integration_envelope(int_payload)
+        signed_int = ExternalIntegrationProducer.produce_integration_envelope(int_payload)
 
         # In production mode, integration is strictly blocked fail-closed
         with self.assertRaises(ProductionActivationBlockedError):
@@ -12467,7 +12468,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("Access to host keystore issuer by in-process candidate caller is strictly forbidden fail-closed", str(ctx_iss_fake.exception))
 
         # 11o. Sol Finding 1: Candidate calls issue_handoff on host issuer without host token -> fails closed
-        host_issuer_auth = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_InternalHostBoundaryVault.token)
+        host_issuer_auth = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_InternalHostBoundaryVault._token)
         with self.assertRaises(ProtocolViolationError) as ctx_ho_cand:
             host_issuer_auth.issue_handoff({"integ_gatekeeper_v1": attacker_pub})
         self.assertIn("Minting host handoff by in-process candidate caller is strictly forbidden fail-closed", str(ctx_ho_cand.exception))
@@ -12566,7 +12567,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
             get_fixture_authority_public_key,
-            host_sign_integration_envelope,
+            ExternalIntegrationProducer,
         )
         pub_bytes = get_fixture_authority_public_key("integ_gatekeeper_v1")
 
@@ -12589,7 +12590,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "expires_at": now + 300.0,
             "fencing_token": 1,
         }
-        signed = host_sign_integration_envelope(base_payload)
+        signed = ExternalIntegrationProducer.produce_integration_envelope(base_payload)
 
         # 12a. First consumption succeeds and records into registry
         consumed = consumer.consume_integration_envelope(
@@ -12621,7 +12622,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "envelope_id": "int_env_valid_02",
             "fencing_token": 2,
         }
-        signed_nonce_reuse = host_sign_integration_envelope(payload_nonce_reuse)
+        signed_nonce_reuse = ExternalIntegrationProducer.produce_integration_envelope(payload_nonce_reuse)
         with self.assertRaises(ReplayAttackError) as ctx_nonce:
             consumer.consume_integration_envelope(
                 signed_nonce_reuse,
@@ -12640,7 +12641,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "nonce": "fresh_nonce_32_chars_for_stale_1",
             "fencing_token": 1,
         }
-        signed_stale_fencing = host_sign_integration_envelope(payload_stale_fencing)
+        signed_stale_fencing = ExternalIntegrationProducer.produce_integration_envelope(payload_stale_fencing)
         with self.assertRaises(FencingViolationError) as ctx_fencing:
             consumer.consume_integration_envelope(
                 signed_stale_fencing,
@@ -12659,7 +12660,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "nonce": "fresh_nonce_32_chars_for_fresh_1",
             "fencing_token": 2,
         }
-        signed_fresh = host_sign_integration_envelope(payload_fresh_fencing)
+        signed_fresh = ExternalIntegrationProducer.produce_integration_envelope(payload_fresh_fencing)
         fresh_consumed = consumer.consume_integration_envelope(
             signed_fresh,
             expected_task_id=self.delivery_id,
@@ -12680,7 +12681,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "issued_at": now - 600.0,
             "expires_at": now - 300.0,
         }
-        signed_expired = host_sign_integration_envelope(payload_expired)
+        signed_expired = ExternalIntegrationProducer.produce_integration_envelope(payload_expired)
         with self.assertRaises(ExpiredEnvelopeError) as ctx_exp:
             consumer.consume_integration_envelope(
                 signed_expired,
@@ -12701,7 +12702,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "issued_at": now + 3600.0,
             "expires_at": now + 7200.0,
         }
-        signed_future = host_sign_integration_envelope(payload_future)
+        signed_future = ExternalIntegrationProducer.produce_integration_envelope(payload_future)
         with self.assertRaises(EnvelopeVerificationError) as ctx_fut:
             consumer.consume_integration_envelope(
                 signed_future,
@@ -12761,7 +12762,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
             get_fixture_authority_public_key,
-            host_sign_integration_envelope,
+            ExternalIntegrationProducer,
         )
         pub_bytes = get_fixture_authority_public_key("integ_gatekeeper_v1")
 
@@ -12789,7 +12790,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
                 "expires_at": now + 300.0,
                 "fencing_token": 10,
             }
-            signed_a = host_sign_integration_envelope(payload)
+            signed_a = ExternalIntegrationProducer.produce_integration_envelope(payload)
             consumer_a.consume_integration_envelope(
                 signed_a,
                 expected_task_id=self.delivery_id,
@@ -12826,7 +12827,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
                 "nonce": "nonce_dur_02_hex_32_chars_123456",
                 "fencing_token": 9,
             }
-            stale_signed = host_sign_integration_envelope(stale_payload)
+            stale_signed = ExternalIntegrationProducer.produce_integration_envelope(stale_payload)
             with self.assertRaises(FencingViolationError):
                 consumer_b.consume_integration_envelope(
                     stale_signed,
@@ -12844,7 +12845,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
                 "nonce": "nonce_dur_03_hex_32_chars_123456",
                 "fencing_token": 11,
             }
-            fresh_signed = host_sign_integration_envelope(fresh_payload)
+            fresh_signed = ExternalIntegrationProducer.produce_integration_envelope(fresh_payload)
             verified_fresh = consumer_b.consume_integration_envelope(
                 fresh_signed,
                 expected_task_id=self.delivery_id,
@@ -12872,7 +12873,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
             get_fixture_authority_public_key,
-            host_sign_integration_envelope,
+            ExternalIntegrationProducer,
         )
         pub_bytes = get_fixture_authority_public_key("integ_gatekeeper_v1")
 
@@ -12896,7 +12897,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
                 "expires_at": now + 300.0,
                 "fencing_token": 1,
             }
-            signed = host_sign_integration_envelope(payload)
+            signed = ExternalIntegrationProducer.produce_integration_envelope(payload)
 
             success_count = 0
             replay_count = 0
@@ -12957,7 +12958,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
             get_fixture_authority_public_key,
-            host_sign_integration_envelope,
+            ExternalIntegrationProducer,
         )
         pub_bytes = get_fixture_authority_public_key("integ_gatekeeper_v1")
         handoff = TrustedHostKeyStoreHandoff({"integ_gatekeeper_v1": pub_bytes})
@@ -13021,7 +13022,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
                 "expires_at": now + 300.0,
                 "fencing_token": 10,
             }
-            signed_env = host_sign_integration_envelope(payload)
+            signed_env = ExternalIntegrationProducer.produce_integration_envelope(payload)
 
             # Consume on adapter_1
             res_1 = adapter_1.trusted_integration_consumer.consume_integration_envelope(
@@ -13069,7 +13070,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             stale_payload["envelope_id"] = "int_env_adapter_restart_02"
             stale_payload["nonce"] = "nonce_adapter_restart_unique_02"
             stale_payload["fencing_token"] = 10  # stale, equal to last
-            stale_signed = host_sign_integration_envelope(stale_payload)
+            stale_signed = ExternalIntegrationProducer.produce_integration_envelope(stale_payload)
             with self.assertRaises(FencingViolationError) as ctx_fenc:
                 adapter_2.trusted_integration_consumer.consume_integration_envelope(
                     stale_signed,
@@ -13086,7 +13087,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             adv_payload["envelope_id"] = "int_env_adapter_restart_03"
             adv_payload["nonce"] = "nonce_adapter_restart_unique_03"
             adv_payload["fencing_token"] = 11  # strictly greater
-            adv_signed = host_sign_integration_envelope(adv_payload)
+            adv_signed = ExternalIntegrationProducer.produce_integration_envelope(adv_payload)
             res_adv = adapter_2.trusted_integration_consumer.consume_integration_envelope(
                 adv_signed,
                 expected_task_id=self.delivery_id,
@@ -13246,7 +13247,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertFalse(HostBoundaryChannel.verify_capability("arbitrary_forged_token_value_32b_hex!"))
 
         # 17b. Out-of-process daemon verifies authentic host token
-        self.assertTrue(HostBoundaryChannel.verify_capability(_InternalHostBoundaryVault.token))
+        self.assertTrue(HostBoundaryChannel.verify_capability(_InternalHostBoundaryVault._token))
 
         # 17c. KeyStoreHostIssuer rejects candidate-set mutable env token
         with self.assertRaises(ProtocolViolationError) as ctx_iss:
@@ -13268,16 +13269,16 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             KeyStoreHostIssuer._reset_for_testing(_internal_token=attacker_token)
 
         # 17g. Positive control: Authentic host token succeeds for reset and issuer
-        KeyStoreHostIssuer._reset_for_testing(_internal_token=_InternalHostBoundaryVault.token)
-        TrustedKeyStore._reset_for_testing(_internal_token=_InternalHostBoundaryVault.token)
-        valid_issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_InternalHostBoundaryVault.token)
+        KeyStoreHostIssuer._reset_for_testing(_internal_token=_InternalHostBoundaryVault._token)
+        TrustedKeyStore._reset_for_testing(_internal_token=_InternalHostBoundaryVault._token)
+        valid_issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=_InternalHostBoundaryVault._token)
         self.assertIsNotNone(valid_issuer)
 
         # 17h. In-process candidate attempts env endpoint forgery by setting _ORCA_HOST_BOUNDARY_PORT / _ORCA_HOST_BOUNDARY_AUTHKEY
         os.environ["_ORCA_HOST_BOUNDARY_PORT"] = "65530"
         os.environ["_ORCA_HOST_BOUNDARY_AUTHKEY"] = secrets.token_hex(16)
         # verify_capability does not read or trust mutable environment variables: authentic token succeeds against provisioned daemon
-        self.assertTrue(HostBoundaryChannel.verify_capability(_InternalHostBoundaryVault.token))
+        self.assertTrue(HostBoundaryChannel.verify_capability(_InternalHostBoundaryVault._token))
         self.assertFalse(HostBoundaryChannel.verify_capability(attacker_token))
         os.environ.pop("_ORCA_HOST_BOUNDARY_PORT", None)
         os.environ.pop("_ORCA_HOST_BOUNDARY_AUTHKEY", None)
@@ -13450,7 +13451,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         object.__setattr__(raw_ticket, "_created_at", 0.0)
         object.__setattr__(raw_ticket, "_signature", "candidate-signature")
         with self.assertRaises(ProtocolViolationError) as ctx_consume:
-            raw_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey)
+            raw_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
         self.assertIn("Uninitialized or forged HostBoundaryTicket cannot be consumed fail-closed", str(ctx_consume.exception))
 
         # 18e. HostBoundaryTicketIssuer direct construction without valid host token fails closed
@@ -13465,12 +13466,12 @@ print("FRESH_PROCESS_ISOLATION_PASS")
 
         # 18g. Trust-root tampering/monkeypatch: replace _issuer on ticket with foreign or fake issuer
         from test_host_boundary_harness import _InternalHostBoundaryVault
-        valid_issuer = HostBoundaryTicketIssuer.get_default_host_issuer(_internal_token=_InternalHostBoundaryVault.token)
-        tampered_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey, _internal_token=_InternalHostBoundaryVault.token)
+        valid_issuer = HostBoundaryTicketIssuer.get_default_host_issuer(_internal_token=_InternalHostBoundaryVault._token)
+        tampered_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
         fake_issuer = HostBoundaryTicketIssuer(_internal_token="fake_issuer_token_32_bytes_long!")
         object.__setattr__(tampered_ticket, "_issuer", fake_issuer)
         with self.assertRaises(ProtocolViolationError) as ctx_tamp:
-            tampered_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey)
+            tampered_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
         self.assertTrue("forged provenance rejected fail-closed" in str(ctx_tamp.exception) or "foreign issuer rejected" in str(ctx_tamp.exception), str(ctx_tamp.exception))
 
         # 18h. Ticket minted with attacker issuer rejected by provision_channel against authentic host daemon in child process
@@ -13483,8 +13484,8 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             f"attacker_token = secrets.token_hex(32)\n"
             f"attacker_issuer = HostBoundaryTicketIssuer(_internal_token=attacker_token)\n"
             f"try:\n"
-            f"    attacker_ticket = attacker_issuer.issue_ticket({_InternalHostBoundaryVault.port}, {_InternalHostBoundaryVault.authkey!r}, _internal_token=attacker_token)\n"
-            f"    HostBoundaryChannel.provision_channel({_InternalHostBoundaryVault.port}, {_InternalHostBoundaryVault.authkey!r}, host_ticket=attacker_ticket)\n"
+            f"    attacker_ticket = attacker_issuer.issue_ticket({_InternalHostBoundaryVault._port}, {_InternalHostBoundaryVault._authkey!r}, _internal_token=attacker_token)\n"
+            f"    HostBoundaryChannel.provision_channel({_InternalHostBoundaryVault._port}, {_InternalHostBoundaryVault._authkey!r}, host_ticket=attacker_ticket)\n"
             f"    assert False, 'Expected failure'\n"
             f"except ProtocolViolationError as e:\n"
             f"    assert ('Host ticket issuance rejected' in str(e) or 'HostBoundaryTicket issuer secret was rejected' in str(e)), str(e)\n"
@@ -13500,61 +13501,61 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("ATTACKER_DAEMON_REJECTED_PASS", proc_att.stdout)
 
         # 18i. Ticket with forged HMAC signature is rejected fail-closed
-        legit_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey, _internal_token=_InternalHostBoundaryVault.token)
+        legit_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
         object.__setattr__(legit_ticket, "_signature", "deadbeef" * 8)
         with self.assertRaises(ProtocolViolationError) as ctx_sig:
-            legit_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey)
+            legit_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
         self.assertIn("cryptographic signature mismatch", str(ctx_sig.exception))
 
         # 18j. Ticket with port binding mismatch is rejected fail-closed
-        legit_ticket2 = valid_issuer.issue_ticket(_InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey, _internal_token=_InternalHostBoundaryVault.token)
+        legit_ticket2 = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
         with self.assertRaises(ProtocolViolationError) as ctx_port:
-            legit_ticket2._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault.port + 1, _InternalHostBoundaryVault.authkey)
+            legit_ticket2._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port + 1, _InternalHostBoundaryVault._authkey)
         self.assertIn("port binding mismatch", str(ctx_port.exception))
 
         # 18k. Ticket with authkey binding mismatch is rejected fail-closed
-        legit_ticket3 = valid_issuer.issue_ticket(_InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey, _internal_token=_InternalHostBoundaryVault.token)
+        legit_ticket3 = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
         with self.assertRaises(ProtocolViolationError) as ctx_auth:
-            legit_ticket3._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault.port, b"wrong_authkey_32b_length_bytes!")
+            legit_ticket3._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, b"wrong_authkey_32b_length_bytes!")
         self.assertIn("authkey binding mismatch", str(ctx_auth.exception))
 
         # 18l. Wrong audience/role: manipulated role rejected fail-closed
-        wrong_role_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey, _internal_token=_InternalHostBoundaryVault.token)
+        wrong_role_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
         object.__setattr__(wrong_role_ticket, "_role", "WrongAudienceRole")
         with self.assertRaises(ProtocolViolationError) as ctx_role:
-            wrong_role_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey)
+            wrong_role_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
         self.assertIn("role mismatch", str(ctx_role.exception))
 
         # 18m. Temporal validity — expired ticket (created_at 301s in past) is rejected fail-closed
-        legit_ticket4 = valid_issuer.issue_ticket(_InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey, _internal_token=_InternalHostBoundaryVault.token)
+        legit_ticket4 = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
         object.__setattr__(legit_ticket4, "_created_at", time.time() - 301.0)
         with self.assertRaises(ProtocolViolationError) as ctx_exp:
-            legit_ticket4._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey)
+            legit_ticket4._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
         self.assertIn("has expired", str(ctx_exp.exception))
 
         # 18n. Temporal validity — future ticket beyond skew (created_at 35s in future) is rejected fail-closed
-        future_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey, _internal_token=_InternalHostBoundaryVault.token)
+        future_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
         object.__setattr__(future_ticket, "_created_at", time.time() + 35.0)
         with self.assertRaises(ProtocolViolationError) as ctx_fut:
-            future_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey)
+            future_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
         self.assertIn("future beyond acceptable skew", str(ctx_fut.exception))
 
         # 18o. Single-use sequential replay protection: consumed ticket cannot be reused fail-closed
-        legit_ticket5 = valid_issuer.issue_ticket(_InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey, _internal_token=_InternalHostBoundaryVault.token)
-        legit_ticket5._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey)
+        legit_ticket5 = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
+        legit_ticket5._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
         self.assertTrue(getattr(legit_ticket5, "_consumed", False))
         with self.assertRaises(ProtocolViolationError) as ctx_replay:
-            legit_ticket5._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey)
+            legit_ticket5._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
         self.assertIn("single-use ticket cannot be reused fail-closed", str(ctx_replay.exception))
 
         # 18p. Concurrent replay: 10 threads racing to consume the same ticket simultaneously
-        concurrent_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey, _internal_token=_InternalHostBoundaryVault.token)
+        concurrent_ticket = valid_issuer.issue_ticket(_InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey, _internal_token=_InternalHostBoundaryVault._token)
         results = []
         barrier = threading.Barrier(10)
         def racer():
             barrier.wait()
             try:
-                concurrent_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault.port, _InternalHostBoundaryVault.authkey)
+                concurrent_ticket._consume_for_provisioning(HostBoundaryChannel, _InternalHostBoundaryVault._port, _InternalHostBoundaryVault._authkey)
                 results.append("SUCCESS")
             except ProtocolViolationError as e:
                 results.append(f"FAIL:{e}")
@@ -13778,18 +13779,18 @@ print("FRESH_PROCESS_ISOLATION_PASS")
 
         # 3. Cryptographic verification fails against pinned public key for forged Ed25519 signature
         fake_cap = HostBoundaryBootstrapCapability.from_host_signed_payload(
-            "boot_cap_tampered", _InternalHostBoundaryVault.port, hashlib.sha256(_InternalHostBoundaryVault.authkey).hexdigest(), "0"*64, time.time(), "deadbeef"*8
+            "boot_cap_tampered", _InternalHostBoundaryVault._port, hashlib.sha256(_InternalHostBoundaryVault._authkey).hexdigest(), "0"*64, time.time(), "deadbeef"*8
         )
         with self.assertRaises(ProtocolViolationError) as ctx_fake:
-            fake_cap.verify(port=_InternalHostBoundaryVault.port, authkey=_InternalHostBoundaryVault.authkey)
+            fake_cap.verify(port=_InternalHostBoundaryVault._port, authkey=_InternalHostBoundaryVault._authkey)
         self.assertIn("cryptographic signature mismatch", str(ctx_fake.exception))
 
         # 4. Authentic capability from trusted host boundary succeeds
         auth_cap = _InternalHostBoundaryVault.boot_cap
         self.assertIsNotNone(auth_cap)
-        auth_cap.verify(port=_InternalHostBoundaryVault.port, authkey=_InternalHostBoundaryVault.authkey)
-        self.assertEqual(auth_cap.port, _InternalHostBoundaryVault.port)
-        self.assertEqual(auth_cap.authkey_hash, hashlib.sha256(_InternalHostBoundaryVault.authkey).hexdigest())
+        auth_cap.verify(port=_InternalHostBoundaryVault._port, authkey=_InternalHostBoundaryVault._authkey)
+        self.assertEqual(auth_cap.port, _InternalHostBoundaryVault._port)
+        self.assertEqual(auth_cap.authkey_hash, hashlib.sha256(_InternalHostBoundaryVault._authkey).hexdigest())
 
     def test_18u_sol_finding_candidate_reading_entire_repo_cannot_mint_bootstrap_capability(self):
         """18u. Sol Audit Finding Remediation: Candidate reading entire repository cannot mint bootstrap capability.
@@ -13828,16 +13829,16 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         attacker_priv = ed25519.Ed25519PrivateKey.generate()
         bid = "cand_minted_cap"
         now = time.time()
-        authkey_hash = hashlib.sha256(_InternalHostBoundaryVault.authkey).hexdigest()
-        host_token_hash = hashlib.sha256(_InternalHostBoundaryVault.token.encode("utf-8")).hexdigest()
-        payload = f"HOST_BOOTSTRAP_CAP:{bid}:{_InternalHostBoundaryVault.port}:{authkey_hash}:{host_token_hash}:{now}".encode("utf-8")
+        authkey_hash = hashlib.sha256(_InternalHostBoundaryVault._authkey).hexdigest()
+        host_token_hash = hashlib.sha256(_InternalHostBoundaryVault._token.encode("utf-8")).hexdigest()
+        payload = f"HOST_BOOTSTRAP_CAP:{bid}:{_InternalHostBoundaryVault._port}:{authkey_hash}:{host_token_hash}:{now}".encode("utf-8")
         attacker_sig = attacker_priv.sign(payload).hex()
 
         attacker_cap = HostBoundaryBootstrapCapability.from_host_signed_payload(
-            bid, _InternalHostBoundaryVault.port, authkey_hash, host_token_hash, now, attacker_sig
+            bid, _InternalHostBoundaryVault._port, authkey_hash, host_token_hash, now, attacker_sig
         )
         try:
-            attacker_cap.verify(port=_InternalHostBoundaryVault.port, authkey=_InternalHostBoundaryVault.authkey)
+            attacker_cap.verify(port=_InternalHostBoundaryVault._port, authkey=_InternalHostBoundaryVault._authkey)
             candidate_can_mint = True
         except ProtocolViolationError as e:
             self.assertIn("cryptographic signature mismatch", str(e))
@@ -13857,7 +13858,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         # 4. Attempting to mutate already-pinned key fails closed
         with self.assertRaises(ProtocolViolationError) as ctx_mut:
             HostBoundaryBootstrapCapability.pin_trusted_host_public_key(
-                b"Y" * 32, _internal_token=_InternalHostBoundaryVault.token, port=_InternalHostBoundaryVault.port, authkey=_InternalHostBoundaryVault.authkey
+                b"Y" * 32, _internal_token=_InternalHostBoundaryVault._token, port=_InternalHostBoundaryVault._port, authkey=_InternalHostBoundaryVault._authkey
             )
         self.assertIn("Trusted host public key already pinned; cannot be mutated fail-closed", str(ctx_mut.exception))
 
@@ -14274,7 +14275,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    _ensure_internal_host_boundary_harness,\n"
             "    TrustedHostIsolatedKeyStore as harness_keystore_helper,\n"
             "    TrustedHostKeyStoreHandoff as harness_handoff_helper,\n"
-            "    host_sign_fixture_payload,\n"
+            "    ExternalReviewProducer as harness_review_producer,\n"
             ")\n"
             "_ensure_internal_host_boundary_harness()\n"
             "\n"
@@ -14303,10 +14304,15 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    allowed_id_attacker_key_accepted = True\n"
             "assert allowed_id_attacker_key_accepted is False, 'ALLOWED_ID_ATTACKER_KEY_ACCEPTED must be False fail-closed'\n"
             "\n"
-            "# 9. Positive host-key control: authentic host key material verifies successfully via opaque signing IPC\n"
-            "host_sig_hex = host_sign_fixture_payload('rev_key_lead_v1', payload)\n"
-            "host_sig = bytes.fromhex(host_sig_hex)\n"
-            "assert legit_keystore.verify_signature('rev_key_lead_v1', payload, host_sig) is True, 'Authentic host key verification must succeed'\n"
+            "# 9. Positive host-key control: authentic host key material verifies successfully via external producer\n"
+            "host_rev = harness_review_producer.produce_review_envelope(\n"
+            "    delivery_task_id='task_sol_audit',\n"
+            "    review_dispatch_id='dispatch_sol_audit',\n"
+            "    candidate_commit='2eb47f67b69445e38275f193aeab835731b52ced',\n"
+            "    base_commit='4a7c8c921b7e05066505d51b168a02c3fde61317',\n"
+            "    verdict='ACCEPT',\n"
+            ")\n"
+            "assert legit_keystore.verify_signature('rev_key_lead_v1', host_rev.canonical_bytes(), bytes.fromhex(host_rev.signature)) is True, 'Authentic host key verification must succeed'\n"
             "sys.stdout.write('SOL_CALLER_SELECTED_KEY_BYTES_REJECTED_PASS\\n')\n"
         )
         proc = subprocess.run([sys.executable, "-u", "-c", child_code], capture_output=True, text=True)
@@ -14315,23 +14321,31 @@ print("FRESH_PROCESS_ISOLATION_PASS")
         self.assertIn("SOL_CALLER_SELECTED_KEY_BYTES_REJECTED_PASS", proc.stdout)
 
     def test_18z_sol_finding_fixture_authority_private_key_custody_remediated(self):
-        """18z. Sol Finding Remediation: Zero private key custody in candidate/fixture, opaque signing IPC, and rejection of candidate-forged review envelope.
+        """18z. Sol Finding Remediation: Zero private key custody in candidate/fixture, opaque signing IPC,
+        elimination of generic signing functions, vault credentials protection, and rejection of candidate-forged review envelope.
         Proves:
-        1. Fresh subprocess export/import failure:
-           Attempting to import get_fixture_authority_keypair or TrustedHostFixturePrivateKey from test_host_boundary_harness raises ImportError fail-closed.
-           _InternalHostBoundaryVault has no fixture_keypairs attribute and no private keys in process memory.
-        2. Candidate caller-signed envelope rejection:
+        1. Generic signing functions completely eliminated:
+           Attempting to import host_sign_fixture_payload, host_sign_review_envelope, host_sign_integration_envelope
+           raises ImportError fail-closed.
+        2. Direct inspection of vault credentials forbidden:
+           Accessing _InternalHostBoundaryVault.token, .port, or .authkey raises ProtocolViolationError fail-closed.
+        3. Daemon generic signing endpoint rejected:
+           Sending SIGN_FIXTURE_PAYLOAD to daemon returns False / rejected fail-closed.
+        4. Candidate caller-signed envelope rejection:
            Candidate generates custom Ed25519 keypair and caller-signs a review envelope with verdict 'ACCEPT'.
-           TrustedReviewConsumer.consume_review_envelope strictly rejects the forged envelope with EnvelopeVerificationError (signature mismatch) fail-closed.
-           FORGED_REVIEW_ACCEPTED is False.
-        3. Host-issued signature verification:
-           Host daemon signs review envelope via opaque IPC (host_sign_review_envelope) without exposing private keys.
-           TrustedReviewConsumer.consume_review_envelope verifies authentic host signature and accepts with verdict 'ACCEPT'.
-           HOST_ISSUED_REVIEW_ACCEPTED is True.
-        4. One-shot replay and concurrency replay protection:
-           Re-consuming the same host-issued signed envelope raises ReplayAttackError.
-           Concurrent consumption by 2 threads results in exactly 1 accepted and 1 ReplayAttackError.
-        5. Clean residue:
+           TrustedReviewConsumer.consume_review_envelope strictly rejects the forged envelope with EnvelopeVerificationError fail-closed.
+        5. ExternalReviewProducer produces authentic review envelope:
+           TrustedReviewConsumer.consume_review_envelope verifies authentic external host signature and accepts with verdict 'ACCEPT'.
+        6. Envelope tampering rejected:
+           Tampering with verdict or candidate commit on an external review envelope causes signature mismatch and rejection.
+        7. ExternalIntegrationProducer produces authentic integration envelope:
+           TrustedIntegrationConsumer verifies and accepts gates_pass=True.
+        8. Integration tampering rejected:
+           Tampering with integration gate results causes signature mismatch and rejection.
+        9. One-shot replay and concurrency replay protection:
+           Re-consuming the same signed envelope raises ReplayAttackError.
+           Concurrent consumption results in exactly 1 accepted and 1 ReplayAttackError.
+        10. Clean residue:
            Harness stop cleanly terminates daemon subprocess without residue.
         """
         child_code = (
@@ -14339,47 +14353,64 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "import time\n"
             "from pathlib import Path\n"
             "from concurrent.futures import ThreadPoolExecutor\n"
+            "from multiprocessing.connection import Client\n"
             "sys.path.insert(0, str(Path('docs/parallel-delivery').resolve()))\n"
             "from delivery_engine import (\n"
             "    TrustedReviewConsumer,\n"
+            "    TrustedIntegrationConsumer,\n"
             "    DurableConsumptionRegistry,\n"
             "    SignedReviewEnvelope,\n"
             "    sign_review_envelope,\n"
             "    EnvelopeVerificationError,\n"
             "    ReplayAttackError,\n"
+            "    ProtocolViolationError,\n"
             "    ProductionActivationGate,\n"
             ")\n"
             "from cryptography.hazmat.primitives.asymmetric import ed25519\n"
             "\n"
-            "# 1. Fresh-subprocess export/import failure\n"
-            "try:\n"
-            "    from test_host_boundary_harness import get_fixture_authority_keypair\n"
-            "    assert False, 'get_fixture_authority_keypair must raise ImportError fail-closed'\n"
-            "except ImportError:\n"
-            "    pass\n"
-            "\n"
-            "try:\n"
-            "    from test_host_boundary_harness import TrustedHostFixturePrivateKey\n"
-            "    assert False, 'TrustedHostFixturePrivateKey must raise ImportError fail-closed'\n"
-            "except ImportError:\n"
-            "    pass\n"
+            "# 1. Generic signing functions completely eliminated fail-closed\n"
+            "for fn_name in ['get_fixture_authority_keypair', 'TrustedHostFixturePrivateKey', 'host_sign_fixture_payload', 'host_sign_review_envelope', 'host_sign_integration_envelope', 'TrustedHostSignFixturePayload', 'TrustedHostSignReviewEnvelope', 'TrustedHostSignIntegrationEnvelope']:\n"
+            "    try:\n"
+            "        exec(f'from test_host_boundary_harness import {fn_name}')\n"
+            "        assert False, f'{fn_name} must raise ImportError fail-closed'\n"
+            "    except ImportError:\n"
+            "        pass\n"
             "\n"
             "from test_host_boundary_harness import (\n"
             "    _ensure_internal_host_boundary_harness,\n"
             "    _stop_internal_host_boundary_harness,\n"
             "    _InternalHostBoundaryVault,\n"
             "    get_fixture_authority_public_key,\n"
-            "    host_sign_review_envelope,\n"
+            "    ExternalReviewProducer,\n"
+            "    ExternalIntegrationProducer,\n"
             "    TrustedHostIsolatedKeyStore,\n"
             ")\n"
             "\n"
             "_ensure_internal_host_boundary_harness()\n"
             "try:\n"
+            "    # 2. Direct inspection of vault credentials strictly forbidden fail-closed\n"
+            "    for cred_attr in ['token', 'port', 'authkey']:\n"
+            "        try:\n"
+            "            _ = getattr(_InternalHostBoundaryVault, cred_attr)\n"
+            "            assert False, f'Access to _InternalHostBoundaryVault.{cred_attr} must raise ProtocolViolationError'\n"
+            "        except ProtocolViolationError as exc:\n"
+            "            assert 'Direct access to internal host boundary' in str(exc)\n"
+            "\n"
             "    assert not hasattr(_InternalHostBoundaryVault, 'fixture_keypairs'), '_InternalHostBoundaryVault must not contain fixture_keypairs'\n"
             "    assert hasattr(_InternalHostBoundaryVault, 'fixture_public_keys'), '_InternalHostBoundaryVault must contain fixture_public_keys'\n"
             "    assert 'rev_key_lead_v1' in _InternalHostBoundaryVault.fixture_public_keys\n"
             "\n"
-            "    # 2. Caller-signed envelope rejection (reproducing Sol counterexample condition)\n"
+            "    # 3. Daemon generic signing endpoint SIGN_FIXTURE_PAYLOAD rejected fail-closed\n"
+            "    daemon_port = _InternalHostBoundaryVault._port\n"
+            "    daemon_authkey = _InternalHostBoundaryVault._authkey\n"
+            "    daemon_token = _InternalHostBoundaryVault._token\n"
+            "    conn = Client(('127.0.0.1', daemon_port), authkey=daemon_authkey)\n"
+            "    conn.send(('SIGN_FIXTURE_PAYLOAD', daemon_token, 'rev_key_lead_v1', b'attacker_arbitrary_bytes'))\n"
+            "    daemon_res = conn.recv()\n"
+            "    conn.close()\n"
+            "    assert daemon_res is False, f'Daemon must reject generic SIGN_FIXTURE_PAYLOAD fail-closed, got {daemon_res}'\n"
+            "\n"
+            "    # 4. Caller-signed envelope rejection (reproducing Sol counterexample condition)\n"
             "    pub_bytes = get_fixture_authority_public_key('rev_key_lead_v1')\n"
             "    keystore = TrustedHostIsolatedKeyStore({'rev_key_lead_v1': pub_bytes})\n"
             "    registry = DurableConsumptionRegistry(db_path=':memory:')\n"
@@ -14417,7 +14448,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "        assert 'Cryptographic signature mismatch' in str(exc)\n"
             "    assert forged_accepted is False, 'FORGED_REVIEW_ACCEPTED must be False fail-closed'\n"
             "\n"
-            "    # 3. Host-issued signature verification via opaque IPC\n"
+            "    # 5. ExternalReviewProducer produces authentic review envelope verified by consumer\n"
             "    legit_payload = {\n"
             "        'envelope_id': 'sol_host_issued_rev_01',\n"
             "        'delivery_task_id': 'task_sol_audit',\n"
@@ -14428,13 +14459,13 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "        'reviewer_harness': 'Claude Code',\n"
             "        'reviewer_key_id': 'rev_key_lead_v1',\n"
             "        'verdict': 'ACCEPT',\n"
-            "        'summary': 'Legitimate host-issued review envelope via opaque IPC',\n"
+            "        'summary': 'Legitimate host-issued review envelope via external producer',\n"
             "        'nonce': 'nonce_host_issued_32_chars_12345',\n"
             "        'issued_at': now,\n"
             "        'expires_at': now + 300.0,\n"
             "        'fencing_token': 2,\n"
             "    }\n"
-            "    host_signed = host_sign_review_envelope(legit_payload, key_id='rev_key_lead_v1')\n"
+            "    host_signed = ExternalReviewProducer.produce_review_envelope(legit_payload, key_id='rev_key_lead_v1')\n"
             "    verified = consumer.consume_review_envelope(\n"
             "        host_signed,\n"
             "        expected_task_id='task_sol_audit',\n"
@@ -14443,7 +14474,50 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    )\n"
             "    assert verified['verdict'] == 'ACCEPT', 'Host-issued signature must verify and accept'\n"
             "\n"
-            "    # 4. One-shot replay and concurrency replay protection\n"
+            "    # 6. Envelope tampering rejected fail-closed\n"
+            "    blocked_signed = ExternalReviewProducer.produce_review_envelope({\n"
+            "        **legit_payload,\n"
+            "        'envelope_id': 'sol_host_blocked_01',\n"
+            "        'verdict': 'CHANGES_REQUESTED',\n"
+            "        'nonce': 'nonce_blocked_32_chars_12345',\n"
+            "        'fencing_token': 3,\n"
+            "    })\n"
+            "    tampered_data = dict(blocked_signed.to_dict())\n"
+            "    tampered_data['verdict'] = 'ACCEPT'\n"
+            "    tampered_env = SignedReviewEnvelope.from_dict(tampered_data)\n"
+            "    try:\n"
+            "        consumer.consume_review_envelope(\n"
+            "            tampered_env,\n"
+            "            expected_task_id='task_sol_audit',\n"
+            "            expected_candidate='2eb47f67b69445e38275f193aeab835731b52ced',\n"
+            "            expected_dispatch_id='dispatch_sol_audit',\n"
+            "        )\n"
+            "        assert False, 'Tampered verdict must be rejected fail-closed'\n"
+            "    except EnvelopeVerificationError as exc:\n"
+            "        assert 'Cryptographic signature mismatch' in str(exc)\n"
+            "\n"
+            "    # 7. ExternalIntegrationProducer produces authentic integration envelope\n"
+            "    int_pub = get_fixture_authority_public_key('integ_gatekeeper_v1')\n"
+            "    int_keystore = TrustedHostIsolatedKeyStore({'integ_gatekeeper_v1': int_pub})\n"
+            "    int_consumer = TrustedIntegrationConsumer(int_keystore, registry)\n"
+            "    legit_int = ExternalIntegrationProducer.produce_integration_envelope(\n"
+            "        delivery_task_id='task_sol_audit',\n"
+            "        candidate_commit='2eb47f67b69445e38275f193aeab835731b52ced',\n"
+            "        base_commit='4a7c8c921b7e05066505d51b168a02c3fde61317',\n"
+            "        gates_pass=True,\n"
+            "        gate_results={'G01': True, 'G02': True},\n"
+            "        fencing_token=1,\n"
+            "    )\n"
+            "    int_verified = int_consumer.consume_integration_envelope(\n"
+            "        legit_int,\n"
+            "        expected_task_id='task_sol_audit',\n"
+            "        expected_candidate='2eb47f67b69445e38275f193aeab835731b52ced',\n"
+            "        expected_base='4a7c8c921b7e05066505d51b168a02c3fde61317',\n"
+            "        expected_gates_pass=True,\n"
+            "    )\n"
+            "    assert int_verified['gates_pass'] is True\n"
+            "\n"
+            "    # 8. Replay protection\n"
             "    try:\n"
             "        consumer.consume_review_envelope(\n"
             "            host_signed,\n"
@@ -14455,7 +14529,7 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    except ReplayAttackError:\n"
             "        pass\n"
             "\n"
-            "    # Concurrency test\n"
+            "    # 9. Concurrency test\n"
             "    concurrent_payload = {\n"
             "        'envelope_id': 'sol_concurrent_rev_01',\n"
             "        'delivery_task_id': 'task_sol_audit',\n"
@@ -14470,9 +14544,9 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "        'nonce': 'nonce_concurrent_32_chars_12345',\n"
             "        'issued_at': now,\n"
             "        'expires_at': now + 300.0,\n"
-            "        'fencing_token': 3,\n"
+            "        'fencing_token': 4,\n"
             "    }\n"
-            "    concurrent_signed = host_sign_review_envelope(concurrent_payload, key_id='rev_key_lead_v1')\n"
+            "    concurrent_signed = ExternalReviewProducer.produce_review_envelope(concurrent_payload, key_id='rev_key_lead_v1')\n"
             "\n"
             "    def consume_worker():\n"
             "        try:\n"
@@ -14490,20 +14564,19 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "        f1 = ex.submit(consume_worker)\n"
             "        f2 = ex.submit(consume_worker)\n"
             "        results = [f1.result(), f2.result()]\n"
-            "\n"
             "    acc_count = sum(1 for r in results if r[0] == 'ACCEPTED')\n"
             "    rep_count = sum(1 for r in results if r[0] == 'REPLAY_ERROR')\n"
             "    assert acc_count == 1 and rep_count == 1, f'Expected 1 accepted and 1 replay, got {results}'\n"
             "\n"
-            "    # 5. ProductionActivationGate status remains PRODUCTION_ACTIVATION_BLOCKED\n"
+            "    # 10. ProductionActivationGate status remains PRODUCTION_ACTIVATION_BLOCKED\n"
             "    assert ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED', 'Production activation gate must remain blocked fail-closed'\n"
             "finally:\n"
             "    _stop_internal_host_boundary_harness()\n"
             "\n"
-            "# 6. Clean residue check\n"
+            "# 11. Clean residue check\n"
             "assert _InternalHostBoundaryVault.proc is None, 'Daemon proc must be None after stop'\n"
             "assert len(_InternalHostBoundaryVault.fixture_public_keys) == 0, 'Public keys must be empty after stop'\n"
-            "sys.stdout.write('SOL_FIXTURE_KEY_CUSTODY_REMEDIATION_PASS\\n')\n"
+            "print('SOL_FIXTURE_KEY_CUSTODY_REMEDIATION_PASS')\n"
         )
         proc = subprocess.run([sys.executable, "-u", "-c", child_code], capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, f"Child process failed: stdout={proc.stdout}\nstderr={proc.stderr}")
@@ -14536,6 +14609,10 @@ class _SealedFixtureModule(types.ModuleType):
         "TrustedHostSignFixturePayload",
         "TrustedHostSignReviewEnvelope",
         "TrustedHostSignIntegrationEnvelope",
+        "ExternalReviewProducer",
+        "ExternalIntegrationProducer",
+        "TrustedExternalReviewProducer",
+        "TrustedExternalIntegrationProducer",
         "_validate_and_resolve_fixture_pinned_keys",
         "setUpModule",
         "tearDownModule",
