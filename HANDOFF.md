@@ -3,11 +3,11 @@
 ## Đã quyết định
 
 - Giữ nguyên ranh giới thẩm quyền: M2-P1..P7B_ACCEPTED_CLOSED; M2-P8/P9 LOCKED; M3/Phân hệ A NOT AUTHORIZED; ProductionActivationGate duy trì PRODUCTION_ACTIVATION_BLOCKED.
-- Khắc phục triệt để phát hiện ROOT_ARCHITECTURE từ Sol Audit trên exact candidate 2d41b53eac68705efdb8e5039a246fa06c22e33a (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
-  1. Lưu ký thông tin xác thực Host Daemon: Đóng gói toàn bộ token, port, authkey, proc vào _private_host_state cấp module; bảo vệ _HostBoundaryState và _InternalHostBoundaryVault bằng metaclass ném ProtocolViolationError fail-closed khi truy cập; niêm phong module bằng _SealedHostBoundaryModule.
-  2. Thẩm định phân quyền đăng ký Dispatch: TrustedHostRegisterDispatch và daemon IPC endpoint thẩm định bắt buộc base_commit == 4a7c8c921b7e05066505d51b168a02c3fde61317, candidate_commit là 40-hex hợp lệ không chứa từ khóa giả mạo, task/dispatch ID không chứa từ khóa giả mạo; daemon cấp phát dispatch_receipt.
-  3. Kiểm soát Overrides & Ký phong bì: Daemon từ chối dispatch chưa đăng ký và từ chối mọi override không khớp; gán metadata trực tiếp từ bản ghi dispatch của supervisor.
-  4. Nghiệm thu kiểm thử: Bổ sung test_20 trong test_negative_fixtures.py; toàn bộ 404 test fixtures (bao gồm 28/28 bài kiểm thử targeted TestSolTrustBoundaryRootCauseRemediation) đều đạt PASS 100%.
+- Khắc phục triệt để phát hiện ROOT_ARCHITECTURE từ Sol Audit trên exact candidate 6a6972f43c4f8b87b3b3553907ba9a73c15b2a8b (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  1. Đóng gói hoàn toàn Host Daemon Runtime: Chuyển toàn bộ runtime và credentials vào closure `_init_harness_runtime()`; loại bỏ hoàn toàn `_private_host_state`, `token`, `authkey`, `port`, `proc`, `_state` và các helper khỏi module namespace và `raw ModuleType.__dict__`.
+  2. Phân quyền đăng ký Candidate fail-closed: `TrustedHostRegisterDispatch` và daemon ngoài tiến trình bắt buộc `candidate_commit` phải thuộc authorized candidates do supervisor ủy quyền; từ chối candidate tùy ý (như `0123456789abcdef...`) fail-closed.
+  3. Cấp phát biên nhận supervisor mờ: Trả về `disp_receipt_<hex>` thay vì capability token; daemon từ chối phát hành envelope cho dispatch chưa đăng ký.
+  4. Nghiệm thu kiểm thử: Mở rộng `test_20` kiểm tra trực tiếp `raw_dict` và tái hiện counterexample an toàn; toàn bộ 404 test fixtures đạt PASS 100%.
 
 ## Chưa quyết định
 
@@ -15,9 +15,9 @@
 
 ## Tệp cần đọc tiếp
 
-- docs/parallel-delivery/README.md (Mục 37: Khắc phục triệt để phát hiện Sol Audit trên 2d41b53).
-- docs/parallel-delivery/test_host_boundary_harness.py (Bảo vệ thông tin xác thực Host Daemon, niêm phong module và thẩm định đăng ký dispatch).
-- docs/parallel-delivery/test_negative_fixtures.py (Test 20 kiểm chứng nghiệm thu).
+- docs/parallel-delivery/README.md (Mục 38: Khắc phục triệt để phát hiện Sol Audit trên 6a6972f).
+- docs/parallel-delivery/test_host_boundary_harness.py (Bảo vệ thông tin xác thực Host Daemon qua closure runtime và kiểm soát đăng ký candidate).
+- docs/parallel-delivery/test_negative_fixtures.py (Test 20 kiểm chứng raw dict và counterexample).
 - CHANGELOG.md (Nhật ký thay đổi chi tiết).
 
 ## Điểm tiếp tục

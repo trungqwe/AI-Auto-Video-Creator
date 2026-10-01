@@ -732,3 +732,25 @@ Biện pháp khắc phục triệt để:
      + Dọn dẹp sạch tiến trình sau khi dừng harness (`is_running() == False`).
    - Toàn bộ 404 bài kiểm thử trong negative fixture suite đạt PASS 100%.
    - Cổng kích hoạt sản xuất duy trì trạng thái an toàn: `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
+
+## 38. Khắc phục triệt để phát hiện Sol Audit trên 6a6972f (Đóng gói hoàn toàn Host Daemon Runtime, Loại bỏ _private_host_state khỏi Module Dict và Chặn đăng ký Candidate tùy ý)
+
+Đợt rà soát độc lập trên exact candidate SHA `6a6972f43c4f8b87b3b3553907ba9a73c15b2a8b` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nhận finding `ROOT_ARCHITECTURE`:
+- **Root cause**: Mặc dù đã ẩn thuộc tính ở tầng module class, việc truy cập trực tiếp qua `types.ModuleType.__getattribute__(h, "__dict__")` vẫn để lộ `_private_host_state` và các helper nội bộ trong `docs/parallel-delivery/test_host_boundary_harness.py`. Đồng thời, `TrustedHostRegisterDispatch` vẫn chấp nhận candidate commit tùy ý `0123456789abcdef0123456789abcdef01234567`, từ đó cho phép `ExternalReviewProducer` ký phát hành envelope duyệt cho candidate do caller tự chỉ định.
+- **Counterexample an toàn**: Candidate đọc `raw_dict`, gọi trực tiếp `raw_dict["TrustedHostRegisterDispatch"]` với candidate commit `0123456789abcdef0123456789abcdef01234567`, đăng ký dispatch thành công và yêu cầu `ExternalReviewProducer` phát hành envelope duyệt hợp lệ.
+
+Biện pháp khắc phục triệt để:
+1. **Đóng gói Runtime trong Closure & Loại bỏ Private State khỏi Module Dict**:
+   - Toàn bộ 23 hàm và trạng thái vận hành của host harness được đóng gói bên trong closure `_init_harness_runtime()`.
+   - Loại bỏ hoàn toàn `_private_host_state`, `token`, `_token`, `port`, `_port`, `authkey`, `_authkey`, `proc`, `_proc`, `_state`, `_runtime` và các helper getter/setter `_get_harness_*`, `_set_harness_*`, `_clear_harness_*` khỏi module namespace.
+   - Thử nghiệm trực tiếp bằng `types.ModuleType.__getattribute__(h, "__dict__")` bảo đảm không còn bất kỳ credential, state hay helper nhạy cảm nào bị lộ.
+2. **Phân quyền Đăng ký Candidate nghiêm ngặt fail-closed**:
+   - Cả trong hàm `TrustedHostRegisterDispatch` lẫn daemon ngoài tiến trình (`REGISTER_DISPATCH`), bổ sung thẩm định: `candidate_commit` bắt buộc phải thuộc tập authorized candidates do supervisor chỉ định (`_get_supervisor_approved_candidates()`).
+   - Mọi nỗ lực đăng ký candidate commit tùy ý (như `0123456789abcdef...`) đều bị từ chối fail-closed với `ProtocolViolationError` ("caller cannot register arbitrary candidate commit without host supervisor authority").
+3. **Cấp phát Biên nhận Supervisor mờ (Opaque Receipt)**:
+   - `TrustedHostRegisterDispatch` trả về `disp_receipt_<32 hex>` thay vì capability token.
+   - `ExternalReviewProducer` và `ExternalIntegrationProducer` thẩm định dispatch record trong daemon trước khi ký, từ chối phát hành envelope cho dispatch chưa đăng ký hoặc có override trái phép.
+4. **Nghiệm thu kiểm thử (Acceptance Evidence)**:
+   - Bổ sung assert kiểm tra `types.ModuleType.__getattribute__(h, "__dict__")` và tái hiện counterexample từ chối đăng ký candidate tùy ý trong `test_20_sol_finding_candidate_dispatch_registration_and_credentials_remediated` (`test_negative_fixtures.py`).
+   - Toàn bộ 404 bài kiểm thử trong negative fixture suite đạt PASS 100%.
+   - Cổng kích hoạt sản xuất duy trì trạng thái an toàn: `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.

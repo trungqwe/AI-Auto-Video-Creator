@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-01 - Khắc phục triệt để phát hiện Sol Audit trên 6a6972f (Đóng gói hoàn toàn Host Daemon Runtime, Loại bỏ _private_host_state khỏi Module Dict và Chặn đăng ký Candidate tùy ý)
+
+- Khắc phục triệt để phát hiện độc lập ROOT_ARCHITECTURE từ Sol trên exact candidate `6a6972f43c4f8b87b3b3553907ba9a73c15b2a8b` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Đóng gói Runtime trong Closure & Làm sạch Module Dict**: Toàn bộ thông tin xác thực daemon (`token`, `authkey`, `port`, `proc`, `boot_cap`, `test_host_issuer`) và trạng thái nội bộ được đóng gói hoàn toàn trong closure `_init_harness_runtime()`. Loại bỏ hoàn toàn `_private_host_state`, `token`, `_token`, `port`, `_port`, `authkey`, `_authkey`, `proc`, `_proc`, `_state`, `_runtime` và các hàm helper `_get_harness_*`, `_set_harness_*`, `_clear_harness_*` khỏi module namespace; bảo đảm `types.ModuleType.__getattribute__(h, "__dict__")` không để lộ bất kỳ thông tin xác thực hay mutable state nào cho candidate inspection.
+  - **(2) Phân quyền Đăng ký Candidate fail-closed**: Trong `TrustedHostRegisterDispatch` và daemon IPC endpoint `REGISTER_DISPATCH`, thực thi kiểm tra bắt buộc: `candidate_commit` phải thuộc danh sách approved candidates do host supervisor ủy quyền (`_get_supervisor_approved_candidates()`). Candidate tùy ý (như `0123456789abcdef...`) bị từ chối fail-closed ngay lập tức (`ProtocolViolationError`), ngăn chặn triệt để kịch bản phát hành envelope cho candidate không được cấp phép.
+  - **(3) Cấp phát Biên nhận Supervisor mờ (Opaque Receipt)**: `TrustedHostRegisterDispatch` trả về biên nhận supervisor mờ định dạng `disp_receipt_<32 hex>` thay vì capability token; `ExternalReviewProducer` từ chối phát hành envelope cho dispatch chưa đăng ký.
+  - **(4) Bổ sung Kiểm thử Fresh-Subprocess Raw-Dict & Counterexample trong `test_20`**: Kiểm tra trực tiếp `types.ModuleType.__getattribute__(h, "__dict__")` trong tiến trình con mới, chứng minh counterexample đăng ký candidate tùy ý `0123456789abcdef...` bị từ chối fail-closed, và `ExternalReviewProducer` từ chối phát hành envelope tương ứng.
+  - **(5) Kết quả kiểm thử**: Toàn bộ 404 test fixtures đạt PASS 100%; cổng kích hoạt sản xuất duy trì `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
+
 ## 2026-10-01 - Khắc phục triệt để phát hiện Sol Audit trên 2d41b53 (Lưu ký thông tin xác thực Host Daemon, Phân quyền Đăng ký Dispatch ngoài tiến trình và Niêm phong Candidate Surface)
 
 - Khắc phục triệt để phát hiện độc lập ROOT_ARCHITECTURE từ Sol trên exact candidate `2d41b53eac68705efdb8e5039a246fa06c22e33a` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
