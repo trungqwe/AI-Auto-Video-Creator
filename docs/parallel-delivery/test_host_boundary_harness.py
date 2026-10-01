@@ -16,7 +16,8 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Any, Mapping, Optional
+from types import MappingProxyType
+from typing import Any, Dict, Iterable, Mapping, Optional, Union
 
 from delivery_engine import (
     HostBoundaryBootstrapCapability,
@@ -51,6 +52,8 @@ class _InternalHostBoundaryVault:
     proc: Optional[subprocess.Popen] = None
     boot_cap: Optional[HostBoundaryBootstrapCapability] = None
     test_host_issuer: Optional[ReviewerHostIssuer] = None
+    fixture_keypairs: Dict[str, Any] = {}
+    fixture_public_keys: Mapping[str, bytes] = MappingProxyType({})
     lock = threading.RLock()
 
 
@@ -174,12 +177,22 @@ def _ensure_internal_host_boundary_harness() -> None:
                 test_host_issuer.issue_handoff(TEST_FIXTURE_REVIEWER_SECRET.encode("utf-8"))
             )
 
+        from cryptography.hazmat.primitives.asymmetric import ed25519
+        fixture_keypairs: Dict[str, Any] = {}
+        fixture_public_keys: Dict[str, bytes] = {}
+        for kid in sorted(ALLOWED_FIXTURE_KEY_IDS):
+            kp = ed25519.Ed25519PrivateKey.generate()
+            fixture_keypairs[kid] = kp
+            fixture_public_keys[kid] = kp.public_key().public_bytes_raw()
+
         _InternalHostBoundaryVault.port = port
         _InternalHostBoundaryVault.authkey = effective_authkey
         _InternalHostBoundaryVault.token = clean_token
         _InternalHostBoundaryVault.proc = proc
         _InternalHostBoundaryVault.boot_cap = boot_cap
         _InternalHostBoundaryVault.test_host_issuer = test_host_issuer
+        _InternalHostBoundaryVault.fixture_keypairs = fixture_keypairs
+        _InternalHostBoundaryVault.fixture_public_keys = MappingProxyType(fixture_public_keys)
 
 
 def _stop_internal_host_boundary_harness() -> None:
@@ -205,6 +218,8 @@ def _stop_internal_host_boundary_harness() -> None:
                 except Exception:
                     pass
             _InternalHostBoundaryVault.proc = None
+            _InternalHostBoundaryVault.fixture_keypairs = {}
+            _InternalHostBoundaryVault.fixture_public_keys = MappingProxyType({})
 
 
 def TrustedHostReviewerHandoff(credential: bytes) -> ReviewerHostHandoff:
@@ -213,30 +228,102 @@ def TrustedHostReviewerHandoff(credential: bytes) -> ReviewerHostHandoff:
     return _InternalHostBoundaryVault.test_host_issuer.issue_handoff(credential)
 
 
-def TrustedHostKeyStoreHandoff(pinned_keys: Mapping[str, bytes], issuer_name: str = "trusted_host") -> KeyStoreHostHandoff:
+def get_fixture_authority_keypair(key_id: str) -> Any:
+    """Retrieve the host-allocated immutable private signing key for an authentic test authority."""
+    token = _InternalHostBoundaryVault.token
+    if not token or _InternalHostBoundaryVault.proc is None:
+        raise ProtocolViolationError("Trusted host fixture keypair uninitialized fail-closed; caller cannot invoke host helper outside test harness")
+    if key_id not in ALLOWED_FIXTURE_KEY_IDS:
+        raise ProtocolViolationError(f"Custom key ID {key_id!r} is strictly forbidden fail-closed; candidate cannot mint custom-key authority")
+    return _InternalHostBoundaryVault.fixture_keypairs[key_id]
+
+
+def get_fixture_authority_public_key(key_id: str) -> bytes:
+    """Retrieve the host-allocated immutable pinned public key bytes for an authentic test authority."""
+    token = _InternalHostBoundaryVault.token
+    if not token or _InternalHostBoundaryVault.proc is None:
+        raise ProtocolViolationError("Trusted host fixture public key uninitialized fail-closed; caller cannot invoke host helper outside test harness")
+    if key_id not in ALLOWED_FIXTURE_KEY_IDS:
+        raise ProtocolViolationError(f"Custom key ID {key_id!r} is strictly forbidden fail-closed; candidate cannot mint custom-key authority")
+    return _InternalHostBoundaryVault.fixture_public_keys[key_id]
+
+
+TrustedHostFixturePrivateKey = get_fixture_authority_keypair
+TrustedHostFixturePublicKey = get_fixture_authority_public_key
+
+
+def _validate_and_resolve_fixture_pinned_keys(
+    pinned_keys: Optional[Union[Mapping[str, bytes], Iterable[str]]] = None,
+) -> Dict[str, bytes]:
+    token = _InternalHostBoundaryVault.token
+    if not token or _InternalHostBoundaryVault.proc is None:
+        raise ProtocolViolationError(
+            "Trusted host keystore issuer uninitialized fail-closed; caller cannot invoke host helper outside test harness"
+        )
+
+    if pinned_keys is None:
+        return dict(_InternalHostBoundaryVault.fixture_public_keys)
+
+    if isinstance(pinned_keys, (list, tuple, set, frozenset)):
+        if not pinned_keys:
+            raise ProtocolViolationError("Pinned key IDs collection must not be empty fail-closed")
+        resolved: Dict[str, bytes] = {}
+        for kid in pinned_keys:
+            if not isinstance(kid, str) or kid not in ALLOWED_FIXTURE_KEY_IDS:
+                raise ProtocolViolationError(
+                    f"Custom key ID {kid!r} is strictly forbidden fail-closed; candidate cannot mint custom-key authority"
+                )
+            expected_pub = _InternalHostBoundaryVault.fixture_public_keys.get(kid)
+            if expected_pub is None:
+                raise ProtocolViolationError(f"Host boundary missing authentic pinned public key for {kid!r}")
+            resolved[kid] = expected_pub
+        return resolved
+
+    if isinstance(pinned_keys, Mapping):
+        if not pinned_keys:
+            raise ProtocolViolationError("Pinned keys mapping must not be empty fail-closed")
+        resolved = {}
+        for kid, kbytes in pinned_keys.items():
+            if kid not in ALLOWED_FIXTURE_KEY_IDS:
+                raise ProtocolViolationError(
+                    f"Custom key ID {kid!r} is strictly forbidden fail-closed; candidate cannot mint custom-key authority"
+                )
+            if not isinstance(kbytes, bytes) or len(kbytes) != 32:
+                raise ProtocolViolationError(f"Pinned public key for {kid!r} must be exactly 32 raw bytes")
+            expected_pub = _InternalHostBoundaryVault.fixture_public_keys.get(kid)
+            import hmac
+            if expected_pub is None or not hmac.compare_digest(kbytes, expected_pub):
+                raise ProtocolViolationError(
+                    f"Caller-selected public key bytes for {kid!r} are strictly rejected fail-closed; "
+                    "host boundary mandates immutable pinned key material"
+                )
+            resolved[kid] = expected_pub
+        return resolved
+
+    raise ProtocolViolationError("Invalid pinned_keys specification; must be Mapping, Iterable of key IDs, or None fail-closed")
+
+
+def TrustedHostKeyStoreHandoff(
+    pinned_keys: Optional[Union[Mapping[str, bytes], Iterable[str]]] = None,
+    issuer_name: str = "trusted_host",
+) -> KeyStoreHostHandoff:
     token = _InternalHostBoundaryVault.token
     if not token or _InternalHostBoundaryVault.proc is None:
         raise ProtocolViolationError("Trusted host keystore issuer uninitialized fail-closed; caller cannot invoke host helper outside test harness")
-    for kid in pinned_keys:
-        if kid not in ALLOWED_FIXTURE_KEY_IDS:
-            raise ProtocolViolationError(
-                f"Custom key ID {kid!r} is strictly forbidden fail-closed; candidate cannot mint custom-key authority"
-            )
+    resolved_keys = _validate_and_resolve_fixture_pinned_keys(pinned_keys)
     issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=token)
-    return issuer.issue_handoff(pinned_keys, issuer_name=issuer_name, _internal_token=token)
+    return issuer.issue_handoff(resolved_keys, issuer_name=issuer_name, _internal_token=token)
 
 
-def TrustedHostIsolatedKeyStore(pinned_keys: Mapping[str, bytes]) -> TrustedKeyStore:
+def TrustedHostIsolatedKeyStore(
+    pinned_keys: Optional[Union[Mapping[str, bytes], Iterable[str]]] = None,
+) -> TrustedKeyStore:
     token = _InternalHostBoundaryVault.token
     if not token or _InternalHostBoundaryVault.proc is None:
         raise ProtocolViolationError("Trusted host keystore issuer uninitialized fail-closed; caller cannot invoke host helper outside test harness")
-    for kid in pinned_keys:
-        if kid not in ALLOWED_FIXTURE_KEY_IDS:
-            raise ProtocolViolationError(
-                f"Custom key ID {kid!r} is strictly forbidden fail-closed; candidate cannot mint custom-key authority"
-            )
+    resolved_keys = _validate_and_resolve_fixture_pinned_keys(pinned_keys)
     issuer = KeyStoreHostIssuer.get_default_host_issuer(_internal_token=token)
-    return issuer.issue_isolated_keystore(pinned_keys, _internal_token=token)
+    return issuer.issue_isolated_keystore(resolved_keys, _internal_token=token)
 
 
 def TrustedHostProvisionKeyStore(handoff: KeyStoreHostHandoff) -> TrustedKeyStore:

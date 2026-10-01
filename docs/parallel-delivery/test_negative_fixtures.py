@@ -11695,15 +11695,13 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
         )
-        from cryptography.hazmat.primitives.asymmetric import ed25519
-        priv = ed25519.Ed25519PrivateKey.generate()
-        pub = priv.public_key()
-        pub_bytes = pub.public_bytes_raw()
-
-        from test_host_boundary_harness import TrustedHostIsolatedKeyStore
-        from test_host_boundary_harness import TrustedHostIsolatedKeyStore
-        from test_host_boundary_harness import TrustedHostIsolatedKeyStore
-        from test_host_boundary_harness import TrustedHostIsolatedKeyStore
+        from test_host_boundary_harness import (
+            TrustedHostIsolatedKeyStore,
+            get_fixture_authority_keypair,
+            get_fixture_authority_public_key,
+        )
+        priv = get_fixture_authority_keypair("rev_key_lead_v1")
+        pub_bytes = get_fixture_authority_public_key("rev_key_lead_v1")
         keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": pub_bytes})
         registry = DurableConsumptionRegistry()
         consumer = TrustedReviewConsumer(keystore, registry)
@@ -11779,10 +11777,11 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             TrustedHostKeyStoreHandoff,
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
+            get_fixture_authority_keypair,
+            get_fixture_authority_public_key,
         )
-        from cryptography.hazmat.primitives.asymmetric import ed25519
-        priv = ed25519.Ed25519PrivateKey.generate()
-        pub_bytes = priv.public_key().public_bytes_raw()
+        priv = get_fixture_authority_keypair("rev_key_lead_v1")
+        pub_bytes = get_fixture_authority_public_key("rev_key_lead_v1")
 
         keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": pub_bytes})
         registry = DurableConsumptionRegistry()
@@ -11842,10 +11841,11 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             TrustedHostKeyStoreHandoff,
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
+            get_fixture_authority_keypair,
+            get_fixture_authority_public_key,
         )
-        from cryptography.hazmat.primitives.asymmetric import ed25519
-        priv = ed25519.Ed25519PrivateKey.generate()
-        pub_bytes = priv.public_key().public_bytes_raw()
+        priv = get_fixture_authority_keypair("rev_key_lead_v1")
+        pub_bytes = get_fixture_authority_public_key("rev_key_lead_v1")
 
         keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": pub_bytes})
         registry = DurableConsumptionRegistry()
@@ -11932,9 +11932,12 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             TrustedHostProvisionKeyStore,
         )
         import tempfile
-        from cryptography.hazmat.primitives.asymmetric import ed25519
-        priv = ed25519.Ed25519PrivateKey.generate()
-        pub_bytes = priv.public_key().public_bytes_raw()
+        from test_host_boundary_harness import (
+            get_fixture_authority_keypair,
+            get_fixture_authority_public_key,
+        )
+        priv = get_fixture_authority_keypair("rev_key_lead_v1")
+        pub_bytes = get_fixture_authority_public_key("rev_key_lead_v1")
 
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
             db_file = Path(tf.name)
@@ -12036,10 +12039,11 @@ class TestSolTrustBoundaryRootCauseRemediation(unittest.TestCase):
             TrustedHostKeyStoreHandoff,
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
+            get_fixture_authority_keypair,
+            get_fixture_authority_public_key,
         )
-        from cryptography.hazmat.primitives.asymmetric import ed25519
-        priv = ed25519.Ed25519PrivateKey.generate()
-        pub_bytes = priv.public_key().public_bytes_raw()
+        priv = get_fixture_authority_keypair("rev_key_lead_v1")
+        pub_bytes = get_fixture_authority_public_key("rev_key_lead_v1")
 
         keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": pub_bytes})
         registry = DurableConsumptionRegistry()
@@ -12215,15 +12219,19 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
         )
-        from cryptography.hazmat.primitives.asymmetric import ed25519
-        priv = ed25519.Ed25519PrivateKey.generate()
-        pub_bytes = priv.public_key().public_bytes_raw()
+        from test_host_boundary_harness import (
+            TrustedHostKeyStoreHandoff,
+            TrustedHostProvisionKeyStore,
+            get_fixture_authority_keypair,
+            get_fixture_authority_public_key,
+        )
+        priv = get_fixture_authority_keypair("rev_key_lead_v1")
+        pub_bytes = get_fixture_authority_public_key("rev_key_lead_v1")
 
         # Provision host keystore before adapter construction
-        int_priv = ed25519.Ed25519PrivateKey.generate()
-        int_pub_bytes = int_priv.public_key().public_bytes_raw()
+        int_priv = get_fixture_authority_keypair("integ_gatekeeper_v1")
+        int_pub_bytes = get_fixture_authority_public_key("integ_gatekeeper_v1")
 
-        from test_host_boundary_harness import TrustedHostKeyStoreHandoff, TrustedHostProvisionKeyStore
         handoff = TrustedHostKeyStoreHandoff({
             "rev_key_lead_v1": pub_bytes,
             "integ_gatekeeper_v1": int_pub_bytes,
@@ -12370,9 +12378,11 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             TrustedHostIsolatedKeyStore,
             TrustedHostKeyStoreHandoff,
             _InternalHostBoundaryVault,
+            get_fixture_authority_public_key,
         )
-        auth_keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": attacker_pub})
-        handoff = TrustedHostKeyStoreHandoff({"rev_key_lead_v1": attacker_pub})
+        lead_pub = get_fixture_authority_public_key("rev_key_lead_v1")
+        auth_keystore = TrustedHostIsolatedKeyStore({"rev_key_lead_v1": lead_pub})
+        handoff = TrustedHostKeyStoreHandoff({"rev_key_lead_v1": lead_pub})
         with self.assertRaises(ProtocolViolationError) as ctx_replace:
             auth_keystore.register_pinned_public_key("rev_key_lead_v1", attacker_pub, authority=handoff)
         self.assertIn("Cannot replace or mutate existing pinned key authority", str(ctx_replace.exception))
@@ -12561,10 +12571,11 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             TrustedHostKeyStoreHandoff,
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
+            get_fixture_authority_keypair,
+            get_fixture_authority_public_key,
         )
-        from cryptography.hazmat.primitives.asymmetric import ed25519
-        priv = ed25519.Ed25519PrivateKey.generate()
-        pub_bytes = priv.public_key().public_bytes_raw()
+        priv = get_fixture_authority_keypair("integ_gatekeeper_v1")
+        pub_bytes = get_fixture_authority_public_key("integ_gatekeeper_v1")
 
         from test_host_boundary_harness import TrustedHostIsolatedKeyStore
         keystore = TrustedHostIsolatedKeyStore({"integ_gatekeeper_v1": pub_bytes})
@@ -12756,10 +12767,11 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             TrustedHostKeyStoreHandoff,
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
+            get_fixture_authority_keypair,
+            get_fixture_authority_public_key,
         )
-        from cryptography.hazmat.primitives.asymmetric import ed25519
-        priv = ed25519.Ed25519PrivateKey.generate()
-        pub_bytes = priv.public_key().public_bytes_raw()
+        priv = get_fixture_authority_keypair("integ_gatekeeper_v1")
+        pub_bytes = get_fixture_authority_public_key("integ_gatekeeper_v1")
 
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
             db_file = Path(tf.name)
@@ -12867,10 +12879,11 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             TrustedHostKeyStoreHandoff,
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
+            get_fixture_authority_keypair,
+            get_fixture_authority_public_key,
         )
-        from cryptography.hazmat.primitives.asymmetric import ed25519
-        priv = ed25519.Ed25519PrivateKey.generate()
-        pub_bytes = priv.public_key().public_bytes_raw()
+        priv = get_fixture_authority_keypair("integ_gatekeeper_v1")
+        pub_bytes = get_fixture_authority_public_key("integ_gatekeeper_v1")
 
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
             db_file = Path(tf.name)
@@ -12952,11 +12965,11 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             TrustedHostKeyStoreHandoff,
             TrustedHostIsolatedKeyStore,
             TrustedHostProvisionKeyStore,
+            get_fixture_authority_keypair,
+            get_fixture_authority_public_key,
         )
-        from cryptography.hazmat.primitives.asymmetric import ed25519
-        priv = ed25519.Ed25519PrivateKey.generate()
-        pub_bytes = priv.public_key().public_bytes_raw()
-        from test_host_boundary_harness import TrustedHostKeyStoreHandoff, TrustedHostProvisionKeyStore
+        priv = get_fixture_authority_keypair("integ_gatekeeper_v1")
+        pub_bytes = get_fixture_authority_public_key("integ_gatekeeper_v1")
         handoff = TrustedHostKeyStoreHandoff({"integ_gatekeeper_v1": pub_bytes})
         TrustedHostProvisionKeyStore(handoff)
 
@@ -14133,6 +14146,10 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    'TrustedHostKeyStoreHandoff',\n"
             "    'TrustedHostIsolatedKeyStore',\n"
             "    'TrustedHostProvisionKeyStore',\n"
+            "    'TrustedHostFixturePrivateKey',\n"
+            "    'TrustedHostFixturePublicKey',\n"
+            "    'get_fixture_authority_keypair',\n"
+            "    'get_fixture_authority_public_key',\n"
             "    'setUpModule',\n"
             "    'tearDownModule',\n"
             "    '_InternalHostBoundaryVault',\n"
@@ -14151,6 +14168,10 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    'TrustedHostKeyStoreHandoff',\n"
             "    'TrustedHostIsolatedKeyStore',\n"
             "    'TrustedHostProvisionKeyStore',\n"
+            "    'TrustedHostFixturePrivateKey',\n"
+            "    'TrustedHostFixturePublicKey',\n"
+            "    'get_fixture_authority_keypair',\n"
+            "    'get_fixture_authority_public_key',\n"
             "    'setUpModule',\n"
             "    'tearDownModule',\n"
             "]:\n"
@@ -14166,6 +14187,10 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    'TrustedHostKeyStoreHandoff',\n"
             "    'TrustedHostIsolatedKeyStore',\n"
             "    'TrustedHostProvisionKeyStore',\n"
+            "    'TrustedHostFixturePrivateKey',\n"
+            "    'TrustedHostFixturePublicKey',\n"
+            "    'get_fixture_authority_keypair',\n"
+            "    'get_fixture_authority_public_key',\n"
             "    'setUpModule',\n"
             "    'tearDownModule',\n"
             "]:\n"
@@ -14182,6 +14207,10 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "    'TrustedHostKeyStoreHandoff',\n"
             "    'TrustedHostIsolatedKeyStore',\n"
             "    'TrustedHostProvisionKeyStore',\n"
+            "    'TrustedHostFixturePrivateKey',\n"
+            "    'TrustedHostFixturePublicKey',\n"
+            "    'get_fixture_authority_keypair',\n"
+            "    'get_fixture_authority_public_key',\n"
             "    'setUpModule',\n"
             "    'tearDownModule',\n"
             "    '_InternalHostBoundaryVault',\n"
@@ -14225,10 +14254,51 @@ print("FRESH_PROCESS_ISOLATION_PASS")
             "\n"
             "assert direct_cand_accepted is False, 'Custom key verification must always be rejected fail-closed'\n"
             "sys.stdout.write('SOL_CUSTOM_KEY_AUTHORITY_REJECTED_PASS\\n')\n"
+            "\n"
+            "# 7. Sol finding exact regression: candidate provides caller-selected bytes for allowed key ID ('rev_key_lead_v1')\n"
+            "from test_host_boundary_harness import (\n"
+            "    _ensure_internal_host_boundary_harness,\n"
+            "    TrustedHostIsolatedKeyStore as harness_keystore_helper,\n"
+            "    TrustedHostKeyStoreHandoff as harness_handoff_helper,\n"
+            "    get_fixture_authority_keypair,\n"
+            ")\n"
+            "_ensure_internal_host_boundary_harness()\n"
+            "\n"
+            "allowed_id_caller_bytes_rejected = False\n"
+            "try:\n"
+            "    harness_keystore_helper({'rev_key_lead_v1': attacker_pub})\n"
+            "except ProtocolViolationError as exc:\n"
+            "    if 'Caller-selected public key bytes' in str(exc):\n"
+            "        allowed_id_caller_bytes_rejected = True\n"
+            "assert allowed_id_caller_bytes_rejected is True, 'Caller-selected public key bytes in keystore must be rejected fail-closed'\n"
+            "\n"
+            "allowed_id_caller_ho_rejected = False\n"
+            "try:\n"
+            "    harness_handoff_helper({'rev_key_lead_v1': attacker_pub})\n"
+            "except ProtocolViolationError as exc:\n"
+            "    if 'Caller-selected public key bytes' in str(exc):\n"
+            "        allowed_id_caller_ho_rejected = True\n"
+            "assert allowed_id_caller_ho_rejected is True, 'Caller-selected public key bytes in handoff must be rejected fail-closed'\n"
+            "\n"
+            "# 8. Counterexample verification attempt fails closed: attacker signature against legitimate keystore is False\n"
+            "legit_keystore = harness_keystore_helper()\n"
+            "allowed_id_attacker_key_accepted = False\n"
+            "payload = b'sol_counterexample_payload'\n"
+            "attacker_sig = attacker_priv.sign(payload)\n"
+            "if legit_keystore.verify_signature('rev_key_lead_v1', payload, attacker_sig):\n"
+            "    allowed_id_attacker_key_accepted = True\n"
+            "assert allowed_id_attacker_key_accepted is False, 'ALLOWED_ID_ATTACKER_KEY_ACCEPTED must be False fail-closed'\n"
+            "\n"
+            "# 9. Positive host-key control: authentic host key material verifies successfully\n"
+            "host_priv = get_fixture_authority_keypair('rev_key_lead_v1')\n"
+            "host_sig = host_priv.sign(payload)\n"
+            "assert legit_keystore.verify_signature('rev_key_lead_v1', payload, host_sig) is True, 'Authentic host key verification must succeed'\n"
+            "sys.stdout.write('SOL_CALLER_SELECTED_KEY_BYTES_REJECTED_PASS\\n')\n"
         )
         proc = subprocess.run([sys.executable, "-u", "-c", child_code], capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, f"Child process failed: stdout={proc.stdout}\nstderr={proc.stderr}")
         self.assertIn("SOL_CUSTOM_KEY_AUTHORITY_REJECTED_PASS", proc.stdout)
+        self.assertIn("SOL_CALLER_SELECTED_KEY_BYTES_REJECTED_PASS", proc.stdout)
 
 
 class _SealedFixtureModule(types.ModuleType):
@@ -14247,6 +14317,11 @@ class _SealedFixtureModule(types.ModuleType):
         "TrustedHostKeyStoreHandoff",
         "TrustedHostIsolatedKeyStore",
         "TrustedHostProvisionKeyStore",
+        "TrustedHostFixturePrivateKey",
+        "TrustedHostFixturePublicKey",
+        "get_fixture_authority_keypair",
+        "get_fixture_authority_public_key",
+        "_validate_and_resolve_fixture_pinned_keys",
         "setUpModule",
         "tearDownModule",
         "_HOST_BOUNDARY_TOKEN",
@@ -14270,6 +14345,8 @@ class _SealedFixtureModule(types.ModuleType):
             for k in list(d.keys()):
                 if (
                     k.startswith("TrustedHost")
+                    or k.startswith("get_fixture_authority")
+                    or k.startswith("_validate_and_resolve_fixture")
                     or k.startswith("setUp")
                     or k.startswith("tearDown")
                     or k.startswith("_TestHostBoundary")

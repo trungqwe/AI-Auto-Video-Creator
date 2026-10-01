@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-01 � Kh?c ph?c tri?t d? ph�t hi?n Sol Audit tr�n b5af69c (Key Custody Invariant, C?p Ph�t Pinned Key Material B?t Bi?n & T? Ch?i Caller-Selected Bytes)
+
+- Kh?c ph?c tri?t d? ph�t hi?n d?c l?p (actionable finding) t? Sol tr�n exact candidate b5af69c7b81733df99ace98731bbd06ffee1bd1a (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Host Boundary �?c Quy?n C?p Ph�t Pinned Key Material B?t Bi?n**:
+    - Trong `docs/parallel-delivery/test_host_boundary_harness.py`, `_ensure_internal_host_boundary_harness()` t?o v� s? h?u c�c c?p kh�a Ed25519 b?t bi?n cho `ALLOWED_FIXTURE_KEY_IDS` (`rev_key_lead_v1`, `integ_gatekeeper_v1`, `control_authority_v1`) t?i `_InternalHostBoundaryVault.fixture_keypairs` v� `_InternalHostBoundaryVault.fixture_public_keys` (`MappingProxyType`).
+    - B? sung helper m�y ch? `get_fixture_authority_keypair(key_id)` v� `get_fixture_authority_public_key(key_id)` b?o d?m quy?n luu k� kh�a thu?c v? ranh gi?i host.
+  - **(2) T? Ch?i Tri?t �? Caller-Selected Public Key Bytes Fail-Closed**:
+    - C?p nh?t `TrustedHostIsolatedKeyStore` v� `TrustedHostKeyStoreHandoff` th�ng qua `_validate_and_resolve_fixture_pinned_keys`: t? ch?i l?p t?c b?t k? caller-selected public key bytes n�o kh�ng kh?p ch�nh x�c v?i host pinned keys (`hmac.compare_digest`) v?i `ProtocolViolationError`.
+  - **(3) C?p Nh?t Fixture Suite S? D?ng Pinned Key Material C?a Host**:
+    - Chuy?n 11 v? tr� kh?i t?o kh�a (`test_03`, `test_04`, `test_05`, `test_06`, `test_07`, `test_10`, `test_11d`, `test_12`, `test_13`, `test_14`, `test_15`) sang l?y key material ch�nh danh t? host boundary.
+  - **(4) Regression Counterexample Fresh Subprocess Trong test_18y**:
+    - C?p nh?t b�i ki?m tra `test_18y`: t�i hi?n counterexample an to�n c?a Sol, kh?ng d?nh `ALLOWED_ID_ATTACKER_KEY_ACCEPTED == False`, n? l?c truy?n caller-selected bytes b? ch?n fail-closed, v� kh?ng d?nh positive control ch? k� host-owned x�c minh th�nh c�ng.
+  - **(5) Ni�m Phong To�n Di?n Trong _SealedFixtureModule**:
+    - Kh�a k�n to�n b? helper m?i (`get_fixture_authority_...`, `TrustedHostFixture...`) kh?i candidate module.
+  - **(6) To�n B? B? Ki?m Th? & C?ng Th?m �?nh PASS 100%**:
+    - To�n b? **401/401 tests PASS (100%)**, 12/12 checks PASS; `PRODUCTION_ACTIVATION_BLOCKED` ti?p t?c du?c b?o v? fail-closed.
+
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên a7d9820 (Tách Biệt Hoàn Toàn Test Harness Ra Module Riêng Biệt, Vô Hiệu Hóa Bypass Raw Module Dictionary & Khử Triệt Để Quyền Tự Cấp Khóa)
 
 - Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate a7d982095108f7028ec208117d95231a62d55988 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):

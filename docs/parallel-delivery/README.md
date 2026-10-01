@@ -593,3 +593,28 @@ Biện pháp khắc phục triệt để:
      + Tái hiện nỗ lực gọi `raw.get('setUpModule')` và `raw.get('TrustedHostIsolatedKeyStore')` để mint keystore với public key tự chọn; khẳng định `RAW_MODULE_DICT_CUSTOM_KEY_ACCEPTED` luôn là `False` fail-closed.
      + Khẳng định gọi trực tiếp `TrustedHostIsolatedKeyStore` với custom key cũng luôn bị từ chối fail-closed.
 5. **Bộ kiểm thử toàn diện**: Toàn bộ bộ kiểm thử tự động đạt **401/401 tests PASS (100%)**, bảo đảm an toàn tuyệt đối trên mọi cổng thẩm định và release gate.
+
+## 33. Kh?c ph?c tri?t d? ph�t hi?n Sol Audit tr�n b5af69c (Key Custody Invariant, C?p Ph�t Pinned Key Material B?t Bi?n & T? Ch?i Caller-Selected Bytes)
+
+�?t r� so�t d?c l?p tr�n exact candidate SHA `b5af69c7b81733df99ace98731bbd06ffee1bd1a` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) ghi nh?n finding actionable:
+`test_host_boundary_harness.py:228-238` ch? whitelist key ID nhung v?n ch?p nh?n public key bytes do caller cung c?p; counterexample an to�n kh?i ch?y harness, t? sinh Ed25519 keypair, g?i `TrustedHostIsolatedKeyStore({'rev_key_lead_v1': attacker_pub})`, r?i `verify_signature('rev_key_lead_v1', payload, attacker_priv.sign(payload))` tr? `True` (`ALLOWED_ID_ATTACKER_KEY_ACCEPTED=True`, exit code 7). �i?u n�y ph� invariant pinned-key custody/kh�ng cho candidate t? ch?n key authority d� custom_key b? ch?n.
+
+Bi?n ph�p kh?c ph?c tri?t d?:
+1. **Finding 1 � Host Boundary �?c Quy?n C?p Ph�t Pinned Key Material B?t Bi?n**:
+   - Trong `docs/parallel-delivery/test_host_boundary_harness.py`, `_ensure_internal_host_boundary_harness()` t?o v� s? h?u c�c c?p kh�a Ed25519 b?t bi?n cho to�n b? danh s�ch `ALLOWED_FIXTURE_KEY_IDS` (`rev_key_lead_v1`, `integ_gatekeeper_v1`, `control_authority_v1`) luu tr? t?i `_InternalHostBoundaryVault.fixture_keypairs` v� `_InternalHostBoundaryVault.fixture_public_keys` d?ng `MappingProxyType` b?t bi?n.
+   - Th�m c�c helper m�y ch? `get_fixture_authority_keypair(key_id)` v� `get_fixture_authority_public_key(key_id)` (c�ng b� danh `TrustedHostFixturePrivateKey` / `TrustedHostFixturePublicKey`) ph?c v? test harness, b?o d?m quy?n luu k� kh�a thu?c v? ranh gi?i m�y ch? b�n ngo�i.
+2. **Finding 2 � T? Ch?i Tri?t �? Caller-Selected Public Key Bytes Fail-Closed**:
+   - H�m `_validate_and_resolve_fixture_pinned_keys(pinned_keys)` trong `test_host_boundary_harness.py` �p d?ng quy t?c ki?m tra nghi�m ng?t:
+     + N?u `pinned_keys` l� `None` ho?c danh s�ch key IDs, host boundary t? d?ng cung c?p public key bytes ch�nh danh.
+     + N?u `pinned_keys` l� `Mapping`, m?i kh�a ph?i thu?c `ALLOWED_FIXTURE_KEY_IDS` v� c�c byte kh�a c�ng khai ph?i tr�ng kh?p tuy?t d?i (`hmac.compare_digest`) v?i pinned key material c?a host boundary. M?i n? l?c truy?n bytes t? ch?n (`caller-selected bytes`) d?u b? t? ch?i l?p t?c v?i `ProtocolViolationError` fail-closed.
+3. **Finding 3 � C?p Nh?t B? Test Fixtures S? D?ng Pinned Key Material C?a Host**:
+   - C?p nh?t to�n b? c�c b�i ki?m tra (`test_03`, `test_04`, `test_05`, `test_06`, `test_07`, `test_10`, `test_11d`, `test_12`, `test_13`, `test_14`, `test_15`) trong `docs/parallel-delivery/test_negative_fixtures.py` d? l?y keypair v� public key ch�nh danh t? host boundary thay v� t? sinh public key bytes t?i client.
+4. **Finding 4 � Fresh Subprocess Regression Trong `test_18y`**:
+   - Trong `test_18y_sol_finding_candidate_custom_key_authority_rejected_in_fresh_subprocess`:
+     + T�i hi?n counterexample an to�n c?a Sol: candidate kh?i ch?y harness, t? sinh c?p kh�a Ed25519, g?i `harness_keystore_helper({'rev_key_lead_v1': attacker_pub})` v� `harness_handoff_helper({'rev_key_lead_v1': attacker_pub})`.
+     + Kh?ng d?nh c? hai d?u b? t? ch?i fail-closed v?i `ProtocolViolationError` (`ALLOWED_ID_ATTACKER_KEY_ACCEPTED=False`).
+     + Kh?ng d?nh ch? k� c?a attacker khi d?i chi?u v?i keystore ch�nh danh c?a host lu�n tr? v? `False`.
+     + Kh?ng d?nh positive control: host-owned pinned key x�c minh ch? k� h?p l? th�nh c�ng (`HOST_OWNED_PINNED_KEY_VERIFICATION_PASS=True`).
+5. **Finding 5 � Ni�m Phong To�n Di?n Trong `_SealedFixtureModule`**:
+   - B? sung `get_fixture_authority_keypair`, `get_fixture_authority_public_key`, `TrustedHostFixturePrivateKey`, `TrustedHostFixturePublicKey`, `_validate_and_resolve_fixture_pinned_keys` v�o `_SEALED_ATTRS` v� b? l?c ti?n t?, ngan ch?n tri?t d? candidate d?c qua fixture module.
+6. **B? ki?m th? to�n di?n**: To�n b? **401/401 tests PASS (100%)**, 12/12 validation checks PASS, b?o d?m an to�n tuy?t d?i tr�n m?i c?ng th?m d?nh v� release gate.
