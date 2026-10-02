@@ -26,7 +26,7 @@ Capability G là tổng chỉ huy luồng vận hành của hệ thống, chịu
 ## 2. Cổng Giao tiếp & Hợp đồng Khóa (Ports & Frozen Contracts)
 
 ### Inbound Ports:
-- **Port Lệnh từ Control API:** Tiếp nhận lệnh tạo batch, trigger job, pause/resume/cancel từ Module H qua `CONTRACT-CONTROL-API-STREAM` (`CT-API-001`, `CT-BAT-001`).
+- **Port Lệnh từ Control API:** Tiếp nhận lệnh tạo batch, trigger job, pause/resume/cancel từ Module H qua `CONTRACT-CONTROL-API-STREAM` (`CT-API-001`) và `CONTRACT-BATCHES-QUERY` (`CT-BAT-001`).
 - **Port Lắng nghe Sự kiện Miền:** Nhận sự kiện hoàn tất công đoạn từ các worker qua `CONTRACT-DOMAIN-EVENTS` (`CT-EVT-001`).
 
 ### Outbound Ports:

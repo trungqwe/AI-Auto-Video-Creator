@@ -73,7 +73,6 @@ contracts:
     source: docs/09-contracts/01-control-api-and-stream.md
     id_prefixes:
       - CT-API-*
-      - CT-BAT-*
     owner: H
     co_owners:
       - G
@@ -264,7 +263,8 @@ batches_query_contract:
     - CT-BAT-002
     - CT-BAT-003
     - CT-BAT-004
-  defining_source: docs/09-contracts/01-control-api-and-stream.md
+  defining_source: docs/parallel-delivery/contract-registry.yaml
+  parent_contract_ref: CONTRACT-CONTROL-API-STREAM
   owner: H
   co_owners: [G]
   consumers: [H, G]
