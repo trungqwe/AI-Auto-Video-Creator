@@ -138,6 +138,8 @@ waves:
       - TASK-CAP-B-INGESTION
       - TASK-CAP-C-STORAGE
       - TASK-CAP-J-PROVIDERS
+      - TASK-CAP-J-P0-RED
+      - TASK-CAP-J-P0-GREEN
   - id: WAVE-2-CONSUMERS
     status: future_template
     admission: exact_frozen_contract_revisions_required
@@ -868,6 +870,165 @@ tasks:
     route: *future_route
     merge_priority: 800
 
+
+  - id: TASK-CAP-J-P0-RED
+    milestone: M2
+    kind: work_package_slice
+    status: ready
+    authority:
+      state: granted
+      scope: scaffold_and_red_tests_only
+      does_not_authorize_descendants: true
+    authority_refs:
+      - DAG_IMPLEMENT_PLAN_CHECKLIST.md:23
+      - docs/modules/capability-j-providers.md
+    depends_on:
+      - task: M2-P7B-ACCEPTED
+        condition: accepted
+    requirement_refs:
+      - QR-COST-001
+      - QR-REL-007
+    contract_refs:
+      - id: CONTRACT-CONFIG-SECURITY
+        registry: CONTRACT-CONFIG-SECURITY
+        revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+    invariant_refs:
+      - INV-013
+      - INV-015
+      - INV-021
+    module_owners:
+      - J
+    owned_paths:
+      - src/controlplane/security/__init__.py
+      - src/controlplane/security/interfaces.py
+      - src/controlplane/security/sanitizer.py
+      - src/controlplane/config/__init__.py
+      - src/controlplane/config/models.py
+      - src/controlplane/config/router.py
+      - tests/unit/security/__init__.py
+      - tests/unit/security/test_provider_routing.py
+    forbidden_paths:
+      - "src/creative/**"
+      - "src/render/**"
+      - "src/ingestion/**"
+      - "src/catalog/**"
+      - "src/voice/**"
+      - "src/main.py"
+      - "src/controlplane/api/main.py"
+      - "docs/09-contracts/**"
+      - "docs/milestones/**/evidence/**"
+    resource_locks:
+      - LOCK-SRC-CONFIG-SECURITY
+    runtime_prerequisites:
+      - python
+      - unittest
+    acceptance:
+      - requirement: Secret values must be redacted in string, representation, and log sanitization.
+        instrument: tests.unit.security.test_provider_routing.TestProviderRouting.test_secret_credential_never_exposes_raw_value_in_string_or_log
+        counterexample: String representation or sanitizer utility outputs plaintext credential bytes.
+        red_observation: Ran 3 tests with exactly 3 failures due to unbuilt business logic, 0 errors, 0 skips.
+        limitations: Verifies test harness and behavioral assertions fail-closed only; zero production logic.
+    evidence_outputs:
+      - docs/parallel-delivery/evidence/cap-j-p0/red-evidence.json
+    rollback:
+      strategy: revert_task_commit
+      reference: docs/11-roadmap.md
+      preserves_accepted_evidence: true
+    route:
+      control:
+        model: cx/gpt-6.1-sol
+      implement:
+        provider: 9router
+        harness: Codex CLI
+        model: ag/gemini-3.8-flash-high
+        effort: high
+      review:
+        provider: 9router
+        harness: Claude Code
+        model: cx/gpt-6.1-sol
+        effort: high
+      supreme_audit:
+        model: none
+        effort: none
+        use: disabled_sol_lead_only
+    merge_priority: 210
+
+  - id: TASK-CAP-J-P0-GREEN
+    milestone: M2
+    kind: work_package_slice
+    status: planned
+    authority:
+      state: future_template
+      scope: minimal_logic_implementation
+      does_not_authorize_descendants: true
+    authority_refs:
+      - DAG_IMPLEMENT_PLAN_CHECKLIST.md:23
+      - docs/modules/capability-j-providers.md
+    depends_on:
+      - task: TASK-CAP-J-P0-RED
+        condition: evidence_verified
+    requirement_refs:
+      - QR-COST-001
+      - QR-REL-007
+    contract_refs:
+      - id: CONTRACT-CONFIG-SECURITY
+        registry: CONTRACT-CONFIG-SECURITY
+        revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+    invariant_refs:
+      - INV-013
+      - INV-015
+      - INV-021
+    module_owners:
+      - J
+    owned_paths:
+      - src/controlplane/security/sanitizer.py
+      - src/controlplane/config/router.py
+      - docs/modules/capability-j-providers.md
+    forbidden_paths:
+      - "src/creative/**"
+      - "src/render/**"
+      - "src/ingestion/**"
+      - "src/catalog/**"
+      - "src/voice/**"
+      - "src/main.py"
+      - "src/controlplane/api/main.py"
+      - "docs/09-contracts/**"
+      - "docs/milestones/**/evidence/**"
+    resource_locks:
+      - LOCK-SRC-CONFIG-SECURITY
+    runtime_prerequisites:
+      - python
+      - unittest
+    acceptance:
+      - requirement: Exact 3 test cases pass with 100% GREEN.
+        instrument: tests.unit.security.test_provider_routing.TestProviderRouting
+        counterexample: Sanitizer leaks raw token, Router fails to catch 429, or Router allows missing provenance.
+        red_observation: "Ran 3 tests: OK (0 failures, 0 errors, 0 skips)."
+        limitations: In-memory mock logic only; OS DPAPI vault and database persistence deferred to P1.
+    evidence_outputs:
+      - docs/parallel-delivery/evidence/cap-j-p0/green-evidence.json
+    rollback:
+      strategy: revert_task_commit
+      reference: docs/11-roadmap.md
+      preserves_accepted_evidence: true
+    route:
+      control:
+        model: cx/gpt-6.1-sol
+      implement:
+        provider: 9router
+        harness: Codex CLI
+        model: ag/gemini-3.8-flash-high
+        effort: high
+      review:
+        provider: 9router
+        harness: Claude Code
+        model: cx/gpt-6.1-sol
+        effort: high
+      supreme_audit:
+        model: none
+        effort: none
+        use: disabled_sol_lead_only
+    merge_priority: 220
 
 single_writer_restrictions:
   composition_root:
