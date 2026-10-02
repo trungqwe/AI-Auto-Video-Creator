@@ -27,6 +27,7 @@
 | [0010](./0010-storage-lifecycle-and-recovery.md) | Dọn tệp theo quyền sử dụng, backup nhất quán và restore cách ly | Conditional | ARCH-016 |
 | [0011](./0011-observability-capacity-and-cost.md) | Quan sát, resource admission, ngân sách và chứng minh sản lượng | Conditional | ARCH-015, ARCH-GATE-002/003 |
 | [0012](./0012-evolution-and-saas-boundary.md) | Chuẩn bị workspace, nâng version và điều kiện tách service | Accepted | ARCH-014, bổ sung ARCH-002/004 |
+| [0013](./0013-wave-dag-development.md) | Phát triển song song theo Wave và DAG, amendment QR-MNT-003 | Accepted | ARCH-002/003/004, DOC-01 |
 
 ## Cổng kiểm chứng
 

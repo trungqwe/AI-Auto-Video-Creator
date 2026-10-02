@@ -1,0 +1,402 @@
+schema_version: "1.0.0"
+kind: parallel_delivery_contract_registry
+status: proposed_experiment_no_new_implementation_authority
+as_of: "2026-09-28"
+authority_refs:
+  - docs/09-contracts/README.md
+  - docs/09-contracts/00-common-contract.md
+  - docs/09-contracts/13-traceability-and-open-items.md
+
+version_policy:
+  authority: CT-CMN-012
+  compatible_change:
+    - additive_optional_field_when_all_consumers_ignore_unknown_fields
+    - additive_open_enum_value_when_all_consumers_ignore_unknown_values
+  breaking_change:
+    - remove_field
+    - redefine_field
+    - change_unit
+    - change_cardinality
+    - tighten_input_condition
+  breaking_action: increment_major_version
+  in_flight_rule: producer_supports_compatibility_window_until_workflows_complete_or_migrate
+  history_rule: do_not_rewrite_old_schema_or_accepted_evidence
+  consumer_rule: fail_closed_on_unsupported_version
+  freeze_rule: exact_revision_must_be_frozen_before_dependent_task_becomes_ready
+  exact_binding_rules:
+    - each_contract_id_binds_strictly_to_its_defining_source_file_and_registry
+    - prefix_matching_is_subordinate_to_exact_source_file_definition
+    - wrong_registry_must_fail_closed
+    - wrong_source_hash_must_fail_closed
+    - correct_j_route_ct_ai_route_must_bind_to_contract_config_security_owner_j
+
+schema:
+  required_fields:
+    - id
+    - source
+    - owner
+    - consumers
+    - kind
+    - current_revision
+    - source_sha256
+    - lifecycle
+    - compatibility_window
+    - lock
+  lifecycle_enum:
+    - design_baseline
+    - active_accepted
+    - proposed
+    - deprecated
+  kind_enum:
+    - common
+    - synchronous_command_query
+    - domain_event
+    - workflow_activity
+    - artifact_reference
+    - state_machine
+
+contracts:
+  - id: CONTRACT-COMMON
+    source: docs/09-contracts/00-common-contract.md
+    id_prefixes:
+      - CT-CMN-*
+    owner: CROSS-CUTTING-CONTRACT-OWNER
+    consumers: [A, B, C, D, E, F, G, H, I, J]
+    kind: common
+    current_revision: sha256:dfdce8db13d5f1d1f286ccd233a66caf39f48552da2dbbad26692fde7be978e8
+    source_sha256: dfdce8db13d5f1d1f286ccd233a66caf39f48552da2dbbad26692fde7be978e8
+    lifecycle: design_baseline
+    compatibility_window: all_in_flight_workflows_and_persisted_history
+    lock: LOCK-CONTRACT-COMMON
+
+  - id: CONTRACT-CONTROL-API-STREAM
+    source: docs/09-contracts/01-control-api-and-stream.md
+    id_prefixes:
+      - CT-API-*
+    owner: H
+    co_owners:
+      - G
+      - J
+    consumers: [H, G, J]
+    kind: synchronous_command_query
+    current_revision: sha256:ea16fe04759e6bdf3b7bdde3e27ad498d13a271bd45d412ba0e9068a9b918e12
+    source_sha256: ea16fe04759e6bdf3b7bdde3e27ad498d13a271bd45d412ba0e9068a9b918e12
+    lifecycle: active_accepted
+    compatibility_window: current_and_previous_supported_ui_revision
+    lock: LOCK-CONTRACT-CONTROL-API
+
+  - id: CONTRACT-DOMAIN-EVENTS
+    source: docs/09-contracts/02-domain-events.md
+    id_prefixes:
+      - CT-EVT-*
+    owner: G
+    consumers: [A, B, C, D, E, F, H, I, J]
+    kind: domain_event
+    delivery: at_least_once_via_transactional_outbox
+    current_revision: sha256:8114a208cecca67e553345ea5574d68752323c79cf833c8c8c9fa5e2f86e7540
+    source_sha256: 8114a208cecca67e553345ea5574d68752323c79cf833c8c8c9fa5e2f86e7540
+    lifecycle: active_accepted
+    compatibility_window: all_in_flight_consumers_and_retained_outbox_messages
+    lock: LOCK-CONTRACT-DOMAIN-EVENTS
+
+  - id: CONTRACT-WORKFLOW-EXECUTION
+    source: docs/09-contracts/03-workflow-and-execution.md
+    id_prefixes:
+      - CT-WF-*
+    owner: G
+    consumers: [A, B, C, D, E, F, I, J]
+    kind: workflow_activity
+    current_revision: sha256:0fca25f2bc037a4c2bc58b844079dace8c19a9fd5af5c0ce8ad75e421bc2dc83
+    source_sha256: 0fca25f2bc037a4c2bc58b844079dace8c19a9fd5af5c0ce8ad75e421bc2dc83
+    lifecycle: active_accepted
+    compatibility_window: until_running_workflows_complete_or_are_explicitly_migrated
+    lock: LOCK-CONTRACT-WORKFLOW
+
+  - id: CONTRACT-SOURCE-CONTENT
+    source: docs/09-contracts/04-source-content-contracts.md
+    id_prefixes:
+      - CT-SRC-*
+      - CT-CNT-*
+    owner: A
+    co_owners:
+      - B
+    consumers: [B, C, G, H, I, J]
+    kind: synchronous_command_query
+    current_revision: sha256:61b075d202dd0d7729123f68f26285097be8120e2de48194d0ad2fe847701f31
+    source_sha256: 61b075d202dd0d7729123f68f26285097be8120e2de48194d0ad2fe847701f31
+    lifecycle: design_baseline
+    compatibility_window: must_be_defined_by_m3_plan_before_activation
+    lock: LOCK-CONTRACT-SOURCE-CONTENT
+
+  - id: CONTRACT-CONTENT-MEDIA
+    source: docs/09-contracts/05-content-media-contracts.md
+    id_prefixes:
+      - CT-MED-*
+      - CT-HOOK-*
+    owner: C
+    co_owners:
+      - B
+      - I
+    consumers: [D, E, F, G, H]
+    kind: artifact_reference
+    current_revision: sha256:ea6a3723dece842d132f634d44c32eb301fbc98b43b61d24b5c32c907782e4cf
+    source_sha256: ea6a3723dece842d132f634d44c32eb301fbc98b43b61d24b5c32c907782e4cf
+    lifecycle: design_baseline
+    compatibility_window: must_be_defined_by_m4_plan_before_activation
+    lock: LOCK-CONTRACT-CONTENT-MEDIA
+
+  - id: CONTRACT-CREATIVE-AI
+    source: docs/09-contracts/06-creative-ai-contracts.md
+    id_prefixes:
+      - CT-AI-*
+    excluded_prefixes:
+      - CT-AI-ROUTE-*
+    owner: D
+    consumers: [B, C, E, F, G, H, J]
+    kind: synchronous_command_query
+    current_revision: sha256:92b74489890f1eaf3915aef809af4cff0585659842f6930bbdf11d1236861b3a
+    source_sha256: 92b74489890f1eaf3915aef809af4cff0585659842f6930bbdf11d1236861b3a
+    lifecycle: design_baseline
+    compatibility_window: must_be_defined_by_m5_plan_before_activation
+    lock: LOCK-CONTRACT-CREATIVE-AI
+
+  - id: CONTRACT-MEDIA-PROCESSING
+    source: docs/09-contracts/07-media-processing-contracts.md
+    id_prefixes:
+      - CT-PROC-*
+      - CT-TTS-*
+      - CT-SUB-*
+      - CT-AUD-*
+    owner: E
+    consumers: [C, D, F, G, H, I, J]
+    kind: artifact_reference
+    current_revision: sha256:c5f7abaea422916165d59f8a5508817729d21035cffd663123a913c49365cf49
+    source_sha256: c5f7abaea422916165d59f8a5508817729d21035cffd663123a913c49365cf49
+    lifecycle: design_baseline
+    compatibility_window: must_be_defined_by_m6_plan_before_activation
+    lock: LOCK-CONTRACT-MEDIA-PROCESSING
+
+  - id: CONTRACT-RENDER-QUALITY
+    source: docs/09-contracts/08-render-quality-contracts.md
+    id_prefixes:
+      - CT-RND-*
+      - CT-QC-*
+    owner: F
+    consumers: [D, E, G, H, I, J]
+    kind: artifact_reference
+    current_revision: sha256:c3e35d032c0a8e721ed35bbecb5fb57f350788e8520d6e8df5ca78284199b493
+    source_sha256: c3e35d032c0a8e721ed35bbecb5fb57f350788e8520d6e8df5ca78284199b493
+    lifecycle: design_baseline
+    compatibility_window: must_be_defined_by_m6_plan_before_activation
+    lock: LOCK-CONTRACT-RENDER-QUALITY
+
+  - id: CONTRACT-ORCHESTRATION
+    source: docs/09-contracts/09-orchestration-contracts.md
+    id_prefixes:
+      - CT-ORC-*
+    owner: G
+    consumers: [A, B, C, D, E, F, H, I, J]
+    kind: workflow_activity
+    current_revision: sha256:402f499f2ac2613502684f1d89697cf72d0cc136b25f2fd08fae07a7c1baaf59
+    source_sha256: 402f499f2ac2613502684f1d89697cf72d0cc136b25f2fd08fae07a7c1baaf59
+    lifecycle: active_accepted
+    compatibility_window: all_in_flight_batches_jobs_grants_and_receipts
+    lock: LOCK-CONTRACT-ORCHESTRATION
+
+  - id: CONTRACT-STORAGE
+    source: docs/09-contracts/10-storage-contracts.md
+    id_prefixes:
+      - CT-STO-*
+    owner: I
+    consumers: [A, B, C, D, E, F, G, H, J]
+    kind: artifact_reference
+    current_revision: sha256:6ab6f60bc2760ea9017ca0406e0053dc859cc06c1f0c80fff7e944d03d5e02ce
+    source_sha256: 6ab6f60bc2760ea9017ca0406e0053dc859cc06c1f0c80fff7e944d03d5e02ce
+    lifecycle: active_accepted
+    compatibility_window: all_referenced_artifact_versions_and_active_cleanup_authorizations
+    lock: LOCK-CONTRACT-STORAGE
+
+  - id: CONTRACT-CONFIG-SECURITY
+    source: docs/09-contracts/11-configuration-security-contracts.md
+    id_prefixes:
+      - CT-CFG-*
+      - CT-SEC-*
+      - CT-ACC-*
+      - CT-AI-ROUTE-*
+      - CT-CAP-*
+      - CT-COST-*
+    owner: J
+    consumers: [A, B, C, D, E, F, G, H, I]
+    kind: synchronous_command_query
+    current_revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+    source_sha256: 989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+    lifecycle: active_accepted
+    compatibility_window: all_jobs_bound_to_existing_config_prompt_and_policy_revisions
+    lock: LOCK-CONTRACT-CONFIG-SECURITY
+
+  - id: CONTRACT-STATE-MACHINES
+    source: docs/09-contracts/12-state-machines.md
+    id_prefixes:
+      - CT-STATE-*
+    owner: G
+    co_owners:
+      - A
+      - B
+      - C
+      - D
+      - E
+      - F
+      - I
+      - J
+    consumers: [A, B, C, D, E, F, G, H, I, J]
+    kind: state_machine
+    current_revision: sha256:2cab18e858b2e78eb3a578b5a64568619d20c7cb09fed2cb7766bc0636fb9f28
+    source_sha256: 2cab18e858b2e78eb3a578b5a64568619d20c7cb09fed2cb7766bc0636fb9f28
+    lifecycle: active_accepted
+    compatibility_window: all_persisted_nonterminal_entities_and_running_workflows
+    lock: LOCK-CONTRACT-STATE-MACHINES
+
+batches_query_contract:
+  id: CONTRACT-BATCHES-QUERY
+  contract_ids:
+    - CT-BAT-001
+    - CT-BAT-002
+    - CT-BAT-003
+    - CT-BAT-004
+  defining_source: docs/parallel-delivery/contract-registry.yaml
+  parent_contract_ref: CONTRACT-CONTROL-API-STREAM
+  owner: H
+  co_owners: [G]
+  consumers: [H, G]
+  kind: synchronous_command_query
+  endpoints:
+    list_batches:
+      id: CT-BAT-001
+      method: GET
+      path: /api/v1/batches
+      query_params: [status, limit, offset, sort_by, order]
+      description: Tra cứu danh sách batch kèm phân trang và lọc theo trạng thái
+      response:
+        batches: list_of_batch_summary
+        total_count: integer
+        page_info: {limit: integer, offset: integer, has_more: boolean}
+    batch_detail:
+      id: CT-BAT-002
+      method: GET
+      path: /api/v1/batches/{batch_id}
+      description: Chi tiết batch, tiến độ từng job và trạng thái thực thi thực tế
+      response:
+        batch_id: string_uuid
+        status: string_enum
+        created_at: timestamp_rfc3339
+        jobs_summary: {total: integer, pending: integer, running: integer, succeeded: integer, failed: integer}
+        capacity_reservation: {total_slots: integer, allocated_slots: list_of_integers}
+    filter_batches:
+      id: CT-BAT-003
+      description: Bộ lọc nâng cao cho danh sách batch
+      supported_filters: [date_range, status_in, priority_min, has_errors]
+    paginate_batches:
+      id: CT-BAT-004
+      description: Quy chuẩn phân trang offset/limit cho batch query
+      type: offset_limit
+      max_limit: 100
+      default_limit: 20
+
+operation_execution_state_model:
+  receipt_vs_authoritative_state:
+    receipt_state:
+      value: accepted
+      semantics: Command đã được Control API xác thực cú pháp và ghi nhận vào transactional outbox
+      is_terminal: false
+      authority: ControlAPI
+    authoritative_execution_states:
+      running:
+        semantics: Workflow engine hoặc worker đã nhận lease và đang thực thi các stage nghiệp vụ
+        is_terminal: false
+      succeeded:
+        semantics: Toàn bộ workflow stages hoàn thành thành công; completion Unit of Work đã commit nguyên tử
+        is_terminal: true
+      failed:
+        semantics: Workflow gặp lỗi không thể phục hồi hoặc vượt quá ngân sách retry
+        is_terminal: true
+      cancelled:
+        semantics: Lệnh hủy của người dùng đã được xử lý; fencing token đã bị vô hiệu hóa
+        is_terminal: true
+  query_resolution_rule:
+    rule: Mọi truy vấn trạng thái (Read queries) phải đọc trạng thái thực thi có thẩm quyền từ PostgreSQL Unit of Work / state store; tuyệt đối không suy đoán trạng thái từ receipt accepted hoặc từ một stream event bất kỳ.
+
+key_interface_boundaries:
+  interface_a_b:
+    name: DocumentPackage
+    producer: A
+    consumer: B
+    contract_id: CONTRACT-SOURCE-CONTENT
+    description: Gói tài liệu thu thập từ nguồn tin chuyển giao sang module bài viết
+    schema:
+      source_id: string_uuid
+      document_id: string_uuid
+      raw_payload: string_json_or_text
+      metadata: {title: string, author: string, published_at: timestamp_rfc3339, url: string}
+      collection_run_id: string_uuid
+      provenance_hash: string_sha256
+  interface_b_d:
+    name: ArticleSnapshot
+    producer: B
+    consumer: D
+    contract_id: CONTRACT-SOURCE-CONTENT
+    description: Bản chụp bài viết đã chuẩn hóa và chống trùng phục vụ tạo kịch bản
+    schema:
+      article_id: string_uuid
+      revision_id: string_uuid
+      canonical_content: string_markdown
+      extracted_entities: list_of_strings
+      content_fingerprint: string_sha256
+      event_id: string_uuid_optional
+  interface_c_i:
+    name: MetadataCatalog_vs_ArtifactByteIntegrity
+    catalog_owner: C
+    byte_integrity_owner: I
+    contracts: [CONTRACT-CONTENT-MEDIA, CONTRACT-STORAGE]
+    description: Tách biệt danh mục metadata và hook với kho lưu trữ byte vật lý và tính toàn vẹn
+    boundary_rule: Module C sở hữu danh mục media, số lượt sử dụng, phân loại hook; Module I sở hữu lưu trữ byte vật lý, kiểm chứng mã băm SHA-256 và trạng thái đồng bộ Google Drive.
+  interface_d_e_f:
+    name: Script_Voice_Timing_Render_Package
+    producer_script: D
+    producer_voice: E
+    consumer_render: F
+    contracts: [CONTRACT-CREATIVE-AI, CONTRACT-MEDIA-PROCESSING, CONTRACT-RENDER-QUALITY]
+    description: Chuỗi sản xuất kịch bản, lồng tiếng, khớp timing từng từ và render video hoàn chỉnh
+    boundary_rule: D sinh kịch bản và visual cues; E tổng hợp giọng đọc TTS và timestamp từng từ cho karaoke; F kết hợp video 61-70s 1080p với karaoke subtitle và thumbnail trong hook.
+  interface_g_c_i:
+    name: CompletionUnitOfWork
+    orchestrator: G
+    media_usage: C
+    artifact_ledger: I
+    contracts: [CONTRACT-DOMAIN-EVENTS, CONTRACT-ORCHESTRATION, CONTRACT-STORAGE]
+    description: Unit of Work nguyên tử hoàn tất video job, ghi nhận media usage và vị trí artifact
+    boundary_rule: PostgreSQL Unit of Work phía caller điều phối nguyên tử việc hoàn thành VideoJob, cập nhật MediaUsage và ghi ArtifactLocation; cấm ghi trực tiếp vào bảng của aggregate khác.
+  interface_j_provider:
+    name: Configuration_SecretHandles_Routing_Quotas
+    provider_owner: J
+    consumers: [A, B, C, D, E, F, G, H, I]
+    contract_id: CONTRACT-CONFIG-SECURITY
+    description: Quản lý khóa API, cách ly secret cấp OS, điều phối route AI và hạn ngạch quota
+    boundary_rule: Module J đóng gói toàn bộ khóa dịch vụ, định tuyến mô hình AI và hạn ngạch; các module khác chỉ tương tác thông qua secret handle và adapter typed.
+
+change_protocol:
+  steps:
+    - owner_opens_revision_proposal
+    - identify_producers_consumers_persisted_history_and_in_flight_workflows
+    - classify_compatible_or_breaking_using_CT_CMN_012
+    - add_producer_consumer_contract_tests_and_migration_or_dual_read_write_plan
+    - observe_discriminating_red
+    - freeze_exact_revision
+    - replan_all_dependent_tasks
+    - implement_producer_then_compatible_consumers
+    - verify_compatibility_window
+    - deprecate_only_after_no_references_remain
+  prohibited:
+    - concurrent_edit_of_same_contract_revision
+    - consumer_guessing_unknown_schema
+    - retroactive_edit_of_accepted_schema_or_evidence
+    - contract_change_hidden_inside_consumer_task

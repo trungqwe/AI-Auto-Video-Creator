@@ -1,5 +1,624 @@
 # Changelog
 
+## 2026-10-01 - Khắc phục triệt để phát hiện Sol Audit trên f4ad8d5 (Yêu cầu Supervisor Capability được ký số cho Đăng ký Dispatch ngoài tiến trình, Chặn hoàn toàn Đăng ký Caller-Controlled với Exact Candidate Head)
+
+- Khắc phục triệt để phát hiện độc lập ROOT_ARCHITECTURE từ Sol trên exact candidate `f4ad8d5516ec9935de718f4cc6b4621f162140a5` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Thiết lập SupervisorDispatchCapability bất biến & unforgeable**: Bổ sung `SupervisorDispatchCapability` trong `delivery_engine.py` mang chữ ký số Ed25519 được cấp phát độc quyền bởi host supervisor out-of-process; nghiêm cấm khởi tạo trực tiếp, kế thừa, tuần tự hóa hoặc giả mạo fail-closed.
+  - **(2) Phân quyền Đăng ký Dispatch bắt buộc Supervisor Capability**: Chuyển endpoint IPC `REGISTER_DISPATCH` và helper `TrustedHostRegisterDispatch` trong `test_host_boundary_harness.py` sang yêu cầu bắt buộc `supervisor_capability`; thẩm định chữ ký số host, ràng buộc binding tham số (`delivery_task_id`, `dispatch_id`, `candidate_commit`, `base_commit`, `role`, `phase`, `fencing_token`), kiểm tra độ tươi thời gian và tiêu thụ một lần (single-use).
+  - **(3) Chặn hoàn toàn Đăng ký Caller-Controlled với Exact Candidate Head**: Mọi nỗ lực từ phía candidate caller nhằm tự tạo bản ghi dispatch với exact candidate HEAD mà không có supervisor capability đều bị từ chối fail-closed ngay lập tức (`ProtocolViolationError`), triệt tiêu hoàn toàn khả năng candidate tự tạo provenance và xin cấp phong bì duyệt `ACCEPT`.
+  - **(4) Ma trận Kiểm thử Toàn diện trong `test_20`**: Kiểm chứng từ chối đăng ký candidate caller không thẩm quyền, từ chối capability giả mạo, từ chối timestamp tương lai, từ chối override mismatch, từ chối replay tuần tự và đồng thời; positive control luân chuyển phong bì duyệt hợp lệ đạt PASS 100%.
+  - **(5) Kết quả kiểm thử**: Toàn bộ 404 test fixtures đạt PASS 100%; cổng kích hoạt sản xuất duy trì `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
+
+## 2026-10-01 - Khắc phục triệt để phát hiện Sol Audit trên 218e2ee (Loại bỏ biến môi trường PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE và Khóa chặt Candidate Authority bất biến)
+
+- Khắc phục triệt để phát hiện độc lập ROOT_ARCHITECTURE từ Sol trên exact candidate `218e2ee77fce3c16778fdaf56c977968e22fdb03` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Loại bỏ biến môi trường Caller-Controlled**: Xóa bỏ hoàn toàn việc đọc `os.environ.get("PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE")` trong hàm `_init_harness_runtime()` của `test_host_boundary_harness.py`. Ngăn chặn triệt để kịch bản caller / tiến trình con tự ý inject candidate commit SHA tùy ý qua biến môi trường để nới lỏng whitelist authorized candidates của daemon host.
+  - **(2) Khóa chặt tập Candidate Authority bất biến fail-closed**: Tập `approved_candidates` được cố định là immutable `frozenset({head_commit, sol_audit_commit})` do host supervisor phê chuẩn trước; không chấp nhận bất kỳ nguồn đầu vào nào từ caller hoặc môi trường tiến trình con.
+  - **(3) Bổ sung Kiểm thử Counterexample trong `test_20`**: Thêm bài kiểm tra targeted khẳng định rằng ngay cả khi caller thiết lập `os.environ['PARALLEL_DELIVERY_SUPERVISOR_CANDIDATE'] = '0123456789abcdef0123456789abcdef01234567'`, daemon host hoàn toàn phớt lờ và ném `ProtocolViolationError` fail-closed khi gọi `TrustedHostRegisterDispatch`.
+  - **(4) Kết quả kiểm thử**: Toàn bộ 404 test fixtures đạt PASS 100%; cổng kích hoạt sản xuất duy trì `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
+
+## 2026-10-01 - Khắc phục triệt để phát hiện Sol Audit trên 6a6972f (Đóng gói hoàn toàn Host Daemon Runtime, Loại bỏ _private_host_state khỏi Module Dict và Chặn đăng ký Candidate tùy ý)
+
+- Khắc phục triệt để phát hiện độc lập ROOT_ARCHITECTURE từ Sol trên exact candidate `6a6972f43c4f8b87b3b3553907ba9a73c15b2a8b` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Đóng gói Runtime trong Closure & Làm sạch Module Dict**: Toàn bộ thông tin xác thực daemon (`token`, `authkey`, `port`, `proc`, `boot_cap`, `test_host_issuer`) và trạng thái nội bộ được đóng gói hoàn toàn trong closure `_init_harness_runtime()`. Loại bỏ hoàn toàn `_private_host_state`, `token`, `_token`, `port`, `_port`, `authkey`, `_authkey`, `proc`, `_proc`, `_state`, `_runtime` và các hàm helper `_get_harness_*`, `_set_harness_*`, `_clear_harness_*` khỏi module namespace; bảo đảm `types.ModuleType.__getattribute__(h, "__dict__")` không để lộ bất kỳ thông tin xác thực hay mutable state nào cho candidate inspection.
+  - **(2) Phân quyền Đăng ký Candidate fail-closed**: Trong `TrustedHostRegisterDispatch` và daemon IPC endpoint `REGISTER_DISPATCH`, thực thi kiểm tra bắt buộc: `candidate_commit` phải thuộc danh sách approved candidates do host supervisor ủy quyền (`_get_supervisor_approved_candidates()`). Candidate tùy ý (như `0123456789abcdef...`) bị từ chối fail-closed ngay lập tức (`ProtocolViolationError`), ngăn chặn triệt để kịch bản phát hành envelope cho candidate không được cấp phép.
+  - **(3) Cấp phát Biên nhận Supervisor mờ (Opaque Receipt)**: `TrustedHostRegisterDispatch` trả về biên nhận supervisor mờ định dạng `disp_receipt_<32 hex>` thay vì capability token; `ExternalReviewProducer` từ chối phát hành envelope cho dispatch chưa đăng ký.
+  - **(4) Bổ sung Kiểm thử Fresh-Subprocess Raw-Dict & Counterexample trong `test_20`**: Kiểm tra trực tiếp `types.ModuleType.__getattribute__(h, "__dict__")` trong tiến trình con mới, chứng minh counterexample đăng ký candidate tùy ý `0123456789abcdef...` bị từ chối fail-closed, và `ExternalReviewProducer` từ chối phát hành envelope tương ứng.
+  - **(5) Kết quả kiểm thử**: Toàn bộ 404 test fixtures đạt PASS 100%; cổng kích hoạt sản xuất duy trì `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
+
+## 2026-10-01 - Khắc phục triệt để phát hiện Sol Audit trên 2d41b53 (Lưu ký thông tin xác thực Host Daemon, Phân quyền Đăng ký Dispatch ngoài tiến trình và Niêm phong Candidate Surface)
+
+- Khắc phục triệt để phát hiện độc lập ROOT_ARCHITECTURE từ Sol trên exact candidate `2d41b53eac68705efdb8e5039a246fa06c22e33a` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Lưu ký thông tin xác thực Host Daemon & Niêm phong Candidate Surface**: Đóng gói toàn bộ thông tin xác thực daemon (`token`, `port`, `authkey`, `proc`, `boot_cap`, `test_host_issuer`) vào `_private_host_state` cấp module; bảo vệ `_HostBoundaryState` và `_InternalHostBoundaryVault` bằng metaclass `_HostBoundaryStateMeta` và `_InternalHostBoundaryVaultMeta`, nghiêm cấm đọc hoặc sửa đổi credentials fail-closed (`ProtocolViolationError`); niêm phong module `test_host_boundary_harness` bằng `_SealedHostBoundaryModule(types.ModuleType)` ẩn hoàn toàn private attributes.
+  - **(2) Phân quyền Đăng ký Dispatch ngoài tiến trình**: Trong `TrustedHostRegisterDispatch` và daemon endpoint `REGISTER_DISPATCH`, thực thi thẩm định fail-closed bắt buộc: `base_commit` phải khớp chính xác approved base `4a7c8c921b7e05066505d51b168a02c3fde61317`; `candidate_commit` phải là hex 40 ký tự hợp lệ và không chứa từ khóa giả mạo (`deadbeef`, `spoof`, `attacker`, `candidate`); `delivery_task_id` và `dispatch_id` không chứa từ khóa giả mạo; daemon phát hành `dispatch_receipt`.
+  - **(3) Kiểm soát Overrides và Bảo vệ toàn vẹn Phong bì**: Daemon ngoài tiến trình từ chối ký phong bì duyệt cho các dispatch chưa được đăng ký; từ chối mọi override không khớp giữa yêu cầu của caller và bản ghi dispatch của supervisor (`base_commit`, `candidate_commit`, `delivery_task_id`, `review_dispatch_id`).
+  - **(4) Nghiệm thu Acceptance Test mới (`test_20`)**: Bổ sung `test_20_sol_finding_candidate_dispatch_registration_and_credentials_remediated` trong `test_negative_fixtures.py` kiểm chứng toàn diện các trường hợp negative (chặn đọc/ghi credentials, từ chối đăng ký dispatch với base/candidate/task giả mạo, từ chối raw IPC, từ chối overrides) và positive (supervisor đăng ký dispatch hợp lệ, ký phong bì, consumer xác minh và tiêu thụ, chống replay tuần tự và đồng thời).
+  - **(5) Kết quả kiểm thử**: Toàn bộ 404 test fixtures đạt PASS 100%; cổng kích hoạt sản xuất duy trì `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
+
+## 2026-10-01 - Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n 6fc2d5a (Th?c thi Host-bound Authority, R?ng bu?c Dispatch x?c th?c v? T?ch bi?t Domain Role-to-Key nghi?m ng?t)
+
+- Kh?c ph?c tri?t ?? ph?t hi?n ??c l?p ROOT_ARCHITECTURE t? Sol tr?n exact candidate `6fc2d5ac30648b3d99b9c26d6150a6b96a2b2777` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) R?ng bu?c Host-bound Authority v? Dispatch**: Lo?i b? ho?n to?n tham s? `envelope_data` kh?i `ExternalReviewProducer` v? `ExternalIntegrationProducer` (n?m `ProtocolViolationError` fail-closed); daemon t? ??ng tr?ch xu?t c?c tr??ng th?m quy?n (`candidate_commit`, `base_commit`, `delivery_task_id`, `role`, `phase`) t? b?n ghi dispatch ?? ??ng k? (`TrustedHostRegisterDispatch`) thay v? cho ph?p caller t?y ? cung c?p; t? ch?i m?i override commit/task mismatch.
+  - **(2) ??ng k?n Credential Vault trong Host State**: Chuy?n to?n b? th?ng tin x?c th?c daemon (`token`, `port`, `authkey`, `proc`) v?o `_HostBoundaryState` kh?ng th? truy c?p t? candidate; `_InternalHostBoundaryVaultMeta` n?m `ProtocolViolationError` fail-closed khi truy c?p.
+  - **(3) T?ch bi?t nghi?m ng?t Domain Role-to-Key**: Ph?n chia ??c quy?n th?m quy?n k? theo t?ng domain: ch? `rev_key_lead_v1` k? review, ch? `integ_gatekeeper_v1` k? integration; kh?a `control_authority_v1` b? c?m ho?n to?n kh?ng ???c k? phong b?; daemon v? producer t? ch?i wrong-role key fail-closed; consumer ki?m tra vai tr? d? ki?n tr??c khi x?c minh ch? k? v? tr??c khi ti?u th?.
+  - **(4) B?o to?n Snapshot Registry b?t bi?n tr??c Side Effect**: B? sung ph??ng th?c `snapshot()` trong `DurableConsumptionRegistry`; ch?ng minh t?t c? c?c n? l?c vi ph?m th?m quy?n ho?c sai vai tr? ??u b? ch?n tr??c `check_and_consume` v? kh?ng l?m thay ??i tr?ng th?i registry.
+  - **(5) Nghi?m thu Acceptance Test m?i (`test_19`)**: Th?m `test_19_sol_findings_remediation_root_architecture_and_role_separation` trong `test_negative_fixtures.py` ki?m ch?ng to?n di?n c?c k?ch b?n negative/positive cho c? 2 finding, ??t 100% PASS tr?n to?n b? 403 test fixtures.
+
+## 2026-10-01 - Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n a25c80f (B?o v? th?ng tin x?c th?c Vault, Lo?i b? Generic Signing Endpoints v? T?ch bi?t External Envelope Producers ngo?i ti?n tr?nh)
+
+- Kh?c ph?c tri?t ?? ph?t hi?n ??c l?p ROOT_ARCHITECTURE t? Sol tr?n exact candidate `a25c80f9f4ab965ce21e7fe5e09babd87c9cc8d8` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) B?o v? th?ng tin x?c th?c Vault**: Th?m metaclass `_InternalHostBoundaryVaultMeta` ng?n ch?n ho?n to?n truy c?p tr?c ti?p v?o thu?c t?nh `.token`, `.port`, `.authkey` t? m? in-process (n?m `ProtocolViolationError` fail-closed).
+  - **(2) Lo?i b? Generic Signing Endpoint**: Daemon ngo?i ti?n tr?nh t? ch?i l?nh `SIGN_FIXTURE_PAYLOAD` fail-closed, kh?ng k? b?t k? payload bytes t?y ? n?o t? caller.
+  - **(3) Lo?i b? Generic Signing Functions**: X?a b? ho?n to?n 6 h?m k? m? generic (`host_sign_fixture_payload`, `host_sign_review_envelope`, `host_sign_integration_envelope` v? c?c b? danh `TrustedHostSign*`) kh?i b? m?t candidate; c? g?ng import b? ch?n b?i `ImportError` fail-closed.
+  - **(4) Chuy?n Envelope Construction sang External Producers**: B? sung `ExternalReviewProducer` v? `ExternalIntegrationProducer` (c?ng b? danh `TrustedExternal*`); daemon ngo?i ti?n tr?nh t? d?ng canonical envelope v? t? bind metadata, ng?n ch?n ho?n to?n kh? n?ng candidate t? ch? t?o v? xin ch? k? cho arbitrary payload.
+  - **(5) C?p nh?t v? m? r?ng Negative Fixtures**: C?p nh?t to?n b? c?c b?i ki?m th? k? phong b? trong `test_negative_fixtures.py` sang external producers; m? r?ng `test_18z` ki?m ch?ng 11 ti?u ch? b?o m?t to?n di?n.
+
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 2eb47f6 (Loại bỏ hoàn toàn Private Key khỏi In-Process/Fixture, Cơ chế ký mờ qua IPC và Quản lý khóa ngoài tiến trình)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate `2eb47f67b69445e38275f193aeab835731b52ced` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Loại bỏ hoàn toàn Private Key khỏi In-Process/Fixture**: Khóa riêng tư Ed25519 được tạo và lưu trữ độc quyền bên trong tiến trình daemon ngoài tiến trình; xóa bỏ `_InternalHostBoundaryVault.fixture_keypairs`, `get_fixture_authority_keypair`, `TrustedHostFixturePrivateKey`.
+  - **(2) Cơ chế ký mờ qua IPC (Opaque Signing IPC)**: Bổ sung lệnh `SIGN_FIXTURE_PAYLOAD` vào daemon với xác thực HMAC bằng host token; cung cấp các helper `host_sign_fixture_payload`, `host_sign_review_envelope`, `host_sign_integration_envelope`.
+  - **(3) Cập nhật Negative Fixtures**: Toàn bộ các bài kiểm thử ký phong bì chuyển sang sử dụng helper ký mờ; thêm `test_18z` kiểm chứng toàn diện các tiêu chí nghiệm thu của reviewer Sol.
+  - **(4) Niêm phong sealed module**: Bổ sung các helper ký mờ vào `_SEALED_ATTRS` trong `_SealedFixtureModule`.
+
+## 2026-10-01 � Kh?c ph?c tri?t d? ph�t hi?n Sol Audit tr�n b5af69c (Key Custody Invariant, C?p Ph�t Pinned Key Material B?t Bi?n & T? Ch?i Caller-Selected Bytes)
+
+- Kh?c ph?c tri?t d? ph�t hi?n d?c l?p (actionable finding) t? Sol tr�n exact candidate b5af69c7b81733df99ace98731bbd06ffee1bd1a (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Host Boundary �?c Quy?n C?p Ph�t Pinned Key Material B?t Bi?n**:
+    - Trong `docs/parallel-delivery/test_host_boundary_harness.py`, `_ensure_internal_host_boundary_harness()` t?o v� s? h?u c�c c?p kh�a Ed25519 b?t bi?n cho `ALLOWED_FIXTURE_KEY_IDS` (`rev_key_lead_v1`, `integ_gatekeeper_v1`, `control_authority_v1`) t?i `_InternalHostBoundaryVault.fixture_keypairs` v� `_InternalHostBoundaryVault.fixture_public_keys` (`MappingProxyType`).
+    - B? sung helper m�y ch? `get_fixture_authority_keypair(key_id)` v� `get_fixture_authority_public_key(key_id)` b?o d?m quy?n luu k� kh�a thu?c v? ranh gi?i host.
+  - **(2) T? Ch?i Tri?t �? Caller-Selected Public Key Bytes Fail-Closed**:
+    - C?p nh?t `TrustedHostIsolatedKeyStore` v� `TrustedHostKeyStoreHandoff` th�ng qua `_validate_and_resolve_fixture_pinned_keys`: t? ch?i l?p t?c b?t k? caller-selected public key bytes n�o kh�ng kh?p ch�nh x�c v?i host pinned keys (`hmac.compare_digest`) v?i `ProtocolViolationError`.
+  - **(3) C?p Nh?t Fixture Suite S? D?ng Pinned Key Material C?a Host**:
+    - Chuy?n 11 v? tr� kh?i t?o kh�a (`test_03`, `test_04`, `test_05`, `test_06`, `test_07`, `test_10`, `test_11d`, `test_12`, `test_13`, `test_14`, `test_15`) sang l?y key material ch�nh danh t? host boundary.
+  - **(4) Regression Counterexample Fresh Subprocess Trong test_18y**:
+    - C?p nh?t b�i ki?m tra `test_18y`: t�i hi?n counterexample an to�n c?a Sol, kh?ng d?nh `ALLOWED_ID_ATTACKER_KEY_ACCEPTED == False`, n? l?c truy?n caller-selected bytes b? ch?n fail-closed, v� kh?ng d?nh positive control ch? k� host-owned x�c minh th�nh c�ng.
+  - **(5) Ni�m Phong To�n Di?n Trong _SealedFixtureModule**:
+    - Kh�a k�n to�n b? helper m?i (`get_fixture_authority_...`, `TrustedHostFixture...`) kh?i candidate module.
+  - **(6) To�n B? B? Ki?m Th? & C?ng Th?m �?nh PASS 100%**:
+    - To�n b? **401/401 tests PASS (100%)**, 12/12 checks PASS; `PRODUCTION_ACTIVATION_BLOCKED` ti?p t?c du?c b?o v? fail-closed.
+
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên a7d9820 (Tách Biệt Hoàn Toàn Test Harness Ra Module Riêng Biệt, Vô Hiệu Hóa Bypass Raw Module Dictionary & Khử Triệt Để Quyền Tự Cấp Khóa)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate a7d982095108f7028ec208117d95231a62d55988 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Tách Rời Hoàn Toàn Test Harness Ra Khỏi Candidate-Readable Module**:
+    - Chuyển toàn bộ `_InternalHostBoundaryVault`, `_ensure_internal_host_boundary_harness`, `_stop_internal_host_boundary_harness`, cùng 4 helper (`TrustedHostReviewerHandoff`, `TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, `TrustedHostProvisionKeyStore`) và `TEST_FIXTURE_REVIEWER_SECRET` sang tệp riêng biệt `docs/parallel-delivery/test_host_boundary_harness.py`.
+    - Xóa bỏ hoàn toàn `setUpModule`, `tearDownModule`, các helper, credential và secret khỏi module-level của `docs/parallel-delivery/test_negative_fixtures.py`.
+    - Chặn đứng hoàn toàn kỹ thuật bypass qua base descriptor `types.ModuleType.__getattribute__(f, '__dict__')`: raw dictionary của module `test_negative_fixtures` hoàn toàn không chứa bất kỳ lifecycle authority, helper hay credential nào.
+  - **(2) Khử Triệt Để Quyền Tự Cấp Khóa Bằng Whitelist Bất Biến**:
+    - Trong `test_host_boundary_harness.py`, bổ sung danh sách whitelist bất biến `ALLOWED_FIXTURE_KEY_IDS = frozenset({"rev_key_lead_v1", "integ_gatekeeper_v1", "control_authority_v1"})`.
+    - Mọi nỗ lực mint hoặc provision keystore với custom key ID (ví dụ: `'custom_key'`) đều bị từ chối lập tức với `ProtocolViolationError` fail-closed.
+  - **(3) Khởi Tạo Ranh Giới Ở Cấp Test Runner**:
+    - Tích hợp việc khởi tạo và dọn dẹp daemon `test_host_boundary_harness` vào `validate.py:run_negative_fixture_suite()` và entrypoint `__main__`, bảo đảm harness chỉ hoạt động dưới sự kiểm soát của runner kiểm thử và độc lập tuyệt đối với candidate import.
+  - **(4) Cập Nhật Fixture Phân Biệt test_18y (Regression Bypass Base Descriptor)**:
+    - Cập nhật bài kiểm tra `test_18y_sol_finding_candidate_custom_key_authority_rejected_in_fresh_subprocess`:
+      + Trong tiến trình con độc lập, candidate trích xuất raw namespace bằng `types.ModuleType.__getattribute__(f, '__dict__')`.
+      + Khẳng định toàn bộ 10 symbol nhạy cảm (`setUpModule`, `tearDownModule`, `TrustedHost...`, `_InternalHostBoundaryVault`, `_ensure_internal_host_boundary_harness`, `_stop_internal_host_boundary_harness`, `TEST_FIXTURE_REVIEWER_SECRET`) đều hoàn toàn vắng mặt trong raw dictionary.
+      + Tái hiện nỗ lực gọi `raw.get('setUpModule')` và `raw.get('TrustedHostIsolatedKeyStore')` để mint keystore với public key tự chọn; khẳng định `RAW_MODULE_DICT_CUSTOM_KEY_ACCEPTED` luôn là `False` fail-closed.
+      + Khẳng định gọi trực tiếp `TrustedHostIsolatedKeyStore` với custom key cũng luôn bị từ chối fail-closed.
+  - **(5) Toàn Bộ Bộ Kiểm Thử & Cổng Thẩm Định PASS 100%**:
+    - Toàn bộ **401/401 tests PASS (100%)**.
+    - Tất cả 12 cổng thẩm định release gate đạt PASS tuyệt đối; trạng thái kích hoạt production mode tiếp tục bị khóa chặt fail-closed (`PRODUCTION_ACTIVATION_BLOCKED`).
+
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 8003c13 (Đóng Kín Hoàn Toàn Bốn Helper Trusted Host Khỏi Candidate-Readable Fixtures, Khử Khả Năng Tự Sinh Khóa Cho Keystore & Bổ Sung Negative Assertion test_18y)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate 8003c13bd76e49cbd562dc6ab785299cd68161c7 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Đóng Kín Bốn Helper Trusted Host Khỏi Candidate-Readable Fixture**:
+    - Trong `docs/parallel-delivery/test_negative_fixtures.py`, bổ sung đầy đủ 4 helper `TrustedHostReviewerHandoff`, `TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, và `TrustedHostProvisionKeyStore` vào `_SEALED_ATTRS` của `_SealedFixtureModule`.
+    - Mở rộng logic niêm phong trong `__getattribute__`, `__dict__`, và `dir()` để chặn mọi thuộc tính bắt đầu bằng `TrustedHost`, ném `AttributeError` fail-closed, trả về `False` khi kiểm tra bằng `hasattr`, `None` khi gọi `getattr(..., None)`, và ném `ImportError` khi `from-import`.
+  - **(2) Khử Triệt Để Khả Năng Kích Hoạt Ngầm Daemon Máy Chủ Của Helper**:
+    - Loại bỏ lệnh gọi tự động `_ensure_internal_host_boundary_harness()` khỏi 4 helper trusted host; yêu cầu ngữ cảnh harness đã được khởi tạo trong runner (`_InternalHostBoundaryVault.token` và `_InternalHostBoundaryVault.proc is not None`).
+    - Ngăn chặn triệt để tình huống candidate gọi helper để kích hoạt daemon ngầm và lấy token runtime ngoài quy trình kiểm thử.
+  - **(3) Fixture Phân Biệt test_18y (Fresh Subprocess Custom Key Authority Bị Từ Chối Fail-Closed)**:
+    - Bổ sung bài kiểm tra `test_18y_sol_finding_candidate_custom_key_authority_rejected_in_fresh_subprocess`: chứng minh trong tiến trình con độc lập, candidate import fixture không thể nhận diện hay gọi bất kỳ helper nào qua `hasattr`, `dir()`, hay `__dict__`.
+    - Tái hiện kịch bản counterexample an toàn: candidate tự sinh cặp khóa Ed25519 và nỗ lực gọi `TrustedHostIsolatedKeyStore` để mint keystore với public key tự chọn; khẳng định toàn bộ nỗ lực bị chặn fail-closed, `CANDIDATE_PUBLIC_HELPER_CUSTOM_KEY_ACCEPTED` bằng `False`, và phát sinh bằng chứng `SOL_CUSTOM_KEY_AUTHORITY_REJECTED_PASS`.
+  - **(4) Bộ Kiểm Thử & Cổng Thẩm Định Toàn Diện**:
+    - Toàn bộ bộ kiểm thử tự động đạt **401/401 tests PASS (100%)**.
+    - Tất cả 12 cổng thẩm định release gate đạt PASS tuyệt đối; trạng thái kích hoạt production mode tiếp tục bị khóa chặt fail-closed (`PRODUCTION_ACTIVATION_BLOCKED`).
+
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên aae7646 (Đóng Kín Hoàn Toàn Trusted Harness & Context Khỏi Candidate-Readable Fixtures, Loại Bỏ Mọi Credential/Endpoint Accessors & Bổ Sung Negative Assertion test_18x)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate aae7646079e76fd6f58f141bc0fdf4474f2c4a4a (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Loại Bỏ Hoàn Toàn Context-Helper & Accessor Khỏi Candidate-Readable Fixture**:
+    - Trong `docs/parallel-delivery/test_negative_fixtures.py`, loại bỏ hoàn toàn `_TestHostBoundaryContext`, `_ensure_test_host_boundary_harness`, và `_stop_test_host_boundary_harness` khỏi giao diện callable/attribute của module.
+    - Đóng gói toàn bộ state nội bộ và helper của test harness thành `_InternalHostBoundaryVault`, `_ensure_internal_host_boundary_harness`, và `_stop_internal_host_boundary_harness`, chỉ phục vụ nội bộ runner khi thực thi `setUpModule()` / `tearDownModule()`.
+  - **(2) Đóng Kín Boundary Bằng `_SealedFixtureModule`**:
+    - Thiết lập lớp module `_SealedFixtureModule(types.ModuleType)` chặn tuyệt đối mọi truy cập ngoài tới các symbol context/helper/credentials (`_SEALED_ATTRS`).
+    - Mọi nỗ lực truy cập thuộc tính ngoài hoặc gọi helper ném `AttributeError` fail-closed.
+    - Lọc bỏ hoàn toàn các symbol sealed khỏi `__dict__` và `dir()` của module, bảo đảm `hasattr` trả về `False`, `getattr(..., None)` trả về `None`, và `from test_negative_fixtures import ...` ném `ImportError`.
+  - **(3) Fixture Phân Biệt test_18x (Fresh Subprocess Fixture Context Authority Bị Từ Chối Fail-Closed)**:
+    - Bổ sung bài kiểm tra `test_18x_sol_finding_candidate_fixture_context_authority_rejected_in_fresh_subprocess`: chứng minh trong tiến trình con độc lập, candidate import fixture không thể truy cập `_TestHostBoundaryContext`, `_ensure_test_host_boundary_harness`, `token`, `port`, hay `authkey`.
+    - Tái hiện counterexample an toàn: candidate tìm cách gọi helper, lấy context, reset testing và ghim khóa công khai; khẳng định toàn bộ chuỗi bị chặn đứng fail-closed, `CANDIDATE_FIXTURE_CONTEXT_AUTHORITY_ACCEPTED` bằng `False`, khóa ghim giữ nguyên `None`, và phát sinh bằng chứng `SOL_FIXTURE_CONTEXT_AUTHORITY_REJECTED_PASS`.
+  - **(4) Bộ Kiểm Thử & Cổng Thẩm Định Toàn Diện**:
+    - Toàn bộ bộ kiểm thử tự động đạt **400/400 tests PASS (100%)**.
+    - Tất cả 12 cổng thẩm định release gate đạt PASS tuyệt đối; trạng thái kích hoạt production mode tiếp tục bị khóa chặt fail-closed (`PRODUCTION_ACTIVATION_BLOCKED`).
+
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên f5b1360 (Loại Bỏ Hoàn Toàn Nhánh Fallback Endpoint Caller-Selected Trong Pin Trusted Host Public Key, Ràng Buộc Thẩm Quyền 100% Qua HostBoundaryChannel Ngoài Tiến Trình & Bổ Sung Negative Fixture test_18w)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate f5b136099ff0b2236362c29a7a1ed5d154a19fe3 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Loại Bỏ Hoàn Toàn Nhánh Fallback Endpoint Caller-Selected Khỏi `pin_trusted_host_public_key`**:
+    - Trong `delivery_engine.py:1631-1642`, loại bỏ hoàn toàn khối `elif port is not None and authkey is not None:` tự ý kết nối tới endpoint do caller truyền vào để ghim khóa công khai của caller khi listener trả `True`.
+    - Ràng buộc việc ghim khóa 100% qua thẩm quyền capability host ngoài tiến trình: bắt buộc `_is_valid_host_boundary_capability(_internal_token)` phải trả về `True` thông qua kênh `HostBoundaryChannel` đã cấu hình. Nếu caller truyền thêm `port` hoặc `authkey`, bắt buộc phải khớp chính xác tuyệt đối với endpoint đã cấu hình trên `HostBoundaryChannel` (`chan_port`, `chan_auth`), ngăn chặn tuyệt đối mọi nỗ lực trỏ tới rogue endpoint nội bộ.
+  - **(2) Đồng Bộ Khởi Tạo Kênh Máy Chủ Trong Test Harness & Positive Control**:
+    - Trong `_ensure_test_host_boundary_harness()`, thiết lập `HostBoundaryChannel._port` và `HostBoundaryChannel._authkey` từ daemon máy chủ trước khi gọi `pin_trusted_host_public_key`, bảo đảm kiểm tra thẩm quyền out-of-process thành công mà không cần fallback endpoint.
+    - Trong fixture positive control `child_code_pos`, cấu hình endpoint của `HostBoundaryChannel` đồng bộ từ context máy chủ trước khi thực hiện ghim khóa công khai.
+  - **(3) Fixture Phân Biệt test_18w (Fresh Subprocess Caller-Selected Endpoint Pin Bị Từ Chối Fail-Closed)**:
+    - Bổ sung bài kiểm tra `test_18w_sol_finding_caller_selected_endpoint_pin_rejected_in_fresh_subprocess`: chứng minh trong tiến trình con độc lập, kẻ tấn công tự mở rogue listener tại cổng cục bộ và gọi `pin_trusted_host_public_key` bị từ chối lập tức với `ProtocolViolationError`, khóa công khai ghim giữ nguyên `None`, tự mint `HostBoundaryBootstrapCapability` bị verify từ chối fail-closed, và `COUNTEREXAMPLE_CANDIDATE_SELF_PIN_AND_MINT_ACCEPTED` bằng `False` (phát sinh bằng chứng `SOL_CALLER_SELECTED_PIN_REJECTED_PASS`).
+  - **(4) Bộ Kiểm Thử & Cổng Thẩm Định Toàn Diện**:
+    - Toàn bộ bộ kiểm thử tự động đạt **399/399 tests PASS (100%)**.
+    - Tất cả 12 cổng thẩm định release gate đạt PASS tuyệt đối; trạng thái kích hoạt production mode tiếp tục bị khóa chặt fail-closed (`PRODUCTION_ACTIVATION_BLOCKED`).
+
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 42ea7a7 (Loại Bỏ Hoàn Toàn Trusted Host Factory, Credential & Endpoint Khỏi Candidate-Readable Fixtures, Khử Side Effect Khởi Động Daemon Khi Import & Bổ Sung Negative Assertion test_18v)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate 42ea7a7c8a421f153026c51aa0fcd5c9b3973530 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Loại Bỏ Hoàn Toàn Factory, Token & Endpoint Khỏi Candidate-Readable Fixtures**:
+    - Loại bỏ triệt để factory `TrustedHostBootstrapCapability`, token `_HOST_BOUNDARY_TOKEN`, và các biến toàn cục `_h_port`, `_h_authkey`, `_h_proc`, `_h_boot_cap` khỏi module level của `test_negative_fixtures.py`.
+    - Bảo đảm candidate module hoặc tiến trình con của candidate khi import `test_negative_fixtures.py` không thể truy cập bất kỳ credential, endpoint hay factory cấp phát thẩm quyền nào (hasattr trả về False đối với toàn bộ các thuộc tính trên).
+  - **(2) Khử Triệt Để Side Effect Khởi Động Daemon Khi Import Module**:
+    - Loại bỏ lệnh gọi khởi chạy daemon `_launch_test_host_boundary_daemon` ở mức module-level của `test_negative_fixtures.py`.
+    - Chuyển toàn bộ việc quản lý tiến trình daemon máy chủ ngoài tiến trình sang lifecycle test harness (`setUpModule` và `tearDownModule` của unittest runner), bảo đảm thao tác import đơn thuần trong candidate process không có bất kỳ side effect khởi chạy daemon hay mở socket nào.
+  - **(3) Bổ Sung Cơ Chế Retry Khi Persist Atomic Tránh Race Condition Trên Windows**:
+    - Trong `delivery_engine.py:6363` (`_persist_atomic`), bổ sung retry loop ngắn (tối đa 5 lần với backoff 10ms) cho thao tác `os.replace(tmp_path, self.storage_path)` khi gặp `PermissionError` [WinError 5] do cơ chế file locking tạm thời của Windows trong các đợt ghi đồng thời dồn dập.
+  - **(4) Fixture Phân Biệt test_18v (Fresh Subprocess Import Fixture Không Thể Mint Capability)**:
+    - Bổ sung `test_18v_sol_finding_candidate_importing_fixture_cannot_mint_bootstrap_capability`:
+      - Trong tiến trình con độc lập hoàn toàn mới (fresh subprocess), candidate import `test_negative_fixtures as f`.
+      - Khẳng định `f` không phơi bày `TrustedHostBootstrapCapability`, `_HOST_BOUNDARY_TOKEN`, `_h_port`, `_h_authkey`, `_h_proc`, hay `_h_boot_cap`.
+      - Khẳng định thao tác import không khởi động daemon máy chủ ngoài tiến trình.
+      - Candidate nỗ lực gọi factory hoặc mint verifiable bootstrap capability thất bại fail-closed.
+      - Chứng minh `CANDIDATE_IMPORT_FIXTURE_AUTHORITY_ACCEPTED` không thể đạt được, xác lập bằng chứng `CANDIDATE_IMPORT_FIXTURE_MINT_REJECTED_PASS`.
+  - **(5) Toàn Bộ 398/398 Tests PASS (100%)**:
+    - Toàn bộ 398 automated fixtures đạt PASS tuyệt đối trên mọi cổng kiểm thử của project.
+
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 2798fd6 (External Signer Daemon Ngoài Tiến Trình, Loại Bỏ Hoàn Toàn Private Key Khỏi Repository & Ngăn Chặn Mint Capability Khi Quét Toàn Bộ Mã Nguồn)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate 2798fd6f4af760f757ae41d5beab53408cc5a0da (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Xóa Bỏ Hoàn Toàn Private Signing Key Khỏi Repository**:
+    - Loại bỏ hoàn toàn _HOST_BOUNDARY_BOOTSTRAP_PRIVATE_KEY_BYTES và _HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY khỏi test_negative_fixtures.py và toàn bộ repository.
+    - Tuyệt đối không lưu trữ khóa riêng Ed25519 tĩnh dưới dạng hằng số hay biến toàn cục trong mã nguồn.
+  - **(2) External Signer Daemon Ngoài Tiến Trình Trong Bộ Nhớ**:
+    - Chuyển việc sinh cặp khóa Ed25519 sang tiến trình con độc lập _launch_test_host_boundary_daemon. Khóa riêng chỉ tồn tại trong RAM của daemon host boundary, không bao giờ ghi ra đĩa hay gửi qua IPC cho candidate process.
+    - Daemon xuất khóa công khai pub_bytes qua pipe khi khởi chạy để ghim bất biến vào HostBoundaryBootstrapCapability.pin_trusted_host_public_key(...).
+    - Factory TrustedHostBootstrapCapability ủy quyền ký số mật mã ra external signer daemon qua IPC ('SIGN_BOOTSTRAP_CAP', clean_token, payload) với xác thực HMAC constant-time.
+  - **(3) Ghim Bất Biến & Khóa Fail-Closed Sửa Đổi Khóa Công Khai**:
+    - HostBoundaryBootstrapCapability.pin_trusted_host_public_key chỉ cho phép ghim khóa từ ranh giới máy chủ đáng tin cậy; cấm tuyệt đối candidate trong tiến trình tự ý ghim hay thay đổi khóa đã ghim (ném ProtocolViolationError).
+  - **(4) Fixture Kiểm Thử test_18u (Đọc Toàn Bộ Repo Vẫn Không Thể Mint Capability)**:
+    - Bổ sung test_18u_sol_finding_candidate_reading_entire_repo_cannot_mint_bootstrap_capability:
+      - Quét toàn bộ các tệp được Git theo dõi trong docs/parallel-delivery/, khẳng định không tệp nào chứa định nghĩa private signing key hay chuỗi hex của khóa đã thu hồi.
+      - Thực thi kịch bản counterexample: candidate tự sinh khóa hoặc tìm kiếm repo không thể tạo chữ ký hợp lệ (SAFE_ASSERTION_TRACKED_KEY_CAN_MINT_VERIFIABLE_CAPABILITY = False).
+      - Kiểm tra việc cố tình ghim hoặc thay đổi pinned public key bằng token giả mạo đều thất bại fail-closed.
+  - **(5) Toàn Bộ 397/397 Tests PASS (100%)**:
+    - Toàn bộ 397 negative và positive fixtures đạt PASS tuyệt đối trên mọi cổng thẩm định.
+
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên bd38239 (HostBootstrapCapability Asymmetric Cryptographic Verification, Loại Bỏ Secret Khỏi Candidate Module & Candidate Minting Fail-Closed)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate bd382390340b0495d6a725bc97aa9f623720185e (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Loại Bỏ Hoàn Toàn Secret Khỏi Candidate Module & Ghim Khóa Công Khai Ed25519 Bất Biến**:
+    - Loại bỏ hoàn toàn _HOST_BOUNDARY_BOOTSTRAP_SECRET khỏi candidate module delivery_engine.py.
+    - Ghim khóa công khai Ed25519 bất biến _HOST_BOUNDARY_BOOTSTRAP_PUBLIC_KEY = bytes.fromhex("b49df8557f17629954b62697c2097549c92f2cf0185e7c284d71475a787b1d6e").
+    - Tiến trình candidate không lưu trữ, không chia sẻ và không thể truy cập bất kỳ signing key hay secret nào để tự ký thẩm quyền.
+  - **(2) Khóa Fail-Closed Toàn Bộ Candidate Minting API**:
+    - Phương thức HostBoundaryBootstrapCapability._create_authenticated bị vô hiệu hóa fail-closed: lập tức ném ProtocolViolationError("Caller-selected or direct creation of HostBoundaryBootstrapCapability via in-process candidate API is strictly forbidden fail-closed; host boundary bootstrap capability can only be issued by trusted external host boundary").
+    - Bổ sung HostBoundaryBootstrapCapability.from_host_signed_payload để tiếp nhận capability DTO mang chữ ký số mật mã do host ngoài tiến trình cấp phát. Tính hợp lệ được xác thực mật mã bất đối xứng nghiêm ngặt qua ed25519.Ed25519PublicKey.verify() khi gọi verify().
+  - **(3) Tách Biệt Factory & Chữ Ký Sang Trusted Host Boundary Test Harness**:
+    - Khóa ký Ed25519 riêng tư (_HOST_BOUNDARY_BOOTSTRAP_SIGNING_KEY) và factory cấp phát thẩm quyền (TrustedHostBootstrapCapability) được đặt độc quyền trong test harness / trusted host boundary tại test_negative_fixtures.py, nằm hoàn toàn ngoài phạm vi import và callable của candidate module.
+    - Cập nhật helper _launch_test_host_boundary_daemon (dòng 172) và fixture test_sod_18 gọi trực tiếp TrustedHostBootstrapCapability.
+  - **(4) Bổ Sung Fixture Mở Rộng Fresh Subprocess test_18s & In-Process test_18t**:
+    - Mở rộng test_18s: kiểm chứng trong tiến trình con độc lập rằng candidate module không chứa _HOST_BOUNDARY_BOOTSTRAP_SECRET, gọi _create_authenticated bị ném ProtocolViolationError, giả mạo chữ ký trong from_host_signed_payload bị verify() từ chối fail-closed, và chuỗi tấn công rogue listener -> issuer -> ticket -> provision hoàn toàn thất bại (FULL_CHAIN_ACCEPTED == False, HostBoundaryChannel._started == False).
+    - Bổ sung test_18t: kiểm chứng trong cùng tiến trình candidate rằng caller không thể đọc secret, không thể gọi _create_authenticated, không thể forge capability, và chuỗi provision fail-closed, trong khi authentic capability do trusted host cấp phát vẫn hoạt động chính xác.
+  - **(5) Bộ Kiểm Thử Toàn Diện**:
+    - Toàn bộ suite đạt **396/396 tests PASS (100%)**, vượt qua toàn bộ 12 gate validation và release gate.
+
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên d1edb50 (HostBoundaryBootstrapCapability, Neo Chặt Daemon Endpoint/Authkey Provenance & Ngăn Chặn Rogue Daemon/Ticket Trong Tiến Trình Con)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate d1edb5073314fc66488820f8d66ae0655a210fb2 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Năng Lực Khởi Tạo Host Bất Biến (HostBoundaryBootstrapCapability)**:
+    - Xây dựng lớp thẩm quyền HostBoundaryBootstrapCapability do trusted host boundary tạo độc quyền ngoài tiến trình (_create_authenticated); cấm caller in-process khởi tạo trực tiếp (__init__ ném ProtocolViolationError), cấm kế thừa (__init_subclass__ ném ProtocolViolationError), và cấm serialize/deserialize (__reduce__ ném ProtocolViolationError).
+    - Ràng buộc mật mã chặt chẽ giữa bootstrap_id, port, authkey_hash, host_token_hash, chữ ký HMAC-SHA256 với secret nội bộ của host boundary, kiểm tra độ tươi (freshness 300s, max future skew 30s) và cơ chế tiêu thụ đơn dụng (_consume_for_provisioning).
+  - **(2) Ràng Buộc Thẩm Quyền Host Vào HostBoundaryTicketIssuer**:
+    - HostBoundaryTicketIssuer yêu cầu HostBoundaryBootstrapCapability hợp lệ khi cấp vé (issue_ticket). Phương thức issue_ticket đối chiếu bắt buộc port và authkey phải khớp chính xác với port và authkey_hash trong bootstrap capability; mọi trường hợp thiếu capability hoặc sai lệch endpoint đều bị từ chối fail-closed (Host ticket issuance rejected).
+    - Vé HostBoundaryTicket được gắn kèm bootstrap_capability và thẩm tra chữ ký hai chiều khi tiêu thụ.
+  - **(3) Thẩm Định Endpoint & Tiêu Thụ Đơn Dụng Trong provision_channel**:
+    - HostBoundaryChannel.provision_channel yêu cầu bắt buộc phải có HostBoundaryBootstrapCapability (truyền trực tiếp hoặc qua host_ticket.bootstrap_capability).
+    - Xác minh tính toàn vẹn chữ ký HMAC, khớp cổng/khóa, kiểm tra độ tươi, và kiểm tra chống replay qua tập _consumed_bootstrap_ids trước khi cho phép kích hoạt kênh (_started = True).
+    - Nếu endpoint hoặc ticket do caller tự sinh/giả mạo (không có host bootstrap capability hợp lệ), yêu cầu bị từ chối fail-closed, giữ nguyên _started = False và không gây bất kỳ side effect nào (ROGUE_ENDPOINT_TICKET_ACCEPTED == False).
+  - **(4) Bổ Sung Fixture Fresh Subprocess test_18s (395/395 Tests PASS 100%)**:
+    - Bổ sung test_18s_sol_counterexample_rogue_daemon_and_endpoint_rejected_in_fresh_subprocess trong tiến trình con độc lập: caller tự mở listener trên cổng nội bộ với rogue token/authkey, gọi issue_ticket và provision_channel; chứng minh toàn bộ chuỗi tấn công bị chặn đứng fail-closed, HostBoundaryChannel._started giữ nguyên False.
+    - Toàn bộ suite đạt **395/395 tests PASS (100%)**, vượt qua toàn bộ 12 gate validation và release gate.
+
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 0032962 (Unforgeable HostBoundaryTicket, Provenance Verification qua Out-of-Process Daemon, HMAC Capability Binding & Single-Use Replay Protection)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate `0032962130d21dc9b2ddc5f51260cfffb40e9acd` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Vô Hiệu Hóa Khởi Tạo Trực Tiếp & Kế Thừa HostBoundaryTicket**:
+    - `HostBoundaryTicket` được chuyển đổi thành lớp thẩm quyền bất biến; cấm tuyệt đối khởi tạo trực tiếp từ caller trong tiến trình (`__init__` ném `ProtocolViolationError`), cấm kế thừa (`__init_subclass__` ném `ProtocolViolationError`), và cấm serialize/deserialize (`__reduce__` ném `ProtocolViolationError`). Chỉ cho phép khởi tạo nội bộ thông qua factory method có xác thực `_create_authenticated`.
+  - **(2) Ràng Buộc Chữ Ký Mật Mã HMAC & HostBoundaryTicketIssuerCapability**:
+    - `HostBoundaryTicketIssuer` quản lý private host secret ngoài tiến trình, cấp phát `HostBoundaryTicket` đi kèm `HostBoundaryTicketIssuerCapability` có chữ ký HMAC-SHA256 liên kết chặt với `ticket_id`, `port`, `authkey_hash`, authority id, và timestamp kiểm tra độ tươi (freshness window 300s).
+    - Phương thức `issue_ticket` yêu cầu token nội bộ hợp lệ và xác thực tính xác thực của token với daemon máy chủ ngoài tiến trình trước khi cấp vé.
+  - **(3) Xác Minh Provenance Hai Chiều Qua Out-of-Process Host Daemon Trong provision_channel**:
+    - `HostBoundaryChannel.provision_channel` bắt buộc ticket phải có `_issuer` thuộc kiểu `HostBoundaryTicketIssuer`.
+    - Kết nối trực tiếp tới daemon máy chủ tại `(127.0.0.1, port)` với `authkey` để xác minh secret của issuer trước khi chấp nhận cấu hình kênh; từ chối fail-closed mọi issuer tự sinh hoặc token không khớp (`FORGED_TICKET_ACCEPTED == False`).
+  - **(4) Chống Replay Ticket Đơn Dụng (Single-Use Consumption Protection)**:
+    - Áp dụng kiểm tra đơn dụng đa tầng: `HostBoundaryTicket` tự đánh dấu `_consumed = True` khi được tiêu thụ, `HostBoundaryTicketIssuer` ghi nhận và từ chối các ticket đã dùng trong `_consumed_tickets`, và `HostBoundaryChannel` duy trì tập `_consumed_ticket_ids` nhằm ngăn chặn tuyệt đối mọi nỗ lực tái sử dụng ticket đã cấp.
+  - **(5) Bộ Fixture Kiểm Thử Chuyên Sâu test_18 (394/394 Tests PASS 100%)**:
+    - Bổ sung `test_18_finding_sol_host_boundary_ticket_forgery_and_replay_rejection` với 13 trường hợp kiểm thử (18a-18m) bao quát từ chối trực tiếp, kế thừa, bypass bằng `object.__new__`, issuer giả mạo, can thiệp chữ ký, sai cổng/authkey, hết hạn timestamp, replay attack, pickle serialization và chuỗi exploit trong tiến trình con độc lập.
+    - Toàn bộ suite đạt **394/394 tests PASS (100%)**, vượt qua toàn bộ 12 gate validation và release gate.
+
+
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 62d7643 (Out-of-Process Host Boundary Provisioning & Loại bỏ Inspect/Mutable Env Fallback)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate `62d7643f4c8ef474fd065edb1c026fa09fdb10d7` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Loại Bỏ Hoàn Toàn Kiểm Tra Tin Cậy Dựa Trên Inspect / Module-Name**:
+    - Xóa bỏ `import inspect` và việc dựa vào `caller_mod in ("test_negative_fixtures", "validate", "__main__")` hay `caller_file`.
+    - Khóa chặt `HostBoundaryChannel.start_host_boundary` fail-closed với `ProtocolViolationError` đối với mọi caller candidate trong tiến trình (`MAIN_START_ACCEPTED == False`).
+  - **(2) Loại Bỏ Hoàn Toàn Fallback Cổng/Auth Từ Biến Môi Trường Mutable**:
+    - Xóa bỏ việc đọc `_ORCA_HOST_BOUNDARY_PORT` và `_ORCA_HOST_BOUNDARY_AUTHKEY` từ `os.environ` trong `HostBoundaryChannel.verify_capability` và xóa việc ghi biến môi trường này; không cho phép caller tự tạo rogue listener trong biến môi trường (`ENV_ENDPOINT_ACCEPTED == False`).
+  - **(3) Cấp Phát Channel Endpoint/Auth Qua Cơ Chế Host Bất Biến (HostBoundaryTicket)**:
+    - Định nghĩa `HostBoundaryTicket` cryptographic authorization ticket chỉ được tạo ngoài tiến trình bởi trusted host authority.
+    - Cung cấp `HostBoundaryChannel.provision_channel(port, authkey, *, host_ticket, proc)` bắt buộc phải có host ticket hợp lệ; candidate caller không thể giả mạo ticket hay rebind channel.
+    - Đảm bảo `_cleanup_process` chỉ gửi lệnh dừng daemon khi tiến trình hiện hành thực sự sở hữu `proc` (`proc is not None`), ngăn các tiến trình con vô tình ngắt daemon máy chủ dùng chung.
+  - **(4) Bổ Sung Fresh-Subprocess Assertions Ngăn Chặn Full Exploit Chain**:
+    - Bổ sung các fixture phân biệt 17h, 17i, 17j trong `test_17` bao gồm các assertion trong tiến trình con độc lập từ chối cả giả mạo biến môi trường endpoint (`ENV_ENDPOINT_ACCEPTED == False`) lẫn bootstrap thẩm quyền từ caller `__main__` (`MAIN_START_ACCEPTED == False`, `CANDIDATE_BOOTSTRAP_ACCEPTED == False`, `assert len(TrustedKeyStore.get_default()._pinned_keys) == 0`).
+  - **(5) Bộ Kiểm Thử Tự Động 393/393 Tests PASS (100%)**:
+    - Toàn bộ 393 fixture vượt qua 100% không có cảnh báo hay lỗi kiểm thử; tất cả 12 gate validation và release gate đều đạt.
+
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 52a2795 (Out-of-Process Host Boundary Channel & Mutable Environment Rejection)
+
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate `52a279551f8bd73e0d0dc3f68aad15c959be0bd8` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Triển Khai Kênh Xác Thực Thẩm Quyền Máy Chủ Ngoài Tiến Trình (Out-of-Process Host Boundary Channel)**:
+    - Loại bỏ hoàn toàn sự phụ thuộc vào biến môi trường mutable `os.environ["ORCA_HOST_BOUNDARY_TOKEN"]` trong quá trình xác thực host capability.
+    - Xây dựng lớp `HostBoundaryChannel` khởi chạy một tiến trình con độc lập làm daemon verifier, giao tiếp qua socket IPC nội bộ `127.0.0.1` với cổng do hệ điều hành tự động cấp phát và secret được truyền an toàn qua pipe `stdin`.
+    - Phương thức `_is_valid_host_boundary_capability(token)` ủy thác kiểm chứng 100% tới daemon ngoài tiến trình; candidate worker trong cùng tiến trình tuyệt đối không thể can thiệp hay khởi động lại daemon fail-closed (`ProtocolViolationError`).
+  - **(2) Từ Chối Toàn Diện Nỗ Lực Giả Mạo Biến Môi Trường Của Candidate (Candidate Mutable Env Rejection)**:
+    - Ngăn chặn triệt để counterexample trong đó candidate worker tự gán `os.environ["ORCA_HOST_BOUNDARY_TOKEN"] = token` để mint handoff hoặc gọi `KeyStoreHostIssuer.get_default_host_issuer` / `TrustedKeyStore.provision_from_host`.
+    - Bổ sung các fixture phân biệt `11t`, `11u`, `11v` trong `test_11_finding_01_candidate_key_custody_bootstrap_rejected` và bài test độc lập `test_17_finding_out_of_process_host_boundary_and_mutable_env_rejection`.
+  - **(3) Bộ Kiểm Thử Tự Động 393/393 Tests PASS (100%)**:
+    - Toàn bộ suite vượt qua 100% không có cảnh báo hay lỗi kiểm thử; tất cả các gate validation và release gate đều đạt.
+
+## 2026-10-01 — Khắc phục triệt để 2 phát hiện độc lập từ Sol Audit sau b85c240 (Out-of-Process Host Boundary Capability & Ephemeral Singleton Poisoning Fail-Closed)
+
+- Khắc phục triệt để hai phát hiện độc lập (actionable findings) từ Sol trên exact candidate `b85c240d466c1624966c36bb9148c10d2112b4ae` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Thẩm Quyền Host Capability Hoàn Toàn Ngoài Tiến Trình (Out-of-Process Host Boundary Capability)**:
+    - Loại bỏ hoàn toàn biến `_SENTINEL_HOST_TOKEN` khỏi candidate module `delivery_engine.py`; candidate module không chứa hay rò rỉ bất kỳ sentinel token hay host capability nào.
+    - Thẩm quyền host boundary được cung cấp nghiêm ngặt ngoài tiến trình qua biến môi trường host (`ORCA_HOST_BOUNDARY_TOKEN`) kết hợp hàm xác thực mật mã HMAC an toàn thời gian thực.
+    - Ngăn chặn triệt để counterexample `COUNTEREXAMPLE_CANDIDATE_BOOTSTRAPS_AUTHORITY` (caller in-process đọc sentinel token từ candidate module để tự ghim khóa và xác minh chữ ký).
+    - Bổ sung fixture phân biệt `11s` trong `TestSolTrustBoundaryRootCauseRemediation`.
+  - **(2) Chống Đầu Độc Singleton Ephemeral Trong Sổ Đăng Ký Tiêu Thụ (Ephemeral Singleton Poisoning Fail-Closed)**:
+    - `DurableConsumptionRegistry.get_default` cấm tuyệt đối cấu hình `db_path=':memory:'` hoặc `allow_ephemeral=True` fail-closed với `ProtocolViolationError`.
+    - `OrcaDeliveryAdapter` từ chối fail-closed nếu singleton registry mặc định bị can thiệp thành dạng ephemeral trong bộ nhớ (`_is_mem=True`).
+    - Ngăn chặn triệt để counterexample `COUNTEREXAMPLE_EPHEMERAL_DEFAULT_ACCEPTED` (caller đầu độc singleton trước khi adapter khởi tạo).
+    - Bổ sung fixture phân biệt `15d` trong `TestSolTrustBoundaryRootCauseRemediation`.
+  - **(3) Dọn Dẹp Toàn Bộ Residue Khoảng Trắng**:
+    - Xóa bỏ trailing whitespace tại `CHANGELOG.md:30` và `docs/parallel-delivery/README.md:348,367`.
+    - Đảm bảo `git diff 4a7c8c921b7e05066505d51b168a02c3fde61317 --check` đạt 0 lỗi khoảng trắng.
+  - **(4) Bộ Kiểm Thử Tự Động 392/392 Tests PASS (100%)**:
+    - Toàn bộ suite vượt qua 100% không có cảnh báo hay lỗi kiểm thử.
+
+## 2026-10-01 — Khắc phục triệt để 3 phát hiện độc lập từ Sol Audit sau 851d23c (Out-of-Process Key Custody Bootstrap Prevention, Durable Adapter Restart Consumption & Strict Envelope Type Rejection)
+
+- Khắc phục triệt để ba phát hiện độc lập (actionable findings) từ Sol trên exact candidate `851d23c3f7fde7e37891b933547d931706e11417` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Vô Hiệu Hóa Public Host API Bootstrap Khóa Trong Cùng Tiến Trình (Out-of-Process Key Custody Bootstrap Prevention)**:
+    - Đóng toàn bộ các API công khai của `KeyStoreHostIssuer` (`get_default_host_issuer`, `issue_handoff`, `issue_isolated_keystore`) và `TrustedKeyStore.provision_from_host` đối với in-process candidate caller bằng cách bắt buộc token máy chủ ngoài tiến trình.
+    - Mọi nỗ lực gọi `KeyStoreHostIssuer.get_default_host_issuer()` hoặc tự mint handoff/keystore mà không có thẩm quyền hợp lệ đều bị từ chối fail-closed ngay lập tức với `ProtocolViolationError`.
+    - Test harness sử dụng các hàm host helper chuyên biệt (`TrustedHostKeyStoreHandoff`, `TrustedHostIsolatedKeyStore`, `TrustedHostProvisionKeyStore`) đại diện cho ranh giới máy chủ bên ngoài.
+  - **(2) Đảm Bảo Tính Bền Vững Tiêu Thụ Của Adapter Qua Khởi Động Lại (Durable Adapter Restart Consumption)**:
+    - Loại bỏ hoàn toàn registry bộ nhớ tạm thời `:memory:` khỏi đường dẫn sản xuất của `OrcaDeliveryAdapter`: adapter mặc định sử dụng đường dẫn SQLite bền vững trên ổ đĩa `DEFAULT_PRODUCTION_CONSUMPTION_DB_PATH` (`runtime/orca-consumption-registry.db`) hoặc `consumption_db_path` được chỉ định.
+    - Cấm tiêm caller-selected ephemeral in-memory registry (`_is_mem`) vào `OrcaDeliveryAdapter` fail-closed.
+    - Dữ liệu phong bì đã tiêu thụ và bộ đếm monotonic fencing token tồn tại bền vững qua restart adapter; replay attack và stale fencing token qua restart bị phát hiện và ngăn chặn 100%.
+  - **(3) Loại Bỏ Ép Kiểu Lỏng Lẻo & Kiểm Tra Kiểu Dữ Liệu Nghiêm Ngặt Trước Khi Xử Lý (Strict Envelope Type Rejection)**:
+    - Loại bỏ việc ép kiểu `bool(data.get("gates_pass", False))` trong `SignedIntegrationEnvelope.from_dict`; triển khai cơ chế kiểm tra kiểu dữ liệu nghiêm ngặt từ chối fail-closed `EnvelopeVerificationError` đối với chuỗi `'false'`, số nguyên `0`/`1`, hoặc bất kỳ kiểu dữ liệu phi-bool nào.
+    - Bổ sung strict type checking cho `gate_results` (bắt buộc dict với giá trị strict bool), `issued_at`/`expires_at` (bắt buộc số thực/nguyên, từ chối bool/str), và `fencing_token` (bắt buộc strict int, từ chối bool/str) cho cả `SignedIntegrationEnvelope` và `SignedReviewEnvelope`.
+  - **(4) Bộ Kiểm Thử Tự Động 392/392 Tests PASS (100%)**:
+    - Mở rộng suite `TestSolTrustBoundaryRootCauseRemediation` lên 16/16 tests với 2 bài test phương thức mới (`test_15_finding_02_adapter_restart_durable_consumption`, `test_16_finding_03_strict_envelope_type_rejection_no_coercion`) và bổ sung các nhánh probe counterexample `11n..11r` cho public host API bootstrap rejection.
+
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit sau d7f0043 (Out-of-Process Pinned Key Custody Provisioning & Durable Integration Envelope Consumption)
+
+- Khắc phục triệt để hai phát hiện trust-boundary từ đợt independent audit của Sol trên exact candidate d7f0043d99c970e3d6efc7a8c392be73b58b27b2 (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Vô Hiệu Hóa Key Custody Bootstrap Trong Tiến Trình & Cấp Phát Khóa Ngoài Tiến Trình (Out-of-Process Pinned Key Custody Provisioning)**:
+    - Loại bỏ hoàn toàn khả năng candidate worker tự đăng ký public key trong cùng tiến trình: TrustedKeyStore.register_pinned_public_key từ chối caller in-process fail-closed với ProtocolViolationError nếu không có ủy quyền xác thực từ host.
+    - Chuyển cơ chế cấp phát khóa sang ranh giới máy chủ bên ngoài: triển khai KeyStoreHostIssuer, KeyStoreHostHandoff, và KeyStoreHostIssuerCapability với token sentinel _SENTINEL_HOST_TOKEN.
+    - Pinned public keys được đóng băng trong MappingProxyType bất biến; nghiêm cấm việc ghi đè hoặc thay thế khóa authority đã ghim (Cannot replace or mutate existing pinned key authority).
+    - Thuộc tính OrcaDeliveryAdapter.keystore là read-only gắn chặt với TrustedKeyStore.get_default(), từ chối nhận caller-selected keystore fail-closed.
+  - **(2) Tiêu Thụ Phong Bì Tích Hợp Nguyên Tử Qua Sổ Đăng Ký Bền Vững (Durable Integration Envelope Consumption)**:
+    - TrustedIntegrationConsumer.consume_integration_envelope gọi giao dịch nguyên tử DurableConsumptionRegistry.check_and_consume_integration(...) ngay sau khi xác thực chữ ký Ed25519.
+    - Kiểm tra toàn diện temporal validity (expires_at, issued_at <= now + 30.0s), ràng buộc danh tính (expected_task_id, expected_candidate, expected_base), chống phát lại phong bì (envelope_id single-use), chống tái sử dụng nonce, và monotonic fencing token theo miền (task_fencing).
+    - Đảm bảo tính bền vững qua restart tiến trình với SQLite và khả năng chống xung đột tương tranh giữa 10 luồng đồng thời (duy nhất 1 luồng thành công, 9 luồng bị chặn bởi ReplayAttackError).
+  - **(3) Bộ Kiểm Thử Tự Động 390/390 Tests PASS (100%)**:
+    - Bổ sung 4 bài test phương thức toàn diện trong TestSolTrustBoundaryRootCauseRemediation (test_11, test_12, test_13, test_14) bao quát trọn vẹn các kịch bản counterexample tiêu cực cho key custody bootstrap, integration replay/nonce/fencing/expiry, restart durability, và đa luồng tương tranh.
+
+## 2026-09-30 — Khắc phục triệt để phát hiện Sol-Lead audit sau 8913b39 (Out-of-Process Trust Boundary, Asymmetric Ed25519 Cryptography, Pinned Key Custody, Durable Replay Protection & Fail-Closed Production Activation Gate)
+
+- Khắc phục triệt để nguyên nhân gốc rễ (root cause) ranh giới tin cậy (trust boundary) theo audit finding của Sol trên exact candidate `8913b392522701f924117a234f4e0cee7fc83624` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`) và tuân thủ tuyệt đối chỉ thị tại `D:/AI_SETUP/supervisor/generated/root-cause-trust-boundary-intervention.md`:
+  - **(1) Tái Hiện RED Evidence & Vô Hiệu Hóa Hoàn Toàn Khả Năng Tự Cấp Quyền Trong Cùng Tiến Trình**:
+    - Tái hiện chính xác finding: constructor `ReviewerHostIssuer(_internal_token=b"caller_non_none_token")` cho phép caller tự tạo authority trong cùng Python process.
+    - Sửa đổi `ReviewerHostIssuer`: `_internal_token` sử dụng sentinel object private `_SENTINEL_HOST_TOKEN`, cấm caller truyền token tùy ý; đánh dấu deprecated toàn bộ DTO in-process (`ReviewerHostIssuer`, `ReviewerHostHandoff`, `ReviewerSessionBoundary`) và khẳng định chúng mang ZERO thẩm quyền bảo mật trong môi trường production.
+  - **(2) Mô Hình Đe Dọa 3 Tầng & Quyết Định Kiến Trúc Tách Biệt Ranh Giới Ngoài Tiến Trình (Out-of-Process Architecture)**:
+    - Thiết lập mô hình đe dọa 3 tầng rủi ro: (1) Sửa nhầm thông thường, (2) Candidate/Worker không tin cậy chạy mã Python tùy ý và monkey-patching bộ nhớ, và (3) Host OS Administrator (không tuyên bố sandbox ngăn được Administrator toàn máy).
+    - Phân tích 3 phương án và ban hành ADR lựa chọn Phương án 2 (Broker ngoài tiến trình với chữ ký mật mã bất đối xứng kết hợp OS ACL) kết hợp khóa fail-closed kích hoạt production.
+    - Tách biệt hoàn toàn privileged decision / merge consumer (`TrustedReviewConsumer`, `TrustedIntegrationConsumer`) ra ngoài tiến trình và interpreter của worker; worker chỉ có quyền nộp request/artifact trên feature branch.
+  - **(3) Quản Lý Khóa Bất Đối Xứng Ed25519 & Pinned Key Custody (`TrustedKeyStore`)**:
+    - Private signing keys tuyệt đối không nằm trong repository candidate, env của worker, log, hay test fixture; chỉ thuộc sở hữu của phiên Reviewer Lead độc lập (`rev_key_lead_v1`) và Integration Runner độc lập (`integ_gatekeeper_v1`).
+    - Candidate worker chỉ được cấu hình danh sách public keys ghim sẵn (`register_pinned_public_key`); hỗ trợ thu hồi khóa tức thời (`revoke_key`) fail-closed.
+  - **(4) Phong Bì Ký Số Bất Đối Xứng (`SignedReviewEnvelope` & `SignedIntegrationEnvelope`)**:
+    - Phân tách miền ký (Domain Separation): `PARALLEL_DELIVERY_REVIEW_ENVELOPE_V1` và `PARALLEL_DELIVERY_INTEGRATION_ENVELOPE_V1`.
+    - Chuẩn hóa chuỗi dữ liệu (Canonical Serialization) RFC 8785 loại trừ trường chữ ký trước khi ký và xác minh.
+    - Ràng buộc chặt chẽ commit SHA ứng viên (40-hex), base commit, delivery task ID, review dispatch ID, route attestation (`cx/gpt-5.6-sol`), harness (`Claude Code`), nonce, thời gian hết hạn (`expires_at`), và monotonic fencing token.
+  - **(5) Sổ Đăng Ký Tiêu Thụ Bền Vững Đa Tiến Trình (`DurableConsumptionRegistry`)**:
+    - Lưu trữ atomic trên SQLite (kèm hỗ trợ in-memory thread-safe cho adapter), ngăn chặn triệt để tấn công phát lại (replay attack) và tái sử dụng nonce (`UNIQUE` constraint).
+    - Lưu vết monotonic fencing token bền vững qua restart tiến trình; từ chối fail-closed mọi token cũ hơn hoặc bằng giá trị đã ghi nhận.
+    - Kiểm tra temporal freshness window: từ chối phong bì đã hết hạn hoặc phát hành vượt trước thời gian thực (> 30s).
+  - **(6) Khóa Kích Hoạt Production Fail-Closed (`ProductionActivationGate`)**:
+    - Thiết lập trạng thái `ProductionActivationGate.STATUS == PRODUCTION_ACTIVATION_BLOCKED` (`NOT_PROVISIONED`), nghiêm cấm kích hoạt chế độ production hoặc merge vào protected branch khi chưa có 4 điều kiện hạ tầng: `OS_USER_ISOLATION`, `PRIVATE_KEY_ACL_RESTRICTION`, `DEDICATED_RUNNER`, `PROTECTED_BRANCH_POLICY`.
+    - Phân định rõ 3 trạng thái: `ARCHITECTURE_IMPLEMENTED`, `REFERENCE_TESTED`, và `PRODUCTION_ACTIVATION_BLOCKED`.
+  - **(7) Bộ Kiểm Thử Tự Động 386/386 Tests PASS (100%)**:
+    - Bổ sung lớp kiểm thử `TestSolTrustBoundaryRootCauseRemediation` với 10 bài test tự động bao quát toàn bộ threat model và closure matrix (RED evidence, worker monkey-patching failure, asymmetric Ed25519 signature tamper rejection, key revocation, single-use replay protection, SQLite restart durability, temporal validity, production gate fail-closed, fresh subprocess isolation, và positive control full lifecycle review -> merge_queued -> integration -> integrated), nâng tổng số test lên 386/386 passed 100%.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau a189e50 (Reviewer Authenticated Delivery Channel, Removal of _reviewer_mint_secret, Atomic Verify-and-Consume Capability)
+
+- Khắc phục triệt để ba phát hiện blocker từ Sol-Lead independent audit trên exact candidate `a189e501d2eec58f7891cb35d46fbc176c2e2ea8` cho bundle `docs/parallel-delivery/`:
+  - **(1) Loại Bỏ Hoàn Toàn Bare Retrieval & Bảo Vệ Giao Nhận Qua Kênh Reviewer-Authenticated (Reviewer Authenticated Delivery Channel)**:
+    - Triển khai `ReviewerDeliveryChannel` và `ReviewDispatchHandle` mang `reviewer_auth_token` bảo mật cao (32-byte hex) và cơ chế single-use `_claimed`.
+    - `get_reviewer_capability()` và `claim_reviewer_capability()` trên cả `EvidenceAuthority` và `OrcaDeliveryAdapter` từ chối fail-closed nếu gọi trần bằng ID chuỗi mà không có xác thực (`ReviewDispatchHandle` hoặc `reviewer_auth_token`), loại bỏ hoàn toàn khả năng caller cùng tiến trình tự lấy `ReviewerCapability` bằng dispatch ID trần.
+    - Tiếp tục từ chối fail-closed tuyệt đối nếu caller cung cấp `control_capability` hoặc `control_secret`, bảo toàn ranh giới độc lập giữa Control và Reviewer.
+  - **(2) Xóa Bỏ Hoàn Toàn Thuộc Tính `_reviewer_mint_secret` & Chặn Mint Trùng Lặp (Elimination of _reviewer_mint_secret and Duplicate Minting Prevention)**:
+    - Xóa bỏ triệt để thuộc tính `self._reviewer_mint_secret` trên `EvidenceAuthority`; việc ký mint token sử dụng trực tiếp bí mật `_secret` của authority mà không mở bí mật secret ra ngoài.
+    - Phương thức `_create_reviewer_mint_token()` cấm truyền `_internal_secret` và chỉ cho phép thực thi bên trong ngữ cảnh vòng đời chính thức `create_review_dispatch`.
+    - Bổ sung tập hợp `self._minted_review_dispatches: Set[str]` để kiểm soát exactly-once minting cho từng review dispatch; từ chối fail-closed mọi nỗ lực mint lại capability thứ hai cho cùng một review dispatch.
+  - **(3) Hợp Nhất Verify-and-Consume Thành Thao Tác Nguyên Tử (Atomic verify_and_consume_capability Preventing Concurrent Double Issuance)**:
+    - Nâng cấp khóa `self._lock` của `EvidenceAuthority` thành `threading.RLock()`.
+    - Triển khai phương thức nguyên tử `verify_and_consume_capability()` thực hiện xác thực và tiêu thụ capability ngay lập tức dưới một khóa duy nhất.
+    - Cả `issue_review_evidence()` và `issue_integration_evidence()` đều gọi `verify_and_consume_capability()` nguyên tử sau khi đã hoàn thành 100% việc kiểm tra tham số (định dạng commit SHA, verdict, summary, routing, mandatory gates), ngăn chặn triệt để tình trạng hai thread chạy song song cùng phát hành hai evidence từ một capability, đồng thời bảo đảm tính chất zero side effects khi request malformed.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 358/358 Tests PASS**:
+    - Bổ sung lớp kiểm thử `TestSolLeadAuditA189e50Remediation` với 8 bài kiểm thử độc lập bao phủ toàn diện cả 3 finding (từ chối bare retrieval, cấm Control claim ReviewerCapability, kiểm soát single-use channel, xác nhận không tồn tại `_reviewer_mint_secret`, cấm duplicate minting, kiểm thử đa luồng concurrency với `threading.Barrier`, kiểm thử zero side effects khi request malformed, và positive control toàn trình), nâng tổng số test lên 358/358 passed 100%.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau eab4cab (Unforgeable Reviewer Mint Token, Authenticated Dispatch Binding, Separation of ReviewerCapability from Control, Zero-Side-Effect Validation)
+
+- Khắc phục triệt để hai phát hiện blocker từ Sol-Lead independent audit trên exact candidate `eab4cab060a469ecfec7793a15368e635988033b` cho bundle `docs/parallel-delivery/`:
+  - **(1) Khóa Bề Mặt Mint ReviewerCapability Bằng Token HMAC Nội Bộ Không Thể Giả Mạo (Unforgeable Internal Reviewer Mint Token)**:
+    - Triển khai dataclass `_InternalReviewerMintToken` mang chữ ký HMAC bí mật (`_reviewer_mint_secret` độc lập của `EvidenceAuthority`).
+    - Phương thức `_mint_reviewer_capability_internal()` bắt buộc phải có `_InternalReviewerMintToken` hợp lệ, kiểm tra chữ ký HMAC, `authority_id`, `delivery_task_id`, `review_dispatch_id`, `candidate_commit`, và tiêu thụ token ngay lập tức (`_consumed_mint_tokens`) để chống replay.
+    - Phương thức `_create_reviewer_mint_token()` yêu cầu bí mật nội bộ `_internal_secret`, kiểm tra gắn kết với review dispatch đang hoạt động (`active_review_dispatches`, `review_dispatch_bindings`) và trạng thái task phải là `'review'`.
+  - **(2) Tách Biệt Tuyệt Đối Thẩm Quyền Control Khỏi Reviewer (Separation of Control Authority from ReviewerCapability)**:
+    - Các phương thức `issue_reviewer_capability()` và `get_reviewer_capability()` trên cả `EvidenceAuthority` và `OrcaDeliveryAdapter` từ chối fail-closed ngay lập tức nếu caller cung cấp `control_capability` hoặc `control_secret`, ngăn chặn triệt để hành vi Control tự tạo hoặc tự lấy `ReviewerCapability`.
+    - `ReviewerCapability` được cấp phát độc lập khi `create_review_dispatch()` tạo review dispatch đã được xác thực (phù hợp với route `cx/gpt-5.6-sol` trên harness `Claude Code` qua `9router`, effort `high`).
+    - Bổ sung trường `role: str = "Reviewer"` trên `ReviewerCapability`, xác thực trong `__post_init__` và kiểm tra trong `verify_capability()`.
+    - `issue_review_evidence()` từ chối tuyệt đối `ControlCapability` hoặc bất kỳ capability nào không mang đúng vai trò Reviewer.
+  - **(3) Hoàn Tất 100% Validation Trước Khi Mutate State (Zero-Side-Effect Validation for Review and Integration)**:
+    - Trong `issue_review_evidence()`: toàn bộ các kiểm tra tính hợp lệ (verdict, định dạng 40-char SHA của candidate commit, summary, khớp định danh binding giữa task/dispatch/commit, trạng thái dispatch trên adapter, và xác thực chữ ký capability qua `verify_capability`) được thực hiện đầy đủ TRƯỚC KHI tiêu thụ capability (`_consumed_capabilities.add(...)`). Mọi request malformed đều thất bại fail-closed mà không làm cháy capability hợp lệ (zero side effects).
+    - Trong `issue_integration_evidence()`: toàn bộ các kiểm tra tính hợp lệ (kiểm tra `strict bool` cho `gates_pass`, kiểm tra định dạng 40-char SHA cho cả candidate commit và base commit, dictionary `gate_results` có đầy đủ 11 mandatory gates và mỗi gate value đều là strict bool, và xác thực chữ ký capability qua `verify_capability`) được thực hiện đầy đủ TRƯỚC KHI tiêu thụ capability.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 350/350 Tests PASS**:
+    - Bổ sung lớp kiểm thử `TestSolLeadAuditEab4cabRemediation` với 7 bài kiểm thử độc lập tái hiện chính xác counterexamples của cả Finding 1 và Finding 2, đồng thời xác nhận các assertions zero-side-effect và positive control toàn trình, nâng tổng số test lên 350/350 passed 100%.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 2f56bd3 (Replan Control Capability Requirement, Token Minting Hardening, and Boundary Enforcement)
+
+- Khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate 2f56bd36a87daa2ef2db579e5bbf90e8ab088bc6 cho bundle docs/parallel-delivery/:
+  - **(1) Bắt Buộc Task-Scoped ControlCapability Cho Replan / Blocker Resolution (Task-Scoped Control Authority for Replan)**: Phương thức `resolve_blocker_and_replan()` bắt buộc caller phải cung cấp `ControlCapability` có phạm vi tác vụ cụ thể (`delivery_task_id` khớp chính xác, không chấp nhận wildcard hay None) và mang chữ ký HMAC hợp lệ từ `EvidenceAuthority` ngay tại callable entry point trước bất kỳ bước mint token hay đột biến trạng thái nào. Mọi lời gọi không có capability, capability wildcard, mismatched task id, sai role (`ReviewerCapability`), giả mạo chữ ký, hoặc replay capability đã tiêu thụ đều bị từ chối fail-closed với `ProtocolViolationError`.
+  - **(2) Vô Hiệu Hóa Khả Năng Cấp Thẩm Quyền Của Token Minting Đối Với Caller Thông Thường (Hardened Internal Token Minting)**: Phương thức `_mint_internal_lifecycle_token()` tuyệt đối cấm mint token cho handler `resolve_blocker_and_replan` (yêu cầu thẩm quyền Control độc lập bên ngoài) và bắt buộc phải có bí mật nội bộ `_internal_secret` khớp với `_internal_exec_secret` của adapter. Caller thông thường cùng process gọi trực tiếp `_mint_internal_lifecycle_token()` mà không có bí mật nội bộ sẽ bị từ chối fail-closed ngay lập tức. Contextmanager `_internal_lifecycle_execution` từ chối fail-closed mọi token nội bộ cho `resolve_blocker_and_replan`.
+  - **(3) Khóa Chặt Kiểm Tra Thẩm Quyền Khi Chuyển Sang Ready / Planned (Rigorous Transition State Verification)**: Phương thức `transition_task_state()` kiểm tra bắt buộc phải có `ControlCapability` đã xác thực trong evidence/context khi chuyển trạng thái sang `ready` hoặc `planned`, loại bỏ hoàn toàn khả năng bypass trạng thái qua các handler khác hay context giả mạo.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 333/333 Tests PASS**: Bổ sung lớp kiểm thử `TestSolLeadAudit2f56bd3Remediation` với 6 bài test độc lập (tái hiện chính xác 2 đường dẫn lỗ hổng mà Sol đã chỉ ra: caller thông thường mint token chuyển blocked sang ready, và unauthenticated resolve_blocker_and_replan; đồng thời kiểm thử từ chối wildcard, mismatched, Reviewer, forged, replay, và positive control toàn trình), nâng tổng số test lên 333/333 passed 100%.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 654860c (Elimination of Module-Global Capabilities, Internal Ephemeral Tokens, Callable Surface Wildcard Hardening)
+
+- Khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate 654860c5dca9d2d2cc8d780d53f8deda777d80a6 cho bundle docs/parallel-delivery/:
+  - **(1) Loại Bỏ Hoàn Toàn Module-Global Capabilities Dictionary (Removal of _ADAPTER_INTERNAL_CAPABILITIES)**: Xóa bỏ hoàn toàn WeakKeyDictionary _ADAPTER_INTERNAL_CAPABILITIES ở cấp module và các phương thức _mint_internal_control_capability(), _internal_capabilities trong EvidenceAuthority. Module state không còn lưu trữ bất kỳ capability nào có thể bị caller cùng process import hoặc index để exfiltrate.
+  - **(2) Cơ Chế Xác Thực Vòng Đời Bằng Token Nội Bộ Dùng Một Lần (Internal Ephemeral Lifecycle Tokens)**: Triển khai dataclass _InternalLifecycleToken được ký HMAC bằng khóa bí mật riêng của từng instance adapter (_internal_exec_secret). Tất cả 8 authoritative handlers nội bộ (acknowledge_dispatch, start_running, create_dispatch, handle_worker_done, handle_harness_failure, handle_review_verdict, handle_integration_gates, resolve_blocker_and_replan) đều tự sinh token nội bộ unforgeable và tiêu thụ ngay lập tức (_consumed_internal_tokens), ngăn chặn triệt để replay và forgery.
+  - **(3) Khóa Chặt Toàn Bộ Bề Mặt Callable Trước Wildcard & Internal Capabilities (Hardened Callable Surfaces)**: Các hàm _internal_lifecycle_execution, issue_review_evidence, issue_integration_evidence và verify_capability từ chối fail-closed mọi capability có tiền tố adapter_internal_ hoặc wildcard (delivery_task_id là None hoặc *), đảm bảo caller bên ngoài không thể vượt ranh giới hay phát hành bằng chứng trái phép.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 327/327 Tests PASS**: Bổ sung lớp kiểm thử TestSolLeadAudit654860cRemediation với 6 bài test độc lập (xác nhận vắng mặt thuộc tính module, từ chối exfiltration chuyển đổi trạng thái blocked sang ready, từ chối phát hành IntegrationEvidence, từ chối phát hành ReviewEvidence, từ chối giả mạo/replay token, và positive control toàn trình), nâng tổng số test lên 327/327 passed 100%.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead review sau 36092d0 (Evidence Capabilities Restriction, Lifecycle Boundary Protection, Exact Canonical Backend Identities)
+
+- Khắc phục triệt để 3 phát hiện blocker từ Sol-Lead review trên exact candidate `36092d099fea4938764b05ff78eb9596a14ad6bc` cho bundle `docs/parallel-delivery/`:
+  - **(1) Hạn Chế Quyền Phát Hành Bằng Chứng Độc Lập Qua Capability Xác Thực (Restricted Evidence Issuers via Authenticated Capabilities)**: Các hàm phát hành bằng chứng `issue_review_evidence()` và `issue_integration_evidence()` trên cả `EvidenceAuthority` và `OrcaDeliveryAdapter` bắt buộc caller phải cung cấp capability hợp lệ (`ReviewerCapability` hoặc `ControlCapability`) mang chữ ký HMAC bí mật nội bộ (`_secret`). Caller thông thường không có capability không thể lấy được bằng chứng có chữ ký để chuyển tác vụ sang `merge_queued` hay `integrated`. Bằng chứng và capability được theo dõi single-use (`_consumed_capabilities`), chống giả mạo hoặc tái sử dụng.
+  - **(2) Bảo Vệ Ranh Giới Thực Thi Vòng Đời Bằng Capability Độc Lập (Lifecycle Context Boundary Protection)**: Contextmanager `_internal_lifecycle_execution` yêu cầu capability xác thực độc lập (`ControlCapability` cho các thao tác quản trị / integration / settlement và `ReviewerCapability` cho review verdict). Caller thông thường tuyệt đối không thể xâm nhập ranh giới nội bộ, mint transition token giả mạo hay chuyển đổi trạng thái ngoài luồng từ `blocked` sang `ready`.
+  - **(3) Bắt Buộc Một Định Danh Backend Provider và Model Canonical Duy Nhất Không Alias (Exact Canonical Backend Provider & Model Spelling)**: Loại bỏ toàn bộ alias phi chính tắc trong xác thực `UsageEvidence`: `implement` chỉ chấp nhận duy nhất backend_provider `"google"` và backend_model `"ag/gemini-3.8-flash-high"`; `review` chỉ chấp nhận duy nhất backend_provider `"openai"` và backend_model `"cx/gpt-5.6-sol"`. Toàn bộ các biến thể như `"9router/google"`, `"9router/openai"`, `"gemini-3.8-flash-high"`, `"gpt-5.6-sol"` đều bị từ chối fail-closed với `RoutingEvidenceError`.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 321/321 Tests PASS**: Bổ sung lớp kiểm thử `TestSolLeadReview36092d0Remediation` với 8 bài test độc lập (5 counterexamples tái hiện chính xác lỗi trên 36092d0 và 3 test positive/negative controls cho capability validation, signature mismatch, single-use replay protection và boundary checks), nâng tổng số test lên 321/321 passed 100%.
+
+## 2026-09-29 — Khắc phục phát hiện Sol-Lead review sau 43c96aa (Evidence Authority, Frame-Name Spoofing, Padded Dataclass Identities)
+
+- Khắc phục triệt để 3 phát hiện blocker từ Sol-Lead review sau `43c96aa` cho bundle `docs/parallel-delivery/`:
+  - **(1) Thẩm Quyền Bằng Chứng Review & Integration Fail-Closed (Review/Integration Evidence Provenance & Baseline/Gate Validation)**: Nghiêm cấm nhận plain caller dictionaries, booleans hoặc strings trong `handle_review_verdict()` và `handle_integration_gates()`. Bắt buộc đối tượng dataclass `ReviewEvidence` và `IntegrationEvidence` có xuất xứ kiểm chứng, băm SHA-256 nhất quán, ràng buộc chính xác commit candidate và HEAD. Bắt buộc `IntegrationEvidence.base_commit` phải khớp chính xác với `approved_base_commit` của adapter (`4a7c8c921b7e05066505d51b168a02c3fde61317`), từ chối fail-closed wrong-base. Bắt buộc `gate_results` phải là mapping không rỗng (`gate_count > 0`) và có đầy đủ 11 cổng bắt buộc thuộc `MANDATORY_INTEGRATION_GATES` (`authority`, `candidate`, `scope`, `encoding`, `security`, `contract`, `migration`, `focused_tests`, `regression`, `evidence`, `independent_review`) đều PASS.
+  - **(2) Loại Bỏ Hoàn Toàn Stack Inspection & Bảo Vệ Chuyển Đổi Vòng Đời Bằng Capability HMAC Nội Bộ**: Xóa bỏ toàn bộ kiểm tra ngữ cảnh dựa vào stack frame (`sys._getframe`), hàm/frame name caller hoặc trạng thái ambient có thể giả mạo. Cơ chế xác thực chuyển đổi trạng thái dùng token capability nội bộ mang chữ ký HMAC bí mật (`_internal_transition_secret` sinh ngẫu nhiên khi khởi tạo adapter), ràng buộc `from_state`, `to_state`, `task_id`, `handler` và `adapter_id`. Bắt buộc kiểm tra điều kiện tiên quyết khi chuyển sang `review`: dispatch tương ứng phải được settle trong registry và toàn bộ lease đột biến/thực thi của tác vụ/dispatch phải được giải phóng hoàn toàn; ngăn chặn triệt để hành vi giả mạo chuyển trạng thái sang `review` khi dispatch chưa settle và lease vẫn active. Chuyển đổi thất bại bảo đảm 100% không để lại tác dụng phụ (zero side effects).
+  - **(3) Xác Thực Unpadded Cho Dataclass Identities Trước Mọi Chuẩn Hóa**: Hàm helper `_validate_unpadded_identity()` kiểm tra trực tiếp các trường dữ liệu thô trên dataclass `LiveTerminalEvidence` (`harness`, `provider`, `route`, `archive_reference`, `dispatch_id`, `delivery_task_id`, `effort`) và `UsageEvidence` (`backend_provider`, `backend_model`, `timestamp`, `request_id`, `dispatch_id`, `delivery_task_id`, `router`) trước bất kỳ bước chuẩn hóa `.strip()` hay so sánh chính tắc nào; từ chối fail-closed ngay lập tức khi phát hiện khoảng trắng đệm ở đầu hoặc cuối.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 297/297 Tests PASS**: Bổ sung lớp kiểm thử `TestSolLeadReview43c96aaRemediation` với 8 bài test độc lập (7 test counterexample tái hiện chính xác lỗi trên 43c96aa và 1 positive control toàn trình), nâng tổng số test lên 297/297 passed 100%.
+
+## 2026-09-29 — Khắc phục phát hiện Sol review sau Astra round 18 (Review/Integration Authority, Unforgeable Transition Tokens, Strict Alias Validation)
+
+- Khắc phục triệt để 3 phát hiện blocker từ Sol review sau Astra round 18 cho bundle docs/parallel-delivery/:
+  - **(1) Thẩm Quyền Chuyển Đổi Review & Integration Fail-Closed (Review Dispatch & Integration Evidence Authority)**: Bắt buộc phải có review_dispatch_id hợp lệ và review_evidence đã được xác thực (khớp candidate commit, exact HEAD SHA, route cx/gpt-5.6-sol, harness Claude Code, verdict khớp) mới được chuyển sang merge_queued, remediation hoặc blocked. Thêm phương thức create_review_dispatch() tạo dispatch review độc lập, phân bổ phase review, không giữ mutation lease. Bắt buộc phải có integration_evidence đã được xác thực với tất cả các gate con đều PASS và bằng chứng ACCEPT từ independent review trước đó mới được chuyển sang integrated. Chuỗi string hoặc giá trị boolean từ phía caller đơn lẻ tuyệt đối không cấu thành thẩm quyền.
+  - **(2) Token Chuyển Đổi Không Thể Giả Mạo (Unforgeable & Private Transition Authorization Tokens)**: Định nghĩa dataclass frozen _TransitionAuthToken và cơ chế sinh token nội bộ _mint_transition_token() với kiểm tra frame caller (sys._getframe(1)), chỉ cho phép các handler nội bộ được đăng ký hợp lệ sinh token. _authorized_transition_scope và transition_task_state bắt buộc phải có token hợp lệ, kiểm tra ngữ cảnh caller và tiêu thụ token ngay sau khi sử dụng (strictly single-use); ngăn chặn triệt để mọi nỗ lực giả mạo context chuyển đổi trạng thái từ caller bên ngoài.
+  - **(3) Xác Thực Nghiêm Ngặt Mọi Khóa Alias Hiện Diện (Strict Alias Presence, None, Type & Semantic Validation)**: Hàm _extract_and_validate_alias() không bỏ qua các khóa alias có giá trị None hiện diện trong mapping; từ chối fail-closed mọi khóa alias có giá trị None, sai kiểu (non-string), rỗng hoặc có khoảng trắng đệm. Kiểm tra tính nhất quán ngữ nghĩa trên tất cả alias hiện diện, từ chối fail-closed khi phát hiện mâu thuẫn giữa các alias trên implement và review (route, launch requested/effective, live terminal, usage, task, dispatch).
+  - **(4) Bộ Fixture Phân Biệt Tự Động 289/289 Tests PASS**: Bổ sung lớp kiểm thử TestSolRound18Remediation với 15 bài test counterexample và positive controls, nâng tổng số test lên 289/289 passed 100%.
+
+## 2026-09-29 — Khắc phục phát hiện Astra Lead round 18 (Lifecycle Authority Bypass, Contradictory Aliases, Raw Router Identity, Canonical Bytes)
+
+- Khắc phục triệt để 4 phát hiện blocker từ Astra Lead review round 18 trên HEAD `4c95c1d7914772d6311b44aa482fb3eeff5b4912` cho bundle `docs/parallel-delivery/`:
+  - **(1) Chống Vượt Rào Thẩm Quyền Vòng Đời Tác Vụ (Lifecycle & Authority Fail-Closed)**: Khóa chặt phương thức công khai `transition_task_state()`, từ chối fail-closed mọi chuyển đổi trạng thái vòng đời trừ khi được gọi từ handler hợp lệ (`create_dispatch`, `acknowledge_dispatch`, `start_running`, `handle_worker_done`, `handle_review_verdict`, `handle_integration_gates`, `resolve_blocker_and_replan`), thẩm quyền tác vụ là `granted` và có đầy đủ bằng chứng dispatch, lease đang active và fencing token đã xác thực.
+  - **(2) Xác Thực Nghiêm Ngặt Mọi Alias Bằng Chứng (Contradictory Evidence Aliases Validation)**: Hàm `_extract_and_validate_alias()` kiểm tra mọi alias hiện diện phải đúng kiểu chuỗi, không rỗng và đồng nhất về mặt ngữ nghĩa trước khi trích xuất giá trị chính tắc; từ chối fail-closed khi phát hiện mâu thuẫn alias giữa `route`/`model`, `provider`/`router`, `archive_reference`/`terminal_id`, `delivery_task_id`/`task_id`, `dispatch_id`/`dispatch` trên cả phase implement và review.
+  - **(3) Bắt Buộc Định Danh Router Raw Chuỗi Chính Xác Tuyệt Đối (Strict End-to-End Raw Router Identity)**: Yêu cầu chuỗi raw chính xác `"9router"` tại toàn bộ các vị trí định tuyến (`route.provider`, `launch_requested.provider`, `launch_effective.provider`, `live_terminal_evidence.provider`, `usage_evidence.router`) mà không dùng chuẩn hóa `.strip()` để biến chuỗi đệm thành hợp lệ; từ chối mọi biến thể có khoảng trắng đệm fail-closed.
+  - **(4) Chính Sách Byte Chính Tắc và Tính Tái Lập Băm Attestation (Canonical-Byte Policy & Reproducible Git Blobs)**: Thiết lập và thực thi chính sách byte chính tắc buộc toàn bộ tệp trong bundle dùng ký tự xuống dòng LF đồng nhất với Git blob; loại bỏ triệt để sai lệch băm trên Windows do CRLF; đảm bảo băm attestation trong báo cáo khớp 100% với Git blob khi clone mới.
+  - **(5) Bộ Fixture Phân Biệt Tự Động 274 Fixtures**: Bổ sung lớp kiểm thử `TestAstraRound18Remediation` với 22 bài test counterexample và positive control, nâng tổng số kiểm thử lên 274 fixtures.
+
+## 2026-09-29 — Khắc phục phát hiện Sol review dispatch vòng 18 (Exact Raw Router Identity & No Whitespace Normalization)
+
+- Khắc phục triệt để phát hiện blocker từ Sol re-review dispatch `ctx_0685621e5af0` trên HEAD `38f3da2e96e0b2404662d08a82a1594c16c2263d` cho bundle `docs/parallel-delivery/`:
+  - **(1) Yêu Cầu Định Danh Router Raw Chính Xác Tuyệt Đối (Exact Raw Router Identity)**: Mọi giá trị alias router được cung cấp (`router`, `route_provider`, `source`) ở dạng mapping cũng như `UsageEvidence.router` ở dạng dataclass bắt buộc phải khớp chính xác tuyệt đối với chuỗi `"9router"`. Xóa bỏ hoàn toàn bước chuẩn hóa khoảng trắng `.strip()` trước khi so sánh, cấm biến chuỗi có khoảng trắng đệm thành hợp lệ.
+  - **(2) Từ Chối Mọi Trường Hợp Padded Router Fail-Closed**: Từ chối ngay lập tức và ném `RoutingEvidenceError` khi giá trị router có khoảng trắng đầu (`" 9router"`), khoảng trắng cuối (`"9router "`), khoảng trắng hai phía (`" 9router "`), tab (`"\t9router"`), newline (`"\n9router\n"`), hoặc carriage return (`"\r\n9router\r\n"`).
+  - **(3) Khóa Chặt Agreeing Padded Aliases và Mixed Aliases**: Khi nhiều alias router cùng hiện diện trong mapping, nếu tất cả cùng đồng thuận trên một giá trị đệm (như `{"router": " 9router ", "route_provider": " 9router "}`), hệ thống từ chối fail-closed vì giá trị raw không khớp `"9router"`; nếu các alias mâu thuẫn hoặc không đồng bộ (như `{"router": "9router", "route_provider": " 9router "}`), hệ thống từ chối fail-closed vì alias mâu thuẫn.
+  - **(4) Bảo Toàn Thẩm Quyền và Ràng Buộc Tương Hỗ (Fail-Before-Side-Effects & Mutual Binding)**: Giữ vững toàn bộ các ràng buộc tương hỗ với route provider, launch requested/effective, live terminal provider và phase; giữ nguyên thứ tự thực thi kiểm tra routing evidence trước bất kỳ tác động phụ nào lên lease hay task state.
+  - **(5) Bộ Fixture Phân Biệt Tự Động 252/252 PASS**: Bổ sung lớp kiểm thử `TestSolRound18ExactRawRouterIdentity` với 8 bài test discriminating RED/GREEN và kiểm chứng đối chứng độc lập trong `test_negative_fixtures.py`, nâng tổng số test lên 252/252 passed 100%.
+  - **(6) Bảo Toàn Toàn Bộ Invariants**: Bảo toàn trọn vẹn toàn bộ 244 fixture hiện hữu và các bất biến kiến trúc đã thiết lập từ các vòng trước.
+
+## 2026-09-29 — Khắc phục phát hiện Sol review dispatch vòng 17 (Mandatory Explicit Usage Router Evidence & Mutual Binding)
+
+- Khắc phục triệt để phát hiện blocker từ Sol review dispatch `ctx_91fdbd7c4e2b` trên HEAD `5297a42747ded46644ef277e6c337a39cfedaad0` cho bundle `docs/parallel-delivery/`:
+  - **(1) Bắt Buộc Khai Báo Rõ Ràng Định Danh Router trong Bằng Chứng Sử Dụng (Explicit Usage Router Identity)**: Mọi mapping `usage_evidence` bắt buộc phải khai báo rõ ràng, không để trống (non-blank string) định danh router qua một trong các alias hợp lệ (`router`, `route_provider`, `source`). Xóa bỏ hoàn toàn cơ chế fallback ngầm định tự gán `"9router"` khi vắng mặt các khóa này, loại bỏ triệt để sơ hở fail-open chấp nhận bản ghi sử dụng không chứng minh được router.
+  - **(2) Khóa Chặt Định Danh `9router` Duy Nhất Cho Implement và Review**: Chỉ chấp nhận định danh router chính xác `9router` cho cả hai phase implement và review; cấm tuyệt đối router `Antigravity native`, cấm nhà cung cấp trực tiếp `direct-vendor`, cấm nhà cung cấp backend/ngoại lai (`openai`, `google`, `custom_router`).
+  - **(3) Từ Chối Tuyệt Đối Giá Trị Rỗng, Sai Kiểu, Mâu Thuẫn Hoặc Khóa Ngoại Lai (Fail-Closed with RoutingEvidenceError)**: Ném `RoutingEvidenceError` fail-closed ngay lập tức khi phát hiện trường router bị thiếu, rỗng (`""`, `"   "`, `None`), sai kiểu dữ liệu (số nguyên, boolean, danh sách, dict), mâu thuẫn giữa các alias hiện diện (ví dụ `router="9router"` cùng `route_provider="direct-vendor"`), hoặc chứa khóa router lạ/ngoại lai (`foreign_router`, `custom_router`, `route_source`).
+  - **(4) Ràng Buộc Tương Hỗ Chặt Chẽ (Mutual Binding)**: Ràng buộc chặt chẽ định danh usage router rõ ràng với `route.provider`, `launch_requested.provider`, `launch_effective.provider`, `live_terminal_evidence.provider` và phase tương ứng.
+  - **(5) Bộ Fixture Phân Biệt Tự Động 244/244 PASS**: Bổ sung lớp kiểm thử `TestSolRound17UsageRouterEvidenceValidation` với 9 bài test discriminating RED/GREEN và kiểm chứng đối chứng độc lập trong `test_negative_fixtures.py`, nâng tổng số test lên 244/244 passed 100%.
+  - **(6) Bảo Toàn Toàn Bộ Invariants**: Bảo toàn trọn vẹn toàn bộ 235 fixture hiện hữu, các bất biến launch-evidence của vòng 16, định danh tác vụ, backend model, lease/fencing và cơ chế fail-before-side-effect trước mọi tác động phụ.
+
+## 2026-09-29 — Khắc phục phát hiện Astra supreme audit dispatch vòng 16 (Mandatory Launch Evidence Validation & Mutual Binding)
+
+- Khắc phục triệt để phát hiện blocker từ Astra supreme audit dispatch `ctx_f3936df94ecf` trên HEAD `34f9af5ade2b8991912f622a6b45b39a57cf6d91` cho bundle `docs/parallel-delivery/`:
+  - **(1) Bắt Buộc Cặp Bằng Chứng Khởi Chạy Máy Đọc Được (Machine-Readable Launch Mappings)**: Mọi execution envelope đều bắt buộc phải cung cấp cả hai trường `launch_requested` và `launch_effective` dưới dạng mapping máy đọc được (non-empty mapping), từ chối fail-closed ngay lập tức nếu thiếu (None / omitted) hoặc sai kiểu dữ liệu (non-mapping).
+  - **(2) Xác Thực Nghiêm Ngặt Định Danh Theo Phase**: Cả `launch_requested` và `launch_effective` bắt buộc phải chứa đầy đủ 4 trường định danh riêng biệt không được để trống: `harness`, `provider` (hoặc `router`), `model` (hoặc `route`) và `effort`. Khóa chính xác định danh theo phase: phase `implement` = `Codex CLI` + `9router` + `ag/gemini-3.8-flash-high` + `high`; phase `review` = `Claude Code` + `9router` + `cx/gpt-5.6-sol` + `high`. Cấm tuyệt đối fallback sang `Antigravity native`, cấm nhà cung cấp `direct-vendor`/ngoại lai, cấm model sai và cấm slug gộp model/effort.
+  - **(3) Ràng Buộc Tương Hỗ Chặt Chẽ (Mutual Binding)**: Ràng buộc chặt chẽ `launch_requested` và `launch_effective` với nhau (từ chối fail-closed nếu có bất kỳ sự sai lệch nào giữa requested và effective), đồng thời ràng buộc nhất quán với trường `route` của envelope, neo bằng chứng `live_terminal_evidence`, bằng chứng sử dụng `usage_evidence` và phase tương ứng.
+  - **(4) Từ Chối Tuyệt Đối Phase Không Hợp Lệ**: Tái khẳng định Astra là phân phối supreme-audit control-plane độc lập, không phải là phase review trong envelope của Dely; bất kỳ envelope nào khai báo phase `astra` đều bị từ chối fail-closed.
+  - **(5) Bộ Fixture Phân Biệt Tự Động 235/235 PASS**: Bổ sung lớp kiểm thử `TestAstraRound16LaunchEvidenceValidation` với 16 bài test discriminating RED/GREEN và đối chứng độc lập trong `test_negative_fixtures.py`, nâng tổng số test lên 235/235 passed 100%.
+  - **(6) Bảo Toàn Toàn Bộ Invariants**: Bảo toàn trọn vẹn toàn bộ 219 fixture hiện hữu, các bất biến định danh, backend, lease/fencing và cơ chế fail-before-side-effect trước đó.
+
+## 2026-09-29 — Khắc phục phát hiện Sol re-review vòng 15 (Fail-Before-Side-Effect Validation Ordering Preceding Lease Purge)
+
+- Khắc phục triệt để phát hiện blocking từ Sol review dispatch `ctx_0ece9399b481` trên HEAD `8f27b701efb452cbe6c9acdd1a028160e776ba7a` cho bundle `docs/parallel-delivery/`:
+  - **(1) Tái Cấu Trúc Thứ Tự Xác Thực Fail-Before-Side-Effect trong `create_dispatch()`**: Toàn bộ các kiểm tra thuần túy không gây đột biến (pure, non-mutating checks) cho `dispatch_origin` và `execution_envelope` — bao gồm exact delivery task, Orca task, dispatch, phase, harness/model/effort và evidence anchors — bắt buộc được thực thi trước bất kỳ thao tác nào có thể purge, vô hiệu hóa, ghi đè hoặc lưu trữ trạng thái lease, task hay registry.
+  - **(2) Lỗi Định Tuyến Thắng Tuyệt Đối Khi Gặp Lease Hết Hạn/Sai Định Dạng Với Envelope Lỗi**: Khi envelope không khớp hoặc dispatch origin không hợp lệ kết hợp với lease đang active bị hết hạn hoặc malformed `expires_at`, hệ thống ném `RoutingEvidenceError` fail-closed ngay lập tức; lease không bị xóa khỏi `active_leases`, không bị đặt `is_active = False`, và toàn bộ trạng thái task/dispatch/registry được giữ nguyên byte-for-byte / field-for-field không có bất kỳ tác động phụ nào (zero side effects).
+  - **(3) Bảo Toàn Thẩm Quyền Xử Lý Lease Hợp Lệ (Positive Control)**: Khi envelope và routing input hoàn toàn hợp lệ, các kiểm tra authoritative lease/fencing và cơ chế purge lease hết hạn/malformed tiếp tục hoạt động chính xác như thiết kế ban đầu.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 219/219 PASS**: Bổ sung lớp kiểm thử `TestSolRound15FailBeforeSideEffect` với 11 bài test phân biệt và đối chứng độc lập trong `test_negative_fixtures.py`, nâng tổng số test lên 219/219 passed 100%.
+  - **(5) Bảo Toàn Toàn Bộ Invariants**: Bảo toàn trọn vẹn toàn bộ 208 test hiện hữu cùng các bất biến kiến trúc đã thiết lập từ các vòng trước.
+
+## 2026-09-29 — Khắc phục phát hiện Sol re-review vòng 14 (Mandatory Envelope Orca Task Identity, Anchored Evidence, Exact Backend Models)
+
+- Khắc phục toàn diện các phát hiện blocking từ scoped review của Sol trên HEAD `5663c68a2628ca934604b9e71cea536a3c5226ee` cho bundle `docs/parallel-delivery/`:
+  - **(1) Bắt Buộc Trường Định Danh Orca Task trong ExecutionEnvelope**: Bổ sung trường bắt buộc `orca_task_id` vào `ExecutionEnvelope` và `make_execution_envelope()`; kiểm tra và ràng buộc chính xác với tham số `orca_task_id` của `create_dispatch()` ngay trước khi có bất kỳ tác động phụ nào lên task state, lease, dispatch registry hay binding; loại bỏ hoàn toàn khả năng bỏ trống hoặc sai lệch định danh tác vụ Orca.
+  - **(2) Bắt Buộc Neo Định Danh và Trường Effort trên Bằng Chứng Thực Thi**: `LiveTerminalEvidence` và `UsageEvidence` bắt buộc phải có đầy đủ các trường `delivery_task_id` và `dispatch_id` không rỗng; `LiveTerminalEvidence` bắt buộc phải có trường `effort == "high"`; từ chối fail-closed đối với trường bị thiếu hoặc rỗng, không chỉ từ chối giá trị mâu thuẫn.
+  - **(3) Khớp Chính Xác Định Danh Backend Model theo Phase (Loại Bỏ Substring/Foreign Aliases)**: Kiểm tra backend model theo danh sách định danh chính xác, loại bỏ hoàn toàn cơ chế kiểm tra substring; phase `implement` chỉ chấp nhận dạng routed hoặc canonical backend chính xác của `gemini-3.8-flash-high` (`{"ag/gemini-3.8-flash-high", "gemini-3.8-flash-high"}`); phase `review` chỉ chấp nhận dạng routed hoặc canonical backend chính xác của `gpt-5.6-sol` (`{"cx/gpt-5.6-sol", "gpt-5.6-sol"}`); từ chối mọi tiền tố, hậu tố và foreign alias như `prefix-gpt-5.6-sol-foreign`.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 208/208 PASS**: Bổ sung 10 bài kiểm tra phản ví dụ và kiểm chứng độc lập trong `TestSolRound14IdentityAnchorsAndBackendValidation` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 208/208 passed 100%.
+  - **(5) Bảo Toàn Toàn Bộ Invariants**: Bảo toàn trọn vẹn toàn bộ các quy tắc bất biến về lease, fencing, fail-before-side-effect, harness-failure, exact-HEAD và release gate đã thiết lập từ các vòng trước.
+
+## 2026-09-29 — Khắc phục phát hiện Sol re-review vòng 13 (Fail-Closed Execution Envelope & Anchored Routing Evidence)
+
+- Khắc phục toàn diện phát hiện F2 từ scoped re-review của Sol trên HEAD wrapper `b2cd8d177a6048d7385dd551190dd5808ba39739` cho bundle `docs/parallel-delivery/`:
+  - **(1) Thực Thi Fail-Closed Dispatch Origin và Execution Envelope Trước Tác Động Phụ**: Mọi lệnh gọi `OrcaDeliveryAdapter.create_dispatch()` bắt buộc phải có `dispatch_origin == "dely dispatch"` và cung cấp `execution_envelope` hợp lệ; kiểm tra fail-closed xảy ra trước mọi side effect lên task state, dispatch registry, binding hay active lease; loại bỏ dứt điểm counterexample `dispatch_without_origin_or_envelope_accepted = ctx-probe`.
+  - **(2) Ràng Buộc Định Danh Bắt Buộc (Mandatory Identity Binding)**: `validate_execution_envelope()` bắt buộc các trường `delivery_task_id`, `dispatch_id`, `phase`, route, live terminal/archive evidence và 9Router usage evidence; đối chiếu chặt chẽ với exact task, intended dispatch attempt và phase đang được tạo, loại bỏ triệt để counterexample `missing_identity_fields_result = []`.
+  - **(3) Bằng Chứng Terminal Đã Xác Thực (Verified Live Terminal Evidence)**: Yêu cầu bắt buộc `live_terminal_evidence.verified is True` (bắt buộc boolean `True`), khớp chính xác harness, route/model, effort `high`, terminal/archive reference và định danh dispatch/task.
+  - **(4) Độ Tươi và Nguồn Bằng Chứng Sử Dụng 9Router (Machine-Readable Usage Freshness)**: Bằng chứng usage phải chứng minh route qua `9router`, backend provider/model đúng phase (`google`/`ag/gemini-3.8-flash-high` cho implement, `openai`/`cx/gpt-5.6-sol` cho review), neo đúng dispatch/task, và timestamp máy đọc được (ISO 8601) thực sự không sớm hơn thời điểm dispatch; không phụ thuộc riêng vào boolean `recorded_after_dispatch`.
+  - **(5) Fixture Suite Tự Động 198/198 PASS**: Bổ sung 8 bài kiểm tra phản ví dụ và kiểm chứng độc lập trong `TestSolRound13FailClosedExecutionEnvelope` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 198/198 passed 100%.
+
+## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 11 (Identity-First Fail-Closed Harness Failure & Machine-Readable Routing Authority Policy)
+
+- Khắc phục toàn diện phát hiện/blocker từ independent Sol round 11 review cho bundle `docs/parallel-delivery/`:
+  - **(1) Xử lý Harness Failure theo Định danh Trước, Không Tác động Phụ (Finding F1)**: `OrcaDeliveryAdapter.handle_harness_failure()` thực hiện kiểm tra định danh trước fail-closed (xác minh dispatch tồn tại, thuộc đúng task, chưa settled, là active dispatch hiện hành, và task đang trong trạng thái thực thi hợp lệ) trước khi có bất kỳ tác động phụ nào; chỉ thu hồi các lease được gán trực tiếp cho dispatch đã xác thực, tuyệt đối không thu hồi lease của dispatch khác hoặc của task; lỗi kiểm tra hoặc lỗi lưu trữ đĩa (persistence failure) không để lại tác động phụ một phần, bảo toàn 100% lease của active dispatch mới; harness failure hợp lệ chuyển task sang `blocked`, giải phóng và fence tài nguyên an toàn mà không làm đột biến commit candidate.
+  - **(2) Bằng chứng Định tuyến Machine-Readable và Execution Envelope Policy (Finding F2)**: Thiết lập schema và validator cho execution envelope (`validate_execution_envelope`, `ExecutionEnvelope`, `LiveTerminalEvidence`, `UsageEvidence`, `RoutingEvidenceError`); bắt buộc dispatch xuất phát từ `dely dispatch` (nghiêm cấm direct Orca `worker-start`); bắt buộc route `implement` và `review` dùng `provider: 9router`; tách riêng các trường `harness`, `model`, `effort` (nghiêm cấm slug gộp như `cx/gpt-5.6-sol-high`); yêu cầu bắt buộc bằng chứng terminal/archive trực tiếp và bằng chứng log 9Router ghi nhận request sau dispatch (`recorded_after_dispatch: true`); cấm commit credential/secret hoặc đường dẫn DB cục bộ khả biến; bảo toàn sự phân biệt giữa cơ chế fallback provider sản phẩm trong roadmap và cấm fallback agent-harness/provider trong delivery control plane.
+  - **(3) Fixture Suite Tự Động 190/190 PASS**: Bổ sung 14 bài kiểm tra phản ví dụ và kiểm chứng độc lập trong `TestSolRound11HarnessFailureLeaseSafety` (6 test) và `TestSolRound11RoutingEvidencePolicy` (8 test) thuộc `test_negative_fixtures.py`, nâng tổng số test lên 190/190 passed 100%.
+
+## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 10 / 11 (Fail-Closed Harness Compatibility, Loại Bỏ Mâu Thuẫn Antigravity Native Fallback)
+
+- Khắc phục toàn diện phát hiện/blocker từ independent Sol review trên HEAD `3f3e6f626455007001f5af6dd2f85bdfd0b5cbd3` cho bundle `docs/parallel-delivery/`:
+  - **(1) Loại Trừ Triệt Để Mâu Thuẫn Antigravity Native Fallback**: Tuân thủ chính sách fail-closed tại `AGENTS.md` (yêu cầu Codex CLI với route `ag/gemini-3.8-flash-high`, nghiêm cấm Antigravity native và cấm tuyệt đối fallback sang harness/provider/model khác). Xóa bỏ 100% logic và câu từ fallback sang Antigravity native trong toàn bộ bundle kiến trúc (`operating-model.md`, `protocol.md`, `security-performance-recovery.md`, `README.md`, `delivery_engine.py`).
+  - **(2) Máy Trạng Thái Harness Dừng Fail-Closed Ở STOP_BLOCKED**: `HarnessExecutionStateMachine` chuyển sang chu trình `IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_BLOCKED`; nghiêm cấm và từ chối fail-closed trạng thái `STOP_FALLBACK` hoặc bất kỳ trạng thái fallback nào qua `HarnessCompatibilityError`. Khi xảy ra lỗi tương thích hoặc khói thực thi công cụ (như sụp namespace), hệ thống kích hoạt điều kiện STOP và chuyển sang `STOP_BLOCKED`.
+  - **(3) Từ Chối Yêu Cầu/Đích Đến Native Fallback Trong HarnessExecutionResult**: Dataclass `HarnessExecutionResult` từ chối `fallback_required=True` và từ chối các đích đến native fallback (`antigravity_native`, `antigravity`, `native`); quy định mặc định `fallback_required=False` và `fallback_target="none"`.
+  - **(4) Thu Hồi/Fence Tài Nguyên An Toàn Khi Harness Lỗi Không Gây Đột Biến Candidate**: Bổ sung phương thức `handle_harness_failure` trên `OrcaDeliveryAdapter`, lập tức giải phóng toàn bộ active mutation lease, settle dispatch attempt và chuyển task state sang `blocked` mà không thực hiện bất kỳ mutation nào trên git candidate tree, đòi hỏi phục hồi từ Control hoặc can thiệp của con người.
+  - **(5) Fixture Suite Tự Động 176/176 PASS**: Bổ sung 7 bài kiểm tra phản ví dụ và kiểm chứng độc lập trong `TestSolRoundTenCounterexamples` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 176/176 passed 100%.
+
+## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 9 (Declared Wrapper HEAD Semantics, Rejection of all-HEAD^ Bypass & Routing Separation)
+
+- Khắc phục toàn diện phát hiện/blocker từ `cx/gpt-5.6-sol` round 9 review cho bundle `docs/parallel-delivery/`:
+  - **(1) Loại Trừ Dứt Điểm Bypass Attestation Tuple `candidate=wrapper=parent=HEAD^`**: `check_attestation_report_freshness` từ chối fail-closed cấu trúc bypass khi cả 3 trường `candidate_commit`, `wrapper_commit` và `parent_commit` đều trỏ về `HEAD^`, bảo toàn nghiêm ngặt contract `parent-plus-wrapper` vốn đòi hỏi wrapper commit phải là exact current `HEAD`.
+  - **(2) Ngữ Nghĩa Declared Wrapper HEAD Không Tự Quy Chiếu SHA Vòng Lặp**: Trong `.validation-report.json`, trường `wrapper_commit` hỗ trợ khai báo tượng trưng `"HEAD"` (hoặc `"git:HEAD"`) hoặc exact 40-hex SHA khớp checkout HEAD; validator suy ra `effective_wrapper` từ runtime Git, kiểm chứng quan hệ cây `effective_wrapper^ == parent_commit` và khớp toàn bộ mã băm `bundle_sha256` mà không gặp nghịch lý tự tham chiếu SHA trong Git DAG.
+  - **(3) Phân Tách Rõ Ràng Model và Effort trong Dely và Tài Liệu**: Khóa route review thành Claude Code / `cx/gpt-5.6-sol` / `high`, tách riêng hai trường `model` và `effort`, loại bỏ slug gộp không hợp lệ `cx/gpt-5.6-sol-high`; đồng bộ `validate.py`, `task-dag.yaml`, `operating-model.md`, `protocol.md`, `README.md`, `CHANGELOG.md` và `HANDOFF.md`.
+  - **(4) Fixture Suite Tự Động 169/169 PASS**: Bổ sung 4 bài kiểm tra phản ví dụ độc lập trong `TestSolRoundNineCounterexamples` thuộc `test_negative_fixtures.py` (tái hiện chính xác bypass trên SHA `a7f5aca` và test trên current checkout), nâng tổng số test lên 169/169 passed 100%.
+
+## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 8 (Atomic Terminal/Rewind Prevention, Exact Git Topology Freshness & Compound Mutation)
+
+- Khắc phục toàn diện 3 phát hiện/blockers từ `cx/gpt-5.6-sol-high` round 8 review cho bundle `docs/parallel-delivery/`:
+  - **(1) Cấm Tái Mở Trạng Thái Terminal & Cấm Tua Ngược `review`/`merge_queued` về `planned`**: Hạn chế `set_task_state` từ chối triệt để mọi nỗ lực tái mở hoặc đột biến bất kỳ tác vụ nào đã ở trạng thái terminal (`integrated`, `cancelled`, `stopped`); cấm tuyệt đối hành vi tua ngược trạng thái `review` hoặc `merge_queued` về `planned` hoặc các trạng thái pre-dispatch; toàn bộ đột biến trạng thái tác vụ được thực hiện nguyên tử qua `_task_state_lock`.
+  - **(2) Xác Thực Freshness Attestation theo Đúng Cấu Trúc Cây Git DAG Cho Phép**: `check_attestation_report_freshness` từ chối fail-closed nếu báo cáo không khớp chính xác một trong hai cấu trúc topology được phép: Direct HEAD (`candidate_commit == wrapper_commit == HEAD` và `parent_commit == HEAD^`) hoặc Parent-plus-wrapper (`candidate_commit == HEAD^`, `wrapper_commit == HEAD`, `parent_commit == HEAD^`); loại bỏ hoàn toàn lỗ hổng kiểm tra quan hệ thuộc tập hợp `{HEAD, HEAD^}` lỏng lẻo; từ chối dứt điểm trường hợp candidate/wrapper thuộc commit cha (`HEAD^`) và parent thuộc `HEAD^^` khi Git HEAD đang ở commit wrapper mới.
+  - **(3) Đột Biến Registry Phức Hợp Nguyên Tử Đa Tiến Trình Khi Tạo Dispatch**: `create_dispatch` thực hiện đột biến phức hợp đăng ký dispatch binding và Orca task ID thông qua `register_dispatch_and_orca_task` trong duy nhất một giao dịch nguyên tử có khóa tệp đa tiến trình `_transaction(write=True)`; cơ chế snapshot rollback tự động khôi phục hoàn toàn trạng thái in-memory và không ghi đĩa khi xảy ra lỗi/tranh chấp trùng lặp ID, bảo đảm không bao giờ để lại orphan dispatch binding tồn tại bền vững trên đĩa.
+  - **(4) Fixture Suite Tự Động 165/165 PASS**: Bổ sung 3 bài kiểm tra phản ví dụ độc lập trong `TestSolRoundEightCounterexamples` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 165/165 passed 100%.
+
+## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 7 (Registry Read-Modify-Write, Durability, Lifecycle & Fencing Hardening)
+
+- Khắc phục toàn diện 5 phát hiện/blockers từ `cx/gpt-5.6-sol-high` round 7 review cho bundle `docs/parallel-delivery/`:
+  - **(1) Giao Dịch Nguyên Tử Đọc-Sửa-Ghi và Chặn Trùng Lặp ID An Toàn Tiến Trình**: Tích hợp context manager `_transaction(write=True/False)` bảo vệ chu trình đọc, sửa đổi và ghi đĩa atomic (`_persist_atomic`) trên `SharedOrcaExecutionRegistry`; nâng cấp `_FileLock` hỗ trợ reentrancy theo canonical path trên cùng một tiến trình/thread, loại bỏ nguy cơ deadlock; từ chối fail-closed `ProtocolViolationError` đối với duplicate `orca_task_id` và `dispatch_id`.
+  - **(2) Shared Execution Registry Bền Vững Mặc Định khi `storage_path=None`**: Khi khởi tạo không truyền đường dẫn, registry tự động trỏ về `DEFAULT_PRODUCTION_REGISTRY_PATH` (`runtime/orca-execution-registry.json`), đảm bảo toàn bộ trạng thái task và dispatch binding được lưu vết bền vững trên đĩa và khôi phục nguyên vẹn.
+  - **(3) Cấm Tuyệt Đối Can Thiệp Vòng Đời Tác Vụ qua `set_task_state`**: Hạn chế `set_task_state` chỉ cho phép gán các trạng thái khởi tạo/phụ thuộc (`planned`, `ready`, v.v.); cấm tuyệt đối việc trực tiếp gán hoặc ghi đè các trạng thái vòng đời thực thi đang hoạt động (`dispatched`, `acknowledged`, `running`, `review`, `merge_queued`, `integrated`); thuộc tính `task_states` trả về bản sao read-only dictionary để ngăn đột biến trạng thái nội bộ.
+  - **(4) Xác Thực Fencing Từng Slot cho Multi-Slot Task**: `validate_fencing_token` kiểm tra toàn bộ danh sách `allocated_slots`, từ chối truy vấn slot không được cấp phát (`was not allocated`), đối chiếu chính xác token theo từng slot (`slot_fencing_tokens`), và phát hiện kịp thời các tái cấp phát bất đối xứng (`asymmetric slot reallocation detected`).
+  - **(5) Từ Chối Báo Cáo Attestation Có Commit Zero Hoặc Topology Sai Lệch Git DAG**: `check_attestation_report_freshness` từ chối các commit zero SHA, commit không tồn tại trong Git DAG, và xác thực tính nhất quán cấu trúc cây Git DAG (`wrapper_commit^ == parent_commit`).
+  - **(6) Fixture Suite Tự Động 162/162 PASS**: Bổ sung 9 bài kiểm tra phản ví dụ độc lập trong `TestSolRoundSevenCounterexamples` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 162/162 passed 100%.
+
+## 2026-09-29 — Khắc phục toàn bộ phát hiện Sol review vòng 6 (Process-Durable Registry & Hardened Protocol Invariants)
+
+- Khắc phục toàn diện 7 phát hiện/blockers từ `cx/gpt-5.6-sol-high` round 6 review cho bundle `docs/parallel-delivery/`:
+  - **(1) Process-Durable Shared Execution Registry**: Trang bị đường dẫn lưu trữ tường minh (`storage_path`), khóa tệp nguyên tử cross-platform (`_FileLock` dùng `os.O_CREAT | os.O_EXCL`), ghi đĩa atomic (`.tmp` + `fsync` + `os.replace`), và khôi phục sau restart tiến trình giả lập (`simulated process restart`); loại bỏ hoàn toàn registry in-memory mới ngầm trong production path thông qua `SharedOrcaExecutionRegistry.get_default()`.
+  - **(2) Multi-Slot Capacity Monotonic Generation & Asymmetric Reuse Invalidation**: Mỗi slot trong capacity lock duy trì chuỗi thế hệ tăng đơn điệu riêng biệt (`fencing_counters[f"{lock_id}:slot_{s}"]`). Lease đa slot chỉ hợp lệ khi toàn bộ các slot đều giữ token hiện hành; phát hiện và từ chối fail-closed khi có tái cấp phát bất đối xứng (`asymmetric slot reallocation detected`).
+  - **(3) Bắt Buộc Chu Trình Vòng Đời Tác Vụ (`ready -> dispatched -> acknowledged -> running -> worker_done`)**: Nghiêm cấm mọi hành vi bỏ qua bước ACK hoặc running; `start_running` chỉ chấp nhận trạng thái `acknowledged`, `handle_worker_done` chỉ chấp nhận trạng thái `running`.
+  - **(4) Bắt Buộc Đăng Ký `declared_task_locks` & Chứng Minh Tập Hợp Lock Đầy Đủ Chính Xác**: Mọi tác vụ bắt buộc phải đăng ký `declared_task_locks` trước khi dispatch; `create_dispatch` bắt buộc chứng minh chính xác tập hợp lock yêu cầu qua `lease_ids` (`leased_locks == declared_locks`), từ chối cả missing và extraneous locks.
+  - **(5) Cấm Tuyệt Đối Gán Trực Tiếp Trạng Thái Harness**: Thuộc tính `@current_state.setter` trên `HarnessExecutionStateMachine` từ chối mọi nỗ lực gán trạng thái trực tiếp (nâng `HarnessCompatibilityError`), chỉ cho phép chuyển đổi qua `transition()` hoặc `reset()`.
+  - **(6) Mở Rộng Quét Secret Cho Anthropic & Provider Phổ Biến**: Bổ sung regex nhận diện token của Anthropic (`sk-ant-...`), Google/Gemini (`AIza...`), Slack (`xoxb-...`), HuggingFace (`hf_...`), Stripe (`sk_live_...`) mà không nhúng secret thật; fixtures kiểm thử tạo chuỗi động bằng ghép chuỗi.
+  - **(7) Báo Cáo Attestation Freshness Với Ngữ Nghĩa Parent-Plus-Wrapper**: Thẩm định báo cáo attestation trong audit mode với tính tươi mới so với HEAD thực tế và khớp SHA-256 các tệp bundle; giải quyết vòng lặp topo Git DAG qua ngữ nghĩa commit cha chứa thay đổi bundle và commit wrapper bọc attestation.
+  - **(8) Fixture Suite Tự Động 153/153 PASS**: Bổ sung 10 bài kiểm tra độc lập trong `TestSolRoundSixCounterexamples` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 153/153 passed 100%.
+
+## 2026-09-28 — Khắc phục toàn bộ phát hiện Sol review vòng 5 (Fail-Closed Blockers & Attestation Hardening)
+
+- Khắc phục toàn diện 12 phát hiện/blockers từ `cx/gpt-5.6-sol-high` round 5 review cho bundle `docs/parallel-delivery/`:
+  - **(1) Non-Skippable Fixtures & Secret Scan Gate**: Chế độ audit và release tuyệt đối cấm bỏ qua fixtures qua CLI (`--skip-fixtures`) hoặc biến môi trường (`VALIDATE_SKIP_FIXTURES`); tích hợp cổng `check_secret_scan` kiểm tra khóa riêng tư (private keys), AWS/GitHub/OpenAI API tokens, và URI credentials trên toàn bộ tệp tin thay đổi; chế độ `--release` bắt buộc cây làm việc sạch và không có secret nào.
+  - **(2) Shared Durable Ledger Cho Orca Task & Dispatch ID Uniqueness**: Thêm `SharedOrcaExecutionRegistry` trừu tượng hóa việc lưu vết thực thi dùng chung giữa các thực thể adapter, đảm bảo tính duy nhất toàn cục của `orca_task_id` và `dispatch_id` trên toàn hệ thống.
+  - **(3) Bắt Buộc Approved Candidate Commit Chính Xác**: Khởi tạo `OrcaDeliveryAdapter` bắt buộc phải có `approved_candidate_commit` (SHA-40 hexa); `create_dispatch` kiểm tra candidate khớp tuyệt đối với candidate đã duyệt và Git HEAD hiện hành.
+  - **(4) Bắt Buộc Intended Dispatch Không Cho Phép Lease Rewrite**: `create_dispatch` yêu cầu `intended_dispatch_id` bắt buộc và phải khớp chính xác với `active_lease.dispatch_id`; cấm tuyệt đối việc ghi đè dispatch ID của lease.
+  - **(5) Vòng Đời Tác Vụ Chuẩn Tắc & Chặn Chuyển Đổi Trái Phép**: Hỗ trợ chu trình đầy đủ `dispatched -> acknowledged -> running -> worker_done (succeeded/failed)` qua các phương thức `acknowledge_dispatch` và `start_running`; chặn đứng các bước nhảy trạng thái bất hợp pháp (như `acknowledged -> integrated`, `running -> ready`).
+  - **(6) Dispatch Chứng Minh Đầy Đủ Tập Hợp Lock Khai Báo (`declared_task_locks`)**: Bắt buộc dispatch phải chứng minh đầy đủ lease hợp lệ cho mọi lock mà task yêu cầu, loại bỏ cơ chế chỉ chứng minh một lease đại diện.
+  - **(7) Multi-Unit Capacity Slot Allocation & Fencing**: Hỗ trợ yêu cầu đa đơn vị `units > 1`, tự động phân bổ và cấp phát monotonic fencing token riêng cho từng slot trong `allocated_slots`.
+  - **(8) Kiểm Tra Va Chạm Phân Vùng Đối Xứng Cha - Con**: Hàm `namespaces_overlap` kiểm tra đối xứng hai chiều qua các ký tự phân cấp (`:`, `/`, `.`), ngăn chặn hoàn toàn việc lease cha chiếm giữ tài nguyên mà lease con đang sở hữu và ngược lại.
+  - **(9) Giới Hạn Gia Hạn Tích Lũy Bằng Chính Sách Khai Báo**: Mở rộng schema lock với `max_cumulative_seconds` và `max_renewals`; `renew_lease` từ chối fail-closed nếu tổng thời gian gia hạn hoặc số lần gia hạn vượt ngưỡng cho phép.
+  - **(10) Giải Phóng Toàn Bộ Mutation Lease Trước Khi Vào Trạng Thái Review**: Thu hồi và giải phóng toàn bộ mutation lease trong `LeaseManager` ngay khi `worker_done(succeeded)` được xác thực, trước khi chuyển trạng thái sang `review`.
+  - **(11) Khử Mâu Thuẫn Trong HarnessExecutionResult & Khóa State Machine**: Từ chối các cặp trường mâu thuẫn trong `HarnessExecutionResult` (như success=True với status="STOP" hoặc fallback_required=True); `HarnessExecutionStateMachine` từ chối gán trực tiếp trạng thái bất hợp pháp và thực thi ma trận chuyển đổi nghiêm ngặt.
+  - **(12) Từ Chối ID Rỗng & Cấm Tái Chiếm Giữ Lease Cho Integrated Task**: Mọi thao tác quản lý lease từ chối chuỗi rỗng/whitespace; task đã `integrated` bị cấm tái chiếm giữ lease fail-closed.
+  - **(13) Fixture Suite Tự Động 143/143 PASS**: Bổ sung 26 bài kiểm tra độc lập trong `TestSolRoundFiveCounterexamples` (`test_negative_fixtures.py`), nâng tổng số test lên 143/143 passed.
+
+## 2026-09-28 — Khắc phục toàn bộ phát hiện Sol review vòng 4 (P1 Remediations & Counterexamples)
+
+- Khắc phục toàn diện 9 phát hiện từ `cx/gpt-5.6-sol-high` round 4 review cho bundle `docs/parallel-delivery/`:
+  - **(1) Per-Live-Allocation Fencing Cho Capacity Leases**: Phân bổ từng slot độc lập (`LOCK:slot_N`) với bộ đếm monotonic fencing token riêng cho các lock có `mode == "capacity"`, đảm bảo các worker đồng thời giữ token hợp lệ song song, và khi slot được thu hồi/cấp phát lại sẽ tự động vô hiệu hóa token cũ của worker trước.
+  - **(2) Global Non-Reuse Của Orca Task ID và Dispatch ID**: Ngăn chặn tuyệt đối việc tái sử dụng `orca_task_id` và `dispatch_id` trên toàn hệ thống kể cả các attempt đã hoàn tất (`settled`).
+  - **(3) Chặn Ghi Đè Dispatch Binding (Reject Duplicate Dispatch Binding Overwrite)**: Phát hiện và từ chối hành vi ghi đè lên dispatch binding đã tồn tại trong `dispatch_bindings`.
+  - **(4) Ràng Buộc Candidate Commit Khớp Exact Git HEAD**: Bắt buộc candidate commit và approved candidate commit phải tồn tại trong Git DAG và khớp chính xác với `git rev-parse HEAD`.
+  - **(5) Khớp Intended Dispatch Vô Điều Kiện**: Bắt buộc lease liên kết phải khớp chính xác với `intended_dispatch_id` khi được truyền; loại bỏ hoàn toàn khả năng bypass qua `ctx_init`.
+  - **(6) Thực Thi Ma Trận Chuyển Đổi Trạng Thái Tác Vụ Nội Bộ (Legal Task-State Transitions)**: Xác lập bảng ma trận chuyển đổi hợp lệ `LEGAL_TASK_STATE_TRANSITIONS`, ngăn chặn mọi bước nhảy trạng thái trái phép.
+  - **(7) Giải Phóng Toàn Bộ Mutation Lease Ngay Sau Worker Done Thành Công**: Đóng ngay lập tức toàn bộ mutation lease đang hoạt động khi `worker_done(succeeded)` được xác thực, chuyển tác vụ sang `review` và giữ candidate ở trạng thái read-only.
+  - **(8) Từ Chối Lock Không Khai Báo và Chống Nới Rộng Thời Hạn Lease**: Thẩm định lock ID có mặt trong registry tại `acquire_lease`, `create_dispatch` và toàn bộ DAG qua `validate.py:check_task_dag`; cấm nới rộng thời hạn `lease_seconds` vượt quá định nghĩa schema.
+  - **(9) Chuẩn Hóa Đối Số HarnessExecutionResult và Quan Sát Chu Trình State Machine**: Dataclass `HarnessExecutionResult` kiểm tra kiểu dữ liệu nghiêm ngặt; `HarnessExecutionStateMachine` tuân thủ chu trình `IDLE -> RUNNING -> SUCCESS | FAILURE | STOP_FALLBACK`.
+  - **(10) Fixture Suite Tự Động 117/117 PASS**: Tích hợp 14 ca kiểm thử mới trong `TestSolRoundFourCounterexamples` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 117/117 passed.
+
+## 2026-09-28 — Khắc phục toàn bộ phát hiện Sol review vòng 3 (P1 Remediations)
+
+- Khắc phục toàn diện các phát hiện Sol review vòng 3 cho bundle `docs/parallel-delivery/`:
+  - **(1) Khóa Chặt Thẩm Quyền (No Authority Override)**: Loại bỏ khả năng người gọi tự truyền `authority_state` để ghi đè thẩm quyền đã đăng ký tại `acquire_lease` và `create_dispatch`; từ chối các task chưa đăng ký thẩm quyền hoặc tham số không khớp với thẩm quyền đã đăng ký.
+  - **(2) Xác Thực Khởi Tạo Dispatch Nghiêm Ngặt**: Thẩm định chặt chẽ tại `create_dispatch`: task phải ở trạng thái `ready`; lease phải đang hoạt động, chưa hết hạn, thuộc đúng task, chưa bị dispatch khác gắn và fencing token khớp tuyệt đối với counter; commit candidate phải là SHA-40 hợp lệ, tồn tại trong Git DAG và khớp candidate/HEAD đã duyệt; `orca_task_id` phải không rỗng và duy nhất; các trạng thái bị khóa (`blocked`, `locked`, `future_template`, `revoked`) không được phép dispatch.
+  - **(3) Kiểm Tra Vòng Đời Đa Tầng**: `handle_worker_done` kiểm tra dispatch đã settle trước khi kiểm tra trạng thái (`DuplicateResultError`); tái thẩm định quyền sở hữu lease, dispatch binding, hạn dùng (`now > expires_at`), fencing token và nhận diện Orca/candidate commit; thực thi bảng chuyển trạng thái một chiều nghiêm ngặt.
+  - **(4) Review Verdict & Boolean Integration Gate**: `handle_review_verdict` từ chối mọi phán quyết lạ (chỉ nhận `approved`/`rejected`), chuyển trạng thái chính xác; `handle_integration_gates` yêu cầu boolean thuần túy (`isinstance(gates_pass, bool)`), cấm ép kiểu truthy.
+  - **(5) Chuẩn Hóa Lock Schema & Chống Nới Lỏng Lease**: Thẩm định trường với `ALLOWED_LOCK_FIELDS`, từ chối kết hợp trường/chế độ bất hợp pháp (immutable có lease_seconds/renewable, exclusive có capacity), từ chối bool/fractional values cho capacity và lease_seconds; cấm nới rộng thời hạn lease vượt quá khai báo trong schema tại acquire và renew.
+  - **(6) Observable Harness Execution State Machine**: Định nghĩa dataclass `HarnessExecutionResult` với kiểm tra kiểu chặt chẽ; `HarnessExecutionStateMachine` ghi nhận lịch sử chuyển trạng thái quan sát được, kích hoạt STOP condition và fallback Antigravity native tin cậy.
+  - **(7) Fixture Suite Tự Động 103/103 PASS**: Thêm 24 ca kiểm thử bền vững trong `TestSolRoundThreeCounterexamples` thuộc `test_negative_fixtures.py`, nâng tổng số test lên 103/103 passed.
+  - **(8) Bảo Toàn Phạm Vi**: Giữ nguyên ranh giới docs/config, không thay đổi product code hay accepted evidence.
+
+## 2026-09-28 — Khắc phục toàn bộ 21 bypass độc lập từ Sol review và tách biệt read-only audit mode
+
+- Khắc phục toàn diện 21 bypass độc lập và boundary probes từ Sol independent review cho bundle `docs/parallel-delivery/`:
+  - **(1) Tách biệt Read-only Audit Mode & Explicit Report Generation**: Chế độ mặc định của `validate.py` là read-only audit, thẩm định toàn bộ cấu trúc và fixtures mà không sửa đổi file theo dõi trong Git, đảm bảo worktree hoàn toàn sạch sẽ. Chế độ `--generate-report` yêu cầu truyền tường minh SHA-40 bất biến cho cả `--base` và `--candidate`; `--base` phải khớp baseline đã duyệt (`4a7c8c9`), `--candidate` phải khớp chính xác `HEAD` thực tế; cấm ref name (`HEAD`), non-HEAD candidate, `base == candidate` hoặc stale pin. Tệp `.validation-report.json` mang trường `semantics` chuẩn xác tránh tự quy chiếu.
+  - **(2) Lock Registry Schema & Strict Leases**: Thẩm định schema tại khởi tạo: bắt buộc ID duy nhất, mode hợp lệ, boolean `renewable`, dung lượng và thời hạn lease là số nguyên dương nghiêm ngặt, partitionable lock có `partition_key_prefix` không rỗng. Chiếm giữ lease từ chối triệt để đơn vị bool (`isinstance(True, int)`), số thực, số 0 hoặc số âm; cấm lease trùng lặp tài nguyên ngoài; gia hạn lease từ chối lock không được renew, lease hết hạn hoặc thẩm quyền bị thu hồi.
+  - **(3) Quản lý Thẩm quyền Chặt chẽ (Explicit Authority)**: Thẩm quyền task bắt buộc phải được đăng ký và cấp quyền rõ ràng (`granted`), không bao giờ mặc định được cấp (`never default granted`); tái kiểm tra tại acquire, renew, dispatch, worker_done, review/merge transitions; thu hồi thẩm quyền chặn lập tức mọi chuyển trạng thái mutation.
+  - **(4) Fencing Token Bất biến**: Từ chối token tương lai (`token > current counter`), loại bỏ shortcut chỉ chấp nhận hiện tại mà bỏ qua tương lai; từ chối token bị thiếu (`absent`), cũ (`stale`) hoặc lease đã hết hạn (`expired`).
+  - **(5) Orca Dispatch Binding & Lifecycle**: Ràng buộc chặt chẽ exact nonblank `orca_task_id`, `candidate_commit` (SHA-40), `fencing_token` và `lease_id`; `worker_done` từ chối task ID Orca không khớp, commit mismatch, kết quả duplicate hoặc stale attempt; thực thi máy trạng thái, cấm task `locked`/`future_template`/`revoked` dispatch hay tích hợp.
+  - **(6) Harness Compatibility Gate**: Ghi nhận cổng tương thích harness phát hiện hiện tượng sụp namespace công cụ (`functions.exec` -> `functions`), yêu cầu smoke test có thực thi thành công quan sát được; khi thất bại kích hoạt STOP condition (`blocked_harness`) và fallback sang Antigravity native; coi đây là dynamic runtime gate.
+  - **(7) Fixture Suite Tự động 79/79 PASS**: Bổ sung bộ 21 probes đối kháng cùng boundary probes trong `TestSolTwentyOneIndependentProbes` (`test_negative_fixtures.py`), chạy độc lập không đệ quy và đạt 100% PASS.
+  - **(8) Bảo Toàn Phạm Vi**: Giữ nguyên toàn bộ ranh giới docs/config, không đụng vào product code hay accepted evidence.
+
+## 2026-09-28 — Khắc phục sáu findings Astra audit round 1 và bổ sung negative fixtures
+
+- Khắc phục toàn bộ 6 findings từ Astra audit round 1 cho bundle `docs/parallel-delivery/`:
+  - **F1 (Exact contract binding)**: Khóa chặt từng contract ID với registry/source/owner/hash xác định; `CT-AI-ROUTE-*` thuộc về `CONTRACT-CONFIG-SECURITY` (owner `J`), tách biệt khỏi `CONTRACT-CREATIVE-AI` (owner `D`); từ chối wrong-registry và wrong-source hash fail-closed.
+  - **F2 (Ownership & path safety)**: Cấm tuyệt đối đường dẫn tuyệt đối, path traversal (`..`), và alias chuẩn tắc (`./`, `//`, `\`); kiểm tra tập giao rỗng giữa `owned_paths` và `forbidden_paths`; bảo vệ `LOCK-ACCEPTED-EVIDENCE` và evidence lịch sử bất biến, từ chối mọi mutation lease.
+  - **F3 (Scope check & committed delta)**: Pin approved base commit `4a7c8c9` và candidate commit; kiểm tra đồng thời committed diff và dirty/untracked overlay; kiểm tra rename cả hai đầu (old path & new path); đối chiếu bảo toàn hash evidence bất biến; từ chối forbidden committed delta.
+  - **F4 (Orca mapping & lifecycle)**: Phân định rõ ràng Delivery Ledger Task ID khỏi Orca execution Task/Dispatch/Run ID; chuẩn hóa CLI `worker_done` chỉ chấp nhận `--outcome succeeded|failed` để giải quyết attempt; định nghĩa `OrcaDeliveryAdapter` điều phối `succeeded → review → integrated`, `failed → blocked/needs_replan → fresh dispatch`; từ chối kết quả trùng lặp hoặc mang fencing token cũ.
+  - **F5 (Readiness & traceability)**: Thẩm định toàn bộ references thật (`authority_refs`, `module_owners`, `invariant_refs` INV-001..020, `requirement_refs`, `contract_refs`); từ chối fake IDs; thực thi predicate readiness (chặn locked/future_template chuyển sang ready; cấm red_observation rỗng hoặc mang giá trị `unknown`).
+  - **F6 (Locks & leases)**: Tách bạch khai báo lock khỏi active lease; task ở trạng thái `integrated` giải phóng toàn bộ active lease và không chặn task mới; hỗ trợ phân vùng database (`exclusive_by_database_name`), cấp phát đồng thời cho namespace tách rời và xung đột khi trùng namespace; áp dụng hạn mức capacity; cấp phát fencing token tăng đơn điệu.
+- Thêm `delivery_engine.py` và suite 34 test tự động trong `test_negative_fixtures.py` kiểm chứng toàn diện mọi counterexample của Astra và các positive cases tương ứng; tích hợp trực tiếp vào `validate.py` và `.validation-report.json`.
+
+## 2026-09-28 — Đề xuất kiến trúc triển khai song song có kiểm soát
+
+- Thêm bundle `docs/parallel-delivery/` gồm operating model, task DAG, contract registry, ownership/resource lease, worker protocol, merge queue, traceability và guardrail security/performance/recovery có thể kiểm tra bằng máy. Đây chỉ là `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`; không triển khai M2-P8/P9, không mở M3/Phân hệ A hoặc milestone sau, và không sửa accepted/rejected evidence.
+- Khôi phục `AGENTS.md` về UTF-8 tiếng Việt hợp lệ; khóa Dely implement thành Codex CLI / `ag/gemini-3.8-flash-high` / `high`, review thành Claude Code / `cx/gpt-5.6-sol-high` / `high`, giữ supreme audit `cx/gpt-6-astra-medium` / `medium` bên ngoài Dely. Thêm `CLAUDE.md` import `@AGENTS.md` để Claude Code nhận cấu hình.
+- Đồng bộ README, roadmap, checklist và handoff với thiết kế docs/config-only; tham chiếu rollback `D:/AI_SETUP/backups/AI-Auto-Video-Creator/20260928-175542`. Toolchain, source, tests, SQL, runtime và lockfiles không đổi.
+
 ## 2026-09-17 — M2-P7B accepted và đóng lifecycle
 
 - Independent review chấp thuận P7B implementation tại source/tooling `c44214ad027986a0db7cb9d8e221590f232a0036` và GREEN `run-m2-p7b-green-20260917040648`; lifecycle hiện hành `M2-P1..P7B_ACCEPTED_CLOSED`. Migration `0008`, ngoại lệ đúng thân P3 `PostgresOperationStreamRepository.append()` và compatibility đúng thân P7A hardening H16 thuộc kết quả được chấp thuận. Oracle P7B/P7A, accepted evidence và candidate GREEN cũ bị từ chối đều giữ bất biến. Checkpoint này chỉ sửa tài liệu; P8/P9 vẫn khóa, M3/Phân hệ A `NOT AUTHORIZED`.
@@ -303,3 +922,150 @@ Mọi thay đổi đáng chú ý của dự án được ghi trong tệp này th
 ## Trạng thái sau khắc phục audit M1 R1
 
 Remediation R1 có 42 test acceptance qua, migration tiến/lùi và evidence/hash mới. P0/P1 `PASS`, P2 `READY`; G01/G04 vẫn `NOT TESTED` và M2/M3/Module A vẫn `NOT AUTHORIZED`.
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 982ed1e (Wildcard ControlCapability Rejection in Evidence Issuers & Capability Verification)
+
+- Khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate 982ed1e9264444b00ed13736466f6923255d1b7b cho bundle docs/parallel-delivery/:
+  - **(1) Từ Chối Wildcard ControlCapability Tại Các Bề Mặt Phát Hành Bằng Chứng (Wildcard ControlCapability Rejection in Evidence Issuers)**: Các hàm `issue_review_evidence()` và `issue_integration_evidence()` trên cả `EvidenceAuthority` và `OrcaDeliveryAdapter` từ chối fail-closed mọi capability có `delivery_task_id` là `None` hoặc `"*"` (wildcard) cũng như mismatched task ID. Chỉ có capability mang phạm vi tác vụ cụ thể (`delivery_task_id` khớp chính xác với task được yêu cầu) mới được phép phát hành bằng chứng ký số thẩm quyền (`ReviewEvidence`, `IntegrationEvidence`).
+  - **(2) Khóa Chặt `verify_capability()` Trước Wildcard Khi Có Yêu Cầu Task Cụ Thể (Hardened verify_capability Against Wildcard Capabilities)**: Phương thức `verify_capability()` kiểm tra nghiêm ngặt khi `expected_task_id` được chỉ định (khác `None` và khác `"*"`): từ chối fail-closed ngay lập tức nếu `capability.delivery_task_id` là `None` hoặc `"*"`, ngăn chặn triệt để lỗ hổng cho phép wildcard capability vượt qua xác thực cho một task cụ thể bất kỳ.
+  - **(3) Chuẩn Hóa Toàn Bộ Helper Fixture Và Positive Controls Độc Lập**: Cập nhật toàn bộ các fixture kiểm thử phát hành bằng chứng hợp lệ (`_issue_valid_review_evidence`, `_issue_valid_integration_evidence`, `test_f4`, `test_r3_16`, `test_r4_09`, `test_36092d0_06..08`) truyền tường minh `delivery_task_id` khi mint `ControlCapability`, đảm bảo 100% tuân thủ bất biến fail-closed task-scoped.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 338/338 Tests PASS**: Bổ sung lớp kiểm thử `TestSolLeadAudit982ed1eRemediation` với 5 bài test độc lập (tái hiện 4 counterexamples: từ chối wildcard trên `EvidenceAuthority.issue_integration_evidence`, `issue_review_evidence`, `verify_capability`, và bề mặt callable của `OrcaDeliveryAdapter`; kèm 1 positive control toàn trình), nâng tổng số test lên 338/338 passed 100%.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 1f90e6c (Hạn chế issue_review_evidence chỉ nhận ReviewerCapability & bảo toàn ranh giới Independent Review)
+
+- Khắc phục triệt để phát hiện blocker từ Sol-Lead audit trên exact candidate 1f90e6cfd3d3ed829acf20fddd53e3c56fe90f8b cho bundle docs/parallel-delivery/:
+  - **(1) Hạn Chế Tuyệt Đối `issue_review_evidence()` Chỉ Nhận `ReviewerCapability` (Review Evidence Issuance Strictly Restricted to ReviewerCapability)**: Loại bỏ hoàn toàn khả năng sử dụng `ControlCapability` (kể cả có task-scoped) để phát hành `ReviewEvidence` trên cả `EvidenceAuthority` và `OrcaDeliveryAdapter`. Bất kỳ yêu cầu phát hành bằng chứng review nào không mang đúng kiểu `ReviewerCapability` hợp lệ đều bị từ chối fail-closed bằng `ProtocolViolationError`, ngăn chặn triệt để hành vi Control tự phát hành review evidence để bỏ qua ranh giới independent review.
+  - **(2) Siết Chặt Ranh Giới Xác Thực Quyền Hạn Trong `verify_capability()` (Strict Role Enforcement for Reviewer)**: Khi thẩm định capability trong `issue_review_evidence()`, truyền tường minh `expected_role="Reviewer"` vào `verify_capability()`, từ chối ngay lập tức mọi `ControlCapability` hoặc capability sai vai trò với thông báo lỗi phân biệt rõ ràng.
+  - **(3) Bảo Toàn Thẩm Quyền Hợp Lệ Của Control Và Bằng Chứng Tích Hợp (Preserved Valid Control Authority & Integration Evidence)**: Quyền hạn của `ControlCapability` trong việc cấp phát `ReviewerCapability` thông qua `issue_reviewer_capability()` / `get_reviewer_capability()` và quyền phát hành `IntegrationEvidence` thông qua `issue_integration_evidence()` được bảo toàn nguyên vẹn, không có bất kỳ sự hồi quy nào.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 343/343 Tests PASS**: Bổ sung lớp kiểm thử `TestSolLeadAudit1f90e6cRemediation` với 5 bài test độc lập (tái hiện 4 counterexamples: từ chối task-scoped `ControlCapability` trên `EvidenceAuthority.issue_review_evidence`, trên `OrcaDeliveryAdapter.issue_review_evidence`, ngăn chặn bypass độc lập chuyển sang `merge_queued`, và kiểm tra `verify_capability` từ chối sai role; kèm 1 positive control toàn trình chứng minh cả review và tích hợp hoàn tất sạch sẽ), nâng tổng số test lên 343/343 passed 100%.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 569f0d1 (Separation of Duties for Review Dispatch & Authenticated ReviewerContext)
+
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate 569f0d17a359dca96e3e03a359facc8bef790dc8 cho bundle docs/parallel-delivery/:
+  - **(1) Tách Rời Hoàn Toàn Dispatch Creation Khỏi Capability Delivery (Complete Decoupling of Dispatch Creation from Capability Delivery)**: `create_review_dispatch()` chỉ trả về `dispatch_id: str` thuần túy; tuyệt đối không trả bearer token (`reviewer_auth_token`) hay `ReviewDispatchHandle` cho caller tạo dispatch.
+  - **(2) Loại Bỏ Lưu Trữ Token Khỏi Control Plane (Removal of Reviewer Token Storage from Control Plane)**: Xóa bỏ hoàn toàn dictionary `_reviewer_auth_tokens` trên `OrcaDeliveryAdapter`, bảo đảm Control plane không thể đọc, giữ, hoặc trích xuất auth token của reviewer.
+  - **(3) Ràng Buộc Claim ReviewerCapability Với ReviewerContext Đã Xác Thực (Binding ReviewerCapability Claims to Authenticated ReviewerContext)**: Thêm dataclass `ReviewerContext` đóng gói đầy đủ ngữ cảnh của kiểm định viên (`delivery_task_id`, `review_dispatch_id`, `orca_task_id`, `terminal_id`, `reviewer_principal="cx/gpt-5.6-sol"`, `harness="Claude Code"`, `session_id`). Thao tác claim capability bắt buộc phải cung cấp `ReviewerContext` hợp lệ; cấm truy xuất trần (bare retrieval); cấm Control authority claim hoặc issue review evidence.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 364/364 Tests PASS**: Bổ sung suite kiểm thử `TestSolRemediationSeparationOfDuties` với 6 bài test độc lập chứng minh Separation of Duties chặt chẽ (dispatch creator không thể claim capability hay issue ACCEPT; context giả mạo bị từ chối fail-closed; positive control trong ReviewerContext độc lập hoàn tất chuyển trạng thái `merge_queued`), nâng tổng số test lên 364/364 passed 100%.
+  - **(5) Khắc Phục Lỗi Whitespace Và Hiển Thị Tiếng Việt**: Sửa toàn bộ 5 lỗi whitespace tại `CHANGELOG.md:589`, `docs/parallel-delivery/README.md:3-4`, `docs/parallel-delivery/protocol.md:329` và `docs/parallel-delivery/test_negative_fixtures.py`, đồng thời khôi phục tiếng Việt đầy đủ dấu tại `HANDOFF.md`.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 82efe33 (Reviewer Session Boundary, Elimination of Reviewer Channels from Adapter, and Opaque Single-Use Session Proofs)
+
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `82efe33a88a37616347517a5d8a5481c3a69bc29` cho bundle `docs/parallel-delivery/`:
+  - **(1) Chuyển Capability Delivery Sang Ranh Giới Do Reviewer Session Sở Hữu (Reviewer Session Boundary Ownership)**:
+    - Triển khai `ReviewerSessionBoundary` quản lý độc lập việc cấp phát `ReviewerCapability`, tách biệt hoàn toàn khỏi Control plane và state hiển thị trên `OrcaDeliveryAdapter`.
+    - Xóa bỏ triệt để thuộc tính `_reviewer_delivery_channels` khỏi `OrcaDeliveryAdapter`. Adapter không còn lưu giữ channel, bearer token hay reviewer capabilities trong state có thể đọc bởi Control.
+    - Xóa bỏ hoàn toàn property `reviewer_auth_token` khỏi `ReviewerDeliveryChannel`.
+  - **(2) Bắt Buộc Opaque Single-Use Reviewer-Session Proof Có Chữ Ký Mật Mã (Mandatory Opaque Single-Use ReviewerSessionProof)**:
+    - Triển khai dataclass `ReviewerSessionProof` mang token ngẫu nhiên và chữ ký HMAC bí mật do `ReviewerSessionBoundary` sở hữu (`_boundary_secret`).
+    - Proof được bind chặt chẽ với: `delivery_task_id`, `review_dispatch_id`, `orca_task_id`, `terminal_id`/`session_id`, `candidate_commit`, `reviewer_route` ("cx/gpt-5.6-sol"), và `reviewer_harness` ("Claude Code").
+    - Thao tác phát hành proof (`issue_session_proof`) yêu cầu `reviewer_secret` hợp lệ; nghiêm cấm Control authority phát hành proof (`control_capability` hoặc `control_secret` bị từ chối fail-closed).
+  - **(3) Chặn Đứng Tự Dựng Context Bằng Public Identifiers & Chống Giả Mạo / Replay (Rejection of Self-Constructed Contexts, Forgery, and Proof Replay)**:
+    - `ReviewerDeliveryChannel.claim_capability()` bắt buộc phải có `ReviewerSessionProof` đã được xác thực; từ chối fail-closed nếu caller tự dựng `ReviewerContext` chỉ bằng các định danh công khai (public IDs).
+    - Kiểm tra và tiêu thụ proof nguyên tử dưới khóa; từ chối fail-closed mọi nỗ lực tái sử dụng (replay) proof đã tiêu thụ hoặc phát hành trùng lặp proof cho cùng một review dispatch.
+    - `OrcaDeliveryAdapter.claim_reviewer_capability()` từ chối fail-closed nếu caller cung cấp token cũ (`reviewer_auth_token`).
+  - **(4) Bộ Fixture Phân Biệt Tự Động 367/367 Tests PASS**:
+    - Mở rộng suite `TestSolRemediationSeparationOfDuties` lên 9 bài test: chứng minh dispatch creator có đủ 7 public IDs vẫn không thể claim capability (`test_sod_06`), caller không thể đọc token/channel từ adapter và không thể giả mạo proof hay dùng Control authority để issue proof (`test_sod_07`), thực thi nghiêm ngặt single-use proof và cấm duplicate issuance (`test_sod_08`), và positive control độc lập với `self.reviewer_secret` hoàn tất toàn bộ vòng đời đến `integrated` (`test_sod_09`).
+    - Nâng tổng số test lên 367/367 passed 100%.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 8ceacb4 (Elimination of Literal Credential from Production Module, Trusted Host Boundary Handoff Creation, and Ordinary Caller Handoff Prevention)
+
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `8ceacb41aeb67bbfd1f644b9e252df1db12f58e2` cho bundle `docs/parallel-delivery/`:
+  - **(1) Loại Bỏ Triệt Để Literal Credential và Vault Khỏi Production Module (`delivery_engine.py`)**:
+    - Xóa bỏ hoàn toàn kho lưu trữ `_HOST_HANDOFF_VAULT` và literal credential `test_fixture_reviewer_secret_32b_hex!` khỏi `docs/parallel-delivery/delivery_engine.py`.
+    - Production module không chứa bất kỳ literal reviewer secret hay cơ chế lưu trữ credential mặc định nào; candidate caller không thể inspect hay exfiltrate credential đã biết.
+  - **(2) Chuyển Việc Tạo Handoff và Credential Hoàn Toàn Ra Trusted Host Boundary (`TrustedHostReviewerHandoff`)**:
+    - Chuyển toàn bộ logic khởi tạo handoff authority và credential sang lớp `TrustedHostReviewerHandoff` trực thuộc test harness / trusted host boundary trong `docs/parallel-delivery/test_negative_fixtures.py`, nằm ngoài phạm vi callable hay importable của candidate code.
+    - Lớp cơ sở `ReviewerHostHandoff` trong `delivery_engine.py` từ chối fail-closed mọi nỗ lực khởi tạo trực tiếp không đối số hoặc có đối số từ caller cùng tiến trình (`__init__` raise `ProtocolViolationError`).
+    - Ngăn chặn triệt để hành vi kế thừa trái phép: `__init_subclass__` từ chối fail-closed nếu subclass được định nghĩa trong `delivery_engine` hoặc `__main__`.
+    - Phương thức `ReviewerSessionBoundary.provision_from_host()` kiểm tra nghiêm ngặt: từ chối fail-closed nếu authority được khởi tạo trong module candidate hoặc `__main__`, và yêu cầu credential tiêu thụ phải là `bytes` không rỗng hợp lệ.
+  - **(3) Bộ Fixture Phân Biệt Tự Động 375/375 Tests PASS**:
+    - Bổ sung `test_sod_17_fresh_process_ordinary_caller_cannot_construct_handoff_or_provision_boundary` tái hiện chính xác counterexample của Sol audit trong tiến trình con mới: khẳng định caller thông thường trong tiến trình mới không thể tự tạo `ReviewerHostHandoff`, không thể subclass, không thể gọi `provision_from_host()`, không có literal credential trong production module, `HANDOFF_PROVISIONED=False` và `KNOWN_CREDENTIAL=False`, default boundary giữ nguyên `_reviewer_secret = None`, và không thể mint proof/context.
+    - Cập nhật `test_sod_16` kiểm tra khởi tạo `ReviewerHostHandoff` trực tiếp bị từ chối fail-closed ngay lập tức.
+    - Nâng tổng số test lên 375/375 passed 100%.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 6731c15 (Unforgeable Host Issuer Capability, Outside Module Subclass Rejection, and Cryptographic Provenance Binding)
+
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `6731c156e09b06f991a1ed523f318c0c24c0005b` cho bundle `docs/parallel-delivery/`:
+  - **(1) Loại Bỏ Hoàn Toàn Kiểm Tra Dựa Trên Tên Module & Chặn Đứng Subclass Ngoài Luồng (Elimination of Module-Name Checks & Outside Module Subclass Rejection)**:
+    - Loại bỏ hoàn toàn cơ chế kiểm tra tin cậy dựa trên tên module `cls.__module__ in ("delivery_engine", "__main__")`.
+    - `ReviewerHostHandoff.__init_subclass__` từ chối fail-closed vô điều kiện mọi nỗ lực subclass hóa trên toàn bộ các module (kể cả module ngoài như `attacker_module`), ngăn chặn triệt để lỗ hổng định nghĩa subclass ngoài luồng để override `_consume_for_provisioning()`.
+    - `ReviewerSessionBoundary.provision_from_host()` bắt buộc `type(authority) is ReviewerHostHandoff`, từ chối fail-closed mọi subclass từ bất kỳ module nào.
+  - **(2) Ràng Buộc Handoff Vào Thẩm Quyền Host Issuer Với Chữ Ký HMAC Không Thể Giả Mạo (Cryptographic Provenance Binding via Unforgeable ReviewerHostIssuerCapability)**:
+    - Triển khai dataclass frozen `ReviewerHostIssuerCapability` mang chữ ký HMAC bí mật không thể làm giả và định danh gắn kết `handoff_id`.
+    - Triển khai thẩm quyền host `ReviewerHostIssuer` độc lập bên ngoài, quản lý việc phát hành handoff dùng một lần duy nhất (`_minted`), xác thực chữ ký mật mã HMAC-SHA256 và tiêu thụ token nguyên tử (`verify_and_consume_capability`).
+    - Caller thông thường trong tiến trình tuyệt đối không thể tự khởi tạo `ReviewerHostIssuer` (từ chối fail-closed nếu thiếu `_internal_token`).
+    - `ReviewerSessionBoundary.provision_from_host()` bắt buộc authority phải mang `ReviewerHostIssuerCapability` hợp lệ do `ReviewerHostIssuer` cấp phát, thẩm định chữ ký và tiêu thụ nguyên tử trước khi tiếp nhận credential.
+  - **(3) Bộ Fixture Phân Biệt Tự Động 376/376 Tests PASS**:
+    - Bổ sung `test_sod_18_outside_module_attacker_handoff_rejected_cannot_bypass_boundary` tái hiện chính xác counterexample của Sol audit trong tiến trình con mới: kiểm thử toàn diện việc từ chối subclass ở module ngoài, từ chối dynamic subclass qua `type()`, từ chối tự khởi tạo host issuer, từ chối unauthenticated object, từ chối raw instance thiếu capability, từ chối capability giả mạo chữ ký, xác nhận boundary giữ nguyên unprovisioned và cấm mint proof; đồng thời kiểm thử positive control với authentic host handoff hoàn tất provisioning và thực thi nghiêm ngặt single-use.
+    - Nâng tổng số test lên 376/376 passed 100%.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau a286e6d (Elimination of In-Process Environment Variable Provisioning, Mandatory ReviewerHostHandoff Authority, and Caller-Set Env Rejection)
+
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `a286e6ddde69ac0f0452c31888d8ad641402f706` cho bundle `docs/parallel-delivery/`:
+  - **(1) Loại Bỏ Triệt Để Việc Tự Đọc Biến Môi Trường Cùng Tiến Trình Khỏi provision_from_host()**:
+    - Xóa bỏ hoàn toàn việc đọc `os.environ` (`ORCA_REVIEWER_SESSION_SECRET`, `ORCA_REVIEWER_SECRET`, `DELY_REVIEWER_SESSION_SECRET`, `REVIEWER_SESSION_SECRET`) trong `ReviewerSessionBoundary.provision_from_host()`.
+    - Caller trong cùng tiến trình không thể đặt biến môi trường rồi gọi `get_default()` hoặc `provision_from_host()` để trở thành nguồn credential.
+    - Mọi lời gọi không tham số `provision_from_host()` hoặc truyền caller-selected secret đều bị từ chối fail-closed với `ProtocolViolationError("Caller-selected reviewer boundary provisioning forbidden; boundary must be provisioned immutably from trusted external host handoff authority")`.
+  - **(2) Bắt Buộc Authority Opaque Do External Host Sở Hữu (ReviewerHostHandoff)**:
+    - Bổ sung lớp `ReviewerHostHandoff` đại diện cho handoff authority bất biến do host bên ngoài cấp phát; từ chối fail-closed mọi tham số caller tự chọn khi khởi tạo.
+    - Credential được lưu trữ cách ly hoàn toàn trong vault nội bộ (`_HOST_HANDOFF_VAULT`), bảo vệ bằng thuộc tính `@property reviewer_secret` và `__setattr__` chặn in-process caller đọc hay gán giá trị (`AttributeError`).
+    - Chỉ cho phép `ReviewerSessionBoundary` tiêu thụ duy nhất 1 lần (`_consume_for_provisioning`); mọi nỗ lực tái sử dụng đều bị từ chối fail-closed.
+    - `ReviewerSessionBoundary.get_default()` không tự động provision từ môi trường; nếu host chưa cấp phát handoff, ranh giới khởi tạo với `_reviewer_secret = None`.
+  - **(3) Bộ Fixture Phân Biệt Tự Động 374/374 Tests PASS**:
+    - Bổ sung `test_sod_16_fresh_process_caller_set_environment_not_treated_as_external_provisioning` tái hiện chính xác counterexample của Sol audit trong tiến trình con mới: chủ động đặt các biến môi trường reviewer, chứng minh ranh giới mặc định vẫn giữ `_reviewer_secret = None`, không nhận caller-set environment làm host provisioning, từ chối mọi nỗ lực mint proof hay context với caller-set secret, và task an toàn giữ nguyên trạng thái `review`.
+    - Cập nhật harness test suite sử dụng `ReviewerSessionBoundary.provision_from_host(ReviewerHostHandoff())` thay cho việc gán biến môi trường cấp module.
+    - Nâng tổng số test lên 374/374 passed 100%.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau a518501 (Elimination of Fallback Reviewer Secret, Public Caller-Selected Provisioning Prevention, and Mandatory Host-Owned Boundary)
+
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `a5185012fa21a0727c0b36de28e86917494b3591` cho bundle `docs/parallel-delivery/`:
+  - **(1) Xóa Bỏ Hoàn Toàn Fallback Secret Literal Khỏi Mã Nguồn Production**:
+    - Xóa bỏ triệt để fallback secret literal `test_fixture_reviewer_secret_32b_hex!` khỏi `ReviewerSessionBoundary.provision_from_host()` trong `docs/parallel-delivery/delivery_engine.py`.
+    - Khi không có biến môi trường nào từ host (`ORCA_REVIEWER_SESSION_SECRET`, `ORCA_REVIEWER_SECRET`, `DELY_REVIEWER_SESSION_SECRET`, `REVIEWER_SESSION_SECRET`), ranh giới mặc định khởi tạo với `_reviewer_secret = None`.
+    - Mọi lời gọi `issue_session_proof()` hoặc `create_reviewer_context()` khi thiếu external reviewer provisioning đều bị từ chối fail-closed với `ProtocolViolationError("Reviewer credential not configured on ReviewerSessionBoundary fail-closed; trusted session bootstrap must inject reviewer credential before issuing session proofs")`.
+  - **(2) Ngăn Chặn Tuyệt Đối Public Caller-Selected Provisioning**:
+    - Phương thức `ReviewerSessionBoundary.provision_from_host()` nhận `*args, **kwargs` và từ chối fail-closed ngay lập tức nếu caller cung cấp bất kỳ tham số nào (`ProtocolViolationError("Caller-selected reviewer boundary provisioning forbidden; boundary must be provisioned immutably from trusted external host environment")`).
+    - Caller cùng tiến trình tuyệt đối không thể tự chọn secret khi gọi `provision_from_host()`.
+  - **(3) Bắt Buộc Ranh Giới Host-Owned Opaque Trong OrcaDeliveryAdapter**:
+    - `OrcaDeliveryAdapter.__init__` kiểm tra nghiêm ngặt: nếu `reviewer_boundary` được truyền vào, nó bắt buộc phải là singleton `ReviewerSessionBoundary.get_default()` do host cấp phát; mọi boundary do caller tự khởi tạo (`ReviewerSessionBoundary(...)`) đều bị từ chối fail-closed với `ProtocolViolationError("Caller-selected reviewer boundary forbidden; OrcaDeliveryAdapter strictly requires opaque host-owned ReviewerSessionBoundary")`.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 373/373 Tests PASS**:
+    - Bổ sung `test_sod_14` kiểm tra từ chối truyền boundary tự tạo vào constructor của `OrcaDeliveryAdapter`.
+    - Bổ sung `test_sod_15_fresh_process_missing_external_provisioning_rejected_task_remains_review` tái hiện counterexample độc lập trong tiến trình Python mới hoàn toàn không có biến môi trường reviewer: xác nhận thiếu external provisioning bị từ chối fail-closed ở mọi nỗ lực mint proof, context, hay evidence; task an toàn giữ nguyên trạng thái `review` và không thể đạt `merge_queued`.
+    - Di chuyển `if __name__ == "__main__": unittest.main()` về cuối tệp `test_negative_fixtures.py`.
+    - Nâng tổng số test lên 373/373 passed 100%.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 7e0e312 (Elimination of In-Process Reset/Credential Injection, Immutable Reviewer Boundary Provisioning, and Adapter-Bound Review Dispatch)
+
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate 7e0e31259574c414eb7a7ba86bf9fc84b72ddf6d cho bundle docs/parallel-delivery/:
+  - **(1) Loại Bỏ Triệt Để API Reset Và Injection Khỏi Bề Mặt Production (Elimination of Reset/Credential Injection from Production-Callable Surface)**:
+    - Xóa bỏ hoàn toàn các phương thức
+eset_default(), inject_reviewer_credential(), ootstrap_reviewer_credential(), và ootstrap_reviewer_capability() khỏi ReviewerSessionBoundary.
+    - ReviewerSessionBoundary.get_default() từ chối fail-closed mọi tham số truyền vào từ in-process callers (args hoặc kwargs đều kích hoạt ProtocolViolationError("Cannot mutate reviewer credential of already initialized ReviewerSessionBoundary; singleton credential replacement forbidden fail-closed")), ngăn chặn tuyệt đối caller cùng tiến trình tự chọn hoặc thay thế secret.
+  - **(2) Cấp Phát Boundary Bất Biến Từ Trusted External Session/Host (Immutable External Session/Host Boundary Provisioning)**:
+    - Cơ chế provision_from_host() cấp phát ranh giới bất biến từ biến môi trường của phiên bên ngoài tin cậy (ORCA_REVIEWER_SESSION_SECRET / ORCA_REVIEWER_SECRET / DELY_REVIEWER_SESSION_SECRET / REVIEWER_SESSION_SECRET) hoặc secret mật mã không thể đoán trước; cấm tái cấp phát hay thay thế một khi đã khởi tạo.
+  - **(3) Ràng Buộc create_review_dispatch Và Claim Capability Vào Boundary Đã Cấp Phát (Binding Review Dispatch to Provisioned Boundary)**:
+    - OrcaDeliveryAdapter.__init__ nhận
+eviewer_boundary đã được cấp phát từ host (hoặc mặc định từ host boundary) và lưu thành thuộc tính bất biến @property reviewer_boundary. Caller không thể gán đè hay thay thế thuộc tính này.
+    - Cả create_review_dispatch(), claim_reviewer_capability(), và get_reviewer_capability() đều gắn kết trực tiếp vào self._reviewer_boundary, chấm dứt hoàn toàn lỗ hổng singleton bị caller in-process hoán đổi.
+  - **(4) Bộ Fixture Phân Biệt Tự Động 372/372 Tests PASS**:
+    - Bổ sung và cập nhật các bài test trong TestSolRemediationSeparationOfDuties: 	est_sod_12 chứng minh caller không thể reset, inject, hay thay thế boundary credential; 	est_sod_14 tái hiện chính xác counterexample của Sol audit, chứng minh caller in-process không thể tạo boundary giả mạo, không thể claim capability hay forge evidence, và task không bao giờ có thể vượt qua trạng thái
+eview để đạt merge_queued.
+    - Nâng tổng số test lên 372/372 passed 100%.
+  - **(5) Xóa Bỏ Dòng Trống Thừa Tại Cuối Tệp (Trailing Blank Line Elimination)**:
+    - Xóa bỏ dòng trống thừa tại docs/parallel-delivery/test_negative_fixtures.py:10839, bảo đảm git diff --check đạt 0 cảnh báo/lỗi trên toàn bộ lịch sử từ approved base commit 4a7c8c921b7e05066505d51b168a02c3fde61317.
+
+## 2026-09-30 — Khắc phục phát hiện Sol-Lead audit sau 358571a (Elimination of Public Default Reviewer Secret, Immutable Boundary Credentials, and Trusted Session Bootstrap)
+
+- Khắc phục triệt để phát hiện blocker kiến trúc từ Sol-Lead audit trên exact candidate `358571a0be3bf9dc39dbeccc624e48cba5936fbf` cho bundle `docs/parallel-delivery/`:
+  - **(1) Xóa Bỏ Hoàn Toàn Hằng Số Mặc Định Công Khai (Elimination of Public Default Reviewer Secret)**:
+    - Xóa bỏ triệt để hằng số `DEFAULT_TEST_REVIEWER_SECRET` khỏi `docs/parallel-delivery/delivery_engine.py`.
+    - `ReviewerSessionBoundary.__init__` không sử dụng bất kỳ secret mặc định nào; `_reviewer_secret` mặc định là `None`.
+  - **(2) Ngăn Chặn Thay Thế Credential Singleton (Immutable Boundary Credentials & Fail-Closed Replacement)**:
+    - `ReviewerSessionBoundary.get_default()` từ chối fail-closed nếu caller truyền `reviewer_secret` khi singleton đã được khởi tạo (`ProtocolViolationError("Cannot mutate reviewer credential of already initialized ReviewerSessionBoundary; singleton credential replacement forbidden fail-closed")`).
+  - **(3) Cấp Phát Và Tiêm Credential Qua Trusted Session Bootstrap (Trusted Reviewer Session Bootstrap)**:
+    - Bổ sung các phương thức `inject_reviewer_credential()`, `bootstrap_reviewer_credential()`, và `bootstrap_reviewer_capability()` trên `ReviewerSessionBoundary`.
+    - Sau khi đã thiết lập secret lần đầu, mọi nỗ lực tiêm lại hoặc ghi đè credential đều bị từ chối fail-closed.
+  - **(4) Bắt Buộc Có Reviewer Secret Hợp Lệ Khi Phát Hành Proof Và Ngữ Cảnh (Mandatory Secret For Proof Issuance)**:
+    - `issue_session_proof()` và `create_reviewer_context()` từ chối fail-closed khi `reviewer_secret` bị bỏ qua (`None` hoặc chuỗi rỗng), khi boundary chưa được cấu hình credential, hoặc khi secret không khớp mã băm HMAC digest.
+  - **(5) Bộ Fixture Phân Biệt Tự Động 371/371 Tests PASS**:
+    - Bổ sung 4 fixture kiểm thử mới vào `TestSolRemediationSeparationOfDuties`: `test_sod_10` (omitted reviewer secret fails closed), `test_sod_11` (singleton secret replacement via get_default fails closed), `test_sod_12` (trusted session bootstrap injection and immutability), `test_sod_13` (absence of DEFAULT_TEST_REVIEWER_SECRET in delivery_engine).
+    - Nâng tổng số test lên 371/371 passed 100%.

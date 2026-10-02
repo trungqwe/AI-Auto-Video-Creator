@@ -1,0 +1,298 @@
+{
+  "schema_version": "1.0.0",
+  "status": "PASS",
+  "attestation": {
+    "base_commit": "4a7c8c921b7e05066505d51b168a02c3fde61317",
+    "candidate_commit": "f9dae86993112db718f69f4cd1df2727152a572a",
+    "parent_commit": "f9dae86993112db718f69f4cd1df2727152a572a",
+    "wrapper_commit": "HEAD",
+    "candidate_is_actual_head": false,
+    "committed_changes_count": 21,
+    "dirty_overlay_count": 0,
+    "overlay_clean": true,
+    "renames_evaluated_both_ends": true,
+    "semantics": "Committed attestation generated via explicit --generate-report flag under documented parent-plus-wrapper semantics. In Git DAG topology, an artifact inside a commit tree cannot self-reference its own commit hash without circularity; candidate_commit identifies the verified candidate commit/tree baseline against approved base_commit, wrapper_commit identifies the containing HEAD wrapper commit (symbolic 'HEAD' resolved at runtime to checkout HEAD object in Git DAG), and bundle_sha256 attests to exact SHA-256 hashes of all bundle artifacts excluding this report."
+  },
+  "remediations": {
+    "astra_round_1": {
+      "F1_exact_contract_binding": "RESOLVED",
+      "F2_ownership_and_path_safety": "RESOLVED",
+      "F3_scope_and_candidate_delta": "RESOLVED",
+      "F4_orca_mapping_and_lifecycle": "RESOLVED",
+      "F5_readiness_and_traceability": "RESOLVED",
+      "F6_locks_and_leases": "RESOLVED"
+    },
+    "sol_review_blockers": {
+      "1_scope_explicit_candidate_no_stale_ac5bd30": "RESOLVED",
+      "2_lease_manager_comprehensive_invariants": "RESOLVED",
+      "3_orca_delivery_adapter_strict_bindings": "RESOLVED",
+      "4_adversarial_sol_probes_suite": "RESOLVED",
+      "5_harness_compatibility_gate_recorded": "RESOLVED",
+      "6_no_product_code_containment": "RESOLVED"
+    },
+    "sol_round_3": {
+      "1_no_caller_authority_override_at_acquire_and_dispatch": "RESOLVED",
+      "2_strict_dispatch_verification_lease_fencing_candidate_orca_state": "RESOLVED",
+      "3_strict_worker_done_and_review_integration_lifecycle_checks": "RESOLVED",
+      "4_unknown_review_verdicts_reject_strict_bool_integration_gate": "RESOLVED",
+      "5_lock_schema_rejects_unknown_fields_illegal_combinations_duration_broadening": "RESOLVED",
+      "6_strict_harness_execution_results_and_observable_state_machine": "RESOLVED",
+      "7_durable_tests_for_round_3_counterexamples": "RESOLVED"
+    },
+    "sol_round_4": {
+      "1_per_live_allocation_fencing_for_capacity_leases": "RESOLVED",
+      "2_global_non_reuse_orca_task_and_dispatch_ids_settled_included": "RESOLVED",
+      "3_reject_duplicate_dispatch_binding_overwrite": "RESOLVED",
+      "4_require_actual_head_and_exact_candidate_binding": "RESOLVED",
+      "5_require_intended_dispatch_binding_unconditionally": "RESOLVED",
+      "6_enforce_internal_legal_task_state_transitions": "RESOLVED",
+      "7_release_all_mutation_leases_after_worker_done_success": "RESOLVED",
+      "8_reject_undeclared_locks_and_enforce_declared_duration_bounds": "RESOLVED",
+      "9_validate_harness_execution_result_and_state_machine_transitions": "RESOLVED"
+    },
+    "sol_round_5": {
+      "1_non_skippable_fixtures_and_secret_scan_gate": "RESOLVED",
+      "2_shared_durable_registry_task_and_dispatch_id_uniqueness": "RESOLVED",
+      "3_mandatory_exact_approved_candidate_commit_binding": "RESOLVED",
+      "4_mandatory_intended_dispatch_id_without_lease_rewrite": "RESOLVED",
+      "5_normal_and_blocked_orca_lifecycle_transitions": "RESOLVED",
+      "6_dispatch_proves_complete_declared_task_lock_set": "RESOLVED",
+      "7_multi_unit_capacity_reserves_and_fences_every_slot": "RESOLVED",
+      "8_symmetric_partition_namespace_overlap_check": "RESOLVED",
+      "9_cumulative_renewal_enforces_declared_lease_policy": "RESOLVED",
+      "10_worker_done_releases_leases_before_review_state": "RESOLVED",
+      "11_harness_contradiction_rejection_and_state_machine_safety": "RESOLVED",
+      "12_blank_identities_and_integrated_reacquisition_fail_closed": "RESOLVED"
+    },
+    "sol_round_6": {
+      "1_process_durable_shared_execution_registry": "RESOLVED",
+      "2_multi_slot_capacity_fencing_and_asymmetric_reuse": "RESOLVED",
+      "3_mandatory_ready_dispatched_acknowledged_running_worker_done": "RESOLVED",
+      "4_mandatory_declared_task_locks_and_exact_lock_set": "RESOLVED",
+      "5_forbid_direct_harness_state_assignment": "RESOLVED",
+      "6_broadened_secret_scan_anthropic_and_common_providers": "RESOLVED",
+      "7_exact_head_attestation_parent_plus_wrapper_semantics": "RESOLVED"
+    },
+    "sol_round_7": {
+      "1_process_safe_registry_atomic_read_modify_write": "RESOLVED",
+      "2_durable_default_registry_on_disk": "RESOLVED",
+      "3_forbid_lifecycle_bypass_through_set_task_state": "RESOLVED",
+      "4_per_slot_fencing_validation_for_multi_slot_tasks": "RESOLVED",
+      "5_attestation_rejection_of_zero_commits_and_disconnected_wrapper": "RESOLVED"
+    },
+    "sol_round_8": {
+      "1_set_task_state_terminal_and_rewind_rejection": "RESOLVED",
+      "2_exact_allowed_git_topology_attestation_freshness": "RESOLVED",
+      "3_compound_cross_process_atomic_dispatch_registry_mutation": "RESOLVED"
+    },
+    "sol_round_9": {
+      "1_reject_all_head_parent_attestation_bypass": "RESOLVED",
+      "2_declared_wrapper_head_semantics_no_circular_self_reference": "RESOLVED"
+    },
+    "sol_round_10": {
+      "1_forbid_antigravity_native_fallback_fail_closed": "RESOLVED",
+      "2_harness_state_machine_transitions_to_stop_blocked": "RESOLVED",
+      "3_safe_release_and_fencing_without_candidate_mutation": "RESOLVED"
+    },
+    "sol_round_11": {
+      "1_identity_first_fail_closed_harness_failure_release_bound_leases_only": "RESOLVED",
+      "2_machine_readable_routing_evidence_9router_and_execution_envelope": "RESOLVED"
+    },
+    "sol_round_13": {
+      "1_fail_closed_execution_envelope_and_dispatch_origin": "RESOLVED",
+      "2_anchored_identity_binding_live_terminal_and_usage_evidence_freshness": "RESOLVED"
+    },
+    "sol_round_14": {
+      "1_mandatory_execution_envelope_orca_task_identity_binding": "RESOLVED",
+      "2_anchored_live_terminal_and_usage_evidence_identity_and_effort": "RESOLVED",
+      "3_exact_phase_specific_backend_model_identities_no_foreign_substring_aliases": "RESOLVED"
+    },
+    "sol_round_15": {
+      "1_fail_before_side_effect_execution_envelope_validation_precedes_lease_purge": "RESOLVED"
+    },
+    "astra_round_16": {
+      "1_mandatory_launch_requested_and_effective_mappings": "RESOLVED",
+      "2_exact_phase_harness_provider_model_effort_validation": "RESOLVED",
+      "3_requested_effective_route_terminal_usage_mutual_binding": "RESOLVED"
+    },
+    "sol_round_17": {
+      "1_mandatory_explicit_usage_router_evidence_no_implicit_fallback": "RESOLVED",
+      "2_usage_router_exact_9router_and_mutual_binding": "RESOLVED"
+    },
+    "sol_round_18": {
+      "1_exact_raw_router_identity_no_whitespace_normalization": "RESOLVED",
+      "2_padded_router_aliases_rejected_fail_closed": "RESOLVED"
+    },
+    "astra_round_18": {
+      "1_lifecycle_authority_bypass_fail_closed": "RESOLVED",
+      "2_contradictory_evidence_aliases_validation": "RESOLVED",
+      "3_raw_router_identity_strict_end_to_end": "RESOLVED",
+      "4_exact_head_attestation_reproducible_canonical_bytes": "RESOLVED"
+    },
+    "sol_lead_review_da26686": {
+      "1_evidence_provenance_internal_authority_freshness_replay_protection": "RESOLVED",
+      "2_unforgeable_internal_lifecycle_capability_and_authoritative_settlement": "RESOLVED",
+      "3_raw_canonical_spelling_across_all_identity_positions": "RESOLVED"
+    },
+    "sol_lead_review_36092d0": {
+      "1_public_evidence_issuers_restricted_to_authenticated_capabilities": "RESOLVED",
+      "2_internal_lifecycle_execution_boundary_restricted_to_authenticated_capabilities": "RESOLVED",
+      "3_exact_canonical_backend_provider_and_model_spelling_no_aliases": "RESOLVED"
+    },
+    "sol_lead_review_654860c": {
+      "1_module_global_adapter_internal_capabilities_removed": "RESOLVED",
+      "2_internal_wildcard_capability_exfiltration_prevented": "RESOLVED",
+      "3_callable_surfaces_reject_unauthenticated_wildcard_capabilities": "RESOLVED"
+    },
+    "sol_lead_audit_2f56bd3": {
+      "1_independently_authenticated_control_capability_required_for_replan": "RESOLVED",
+      "2_token_minting_unable_to_confer_authority_to_ordinary_callers": "RESOLVED",
+      "3_internal_lifecycle_execution_boundary_hardened_against_bypass": "RESOLVED"
+    },
+    "sol_lead_audit_982ed1e": {
+      "1_wildcard_control_capability_rejected_by_evidence_issuers": "RESOLVED",
+      "2_verify_capability_rejects_wildcard_for_concrete_task": "RESOLVED",
+      "3_discriminating_negative_fixtures_verify_fail_closed_wildcard": "RESOLVED"
+    },
+    "sol_lead_audit_1f90e6c": {
+      "1_control_capability_forbidden_from_issuing_review_evidence": "RESOLVED",
+      "2_independent_review_boundary_strictly_enforces_reviewer_capability": "RESOLVED",
+      "3_discriminating_negative_fixtures_verify_fail_closed_review_issuance": "RESOLVED"
+    },
+    "sol_lead_audit_eab4cab": {
+      "1_unforgeable_reviewer_mint_token_bound_to_authenticated_dispatch": "RESOLVED",
+      "2_control_forbidden_from_issuing_or_retrieving_reviewer_capability": "RESOLVED",
+      "3_zero_side_effect_validation_before_state_mutation_for_review_and_integration": "RESOLVED",
+      "4_discriminating_negative_fixtures_verify_fail_closed_and_zero_side_effects": "RESOLVED"
+    },
+    "sol_lead_audit_a189e50": {
+      "1_reviewer_authenticated_delivery_channel_and_forbidden_bare_retrieval": "RESOLVED",
+      "2_elimination_of_reviewer_mint_secret_attribute_and_duplicate_minting_prevention": "RESOLVED",
+      "3_atomic_verify_and_consume_capability_preventing_concurrent_double_issuance": "RESOLVED",
+      "4_discriminating_negative_and_concurrency_fixtures_verified": "RESOLVED"
+    },
+    "sol_lead_audit_0032962": {
+      "1_host_boundary_ticket_direct_construction_and_subclassing_forbidden_fail_closed": "RESOLVED",
+      "2_cryptographic_capability_hmac_binding_and_freshness_enforced": "RESOLVED",
+      "3_ticket_provenance_verified_against_out_of_process_host_boundary_daemon": "RESOLVED",
+      "4_single_use_ticket_consumption_and_replay_rejection_fail_closed": "RESOLVED",
+      "5_discriminating_forgery_and_replay_negative_fixtures_verified": "RESOLVED"
+    },
+    "sol_lead_audit_d1edb50": {
+      "1_host_boundary_bootstrap_capability_unforgeable_and_direct_construction_forbidden": "RESOLVED",
+      "2_daemon_endpoint_and_authkey_cryptographically_bound_to_host_bootstrap": "RESOLVED",
+      "3_ticket_issuer_requires_authentic_bootstrap_capability_fail_closed": "RESOLVED",
+      "4_provision_channel_verifies_and_consumes_bootstrap_capability_single_use": "RESOLVED",
+      "5_rogue_daemon_and_endpoint_rejected_in_fresh_subprocess_verified": "RESOLVED"
+    },
+    "sol_lead_audit_2798fd6": {
+      "1_complete_elimination_of_private_signing_key_from_repository": "RESOLVED",
+      "2_external_signer_daemon_private_key_custody_out_of_process": "RESOLVED",
+      "3_candidate_reading_entire_repo_cannot_mint_bootstrap_capability": "RESOLVED"
+    },
+    "sol_audit_2eb47f6": {
+      "1_zero_private_key_custody_in_candidate_and_fixture": "RESOLVED",
+      "2_out_of_process_daemon_private_key_isolation": "RESOLVED",
+      "3_opaque_signing_ipc_and_public_only_access": "RESOLVED",
+      "4_caller_signed_envelope_rejected_fail_closed": "RESOLVED",
+      "5_host_issued_signature_verification_and_replay_protection": "RESOLVED"
+    },
+    "sol_audit_a25c80f": {
+      "1_vault_credentials_protected_against_direct_inspection": "RESOLVED",
+      "2_daemon_generic_signing_endpoint_eliminated_fail_closed": "RESOLVED",
+      "3_generic_signing_functions_removed_from_candidate_surface": "RESOLVED",
+      "4_external_producers_construct_and_bind_envelopes_out_of_process": "RESOLVED",
+      "5_verifier_consumes_authentic_external_issued_artifacts_only": "RESOLVED"
+    }
+  },
+  "fixture_stats": {
+    "tests_run": 404,
+    "failures": 0,
+    "errors": 0,
+    "passed": true
+  },
+  "checks": {
+    "yaml_and_task_dag": {
+      "status": "PASS",
+      "errors": []
+    },
+    "registries_and_locks": {
+      "status": "PASS",
+      "errors": []
+    },
+    "lock_and_lease_semantics": {
+      "status": "PASS",
+      "errors": []
+    },
+    "authority": {
+      "status": "PASS",
+      "errors": []
+    },
+    "changed_path_scope": {
+      "status": "PASS",
+      "errors": []
+    },
+    "utf8_and_text": {
+      "status": "PASS",
+      "errors": []
+    },
+    "canonical_bytes": {
+      "status": "PASS",
+      "errors": []
+    },
+    "links": {
+      "status": "PASS",
+      "errors": []
+    },
+    "dely_configuration": {
+      "status": "PASS",
+      "errors": []
+    },
+    "secret_scan": {
+      "status": "PASS",
+      "errors": []
+    },
+    "negative_fixtures_suite": {
+      "status": "PASS",
+      "errors": []
+    }
+  },
+  "changed_paths": [
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "CLAUDE.md",
+    "HANDOFF.md",
+    "README.md",
+    "docs/11-roadmap.md",
+    "docs/12-pre-code-checklist.md",
+    "docs/parallel-delivery/.validation-report.json",
+    "docs/parallel-delivery/README.md",
+    "docs/parallel-delivery/contract-registry.yaml",
+    "docs/parallel-delivery/delivery_engine.py",
+    "docs/parallel-delivery/merge-and-integration.md",
+    "docs/parallel-delivery/operating-model.md",
+    "docs/parallel-delivery/ownership-and-locks.yaml",
+    "docs/parallel-delivery/protocol.md",
+    "docs/parallel-delivery/security-performance-recovery.md",
+    "docs/parallel-delivery/task-dag.yaml",
+    "docs/parallel-delivery/test_host_boundary_harness.py",
+    "docs/parallel-delivery/test_negative_fixtures.py",
+    "docs/parallel-delivery/traceability.md",
+    "docs/parallel-delivery/validate.py"
+  ],
+  "bundle_sha256": {
+    "contract-registry.yaml": "417687b7520f9b0cfc26d7f5a2c0df098581f18ad87ef91c0452356cbb9bfc01",
+    "delivery_engine.py": "b1985b4c120811279fa676db828c5e91759eb6ffcb4e1ae83017bb4552d33f55",
+    "merge-and-integration.md": "8b3d617e4a52c70f72682434b73a33d300f387b83065312351a1543de81deb72",
+    "operating-model.md": "288086ccde6a380f91a3f921334d5fa673d437805478926e44aa6d455a7dd92b",
+    "ownership-and-locks.yaml": "ca060cf8603f0d98370260dadc088d22e63850b7ae324280c2262008b14760c2",
+    "protocol.md": "d485e6131f0ac34c18bcb662581273b7c844ac291f40a14b5de33e6c725ec690",
+    "README.md": "510b4bc47d6a4e7f7f77895d93a1265dbf5835d49c77d00f867b1c087f04ae3f",
+    "security-performance-recovery.md": "951ac4fac152f319a799cbe1ac7185a27906b4a313abf8a76e1e8abeb9b986c5",
+    "task-dag.yaml": "5b3e45b3a52d654cc29800abdb4819746bf9fe0b71548b76cc2f1f0a5254f906",
+    "test_host_boundary_harness.py": "6b0eabaa8178366121b93414419d792184aa8eac5bdef428c14dc752bce426e2",
+    "test_negative_fixtures.py": "89bf2baceb510429d13b8ecf1a484d419e3c1a942477335b51e8fe66107161a7",
+    "traceability.md": "61665d966fba4b72fb82ff2b0fff30833ba83e9025fcc98c301db7cc48977859",
+    "validate.py": "eec5bbeff8e018ecfbaecc640850dcfddd04039c56c085845fafcff5c1a11d55"
+  }
+}

@@ -1,7 +1,31 @@
-# HANDOFF
+# Bàn giao phiên làm việc — Khắc phục Finding Sol-Lead về Contract Registry (Wave/DAG)
 
-- Trạng thái có thẩm quyền: `M2-P1..P7B_ACCEPTED_CLOSED`. Independent review đã chấp thuận implementation P7B; P8/P9 vẫn khóa, M3/Phân hệ A `NOT AUTHORIZED`.
-- Independent review của source `1578d3e38bee60f42d81cef4a395af414752777a` từ chối ACCEPT/CLOSE vì H38 chưa có P1 UoW rollback độc lập, chưa đo sequence `CACHE=1`, H16 chưa chứng minh 16+1 client và mã saturation không thuộc contract; profile chưa khóa đủ 38 tên test. Run `run-m2-p7b-green-20260917024918` giữ nguyên là candidate GREEN lịch sử bị từ chối. Đây không phải behavioral rollback; migration `0008`, P3 fence, cursor/replay/resync và accepted RED vẫn giữ nguyên.
-- P7B accepted source/tooling bất biến: `c44214ad027986a0db7cb9d8e221590f232a0036`. Accepted GREEN: `docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-green-20260917040648`. P7B 5/5, H01–H38 38/38, P7A oracle 4/4 và hardening 36/36, P6 4, P5B 5, P5A 5, P4 9, P3 11, P2 11, P1 11, P0 33, architecture 6, M1 93; mọi suite 0 failed/error/skipped. H16 live HTTPS 16+1 chứng minh `429 RATE_LIMITED`/slot cleanup; H38 chứng minh autocommit, P1 UoW commit và rollback; PostgreSQL `CACHE=1`, max polls=3 khóa trong source profile. Migration `0008`, ngoại lệ đúng thân P3 `append()` và compatibility đúng thân P7A H16 là một phần kết quả P7B accepted. Migration `[1..8] → [1..7] → [1..8]`, EXPLAIN 100.000 rows dùng composite index. Ruff/lock/wheel PASS, mypy không có trong lock; secret scan CLEAN/0; semantic/provenance/hash DAG và tamper-negative PASS.
-- P7A historical accepted source/evidence không đổi; current P7A Behavioral oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035` bất biến. Chỉ thân H16 đổi để bỏ giả định 0007 luôn là migration cuối; H01–H36 identity không đổi. P7B oracle SHA-256 `d83d0f2d808f1b0067d5288ea131ded24d8fc46a16462b5254fd4167f7425738` bất biến.
-- Điểm tiếp tục: chờ checkpoint thiết kế/independent review riêng cho P8; không bắt đầu P8 Behavioral RED, P8 implementation hoặc P9 trong checkpoint docs-only này. Đọc `docs/12-pre-code-checklist.md`, `docs/11-roadmap.md` và `docs/milestones/m2-control-plane/implementation-plan.md` trước khi quyết định tiếp. Accepted/rejected evidence giữ bất biến.
+## Đã quyết định
+
+- Khắc phục triệt để finding của Sol-Lead về sự không tương thích prefix CT-BAT-* trong docs/parallel-delivery/contract-registry.yaml:
+  1. **Khôi phục phạm vi prefix hợp đồng nguồn:** Trả CONTRACT-CONTROL-API-STREAM.id_prefixes về đúng [CT-API-*] như approved base, khớp 100% ID nguồn trong docs/09-contracts/01-control-api-and-stream.md. Tuyệt đối không sửa tệp nguồn để bảo toàn khóa bất biến LOCK-CONTRACT-SOURCE.
+  2. **Chuẩn hóa provenance cho Batches Query Contract:** Cập nhật defining_source của batches_query_contract (CONTRACT-BATCHES-QUERY) trỏ về docs/parallel-delivery/contract-registry.yaml kèm parent_contract_ref: CONTRACT-CONTROL-API-STREAM, định vị chính xác nguồn định nghĩa các endpoint CT-BAT-001..004 thuộc DOC-02.
+  3. **Đồng bộ hóa Inbound Port Module G:** Cập nhật docs/modules/capability-g-orchestration.md phân định rõ cổng nhận lệnh từ CONTRACT-CONTROL-API-STREAM (CT-API-001) và CONTRACT-BATCHES-QUERY (CT-BAT-001).
+- Bằng chứng kiểm thử mục tiêu (Targeted Verification):
+  - Lệnh kiểm tra registry check_registries chuyển từ RED (CONTRACT-CONTROL-API-STREAM: prefix CT-BAT-* matches no source contract) sang GREEN (REGISTRIES_OK, 0 lỗi).
+  - Bộ kiểm tra tĩnh docs/parallel-delivery/validate-docs-plan.py đạt PASS 100% (4/4 nhóm kiểm tra).
+  - git diff --check đạt sạch hoàn toàn, không có lỗi định dạng hay trailing whitespace.
+- Duy trì các chốt an toàn bất biến fail-closed:
+  - M2-P8/P9: Duy trì LOCKED.
+  - M3 và Phân hệ A: Duy trì NOT AUTHORIZED.
+  - Kích hoạt sản xuất: Duy trì PRODUCTION_ACTIVATION_BLOCKED.
+
+## Chưa quyết định
+
+- Chưa cấp quyền implementation hay viết test RED cho Milestone M2-P8, M2-P9 hoặc Milestone M3 / Phân hệ A. Mọi mở rộng thẩm quyền yêu cầu checkpoint độc lập và phê duyệt từ người dùng.
+
+## Tệp cần đọc tiếp
+
+- DAG-implement-plan.md (Kế hoạch tổng thể chiến dịch Bộ 2).
+- docs/parallel-delivery/contract-registry.yaml (Danh mục contracts đã khóa và Batches query).
+- docs/parallel-delivery/validate-docs-plan.py (Script kiểm tra tĩnh đạt PASS 100%).
+- docs/modules/capability-g-orchestration.md (Đặc tả cổng giao tiếp Module G).
+
+## Điểm tiếp tục
+
+- Sol-Lead tiến hành rà soát kỹ thuật độc lập (ACCEPT) và Astra-Lead kiểm toán kiến trúc tối cao (PASS) trên candidate commit mới của worktree DAG-implement-plan.

@@ -27,8 +27,9 @@ Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày
 3. [Roadmap](./docs/11-roadmap.md) — milestone và dependency.
 4. [M2 implementation plan](./docs/milestones/m2-control-plane/implementation-plan.md) — package/gate đang được phép thực hiện.
 5. [M2 toolchain lock](./docs/milestones/m2-control-plane/toolchain-lock.md) — phiên bản bắt buộc.
+6. [Kiến trúc triển khai song song (Bộ 2 Wave/DAG)](./docs/parallel-delivery/README.md) — Kiến trúc phát triển song song theo Wave/DAG (DOC-00..DOC-10), phân định rõ Wave (lộ trình, thẩm quyền) và DAG (thực thi kỹ thuật dựa trên contract freeze và single-writer). Bộ 1 dự phòng được lưu trữ đối chiếu.
 
-Chỉ đọc sâu contracts/ADR được work package hiện tại trích dẫn; không remap toàn bộ dự án nếu `HANDOFF` và tài liệu nguồn sự thật còn nhất quán.
+Bộ parallel delivery mang trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`: nó không mở P8/P9, M3/Phân hệ A hoặc milestone sau. Chỉ đọc sâu contracts/ADR được work package hiện tại trích dẫn; không remap toàn bộ dự án nếu `HANDOFF` và tài liệu nguồn sự thật còn nhất quán.
 
 ## Tài liệu nền
 
