@@ -8,7 +8,7 @@ import io
 import json
 import socket
 import time
-from typing import Dict, Any, Optional, Iterable, Set
+from typing import Dict, Any, Optional, Iterable
 import urllib.error
 from urllib.parse import urlparse
 import urllib.request
@@ -72,18 +72,27 @@ DEFAULT_APPROVED_ENDPOINTS: frozenset[str] = frozenset({
 
 
 class ApprovedEndpointRegistry:
-    """Registry of approved endpoints for AI routing and providers (INV-013 / CT-SEC-001).
+    """Immutable registry of approved endpoints for AI routing and providers (INV-013 / CT-SEC-001).
 
     Enforces fail-closed endpoint validation against approved authorities.
+    Only approved configuration authorities may define endpoints; dynamic or caller-controlled
+    mutations are strictly forbidden.
     """
 
     def __init__(self, initial_endpoints: Optional[Iterable[str]] = None) -> None:
-        self._approved: Set[str] = set()
-        defaults = initial_endpoints if initial_endpoints is not None else DEFAULT_APPROVED_ENDPOINTS
-        for ep in defaults:
-            self.register(ep)
+        if initial_endpoints is not None:
+            normalized_list = [self._normalize(ep) for ep in initial_endpoints]
+            for ep in normalized_list:
+                if ep not in DEFAULT_APPROVED_ENDPOINTS:
+                    raise UnapprovedEndpointError(
+                        f"Endpoint '{ep}' is not within approved authority boundary (fail-closed)"
+                    )
+            self._approved: frozenset[str] = frozenset(normalized_list)
+        else:
+            self._approved = DEFAULT_APPROVED_ENDPOINTS
 
-    def _normalize(self, endpoint: str) -> str:
+    @staticmethod
+    def _normalize(endpoint: str) -> str:
         if not endpoint or not isinstance(endpoint, str):
             raise UnapprovedEndpointError("Endpoint must be a non-empty string")
         clean = endpoint.strip().rstrip("/")
@@ -93,12 +102,13 @@ class ApprovedEndpointRegistry:
         return clean
 
     def register(self, endpoint: str) -> None:
-        """Registers an endpoint into the approved authority registry."""
-        normalized = self._normalize(endpoint)
-        self._approved.add(normalized)
+        """Registration after initialization is strictly prohibited (INV-013 immutable authority)."""
+        raise UnapprovedEndpointError(
+            "ApprovedEndpointRegistry is immutable: dynamic endpoint registration is prohibited"
+        )
 
     def is_approved(self, endpoint: str) -> bool:
-        """Checks if the endpoint is registered."""
+        """Checks if the endpoint is in the immutable approved authority."""
         try:
             normalized = self._normalize(endpoint)
             return normalized in self._approved
@@ -116,7 +126,7 @@ class ApprovedEndpointRegistry:
 
     @property
     def endpoints(self) -> frozenset[str]:
-        return frozenset(self._approved)
+        return self._approved
 
 
 DEFAULT_ENDPOINT_REGISTRY = ApprovedEndpointRegistry()
@@ -139,8 +149,12 @@ class NineRouterHTTPAdapter:
         backoff_factor: float = 0.5,
         registry: Optional[ApprovedEndpointRegistry] = None,
     ) -> None:
-        self._registry = registry if registry is not None else DEFAULT_ENDPOINT_REGISTRY
-        self._base_url = self._registry.validate(base_url)
+        if registry is not None and registry is not DEFAULT_ENDPOINT_REGISTRY:
+            raise UnapprovedEndpointError(
+                "Caller-supplied endpoint registry is rejected: authority is strictly host/configuration-owned (INV-013)"
+            )
+        self._registry = DEFAULT_ENDPOINT_REGISTRY
+        self._bound_endpoint: str = self._registry.validate(base_url)
         self.timeout = timeout
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
@@ -151,11 +165,11 @@ class NineRouterHTTPAdapter:
 
     @property
     def base_url(self) -> str:
-        return self._base_url
+        return self._bound_endpoint
 
-    @base_url.setter
-    def base_url(self, value: str) -> None:
-        self._base_url = self._registry.validate(value)
+    @property
+    def bound_endpoint(self) -> str:
+        return self._bound_endpoint
 
     def call(self, request: AIRequest) -> Dict[str, Any]:
         """Implements ProviderProtocol interface for ProviderRouter integration."""
@@ -171,7 +185,10 @@ class NineRouterHTTPAdapter:
         if not req.config_revision_id or not req.config_revision_id.strip():
             raise MissingConfigProvenanceError("Missing required config_revision_id provenance")
 
-        validated_base = self._registry.validate(self._base_url)
+        validated_base = self._registry.validate(self._bound_endpoint)
+        if validated_base != self._bound_endpoint:
+            raise UnapprovedEndpointError("Endpoint drift detected prior to dispatch (fail-closed)")
+
         url = f"{validated_base}/v1/chat"
         payload_data = json.dumps({"prompt": req.prompt}).encode("utf-8")
 
