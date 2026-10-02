@@ -8,13 +8,16 @@ import io
 import json
 import socket
 import time
+from typing import Dict, Any, Optional, Iterable, Set
 import urllib.error
+from urllib.parse import urlparse
 import urllib.request
-from typing import Dict, Any, Optional
+
 from src.controlplane.config.models import (
     AIRequest,
     AIResponse,
     MissingConfigProvenanceError,
+    RateLimitError,
 )
 
 
@@ -23,14 +26,28 @@ class ProviderHTTPError(Exception):
     pass
 
 
+class ProviderSecurityError(ProviderHTTPError):
+    """Base exception for provider security policy violations."""
+    pass
+
+
+class UnapprovedEndpointError(ProviderSecurityError):
+    """Raised when an unapproved or untrusted endpoint is provided (INV-013 / CT-SEC-001 fail-closed)."""
+    pass
+
+InvalidEndpointError = UnapprovedEndpointError
+
+
 class ProviderTimeoutError(ProviderHTTPError):
     """Raised when an outbound provider HTTP request times out (INV-021)."""
     pass
 
 
-class ProviderRateLimitExceededError(ProviderHTTPError):
+class ProviderRateLimitExceededError(ProviderHTTPError, RateLimitError):
     """Raised when provider returns HTTP 429 and retries are exhausted (INV-021)."""
-    pass
+    def __init__(self, message: str = "Rate limit exceeded after retries", code: int = 429):
+        super().__init__(message)
+        self.code = code
 
 
 class ProviderAuthenticationError(ProviderHTTPError):
@@ -38,11 +55,78 @@ class ProviderAuthenticationError(ProviderHTTPError):
     pass
 
 
+DEFAULT_APPROVED_ENDPOINTS: frozenset[str] = frozenset({
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://mock-9router:8000",
+    "https://localhost:8000",
+    "https://127.0.0.1:8000",
+    "https://mock-9router:8000",
+    "http://localhost",
+    "http://127.0.0.1",
+    "https://localhost",
+    "https://127.0.0.1",
+    "https://localhost:8443",
+    "http://localhost:8443",
+})
+
+
+class ApprovedEndpointRegistry:
+    """Registry of approved endpoints for AI routing and providers (INV-013 / CT-SEC-001).
+
+    Enforces fail-closed endpoint validation against approved authorities.
+    """
+
+    def __init__(self, initial_endpoints: Optional[Iterable[str]] = None) -> None:
+        self._approved: Set[str] = set()
+        defaults = initial_endpoints if initial_endpoints is not None else DEFAULT_APPROVED_ENDPOINTS
+        for ep in defaults:
+            self.register(ep)
+
+    def _normalize(self, endpoint: str) -> str:
+        if not endpoint or not isinstance(endpoint, str):
+            raise UnapprovedEndpointError("Endpoint must be a non-empty string")
+        clean = endpoint.strip().rstrip("/")
+        parsed = urlparse(clean)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise UnapprovedEndpointError(f"Invalid endpoint URI format: '{endpoint}'")
+        return clean
+
+    def register(self, endpoint: str) -> None:
+        """Registers an endpoint into the approved authority registry."""
+        normalized = self._normalize(endpoint)
+        self._approved.add(normalized)
+
+    def is_approved(self, endpoint: str) -> bool:
+        """Checks if the endpoint is registered."""
+        try:
+            normalized = self._normalize(endpoint)
+            return normalized in self._approved
+        except UnapprovedEndpointError:
+            return False
+
+    def validate(self, endpoint: str) -> str:
+        """Validates endpoint against registry; raises UnapprovedEndpointError if not approved (fail-closed)."""
+        normalized = self._normalize(endpoint)
+        if normalized not in self._approved:
+            raise UnapprovedEndpointError(
+                f"Endpoint '{endpoint}' is not in approved endpoint registry (fail-closed)"
+            )
+        return normalized
+
+    @property
+    def endpoints(self) -> frozenset[str]:
+        return frozenset(self._approved)
+
+
+DEFAULT_ENDPOINT_REGISTRY = ApprovedEndpointRegistry()
+
+
 class NineRouterHTTPAdapter:
     """Resilient HTTP client adapter for 9Router with timeout, 429 backoff, and provenance stamping.
 
     Enforces:
-    - INV-013: Route provenance stamping (X-Route-Provenance, X-Config-Revision-ID).
+    - INV-013: Route provenance stamping (X-Route-Provenance, X-Config-Revision-ID) and registry-approved endpoints.
     - INV-021: HTTP timeout handling and 429 exponential backoff with jitter.
     - QR-REL-007: Resilient retry and fail-closed security.
     """
@@ -53,11 +137,30 @@ class NineRouterHTTPAdapter:
         timeout: float = 30.0,
         max_retries: int = 3,
         backoff_factor: float = 0.5,
+        registry: Optional[ApprovedEndpointRegistry] = None,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
+        self._registry = registry if registry is not None else DEFAULT_ENDPOINT_REGISTRY
+        self._base_url = self._registry.validate(base_url)
         self.timeout = timeout
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
+
+    @property
+    def registry(self) -> ApprovedEndpointRegistry:
+        return self._registry
+
+    @property
+    def base_url(self) -> str:
+        return self._base_url
+
+    @base_url.setter
+    def base_url(self, value: str) -> None:
+        self._base_url = self._registry.validate(value)
+
+    def call(self, request: AIRequest) -> Dict[str, Any]:
+        """Implements ProviderProtocol interface for ProviderRouter integration."""
+        response = self.send_request(request)
+        return response.payload
 
     def send_request(
         self,
@@ -68,7 +171,8 @@ class NineRouterHTTPAdapter:
         if not req.config_revision_id or not req.config_revision_id.strip():
             raise MissingConfigProvenanceError("Missing required config_revision_id provenance")
 
-        url = f"{self.base_url}/v1/chat"
+        validated_base = self._registry.validate(self._base_url)
+        url = f"{validated_base}/v1/chat"
         payload_data = json.dumps({"prompt": req.prompt}).encode("utf-8")
 
         headers: Dict[str, str] = {
