@@ -41,9 +41,15 @@ class ProviderRouter:
 
     def _validate_provider_authority(self, provider: ProviderProtocol) -> None:
         """Enforces INV-013 / CT-SEC-001: Validates that provider endpoint is approved in registry (fail-closed)."""
-        endpoint = getattr(provider, "base_url", None) or getattr(provider, "endpoint", None)
-        if endpoint is not None:
-            self.registry.validate(endpoint)
+        if provider is None:
+            raise UnapprovedEndpointError("Provider instance cannot be None (fail-closed)")
+        raw_endpoint = getattr(provider, "base_url", None) or getattr(provider, "endpoint", None)
+        endpoint = raw_endpoint() if callable(raw_endpoint) else raw_endpoint
+        if not endpoint or not isinstance(endpoint, str) or not endpoint.strip():
+            raise UnapprovedEndpointError(
+                f"Provider {provider!r} missing approved endpoint metadata (fail-closed)"
+            )
+        self.registry.validate(endpoint)
 
     @property
     def approved_endpoints(self) -> frozenset[str]:
