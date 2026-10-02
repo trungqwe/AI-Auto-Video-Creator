@@ -7,11 +7,10 @@ class SecretCredential:
     raw_secret: str
 
     def __str__(self) -> str:
-        # Scaffold RED: cố ý để lộ chuỗi thô để phục vụ quan sát RED
-        return self.raw_secret
+        return "[REDACTED]"
 
     def __repr__(self) -> str:
-        return f"SecretCredential(alias={self.alias!r}, raw_secret={self.raw_secret!r})"
+        return f"SecretCredential(alias={self.alias!r}, raw_secret='[REDACTED]')"
 
 class ProviderProtocol(Protocol):
     def call(self, request: Any) -> Dict[str, Any]:
