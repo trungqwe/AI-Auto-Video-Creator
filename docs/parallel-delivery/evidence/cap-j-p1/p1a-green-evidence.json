@@ -1,0 +1,34 @@
+{
+  "task_id": "TASK-CAP-J-P1-A-GREEN",
+  "status": "GREEN_CONFIRMED",
+  "command": "python -m unittest tests.unit.security.test_dpapi_broker.TestDPAPIBroker",
+  "exit_code": 0,
+  "timestamp_utc": "2026-10-02T11:46:14.951122+00:00",
+  "summary": {
+    "tests_run": 3,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0
+  },
+  "oracles": [
+    {
+      "oracle": "Oracle 1 (INV-015 / CT-SEC-002)",
+      "name": "test_dpapi_encrypt_decrypt_roundtrip_and_tamper_protection",
+      "status": "PASS",
+      "observation": "DPAPI ciphertext encrypted natively, decrypted accurately, and tamper modification raises DPAPIDecryptionError"
+    },
+    {
+      "oracle": "Oracle 2 (INV-015)",
+      "name": "test_credential_broker_scoped_lifetime_and_automatic_expiration",
+      "status": "PASS",
+      "observation": "ScopedSecretHandle decrypts secret inside context and raises SecretLifetimeExpiredError when accessed outside scope"
+    },
+    {
+      "oracle": "Oracle 3 (INV-015 / CT-SEC-002)",
+      "name": "test_credential_broker_rejects_unauthorized_or_unknown_alias",
+      "status": "PASS",
+      "observation": "Broker raises UnauthorizedSecretAccessError fail-closed when requested alias is not present in vault"
+    }
+  ],
+  "terminal_output": "...\n----------------------------------------------------------------------\nRan 3 tests in 0.002s\n\nOK\n"
+}
