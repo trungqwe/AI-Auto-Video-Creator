@@ -956,7 +956,7 @@ tasks:
   - id: TASK-CAP-J-P0-GREEN
     milestone: M2
     kind: work_package_slice
-    status: ready
+    status: integrated
     authority:
       state: granted
       scope: minimal_logic_implementation
