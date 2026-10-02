@@ -140,6 +140,10 @@ waves:
       - TASK-CAP-J-PROVIDERS
       - TASK-CAP-J-P0-RED
       - TASK-CAP-J-P0-GREEN
+      - TASK-CAP-J-P1-A-RED
+      - TASK-CAP-J-P1-A-GREEN
+      - TASK-CAP-J-P1-B
+      - TASK-CAP-J-P1-C
   - id: WAVE-2-CONSUMERS
     status: future_template
     admission: exact_frozen_contract_revisions_required
@@ -1032,6 +1036,223 @@ tasks:
         effort: none
         use: disabled_sol_lead_only
     merge_priority: 220
+
+  - id: TASK-CAP-J-P1-A-RED
+    milestone: M2
+    kind: work_package_slice
+    status: ready
+    authority:
+      state: granted
+      scope: scaffold_and_red_tests_only
+      does_not_authorize_descendants: true
+    authority_refs:
+      - DAG_IMPLEMENT_PLAN_CHECKLIST.md:23
+      - docs/modules/capability-j-providers.md
+    depends_on:
+      - task: TASK-CAP-J-P0-GREEN
+        condition: evidence_verified
+    requirement_refs:
+      - QR-SEC-001
+      - QR-REL-007
+    contract_refs:
+      - id: CONTRACT-CONFIG-SECURITY
+        registry: CONTRACT-CONFIG-SECURITY
+        revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+    invariant_refs:
+      - INV-015
+    module_owners:
+      - J
+    owned_paths:
+      - src/controlplane/security/dpapi.py
+      - src/controlplane/security/broker.py
+      - tests/unit/security/test_dpapi_broker.py
+    forbidden_paths:
+      - src/controlplane/config/router.py
+      - tests/unit/security/test_provider_routing.py
+      - "src/creative/**"
+      - "src/render/**"
+      - "src/ingestion/**"
+      - "src/catalog/**"
+      - "src/voice/**"
+      - "src/main.py"
+      - "src/controlplane/api/main.py"
+      - "docs/09-contracts/**"
+      - "docs/milestones/**/evidence/**"
+    resource_locks:
+      - LOCK-SRC-CONFIG-SECURITY
+    runtime_prerequisites:
+      - python
+      - unittest
+    acceptance:
+      - requirement: Exact 3 test cases fail with behavioral RED (0 syntax/import errors).
+        instrument: tests.unit.security.test_dpapi_broker.TestDPAPIBroker
+        counterexample: DPAPI plaintext leak or broker access violation.
+        red_observation: "Ran 3 tests: FAILED (failures=3, errors=0, skips=0)."
+        limitations: Scaffold only, business logic deferred to P1-A-GREEN.
+    evidence_outputs:
+      - docs/parallel-delivery/evidence/cap-j-p1/p1a-red-evidence.json
+    rollback:
+      strategy: revert_task_commit
+      reference: docs/11-roadmap.md
+      preserves_accepted_evidence: true
+    route:
+      control:
+        model: cx/gpt-6.1-sol
+      implement:
+        provider: 9router
+        harness: Codex CLI
+        model: ag/gemini-3.8-flash-high
+        effort: high
+      review:
+        provider: 9router
+        harness: Claude Code
+        model: cx/gpt-6.1-sol
+        effort: high
+      supreme_audit:
+        model: none
+        effort: none
+        use: disabled_sol_lead_only
+    merge_priority: 230
+
+  - id: TASK-CAP-J-P1-A-GREEN
+    milestone: M2
+    kind: work_package_slice
+    status: planned
+    authority:
+      state: future_template
+      scope: minimal_logic_implementation
+      does_not_authorize_descendants: true
+    authority_refs:
+      - DAG_IMPLEMENT_PLAN_CHECKLIST.md:23
+      - docs/modules/capability-j-providers.md
+    depends_on:
+      - task: TASK-CAP-J-P1-A-RED
+        condition: evidence_verified
+    requirement_refs:
+      - QR-SEC-001
+      - QR-REL-007
+    contract_refs:
+      - id: CONTRACT-CONFIG-SECURITY
+        registry: CONTRACT-CONFIG-SECURITY
+        revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+    invariant_refs:
+      - INV-015
+    module_owners:
+      - J
+    owned_paths:
+      - src/controlplane/security/dpapi.py
+      - src/controlplane/security/broker.py
+    forbidden_paths:
+      - tests/unit/security/test_dpapi_broker.py
+      - src/controlplane/config/router.py
+      - tests/unit/security/test_provider_routing.py
+      - "src/creative/**"
+      - "src/render/**"
+      - "src/ingestion/**"
+      - "src/catalog/**"
+      - "src/voice/**"
+      - "src/main.py"
+      - "src/controlplane/api/main.py"
+      - "docs/09-contracts/**"
+      - "docs/milestones/**/evidence/**"
+    resource_locks:
+      - LOCK-SRC-CONFIG-SECURITY
+    runtime_prerequisites:
+      - python
+      - unittest
+    acceptance:
+      - requirement: Exact 3 test cases pass with 100% GREEN.
+        instrument: tests.unit.security.test_dpapi_broker.TestDPAPIBroker
+        counterexample: DPAPI plaintext leak or broker access violation.
+        red_observation: "Ran 3 tests: OK (0 failures, 0 errors, 0 skips)."
+    evidence_outputs:
+      - docs/parallel-delivery/evidence/cap-j-p1/p1a-green-evidence.json
+    rollback:
+      strategy: revert_task_commit
+      reference: docs/11-roadmap.md
+      preserves_accepted_evidence: true
+    route:
+      control:
+        model: cx/gpt-6.1-sol
+      implement:
+        provider: 9router
+        harness: Codex CLI
+        model: ag/gemini-3.8-flash-high
+        effort: high
+      review:
+        provider: 9router
+        harness: Claude Code
+        model: cx/gpt-6.1-sol
+        effort: high
+      supreme_audit:
+        model: none
+        effort: none
+        use: disabled_sol_lead_only
+    merge_priority: 240
+
+  - id: TASK-CAP-J-P1-B
+    milestone: M2
+    kind: work_package_slice
+    status: planned
+    authority:
+      state: future_template
+      scope: http_client_and_router_adapter
+      does_not_authorize_descendants: true
+    authority_refs:
+      - docs/modules/capability-j-providers.md
+    depends_on:
+      - task: TASK-CAP-J-P1-A-GREEN
+        condition: evidence_verified
+    requirement_refs:
+      - QR-REL-007
+    contract_refs:
+      - id: CONTRACT-CONFIG-SECURITY
+        registry: CONTRACT-CONFIG-SECURITY
+        revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+    invariant_refs:
+      - INV-013
+      - INV-021
+    module_owners:
+      - J
+    owned_paths:
+      - src/controlplane/config/router.py
+      - src/controlplane/config/adapter.py
+    forbidden_paths:
+      - "src/creative/**"
+    resource_locks:
+      - LOCK-SRC-CONFIG-SECURITY
+    merge_priority: 250
+
+  - id: TASK-CAP-J-P1-C
+    milestone: M2
+    kind: work_package_slice
+    status: planned
+    authority:
+      state: future_template
+      scope: cost_and_quota_accounting
+      does_not_authorize_descendants: true
+    authority_refs:
+      - docs/modules/capability-j-providers.md
+    depends_on:
+      - task: TASK-CAP-J-P1-B
+        condition: evidence_verified
+    requirement_refs:
+      - QR-COST-001
+    contract_refs:
+      - id: CONTRACT-CONFIG-SECURITY
+        registry: CONTRACT-CONFIG-SECURITY
+        revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+    invariant_refs:
+      - INV-013
+    module_owners:
+      - J
+    owned_paths:
+      - src/controlplane/config/accounting.py
+    forbidden_paths:
+      - "src/creative/**"
+    resource_locks:
+      - LOCK-SRC-CONFIG-SECURITY
+    merge_priority: 260
 
 single_writer_restrictions:
   composition_root:
