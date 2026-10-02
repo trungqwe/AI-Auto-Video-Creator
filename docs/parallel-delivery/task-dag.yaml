@@ -874,7 +874,7 @@ tasks:
   - id: TASK-CAP-J-P0-RED
     milestone: M2
     kind: work_package_slice
-    status: ready
+    status: integrated
     authority:
       state: granted
       scope: scaffold_and_red_tests_only
@@ -956,9 +956,9 @@ tasks:
   - id: TASK-CAP-J-P0-GREEN
     milestone: M2
     kind: work_package_slice
-    status: planned
+    status: ready
     authority:
-      state: future_template
+      state: granted
       scope: minimal_logic_implementation
       does_not_authorize_descendants: true
     authority_refs:
@@ -981,10 +981,13 @@ tasks:
     module_owners:
       - J
     owned_paths:
+      - src/controlplane/security/interfaces.py
       - src/controlplane/security/sanitizer.py
       - src/controlplane/config/router.py
       - docs/modules/capability-j-providers.md
     forbidden_paths:
+      - tests/unit/security/test_provider_routing.py
+      - src/controlplane/config/models.py
       - "src/creative/**"
       - "src/render/**"
       - "src/ingestion/**"
