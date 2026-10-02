@@ -1,0 +1,34 @@
+{
+    "task_id":  "TASK-CAP-J-P0-RED",
+    "status":  "RED_CONFIRMED",
+    "command":  "python -m unittest tests.unit.security.test_provider_routing.TestProviderRouting",
+    "exit_code":  1,
+    "timestamp_utc":  "2026-10-02T09:53:00.9476525Z",
+    "summary":  {
+                    "tests_run":  3,
+                    "failures":  3,
+                    "errors":  0,
+                    "skips":  0
+                },
+    "oracles":  [
+                    {
+                        "oracle":  "Oracle 1 (INV-015 / CT-SEC-001)",
+                        "name":  "test_secret_credential_never_exposes_raw_value_in_string_or_log",
+                        "status":  "FAIL",
+                        "expected_failure_reason":  "SecretCredential and sanitize_for_log exposed raw secret (assertNotIn failed)"
+                    },
+                    {
+                        "oracle":  "Oracle 2 (INV-013 / CT-AI-ROUTE-001)",
+                        "name":  "test_provider_router_automatically_fallbacks_on_http_429",
+                        "status":  "FAIL",
+                        "expected_failure_reason":  "Router did not catch RateLimitError and fallback to secondary"
+                    },
+                    {
+                        "oracle":  "Oracle 3 (INV-021 / CT-CFG-001)",
+                        "name":  "test_ai_dispatch_rejects_request_without_config_provenance",
+                        "status":  "FAIL",
+                        "expected_failure_reason":  "Router did not validate config_revision_id and raise MissingConfigProvenanceError"
+                    }
+                ],
+    "terminal_output":  "FFF\r\n======================================================================\r\nFAIL: test_ai_dispatch_rejects_request_without_config_provenance (tests.unit.security.test_provider_routing.TestProviderRouting.test_ai_dispatch_rejects_request_without_config_provenance)\r\nOracle 3 (INV-021 / CT-CFG-001): T\\u1eeb ch\\u1ed1i fail-closed n\\u1ebfu thi\\u1ebfu config_revision_id.\r\n----------------------------------------------------------------------\r\nTraceback (most recent call last):\r\n  File \"C:\\Users\\Admin\\orca\\workspaces\\AI-Auto-Video-Creator\\wave1-cap-j-p0\\tests\\unit\\security\\test_provider_routing.py\", line 65, in test_ai_dispatch_rejects_request_without_config_provenance\r\n    with self.assertRaises(MissingConfigProvenanceError):\r\n         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\nAssertionError: MissingConfigProvenanceError not raised\r\n\r\n======================================================================\r\nFAIL: test_provider_router_automatically_fallbacks_on_http_429 (tests.unit.security.test_provider_routing.TestProviderRouting.test_provider_router_automatically_fallbacks_on_http_429)\r\nOracle 2 (INV-013 / CT-AI-ROUTE-001): T\\u1ef1 \\u0111\\u1ed9ng fallback sang secondary khi g\\u1eb7p HTTP 429.\r\n----------------------------------------------------------------------\r\nTraceback (most recent call last):\r\n  File \"C:\\Users\\Admin\\orca\\workspaces\\AI-Auto-Video-Creator\\wave1-cap-j-p0\\tests\\unit\\security\\test_provider_routing.py\", line 52, in test_provider_router_automatically_fallbacks_on_http_429\r\n    resp = router.dispatch(req)\r\n  File \"C:\\Users\\Admin\\orca\\workspaces\\AI-Auto-Video-Creator\\wave1-cap-j-p0\\src\\controlplane\\config\\router.py\", line 11, in dispatch\r\n    raw_res = self.primary.call(req)\r\n  File \"C:\\Users\\Admin\\orca\\workspaces\\AI-Auto-Video-Creator\\wave1-cap-j-p0\\tests\\unit\\security\\test_provider_routing.py\", line 18, in call\r\n    raise RateLimitError(429, \"Primary rate limit reached\")\r\nsrc.controlplane.config.models.RateLimitError: Primary rate limit reached\r\n\r\nDuring handling of the above exception, another exception occurred:\r\n\r\nTraceback (most recent call last):\r\n  File \"C:\\Users\\Admin\\orca\\workspaces\\AI-Auto-Video-Creator\\wave1-cap-j-p0\\tests\\unit\\security\\test_provider_routing.py\", line 54, in test_provider_router_automatically_fallbacks_on_http_429\r\n    self.fail(f\"Router failed to catch 429 and fallback; propagated error: {e}\")\r\n    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\nAssertionError: Router failed to catch 429 and fallback; propagated error: Primary rate limit reached\r\n\r\n======================================================================\r\nFAIL: test_secret_credential_never_exposes_raw_value_in_string_or_log (tests.unit.security.test_provider_routing.TestProviderRouting.test_secret_credential_never_exposes_raw_value_in_string_or_log)\r\nOracle 1 (INV-015 / CT-SEC-001): Secret ph\\u1ea3i \\u0111\\u01b0\\u1ee3c che gi\\u1ea5u trong str, repr v� sanitizer.\r\n----------------------------------------------------------------------\r\nTraceback (most recent call last):\r\n  File \"C:\\Users\\Admin\\orca\\workspaces\\AI-Auto-Video-Creator\\wave1-cap-j-p0\\tests\\unit\\security\\test_provider_routing.py\", line 37, in test_secret_credential_never_exposes_raw_value_in_string_or_log\r\n    self.assertNotIn(raw_token, masked_str)\r\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\r\nAssertionError: \u0027SECRET_ORACLE_KEY_9999_EXPLICIT\u0027 unexpectedly found in \u0027SECRET_ORACLE_KEY_9999_EXPLICIT\u0027\r\n\r\n----------------------------------------------------------------------\r\nRan 3 tests in 0.001s\r\n\r\nFAILED (failures=3)"
+}

@@ -22,6 +22,7 @@ Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày
 
 Đọc theo thứ tự:
 
+0. [Bản đồ toàn cảnh hệ thống & Định hướng kiến trúc](./GLOBAL_ARCHITECTURE_AND_WORKSPACE_MAP.md) — Phân định 3 thư mục trên ổ D, ranh giới Bộ 1 vs Bộ 2, quy tắc an toàn cho mọi LLM/Agent.
 1. [HANDOFF.md](./HANDOFF.md) — trạng thái ngắn của phiên gần nhất.
 2. [Checklist trước code](./docs/12-pre-code-checklist.md) — quyền và gate hiện hành.
 3. [Roadmap](./docs/11-roadmap.md) — milestone và dependency.

@@ -1,0 +1,34 @@
+{
+    "task_id": "TASK-CAP-J-P1-A-RED",
+    "status": "RED_CONFIRMED",
+    "command": "python -m unittest tests.unit.security.test_dpapi_broker.TestDPAPIBroker",
+    "exit_code": 1,
+    "timestamp_utc": "2026-10-02T11:34:09.375315+00:00",
+    "summary": {
+        "tests_run": 3,
+        "failures": 3,
+        "errors": 0,
+        "skips": 0
+    },
+    "oracles": [
+        {
+            "oracle": "Oracle 1 (INV-015 / CT-SEC-002)",
+            "name": "test_dpapi_encrypt_decrypt_roundtrip_and_tamper_protection",
+            "status": "FAIL",
+            "expected_failure_reason": "Scaffold dpapi_encrypt returned raw plaintext identical to input"
+        },
+        {
+            "oracle": "Oracle 2 (INV-015)",
+            "name": "test_credential_broker_scoped_lifetime_and_automatic_expiration",
+            "status": "FAIL",
+            "expected_failure_reason": "Scaffold ScopedSecretHandle returned dummy token and did not enforce expiration"
+        },
+        {
+            "oracle": "Oracle 3 (INV-015 / CT-SEC-002)",
+            "name": "test_credential_broker_rejects_unauthorized_or_unknown_alias",
+            "status": "FAIL",
+            "expected_failure_reason": "Broker did not validate alias against vault and raise UnauthorizedSecretAccessError"
+        }
+    ],
+    "terminal_output": "FFF\n======================================================================\nFAIL: test_credential_broker_rejects_unauthorized_or_unknown_alias (tests.unit.security.test_dpapi_broker.TestDPAPIBroker.test_credential_broker_rejects_unauthorized_or_unknown_alias)\nOracle 3 (INV-015 / CT-SEC-002): T\\u1eeb ch\\u1ed1i fail-closed khi yêu c\\u1ea7u secret alias không t\\u1ed3n t\\u1ea1i.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"C:\\Users\\Admin\\orca\\workspaces\\AI-Auto-Video-Creator\\wave1-cap-j-p0\\tests\\unit\\security\\test_dpapi_broker.py\", line 69, in test_credential_broker_rejects_unauthorized_or_unknown_alias\n    with self.assertRaises(UnauthorizedSecretAccessError):\n         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: UnauthorizedSecretAccessError not raised\n\n======================================================================\nFAIL: test_credential_broker_scoped_lifetime_and_automatic_expiration (tests.unit.security.test_dpapi_broker.TestDPAPIBroker.test_credential_broker_scoped_lifetime_and_automatic_expiration)\nOracle 2 (INV-015): Secret handle ch\\u1ec9 có giá tr\\u1ecb trong context manager và h\\u1ebft h\\u1ea1n khi thoát scope.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"C:\\Users\\Admin\\orca\\workspaces\\AI-Auto-Video-Creator\\wave1-cap-j-p0\\tests\\unit\\security\\test_dpapi_broker.py\", line 57, in test_credential_broker_scoped_lifetime_and_automatic_expiration\n    self.assertEqual(val, raw_token.decode(\"utf-8\"))\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'scaffold_dummy_token' != 'REAL_AUTHENTICATED_TOKEN_12345'\n- scaffold_dummy_token\n+ REAL_AUTHENTICATED_TOKEN_12345\n\n\n======================================================================\nFAIL: test_dpapi_encrypt_decrypt_roundtrip_and_tamper_protection (tests.unit.security.test_dpapi_broker.TestDPAPIBroker.test_dpapi_encrypt_decrypt_roundtrip_and_tamper_protection)\nOracle 1 (INV-015 / CT-SEC-002): DPAPI mã hóa/gi\\u1ea3i mã toàn v\\u1eb9n và phát hi\\u1ec7n tamper.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"C:\\Users\\Admin\\orca\\workspaces\\AI-Auto-Video-Creator\\wave1-cap-j-p0\\tests\\unit\\security\\test_dpapi_broker.py\", line 30, in test_dpapi_encrypt_decrypt_roundtrip_and_tamper_protection\n    self.assertNotEqual(ciphertext, raw_secret, \"DPAPI ciphertext must not be identical to plaintext\")\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: b'SECRET_API_KEY_9999_DPAPI_TEST' == b'SECRET_API_KEY_9999_DPAPI_TEST' : DPAPI ciphertext must not be identical to plaintext\n\n----------------------------------------------------------------------\nRan 3 tests in 0.001s\n\nFAILED (failures=3)\n"
+}
