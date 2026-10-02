@@ -1179,9 +1179,9 @@ tasks:
 - id: TASK-CAP-J-P1-B
   milestone: M2
   kind: work_package_slice
-  status: planned
+  status: ready
   authority:
-    state: future_template
+    state: granted
     scope: http_client_and_router_adapter
     does_not_authorize_descendants: true
   authority_refs:
@@ -1203,11 +1203,36 @@ tasks:
   owned_paths:
   - src/controlplane/config/router.py
   - src/controlplane/config/adapter.py
+  - tests/unit/security/test_http_router_adapter.py
   forbidden_paths:
   - src/creative/**
   resource_locks:
   - LOCK-SRC-CONFIG-SECURITY
   merge_priority: 250
+  acceptance:
+  - requirement: HTTP client / 9Router adapter handles timeout, 429 backoff/retry,
+      and provenance stamping.
+    instrument: tests.unit.security.test_http_router_adapter.TestHTTPRouterAdapter
+    red_observation: 'Ran tests: OK (0 failures, 0 errors, 0 skips).'
+  evidence_outputs:
+  - docs/parallel-delivery/evidence/cap-j-p1/p1b-evidence.json
+  route:
+    control:
+      model: cx/gpt-6.1-sol
+    implement:
+      provider: 9router
+      harness: Codex CLI
+      model: ag/gemini-3.8-flash-high
+      effort: high
+    review:
+      provider: 9router
+      harness: Claude Code
+      model: cx/gpt-6.1-sol
+      effort: high
+    supreme_audit:
+      model: none
+      effort: none
+      use: disabled_sol_lead_only
 - id: TASK-CAP-J-P1-C
   milestone: M2
   kind: work_package_slice
