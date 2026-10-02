@@ -1,83 +1,82 @@
-schema_version: "1.0.0"
+schema_version: 1.0.0
 kind: parallel_delivery_task_dag
 status: proposed_experiment_no_new_implementation_authority
-as_of: "2026-09-28"
+as_of: '2026-09-28'
 authority_source: docs/12-pre-code-checklist.md
 approved_base_commit: 4a7c8c921b7e05066505d51b168a02c3fde61317
 candidate_commit: explicit_at_release_invocation
 rollback_reference: D:/AI_SETUP/backups/AI-Auto-Video-Creator/20260928-175542
-
 schema:
   task_required_fields:
-    - id
-    - milestone
-    - kind
-    - status
-    - authority
-    - authority_refs
-    - depends_on
-    - requirement_refs
-    - contract_refs
-    - invariant_refs
-    - module_owners
-    - owned_paths
-    - forbidden_paths
-    - resource_locks
-    - runtime_prerequisites
-    - acceptance
-    - evidence_outputs
-    - rollback
-    - route
-    - merge_priority
+  - id
+  - milestone
+  - kind
+  - status
+  - authority
+  - authority_refs
+  - depends_on
+  - requirement_refs
+  - contract_refs
+  - invariant_refs
+  - module_owners
+  - owned_paths
+  - forbidden_paths
+  - resource_locks
+  - runtime_prerequisites
+  - acceptance
+  - evidence_outputs
+  - rollback
+  - route
+  - merge_priority
   status_enum:
-    - planned
-    - waiting_dependency
-    - ready
-    - dispatched
-    - acknowledged
-    - running
-    - blocked
-    - needs_replan
-    - review
-    - remediation
-    - merge_queued
-    - integrated
-    - stopped
-    - cancelled
+  - planned
+  - waiting_dependency
+  - ready
+  - dispatched
+  - acknowledged
+  - running
+  - blocked
+  - needs_replan
+  - review
+  - remediation
+  - merge_queued
+  - integrated
+  - stopped
+  - cancelled
   authority_state_enum:
-    - granted
-    - locked
-    - future_template
-    - revoked
+  - granted
+  - locked
+  - future_template
+  - revoked
   dependency_condition_enum:
-    - accepted
-    - integrated
-    - evidence_verified
+  - accepted
+  - integrated
+  - evidence_verified
   acceptance_required_fields:
-    - requirement
-    - instrument
-    - counterexample
-    - red_observation
-    - limitations
+  - requirement
+  - instrument
+  - counterexample
+  - red_observation
+  - limitations
   execution_envelope:
     required_fields:
-      - delivery_task_id
-      - dispatch_id
-      - dispatch_origin
-      - phase
-      - route
-      - live_terminal_evidence
-      - usage_evidence
+    - delivery_task_id
+    - dispatch_id
+    - dispatch_origin
+    - phase
+    - route
+    - live_terminal_evidence
+    - usage_evidence
     dispatch_origin_enum:
-      - "dely dispatch"
+    - dely dispatch
     forbidden_origins:
-      - "worker-start"
-      - "orca worker-start"
-      - "direct worker-start"
-    required_provider: "9router"
+    - worker-start
+    - orca worker-start
+    - direct worker-start
+    required_provider: 9router
     forbidden_providers:
-      - "antigravity"
-      - "antigravity_native"
+    - antigravity
+    - antigravity_native
     harness_field_separate: true
     model_field_separate: true
     effort_field_separate: true
@@ -86,1199 +85,1189 @@ schema:
     usage_evidence_required_after_dispatch: true
   eligibility:
     all:
-      - authority_granted
-      - dependencies_accepted
-      - contract_revisions_frozen
-      - owned_paths_disjoint
-      - resource_locks_available
-      - runtime_prerequisites_available
-      - acceptance_oracle_ready
-
+    - authority_granted
+    - dependencies_accepted
+    - contract_revisions_frozen
+    - owned_paths_disjoint
+    - resource_locks_available
+    - runtime_prerequisites_available
+    - acceptance_oracle_ready
 current_authority:
   accepted_closed:
-    - M1
-    - M2-P1
-    - M2-P2
-    - M2-P3
-    - M2-P4
-    - M2-P5A
-    - M2-P5B
-    - M2-P6
-    - M2-P7A
-    - M2-P7B
+  - M1
+  - M2-P1
+  - M2-P2
+  - M2-P3
+  - M2-P4
+  - M2-P5A
+  - M2-P5B
+  - M2-P6
+  - M2-P7A
+  - M2-P7B
   locked:
-    - M2-P8
-    - M2-P9
-    - M3
-    - MODULE-A
-    - M4
-    - M5
-    - M6
-    - M7
+  - M2-P8
+  - M2-P9
+  - M3
+  - MODULE-A
+  - M4
+  - M5
+  - M6
+  - M7
   immutable_evidence_refs:
-    - docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-red-20260917002633
-    - docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-green-20260917040648
-    - docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-green-20260917024918
-
+  - docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-red-20260917002633
+  - docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-green-20260917040648
+  - docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-green-20260917024918
 waves:
-  - id: WAVE-0-CONTROL-FREEZE
-    status: proposed
-    admission: authority_and_contract_freeze_only
-    max_parallel: 2
-    task_ids:
-      - PD-PILOT-CONTROL
-      - TASK-DOC-WAVE-DAG
-  - id: WAVE-1-INDEPENDENT-OWNERS
-    status: future_template
-    admission: independent_on_dependency_contract_path_lock_migration_evidence
-    max_parallel: policy_defined
-    task_ids:
-      - M3-A-TEMPLATE
-      - M4-CI-TEMPLATE
-      - TASK-CAP-B-INGESTION
-      - TASK-CAP-C-STORAGE
-      - TASK-CAP-J-PROVIDERS
-      - TASK-CAP-J-P0-RED
-      - TASK-CAP-J-P0-GREEN
-      - TASK-CAP-J-P1-A-RED
-      - TASK-CAP-J-P1-A-GREEN
-      - TASK-CAP-J-P1-B
-      - TASK-CAP-J-P1-C
-  - id: WAVE-2-CONSUMERS
-    status: future_template
-    admission: exact_frozen_contract_revisions_required
-    max_parallel: policy_defined
-    task_ids:
-      - M5-D-TEMPLATE
-      - M6-EF-TEMPLATE
-      - TASK-CAP-D-SCRIPTING
-      - TASK-CAP-E-VOICE
-      - TASK-CAP-F-RENDERING
-  - id: WAVE-3-INTEGRATION
-    status: future_template
-    admission: serialized_cross_owner_integration
-    max_parallel: 2
-    task_ids:
-      - M7-INTEGRATION-TEMPLATE
-      - TASK-CAP-G-ORCHESTRATION
-
-# Đây là task docs/config đã được cấp quyền bởi dispatch hiện hành; nó không mở product implementation.
+- id: WAVE-0-CONTROL-FREEZE
+  status: proposed
+  admission: authority_and_contract_freeze_only
+  max_parallel: 2
+  task_ids:
+  - PD-PILOT-CONTROL
+  - TASK-DOC-WAVE-DAG
+- id: WAVE-1-INDEPENDENT-OWNERS
+  status: future_template
+  admission: independent_on_dependency_contract_path_lock_migration_evidence
+  max_parallel: policy_defined
+  task_ids:
+  - M3-A-TEMPLATE
+  - M4-CI-TEMPLATE
+  - TASK-CAP-B-INGESTION
+  - TASK-CAP-C-STORAGE
+  - TASK-CAP-J-PROVIDERS
+  - TASK-CAP-J-P0-RED
+  - TASK-CAP-J-P0-GREEN
+  - TASK-CAP-J-P1-A-RED
+  - TASK-CAP-J-P1-A-GREEN
+  - TASK-CAP-J-P1-B
+  - TASK-CAP-J-P1-C
+- id: WAVE-2-CONSUMERS
+  status: future_template
+  admission: exact_frozen_contract_revisions_required
+  max_parallel: policy_defined
+  task_ids:
+  - M5-D-TEMPLATE
+  - M6-EF-TEMPLATE
+  - TASK-CAP-D-SCRIPTING
+  - TASK-CAP-E-VOICE
+  - TASK-CAP-F-RENDERING
+- id: WAVE-3-INTEGRATION
+  status: future_template
+  admission: serialized_cross_owner_integration
+  max_parallel: 2
+  task_ids:
+  - M7-INTEGRATION-TEMPLATE
+  - TASK-CAP-G-ORCHESTRATION
 tasks:
-  - id: PD-PILOT-CONTROL
-    milestone: DELIVERY-ARCH-EXPERIMENT
-    kind: documentation_configuration
-    status: review
-    authority:
-      state: granted
-      scope: docs_and_agent_configuration_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - HANDOFF.md
-      - docs/12-pre-code-checklist.md
-      - docs/11-roadmap.md
-    depends_on: []
-    requirement_refs:
-      - QR-MNT-002
-      - QR-MNT-003
-      - QR-COMP-003
-    contract_refs:
-      - id: CT-CMN-012
-        registry: CONTRACT-COMMON
-        revision: sha256:dfdce8db13d5f1d1f286ccd233a66caf39f48552da2dbbad26692fde7be978e8
-      - id: CT-CMN-013
-        registry: CONTRACT-COMMON
-        revision: sha256:dfdce8db13d5f1d1f286ccd233a66caf39f48552da2dbbad26692fde7be978e8
-    invariant_refs:
-      - INV-002
-      - INV-012
-      - INV-016
-    module_owners: []
-    owned_paths:
-      - AGENTS.md
-      - CLAUDE.md
-      - HANDOFF.md
-      - README.md
-      - CHANGELOG.md
-      - docs/11-roadmap.md
-      - docs/12-pre-code-checklist.md
-      - docs/parallel-delivery/**
-    forbidden_paths:
-      - src/**
-      - tests/**
-      - "**/*.sql"
-      - "**/pyproject.toml"
-      - "**/uv.lock"
-      - docs/milestones/**/evidence/**
-    resource_locks:
-      - LOCK-DOC-AUTHORITY
-      - LOCK-AGENT-CONFIG
-      - LOCK-PARALLEL-REGISTRY
-      - LOCK-DOC-INDEX
-    runtime_prerequisites:
-      - git
-      - python_yaml_parser_or_equivalent
-    acceptance:
-      - requirement: UTF-8 text is valid without BOM and contains no mojibake/control characters.
-        instrument: parse_utf8_and_scan_text
-        counterexample: Files are present and parse as bytes, but Vietnamese text is double-encoded or a carriage return splits the review row.
-        red_observation: inherited AGENTS.md exhibited double-encoded Vietnamese and a carriage-return-corrupted review cell before correction.
-        limitations: Static scan cannot prove prose correctness.
-      - requirement: DAG, registry, locks and trace references are structurally valid.
-        instrument: parse_yaml_check_ids_dependencies_acyclic_and_references
-        counterexample: YAML parses, but a dependency points to an unknown node or two active tasks own the same exclusive resource.
-        red_observation: required machine registries were absent before this task.
-        limitations: Static validation does not run an Orca pilot.
-      - requirement: No new product implementation authority is created.
-        instrument: authority_wording_and_changed_path_scan
-        counterexample: Future template nodes exist and are incorrectly marked granted or a prohibited source path changes.
-        red_observation: no machine architecture existed; authority invariant is checked by diff and registry state.
-        limitations: Human review remains required for semantic ambiguity.
-    evidence_outputs:
-      - docs/parallel-delivery/.validation-report.json
-    rollback:
-      strategy: revert_task_commit_or_restore_verified_docs_only_backup
-      reference: D:/AI_SETUP/backups/AI-Auto-Video-Creator/20260928-175542
-      preserves_accepted_evidence: true
-    route:
-      control:
-        model: cx/gpt-5.6-sol
-      implement:
-        provider: 9router
-        harness: Codex CLI
-        model: ag/gemini-3.8-flash-high
-        effort: high
-      review:
-        provider: 9router
-        harness: Claude Code
-        model: cx/gpt-5.6-sol
-        effort: high
-      supreme_audit:
-        model: cx/gpt-6-astra-medium
-        effort: medium
-        use: external_extremely_difficult_audit_only
-    merge_priority: 10
-
-  - id: M2-P8-LOCKED
-    milestone: M2
-    kind: authority_sentinel
-    status: stopped
-    authority:
-      state: locked
-      scope: no_behavioral_red_no_implementation
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/12-pre-code-checklist.md
-      - docs/milestones/m2-control-plane/implementation-plan.md
-    depends_on:
-      - task: M2-P7B-ACCEPTED
-        condition: accepted
-    requirement_refs:
-      - FR-UI-001
-      - FR-UI-003
-      - QR-UX-001
-      - QR-PERF-005
-    contract_refs: []
-    invariant_refs: []
-    module_owners:
-      - H
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: not_applicable_locked_sentinel
-      reference: docs/12-pre-code-checklist.md
-      preserves_accepted_evidence: true
-    route:
-      control: user_checkpoint_required
-      implement: none
-      review: none
-      supreme_audit: none
-    merge_priority: 900
-
-  - id: M2-P9-LOCKED
-    milestone: M2
-    kind: authority_sentinel
-    status: stopped
-    authority:
-      state: locked
-      scope: no_implementation
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/12-pre-code-checklist.md
-      - docs/milestones/m2-control-plane/implementation-plan.md
-    depends_on:
-      - task: M2-P8-LOCKED
-        condition: accepted
-    requirement_refs: []
-    contract_refs: []
-    invariant_refs: []
-    module_owners:
-      - G
-      - H
-      - I
-      - J
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: not_applicable_locked_sentinel
-      reference: docs/12-pre-code-checklist.md
-      preserves_accepted_evidence: true
-    route:
-      control: user_checkpoint_required
-      implement: none
-      review: none
-      supreme_audit: none
-    merge_priority: 901
-
-  - id: M3-A-TEMPLATE
-    milestone: M3
-    kind: future_template
-    status: planned
-    authority:
-      state: future_template
-      scope: design_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/11-roadmap.md
-      - docs/modules/a-source-collection/implementation-plan.md
-    depends_on:
-      - task: M2-P9-LOCKED
-        condition: accepted
-    requirement_refs:
-      - FR-SRC-*
-      - FR-COL-*
-    contract_refs:
-      - CT-SRC-*
-    invariant_refs:
-      - INV-015
-      - INV-020
-    module_owners:
-      - A
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: plan_required_before_activation
-      reference: docs/modules/a-source-collection/implementation-plan.md
-      preserves_accepted_evidence: true
-    route:
-      control: user_checkpoint_required
-      implement: none
-      review: none
-      supreme_audit: none
-    merge_priority: 1000
-
-  - id: M4-CI-TEMPLATE
-    milestone: M4
-    kind: future_template
-    status: planned
-    authority:
-      state: future_template
-      scope: design_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/11-roadmap.md
-    depends_on:
-      - task: M3-A-TEMPLATE
-        condition: accepted
-    requirement_refs:
-      - FR-AST-*
-      - FR-HOOK-*
-      - FR-SYN-*
-    contract_refs:
-      - CT-MED-*
-      - CT-STO-*
-    invariant_refs:
-      - INV-008
-      - INV-011
-    module_owners:
-      - C
-      - I
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: milestone_plan_required
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route: &future_route
-      control: user_checkpoint_required
-      implement: none
-      review: none
-      supreme_audit: none
-    merge_priority: 1100
-
-  - id: M5-D-TEMPLATE
-    milestone: M5
-    kind: future_template
-    status: planned
-    authority:
-      state: future_template
-      scope: design_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/11-roadmap.md
-    depends_on:
-      - task: M4-CI-TEMPLATE
-        condition: accepted
-    requirement_refs:
-      - FR-SCR-*
-      - FR-VAR-*
-    contract_refs:
-      - CT-AI-*
-    invariant_refs:
-      - INV-004
-      - INV-013
-      - INV-014
-      - INV-020
-    module_owners:
-      - D
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: milestone_plan_required
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route: *future_route
-    merge_priority: 1200
-
-  - id: M6-EF-TEMPLATE
-    milestone: M6
-    kind: future_template
-    status: planned
-    authority:
-      state: future_template
-      scope: design_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/11-roadmap.md
-    depends_on:
-      - task: M5-D-TEMPLATE
-        condition: accepted
-    requirement_refs:
-      - FR-AUD-*
-      - FR-REN-*
-      - FR-PRS-*
-    contract_refs:
-      - CT-PROC-*
-      - CT-TTS-*
-      - CT-SUB-*
-      - CT-AUD-*
-      - CT-RND-*
-      - CT-QC-*
-    invariant_refs:
-      - INV-007
-      - INV-008
-      - INV-009
-      - INV-019
-    module_owners:
-      - E
-      - F
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: milestone_plan_required
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route: *future_route
-    merge_priority: 1300
-
-  - id: M7-INTEGRATION-TEMPLATE
-    milestone: M7
-    kind: future_template
-    status: planned
-    authority:
-      state: future_template
-      scope: design_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/11-roadmap.md
-    depends_on:
-      - task: M6-EF-TEMPLATE
-        condition: accepted
-    requirement_refs:
-      - FR-BAT-*
-      - QR-PERF-001
-      - QR-REL-007
-      - QR-COST-001
-    contract_refs:
-      - CT-CMN-*
-      - CT-WF-*
-      - CT-ORC-*
-    invariant_refs:
-      - INV-001
-      - INV-002
-      - INV-003
-      - INV-009
-      - INV-010
-      - INV-016
-      - INV-017
-      - INV-018
-    module_owners:
-      - A
-      - B
-      - C
-      - D
-      - E
-      - F
-      - G
-      - H
-      - I
-      - J
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: milestone_plan_required
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route: *future_route
-    merge_priority: 1400
-
-  - id: TASK-DOC-WAVE-DAG
-    milestone: DELIVERY-ARCH-EXPERIMENT
-    kind: future_template
-    status: planned
-    authority:
-      state: future_template
-      scope: design_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - DAG-implement-plan.md
-      - docs/11-roadmap.md
-    depends_on:
-      - task: PD-PILOT-CONTROL
-        condition: accepted
-    requirement_refs:
-      - QR-MNT-002
-      - QR-MNT-003
-      - QR-COMP-003
-    contract_refs: []
-    invariant_refs:
-      - INV-001
-      - INV-002
-    module_owners:
-      - CROSS-CUTTING-CONTRACT-OWNER
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: milestone_plan_required
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route: *future_route
-    merge_priority: 90
-
-  - id: TASK-CAP-B-INGESTION
-    milestone: M3
-    kind: future_template
-    status: planned
-    authority:
-      state: future_template
-      scope: design_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/11-roadmap.md
-      - docs/modules/capability-b-ingestion.md
-    depends_on:
-      - task: M2-P7B-ACCEPTED
-        condition: accepted
-    requirement_refs:
-      - FR-SRC-*
-      - FR-CNT-*
-    contract_refs: []
-    invariant_refs:
-      - INV-005
-      - INV-010
-      - INV-011
-    module_owners:
-      - B
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: milestone_plan_required
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route: *future_route
-    merge_priority: 200
-
-  - id: TASK-CAP-C-STORAGE
-    milestone: M4
-    kind: future_template
-    status: planned
-    authority:
-      state: future_template
-      scope: design_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/11-roadmap.md
-      - docs/modules/capability-c-storage.md
-    depends_on:
-      - task: M2-P7B-ACCEPTED
-        condition: accepted
-    requirement_refs:
-      - FR-AST-*
-    contract_refs: []
-    invariant_refs:
-      - INV-006
-      - INV-012
-    module_owners:
-      - C
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: milestone_plan_required
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route: *future_route
-    merge_priority: 300
-
-  - id: TASK-CAP-D-SCRIPTING
-    milestone: M5
-    kind: future_template
-    status: planned
-    authority:
-      state: future_template
-      scope: design_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/11-roadmap.md
-      - docs/modules/capability-d-scripting.md
-    depends_on:
-      - task: TASK-CAP-B-INGESTION
-        condition: accepted
-      - task: TASK-CAP-C-STORAGE
-        condition: accepted
-    requirement_refs:
-      - FR-SCR-*
-      - FR-VAR-*
-    contract_refs: []
-    invariant_refs:
-      - INV-004
-      - INV-013
-      - INV-014
-      - INV-020
-    module_owners:
-      - D
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: milestone_plan_required
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route: *future_route
-    merge_priority: 400
-
-  - id: TASK-CAP-E-VOICE
-    milestone: M6
-    kind: future_template
-    status: planned
-    authority:
-      state: future_template
-      scope: design_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/11-roadmap.md
-      - docs/modules/capability-e-voice.md
-    depends_on:
-      - task: TASK-CAP-D-SCRIPTING
-        condition: accepted
-    requirement_refs:
-      - FR-AUD-*
-    contract_refs: []
-    invariant_refs:
-      - INV-007
-      - INV-008
-      - INV-019
-    module_owners:
-      - E
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: milestone_plan_required
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route: *future_route
-    merge_priority: 500
-
-  - id: TASK-CAP-F-RENDERING
-    milestone: M6
-    kind: future_template
-    status: planned
-    authority:
-      state: future_template
-      scope: design_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/11-roadmap.md
-      - docs/modules/capability-f-rendering.md
-    depends_on:
-      - task: TASK-CAP-D-SCRIPTING
-        condition: accepted
-      - task: TASK-CAP-E-VOICE
-        condition: accepted
-    requirement_refs:
-      - FR-REN-*
-      - FR-PRS-*
-    contract_refs: []
-    invariant_refs:
-      - INV-001
-      - INV-002
-      - INV-009
-      - INV-018
-    module_owners:
-      - F
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: milestone_plan_required
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route: *future_route
-    merge_priority: 600
-
-  - id: TASK-CAP-G-ORCHESTRATION
-    milestone: M2
-    kind: future_template
-    status: planned
-    authority:
-      state: future_template
-      scope: design_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/11-roadmap.md
-      - docs/modules/capability-g-orchestration.md
-    depends_on:
-      - task: M2-P7B-ACCEPTED
-        condition: accepted
-    requirement_refs:
-      - FR-BAT-*
-      - QR-PERF-001
-    contract_refs: []
-    invariant_refs:
-      - INV-001
-      - INV-003
-      - INV-010
-      - INV-016
-      - INV-017
-    module_owners:
-      - G
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: milestone_plan_required
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route: *future_route
-    merge_priority: 700
-
-  - id: TASK-CAP-J-PROVIDERS
-    milestone: M2
-    kind: future_template
-    status: planned
-    authority:
-      state: future_template
-      scope: design_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/11-roadmap.md
-      - docs/modules/capability-j-providers.md
-    depends_on:
-      - task: M2-P7B-ACCEPTED
-        condition: accepted
-    requirement_refs:
-      - QR-COST-001
-      - QR-REL-007
-    contract_refs: []
-    invariant_refs:
-      - INV-013
-      - INV-015
-    module_owners:
-      - J
-    owned_paths: []
-    forbidden_paths:
-      - "**"
-    resource_locks: []
-    runtime_prerequisites: []
-    acceptance: []
-    evidence_outputs: []
-    rollback:
-      strategy: milestone_plan_required
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route: *future_route
-    merge_priority: 800
-
-
-  - id: TASK-CAP-J-P0-RED
-    milestone: M2
-    kind: work_package_slice
-    status: integrated
-    authority:
-      state: granted
-      scope: scaffold_and_red_tests_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - DAG_IMPLEMENT_PLAN_CHECKLIST.md:23
-      - docs/modules/capability-j-providers.md
-    depends_on:
-      - task: M2-P7B-ACCEPTED
-        condition: accepted
-    requirement_refs:
-      - QR-COST-001
-      - QR-REL-007
-    contract_refs:
-      - id: CONTRACT-CONFIG-SECURITY
-        registry: CONTRACT-CONFIG-SECURITY
-        revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
-    invariant_refs:
-      - INV-013
-      - INV-015
-      - INV-021
-    module_owners:
-      - J
-    owned_paths:
-      - src/controlplane/security/__init__.py
-      - src/controlplane/security/interfaces.py
-      - src/controlplane/security/sanitizer.py
-      - src/controlplane/config/__init__.py
-      - src/controlplane/config/models.py
-      - src/controlplane/config/router.py
-      - tests/unit/security/__init__.py
-      - tests/unit/security/test_provider_routing.py
-    forbidden_paths:
-      - "src/creative/**"
-      - "src/render/**"
-      - "src/ingestion/**"
-      - "src/catalog/**"
-      - "src/voice/**"
-      - "src/main.py"
-      - "src/controlplane/api/main.py"
-      - "docs/09-contracts/**"
-      - "docs/milestones/**/evidence/**"
-    resource_locks:
-      - LOCK-SRC-CONFIG-SECURITY
-    runtime_prerequisites:
-      - python
-      - unittest
-    acceptance:
-      - requirement: Secret values must be redacted in string, representation, and log sanitization.
-        instrument: tests.unit.security.test_provider_routing.TestProviderRouting.test_secret_credential_never_exposes_raw_value_in_string_or_log
-        counterexample: String representation or sanitizer utility outputs plaintext credential bytes.
-        red_observation: Ran 3 tests with exactly 3 failures due to unbuilt business logic, 0 errors, 0 skips.
-        limitations: Verifies test harness and behavioral assertions fail-closed only; zero production logic.
-    evidence_outputs:
-      - docs/parallel-delivery/evidence/cap-j-p0/red-evidence.json
-    rollback:
-      strategy: revert_task_commit
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route:
-      control:
-        model: cx/gpt-6.1-sol
-      implement:
-        provider: 9router
-        harness: Codex CLI
-        model: ag/gemini-3.8-flash-high
-        effort: high
-      review:
-        provider: 9router
-        harness: Claude Code
-        model: cx/gpt-6.1-sol
-        effort: high
-      supreme_audit:
-        model: none
-        effort: none
-        use: disabled_sol_lead_only
-    merge_priority: 210
-
-  - id: TASK-CAP-J-P0-GREEN
-    milestone: M2
-    kind: work_package_slice
-    status: integrated
-    authority:
-      state: granted
-      scope: minimal_logic_implementation
-      does_not_authorize_descendants: true
-    authority_refs:
-      - DAG_IMPLEMENT_PLAN_CHECKLIST.md:23
-      - docs/modules/capability-j-providers.md
-    depends_on:
-      - task: TASK-CAP-J-P0-RED
-        condition: evidence_verified
-    requirement_refs:
-      - QR-COST-001
-      - QR-REL-007
-    contract_refs:
-      - id: CONTRACT-CONFIG-SECURITY
-        registry: CONTRACT-CONFIG-SECURITY
-        revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
-    invariant_refs:
-      - INV-013
-      - INV-015
-      - INV-021
-    module_owners:
-      - J
-    owned_paths:
-      - src/controlplane/security/interfaces.py
-      - src/controlplane/security/sanitizer.py
-      - src/controlplane/config/router.py
-      - docs/modules/capability-j-providers.md
-    forbidden_paths:
-      - tests/unit/security/test_provider_routing.py
-      - src/controlplane/config/models.py
-      - "src/creative/**"
-      - "src/render/**"
-      - "src/ingestion/**"
-      - "src/catalog/**"
-      - "src/voice/**"
-      - "src/main.py"
-      - "src/controlplane/api/main.py"
-      - "docs/09-contracts/**"
-      - "docs/milestones/**/evidence/**"
-    resource_locks:
-      - LOCK-SRC-CONFIG-SECURITY
-    runtime_prerequisites:
-      - python
-      - unittest
-    acceptance:
-      - requirement: Exact 3 test cases pass with 100% GREEN.
-        instrument: tests.unit.security.test_provider_routing.TestProviderRouting
-        counterexample: Sanitizer leaks raw token, Router fails to catch 429, or Router allows missing provenance.
-        red_observation: "Ran 3 tests: OK (0 failures, 0 errors, 0 skips)."
-        limitations: In-memory mock logic only; OS DPAPI vault and database persistence deferred to P1.
-    evidence_outputs:
-      - docs/parallel-delivery/evidence/cap-j-p0/green-evidence.json
-    rollback:
-      strategy: revert_task_commit
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route:
-      control:
-        model: cx/gpt-6.1-sol
-      implement:
-        provider: 9router
-        harness: Codex CLI
-        model: ag/gemini-3.8-flash-high
-        effort: high
-      review:
-        provider: 9router
-        harness: Claude Code
-        model: cx/gpt-6.1-sol
-        effort: high
-      supreme_audit:
-        model: none
-        effort: none
-        use: disabled_sol_lead_only
-    merge_priority: 220
-
-  - id: TASK-CAP-J-P1-A-RED
-    milestone: M2
-    kind: work_package_slice
-    status: ready
-    authority:
-      state: granted
-      scope: scaffold_and_red_tests_only
-      does_not_authorize_descendants: true
-    authority_refs:
-      - DAG_IMPLEMENT_PLAN_CHECKLIST.md:23
-      - docs/modules/capability-j-providers.md
-    depends_on:
-      - task: TASK-CAP-J-P0-GREEN
-        condition: evidence_verified
-    requirement_refs:
-      - QR-SEC-001
-      - QR-REL-007
-    contract_refs:
-      - id: CONTRACT-CONFIG-SECURITY
-        registry: CONTRACT-CONFIG-SECURITY
-        revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
-    invariant_refs:
-      - INV-015
-    module_owners:
-      - J
-    owned_paths:
-      - src/controlplane/security/dpapi.py
-      - src/controlplane/security/broker.py
-      - tests/unit/security/test_dpapi_broker.py
-    forbidden_paths:
-      - src/controlplane/config/router.py
-      - tests/unit/security/test_provider_routing.py
-      - "src/creative/**"
-      - "src/render/**"
-      - "src/ingestion/**"
-      - "src/catalog/**"
-      - "src/voice/**"
-      - "src/main.py"
-      - "src/controlplane/api/main.py"
-      - "docs/09-contracts/**"
-      - "docs/milestones/**/evidence/**"
-    resource_locks:
-      - LOCK-SRC-CONFIG-SECURITY
-    runtime_prerequisites:
-      - python
-      - unittest
-    acceptance:
-      - requirement: Exact 3 test cases fail with behavioral RED (0 syntax/import errors).
-        instrument: tests.unit.security.test_dpapi_broker.TestDPAPIBroker
-        counterexample: DPAPI plaintext leak or broker access violation.
-        red_observation: "Ran 3 tests: FAILED (failures=3, errors=0, skips=0)."
-        limitations: Scaffold only, business logic deferred to P1-A-GREEN.
-    evidence_outputs:
-      - docs/parallel-delivery/evidence/cap-j-p1/p1a-red-evidence.json
-    rollback:
-      strategy: revert_task_commit
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route:
-      control:
-        model: cx/gpt-6.1-sol
-      implement:
-        provider: 9router
-        harness: Codex CLI
-        model: ag/gemini-3.8-flash-high
-        effort: high
-      review:
-        provider: 9router
-        harness: Claude Code
-        model: cx/gpt-6.1-sol
-        effort: high
-      supreme_audit:
-        model: none
-        effort: none
-        use: disabled_sol_lead_only
-    merge_priority: 230
-
-  - id: TASK-CAP-J-P1-A-GREEN
-    milestone: M2
-    kind: work_package_slice
-    status: planned
-    authority:
-      state: future_template
-      scope: minimal_logic_implementation
-      does_not_authorize_descendants: true
-    authority_refs:
-      - DAG_IMPLEMENT_PLAN_CHECKLIST.md:23
-      - docs/modules/capability-j-providers.md
-    depends_on:
-      - task: TASK-CAP-J-P1-A-RED
-        condition: evidence_verified
-    requirement_refs:
-      - QR-SEC-001
-      - QR-REL-007
-    contract_refs:
-      - id: CONTRACT-CONFIG-SECURITY
-        registry: CONTRACT-CONFIG-SECURITY
-        revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
-    invariant_refs:
-      - INV-015
-    module_owners:
-      - J
-    owned_paths:
-      - src/controlplane/security/dpapi.py
-      - src/controlplane/security/broker.py
-    forbidden_paths:
-      - tests/unit/security/test_dpapi_broker.py
-      - src/controlplane/config/router.py
-      - tests/unit/security/test_provider_routing.py
-      - "src/creative/**"
-      - "src/render/**"
-      - "src/ingestion/**"
-      - "src/catalog/**"
-      - "src/voice/**"
-      - "src/main.py"
-      - "src/controlplane/api/main.py"
-      - "docs/09-contracts/**"
-      - "docs/milestones/**/evidence/**"
-    resource_locks:
-      - LOCK-SRC-CONFIG-SECURITY
-    runtime_prerequisites:
-      - python
-      - unittest
-    acceptance:
-      - requirement: Exact 3 test cases pass with 100% GREEN.
-        instrument: tests.unit.security.test_dpapi_broker.TestDPAPIBroker
-        counterexample: DPAPI plaintext leak or broker access violation.
-        red_observation: "Ran 3 tests: OK (0 failures, 0 errors, 0 skips)."
-    evidence_outputs:
-      - docs/parallel-delivery/evidence/cap-j-p1/p1a-green-evidence.json
-    rollback:
-      strategy: revert_task_commit
-      reference: docs/11-roadmap.md
-      preserves_accepted_evidence: true
-    route:
-      control:
-        model: cx/gpt-6.1-sol
-      implement:
-        provider: 9router
-        harness: Codex CLI
-        model: ag/gemini-3.8-flash-high
-        effort: high
-      review:
-        provider: 9router
-        harness: Claude Code
-        model: cx/gpt-6.1-sol
-        effort: high
-      supreme_audit:
-        model: none
-        effort: none
-        use: disabled_sol_lead_only
-    merge_priority: 240
-
-  - id: TASK-CAP-J-P1-B
-    milestone: M2
-    kind: work_package_slice
-    status: planned
-    authority:
-      state: future_template
-      scope: http_client_and_router_adapter
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/modules/capability-j-providers.md
-    depends_on:
-      - task: TASK-CAP-J-P1-A-GREEN
-        condition: evidence_verified
-    requirement_refs:
-      - QR-REL-007
-    contract_refs:
-      - id: CONTRACT-CONFIG-SECURITY
-        registry: CONTRACT-CONFIG-SECURITY
-        revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
-    invariant_refs:
-      - INV-013
-      - INV-021
-    module_owners:
-      - J
-    owned_paths:
-      - src/controlplane/config/router.py
-      - src/controlplane/config/adapter.py
-    forbidden_paths:
-      - "src/creative/**"
-    resource_locks:
-      - LOCK-SRC-CONFIG-SECURITY
-    merge_priority: 250
-
-  - id: TASK-CAP-J-P1-C
-    milestone: M2
-    kind: work_package_slice
-    status: planned
-    authority:
-      state: future_template
-      scope: cost_and_quota_accounting
-      does_not_authorize_descendants: true
-    authority_refs:
-      - docs/modules/capability-j-providers.md
-    depends_on:
-      - task: TASK-CAP-J-P1-B
-        condition: evidence_verified
-    requirement_refs:
-      - QR-COST-001
-    contract_refs:
-      - id: CONTRACT-CONFIG-SECURITY
-        registry: CONTRACT-CONFIG-SECURITY
-        revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
-    invariant_refs:
-      - INV-013
-    module_owners:
-      - J
-    owned_paths:
-      - src/controlplane/config/accounting.py
-    forbidden_paths:
-      - "src/creative/**"
-    resource_locks:
-      - LOCK-SRC-CONFIG-SECURITY
-    merge_priority: 260
-
+- id: PD-PILOT-CONTROL
+  milestone: DELIVERY-ARCH-EXPERIMENT
+  kind: documentation_configuration
+  status: review
+  authority:
+    state: granted
+    scope: docs_and_agent_configuration_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - HANDOFF.md
+  - docs/12-pre-code-checklist.md
+  - docs/11-roadmap.md
+  depends_on: []
+  requirement_refs:
+  - QR-MNT-002
+  - QR-MNT-003
+  - QR-COMP-003
+  contract_refs:
+  - id: CT-CMN-012
+    registry: CONTRACT-COMMON
+    revision: sha256:dfdce8db13d5f1d1f286ccd233a66caf39f48552da2dbbad26692fde7be978e8
+  - id: CT-CMN-013
+    registry: CONTRACT-COMMON
+    revision: sha256:dfdce8db13d5f1d1f286ccd233a66caf39f48552da2dbbad26692fde7be978e8
+  invariant_refs:
+  - INV-002
+  - INV-012
+  - INV-016
+  module_owners: []
+  owned_paths:
+  - AGENTS.md
+  - CLAUDE.md
+  - HANDOFF.md
+  - README.md
+  - CHANGELOG.md
+  - docs/11-roadmap.md
+  - docs/12-pre-code-checklist.md
+  - docs/parallel-delivery/**
+  forbidden_paths:
+  - src/**
+  - tests/**
+  - '**/*.sql'
+  - '**/pyproject.toml'
+  - '**/uv.lock'
+  - docs/milestones/**/evidence/**
+  resource_locks:
+  - LOCK-DOC-AUTHORITY
+  - LOCK-AGENT-CONFIG
+  - LOCK-PARALLEL-REGISTRY
+  - LOCK-DOC-INDEX
+  runtime_prerequisites:
+  - git
+  - python_yaml_parser_or_equivalent
+  acceptance:
+  - requirement: UTF-8 text is valid without BOM and contains no mojibake/control
+      characters.
+    instrument: parse_utf8_and_scan_text
+    counterexample: Files are present and parse as bytes, but Vietnamese text is double-encoded
+      or a carriage return splits the review row.
+    red_observation: inherited AGENTS.md exhibited double-encoded Vietnamese and a
+      carriage-return-corrupted review cell before correction.
+    limitations: Static scan cannot prove prose correctness.
+  - requirement: DAG, registry, locks and trace references are structurally valid.
+    instrument: parse_yaml_check_ids_dependencies_acyclic_and_references
+    counterexample: YAML parses, but a dependency points to an unknown node or two
+      active tasks own the same exclusive resource.
+    red_observation: required machine registries were absent before this task.
+    limitations: Static validation does not run an Orca pilot.
+  - requirement: No new product implementation authority is created.
+    instrument: authority_wording_and_changed_path_scan
+    counterexample: Future template nodes exist and are incorrectly marked granted
+      or a prohibited source path changes.
+    red_observation: no machine architecture existed; authority invariant is checked
+      by diff and registry state.
+    limitations: Human review remains required for semantic ambiguity.
+  evidence_outputs:
+  - docs/parallel-delivery/.validation-report.json
+  rollback:
+    strategy: revert_task_commit_or_restore_verified_docs_only_backup
+    reference: D:/AI_SETUP/backups/AI-Auto-Video-Creator/20260928-175542
+    preserves_accepted_evidence: true
+  route:
+    control:
+      model: cx/gpt-5.6-sol
+    implement:
+      provider: 9router
+      harness: Codex CLI
+      model: ag/gemini-3.8-flash-high
+      effort: high
+    review:
+      provider: 9router
+      harness: Claude Code
+      model: cx/gpt-5.6-sol
+      effort: high
+    supreme_audit:
+      model: cx/gpt-6-astra-medium
+      effort: medium
+      use: external_extremely_difficult_audit_only
+  merge_priority: 10
+- id: M2-P8-LOCKED
+  milestone: M2
+  kind: authority_sentinel
+  status: stopped
+  authority:
+    state: locked
+    scope: no_behavioral_red_no_implementation
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/12-pre-code-checklist.md
+  - docs/milestones/m2-control-plane/implementation-plan.md
+  depends_on:
+  - task: M2-P7B-ACCEPTED
+    condition: accepted
+  requirement_refs:
+  - FR-UI-001
+  - FR-UI-003
+  - QR-UX-001
+  - QR-PERF-005
+  contract_refs: []
+  invariant_refs: []
+  module_owners:
+  - H
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: not_applicable_locked_sentinel
+    reference: docs/12-pre-code-checklist.md
+    preserves_accepted_evidence: true
+  route:
+    control: user_checkpoint_required
+    implement: none
+    review: none
+    supreme_audit: none
+  merge_priority: 900
+- id: M2-P9-LOCKED
+  milestone: M2
+  kind: authority_sentinel
+  status: stopped
+  authority:
+    state: locked
+    scope: no_implementation
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/12-pre-code-checklist.md
+  - docs/milestones/m2-control-plane/implementation-plan.md
+  depends_on:
+  - task: M2-P8-LOCKED
+    condition: accepted
+  requirement_refs: []
+  contract_refs: []
+  invariant_refs: []
+  module_owners:
+  - G
+  - H
+  - I
+  - J
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: not_applicable_locked_sentinel
+    reference: docs/12-pre-code-checklist.md
+    preserves_accepted_evidence: true
+  route:
+    control: user_checkpoint_required
+    implement: none
+    review: none
+    supreme_audit: none
+  merge_priority: 901
+- id: M3-A-TEMPLATE
+  milestone: M3
+  kind: future_template
+  status: planned
+  authority:
+    state: future_template
+    scope: design_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/11-roadmap.md
+  - docs/modules/a-source-collection/implementation-plan.md
+  depends_on:
+  - task: M2-P9-LOCKED
+    condition: accepted
+  requirement_refs:
+  - FR-SRC-*
+  - FR-COL-*
+  contract_refs:
+  - CT-SRC-*
+  invariant_refs:
+  - INV-015
+  - INV-020
+  module_owners:
+  - A
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: plan_required_before_activation
+    reference: docs/modules/a-source-collection/implementation-plan.md
+    preserves_accepted_evidence: true
+  route:
+    control: user_checkpoint_required
+    implement: none
+    review: none
+    supreme_audit: none
+  merge_priority: 1000
+- id: M4-CI-TEMPLATE
+  milestone: M4
+  kind: future_template
+  status: planned
+  authority:
+    state: future_template
+    scope: design_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/11-roadmap.md
+  depends_on:
+  - task: M3-A-TEMPLATE
+    condition: accepted
+  requirement_refs:
+  - FR-AST-*
+  - FR-HOOK-*
+  - FR-SYN-*
+  contract_refs:
+  - CT-MED-*
+  - CT-STO-*
+  invariant_refs:
+  - INV-008
+  - INV-011
+  module_owners:
+  - C
+  - I
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: milestone_plan_required
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route: &id001
+    control: user_checkpoint_required
+    implement: none
+    review: none
+    supreme_audit: none
+  merge_priority: 1100
+- id: M5-D-TEMPLATE
+  milestone: M5
+  kind: future_template
+  status: planned
+  authority:
+    state: future_template
+    scope: design_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/11-roadmap.md
+  depends_on:
+  - task: M4-CI-TEMPLATE
+    condition: accepted
+  requirement_refs:
+  - FR-SCR-*
+  - FR-VAR-*
+  contract_refs:
+  - CT-AI-*
+  invariant_refs:
+  - INV-004
+  - INV-013
+  - INV-014
+  - INV-020
+  module_owners:
+  - D
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: milestone_plan_required
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route: *id001
+  merge_priority: 1200
+- id: M6-EF-TEMPLATE
+  milestone: M6
+  kind: future_template
+  status: planned
+  authority:
+    state: future_template
+    scope: design_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/11-roadmap.md
+  depends_on:
+  - task: M5-D-TEMPLATE
+    condition: accepted
+  requirement_refs:
+  - FR-AUD-*
+  - FR-REN-*
+  - FR-PRS-*
+  contract_refs:
+  - CT-PROC-*
+  - CT-TTS-*
+  - CT-SUB-*
+  - CT-AUD-*
+  - CT-RND-*
+  - CT-QC-*
+  invariant_refs:
+  - INV-007
+  - INV-008
+  - INV-009
+  - INV-019
+  module_owners:
+  - E
+  - F
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: milestone_plan_required
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route: *id001
+  merge_priority: 1300
+- id: M7-INTEGRATION-TEMPLATE
+  milestone: M7
+  kind: future_template
+  status: planned
+  authority:
+    state: future_template
+    scope: design_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/11-roadmap.md
+  depends_on:
+  - task: M6-EF-TEMPLATE
+    condition: accepted
+  requirement_refs:
+  - FR-BAT-*
+  - QR-PERF-001
+  - QR-REL-007
+  - QR-COST-001
+  contract_refs:
+  - CT-CMN-*
+  - CT-WF-*
+  - CT-ORC-*
+  invariant_refs:
+  - INV-001
+  - INV-002
+  - INV-003
+  - INV-009
+  - INV-010
+  - INV-016
+  - INV-017
+  - INV-018
+  module_owners:
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  - G
+  - H
+  - I
+  - J
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: milestone_plan_required
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route: *id001
+  merge_priority: 1400
+- id: TASK-DOC-WAVE-DAG
+  milestone: DELIVERY-ARCH-EXPERIMENT
+  kind: future_template
+  status: planned
+  authority:
+    state: future_template
+    scope: design_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - DAG-implement-plan.md
+  - docs/11-roadmap.md
+  depends_on:
+  - task: PD-PILOT-CONTROL
+    condition: accepted
+  requirement_refs:
+  - QR-MNT-002
+  - QR-MNT-003
+  - QR-COMP-003
+  contract_refs: []
+  invariant_refs:
+  - INV-001
+  - INV-002
+  module_owners:
+  - CROSS-CUTTING-CONTRACT-OWNER
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: milestone_plan_required
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route: *id001
+  merge_priority: 90
+- id: TASK-CAP-B-INGESTION
+  milestone: M3
+  kind: future_template
+  status: planned
+  authority:
+    state: future_template
+    scope: design_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/11-roadmap.md
+  - docs/modules/capability-b-ingestion.md
+  depends_on:
+  - task: M2-P7B-ACCEPTED
+    condition: accepted
+  requirement_refs:
+  - FR-SRC-*
+  - FR-CNT-*
+  contract_refs: []
+  invariant_refs:
+  - INV-005
+  - INV-010
+  - INV-011
+  module_owners:
+  - B
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: milestone_plan_required
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route: *id001
+  merge_priority: 200
+- id: TASK-CAP-C-STORAGE
+  milestone: M4
+  kind: future_template
+  status: planned
+  authority:
+    state: future_template
+    scope: design_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/11-roadmap.md
+  - docs/modules/capability-c-storage.md
+  depends_on:
+  - task: M2-P7B-ACCEPTED
+    condition: accepted
+  requirement_refs:
+  - FR-AST-*
+  contract_refs: []
+  invariant_refs:
+  - INV-006
+  - INV-012
+  module_owners:
+  - C
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: milestone_plan_required
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route: *id001
+  merge_priority: 300
+- id: TASK-CAP-D-SCRIPTING
+  milestone: M5
+  kind: future_template
+  status: planned
+  authority:
+    state: future_template
+    scope: design_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/11-roadmap.md
+  - docs/modules/capability-d-scripting.md
+  depends_on:
+  - task: TASK-CAP-B-INGESTION
+    condition: accepted
+  - task: TASK-CAP-C-STORAGE
+    condition: accepted
+  requirement_refs:
+  - FR-SCR-*
+  - FR-VAR-*
+  contract_refs: []
+  invariant_refs:
+  - INV-004
+  - INV-013
+  - INV-014
+  - INV-020
+  module_owners:
+  - D
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: milestone_plan_required
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route: *id001
+  merge_priority: 400
+- id: TASK-CAP-E-VOICE
+  milestone: M6
+  kind: future_template
+  status: planned
+  authority:
+    state: future_template
+    scope: design_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/11-roadmap.md
+  - docs/modules/capability-e-voice.md
+  depends_on:
+  - task: TASK-CAP-D-SCRIPTING
+    condition: accepted
+  requirement_refs:
+  - FR-AUD-*
+  contract_refs: []
+  invariant_refs:
+  - INV-007
+  - INV-008
+  - INV-019
+  module_owners:
+  - E
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: milestone_plan_required
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route: *id001
+  merge_priority: 500
+- id: TASK-CAP-F-RENDERING
+  milestone: M6
+  kind: future_template
+  status: planned
+  authority:
+    state: future_template
+    scope: design_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/11-roadmap.md
+  - docs/modules/capability-f-rendering.md
+  depends_on:
+  - task: TASK-CAP-D-SCRIPTING
+    condition: accepted
+  - task: TASK-CAP-E-VOICE
+    condition: accepted
+  requirement_refs:
+  - FR-REN-*
+  - FR-PRS-*
+  contract_refs: []
+  invariant_refs:
+  - INV-001
+  - INV-002
+  - INV-009
+  - INV-018
+  module_owners:
+  - F
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: milestone_plan_required
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route: *id001
+  merge_priority: 600
+- id: TASK-CAP-G-ORCHESTRATION
+  milestone: M2
+  kind: future_template
+  status: planned
+  authority:
+    state: future_template
+    scope: design_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/11-roadmap.md
+  - docs/modules/capability-g-orchestration.md
+  depends_on:
+  - task: M2-P7B-ACCEPTED
+    condition: accepted
+  requirement_refs:
+  - FR-BAT-*
+  - QR-PERF-001
+  contract_refs: []
+  invariant_refs:
+  - INV-001
+  - INV-003
+  - INV-010
+  - INV-016
+  - INV-017
+  module_owners:
+  - G
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: milestone_plan_required
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route: *id001
+  merge_priority: 700
+- id: TASK-CAP-J-PROVIDERS
+  milestone: M2
+  kind: future_template
+  status: planned
+  authority:
+    state: future_template
+    scope: design_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/11-roadmap.md
+  - docs/modules/capability-j-providers.md
+  depends_on:
+  - task: M2-P7B-ACCEPTED
+    condition: accepted
+  requirement_refs:
+  - QR-COST-001
+  - QR-REL-007
+  contract_refs: []
+  invariant_refs:
+  - INV-013
+  - INV-015
+  module_owners:
+  - J
+  owned_paths: []
+  forbidden_paths:
+  - '**'
+  resource_locks: []
+  runtime_prerequisites: []
+  acceptance: []
+  evidence_outputs: []
+  rollback:
+    strategy: milestone_plan_required
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route: *id001
+  merge_priority: 800
+- id: TASK-CAP-J-P0-RED
+  milestone: M2
+  kind: work_package_slice
+  status: integrated
+  authority:
+    state: granted
+    scope: scaffold_and_red_tests_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - DAG_IMPLEMENT_PLAN_CHECKLIST.md:23
+  - docs/modules/capability-j-providers.md
+  depends_on:
+  - task: M2-P7B-ACCEPTED
+    condition: accepted
+  requirement_refs:
+  - QR-COST-001
+  - QR-REL-007
+  contract_refs:
+  - id: CONTRACT-CONFIG-SECURITY
+    registry: CONTRACT-CONFIG-SECURITY
+    revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+  invariant_refs:
+  - INV-013
+  - INV-015
+  - INV-021
+  module_owners:
+  - J
+  owned_paths:
+  - src/controlplane/security/__init__.py
+  - src/controlplane/security/interfaces.py
+  - src/controlplane/security/sanitizer.py
+  - src/controlplane/config/__init__.py
+  - src/controlplane/config/models.py
+  - src/controlplane/config/router.py
+  - tests/unit/security/__init__.py
+  - tests/unit/security/test_provider_routing.py
+  forbidden_paths:
+  - src/creative/**
+  - src/render/**
+  - src/ingestion/**
+  - src/catalog/**
+  - src/voice/**
+  - src/main.py
+  - src/controlplane/api/main.py
+  - docs/09-contracts/**
+  - docs/milestones/**/evidence/**
+  resource_locks:
+  - LOCK-SRC-CONFIG-SECURITY
+  runtime_prerequisites:
+  - python
+  - unittest
+  acceptance:
+  - requirement: Secret values must be redacted in string, representation, and log
+      sanitization.
+    instrument: tests.unit.security.test_provider_routing.TestProviderRouting.test_secret_credential_never_exposes_raw_value_in_string_or_log
+    counterexample: String representation or sanitizer utility outputs plaintext credential
+      bytes.
+    red_observation: Ran 3 tests with exactly 3 failures due to unbuilt business logic,
+      0 errors, 0 skips.
+    limitations: Verifies test harness and behavioral assertions fail-closed only;
+      zero production logic.
+  evidence_outputs:
+  - docs/parallel-delivery/evidence/cap-j-p0/red-evidence.json
+  rollback:
+    strategy: revert_task_commit
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route:
+    control:
+      model: cx/gpt-6.1-sol
+    implement:
+      provider: 9router
+      harness: Codex CLI
+      model: ag/gemini-3.8-flash-high
+      effort: high
+    review:
+      provider: 9router
+      harness: Claude Code
+      model: cx/gpt-6.1-sol
+      effort: high
+    supreme_audit:
+      model: none
+      effort: none
+      use: disabled_sol_lead_only
+  merge_priority: 210
+- id: TASK-CAP-J-P0-GREEN
+  milestone: M2
+  kind: work_package_slice
+  status: integrated
+  authority:
+    state: granted
+    scope: minimal_logic_implementation
+    does_not_authorize_descendants: true
+  authority_refs:
+  - DAG_IMPLEMENT_PLAN_CHECKLIST.md:23
+  - docs/modules/capability-j-providers.md
+  depends_on:
+  - task: TASK-CAP-J-P0-RED
+    condition: evidence_verified
+  requirement_refs:
+  - QR-COST-001
+  - QR-REL-007
+  contract_refs:
+  - id: CONTRACT-CONFIG-SECURITY
+    registry: CONTRACT-CONFIG-SECURITY
+    revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+  invariant_refs:
+  - INV-013
+  - INV-015
+  - INV-021
+  module_owners:
+  - J
+  owned_paths:
+  - src/controlplane/security/interfaces.py
+  - src/controlplane/security/sanitizer.py
+  - src/controlplane/config/router.py
+  - docs/modules/capability-j-providers.md
+  forbidden_paths:
+  - tests/unit/security/test_provider_routing.py
+  - src/controlplane/config/models.py
+  - src/creative/**
+  - src/render/**
+  - src/ingestion/**
+  - src/catalog/**
+  - src/voice/**
+  - src/main.py
+  - src/controlplane/api/main.py
+  - docs/09-contracts/**
+  - docs/milestones/**/evidence/**
+  resource_locks:
+  - LOCK-SRC-CONFIG-SECURITY
+  runtime_prerequisites:
+  - python
+  - unittest
+  acceptance:
+  - requirement: Exact 3 test cases pass with 100% GREEN.
+    instrument: tests.unit.security.test_provider_routing.TestProviderRouting
+    counterexample: Sanitizer leaks raw token, Router fails to catch 429, or Router
+      allows missing provenance.
+    red_observation: 'Ran 3 tests: OK (0 failures, 0 errors, 0 skips).'
+    limitations: In-memory mock logic only; OS DPAPI vault and database persistence
+      deferred to P1.
+  evidence_outputs:
+  - docs/parallel-delivery/evidence/cap-j-p0/green-evidence.json
+  rollback:
+    strategy: revert_task_commit
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route:
+    control:
+      model: cx/gpt-6.1-sol
+    implement:
+      provider: 9router
+      harness: Codex CLI
+      model: ag/gemini-3.8-flash-high
+      effort: high
+    review:
+      provider: 9router
+      harness: Claude Code
+      model: cx/gpt-6.1-sol
+      effort: high
+    supreme_audit:
+      model: none
+      effort: none
+      use: disabled_sol_lead_only
+  merge_priority: 220
+- id: TASK-CAP-J-P1-A-RED
+  milestone: M2
+  kind: work_package_slice
+  status: integrated
+  authority:
+    state: granted
+    scope: scaffold_and_red_tests_only
+    does_not_authorize_descendants: true
+  authority_refs:
+  - DAG_IMPLEMENT_PLAN_CHECKLIST.md:23
+  - docs/modules/capability-j-providers.md
+  depends_on:
+  - task: TASK-CAP-J-P0-GREEN
+    condition: evidence_verified
+  requirement_refs:
+  - QR-SEC-001
+  - QR-REL-007
+  contract_refs:
+  - id: CONTRACT-CONFIG-SECURITY
+    registry: CONTRACT-CONFIG-SECURITY
+    revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+  invariant_refs:
+  - INV-015
+  module_owners:
+  - J
+  owned_paths:
+  - src/controlplane/security/dpapi.py
+  - src/controlplane/security/broker.py
+  - tests/unit/security/test_dpapi_broker.py
+  forbidden_paths:
+  - src/controlplane/config/router.py
+  - tests/unit/security/test_provider_routing.py
+  - src/creative/**
+  - src/render/**
+  - src/ingestion/**
+  - src/catalog/**
+  - src/voice/**
+  - src/main.py
+  - src/controlplane/api/main.py
+  - docs/09-contracts/**
+  - docs/milestones/**/evidence/**
+  resource_locks:
+  - LOCK-SRC-CONFIG-SECURITY
+  runtime_prerequisites:
+  - python
+  - unittest
+  acceptance:
+  - requirement: Exact 3 test cases fail with behavioral RED (0 syntax/import errors).
+    instrument: tests.unit.security.test_dpapi_broker.TestDPAPIBroker
+    counterexample: DPAPI plaintext leak or broker access violation.
+    red_observation: 'Ran 3 tests: FAILED (failures=3, errors=0, skips=0).'
+    limitations: Scaffold only, business logic deferred to P1-A-GREEN.
+  evidence_outputs:
+  - docs/parallel-delivery/evidence/cap-j-p1/p1a-red-evidence.json
+  rollback:
+    strategy: revert_task_commit
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route:
+    control:
+      model: cx/gpt-6.1-sol
+    implement:
+      provider: 9router
+      harness: Codex CLI
+      model: ag/gemini-3.8-flash-high
+      effort: high
+    review:
+      provider: 9router
+      harness: Claude Code
+      model: cx/gpt-6.1-sol
+      effort: high
+    supreme_audit:
+      model: none
+      effort: none
+      use: disabled_sol_lead_only
+  merge_priority: 230
+- id: TASK-CAP-J-P1-A-GREEN
+  milestone: M2
+  kind: work_package_slice
+  status: ready
+  authority:
+    state: granted
+    scope: minimal_logic_implementation
+    does_not_authorize_descendants: true
+  authority_refs:
+  - DAG_IMPLEMENT_PLAN_CHECKLIST.md:23
+  - docs/modules/capability-j-providers.md
+  depends_on:
+  - task: TASK-CAP-J-P1-A-RED
+    condition: evidence_verified
+  requirement_refs:
+  - QR-SEC-001
+  - QR-REL-007
+  contract_refs:
+  - id: CONTRACT-CONFIG-SECURITY
+    registry: CONTRACT-CONFIG-SECURITY
+    revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+  invariant_refs:
+  - INV-015
+  module_owners:
+  - J
+  owned_paths:
+  - src/controlplane/security/dpapi.py
+  - src/controlplane/security/broker.py
+  forbidden_paths:
+  - tests/unit/security/test_dpapi_broker.py
+  - src/controlplane/config/router.py
+  - tests/unit/security/test_provider_routing.py
+  - src/creative/**
+  - src/render/**
+  - src/ingestion/**
+  - src/catalog/**
+  - src/voice/**
+  - src/main.py
+  - src/controlplane/api/main.py
+  - docs/09-contracts/**
+  - docs/milestones/**/evidence/**
+  resource_locks:
+  - LOCK-SRC-CONFIG-SECURITY
+  runtime_prerequisites:
+  - python
+  - unittest
+  acceptance:
+  - requirement: Exact 3 test cases pass with 100% GREEN.
+    instrument: tests.unit.security.test_dpapi_broker.TestDPAPIBroker
+    counterexample: DPAPI plaintext leak or broker access violation.
+    red_observation: 'Ran 3 tests: OK (0 failures, 0 errors, 0 skips).'
+  evidence_outputs:
+  - docs/parallel-delivery/evidence/cap-j-p1/p1a-green-evidence.json
+  rollback:
+    strategy: revert_task_commit
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route:
+    control:
+      model: cx/gpt-6.1-sol
+    implement:
+      provider: 9router
+      harness: Codex CLI
+      model: ag/gemini-3.8-flash-high
+      effort: high
+    review:
+      provider: 9router
+      harness: Claude Code
+      model: cx/gpt-6.1-sol
+      effort: high
+    supreme_audit:
+      model: none
+      effort: none
+      use: disabled_sol_lead_only
+  merge_priority: 240
+- id: TASK-CAP-J-P1-B
+  milestone: M2
+  kind: work_package_slice
+  status: planned
+  authority:
+    state: future_template
+    scope: http_client_and_router_adapter
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/modules/capability-j-providers.md
+  depends_on:
+  - task: TASK-CAP-J-P1-A-GREEN
+    condition: evidence_verified
+  requirement_refs:
+  - QR-REL-007
+  contract_refs:
+  - id: CONTRACT-CONFIG-SECURITY
+    registry: CONTRACT-CONFIG-SECURITY
+    revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+  invariant_refs:
+  - INV-013
+  - INV-021
+  module_owners:
+  - J
+  owned_paths:
+  - src/controlplane/config/router.py
+  - src/controlplane/config/adapter.py
+  forbidden_paths:
+  - src/creative/**
+  resource_locks:
+  - LOCK-SRC-CONFIG-SECURITY
+  merge_priority: 250
+- id: TASK-CAP-J-P1-C
+  milestone: M2
+  kind: work_package_slice
+  status: planned
+  authority:
+    state: future_template
+    scope: cost_and_quota_accounting
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/modules/capability-j-providers.md
+  depends_on:
+  - task: TASK-CAP-J-P1-B
+    condition: evidence_verified
+  requirement_refs:
+  - QR-COST-001
+  contract_refs:
+  - id: CONTRACT-CONFIG-SECURITY
+    registry: CONTRACT-CONFIG-SECURITY
+    revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+  invariant_refs:
+  - INV-013
+  module_owners:
+  - J
+  owned_paths:
+  - src/controlplane/config/accounting.py
+  forbidden_paths:
+  - src/creative/**
+  resource_locks:
+  - LOCK-SRC-CONFIG-SECURITY
+  merge_priority: 260
 single_writer_restrictions:
   composition_root:
     path: src/controlplane/api/main.py
     lock_ref: LOCK-COMPOSITION-ROOT
-    rule: Only one exclusive writer at integration time; concurrent edits strictly forbidden.
+    rule: Only one exclusive writer at integration time; concurrent edits strictly
+      forbidden.
   contract_source:
     path_pattern: docs/09-contracts/**
     lock_ref: LOCK-CONTRACT-SOURCE
-    rule: Only contract owner can update frozen contract revisions; breaking changes require major version bump.
+    rule: Only contract owner can update frozen contract revisions; breaking changes
+      require major version bump.
   migration_ledger:
     path_pattern: src/**/migrations/**
     lock_ref: LOCK-MIGRATION-SEQUENCE
-    rule: Strictly serialized global migration counter; no branch may create parallel migration numbers.
+    rule: Strictly serialized global migration counter; no branch may create parallel
+      migration numbers.
   dependency_universe:
     lock_ref: LOCK-DEPENDENCY-UNIVERSE
-    files: [pyproject.toml, uv.lock, package-lock.json]
+    files:
+    - pyproject.toml
+    - uv.lock
+    - package-lock.json
     rule: Single toolchain owner per milestone; lockfile updates must be serialized.
   historical_evidence:
     lock_ref: LOCK-ACCEPTED-EVIDENCE
     path_pattern: docs/milestones/**/evidence/**
     rule: Immutable historical evidence; mutation leases strictly prohibited fail-closed.
-
 external_nodes:
-  - id: M2-P7B-ACCEPTED
-    state: accepted
-    authority_ref: docs/12-pre-code-checklist.md
-    source_ref: c44214ad027986a0db7cb9d8e221590f232a0036
-    evidence_ref: docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-green-20260917040648
+- id: M2-P7B-ACCEPTED
+  state: accepted
+  authority_ref: docs/12-pre-code-checklist.md
+  source_ref: c44214ad027986a0db7cb9d8e221590f232a0036
+  evidence_ref: docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-green-20260917040648
