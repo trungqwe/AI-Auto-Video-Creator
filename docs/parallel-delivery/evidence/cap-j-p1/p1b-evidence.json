@@ -1,0 +1,34 @@
+{
+  "task_id": "TASK-CAP-J-P1-B",
+  "status": "GREEN_CONFIRMED",
+  "command": "python -m unittest tests.unit.security.test_http_router_adapter.TestHTTPRouterAdapter",
+  "exit_code": 0,
+  "timestamp_utc": "2026-10-02T12:05:00.000000+00:00",
+  "summary": {
+    "tests_run": 3,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0
+  },
+  "oracles": [
+    {
+      "oracle": "Oracle 1 (INV-021)",
+      "name": "test_http_adapter_timeout_handling",
+      "status": "PASS",
+      "observation": "HTTP client intercepts socket/request timeout and raises ProviderTimeoutError."
+    },
+    {
+      "oracle": "Oracle 2 (INV-021)",
+      "name": "test_http_adapter_429_exponential_backoff_and_retry",
+      "status": "PASS",
+      "observation": "HTTP client handles HTTP 429 with exponential backoff and retry, returning AIResponse when successful and raising ProviderRateLimitExceededError when retries are exhausted."
+    },
+    {
+      "oracle": "Oracle 3 (INV-013)",
+      "name": "test_http_adapter_route_provenance_stamping",
+      "status": "PASS",
+      "observation": "Outbound HTTP request stamps provenance headers (X-Route-Provenance, X-Config-Revision-ID) and rejects missing revision with MissingConfigProvenanceError fail-closed."
+    }
+  ],
+  "terminal_output": "...\n----------------------------------------------------------------------\nRan 3 tests in 0.042s\n\nOK\n"
+}
