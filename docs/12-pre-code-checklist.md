@@ -1,8 +1,8 @@
 # AI Auto Video Creator — Checklist cuối trước code
 
-**Ngày lập:** 12-09-2026 (Cập nhật sau User Checkpoint M1: 13-09-2026)  
-**Trạng thái:** M0 APPROVED/CLOSED; M1 ACCEPTED/CLOSED (User Checkpoint 13-09-2026 sau Audit R5.1, 93 tests PASSED, Audit R5 + R5.1 ACCEPTED); M2 AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION; M3 và Phân hệ A NOT AUTHORIZED  
-**Cổng áp dụng:** M1 → M2 của [roadmap](./11-roadmap.md)  
+**Ngày lập:** 12-09-2026 (Cập nhật sau User Checkpoint M1: 13-09-2026)
+**Trạng thái:** M0 APPROVED/CLOSED; M1 ACCEPTED/CLOSED (User Checkpoint 13-09-2026 sau Audit R5.1, 93 tests PASSED, Audit R5 + R5.1 ACCEPTED); M2 AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION; M3 và Phân hệ A NOT AUTHORIZED
+**Cổng áp dụng:** M1 → M2 của [roadmap](./11-roadmap.md)
 **Căn cứ audit hiện hành:** [M1 audit R5 (kèm R5.1 Addendum)](./milestones/m1-proof/audit-r5.md), [M1 audit R4](./milestones/m1-proof/audit-r4.md), [M1 audit R3](./milestones/m1-proof/audit-r3.md), [M1 audit R2](./milestones/m1-proof/audit-r2.md) và [M1 audit R1](./milestones/m1-proof/audit-r1.md)
 
 ## 1. Mục đích và cách đọc

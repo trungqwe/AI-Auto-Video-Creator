@@ -62,6 +62,14 @@ Thiếu trường bắt buộc làm task `invalid`, không tự điền từ tê
 
 ## 4. Đồ thị và concurrency wave
 
+### Phân định Wave và DAG trong điều hành thực tế
+
+Hệ thống phân tách triệt để giữa góc nhìn quản trị phạm vi (Wave) và đồ thị thực thi kỹ thuật (DAG):
+
+- **Wave (Phân kỳ thẩm quyền & Lộ trình):** Đóng vai trò là khung phân kỳ chiến lược để trình bày cho người dùng, thiết lập các mốc nghiệm thu (milestone checkpoints) và phê duyệt phạm vi (Scope Approval). Wave trả lời câu hỏi: *"Dự án đang ở giai đoạn nào về mặt thẩm quyền?"*
+- **DAG (Đồ thị thực thi kỹ thuật):** Quyết định việc nào thực sự có thể chạy đồng thời dựa trên các điều kiện tiên quyết kỹ thuật độc lập. DAG trả lời câu hỏi: *"Tác vụ nào có hợp đồng đã freeze, tài nguyên sẵn sàng và đường dẫn không xung đột để dispatch ngay lập tức?"*
+- **Nguyên tắc không chờ đợi giả tạo:** Một task thuộc Wave sau có thể được thực thi ngay khi mọi dependency trên DAG của nó đã được giải phóng (hợp đồng đã frozen, tài nguyên đã sẵn sàng), không bắt buộc phải chờ toàn bộ các task khác của Wave trước hoàn tất.
+
 DAG chỉ biểu diễn dependency kỹ thuật. Authority là gate độc lập trên từng node. Một wave là tập node đồng thời thỏa cả sáu trục độc lập:
 
 1. predecessor đã accepted;
@@ -104,6 +112,21 @@ Không được dùng ví dụ này để mở M2-P8/P9 hoặc M3+.
 - Consumer chỉ implement trên exact revision; unsupported version phải fail closed.
 - Thay đổi contract sau freeze làm dependent task `needs_replan`, không âm thầm cập nhật fixture.
 - Cross-owner atomic use case do caller-owned PostgreSQL Unit of Work điều phối qua typed owner ports; coordinator không ghi bảng owner khác.
+
+### Bốn trạng thái thẩm quyền độc lập (Four Authority States)
+
+Mọi task trong DAG phải có trạng thái thẩm quyền được định nghĩa rõ ràng, ngăn chặn hoàn toàn việc tự cấp quyền (Zero Hallucinated Authority):
+
+1. **`planned` (Được lập kế hoạch):** Task đã có đặc tả yêu cầu, DoR/DoD và hợp đồng giao tiếp, nhưng chưa được cấp quyền chỉnh sửa mã nguồn sản phẩm.
+2. **`implementation_authorized` (Được phép implementation):** Task được cấp quyền viết mã và unit test cục bộ trên worktree độc lập trong phạm vi `owned_paths`, sau khi toàn bộ contract phụ thuộc đã được đóng băng (`frozen`).
+3. **`integration_authorized` (Được phép integration):** Task đã hoàn tất kiểm thử cục bộ và biên giao tiếp, được cấp quyền đưa vào hàng đợi tích hợp (Merge Queue) để kiểm thử liên module.
+4. **`production_activation_authorized` (Được phép kích hoạt sản xuất):** Task đã vượt qua toàn bộ cổng kiểm thử tích hợp thực tế. Hiện tại trạng thái này tiếp tục bị **KHÓA CHẶT** (`PRODUCTION_ACTIVATION_BLOCKED`).
+
+### Điều chỉnh quy định QR-MNT-003 (Amendment to QR-MNT-003)
+
+Quy định `QR-MNT-003` được chuẩn hóa để hỗ trợ mô hình Wave/DAG:
+- Cho phép phát triển song song các work package thuộc các capability khác nhau khi chúng đã được cấp quyền implementation và các contract liên quan đã được đóng băng ở phiên bản cụ thể.
+- Nghiệm thu chính thức một phân hệ tổng thể và mở milestone mới vẫn bắt buộc phải có biên bản kiểm toán độc lập và checkpoint phê duyệt từ người dùng.
 
 ## 6. Eligibility và admission
 

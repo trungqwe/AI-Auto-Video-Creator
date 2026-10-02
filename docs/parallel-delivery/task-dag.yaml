@@ -124,9 +124,10 @@ waves:
   - id: WAVE-0-CONTROL-FREEZE
     status: proposed
     admission: authority_and_contract_freeze_only
-    max_parallel: 1
+    max_parallel: 2
     task_ids:
       - PD-PILOT-CONTROL
+      - TASK-DOC-WAVE-DAG
   - id: WAVE-1-INDEPENDENT-OWNERS
     status: future_template
     admission: independent_on_dependency_contract_path_lock_migration_evidence
@@ -134,6 +135,9 @@ waves:
     task_ids:
       - M3-A-TEMPLATE
       - M4-CI-TEMPLATE
+      - TASK-CAP-B-INGESTION
+      - TASK-CAP-C-STORAGE
+      - TASK-CAP-J-PROVIDERS
   - id: WAVE-2-CONSUMERS
     status: future_template
     admission: exact_frozen_contract_revisions_required
@@ -141,12 +145,16 @@ waves:
     task_ids:
       - M5-D-TEMPLATE
       - M6-EF-TEMPLATE
+      - TASK-CAP-D-SCRIPTING
+      - TASK-CAP-E-VOICE
+      - TASK-CAP-F-RENDERING
   - id: WAVE-3-INTEGRATION
     status: future_template
     admission: serialized_cross_owner_integration
-    max_parallel: 1
+    max_parallel: 2
     task_ids:
       - M7-INTEGRATION-TEMPLATE
+      - TASK-CAP-G-ORCHESTRATION
 
 # Đây là task docs/config đã được cấp quyền bởi dispatch hiện hành; nó không mở product implementation.
 tasks:
@@ -551,6 +559,337 @@ tasks:
       preserves_accepted_evidence: true
     route: *future_route
     merge_priority: 1400
+
+  - id: TASK-DOC-WAVE-DAG
+    milestone: DELIVERY-ARCH-EXPERIMENT
+    kind: future_template
+    status: planned
+    authority:
+      state: future_template
+      scope: design_only
+      does_not_authorize_descendants: true
+    authority_refs:
+      - DAG-implement-plan.md
+      - docs/11-roadmap.md
+    depends_on:
+      - task: PD-PILOT-CONTROL
+        condition: accepted
+    requirement_refs:
+      - QR-MNT-002
+      - QR-MNT-003
+      - QR-COMP-003
+    contract_refs: []
+    invariant_refs:
+      - INV-001
+      - INV-002
+    module_owners:
+      - CROSS-CUTTING-CONTRACT-OWNER
+    owned_paths: []
+    forbidden_paths:
+      - "**"
+    resource_locks: []
+    runtime_prerequisites: []
+    acceptance: []
+    evidence_outputs: []
+    rollback:
+      strategy: milestone_plan_required
+      reference: docs/11-roadmap.md
+      preserves_accepted_evidence: true
+    route: *future_route
+    merge_priority: 90
+
+  - id: TASK-CAP-B-INGESTION
+    milestone: M3
+    kind: future_template
+    status: planned
+    authority:
+      state: future_template
+      scope: design_only
+      does_not_authorize_descendants: true
+    authority_refs:
+      - docs/11-roadmap.md
+      - docs/modules/capability-b-ingestion.md
+    depends_on:
+      - task: M2-P7B-ACCEPTED
+        condition: accepted
+    requirement_refs:
+      - FR-SRC-*
+      - FR-CNT-*
+    contract_refs: []
+    invariant_refs:
+      - INV-005
+      - INV-010
+      - INV-011
+    module_owners:
+      - B
+    owned_paths: []
+    forbidden_paths:
+      - "**"
+    resource_locks: []
+    runtime_prerequisites: []
+    acceptance: []
+    evidence_outputs: []
+    rollback:
+      strategy: milestone_plan_required
+      reference: docs/11-roadmap.md
+      preserves_accepted_evidence: true
+    route: *future_route
+    merge_priority: 200
+
+  - id: TASK-CAP-C-STORAGE
+    milestone: M4
+    kind: future_template
+    status: planned
+    authority:
+      state: future_template
+      scope: design_only
+      does_not_authorize_descendants: true
+    authority_refs:
+      - docs/11-roadmap.md
+      - docs/modules/capability-c-storage.md
+    depends_on:
+      - task: M2-P7B-ACCEPTED
+        condition: accepted
+    requirement_refs:
+      - FR-AST-*
+    contract_refs: []
+    invariant_refs:
+      - INV-006
+      - INV-012
+    module_owners:
+      - C
+    owned_paths: []
+    forbidden_paths:
+      - "**"
+    resource_locks: []
+    runtime_prerequisites: []
+    acceptance: []
+    evidence_outputs: []
+    rollback:
+      strategy: milestone_plan_required
+      reference: docs/11-roadmap.md
+      preserves_accepted_evidence: true
+    route: *future_route
+    merge_priority: 300
+
+  - id: TASK-CAP-D-SCRIPTING
+    milestone: M5
+    kind: future_template
+    status: planned
+    authority:
+      state: future_template
+      scope: design_only
+      does_not_authorize_descendants: true
+    authority_refs:
+      - docs/11-roadmap.md
+      - docs/modules/capability-d-scripting.md
+    depends_on:
+      - task: TASK-CAP-B-INGESTION
+        condition: accepted
+      - task: TASK-CAP-C-STORAGE
+        condition: accepted
+    requirement_refs:
+      - FR-SCR-*
+      - FR-VAR-*
+    contract_refs: []
+    invariant_refs:
+      - INV-004
+      - INV-013
+      - INV-014
+      - INV-020
+    module_owners:
+      - D
+    owned_paths: []
+    forbidden_paths:
+      - "**"
+    resource_locks: []
+    runtime_prerequisites: []
+    acceptance: []
+    evidence_outputs: []
+    rollback:
+      strategy: milestone_plan_required
+      reference: docs/11-roadmap.md
+      preserves_accepted_evidence: true
+    route: *future_route
+    merge_priority: 400
+
+  - id: TASK-CAP-E-VOICE
+    milestone: M6
+    kind: future_template
+    status: planned
+    authority:
+      state: future_template
+      scope: design_only
+      does_not_authorize_descendants: true
+    authority_refs:
+      - docs/11-roadmap.md
+      - docs/modules/capability-e-voice.md
+    depends_on:
+      - task: TASK-CAP-D-SCRIPTING
+        condition: accepted
+    requirement_refs:
+      - FR-AUD-*
+    contract_refs: []
+    invariant_refs:
+      - INV-007
+      - INV-008
+      - INV-019
+    module_owners:
+      - E
+    owned_paths: []
+    forbidden_paths:
+      - "**"
+    resource_locks: []
+    runtime_prerequisites: []
+    acceptance: []
+    evidence_outputs: []
+    rollback:
+      strategy: milestone_plan_required
+      reference: docs/11-roadmap.md
+      preserves_accepted_evidence: true
+    route: *future_route
+    merge_priority: 500
+
+  - id: TASK-CAP-F-RENDERING
+    milestone: M6
+    kind: future_template
+    status: planned
+    authority:
+      state: future_template
+      scope: design_only
+      does_not_authorize_descendants: true
+    authority_refs:
+      - docs/11-roadmap.md
+      - docs/modules/capability-f-rendering.md
+    depends_on:
+      - task: TASK-CAP-D-SCRIPTING
+        condition: accepted
+      - task: TASK-CAP-E-VOICE
+        condition: accepted
+    requirement_refs:
+      - FR-REN-*
+      - FR-PRS-*
+    contract_refs: []
+    invariant_refs:
+      - INV-001
+      - INV-002
+      - INV-009
+      - INV-018
+    module_owners:
+      - F
+    owned_paths: []
+    forbidden_paths:
+      - "**"
+    resource_locks: []
+    runtime_prerequisites: []
+    acceptance: []
+    evidence_outputs: []
+    rollback:
+      strategy: milestone_plan_required
+      reference: docs/11-roadmap.md
+      preserves_accepted_evidence: true
+    route: *future_route
+    merge_priority: 600
+
+  - id: TASK-CAP-G-ORCHESTRATION
+    milestone: M2
+    kind: future_template
+    status: planned
+    authority:
+      state: future_template
+      scope: design_only
+      does_not_authorize_descendants: true
+    authority_refs:
+      - docs/11-roadmap.md
+      - docs/modules/capability-g-orchestration.md
+    depends_on:
+      - task: M2-P7B-ACCEPTED
+        condition: accepted
+    requirement_refs:
+      - FR-BAT-*
+      - QR-PERF-001
+    contract_refs: []
+    invariant_refs:
+      - INV-001
+      - INV-003
+      - INV-010
+      - INV-016
+      - INV-017
+    module_owners:
+      - G
+    owned_paths: []
+    forbidden_paths:
+      - "**"
+    resource_locks: []
+    runtime_prerequisites: []
+    acceptance: []
+    evidence_outputs: []
+    rollback:
+      strategy: milestone_plan_required
+      reference: docs/11-roadmap.md
+      preserves_accepted_evidence: true
+    route: *future_route
+    merge_priority: 700
+
+  - id: TASK-CAP-J-PROVIDERS
+    milestone: M2
+    kind: future_template
+    status: planned
+    authority:
+      state: future_template
+      scope: design_only
+      does_not_authorize_descendants: true
+    authority_refs:
+      - docs/11-roadmap.md
+      - docs/modules/capability-j-providers.md
+    depends_on:
+      - task: M2-P7B-ACCEPTED
+        condition: accepted
+    requirement_refs:
+      - QR-COST-001
+      - QR-REL-007
+    contract_refs: []
+    invariant_refs:
+      - INV-013
+      - INV-015
+    module_owners:
+      - J
+    owned_paths: []
+    forbidden_paths:
+      - "**"
+    resource_locks: []
+    runtime_prerequisites: []
+    acceptance: []
+    evidence_outputs: []
+    rollback:
+      strategy: milestone_plan_required
+      reference: docs/11-roadmap.md
+      preserves_accepted_evidence: true
+    route: *future_route
+    merge_priority: 800
+
+
+single_writer_restrictions:
+  composition_root:
+    path: src/controlplane/api/main.py
+    lock_ref: LOCK-COMPOSITION-ROOT
+    rule: Only one exclusive writer at integration time; concurrent edits strictly forbidden.
+  contract_source:
+    path_pattern: docs/09-contracts/**
+    lock_ref: LOCK-CONTRACT-SOURCE
+    rule: Only contract owner can update frozen contract revisions; breaking changes require major version bump.
+  migration_ledger:
+    path_pattern: src/**/migrations/**
+    lock_ref: LOCK-MIGRATION-SEQUENCE
+    rule: Strictly serialized global migration counter; no branch may create parallel migration numbers.
+  dependency_universe:
+    lock_ref: LOCK-DEPENDENCY-UNIVERSE
+    files: [pyproject.toml, uv.lock, package-lock.json]
+    rule: Single toolchain owner per milestone; lockfile updates must be serialized.
+  historical_evidence:
+    lock_ref: LOCK-ACCEPTED-EVIDENCE
+    path_pattern: docs/milestones/**/evidence/**
+    rule: Immutable historical evidence; mutation leases strictly prohibited fail-closed.
 
 external_nodes:
   - id: M2-P7B-ACCEPTED

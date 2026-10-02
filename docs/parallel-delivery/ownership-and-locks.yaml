@@ -116,6 +116,77 @@ path_ownership:
     mode: immutable
     lock: LOCK-ACCEPTED-EVIDENCE
 
+  - id: PATH-SRC-INGESTION
+    patterns:
+      - src/ingestion/**
+      - tests/unit/ingestion/**
+      - docs/modules/capability-b-ingestion.md
+    owner_role: Module_B_Ingestion_Owner
+    mode: exclusive
+    lock: LOCK-SRC-INGESTION
+  - id: PATH-SRC-CATALOG
+    patterns:
+      - src/catalog/**
+      - tests/unit/catalog/**
+      - docs/modules/capability-c-storage.md
+    owner_role: Module_C_Catalog_Owner
+    mode: exclusive
+    lock: LOCK-SRC-CATALOG
+  - id: PATH-SRC-CREATIVE
+    patterns:
+      - src/creative/**
+      - tests/unit/creative/**
+      - docs/modules/capability-d-scripting.md
+    owner_role: Module_D_Scripting_Owner
+    mode: exclusive
+    lock: LOCK-SRC-CREATIVE
+  - id: PATH-SRC-VOICE
+    patterns:
+      - src/voice/**
+      - tests/unit/voice/**
+      - docs/modules/capability-e-voice.md
+    owner_role: Module_E_Voice_Owner
+    mode: exclusive
+    lock: LOCK-SRC-VOICE
+  - id: PATH-SRC-RENDER
+    patterns:
+      - src/render/**
+      - tests/unit/render/**
+      - docs/modules/capability-f-rendering.md
+    owner_role: Module_F_Rendering_Owner
+    mode: exclusive
+    lock: LOCK-SRC-RENDER
+  - id: PATH-SRC-ORCHESTRATION
+    patterns:
+      - src/controlplane/orchestration/**
+      - tests/unit/orchestration/**
+      - docs/modules/capability-g-orchestration.md
+    owner_role: Module_G_Orchestration_Owner
+    mode: exclusive
+    lock: LOCK-SRC-ORCHESTRATION
+  - id: PATH-SRC-CONFIG-SECURITY
+    patterns:
+      - src/controlplane/config/**
+      - src/controlplane/security/**
+      - tests/unit/security/**
+      - docs/modules/capability-j-providers.md
+    owner_role: Module_J_Providers_Owner
+    mode: exclusive
+    lock: LOCK-SRC-CONFIG-SECURITY
+  - id: PATH-COMPOSITION-ROOT
+    patterns:
+      - src/main.py
+      - src/controlplane/api/main.py
+    owner_role: SystemArchitect_SingleWriter
+    mode: exclusive
+    lock: LOCK-COMPOSITION-ROOT
+  - id: PATH-CONTRACT-SOURCE
+    patterns:
+      - docs/09-contracts/**
+    owner_role: ContractAuthority_SingleWriter
+    mode: exclusive
+    lock: LOCK-CONTRACT-SOURCE
+
 locks:
   - id: LOCK-DOC-AUTHORITY
     class: path
@@ -260,6 +331,61 @@ locks:
     class: contract_revision
     mode: exclusive
     scope: CONTRACT-STATE-MACHINES
+    lease_seconds: 1800
+    renewable: true
+
+  - id: LOCK-SRC-INGESTION
+    class: path
+    mode: exclusive
+    scope: capability_b_ingestion_code
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-SRC-CATALOG
+    class: path
+    mode: exclusive
+    scope: capability_c_media_catalog_code
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-SRC-CREATIVE
+    class: path
+    mode: exclusive
+    scope: capability_d_creative_scripting_code
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-SRC-VOICE
+    class: path
+    mode: exclusive
+    scope: capability_e_voice_timing_code
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-SRC-RENDER
+    class: path
+    mode: exclusive
+    scope: capability_f_render_qc_code
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-SRC-ORCHESTRATION
+    class: path
+    mode: exclusive
+    scope: capability_g_orchestration_code
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-SRC-CONFIG-SECURITY
+    class: path
+    mode: exclusive
+    scope: capability_j_config_security_code
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-COMPOSITION-ROOT
+    class: path
+    mode: exclusive
+    scope: composition_root_main_py
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONTRACT-SOURCE
+    class: path
+    mode: exclusive
+    scope: contracts_markdown_source
     lease_seconds: 1800
     renewable: true
 

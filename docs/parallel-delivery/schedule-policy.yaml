@@ -1,0 +1,69 @@
+schema_version: "1.0.0"
+kind: parallel_delivery_schedule_policy
+status: active_accepted
+as_of: "2026-10-02"
+
+description: >
+  Chính sách phân bổ tài nguyên và điều phối song song cho Bộ kiến trúc 2 (Wave/DAG).
+  Quy định trần tài nguyên phần cứng (CPU, RAM, GPU, DB connection) và giới hạn luồng
+  thực thi đồng thời nhằm tối ưu hóa thông lượng nhưng đảm bảo an toàn tuyệt đối.
+
+resources:
+  cpu:
+    total_logical_cores: 8
+    max_cores_per_worker: 2
+    priority_preemption: false
+    description: Phân bổ tối đa 2 lõi CPU cho mỗi worker tiến trình con; không cướp quyền giữa chừng.
+
+  ram:
+    total_budget_mb: 16384
+    max_mb_per_worker: 4096
+    low_memory_threshold_mb: 2048
+    description: Ngân sách RAM tối đa 16GB; mỗi worker giới hạn trần 4GB; dừng dispatch mới khi RAM trống < 2GB.
+
+  gpu:
+    total_slots: 2
+    lock_ref: LOCK-DESKTOP-GPU
+    max_slots_per_rendering_job: 1
+    exclusive_execution: true
+    description: Khóa GPU dung lượng 2 slot độc lập; mỗi tác vụ render chiếm đúng 1 slot định mức.
+
+  database_connections:
+    max_total_pool: 20
+    max_per_test_namespace: 5
+    idle_timeout_seconds: 30
+    lock_ref: LOCK-POSTGRES-TEST-DB
+    description: Ngân sách kết nối PostgreSQL kiểm thử; tối đa 5 kết nối đồng thời cho mỗi namespace disposable.
+
+concurrency_limits:
+  max_concurrent_workers: 4
+  by_capability:
+    CAP-A-COLLECTION: 2
+    CAP-B-INGESTION: 2
+    CAP-C-STORAGE: 2
+    CAP-D-SCRIPTING: 4
+    CAP-E-VOICE: 2
+    CAP-F-RENDERING: 2
+    CAP-G-ORCHESTRATION: 2
+    CAP-H-CONTROL-API: 2
+    CAP-I-STORAGE-SYNC: 2
+    CAP-J-PROVIDERS: 4
+
+scheduling_rules:
+  priority_order:
+    - lower_merge_priority_first
+    - earlier_ready_sequence_first
+    - lexicographically_lower_task_id_first
+
+  anti_starvation_policy:
+    enabled: true
+    aging_threshold_seconds: 1800
+    priority_boost_per_interval: 10
+    description: Tác vụ chờ trên 30 phút trong hàng đợi được tăng độ ưu tiên để tránh nghẽn luồng.
+
+  failure_backoff:
+    initial_delay_seconds: 10
+    max_delay_seconds: 300
+    backoff_multiplier: 2.0
+    max_retries: 3
+    description: Cơ chế retry tăng thời gian theo cấp số nhân khi gặp sự cố tạm thời; tối đa 3 lần thử lại.

@@ -1,0 +1,297 @@
+schema_version: "1.0.0"
+kind: parallel_delivery_acceptance_matrix
+status: active_accepted
+as_of: "2026-10-02"
+
+description: >
+  Ma trận nghiệm thu và truy xuất nguồn gốc toàn diện cho Bộ kiến trúc 2 (Wave/DAG).
+  Ánh xạ chi tiết từ Yêu cầu (R01-R25, QR, FR) -> Capability phụ trách -> Task thực thi ->
+  Contract ràng buộc -> Bộ kiểm thử & Oracle -> Hồ sơ Evidence -> Cổng nghiệm thu (Gate G01-G07).
+
+matrix:
+  - requirement_id: R01
+    name: Thu thập nguồn tin đa kênh tự động
+    capability: CAP-A-COLLECTION
+    task_id: M3-A-TEMPLATE
+    contract_id: CONTRACT-SOURCE-CONTENT
+    test_suite: tests/unit/collection/test_source_crawler.py
+    evidence_path: docs/milestones/m3-collection/evidence/r01-collection.json
+    release_gate: G06
+    description: Tự động thu thập bài viết từ RSS, web nguồn được cấu hình định kỳ.
+
+  - requirement_id: R02
+    name: Chuẩn hóa dữ liệu bài viết và chống trùng lặp
+    capability: CAP-B-INGESTION
+    task_id: TASK-CAP-B-INGESTION
+    contract_id: CONTRACT-SOURCE-CONTENT
+    test_suite: tests/unit/ingestion/test_article_normalization.py
+    evidence_path: docs/milestones/m3-collection/evidence/r02-dedup.json
+    release_gate: G06
+    description: Bóc tách nội dung chính, trích xuất metadata và tính fingerprint chống trùng lặp >95%.
+
+  - requirement_id: R03
+    name: Quản lý danh mục media và thẻ phân loại
+    capability: CAP-C-STORAGE
+    task_id: TASK-CAP-C-STORAGE
+    contract_id: CONTRACT-CONTENT-MEDIA
+    test_suite: tests/unit/catalog/test_media_catalog.py
+    evidence_path: docs/milestones/m4-media/evidence/r03-catalog.json
+    release_gate: G06
+    description: Lưu trữ metadata hình ảnh/video, phân tích nhận diện vật thể và vùng an toàn 9:16.
+
+  - requirement_id: R04
+    name: Khai thác và phân loại Hook tiềm năng
+    capability: CAP-C-STORAGE
+    task_id: TASK-CAP-C-STORAGE
+    contract_id: CONTRACT-CONTENT-MEDIA
+    test_suite: tests/unit/catalog/test_hook_analysis.py
+    evidence_path: docs/milestones/m4-media/evidence/r04-hook.json
+    release_gate: G06
+    description: Đánh giá điểm hấp dẫn của visual hook, audio hook và ứng viên thumbnail.
+
+  - requirement_id: R05
+    name: Biên soạn kịch bản phân cảnh 61-70 giây
+    capability: CAP-D-SCRIPTING
+    task_id: TASK-CAP-D-SCRIPTING
+    contract_id: CONTRACT-CREATIVE-AI
+    test_suite: tests/unit/creative/test_script_generator.py
+    evidence_path: docs/milestones/m5-script/evidence/r05-script.json
+    release_gate: G06
+    description: Sinh lời thoại tiếng Anh tự nhiên, phân đoạn chi tiết, độ dài nghiêm ngặt 61-70 giây.
+
+  - requirement_id: R06
+    name: Đa dạng hóa góc kể câu chuyện
+    capability: CAP-D-SCRIPTING
+    task_id: TASK-CAP-D-SCRIPTING
+    contract_id: CONTRACT-CREATIVE-AI
+    test_suite: tests/unit/creative/test_story_angles.py
+    evidence_path: docs/milestones/m5-script/evidence/r06-angles.json
+    release_gate: G06
+    description: Tạo 1-3 góc kể độc lập (điều tra, chuyên gia, dòng thời gian) cho cùng một sự kiện tin tức.
+
+  - requirement_id: R07
+    name: Quản lý dấu vân tay biến thể tránh lặp
+    capability: CAP-D-SCRIPTING
+    task_id: TASK-CAP-D-SCRIPTING
+    contract_id: CONTRACT-CREATIVE-AI
+    test_suite: tests/unit/creative/test_variant_fingerprint.py
+    evidence_path: docs/milestones/m5-script/evidence/r07-variants.json
+    release_gate: G06
+    description: Tính toán VariantFingerprint đảm bảo mỗi video khác biệt ít nhất một yếu tố thực tế.
+
+  - requirement_id: R08
+    name: Đặt thumbnail bắt buộc trong phân cảnh Hook
+    capability: CAP-D-SCRIPTING
+    task_id: TASK-CAP-D-SCRIPTING
+    contract_id: CONTRACT-CREATIVE-AI
+    test_suite: tests/unit/creative/test_thumbnail_marker.py
+    evidence_path: docs/milestones/m5-script/evidence/r08-thumbnail.json
+    release_gate: G06
+    description: Điểm lấy thumbnail JPEG bắt buộc phải nằm trong 3 giây đầu tiên của video.
+
+  - requirement_id: R09
+    name: Tổng hợp giọng đọc tiếng Anh tự nhiên (TTS)
+    capability: CAP-E-VOICE
+    task_id: TASK-CAP-E-VOICE
+    contract_id: CONTRACT-MEDIA-PROCESSING
+    test_suite: tests/unit/voice/test_tts_synthesis.py
+    evidence_path: docs/milestones/m6-render/evidence/r09-voice.json
+    release_gate: G06
+    description: Chuyển kịch bản thành giọng đọc truyền cảm, chuẩn hóa âm lượng theo EBU R128 (-14 LUFS).
+
+  - requirement_id: R10
+    name: Căn chỉnh mốc thời gian từng từ cho Karaoke Subtitle
+    capability: CAP-E-VOICE
+    task_id: TASK-CAP-E-VOICE
+    contract_id: CONTRACT-MEDIA-PROCESSING
+    test_suite: tests/unit/voice/test_word_timing_alignment.py
+    evidence_path: docs/milestones/m6-render/evidence/r10-word-timing.json
+    release_gate: G06
+    description: Bóc tách chính xác mốc bắt đầu/kết thúc ms của từng từ để phục vụ hiệu ứng karaoke.
+
+  - requirement_id: R11
+    name: Dựng video 1080p chuẩn 9:16 dọc
+    capability: CAP-F-RENDERING
+    task_id: TASK-CAP-F-RENDERING
+    contract_id: CONTRACT-RENDER-QUALITY
+    test_suite: tests/unit/render/test_video_pipeline.py
+    evidence_path: docs/milestones/m6-render/evidence/r11-render.json
+    release_gate: G02
+    description: Tổng hợp hình ảnh, video nền, voice track thành file MP4 1080x1920 tốc độ 30fps.
+
+  - requirement_id: R12
+    name: Hiển thị phụ đề Karaoke đổi màu theo từng từ
+    capability: CAP-F-RENDERING
+    task_id: TASK-CAP-F-RENDERING
+    contract_id: CONTRACT-RENDER-QUALITY
+    test_suite: tests/unit/render/test_karaoke_subtitle.py
+    evidence_path: docs/milestones/m6-render/evidence/r12-karaoke.json
+    release_gate: G06
+    description: Chạy chữ đổi màu chính xác từng từ theo mốc thời gian WordTiming trên khung hình video.
+
+  - requirement_id: R13
+    name: Kiểm định chất lượng video tự động (QC Gate)
+    capability: CAP-F-RENDERING
+    task_id: TASK-CAP-F-RENDERING
+    contract_id: CONTRACT-RENDER-QUALITY
+    test_suite: tests/unit/render/test_qc_verification.py
+    evidence_path: docs/milestones/m6-render/evidence/r13-qc-report.json
+    release_gate: G02
+    description: Tự động thẩm định thời lượng (61-70s), kích thước 1080x1920, độ lệch tiếng và bitrate.
+
+  - requirement_id: R14
+    name: Điều phối quy trình công việc bền vững (Workflow Engine)
+    capability: CAP-G-ORCHESTRATION
+    task_id: TASK-CAP-G-ORCHESTRATION
+    contract_id: CONTRACT-WORKFLOW-EXECUTION
+    test_suite: tests/unit/orchestration/test_workflow_execution.py
+    evidence_path: docs/milestones/m2-control-plane/evidence/r14-workflow.json
+    release_gate: G01
+    description: Điều phối trạng thái công việc bền vững, hỗ trợ retry có kiểm soát và resume khi crash.
+
+  - requirement_id: R15
+    name: Quản lý lô sản xuất và đặt trước năng lực (Batch Management)
+    capability: CAP-G-ORCHESTRATION
+    task_id: TASK-CAP-G-ORCHESTRATION
+    contract_id: CONTRACT-ORCHESTRATION
+    test_suite: tests/unit/orchestration/test_batch_management.py
+    evidence_path: docs/milestones/m2-control-plane/evidence/r15-batch.json
+    release_gate: G02
+    description: Tiếp nhận lô sản xuất, kiểm tra dung lượng phần cứng và phân bổ slot render an toàn.
+
+  - requirement_id: R16
+    name: Phân định Receipt và Trạng thái Thực thi có thẩm quyền
+    capability: CAP-G-ORCHESTRATION
+    task_id: TASK-CAP-G-ORCHESTRATION
+    contract_id: CONTRACT-CONTROL-API-STREAM
+    test_suite: tests/unit/orchestration/test_operation_view.py
+    evidence_path: docs/milestones/m2-control-plane/evidence/r16-operation-state.json
+    release_gate: G01
+    description: Tách biệt biên nhận accepted khỏi trạng thái chạy thực tế (running, succeeded, failed).
+
+  - requirement_id: R17
+    name: Unit of Work nguyên tử khi hoàn tất video
+    capability: CAP-G-ORCHESTRATION
+    task_id: TASK-CAP-G-ORCHESTRATION
+    contract_id: CONTRACT-DOMAIN-EVENTS
+    test_suite: tests/unit/orchestration/test_completion_uow.py
+    evidence_path: docs/milestones/m2-control-plane/evidence/r17-completion-uow.json
+    release_gate: G01
+    description: Cập nhật VideoJob, tăng số đếm MediaUsage và ghi ArtifactLocation trong đúng một transaction.
+
+  - requirement_id: R18
+    name: Vận hành Hybrid Cloud/Desktop Offline-Resilient
+    capability: CAP-G-ORCHESTRATION
+    task_id: TASK-CAP-G-ORCHESTRATION
+    contract_id: CONTRACT-WORKFLOW-EXECUTION
+    test_suite: tests/unit/orchestration/test_hybrid_connectivity.py
+    evidence_path: docs/milestones/m2-control-plane/evidence/r18-hybrid.json
+    release_gate: G01
+    description: Cloud tiếp tục thu thập khi desktop tắt; desktop tự động nối lại xử lý khi online.
+
+  - requirement_id: R19
+    name: Giao diện Quản trị Desktop Tiếng Việt 1080p
+    capability: CAP-H-CONTROL-API
+    task_id: M2-P8-LOCKED
+    contract_id: CONTRACT-CONTROL-API-STREAM
+    test_suite: tests/unit/controlplane/test_admin_ui_api.py
+    evidence_path: docs/milestones/m2-control-plane/evidence/r19-admin-ui.json
+    release_gate: G07
+    description: Cung cấp API và giao diện quản trị tiếng Việt chuẩn, hỗ trợ độ phân giải tối thiểu 1080p.
+
+  - requirement_id: R20
+    name: Tra cứu và phân trang danh sách Batch (Batches Query)
+    capability: CAP-H-CONTROL-API
+    task_id: M2-P8-LOCKED
+    contract_id: CONTRACT-BATCHES-QUERY
+    test_suite: tests/unit/controlplane/test_batches_query.py
+    evidence_path: docs/milestones/m2-control-plane/evidence/r20-batches-query.json
+    release_gate: G07
+    description: Endpoint tra cứu danh sách lô, lọc theo trạng thái, ngày tạo và phân trang offset/limit.
+
+  - requirement_id: R21
+    name: Lưu trữ bất biến và đồng bộ Google Drive
+    capability: CAP-I-STORAGE-SYNC
+    task_id: M4-CI-TEMPLATE
+    contract_id: CONTRACT-STORAGE
+    test_suite: tests/unit/storage/test_drive_sync.py
+    evidence_path: docs/milestones/m4-media/evidence/r21-drive-sync.json
+    release_gate: G04
+    description: Lưu trữ artifact bất biến, kiểm chứng mã băm SHA-256 và đồng bộ lên Google Drive an toàn.
+
+  - requirement_id: R22
+    name: Bảo vệ file cục bộ không xóa trước khi đồng bộ
+    capability: CAP-I-STORAGE-SYNC
+    task_id: M4-CI-TEMPLATE
+    contract_id: CONTRACT-STORAGE
+    test_suite: tests/unit/storage/test_retention_policy.py
+    evidence_path: docs/milestones/m4-media/evidence/r22-retention.json
+    release_gate: G04
+    description: Tuyệt đối không xóa bản ghi cục bộ duy nhất trước khi Google Drive xác nhận sync thành công.
+
+  - requirement_id: R23
+    name: Quản lý Secret và Cách ly Khóa bảo mật OS Vault
+    capability: CAP-J-PROVIDERS
+    task_id: TASK-CAP-J-PROVIDERS
+    contract_id: CONTRACT-CONFIG-SECURITY
+    test_suite: tests/unit/security/test_vault_isolation.py
+    evidence_path: docs/milestones/m2-control-plane/evidence/r23-vault-isolation.json
+    release_gate: G04
+    description: Bảo vệ API key bằng Windows DPAPI Vault trong tiến trình Broker độc lập; cấm lộ plaintext.
+
+  - requirement_id: R24
+    name: Định tuyến AI Adapter và Quản lý Hạn ngạch Quota
+    capability: CAP-J-PROVIDERS
+    task_id: TASK-CAP-J-PROVIDERS
+    contract_id: CONTRACT-CONFIG-SECURITY
+    test_suite: tests/unit/security/test_provider_routing.py
+    evidence_path: docs/milestones/m2-control-plane/evidence/r24-ai-routing.json
+    release_gate: G03
+    description: Định tuyến gọi mô hình AI theo vai trò, tự động fallback có kiểm soát và giám sát ngân sách.
+
+  - requirement_id: R25
+    name: Xử lý an toàn ảnh nhạy cảm và giữ nguyên clip
+    capability: CAP-C-STORAGE
+    task_id: TASK-CAP-C-STORAGE
+    contract_id: CONTRACT-CONTENT-MEDIA
+    test_suite: tests/unit/catalog/test_sensitive_image_filter.py
+    evidence_path: docs/milestones/m4-media/evidence/r25-safety-filter.json
+    release_gate: G06
+    description: Áp dụng bộ lọc làm mờ ảnh nhạy cảm; không sửa đổi cấu trúc video clip nguồn.
+
+quality_gates_mapping:
+  G01:
+    name: ARCH-GATE-001 (Durable Engine & Fencing Integrity)
+    responsible_capabilities: [CAP-G-ORCHESTRATION, CAP-H-CONTROL-API]
+    target_tasks: [TASK-CAP-G-ORCHESTRATION, M2-P8-LOCKED]
+    status: PARTIALLY_PROVEN
+  G02:
+    name: ARCH-GATE-002 (Throughput 100 videos / 12h & QC)
+    responsible_capabilities: [CAP-F-RENDERING, CAP-G-ORCHESTRATION]
+    target_tasks: [TASK-CAP-F-RENDERING, TASK-CAP-G-ORCHESTRATION]
+    status: PENDING_M6_VERIFICATION
+  G03:
+    name: ARCH-GATE-003 (Budget Limit < 50 USD / month)
+    responsible_capabilities: [CAP-J-PROVIDERS, CAP-G-ORCHESTRATION]
+    target_tasks: [TASK-CAP-J-PROVIDERS]
+    status: PENDING_VERIFICATION
+  G04:
+    name: ARCH-GATE-004 (Google Drive OAuth & OS Vault Isolation)
+    responsible_capabilities: [CAP-I-STORAGE-SYNC, CAP-J-PROVIDERS]
+    target_tasks: [TASK-CAP-J-PROVIDERS, M4-CI-TEMPLATE]
+    status: PARTIALLY_PROVEN
+  G05:
+    name: ARCH-GATE-005 (Backup Cluster & Recovery Rehearsal)
+    responsible_capabilities: [CAP-I-STORAGE-SYNC, CAP-G-ORCHESTRATION]
+    target_tasks: [M4-CI-TEMPLATE]
+    status: PENDING_VERIFICATION
+  G06:
+    name: ARCH-GATE-006 (Content Quality & Hook Thresholds)
+    responsible_capabilities: [CAP-B-INGESTION, CAP-C-STORAGE, CAP-D-SCRIPTING, CAP-E-VOICE, CAP-F-RENDERING]
+    target_tasks: [TASK-CAP-B-INGESTION, TASK-CAP-C-STORAGE, TASK-CAP-D-SCRIPTING, TASK-CAP-E-VOICE, TASK-CAP-F-RENDERING]
+    status: PENDING_M6_VERIFICATION
+  G07:
+    name: ARCH-GATE-007 (Runtime Compatibility & UI Latency)
+    responsible_capabilities: [CAP-H-CONTROL-API, CAP-J-PROVIDERS]
+    target_tasks: [M2-P8-LOCKED]
+    status: SMOKE_COMPATIBILITY_PASS_M1_SCOPE

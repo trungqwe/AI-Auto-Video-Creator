@@ -114,3 +114,37 @@ Các mục sau chưa được bundle này quyết định: sample size, quy mô 
 | M3/Module A | `NOT AUTHORIZED` | Chỉ đọc/thiết kế proposal; không dispatch implementation |
 | M4–M7 | `NOT STARTED/FUTURE` | Template planning không active |
 | Parallel delivery experiment | docs/config only | Viết/validate bundle và agent config; không product code |
+
+## 7. Ma trận Truy vết Toàn diện Kiến trúc Wave/DAG (Bộ 2)
+
+Hệ thống triển khai mô hình phân phối song song theo Wave và DAG (ADR-0013) thiết lập tính truy vết nguồn gốc 100% từ mục tiêu kinh doanh đến từng work package kỹ thuật:
+
+| Yêu cầu | Tên yêu cầu cốt lõi | Capability | Work Package DAG | Hợp đồng giao tiếp | Cổng nghiệm thu |
+|---|---|---|---|---|---|
+| **R01** | Thu thập đa nguồn tin tức | `CAP-A-COLLECTION` | `M3-A-TEMPLATE` | `CONTRACT-SOURCE-CONTENT` | Gate G06 |
+| **R02** | Chuẩn hóa nội dung & chống trùng | `CAP-B-INGESTION` | `TASK-CAP-B-INGESTION` | `CONTRACT-SOURCE-CONTENT` | Gate G06 |
+| **R03** | Danh mục media & gắn thẻ | `CAP-C-STORAGE` | `TASK-CAP-C-STORAGE` | `CONTRACT-CONTENT-MEDIA` | Gate G06 |
+| **R04** | Phân loại Hook tiềm năng | `CAP-C-STORAGE` | `TASK-CAP-C-STORAGE` | `CONTRACT-CONTENT-MEDIA` | Gate G06 |
+| **R05** | Kịch bản phân cảnh 61–70s | `CAP-D-SCRIPTING` | `TASK-CAP-D-SCRIPTING` | `CONTRACT-CREATIVE-AI` | Gate G06 |
+| **R06** | Đa dạng hóa góc kể độc lập | `CAP-D-SCRIPTING` | `TASK-CAP-D-SCRIPTING` | `CONTRACT-CREATIVE-AI` | Gate G06 |
+| **R07** | Dấu vân tay biến thể (Variant) | `CAP-D-SCRIPTING` | `TASK-CAP-D-SCRIPTING` | `CONTRACT-CREATIVE-AI` | Gate G06 |
+| **R08** | Thumbnail nằm trong Hook | `CAP-D-SCRIPTING` | `TASK-CAP-D-SCRIPTING` | `CONTRACT-CREATIVE-AI` | Gate G06 |
+| **R09** | Giọng đọc tự nhiên (TTS) | `CAP-E-VOICE` | `TASK-CAP-E-VOICE` | `CONTRACT-MEDIA-PROCESSING` | Gate G06 |
+| **R10** | Căn chỉnh Word Timing karaoke | `CAP-E-VOICE` | `TASK-CAP-E-VOICE` | `CONTRACT-MEDIA-PROCESSING` | Gate G06 |
+| **R11** | Render video 1080p 9:16 dọc | `CAP-F-RENDERING` | `TASK-CAP-F-RENDERING` | `CONTRACT-RENDER-QUALITY` | Gate G02 |
+| **R12** | Phụ đề Karaoke đổi màu | `CAP-F-RENDERING` | `TASK-CAP-F-RENDERING` | `CONTRACT-RENDER-QUALITY` | Gate G06 |
+| **R13** | Kiểm định chất lượng video (QC) | `CAP-F-RENDERING` | `TASK-CAP-F-RENDERING` | `CONTRACT-RENDER-QUALITY` | Gate G02 |
+| **R14** | Workflow engine bền vững | `CAP-G-ORCHESTRATION` | `TASK-CAP-G-ORCHESTRATION` | `CONTRACT-WORKFLOW-EXECUTION` | Gate G01 |
+| **R15** | Quản lý lô sản xuất (Batches) | `CAP-G-ORCHESTRATION` | `TASK-CAP-G-ORCHESTRATION` | `CONTRACT-ORCHESTRATION` | Gate G02 |
+| **R16** | Tách biệt Receipt vs Exec state | `CAP-G-ORCHESTRATION` | `TASK-CAP-G-ORCHESTRATION` | `CONTRACT-CONTROL-API-STREAM` | Gate G01 |
+| **R17** | Unit of Work hoàn tất nguyên tử | `CAP-G-ORCHESTRATION` | `TASK-CAP-G-ORCHESTRATION` | `CONTRACT-DOMAIN-EVENTS` | Gate G01 |
+| **R18** | Hybrid Cloud/Desktop offline | `CAP-G-ORCHESTRATION` | `TASK-CAP-G-ORCHESTRATION` | `CONTRACT-WORKFLOW-EXECUTION` | Gate G01 |
+| **R19** | Desktop UI tiếng Việt 1080p | `CAP-H-CONTROL-API` | `M2-P8-LOCKED` | `CONTRACT-CONTROL-API-STREAM` | Gate G07 |
+| **R20** | Tra cứu danh sách Batches query | `CAP-H-CONTROL-API` | `M2-P8-LOCKED` | `CONTRACT-BATCHES-QUERY` | Gate G07 |
+| **R21** | Lưu trữ bất biến & sync Drive | `CAP-I-STORAGE-SYNC` | `M4-CI-TEMPLATE` | `CONTRACT-STORAGE` | Gate G04 |
+| **R22** | Không xóa file trước khi sync | `CAP-I-STORAGE-SYNC` | `M4-CI-TEMPLATE` | `CONTRACT-STORAGE` | Gate G04 |
+| **R23** | Quản lý Secret trong OS Vault | `CAP-J-PROVIDERS` | `TASK-CAP-J-PROVIDERS` | `CONTRACT-CONFIG-SECURITY` | Gate G04 |
+| **R24** | Định tuyến AI Adapter & Quota | `CAP-J-PROVIDERS` | `TASK-CAP-J-PROVIDERS` | `CONTRACT-CONFIG-SECURITY` | Gate G03 |
+| **R25** | Lọc ảnh nhạy cảm an toàn | `CAP-C-STORAGE` | `TASK-CAP-C-STORAGE` | `CONTRACT-CONTENT-MEDIA` | Gate G06 |
+
+Mọi chi tiết triển khai máy học, kiểm thử và bằng chứng xem chi tiết tại [`acceptance-matrix.yaml`](./acceptance-matrix.yaml) và [`schedule-policy.yaml`](./schedule-policy.yaml).

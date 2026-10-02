@@ -1,10 +1,10 @@
 # AI Auto Video Creator - Lộ trình xây dựng toàn dự án
 
-**Tệp:** `docs/11-roadmap.md`  
-**Trạng thái:** Đã được người dùng phê duyệt làm baseline; M0 APPROVED/CLOSED; M1 ACCEPTED/CLOSED (User Checkpoint 13-09-2026, 93 tests PASSED, Audit R5 + R5.1 ACCEPTED); M2 AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION; M3 và Phân hệ A NOT AUTHORIZED  
-**Ngày lập:** 12-09-2026  
-**Ngày phê duyệt M0 và khóa M1-R1:** 13-09-2026  
-**Phạm vi:** từ kết thúc thiết kế trước code đến baseline vận hành đầu tiên  
+**Tệp:** `docs/11-roadmap.md`
+**Trạng thái:** Đã được người dùng phê duyệt làm baseline; M0 APPROVED/CLOSED; M1 ACCEPTED/CLOSED (User Checkpoint 13-09-2026, 93 tests PASSED, Audit R5 + R5.1 ACCEPTED); M2 AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION; M3 và Phân hệ A NOT AUTHORIZED
+**Ngày lập:** 12-09-2026
+**Ngày phê duyệt M0 và khóa M1-R1:** 13-09-2026
+**Phạm vi:** từ kết thúc thiết kế trước code đến baseline vận hành đầu tiên
 **Cách lập:** theo dependency và evidence gate, chưa gán lịch ngày/tuần khi chưa có dữ liệu nhân lực
 
 ## 1. Mục đích
@@ -59,6 +59,14 @@ Temporal, Google Drive/OAuth, recovery, AI quality và throughput không đượ
 
 Theo `QR-MNT-003`, mỗi milestone có checkpoint user. Milestone sau không được dùng trạng thái “đã duyệt” giả nếu milestone hiện tại chưa có evidence và xác nhận.
 
+### RM-PRINCIPLE-007 — Mô hình phát triển song song theo Wave và DAG
+
+Theo ADR-0013, dự án áp dụng mô hình phân phối song song kết hợp Wave và DAG nhằm tối ưu hóa tiến độ mà vẫn bảo toàn tính toàn vẹn hệ thống:
+
+- **Wave (Quản lý Lộ trình & Thẩm quyền):** Dùng để tổ chức lộ trình tổng thể và phê duyệt phạm vi theo từng mốc checkpoint chiến lược với người dùng (M0 → M7). Wave bảo toàn tính toàn vẹn của các milestone truyền thống.
+- **DAG (Đồ thị Thực thi Kỹ thuật):** Quyết định việc nào thực sự chạy đồng thời dựa trên contract độc lập, phân bổ tài nguyên và không xung đột đường dẫn sở hữu. Một capability có thể triển khai ngay khi contract đầu vào đã được đóng băng (frozen revision), không bắt buộc phải chờ toàn bộ các hạng mục khác của Wave trước.
+- **Điều chỉnh QR-MNT-003:** Cho phép phát triển song song các work package thuộc các capability độc lập khi contracts đã freeze; việc nghiệm thu chính thức một phân hệ tổng thể và mở milestone mới vẫn yêu cầu checkpoint và phê duyệt từ người dùng.
+
 ### RM-PRINCIPLE-006 — Bảo vệ dữ liệu trước sản lượng
 
 Thứ tự ưu tiên khi đánh đổi giữ nguyên tài liệu chất lượng:
@@ -73,13 +81,13 @@ Thứ tự ưu tiên khi đánh đổi giữ nguyên tài liệu chất lượng
 
 ## 3. Critical path
 
-`M0 Khóa thiết kế`  
-→ `M1 Proof và nền kỹ thuật`  
-→ `M2 Control plane có thể quan sát`  
-→ `M3 Thu thập và kho nội dung`  
-→ `M4 Kho media và lưu trữ hybrid`  
-→ `M5 Bộ não nội dung AI`  
-→ `M6 Voice, media processing, render và QC`  
+`M0 Khóa thiết kế`
+→ `M1 Proof và nền kỹ thuật`
+→ `M2 Control plane có thể quan sát`
+→ `M3 Thu thập và kho nội dung`
+→ `M4 Kho media và lưu trữ hybrid`
+→ `M5 Bộ não nội dung AI`
+→ `M6 Voice, media processing, render và QC`
 → `M7 Tự động hóa lô, hardening và baseline vận hành`
 
 G, H và J là năng lực xuyên suốt: được dựng tối thiểu từ M2 và mở rộng cùng từng phân hệ, không chờ tới M7 mới xuất hiện.
@@ -157,8 +165,8 @@ Kết thúc toàn bộ giai đoạn thiết kế, phát hiện mâu thuẫn cu�
 
 ## 7. M1 — Proof kiến trúc và nền kỹ thuật
 
-**Kế hoạch thực thi có thẩm quyền:** [M1 implementation plan](./milestones/m1-proof/implementation-plan.md)  
-**Khóa phiên bản:** [M1-R1 version lock](./milestones/m1-proof/version-lock.md)  
+**Kế hoạch thực thi có thẩm quyền:** [M1 implementation plan](./milestones/m1-proof/implementation-plan.md)
+**Khóa phiên bản:** [M1-R1 version lock](./milestones/m1-proof/version-lock.md)
 **Trạng thái:** `ACCEPTED / CLOSED` ngày 13-09-2026 theo User Checkpoint chính thức sau independent re-audit HEAD `08c857c`. Toàn bộ P0–P6 đã PASS (93 passed, 0 skipped, coverage 83%); Báo cáo Audit R5 kèm R5.1 Addendum đạt; G01 và G04 đạt `PARTIALLY_PROVEN (PASS_M1_SCOPE)`; G07 đạt `SMOKE_COMPATIBILITY_PASS_M1_SCOPE`. Limitation DPAPI cùng một Windows user được giữ nguyên. Toàn bộ Audit R1–R5/R5.1 và evidence lịch sử được lưu giữ đầy đủ. Quyền lập kế hoạch và triển khai cho M2 đã được kích hoạt. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ### Mục tiêu
@@ -212,8 +220,8 @@ Nếu M1-P3 là `BLOCKED_EXTERNAL`, M1 cũng kết luận `BLOCKED_EXTERNAL` t�
 
 ## 8. M2 — Control plane và nền tảng có thể quan sát
 
-**Kế hoạch thực thi có thẩm quyền:** [M2 implementation plan](./milestones/m2-control-plane/implementation-plan.md)  
-**Đặc tả kỹ thuật:** [M2 technical spec](./milestones/m2-control-plane/spec.md)  
+**Kế hoạch thực thi có thẩm quyền:** [M2 implementation plan](./milestones/m2-control-plane/implementation-plan.md)
+**Đặc tả kỹ thuật:** [M2 technical spec](./milestones/m2-control-plane/spec.md)
 **Trạng thái:** `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` ngày 13-09-2026 theo quyết định User Checkpoint sau khi M1 được chấp thuận; hiện `M2-P1..P7B_ACCEPTED_CLOSED`. P7B accepted source/tooling `c44214ad027986a0db7cb9d8e221590f232a0036`, GREEN `run-m2-p7b-green-20260917040648`. P8/P9 vẫn khóa và cần checkpoint riêng trước RED/implementation; M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
 
 ### Mục tiêu
