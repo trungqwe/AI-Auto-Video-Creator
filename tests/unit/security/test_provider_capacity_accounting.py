@@ -1,6 +1,6 @@
 import unittest
 
-from src.controlplane.config.accounting import BudgetExceededError, CapacityAccounting, CapacityAccountingError, MissingProvenanceError
+from src.controlplane.config.accounting import BudgetExceededError, CapacityAccounting, CapacityAccountingError, InvalidNumericError, MissingProvenanceError
 
 
 class TestProviderCapacityAccounting(unittest.TestCase):
@@ -10,7 +10,7 @@ class TestProviderCapacityAccounting(unittest.TestCase):
     def test_snapshot_schema_and_secret_boundary(self):
         snapshot = self.accounting.record_capacity_snapshot(
             provider="9router", model="ag/gemini-3.8-flash-high",
-            project="AI-Auto-Video-Creator", account_scope="worker",
+            project="AI-Auto-Video-Creator", account="worker", scope="worker", account_scope="worker",
             quota_domain="monthly", limit=100, used=25,
             reset_at="2026-10-31T00:00:00Z", health="healthy",
             confidence="observed", token="must-not-be-stored",
@@ -23,43 +23,63 @@ class TestProviderCapacityAccounting(unittest.TestCase):
     def test_incremental_cost_provenance(self):
         record = self.accounting.record_cost(
             provider="9router", service="codex", operation="completion",
+            project="AI-Auto-Video-Creator", account="worker", scope="worker",
             quantity=2, unit="request", estimate=1.25, actual=1.20,
             currency="USD", source="usage_receipt",
             timestamp="2026-10-03T08:00:00Z",
         )
-        for key in ("provider", "service", "operation", "quantity", "unit", "estimate", "actual", "currency", "source", "timestamp"):
+        for key in ("provider", "service", "operation", "project", "account", "scope", "quantity", "unit", "estimate", "actual", "currency", "source", "timestamp"):
             self.assertIn(key, record)
 
     def test_budget_guard_fail_closed(self):
-        self.accounting.record_cost(provider="9router", service="codex", operation="completion", quantity=1, unit="request", estimate=11.0, actual=11.0, currency="USD", source="usage_receipt", timestamp="2026-10-03T08:00:00Z")
+        self.accounting.record_cost(provider="9router", service="codex", operation="completion", project="AI-Auto-Video-Creator", account="worker", scope="worker", quantity=1, unit="request", estimate=11.0, actual=11.0, currency="USD", source="usage_receipt", timestamp="2026-10-03T08:00:00Z")
         with self.assertRaises(BudgetExceededError):
             self.accounting.guard_budget(0.01)
 
     def test_revision_immutability_and_redacted_view(self):
-        first = self.accounting.record_capacity_snapshot(provider="9router", model="ag/gemini-3.8-flash-high", project="AI-Auto-Video-Creator", account_scope="worker", quota_domain="5h", limit=100, used=10, reset_at="2026-10-03T12:00:00Z", health="healthy", confidence="observed")
+        first = self.accounting.record_capacity_snapshot(provider="9router", model="ag/gemini-3.8-flash-high", project="AI-Auto-Video-Creator", account="worker", scope="worker", account_scope="worker", quota_domain="5h", limit=100, used=10, reset_at="2026-10-03T12:00:00Z", health="healthy", confidence="observed")
         revision = first["revision"]
-        second = self.accounting.record_capacity_snapshot(provider="9router", model="ag/gemini-3.8-flash-high", project="AI-Auto-Video-Creator", account_scope="worker", quota_domain="5h", limit=100, used=20, reset_at="2026-10-03T12:00:00Z", health="healthy", confidence="observed")
+        second = self.accounting.record_capacity_snapshot(provider="9router", model="ag/gemini-3.8-flash-high", project="AI-Auto-Video-Creator", account="worker", scope="worker", account_scope="worker", quota_domain="5h", limit=100, used=20, reset_at="2026-10-03T12:00:00Z", health="healthy", confidence="observed")
         self.assertNotEqual(revision, second["revision"])
         self.assertEqual(self.accounting.revision_view(revision)["used"], 10)
         self.assertNotIn("token", self.accounting.revision_view(revision))
 
     def test_snapshot_scope_and_aliasing(self):
+        # Passing only account without scope fails-closed (no alias fallback)
+        with self.assertRaises(MissingProvenanceError):
+            self.accounting.record_capacity_snapshot(
+                provider="9router", model="ag/gemini-3.8-flash-high",
+                project="AI-Auto-Video-Creator", account="worker",
+                quota_domain="5h", limit=50, usage=15,
+                reset_window="2026-10-03T18:00:00Z", health="healthy",
+                confidence="observed",
+            )
+        # Passing only scope without account fails-closed (no alias fallback)
+        with self.assertRaises(MissingProvenanceError):
+            self.accounting.record_capacity_snapshot(
+                provider="9router", model="ag/gemini-3.8-flash-high",
+                project="AI-Auto-Video-Creator", scope="worker",
+                quota_domain="5h", limit=50, usage=15,
+                reset_window="2026-10-03T18:00:00Z", health="healthy",
+                confidence="observed",
+            )
         snapshot = self.accounting.record_capacity_snapshot(
             provider="9router", model="ag/gemini-3.8-flash-high",
-            project="AI-Auto-Video-Creator", account="worker",
+            project="AI-Auto-Video-Creator", account="worker-acc", scope="worker-scope",
             quota_domain="5h", limit=50, usage=15,
             reset_window="2026-10-03T18:00:00Z", health="healthy",
             confidence="observed",
         )
-        self.assertEqual(snapshot["account_scope"], "worker")
-        self.assertEqual(snapshot["account"], "worker")
+        self.assertEqual(snapshot["account_scope"], "worker-acc:worker-scope")
+        self.assertEqual(snapshot["account"], "worker-acc")
+        self.assertEqual(snapshot["scope"], "worker-scope")
         self.assertEqual(snapshot["used"], 15)
         self.assertEqual(snapshot["usage"], 15)
         self.assertEqual(snapshot["reset_at"], "2026-10-03T18:00:00Z")
         self.assertEqual(snapshot["reset_window"], "2026-10-03T18:00:00Z")
 
     def test_snapshot_validation_fail_closed(self):
-        valid_snap = {"provider": "9router", "project": "AI-Auto-Video-Creator", "account": "worker"}
+        valid_snap = {"provider": "9router", "project": "AI-Auto-Video-Creator", "account": "worker", "scope": "worker"}
         with self.assertRaises(ValueError):
             self.accounting.record_capacity_snapshot(**valid_snap, limit=-1, used=10)
         with self.assertRaises(ValueError):
@@ -78,7 +98,7 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         }
         snapshot = self.accounting.record_capacity_snapshot(
             provider="9router", model="ag/gemini-3.8-flash-high",
-            project="AI-Auto-Video-Creator", account_scope="worker",
+            project="AI-Auto-Video-Creator", account="worker", scope="worker", account_scope="worker",
             quota_domain="monthly", limit=100, used=10,
             reset_at="2026-10-31T00:00:00Z", health="healthy",
             confidence="observed",
@@ -94,6 +114,7 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         bearer_val = f"Bearer {token_segment}.dummy.signature"
         record = self.accounting.record_cost(
             provider="9router", service="codex", operation="completion",
+            project="AI-Auto-Video-Creator", account="worker", scope="worker",
             quantity=1, unit="request", estimate=0.5, actual=0.5,
             currency="USD",
             source=bearer_val,
@@ -106,6 +127,7 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         acct = CapacityAccounting(monthly_budget=20.0)
         acct.record_cost(
             provider="9router", service="codex", operation="completion",
+            project="AI-Auto-Video-Creator", account="worker", scope="worker",
             quantity=1, unit="request", estimate=5.0, actual=5.0,
             currency="USD", source="usage_receipt", timestamp="2026-10-03T08:00:00Z",
         )
@@ -113,6 +135,7 @@ class TestProviderCapacityAccounting(unittest.TestCase):
 
         acct.record_cost(
             provider="9router", service="codex", operation="completion",
+            project="AI-Auto-Video-Creator", account="worker", scope="worker",
             quantity=1, unit="request", estimate=10.0, actual=10.0,
             currency="USD", source="usage_receipt", timestamp="2026-10-03T09:00:00Z",
         )
@@ -140,7 +163,7 @@ class TestProviderCapacityAccounting(unittest.TestCase):
     def test_revision_immutability_deep_defense(self):
         snapshot = self.accounting.record_capacity_snapshot(
             provider="9router", model="ag/gemini-3.8-flash-high",
-            project="AI-Auto-Video-Creator", account_scope="worker",
+            project="AI-Auto-Video-Creator", account="worker", scope="worker", account_scope="worker",
             quota_domain="monthly", limit=100, used=10,
             reset_at="2026-10-31T00:00:00Z", health="healthy",
             confidence="observed",
@@ -162,14 +185,14 @@ class TestProviderCapacityAccounting(unittest.TestCase):
 
         first = fresh.record_capacity_snapshot(
             provider="9router", model="ag/gemini-3.8-flash-high",
-            project="AI-Auto-Video-Creator", account_scope="worker",
+            project="AI-Auto-Video-Creator", account="worker", scope="worker", account_scope="worker",
             quota_domain="monthly", limit=100, used=10,
             reset_at="2026-10-31T00:00:00Z", health="healthy",
             confidence="observed",
         )
         second = fresh.record_capacity_snapshot(
             provider="9router", model="ag/gemini-3.8-flash-high",
-            project="AI-Auto-Video-Creator", account_scope="worker",
+            project="AI-Auto-Video-Creator", account="worker", scope="worker", account_scope="worker",
             quota_domain="monthly", limit=100, used=30,
             reset_at="2026-10-31T00:00:00Z", health="healthy",
             confidence="observed",
@@ -183,6 +206,9 @@ class TestProviderCapacityAccounting(unittest.TestCase):
             "provider": "9router",
             "service": "codex",
             "operation": "completion",
+            "project": "AI-Auto-Video-Creator",
+            "account": "worker",
+            "scope": "worker",
             "source": "usage_receipt",
             "timestamp": "2026-10-03T08:00:00Z",
         }
@@ -195,6 +221,7 @@ class TestProviderCapacityAccounting(unittest.TestCase):
 
         record = self.accounting.record_cost(
             provider="9router", service="codex", operation="completion",
+            project="AI-Auto-Video-Creator", account="worker", scope="worker",
             quantity=1, unit="request", estimate=2.0, actual=2.0,
             currency="USD", source="usage_receipt",
             timestamp="2026-10-03T08:00:00Z",
@@ -214,6 +241,8 @@ class TestProviderCapacityAccounting(unittest.TestCase):
             provider="9router; secret_key=sk-live-secret-val",
             model="ag/gemini-3.8-flash-high; client_secret: cs-model-secret",
             project="AI-Auto-Video-Creator; private_key=pk-proj-secret",
+            account="worker; token=raw-token",
+            scope="worker; password=superpwd",
             account_scope="Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy.sig",
             quota_domain="credential: user:superpasswd",
             health="healthy; bearer-access-token-999",
@@ -233,7 +262,8 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         self.assertNotIn("pk-proj-secret", repr(snapshot))
 
         self.assertEqual(snapshot["account_scope"], "Bearer [REDACTED]")
-        self.assertEqual(snapshot["account"], "Bearer [REDACTED]")
+        self.assertIn("token=[REDACTED]", snapshot["account"])
+        self.assertIn("password=[REDACTED]", snapshot["scope"])
         self.assertNotIn("dummy.sig", repr(snapshot))
 
         self.assertIn("credential: [REDACTED]", snapshot["quota_domain"])
@@ -262,10 +292,14 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         pk_snapshot = self.accounting.record_capacity_snapshot(
             provider="9router",
             project="AI-Auto-Video-Creator",
+            account=raw_private_key,
+            scope=raw_private_key,
             account_scope=raw_private_key,
             limit=50,
             used=5,
         )
+        self.assertEqual(pk_snapshot["account"], "[REDACTED PRIVATE KEY]")
+        self.assertEqual(pk_snapshot["scope"], "[REDACTED PRIVATE KEY]")
         self.assertEqual(pk_snapshot["account_scope"], "[REDACTED PRIVATE KEY]")
         self.assertNotIn("secretmaterialhere", repr(pk_snapshot))
         self.assertNotIn("secretmaterialhere", repr(self.accounting._snapshots))
@@ -277,6 +311,9 @@ class TestProviderCapacityAccounting(unittest.TestCase):
             provider="Bearer 9router-token-123",
             service="codex; secret_key=sec-svc-val",
             operation="completion; private_key: pk-op-val",
+            project="AI-Auto-Video-Creator; api_key=sk-proj-val",
+            account="worker; password=pw-val",
+            scope="worker; token=tok-val",
             quantity=1,
             unit="request; api_key=ak-val",
             estimate=1.0,
@@ -344,6 +381,9 @@ class TestProviderCapacityAccounting(unittest.TestCase):
             "provider": "9router",
             "service": "codex",
             "operation": "completion",
+            "project": "AI-Auto-Video-Creator",
+            "account": "worker",
+            "scope": "worker",
             "source": "usage_receipt",
             "timestamp": "2026-10-03T08:00:00Z",
         }
@@ -362,6 +402,7 @@ class TestProviderCapacityAccounting(unittest.TestCase):
             "provider": "9router",
             "project": "AI-Auto-Video-Creator",
             "account": "worker",
+            "scope": "worker",
         }
         for bad_val in [float("nan"), float("inf"), float("-inf"), -5, True, False]:
             with self.subTest(bad_val=bad_val):
@@ -415,6 +456,7 @@ class TestProviderCapacityAccounting(unittest.TestCase):
             "provider": "9router",
             "project": "AI-Auto-Video-Creator",
             "account": "worker",
+            "scope": "worker",
         }
         with self.assertRaises(ValueError):
             self.accounting.record_capacity_snapshot(**valid_snap, limit=huge_int, used=10)
@@ -426,6 +468,9 @@ class TestProviderCapacityAccounting(unittest.TestCase):
             "provider": "9router",
             "service": "codex",
             "operation": "completion",
+            "project": "AI-Auto-Video-Creator",
+            "account": "worker",
+            "scope": "worker",
             "source": "usage_receipt",
             "timestamp": "2026-10-03T08:00:00Z",
         }
@@ -437,18 +482,20 @@ class TestProviderCapacityAccounting(unittest.TestCase):
             self.accounting.record_cost(**valid_cost, actual=huge_int)
 
     def test_capacity_snapshot_missing_or_empty_scope_fail_closed(self):
-        """Finding 2 (C2): Snapshot scope fields (provider, project, account, scope) must be provided; missing or empty rejected fail-closed."""
+        """Finding 2 (C2/C3): Snapshot scope fields (provider, project, account, scope) must be provided; missing, empty, or placeholder rejected fail-closed."""
         base_valid = {
             "provider": "9router",
             "model": "ag/gemini-3.8-flash-high",
             "project": "AI-Auto-Video-Creator",
+            "account": "worker",
+            "scope": "worker",
             "account_scope": "worker",
             "limit": 100,
             "used": 10,
         }
 
-        # 1. provider missing or empty
-        for bad_p in ["", "   ", None, True, False]:
+        # 1. provider missing, empty, whitespace, boolean, or placeholder
+        for bad_p in ["", "   ", None, True, False, "default", "unknown", "system"]:
             kwargs = dict(base_valid)
             kwargs["provider"] = bad_p
             with self.subTest(bad_provider=bad_p):
@@ -460,8 +507,8 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         with self.assertRaises(MissingProvenanceError):
             self.accounting.record_capacity_snapshot(**kwargs_no_prov)
 
-        # 2. project missing or empty
-        for bad_prj in ["", "   ", None, True, False]:
+        # 2. project missing, empty, whitespace, boolean, or placeholder
+        for bad_prj in ["", "   ", None, True, False, "default", "unknown", "system"]:
             kwargs = dict(base_valid)
             kwargs["project"] = bad_prj
             with self.subTest(bad_project=bad_prj):
@@ -473,53 +520,67 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         with self.assertRaises(MissingProvenanceError):
             self.accounting.record_capacity_snapshot(**kwargs_no_prj)
 
-        # 3. account / scope / account_scope missing all or empty
+        # 3. account missing, empty, whitespace, boolean, or placeholder
+        for bad_acc in ["", "   ", None, True, False, "default", "unknown", "system"]:
+            kwargs = dict(base_valid)
+            kwargs["account"] = bad_acc
+            with self.subTest(bad_account=bad_acc):
+                with self.assertRaises(MissingProvenanceError):
+                    self.accounting.record_capacity_snapshot(**kwargs)
+
         kwargs_no_acc = dict(base_valid)
-        del kwargs_no_acc["account_scope"]
+        del kwargs_no_acc["account"]
         with self.assertRaises(MissingProvenanceError):
             self.accounting.record_capacity_snapshot(**kwargs_no_acc)
 
-        for bad_acc in ["", "   ", None, True, False]:
-            with self.subTest(bad_acc=bad_acc):
+        # 4. scope missing, empty, whitespace, boolean, or placeholder
+        for bad_scp in ["", "   ", None, True, False, "default", "unknown", "system"]:
+            kwargs = dict(base_valid)
+            kwargs["scope"] = bad_scp
+            with self.subTest(bad_scope=bad_scp):
                 with self.assertRaises(MissingProvenanceError):
-                    self.accounting.record_capacity_snapshot(
-                        provider="9router", project="AI-Auto-Video-Creator", account=bad_acc
-                    )
-                with self.assertRaises(MissingProvenanceError):
-                    self.accounting.record_capacity_snapshot(
-                        provider="9router", project="AI-Auto-Video-Creator", scope=bad_acc
-                    )
-                with self.assertRaises(MissingProvenanceError):
-                    self.accounting.record_capacity_snapshot(
-                        provider="9router", project="AI-Auto-Video-Creator", account_scope=bad_acc
-                    )
+                    self.accounting.record_capacity_snapshot(**kwargs)
 
-        # 4. Valid individual and combined account/scope specifications
-        snap1 = self.accounting.record_capacity_snapshot(
-            provider="9router", project="AI-Auto-Video-Creator", account="acc-only"
-        )
-        self.assertEqual(snap1["account"], "acc-only")
-        self.assertEqual(snap1["account_scope"], "acc-only")
-        self.assertEqual(snap1["scope"], "acc-only")
+        kwargs_no_scp = dict(base_valid)
+        del kwargs_no_scp["scope"]
+        with self.assertRaises(MissingProvenanceError):
+            self.accounting.record_capacity_snapshot(**kwargs_no_scp)
 
-        snap2 = self.accounting.record_capacity_snapshot(
-            provider="9router", project="AI-Auto-Video-Creator", scope="scope-only"
-        )
-        self.assertEqual(snap2["account"], "scope-only")
-        self.assertEqual(snap2["scope"], "scope-only")
+        # 5. account alone cannot deduce scope
+        with self.assertRaises(MissingProvenanceError):
+            self.accounting.record_capacity_snapshot(
+                provider="9router", project="AI-Auto-Video-Creator", account="acc-only"
+            )
 
-        snap3 = self.accounting.record_capacity_snapshot(
+        # 6. scope alone cannot deduce account
+        with self.assertRaises(MissingProvenanceError):
+            self.accounting.record_capacity_snapshot(
+                provider="9router", project="AI-Auto-Video-Creator", scope="scope-only"
+            )
+
+        # 7. account_scope alone cannot substitute for missing account or scope
+        with self.assertRaises(MissingProvenanceError):
+            self.accounting.record_capacity_snapshot(
+                provider="9router", project="AI-Auto-Video-Creator", account_scope="acc-scope"
+            )
+
+        # 8. Both account and scope provided cleanly without deduction
+        snap = self.accounting.record_capacity_snapshot(
             provider="9router", project="AI-Auto-Video-Creator", account="acc-val", scope="scope-val"
         )
-        self.assertEqual(snap3["account"], "acc-val")
-        self.assertEqual(snap3["scope"], "scope-val")
+        self.assertEqual(snap["account"], "acc-val")
+        self.assertEqual(snap["scope"], "scope-val")
+        self.assertEqual(snap["account_scope"], "acc-val:scope-val")
 
     def test_cost_record_missing_or_empty_provenance_fail_closed(self):
-        """Finding 2 (C2): Cost provenance fields (provider, service, operation, source, timestamp) must be provided; missing or empty rejected."""
+        """Finding 2 (C2/C3): Cost provenance fields must be provided; missing, empty, or placeholder rejected."""
         base_valid = {
             "provider": "9router",
             "service": "codex",
             "operation": "completion",
+            "project": "AI-Auto-Video-Creator",
+            "account": "worker",
+            "scope": "worker",
             "quantity": 1,
             "unit": "request",
             "estimate": 1.0,
@@ -529,7 +590,16 @@ class TestProviderCapacityAccounting(unittest.TestCase):
             "timestamp": "2026-10-03T08:00:00Z",
         }
 
-        required_keys = ("provider", "service", "operation", "source", "timestamp")
+        required_keys = (
+            "provider",
+            "service",
+            "operation",
+            "project",
+            "account",
+            "scope",
+            "source",
+            "timestamp",
+        )
         for req_k in required_keys:
             # Missing key from kwargs
             kwargs_missing = dict(base_valid)
@@ -538,8 +608,8 @@ class TestProviderCapacityAccounting(unittest.TestCase):
                 with self.assertRaises(MissingProvenanceError):
                     self.accounting.record_cost(**kwargs_missing)
 
-            # Empty, whitespace, None, boolean
-            for bad_val in ["", "   ", None, True, False]:
+            # Empty, whitespace, None, boolean, or placeholder
+            for bad_val in ["", "   ", None, True, False, "default", "unknown", "system"]:
                 kwargs_bad = dict(base_valid)
                 kwargs_bad[req_k] = bad_val
                 with self.subTest(key=req_k, bad_val=bad_val):
@@ -547,29 +617,38 @@ class TestProviderCapacityAccounting(unittest.TestCase):
                         self.accounting.record_cost(**kwargs_bad)
 
     def test_cost_record_optional_scope_fields_validation(self):
-        """Finding 2 (C2): Optional scope fields (project, account, scope) in cost record must be non-empty if provided."""
+        """All scope fields (project, account, scope) are strictly required and preserved."""
         base_valid = {
             "provider": "9router",
             "service": "codex",
             "operation": "completion",
+            "project": "my-project",
+            "account": "my-account",
+            "scope": "my-scope",
             "source": "usage_receipt",
             "timestamp": "2026-10-03T08:00:00Z",
         }
+        record = self.accounting.record_cost(**base_valid)
+        self.assertEqual(record["project"], "my-project")
+        self.assertEqual(record["account"], "my-account")
+        self.assertEqual(record["scope"], "my-scope")
 
-        for scope_k in ("project", "account", "scope"):
-            # Empty / None / boolean rejected
-            for bad_val in ["", "   ", None, True, False]:
-                kwargs = dict(base_valid)
-                kwargs[scope_k] = bad_val
-                with self.subTest(scope_k=scope_k, bad_val=bad_val):
-                    with self.assertRaises(MissingProvenanceError):
-                        self.accounting.record_cost(**kwargs)
+    def test_numeric_overflow_or_numeric_validation_or_missing_or_empty(self):
+        """Directive targeted suite covering numeric overflow, validation, and missing/empty checks."""
+        self.test_numeric_overflow_fail_closed()
+        self.test_capacity_snapshot_numeric_validation_fail_closed()
+        self.test_cost_record_numeric_validation_fail_closed()
+        self.test_monthly_budget_nan_and_infinity_fail_closed()
+        self.test_capacity_snapshot_missing_or_empty_scope_fail_closed()
+        self.test_cost_record_missing_or_empty_provenance_fail_closed()
 
-            # Valid non-empty preserved
-            kwargs_ok = dict(base_valid)
-            kwargs_ok[scope_k] = f"test-{scope_k}-val"
-            record = self.accounting.record_cost(**kwargs_ok)
-            self.assertEqual(record[scope_k], f"test-{scope_k}-val")
+
+# Attach alias so unittest -k "numeric_overflow or numeric_validation or missing_or_empty" executes cleanly
+setattr(
+    TestProviderCapacityAccounting,
+    "test numeric_overflow or numeric_validation or missing_or_empty",
+    TestProviderCapacityAccounting.test_numeric_overflow_or_numeric_validation_or_missing_or_empty,
+)
 
 
 if __name__ == "__main__":

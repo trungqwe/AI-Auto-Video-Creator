@@ -17,11 +17,6 @@ import re
 from typing import Any, Optional
 
 
-class BudgetExceededError(Exception):
-    """Typed fail-closed reason for an exceeded incremental budget."""
-    pass
-
-
 class CapacityAccountingError(ValueError):
     """Base typed fail-closed error for capacity and cost accounting."""
     pass
@@ -30,6 +25,19 @@ class CapacityAccountingError(ValueError):
 class MissingProvenanceError(CapacityAccountingError):
     """Typed fail-closed error when required provenance or scope fields are missing or empty."""
     pass
+
+
+class InvalidNumericError(CapacityAccountingError):
+    """Typed fail-closed error when a numeric value is invalid, negative, NaN, infinite, or overflows."""
+    pass
+
+
+class BudgetExceededError(CapacityAccountingError):
+    """Typed fail-closed reason for an exceeded incremental budget."""
+    pass
+
+
+DISALLOWED_PROVENANCE_PLACEHOLDERS = frozenset({"default", "unknown", "system"})
 
 
 _SENSITIVE_KEY_RE = re.compile(
@@ -103,18 +111,22 @@ def _validate_required_provenance_field(val: Any, name: str) -> str:
     s = str(sanitized).strip()
     if not s:
         raise MissingProvenanceError(f"Field '{name}' cannot be empty (fail-closed)")
+    if s.lower() in DISALLOWED_PROVENANCE_PLACEHOLDERS:
+        raise MissingProvenanceError(
+            f"Field '{name}' cannot use placeholder '{s}' (fail-closed)"
+        )
     return _sanitize_string_value(s)
 
 
 def _validate_budget_value(val: Any, name: str = "monthly_budget") -> float:
-    if isinstance(val, bool):
-        raise ValueError(f"{name} cannot be boolean (fail-closed)")
+    if val is None or isinstance(val, bool):
+        raise InvalidNumericError(f"{name} cannot be None or boolean (fail-closed)")
     try:
         budget_val = float(val)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValueError(f"{name} must be numeric (fail-closed): {exc}") from exc
+    except (TypeError, ValueError, OverflowError, InvalidOperation) as exc:
+        raise InvalidNumericError(f"{name} must be numeric (fail-closed): {exc}") from exc
     if not math.isfinite(budget_val) or budget_val < 0.0:
-        raise ValueError(f"{name} must be a finite non-negative number (fail-closed)")
+        raise InvalidNumericError(f"{name} must be a finite non-negative number (fail-closed)")
     return budget_val
 
 
@@ -122,13 +134,13 @@ def _parse_non_negative_finite(val: Any, name: str, default: Optional[float] = 0
     if val is None:
         return default
     if isinstance(val, bool):
-        raise ValueError(f"{name} cannot be boolean (fail-closed)")
+        raise InvalidNumericError(f"{name} cannot be boolean (fail-closed)")
     try:
         num = float(val)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValueError(f"{name} must be numeric (fail-closed): {exc}") from exc
+    except (TypeError, ValueError, OverflowError, InvalidOperation) as exc:
+        raise InvalidNumericError(f"{name} must be numeric (fail-closed): {exc}") from exc
     if not math.isfinite(num) or num < 0.0:
-        raise ValueError(f"{name} must be a finite non-negative number, got {val!r} (fail-closed)")
+        raise InvalidNumericError(f"{name} must be a finite non-negative number, got {val!r} (fail-closed)")
     if isinstance(val, int) and not isinstance(val, bool):
         return val
     return num
@@ -157,50 +169,39 @@ class CapacityAccounting:
     @property
     def cumulative_cost(self) -> float:
         try:
-            return float(self._cumulative_cost)
-        except (OverflowError, ValueError) as exc:
+            val = float(self._cumulative_cost)
+            if not math.isfinite(val):
+                raise BudgetExceededError("Cumulative cost exceeded float capacity (fail-closed)")
+            return val
+        except (OverflowError, ValueError, InvalidOperation) as exc:
             raise BudgetExceededError(
                 f"Cumulative cost exceeded float capacity (fail-closed): {exc}"
             ) from exc
 
     def record_capacity_snapshot(self, **kwargs: Any) -> dict[str, Any]:
         """Records an immutable provider capacity snapshot without secret leakage (CT-CAP-001)."""
-        if "provider" not in kwargs or kwargs["provider"] is None:
-            raise MissingProvenanceError("Missing required snapshot scope field: 'provider' (fail-closed)")
-        provider = _validate_required_provenance_field(kwargs["provider"], "provider")
-
-        if "project" not in kwargs or kwargs["project"] is None:
-            raise MissingProvenanceError("Missing required snapshot scope field: 'project' (fail-closed)")
-        project = _validate_required_provenance_field(kwargs["project"], "project")
-
-        has_account = "account" in kwargs and kwargs["account"] is not None
-        has_scope = "scope" in kwargs and kwargs["scope"] is not None
-        has_account_scope = "account_scope" in kwargs and kwargs["account_scope"] is not None
-
-        if not (has_account or has_scope or has_account_scope):
-            raise MissingProvenanceError(
-                "Missing required snapshot scope field: 'account', 'scope', or 'account_scope' (fail-closed)"
+        required_scope_fields = ("provider", "project", "account", "scope")
+        validated_fields: dict[str, str] = {}
+        for req_f in required_scope_fields:
+            if req_f not in kwargs or kwargs[req_f] is None:
+                raise MissingProvenanceError(
+                    f"Missing required snapshot scope field: '{req_f}' (fail-closed)"
+                )
+            validated_fields[req_f] = _validate_required_provenance_field(
+                kwargs[req_f], req_f
             )
 
-        account_val = (
-            _validate_required_provenance_field(kwargs["account"], "account")
-            if has_account
-            else ""
-        )
-        scope_val = (
-            _validate_required_provenance_field(kwargs["scope"], "scope")
-            if has_scope
-            else ""
-        )
-        account_scope_val = (
-            _validate_required_provenance_field(kwargs["account_scope"], "account_scope")
-            if has_account_scope
-            else ""
-        )
+        provider = validated_fields["provider"]
+        project = validated_fields["project"]
+        account = validated_fields["account"]
+        scope = validated_fields["scope"]
 
-        resolved_account = account_val or account_scope_val or scope_val
-        resolved_scope = scope_val or account_scope_val or account_val
-        resolved_account_scope = account_scope_val or account_val or scope_val
+        if "account_scope" in kwargs and kwargs["account_scope"] is not None:
+            account_scope_val = _validate_required_provenance_field(
+                kwargs["account_scope"], "account_scope"
+            )
+        else:
+            account_scope_val = account if account == scope else f"{account}:{scope}"
 
         model = _sanitize_field_str(kwargs.get("model", ""), "")
         quota_domain = _sanitize_field_str(kwargs.get("quota_domain", "default"), "default")
@@ -218,7 +219,7 @@ class CapacityAccounting:
         self._revision_seq += 1
 
         canonical_payload = {
-            "account_scope": resolved_account_scope,
+            "account_scope": account_scope_val,
             "confidence": confidence,
             "health": health,
             "limit": limit,
@@ -238,9 +239,9 @@ class CapacityAccounting:
             "provider": provider,
             "model": model,
             "project": project,
-            "account_scope": resolved_account_scope,
-            "account": resolved_account,
-            "scope": resolved_scope,
+            "account_scope": account_scope_val,
+            "account": account,
+            "scope": scope,
             "quota_domain": quota_domain,
             "limit": limit,
             "used": used,
@@ -264,7 +265,16 @@ class CapacityAccounting:
 
     def record_cost(self, **kwargs: Any) -> dict[str, Any]:
         """Records an immutable incremental cost record preserving full provenance (CT-COST-001)."""
-        required_provenance = ("provider", "service", "operation", "source", "timestamp")
+        required_provenance = (
+            "provider",
+            "service",
+            "operation",
+            "project",
+            "account",
+            "scope",
+            "source",
+            "timestamp",
+        )
         validated_fields: dict[str, str] = {}
         for req_field in required_provenance:
             if req_field not in kwargs or kwargs[req_field] is None:
@@ -274,17 +284,6 @@ class CapacityAccounting:
             validated_fields[req_field] = _validate_required_provenance_field(
                 kwargs[req_field], req_field
             )
-
-        optional_scope_fields: dict[str, str] = {}
-        for opt_field in ("project", "account", "scope"):
-            if opt_field in kwargs:
-                if kwargs[opt_field] is None:
-                    raise MissingProvenanceError(
-                        f"Cost scope field '{opt_field}' cannot be None (fail-closed)"
-                    )
-                optional_scope_fields[opt_field] = _validate_required_provenance_field(
-                    kwargs[opt_field], opt_field
-                )
 
         unit = _sanitize_field_str(kwargs.get("unit", "request"), "request")
         currency = _sanitize_field_str(kwargs.get("currency", "USD"), "USD")
@@ -305,7 +304,7 @@ class CapacityAccounting:
         try:
             self._cumulative_cost += Decimal(str(incremental_cost))
         except (InvalidOperation, TypeError, ValueError, OverflowError) as exc:
-            raise ValueError(f"Cost calculation failed (fail-closed): {exc}") from exc
+            raise CapacityAccountingError(f"Cost calculation failed (fail-closed): {exc}") from exc
 
         self._cost_seq += 1
         record_id = f"cost-{self._cost_seq}"
@@ -314,6 +313,9 @@ class CapacityAccounting:
             "provider": validated_fields["provider"],
             "service": validated_fields["service"],
             "operation": validated_fields["operation"],
+            "project": validated_fields["project"],
+            "account": validated_fields["account"],
+            "scope": validated_fields["scope"],
             "quantity": quantity,
             "unit": unit,
             "estimate": estimate,
@@ -323,8 +325,6 @@ class CapacityAccounting:
             "timestamp": validated_fields["timestamp"],
             "record_id": record_id,
         }
-        for opt_k, opt_v in optional_scope_fields.items():
-            cost_record[opt_k] = opt_v
 
         for k, v in kwargs.items():
             if k not in cost_record and not _is_sensitive_key(k):
@@ -344,7 +344,7 @@ class CapacityAccounting:
             )
         try:
             numeric_amount = float(amount)
-        except (TypeError, ValueError, OverflowError) as exc:
+        except (TypeError, ValueError, OverflowError, InvalidOperation) as exc:
             raise BudgetExceededError(f"Invalid budget amount {amount!r} (fail-closed): {exc}") from exc
 
         if not math.isfinite(numeric_amount):
