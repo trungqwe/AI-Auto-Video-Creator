@@ -1,6 +1,6 @@
 import unittest
 
-from src.controlplane.config.accounting import BudgetExceededError, CapacityAccounting, CapacityAccountingError, InvalidNumericError, MissingProvenanceError, _parse_non_negative_finite, _validate_budget_value
+from src.controlplane.config.accounting import BudgetExceededError, CapacityAccounting, CapacityAccountingError, InvalidNumericError, MissingProvenanceError, _parse_non_negative_finite, _validate_budget_value, _sanitize_value
 
 
 
@@ -57,6 +57,57 @@ class SecretCrashIntSubclass(int):
 
     def __repr__(self):
         return "crash_int_subclass_secret_xyz"
+
+
+class SecretCrashDeepcopy:
+    """Object whose __deepcopy__ raises RuntimeError containing a secret."""
+
+    def __init__(self, secret: str = "sk-custom-deepcopy-secret-99999"):
+        self.secret = secret
+
+    def __deepcopy__(self, memo):
+        raise RuntimeError(f"crash_deepcopy_with_secret: {self.secret}")
+
+    def __str__(self):
+        return f"SecretCrashDeepcopy({self.secret})"
+
+    def __repr__(self):
+        return f"SecretCrashDeepcopy({self.secret})"
+
+
+class SecretCrashIterator:
+    """Iterator whose __next__ raises RuntimeError containing a secret."""
+
+    def __init__(self, secret: str = "sk-custom-iter-secret-88888"):
+        self.secret = secret
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        raise RuntimeError(f"crash_iter_with_secret: {self.secret}")
+
+    def __str__(self):
+        return f"SecretCrashIterator({self.secret})"
+
+    def __repr__(self):
+        return f"SecretCrashIterator({self.secret})"
+
+
+class SecretCrashIterable:
+    """Iterable whose __iter__ raises RuntimeError containing a secret."""
+
+    def __init__(self, secret: str = "sk-custom-iterable-secret-77777"):
+        self.secret = secret
+
+    def __iter__(self):
+        raise RuntimeError(f"crash_iterable_with_secret: {self.secret}")
+
+    def __str__(self):
+        return f"SecretCrashIterable({self.secret})"
+
+    def __repr__(self):
+        return f"SecretCrashIterable({self.secret})"
 
 class TestProviderCapacityAccounting(unittest.TestCase):
     def setUp(self):
@@ -979,6 +1030,196 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         self.test_numeric_and_budget_exceptions_never_leak_secrets()
         self.test_custom_objects_raising_runtime_error_boundary_fail_closed()
         self.test_custom_int_subclass_with_throwing_str_and_repr()
+        self.test_custom_objects_raising_deepcopy_or_iterator_fail_closed_and_state_unchanged()
+
+    def test_custom_objects_raising_deepcopy_or_iterator_fail_closed_and_state_unchanged(self):
+        """Regression test (C6): object with __deepcopy__ or iterator raising RuntimeError containing secret
+        must raise typed CapacityAccountingError without secret leakage or context, and leave state/cost/seq unchanged.
+        """
+        import traceback
+
+        # 1. Test _sanitize_value directly with crashing objects
+        deepcopy_secret = "sk-direct-deepcopy-secret-11111"
+        iter_secret = "sk-direct-iter-secret-22222"
+        iterable_secret = "sk-direct-iterable-secret-33333"
+
+        for bad_obj, secret in [
+            (SecretCrashDeepcopy(deepcopy_secret), deepcopy_secret),
+            (SecretCrashIterator(iter_secret), iter_secret),
+            (SecretCrashIterable(iterable_secret), iterable_secret),
+        ]:
+            with self.assertRaises(CapacityAccountingError) as cm:
+                _sanitize_value(bad_obj)
+            self.assertEqual(str(cm.exception), "sanitization failed (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+            tb_str = "".join(traceback.format_exception(cm.exception))
+            self.assertNotIn(secret, tb_str)
+            self.assertNotIn("RuntimeError", tb_str)
+
+        # 2. Test record_capacity_snapshot with __deepcopy__ throwing object
+        acct = CapacityAccounting(monthly_budget=50.0)
+        initial_seq = acct._revision_seq
+        initial_snapshots_len = len(acct._snapshots)
+        initial_revisions_len = len(acct._revisions)
+
+        snap_secret = "sk-snap-deepcopy-secret-44444"
+        with self.assertRaises(CapacityAccountingError) as cm:
+            acct.record_capacity_snapshot(
+                provider="9router",
+                project="AI-Auto-Video-Creator",
+                account="worker",
+                scope="worker",
+                custom_bad_field=SecretCrashDeepcopy(snap_secret),
+            )
+        self.assertEqual(str(cm.exception), "sanitization failed (fail-closed)")
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertIsNone(cm.exception.__context__)
+        tb_str = "".join(traceback.format_exception(cm.exception))
+        self.assertNotIn(snap_secret, tb_str)
+        self.assertNotIn("RuntimeError", tb_str)
+        # Verify state/sequence/snapshots unchanged
+        self.assertEqual(acct._revision_seq, initial_seq)
+        self.assertEqual(len(acct._snapshots), initial_snapshots_len)
+        self.assertEqual(len(acct._revisions), initial_revisions_len)
+
+        # 3. Test record_capacity_snapshot with nested __deepcopy__ throwing object
+        nested_snap_secret = "sk-nested-snap-secret-55555"
+        with self.assertRaises(CapacityAccountingError) as cm:
+            acct.record_capacity_snapshot(
+                provider="9router",
+                project="AI-Auto-Video-Creator",
+                account="worker",
+                scope="worker",
+                metadata={"nested": SecretCrashDeepcopy(nested_snap_secret)},
+            )
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertIsNone(cm.exception.__context__)
+        self.assertNotIn(nested_snap_secret, "".join(traceback.format_exception(cm.exception)))
+        self.assertEqual(acct._revision_seq, initial_seq)
+        self.assertEqual(len(acct._snapshots), initial_snapshots_len)
+
+        # 4. Test record_cost with __deepcopy__ throwing object
+        initial_cost = acct.cumulative_cost
+        initial_cost_seq = acct._cost_seq
+        initial_cost_records_len = len(acct._cost_records)
+
+        cost_secret = "sk-cost-deepcopy-secret-66666"
+        with self.assertRaises(CapacityAccountingError) as cm:
+            acct.record_cost(
+                provider="9router",
+                service="codex",
+                operation="completion",
+                project="AI-Auto-Video-Creator",
+                account="worker",
+                scope="worker",
+                source="usage_receipt",
+                timestamp="2026-10-03T08:00:00Z",
+                estimate=12.50,
+                actual=12.50,
+                custom_bad_field=SecretCrashDeepcopy(cost_secret),
+            )
+        self.assertEqual(str(cm.exception), "sanitization failed (fail-closed)")
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertIsNone(cm.exception.__context__)
+        tb_str = "".join(traceback.format_exception(cm.exception))
+        self.assertNotIn(cost_secret, tb_str)
+        self.assertNotIn("RuntimeError", tb_str)
+        # Verify cumulative_cost, cost_seq, and cost_records completely unchanged
+        self.assertEqual(acct.cumulative_cost, initial_cost)
+        self.assertEqual(acct._cost_seq, initial_cost_seq)
+        self.assertEqual(len(acct._cost_records), initial_cost_records_len)
+
+        # 5. Test record_cost with nested __deepcopy__ throwing object
+        nested_cost_secret = "sk-nested-cost-secret-77777"
+        with self.assertRaises(CapacityAccountingError) as cm:
+            acct.record_cost(
+                provider="9router",
+                service="codex",
+                operation="completion",
+                project="AI-Auto-Video-Creator",
+                account="worker",
+                scope="worker",
+                source="usage_receipt",
+                timestamp="2026-10-03T08:00:00Z",
+                estimate=5.0,
+                extra={"bad_list": [SecretCrashDeepcopy(nested_cost_secret)]},
+            )
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertIsNone(cm.exception.__context__)
+        self.assertNotIn(nested_cost_secret, "".join(traceback.format_exception(cm.exception)))
+        self.assertEqual(acct.cumulative_cost, initial_cost)
+        self.assertEqual(acct._cost_seq, initial_cost_seq)
+        self.assertEqual(len(acct._cost_records), initial_cost_records_len)
+
+        # 6. Test iterator and iterable throwing objects in snapshot and cost
+        for bad_iter, sec in [
+            (SecretCrashIterator("sk-iter-sec-88888"), "sk-iter-sec-88888"),
+            (SecretCrashIterable("sk-iterable-sec-99999"), "sk-iterable-sec-99999"),
+        ]:
+            with self.assertRaises(CapacityAccountingError) as cm:
+                acct.record_capacity_snapshot(
+                    provider="9router",
+                    project="AI-Auto-Video-Creator",
+                    account="worker",
+                    scope="worker",
+                    custom_iter=bad_iter,
+                )
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+            self.assertNotIn(sec, "".join(traceback.format_exception(cm.exception)))
+            self.assertEqual(acct._revision_seq, initial_seq)
+
+            with self.assertRaises(CapacityAccountingError) as cm:
+                acct.record_cost(
+                    provider="9router",
+                    service="codex",
+                    operation="completion",
+                    project="AI-Auto-Video-Creator",
+                    account="worker",
+                    scope="worker",
+                    source="usage_receipt",
+                    timestamp="2026-10-03T08:00:00Z",
+                    estimate=7.0,
+                    custom_iter=bad_iter,
+                )
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+            self.assertNotIn(sec, "".join(traceback.format_exception(cm.exception)))
+            self.assertEqual(acct.cumulative_cost, initial_cost)
+            self.assertEqual(acct._cost_seq, initial_cost_seq)
+
+        # 7. Verify subsequent valid operations succeed cleanly from preserved state
+        valid_snap = acct.record_capacity_snapshot(
+            provider="9router",
+            model="ag/gemini-3.8-flash-high",
+            project="AI-Auto-Video-Creator",
+            account="worker",
+            scope="worker",
+            quota_domain="monthly",
+            limit=100,
+            used=10,
+        )
+        self.assertEqual(acct._revision_seq, 1)
+        self.assertTrue(valid_snap["revision"].startswith("rev-1-"))
+        self.assertEqual(len(acct._snapshots), 1)
+
+        valid_cost = acct.record_cost(
+            provider="9router",
+            service="codex",
+            operation="completion",
+            project="AI-Auto-Video-Creator",
+            account="worker",
+            scope="worker",
+            source="usage_receipt",
+            timestamp="2026-10-03T08:00:00Z",
+            estimate=2.50,
+            actual=2.50,
+        )
+        self.assertEqual(acct._cost_seq, 1)
+        self.assertEqual(valid_cost["record_id"], "cost-1")
+        self.assertEqual(acct.cumulative_cost, 2.50)
+        self.assertEqual(len(acct._cost_records), 1)
 
 
 # Attach alias so unittest -k "numeric_overflow or numeric_validation or missing_or_empty" executes cleanly

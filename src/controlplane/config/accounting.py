@@ -8,6 +8,7 @@ Implements CONTRACT-CONFIG-SECURITY (CT-CAP-001, CT-CAP-002, CT-COST-001):
 """
 from __future__ import annotations
 
+import collections.abc
 import copy
 from decimal import Decimal, InvalidOperation
 import hashlib
@@ -59,47 +60,176 @@ _JWT_RE = re.compile(
 )
 
 
+def _safe_deepcopy(val: Any) -> Any:
+    failed = False
+    try:
+        return copy.deepcopy(val)
+    except CapacityAccountingError:
+        raise
+    except Exception:
+        failed = True
+    if failed:
+        raise CapacityAccountingError("sanitization failed (fail-closed)") from None
+
+
 def _is_sensitive_key(key: Any) -> bool:
+    clean_k = None
+    str_failed = False
     try:
         clean_k = str(key).lower().strip()
+    except CapacityAccountingError:
+        raise
     except Exception:
-        return True
+        str_failed = True
+    if str_failed:
+        raise CapacityAccountingError("sanitization failed (fail-closed)") from None
     if clean_k in {"key", "raw_secret", "auth", "authorization", "client_secret"}:
         return True
     return bool(_SENSITIVE_KEY_RE.search(clean_k))
 
 
 def _sanitize_string_value(val: str) -> str:
-    val = _PRIVATE_KEY_RE.sub("[REDACTED PRIVATE KEY]", val)
-    val = _BEARER_RE.sub("Bearer [REDACTED]", val)
-    val = _ASSIGNMENT_RE.sub(lambda m: m.group(1) + m.group(2) + "[REDACTED]", val)
-    val = _SECRET_TOKEN_RE.sub("[REDACTED]", val)
-    val = _JWT_RE.sub("[REDACTED]", val)
-    return val
+    res = None
+    sub_failed = False
+    try:
+        val = _PRIVATE_KEY_RE.sub("[REDACTED PRIVATE KEY]", val)
+        val = _BEARER_RE.sub("Bearer [REDACTED]", val)
+        val = _ASSIGNMENT_RE.sub(lambda m: m.group(1) + m.group(2) + "[REDACTED]", val)
+        val = _SECRET_TOKEN_RE.sub("[REDACTED]", val)
+        val = _JWT_RE.sub("[REDACTED]", val)
+        res = val
+    except CapacityAccountingError:
+        raise
+    except Exception:
+        sub_failed = True
+    if sub_failed:
+        raise CapacityAccountingError("sanitization failed (fail-closed)") from None
+    return res
 
 
 def _sanitize_value(val: Any) -> Any:
+    has_secret_attr = False
+    attr_failed = False
     try:
         if hasattr(val, "raw_secret"):
-            return "[REDACTED]"
+            has_secret_attr = True
+    except CapacityAccountingError:
+        raise
     except Exception:
+        attr_failed = True
+
+    if attr_failed:
+        raise CapacityAccountingError("sanitization failed (fail-closed)") from None
+    if has_secret_attr:
         return "[REDACTED]"
-    if isinstance(val, str):
-        return _sanitize_string_value(val)
-    if isinstance(val, dict):
+
+    if isinstance(val, (str, bytes, bytearray)):
+        if isinstance(val, str):
+            return _sanitize_string_value(val)
+        return _safe_deepcopy(val)
+
+    if isinstance(val, (collections.abc.Mapping, dict)):
+        items_failed = False
+        items = None
+        try:
+            items = list(val.items())
+        except CapacityAccountingError:
+            raise
+        except Exception:
+            items_failed = True
+        if items_failed:
+            raise CapacityAccountingError("sanitization failed (fail-closed)") from None
+
         res = {}
-        for k, v in val.items():
+        for k, v in items:
+            is_sens = False
+            sens_failed = False
             try:
                 is_sens = _is_sensitive_key(k)
+            except CapacityAccountingError:
+                raise
             except Exception:
-                is_sens = True
+                sens_failed = True
+            if sens_failed:
+                raise CapacityAccountingError("sanitization failed (fail-closed)") from None
             if not is_sens:
                 res[k] = _sanitize_value(v)
-        return res
-    if isinstance(val, (list, tuple, set)):
-        sanitized = [_sanitize_value(item) for item in val]
-        return type(val)(sanitized) if not isinstance(val, (set, frozenset)) else set(sanitized)
-    return val
+        return _safe_deepcopy(res)
+
+    if isinstance(val, bool):
+        return bool(val)
+
+    if isinstance(val, int):
+        int_failed = False
+        res_int = 0
+        try:
+            res_int = int(val)
+        except CapacityAccountingError:
+            raise
+        except Exception:
+            int_failed = True
+        if int_failed:
+            raise CapacityAccountingError("sanitization failed (fail-closed)") from None
+        return res_int
+
+    if isinstance(val, float):
+        float_failed = False
+        res_float = 0.0
+        try:
+            res_float = float(val)
+        except CapacityAccountingError:
+            raise
+        except Exception:
+            float_failed = True
+        if float_failed:
+            raise CapacityAccountingError("sanitization failed (fail-closed)") from None
+        return res_float
+
+    if val is None:
+        return None
+
+    if isinstance(val, (list, tuple, set, frozenset, collections.abc.Iterable)):
+        iter_failed = False
+        items = None
+        try:
+            items = list(val)
+        except CapacityAccountingError:
+            raise
+        except Exception:
+            iter_failed = True
+        if iter_failed:
+            raise CapacityAccountingError("sanitization failed (fail-closed)") from None
+
+        sanitized = [_sanitize_value(item) for item in items]
+        coll_failed = False
+        res_coll = None
+        try:
+            if isinstance(val, (set, frozenset)):
+                res_coll = set(sanitized)
+            elif isinstance(val, (list, tuple)):
+                res_coll = type(val)(sanitized)
+            else:
+                res_coll = sanitized
+        except CapacityAccountingError:
+            raise
+        except Exception:
+            coll_failed = True
+        if coll_failed:
+            raise CapacityAccountingError("sanitization failed (fail-closed)") from None
+        return _safe_deepcopy(res_coll)
+
+    str_failed = False
+    try:
+        str(val)
+        repr(val)
+    except CapacityAccountingError:
+        raise
+    except Exception:
+        str_failed = True
+    if str_failed:
+        raise CapacityAccountingError("sanitization failed (fail-closed)") from None
+
+    return _safe_deepcopy(val)
 
 
 def _sanitize_field_str(val: Any, default: str = "") -> str:
@@ -107,12 +237,20 @@ def _sanitize_field_str(val: Any, default: str = "") -> str:
         return default
     if isinstance(val, bool):
         return default
+
+    sanitized = _sanitize_value(val)
+    str_failed = False
+    s = None
     try:
-        sanitized = _sanitize_value(val)
         s = str(sanitized).strip()
-        return _sanitize_string_value(s)
+    except CapacityAccountingError:
+        raise
     except Exception:
-        return default
+        str_failed = True
+    if str_failed:
+        raise CapacityAccountingError("sanitization failed (fail-closed)") from None
+
+    return _sanitize_string_value(s)
 
 
 def _validate_required_provenance_field(val: Any, name: str) -> str:
@@ -120,11 +258,19 @@ def _validate_required_provenance_field(val: Any, name: str) -> str:
         raise MissingProvenanceError(f"Missing required field '{name}' (fail-closed)")
     if isinstance(val, bool):
         raise MissingProvenanceError(f"Field '{name}' cannot be boolean (fail-closed)")
+
+    sanitized = _sanitize_value(val)
+    str_failed = False
+    s = None
     try:
-        sanitized = _sanitize_value(val)
         s = str(sanitized).strip()
+    except CapacityAccountingError:
+        raise
     except Exception:
+        str_failed = True
+    if str_failed:
         raise MissingProvenanceError(f"Field '{name}' cannot be parsed (fail-closed)") from None
+
     if not s:
         raise MissingProvenanceError(f"Field '{name}' cannot be empty (fail-closed)")
     if s.lower() in DISALLOWED_PROVENANCE_PLACEHOLDERS:
@@ -244,7 +390,7 @@ class CapacityAccounting:
         raw_reset = kwargs.get("reset_at") or kwargs.get("reset_window", "")
         reset_val = _sanitize_field_str(raw_reset, "")
 
-        self._revision_seq += 1
+        next_revision_seq = self._revision_seq + 1
 
         canonical_payload = {
             "account_scope": account_scope_val,
@@ -256,12 +402,22 @@ class CapacityAccounting:
             "provider": provider,
             "quota_domain": quota_domain,
             "reset_at": reset_val,
-            "seq": self._revision_seq,
+            "seq": next_revision_seq,
             "used": used,
         }
-        canonical_json = json.dumps(canonical_payload, sort_keys=True, separators=(",", ":"))
+        json_failed = False
+        canonical_json = None
+        try:
+            canonical_json = json.dumps(canonical_payload, sort_keys=True, separators=(",", ":"))
+        except CapacityAccountingError:
+            raise
+        except Exception:
+            json_failed = True
+        if json_failed:
+            raise CapacityAccountingError("serialization failed (fail-closed)") from None
+
         digest = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
-        revision_id = f"rev-{self._revision_seq}-{digest[:16]}"
+        revision_id = f"rev-{next_revision_seq}-{digest[:16]}"
 
         snapshot_record: dict[str, Any] = {
             "provider": provider,
@@ -285,11 +441,13 @@ class CapacityAccounting:
             if k not in snapshot_record and not _is_sensitive_key(k):
                 snapshot_record[k] = _sanitize_value(v)
 
-        stored = copy.deepcopy(snapshot_record)
+        stored = _safe_deepcopy(snapshot_record)
+
+        self._revision_seq = next_revision_seq
         self._revisions[revision_id] = stored
         self._snapshots.append(stored)
 
-        return copy.deepcopy(stored)
+        return _safe_deepcopy(stored)
 
     def record_cost(self, **kwargs: Any) -> dict[str, Any]:
         """Records an immutable incremental cost record preserving full provenance (CT-COST-001)."""
@@ -330,16 +488,17 @@ class CapacityAccounting:
 
         incremental_cost = actual if actual is not None else estimate
         calc_ok = False
+        new_cumulative_cost = self._cumulative_cost
         try:
-            self._cumulative_cost += Decimal(str(incremental_cost))
+            new_cumulative_cost = self._cumulative_cost + Decimal(str(incremental_cost))
             calc_ok = True
         except Exception:
             pass
         if not calc_ok:
             raise CapacityAccountingError("invalid numeric value (fail-closed)") from None
 
-        self._cost_seq += 1
-        record_id = f"cost-{self._cost_seq}"
+        next_cost_seq = self._cost_seq + 1
+        record_id = f"cost-{next_cost_seq}"
 
         cost_record: dict[str, Any] = {
             "provider": validated_fields["provider"],
@@ -362,11 +521,14 @@ class CapacityAccounting:
             if k not in cost_record and not _is_sensitive_key(k):
                 cost_record[k] = _sanitize_value(v)
 
-        stored = copy.deepcopy(cost_record)
+        stored = _safe_deepcopy(cost_record)
+
+        self._cumulative_cost = new_cumulative_cost
+        self._cost_seq = next_cost_seq
         self._cost_records.append(stored)
         self._revisions[record_id] = stored
 
-        return copy.deepcopy(stored)
+        return _safe_deepcopy(stored)
 
     def guard_budget(self, amount: float = 0.0) -> None:
         """Enforces fail-closed monthly budget check with typed BudgetExceededError."""
@@ -422,7 +584,7 @@ class CapacityAccounting:
 
         redacted: dict[str, Any] = {}
         for k, v in target.items():
-            if not _is_sensitive_key(str(k)):
+            if not _is_sensitive_key(k):
                 redacted[k] = _sanitize_value(v)
 
-        return copy.deepcopy(redacted)
+        return _safe_deepcopy(redacted)
