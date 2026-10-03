@@ -1,7 +1,62 @@
 import unittest
 
-from src.controlplane.config.accounting import BudgetExceededError, CapacityAccounting, CapacityAccountingError, InvalidNumericError, MissingProvenanceError
+from src.controlplane.config.accounting import BudgetExceededError, CapacityAccounting, CapacityAccountingError, InvalidNumericError, MissingProvenanceError, _parse_non_negative_finite, _validate_budget_value
 
+
+
+class SecretCrashFloatAndStr:
+    """Object where both __float__ and __str__ raise RuntimeError containing secrets."""
+
+    def __init__(self, secret: str = "sk-custom-crash-secret-12345"):
+        self.secret = secret
+
+    def __float__(self):
+        raise RuntimeError(f"crash_float_with_secret: {self.secret}")
+
+    def __str__(self):
+        raise RuntimeError(f"crash_str_with_secret: {self.secret}")
+
+    def __repr__(self):
+        return f"SecretCrashFloatAndStr({self.secret})"
+
+
+class SecretCrashStrOnly:
+    """Object where __float__ delegates to string and __str__ raises RuntimeError with secret."""
+
+    def __init__(self, secret: str = "sk-custom-str-secret-67890"):
+        self.secret = secret
+
+    def __float__(self):
+        return float(str(self))
+
+    def __str__(self):
+        raise RuntimeError(f"crash_str_with_secret: {self.secret}")
+
+    def __repr__(self):
+        return f"SecretCrashStrOnly({self.secret})"
+
+
+class SecretCrashNoFloat:
+    """Object without __float__ whose __str__ raises RuntimeError with secret."""
+
+    def __init__(self, secret: str = "sk-custom-nofloat-secret-abcde"):
+        self.secret = secret
+
+    def __str__(self):
+        raise RuntimeError(f"crash_str_with_secret: {self.secret}")
+
+    def __repr__(self):
+        return f"SecretCrashNoFloat({self.secret})"
+
+
+class SecretCrashIntSubclass(int):
+    """Integer subclass whose __str__ and __repr__ raise RuntimeError with secret."""
+
+    def __str__(self):
+        raise RuntimeError("crash_int_subclass_secret_xyz")
+
+    def __repr__(self):
+        return "crash_int_subclass_secret_xyz"
 
 class TestProviderCapacityAccounting(unittest.TestCase):
     def setUp(self):
@@ -754,6 +809,165 @@ class TestProviderCapacityAccounting(unittest.TestCase):
             self.assertIsNone(cm.exception.__cause__)
             self.assertIsNone(cm.exception.__context__)
 
+    def test_custom_objects_raising_runtime_error_boundary_fail_closed(self):
+        """Regression test (C5): objects whose __float__ or __str__ raise RuntimeError must convert to typed error without secret leakage."""
+        import traceback
+
+        bad_objects = [
+            SecretCrashFloatAndStr("sk-float-and-str-secret-11111"),
+            SecretCrashStrOnly("sk-str-only-secret-22222"),
+            SecretCrashNoFloat("sk-no-float-secret-33333"),
+        ]
+
+        valid_snap = {
+            "provider": "9router",
+            "project": "AI-Auto-Video-Creator",
+            "account": "worker",
+            "scope": "worker",
+        }
+        valid_cost = {
+            "provider": "9router",
+            "service": "codex",
+            "operation": "completion",
+            "project": "AI-Auto-Video-Creator",
+            "account": "worker",
+            "scope": "worker",
+            "source": "usage_receipt",
+            "timestamp": "2026-10-03T08:00:00Z",
+        }
+
+        for bad_obj in bad_objects:
+            secret_marker = bad_obj.secret
+
+            # 1. _validate_budget_value
+            with self.assertRaises(InvalidNumericError) as cm:
+                _validate_budget_value(bad_obj)
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+            tb_str = "".join(traceback.format_exception(cm.exception))
+            self.assertNotIn(secret_marker, tb_str)
+            self.assertNotIn("RuntimeError", tb_str)
+
+            # 2. CapacityAccounting constructor budget
+            with self.assertRaises(InvalidNumericError) as cm:
+                CapacityAccounting(monthly_budget=bad_obj)
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+            tb_str = "".join(traceback.format_exception(cm.exception))
+            self.assertNotIn(secret_marker, tb_str)
+            self.assertNotIn("RuntimeError", tb_str)
+
+            # 3. CapacityAccounting monthly_budget setter
+            acct = CapacityAccounting(monthly_budget=10.0)
+            with self.assertRaises(InvalidNumericError) as cm:
+                acct.monthly_budget = bad_obj
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+            tb_str = "".join(traceback.format_exception(cm.exception))
+            self.assertNotIn(secret_marker, tb_str)
+            self.assertNotIn("RuntimeError", tb_str)
+
+            # 4. _parse_non_negative_finite
+            with self.assertRaises(InvalidNumericError) as cm:
+                _parse_non_negative_finite(bad_obj, "test_field")
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+            tb_str = "".join(traceback.format_exception(cm.exception))
+            self.assertNotIn(secret_marker, tb_str)
+            self.assertNotIn("RuntimeError", tb_str)
+
+            # 5. guard_budget
+            with self.assertRaises(BudgetExceededError) as cm:
+                acct.guard_budget(bad_obj)
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+            tb_str = "".join(traceback.format_exception(cm.exception))
+            self.assertNotIn(secret_marker, tb_str)
+            self.assertNotIn("RuntimeError", tb_str)
+
+            # 6. record_capacity_snapshot limit
+            with self.assertRaises(InvalidNumericError) as cm:
+                acct.record_capacity_snapshot(**valid_snap, limit=bad_obj, used=10)
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+            tb_str = "".join(traceback.format_exception(cm.exception))
+            self.assertNotIn(secret_marker, tb_str)
+            self.assertNotIn("RuntimeError", tb_str)
+
+            # 7. record_capacity_snapshot used
+            with self.assertRaises(InvalidNumericError) as cm:
+                acct.record_capacity_snapshot(**valid_snap, limit=10, used=bad_obj)
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+            tb_str = "".join(traceback.format_exception(cm.exception))
+            self.assertNotIn(secret_marker, tb_str)
+            self.assertNotIn("RuntimeError", tb_str)
+
+            # 8. record_cost quantity
+            with self.assertRaises(InvalidNumericError) as cm:
+                acct.record_cost(**valid_cost, quantity=bad_obj)
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+            tb_str = "".join(traceback.format_exception(cm.exception))
+            self.assertNotIn(secret_marker, tb_str)
+            self.assertNotIn("RuntimeError", tb_str)
+
+            # 9. record_cost estimate
+            with self.assertRaises(InvalidNumericError) as cm:
+                acct.record_cost(**valid_cost, estimate=bad_obj)
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+            tb_str = "".join(traceback.format_exception(cm.exception))
+            self.assertNotIn(secret_marker, tb_str)
+            self.assertNotIn("RuntimeError", tb_str)
+
+            # 10. record_cost actual
+            with self.assertRaises(InvalidNumericError) as cm:
+                acct.record_cost(**valid_cost, actual=bad_obj)
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+            tb_str = "".join(traceback.format_exception(cm.exception))
+            self.assertNotIn(secret_marker, tb_str)
+            self.assertNotIn("RuntimeError", tb_str)
+
+    def test_custom_int_subclass_with_throwing_str_and_repr(self):
+        """Regression test (C5): custom int subclass overriding __str__ and __repr__ to throw does not leak or crash."""
+        acct = CapacityAccounting(monthly_budget=10.0)
+        # Passing SecretCrashIntSubclass should safely convert to primitive int without invoking throwing __str__/__repr__
+        safe_quantity = SecretCrashIntSubclass(2)
+        safe_estimate = SecretCrashIntSubclass(1)
+        safe_actual = SecretCrashIntSubclass(1)
+
+        record = acct.record_cost(
+            provider="9router",
+            service="codex",
+            operation="completion",
+            project="AI-Auto-Video-Creator",
+            account="worker",
+            scope="worker",
+            quantity=safe_quantity,
+            unit="request",
+            estimate=safe_estimate,
+            actual=safe_actual,
+            currency="USD",
+            source="usage_receipt",
+            timestamp="2026-10-03T08:00:00Z",
+        )
+        self.assertEqual(record["quantity"], 2)
+        self.assertEqual(record["estimate"], 1)
+        self.assertEqual(record["actual"], 1)
+        self.assertEqual(acct.cumulative_cost, 1.0)
+
     def test_numeric_overflow_or_numeric_validation_or_missing_or_empty(self):
         """Directive targeted suite covering numeric overflow, validation, and missing/empty checks."""
         self.test_numeric_overflow_fail_closed()
@@ -763,6 +977,8 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         self.test_capacity_snapshot_missing_or_empty_scope_fail_closed()
         self.test_cost_record_missing_or_empty_provenance_fail_closed()
         self.test_numeric_and_budget_exceptions_never_leak_secrets()
+        self.test_custom_objects_raising_runtime_error_boundary_fail_closed()
+        self.test_custom_int_subclass_with_throwing_str_and_repr()
 
 
 # Attach alias so unittest -k "numeric_overflow or numeric_validation or missing_or_empty" executes cleanly

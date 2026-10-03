@@ -59,8 +59,11 @@ _JWT_RE = re.compile(
 )
 
 
-def _is_sensitive_key(key: str) -> bool:
-    clean_k = str(key).lower().strip()
+def _is_sensitive_key(key: Any) -> bool:
+    try:
+        clean_k = str(key).lower().strip()
+    except Exception:
+        return True
     if clean_k in {"key", "raw_secret", "auth", "authorization", "client_secret"}:
         return True
     return bool(_SENSITIVE_KEY_RE.search(clean_k))
@@ -76,16 +79,23 @@ def _sanitize_string_value(val: str) -> str:
 
 
 def _sanitize_value(val: Any) -> Any:
-    if hasattr(val, "raw_secret"):
+    try:
+        if hasattr(val, "raw_secret"):
+            return "[REDACTED]"
+    except Exception:
         return "[REDACTED]"
     if isinstance(val, str):
         return _sanitize_string_value(val)
     if isinstance(val, dict):
-        return {
-            k: _sanitize_value(v)
-            for k, v in val.items()
-            if not _is_sensitive_key(str(k))
-        }
+        res = {}
+        for k, v in val.items():
+            try:
+                is_sens = _is_sensitive_key(k)
+            except Exception:
+                is_sens = True
+            if not is_sens:
+                res[k] = _sanitize_value(v)
+        return res
     if isinstance(val, (list, tuple, set)):
         sanitized = [_sanitize_value(item) for item in val]
         return type(val)(sanitized) if not isinstance(val, (set, frozenset)) else set(sanitized)
@@ -97,9 +107,12 @@ def _sanitize_field_str(val: Any, default: str = "") -> str:
         return default
     if isinstance(val, bool):
         return default
-    sanitized = _sanitize_value(val)
-    s = str(sanitized).strip()
-    return _sanitize_string_value(s)
+    try:
+        sanitized = _sanitize_value(val)
+        s = str(sanitized).strip()
+        return _sanitize_string_value(s)
+    except Exception:
+        return default
 
 
 def _validate_required_provenance_field(val: Any, name: str) -> str:
@@ -107,8 +120,11 @@ def _validate_required_provenance_field(val: Any, name: str) -> str:
         raise MissingProvenanceError(f"Missing required field '{name}' (fail-closed)")
     if isinstance(val, bool):
         raise MissingProvenanceError(f"Field '{name}' cannot be boolean (fail-closed)")
-    sanitized = _sanitize_value(val)
-    s = str(sanitized).strip()
+    try:
+        sanitized = _sanitize_value(val)
+        s = str(sanitized).strip()
+    except Exception:
+        raise MissingProvenanceError(f"Field '{name}' cannot be parsed (fail-closed)") from None
     if not s:
         raise MissingProvenanceError(f"Field '{name}' cannot be empty (fail-closed)")
     if s.lower() in DISALLOWED_PROVENANCE_PLACEHOLDERS:
@@ -120,16 +136,16 @@ def _validate_required_provenance_field(val: Any, name: str) -> str:
 
 def _validate_budget_value(val: Any, name: str = "monthly_budget") -> float:
     if val is None or isinstance(val, bool):
-        raise InvalidNumericError("invalid numeric value (fail-closed)")
+        raise InvalidNumericError("invalid numeric value (fail-closed)") from None
     converted = False
     budget_val = 0.0
     try:
         budget_val = float(val)
         converted = True
-    except (TypeError, ValueError, OverflowError, InvalidOperation):
+    except Exception:
         pass
     if not converted or not math.isfinite(budget_val) or budget_val < 0.0:
-        raise InvalidNumericError("invalid numeric value (fail-closed)")
+        raise InvalidNumericError("invalid numeric value (fail-closed)") from None
     return budget_val
 
 
@@ -137,18 +153,23 @@ def _parse_non_negative_finite(val: Any, name: str, default: Optional[float] = 0
     if val is None:
         return default
     if isinstance(val, bool):
-        raise InvalidNumericError("invalid numeric value (fail-closed)")
+        raise InvalidNumericError("invalid numeric value (fail-closed)") from None
     converted = False
     num = 0.0
     try:
         num = float(val)
         converted = True
-    except (TypeError, ValueError, OverflowError, InvalidOperation):
+    except Exception:
         pass
     if not converted or not math.isfinite(num) or num < 0.0:
-        raise InvalidNumericError("invalid numeric value (fail-closed)")
-    if isinstance(val, int) and not isinstance(val, bool):
+        raise InvalidNumericError("invalid numeric value (fail-closed)") from None
+    if type(val) is int:
         return val
+    if isinstance(val, int) and not isinstance(val, bool):
+        try:
+            return int(val)
+        except Exception:
+            return num
     return num
 
 
@@ -179,10 +200,10 @@ class CapacityAccounting:
         try:
             val = float(self._cumulative_cost)
             converted = True
-        except (OverflowError, ValueError, InvalidOperation):
+        except Exception:
             pass
         if not converted or not math.isfinite(val):
-            raise BudgetExceededError("invalid numeric value (fail-closed)")
+            raise CapacityAccountingError("invalid numeric value (fail-closed)") from None
         return val
 
     def record_capacity_snapshot(self, **kwargs: Any) -> dict[str, Any]:
@@ -312,10 +333,10 @@ class CapacityAccounting:
         try:
             self._cumulative_cost += Decimal(str(incremental_cost))
             calc_ok = True
-        except (InvalidOperation, TypeError, ValueError, OverflowError):
+        except Exception:
             pass
         if not calc_ok:
-            raise CapacityAccountingError("invalid numeric value (fail-closed)")
+            raise CapacityAccountingError("invalid numeric value (fail-closed)") from None
 
         self._cost_seq += 1
         record_id = f"cost-{self._cost_seq}"
@@ -350,17 +371,17 @@ class CapacityAccounting:
     def guard_budget(self, amount: float = 0.0) -> None:
         """Enforces fail-closed monthly budget check with typed BudgetExceededError."""
         if amount is None or isinstance(amount, bool):
-            raise BudgetExceededError("invalid numeric value (fail-closed)")
+            raise BudgetExceededError("invalid numeric value (fail-closed)") from None
         converted = False
         numeric_amount = 0.0
         try:
             numeric_amount = float(amount)
             converted = True
-        except (TypeError, ValueError, OverflowError, InvalidOperation):
+        except Exception:
             pass
 
         if not converted or not math.isfinite(numeric_amount) or numeric_amount < 0.0:
-            raise BudgetExceededError("invalid numeric value (fail-closed)")
+            raise BudgetExceededError("invalid numeric value (fail-closed)") from None
 
         calc_ok = False
         projected = Decimal("0.0")
@@ -369,18 +390,23 @@ class CapacityAccounting:
             projected = self._cumulative_cost + Decimal(str(numeric_amount))
             budget_limit = Decimal(str(self._monthly_budget))
             calc_ok = True
-        except (InvalidOperation, TypeError, ValueError, OverflowError):
+        except Exception:
             pass
 
         if not calc_ok:
-            raise BudgetExceededError("invalid numeric value (fail-closed)")
+            raise BudgetExceededError("invalid numeric value (fail-closed)") from None
 
-        if projected > budget_limit:
-            raise BudgetExceededError(
-                f"Budget exceeded (fail-closed): projected cost {float(projected):.4f} "
-                f"exceeds monthly budget {float(budget_limit):.4f} "
-                f"(current={float(self._cumulative_cost):.4f}, requested={numeric_amount:.4f})"
-            )
+        try:
+            if projected > budget_limit:
+                raise BudgetExceededError(
+                    f"Budget exceeded (fail-closed): projected cost {float(projected):.4f} "
+                    f"exceeds monthly budget {float(budget_limit):.4f} "
+                    f"(current={float(self._cumulative_cost):.4f}, requested={numeric_amount:.4f})"
+                )
+        except BudgetExceededError:
+            raise
+        except Exception:
+            raise BudgetExceededError("invalid numeric value (fail-closed)") from None
         return None
 
     def revision_view(self, revision: Optional[str] = None) -> dict[str, Any]:
