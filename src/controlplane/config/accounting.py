@@ -120,13 +120,16 @@ def _validate_required_provenance_field(val: Any, name: str) -> str:
 
 def _validate_budget_value(val: Any, name: str = "monthly_budget") -> float:
     if val is None or isinstance(val, bool):
-        raise InvalidNumericError(f"{name} cannot be None or boolean (fail-closed)")
+        raise InvalidNumericError("invalid numeric value (fail-closed)")
+    converted = False
+    budget_val = 0.0
     try:
         budget_val = float(val)
-    except (TypeError, ValueError, OverflowError, InvalidOperation) as exc:
-        raise InvalidNumericError(f"{name} must be numeric (fail-closed): {exc}") from exc
-    if not math.isfinite(budget_val) or budget_val < 0.0:
-        raise InvalidNumericError(f"{name} must be a finite non-negative number (fail-closed)")
+        converted = True
+    except (TypeError, ValueError, OverflowError, InvalidOperation):
+        pass
+    if not converted or not math.isfinite(budget_val) or budget_val < 0.0:
+        raise InvalidNumericError("invalid numeric value (fail-closed)")
     return budget_val
 
 
@@ -134,13 +137,16 @@ def _parse_non_negative_finite(val: Any, name: str, default: Optional[float] = 0
     if val is None:
         return default
     if isinstance(val, bool):
-        raise InvalidNumericError(f"{name} cannot be boolean (fail-closed)")
+        raise InvalidNumericError("invalid numeric value (fail-closed)")
+    converted = False
+    num = 0.0
     try:
         num = float(val)
-    except (TypeError, ValueError, OverflowError, InvalidOperation) as exc:
-        raise InvalidNumericError(f"{name} must be numeric (fail-closed): {exc}") from exc
-    if not math.isfinite(num) or num < 0.0:
-        raise InvalidNumericError(f"{name} must be a finite non-negative number, got {val!r} (fail-closed)")
+        converted = True
+    except (TypeError, ValueError, OverflowError, InvalidOperation):
+        pass
+    if not converted or not math.isfinite(num) or num < 0.0:
+        raise InvalidNumericError("invalid numeric value (fail-closed)")
     if isinstance(val, int) and not isinstance(val, bool):
         return val
     return num
@@ -168,15 +174,16 @@ class CapacityAccounting:
 
     @property
     def cumulative_cost(self) -> float:
+        converted = False
+        val = 0.0
         try:
             val = float(self._cumulative_cost)
-            if not math.isfinite(val):
-                raise BudgetExceededError("Cumulative cost exceeded float capacity (fail-closed)")
-            return val
-        except (OverflowError, ValueError, InvalidOperation) as exc:
-            raise BudgetExceededError(
-                f"Cumulative cost exceeded float capacity (fail-closed): {exc}"
-            ) from exc
+            converted = True
+        except (OverflowError, ValueError, InvalidOperation):
+            pass
+        if not converted or not math.isfinite(val):
+            raise BudgetExceededError("invalid numeric value (fail-closed)")
+        return val
 
     def record_capacity_snapshot(self, **kwargs: Any) -> dict[str, Any]:
         """Records an immutable provider capacity snapshot without secret leakage (CT-CAP-001)."""
@@ -301,10 +308,14 @@ class CapacityAccounting:
         )
 
         incremental_cost = actual if actual is not None else estimate
+        calc_ok = False
         try:
             self._cumulative_cost += Decimal(str(incremental_cost))
-        except (InvalidOperation, TypeError, ValueError, OverflowError) as exc:
-            raise CapacityAccountingError(f"Cost calculation failed (fail-closed): {exc}") from exc
+            calc_ok = True
+        except (InvalidOperation, TypeError, ValueError, OverflowError):
+            pass
+        if not calc_ok:
+            raise CapacityAccountingError("invalid numeric value (fail-closed)")
 
         self._cost_seq += 1
         record_id = f"cost-{self._cost_seq}"
@@ -339,38 +350,37 @@ class CapacityAccounting:
     def guard_budget(self, amount: float = 0.0) -> None:
         """Enforces fail-closed monthly budget check with typed BudgetExceededError."""
         if amount is None or isinstance(amount, bool):
-            raise BudgetExceededError(
-                f"Invalid budget amount {amount!r}: must be numeric (fail-closed)"
-            )
+            raise BudgetExceededError("invalid numeric value (fail-closed)")
+        converted = False
+        numeric_amount = 0.0
         try:
             numeric_amount = float(amount)
-        except (TypeError, ValueError, OverflowError, InvalidOperation) as exc:
-            raise BudgetExceededError(f"Invalid budget amount {amount!r} (fail-closed): {exc}") from exc
+            converted = True
+        except (TypeError, ValueError, OverflowError, InvalidOperation):
+            pass
 
-        if not math.isfinite(numeric_amount):
-            raise BudgetExceededError(
-                f"Budget amount must be a finite number, got {numeric_amount} (fail-closed)"
-            )
+        if not converted or not math.isfinite(numeric_amount) or numeric_amount < 0.0:
+            raise BudgetExceededError("invalid numeric value (fail-closed)")
 
-        if numeric_amount < 0.0:
-            raise BudgetExceededError(
-                f"Negative budget amount {numeric_amount} is rejected (fail-closed)"
-            )
-
+        calc_ok = False
+        projected = Decimal("0.0")
+        budget_limit = Decimal("0.0")
         try:
             projected = self._cumulative_cost + Decimal(str(numeric_amount))
             budget_limit = Decimal(str(self._monthly_budget))
+            calc_ok = True
+        except (InvalidOperation, TypeError, ValueError, OverflowError):
+            pass
 
-            if projected > budget_limit:
-                raise BudgetExceededError(
-                    f"Budget exceeded (fail-closed): projected cost {float(projected):.4f} "
-                    f"exceeds monthly budget {float(budget_limit):.4f} "
-                    f"(current={float(self._cumulative_cost):.4f}, requested={numeric_amount:.4f})"
-                )
-        except BudgetExceededError:
-            raise
-        except (InvalidOperation, TypeError, ValueError, OverflowError) as exc:
-            raise BudgetExceededError(f"Budget calculation failed (fail-closed): {exc}") from exc
+        if not calc_ok:
+            raise BudgetExceededError("invalid numeric value (fail-closed)")
+
+        if projected > budget_limit:
+            raise BudgetExceededError(
+                f"Budget exceeded (fail-closed): projected cost {float(projected):.4f} "
+                f"exceeds monthly budget {float(budget_limit):.4f} "
+                f"(current={float(self._cumulative_cost):.4f}, requested={numeric_amount:.4f})"
+            )
         return None
 
     def revision_view(self, revision: Optional[str] = None) -> dict[str, Any]:

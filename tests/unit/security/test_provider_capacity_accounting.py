@@ -633,6 +633,127 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         self.assertEqual(record["account"], "my-account")
         self.assertEqual(record["scope"], "my-scope")
 
+    def test_numeric_and_budget_exceptions_never_leak_secrets(self):
+        """Regression test: numeric validation and budget guard exceptions must never leak secrets."""
+        import traceback
+
+        raw_private_key = (
+            "-----BEGIN RSA PRIVATE KEY-----\n"
+            "MIIEowIBAAKCAQEA0r123secretmaterialhere==\n"
+            "-----END RSA PRIVATE KEY-----"
+        )
+        sensitive_cases = [
+            ("sk-test-token-value", ["sk-test-token-value"]),
+            ("Bearer super-secret-bearer-token-12345", ["super-secret-bearer-token-12345", "Bearer"]),
+            (raw_private_key, ["secretmaterialhere", "BEGIN RSA PRIVATE KEY"]),
+        ]
+        valid_snap = {
+            "provider": "9router",
+            "project": "AI-Auto-Video-Creator",
+            "account": "worker",
+            "scope": "worker",
+        }
+        valid_cost = {
+            "provider": "9router",
+            "service": "codex",
+            "operation": "completion",
+            "project": "AI-Auto-Video-Creator",
+            "account": "worker",
+            "scope": "worker",
+            "source": "usage_receipt",
+            "timestamp": "2026-10-03T08:00:00Z",
+        }
+
+        for secret_input, markers in sensitive_cases:
+            # 1. CapacityAccounting init
+            with self.assertRaises(InvalidNumericError) as cm:
+                CapacityAccounting(monthly_budget=secret_input)
+            for marker in markers:
+                self.assertNotIn(marker, str(cm.exception))
+                self.assertNotIn(marker, repr(cm.exception))
+                self.assertNotIn(marker, "".join(traceback.format_exception(cm.exception)))
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+
+            # 2. CapacityAccounting setter
+            acct = CapacityAccounting(monthly_budget=10.0)
+            with self.assertRaises(InvalidNumericError) as cm:
+                acct.monthly_budget = secret_input
+            for marker in markers:
+                self.assertNotIn(marker, str(cm.exception))
+                self.assertNotIn(marker, repr(cm.exception))
+                self.assertNotIn(marker, "".join(traceback.format_exception(cm.exception)))
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+
+            # 3. guard_budget
+            with self.assertRaises(BudgetExceededError) as cm:
+                acct.guard_budget(secret_input)
+            for marker in markers:
+                self.assertNotIn(marker, str(cm.exception))
+                self.assertNotIn(marker, repr(cm.exception))
+                self.assertNotIn(marker, "".join(traceback.format_exception(cm.exception)))
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+
+            # 4. record_capacity_snapshot limit
+            with self.assertRaises(InvalidNumericError) as cm:
+                acct.record_capacity_snapshot(**valid_snap, limit=secret_input, used=10)
+            for marker in markers:
+                self.assertNotIn(marker, str(cm.exception))
+                self.assertNotIn(marker, repr(cm.exception))
+                self.assertNotIn(marker, "".join(traceback.format_exception(cm.exception)))
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+
+            # 5. record_capacity_snapshot used
+            with self.assertRaises(InvalidNumericError) as cm:
+                acct.record_capacity_snapshot(**valid_snap, limit=10, used=secret_input)
+            for marker in markers:
+                self.assertNotIn(marker, str(cm.exception))
+                self.assertNotIn(marker, repr(cm.exception))
+                self.assertNotIn(marker, "".join(traceback.format_exception(cm.exception)))
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+
+            # 6. record_cost quantity
+            with self.assertRaises(InvalidNumericError) as cm:
+                acct.record_cost(**valid_cost, quantity=secret_input)
+            for marker in markers:
+                self.assertNotIn(marker, str(cm.exception))
+                self.assertNotIn(marker, repr(cm.exception))
+                self.assertNotIn(marker, "".join(traceback.format_exception(cm.exception)))
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+
+            # 7. record_cost estimate
+            with self.assertRaises(InvalidNumericError) as cm:
+                acct.record_cost(**valid_cost, estimate=secret_input)
+            for marker in markers:
+                self.assertNotIn(marker, str(cm.exception))
+                self.assertNotIn(marker, repr(cm.exception))
+                self.assertNotIn(marker, "".join(traceback.format_exception(cm.exception)))
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+
+            # 8. record_cost actual
+            with self.assertRaises(InvalidNumericError) as cm:
+                acct.record_cost(**valid_cost, actual=secret_input)
+            for marker in markers:
+                self.assertNotIn(marker, str(cm.exception))
+                self.assertNotIn(marker, repr(cm.exception))
+                self.assertNotIn(marker, "".join(traceback.format_exception(cm.exception)))
+            self.assertEqual(str(cm.exception), "invalid numeric value (fail-closed)")
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertIsNone(cm.exception.__context__)
+
     def test_numeric_overflow_or_numeric_validation_or_missing_or_empty(self):
         """Directive targeted suite covering numeric overflow, validation, and missing/empty checks."""
         self.test_numeric_overflow_fail_closed()
@@ -641,6 +762,7 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         self.test_monthly_budget_nan_and_infinity_fail_closed()
         self.test_capacity_snapshot_missing_or_empty_scope_fail_closed()
         self.test_cost_record_missing_or_empty_provenance_fail_closed()
+        self.test_numeric_and_budget_exceptions_never_leak_secrets()
 
 
 # Attach alias so unittest -k "numeric_overflow or numeric_validation or missing_or_empty" executes cleanly
