@@ -1268,6 +1268,7 @@ tasks:
   milestone: M2
   kind: work_package_slice
   status: ready
+  requireAstra: true
   authority:
     state: granted
     scope: capability_view_projection
