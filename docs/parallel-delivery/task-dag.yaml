@@ -1236,7 +1236,7 @@ tasks:
 - id: TASK-CAP-J-P1-C
   milestone: M2
   kind: work_package_slice
-  status: ready
+  status: integrated
   authority:
     state: granted
     scope: cost_and_quota_accounting
