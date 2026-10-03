@@ -9,9 +9,10 @@ Implements CONTRACT-CONFIG-SECURITY (CT-CAP-001, CT-CAP-002, CT-COST-001):
 from __future__ import annotations
 
 import copy
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
+import math
 import re
 from typing import Any, Optional
 
@@ -25,11 +26,18 @@ _SENSITIVE_KEY_RE = re.compile(
     r"(?i)(token|secret|passwd|password|credential|private[_-]?key|api[_-]?key|client_secret|bearer)"
 )
 _PRIVATE_KEY_RE = re.compile(
-    r"-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----", re.DOTALL
+    r"-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)",
+    re.IGNORECASE,
 )
-_BEARER_RE = re.compile(r"(?i)\bBearer\s+[^\s,;]+")
+_BEARER_RE = re.compile(r"(?i)\bBearer(?:\s+|[:=]\s*|-)([^\s,;]+)")
 _ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(password|secret|access[_-]?token|refresh[_-]?token|api[_-]?key|credential)(\s*[:=]\s*)([^\s,;]+)"
+    r"(?i)\b(password|passwd|secret(?:\s*[_-]?key)?|raw(?:\s*[_-]?secret)?|client(?:\s*[_-]?secret)?|private(?:\s*[_-]?key)?|api(?:\s*[_-]?key)?|access(?:\s*[_-]?token)?|refresh(?:\s*[_-]?token)?|auth(?:\s*[_-]?token)?|bearer(?:\s*[_-]?token)?|credentials?|token)(\s*[:=]\s*)([^\s,;]+)"
+)
+_SECRET_TOKEN_RE = re.compile(
+    r"\b(sk-[a-zA-Z0-9_\-]{8,}|ghp_[a-zA-Z0-9]{20,}|xox[baprs]-[a-zA-Z0-9\-]{10,}|AKIA[0-9A-Z]{16})\b"
+)
+_JWT_RE = re.compile(
+    r"\beyJ[a-zA-Z0-9_\-]{10,}\.[a-zA-Z0-9_\-]{10,}(?:\.[a-zA-Z0-9_\-]*)?\b"
 )
 
 
@@ -44,6 +52,8 @@ def _sanitize_string_value(val: str) -> str:
     val = _PRIVATE_KEY_RE.sub("[REDACTED PRIVATE KEY]", val)
     val = _BEARER_RE.sub("Bearer [REDACTED]", val)
     val = _ASSIGNMENT_RE.sub(lambda m: m.group(1) + m.group(2) + "[REDACTED]", val)
+    val = _SECRET_TOKEN_RE.sub("[REDACTED]", val)
+    val = _JWT_RE.sub("[REDACTED]", val)
     return val
 
 
@@ -64,14 +74,47 @@ def _sanitize_value(val: Any) -> Any:
     return val
 
 
+def _sanitize_field_str(val: Any, default: str = "") -> str:
+    if val is None:
+        return default
+    sanitized = _sanitize_value(val)
+    s = str(sanitized).strip()
+    return _sanitize_string_value(s)
+
+
+def _validate_budget_value(val: Any, name: str = "monthly_budget") -> float:
+    if isinstance(val, bool):
+        raise ValueError(f"{name} cannot be boolean (fail-closed)")
+    try:
+        budget_val = float(val)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be numeric (fail-closed): {exc}") from exc
+    if not math.isfinite(budget_val) or budget_val < 0.0:
+        raise ValueError(f"{name} must be a finite non-negative number (fail-closed)")
+    return budget_val
+
+
+def _parse_non_negative_finite(val: Any, name: str, default: Optional[float] = 0.0) -> Optional[float | int]:
+    if val is None:
+        return default
+    if isinstance(val, bool):
+        raise ValueError(f"{name} cannot be boolean (fail-closed)")
+    try:
+        num = float(val)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be numeric: {exc}") from exc
+    if not math.isfinite(num) or num < 0.0:
+        raise ValueError(f"{name} must be a finite non-negative number, got {val!r} (fail-closed)")
+    if isinstance(val, int) and not isinstance(val, bool):
+        return val
+    return num
+
+
 class CapacityAccounting:
     """Manages provider capacity snapshots, incremental cost tracking, and budget enforcement."""
 
     def __init__(self, monthly_budget: float = 0.0) -> None:
-        budget_val = float(monthly_budget)
-        if budget_val < 0.0:
-            raise ValueError("monthly_budget cannot be negative (fail-closed)")
-        self._monthly_budget = budget_val
+        self._monthly_budget = _validate_budget_value(monthly_budget, "monthly_budget")
         self._cumulative_cost = Decimal("0.0")
         self._snapshots: list[dict[str, Any]] = []
         self._cost_records: list[dict[str, Any]] = []
@@ -85,10 +128,7 @@ class CapacityAccounting:
 
     @monthly_budget.setter
     def monthly_budget(self, value: float) -> None:
-        budget_val = float(value)
-        if budget_val < 0.0:
-            raise ValueError("monthly_budget cannot be negative (fail-closed)")
-        self._monthly_budget = budget_val
+        self._monthly_budget = _validate_budget_value(value, "monthly_budget")
 
     @property
     def cumulative_cost(self) -> float:
@@ -96,31 +136,23 @@ class CapacityAccounting:
 
     def record_capacity_snapshot(self, **kwargs: Any) -> dict[str, Any]:
         """Records an immutable provider capacity snapshot without secret leakage (CT-CAP-001)."""
-        provider = str(kwargs.get("provider", "default")).strip()
-        model = str(kwargs.get("model", "default")).strip()
-        project = str(kwargs.get("project", "default")).strip()
-        account_scope = str(kwargs.get("account_scope") or kwargs.get("account", "default")).strip()
-        quota_domain = str(kwargs.get("quota_domain", "default")).strip()
-        health = str(kwargs.get("health", "healthy")).strip()
-        confidence = str(kwargs.get("confidence", "observed")).strip()
+        provider = _sanitize_field_str(kwargs.get("provider", "default"), "default")
+        model = _sanitize_field_str(kwargs.get("model", "default"), "default")
+        project = _sanitize_field_str(kwargs.get("project", "default"), "default")
+        account_scope = _sanitize_field_str(
+            kwargs.get("account_scope") or kwargs.get("account", "default"), "default"
+        )
+        quota_domain = _sanitize_field_str(kwargs.get("quota_domain", "default"), "default")
+        health = _sanitize_field_str(kwargs.get("health", "healthy"), "healthy")
+        confidence = _sanitize_field_str(kwargs.get("confidence", "observed"), "observed")
 
         raw_limit = kwargs.get("limit", 0)
         raw_used = kwargs.get("used", kwargs.get("usage", 0))
-        try:
-            limit = float(raw_limit) if raw_limit is not None else 0.0
-            used = float(raw_used) if raw_used is not None else 0.0
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"Limit and used must be numeric: {exc}") from exc
+        limit = _parse_non_negative_finite(raw_limit, "Limit", 0.0)
+        used = _parse_non_negative_finite(raw_used, "Used", 0.0)
 
-        if limit < 0.0 or used < 0.0:
-            raise ValueError("Limit and used must be non-negative (fail-closed)")
-
-        if isinstance(raw_limit, int) and not isinstance(raw_limit, bool):
-            limit = raw_limit
-        if isinstance(raw_used, int) and not isinstance(raw_used, bool):
-            used = raw_used
-
-        reset_val = str(kwargs.get("reset_at") or kwargs.get("reset_window", "")).strip()
+        raw_reset = kwargs.get("reset_at") or kwargs.get("reset_window", "")
+        reset_val = _sanitize_field_str(raw_reset, "")
 
         self._revision_seq += 1
 
@@ -170,37 +202,31 @@ class CapacityAccounting:
 
     def record_cost(self, **kwargs: Any) -> dict[str, Any]:
         """Records an immutable incremental cost record preserving full provenance (CT-COST-001)."""
-        provider = str(kwargs.get("provider", "unknown")).strip()
-        service = str(kwargs.get("service", "unknown")).strip()
-        operation = str(kwargs.get("operation", "unknown")).strip()
-        unit = str(kwargs.get("unit", "request")).strip()
-        currency = str(kwargs.get("currency", "USD")).strip()
-        source = str(kwargs.get("source", "system")).strip()
-        timestamp = str(kwargs.get("timestamp", "")).strip()
+        provider = _sanitize_field_str(kwargs.get("provider", "unknown"), "unknown")
+        service = _sanitize_field_str(kwargs.get("service", "unknown"), "unknown")
+        operation = _sanitize_field_str(kwargs.get("operation", "unknown"), "unknown")
+        unit = _sanitize_field_str(kwargs.get("unit", "request"), "request")
+        currency = _sanitize_field_str(kwargs.get("currency", "USD"), "USD")
+        source = _sanitize_field_str(kwargs.get("source", "system"), "system")
+        timestamp = _sanitize_field_str(kwargs.get("timestamp", ""), "")
 
         raw_quantity = kwargs.get("quantity", 1)
         raw_estimate = kwargs.get("estimate", 0.0)
         raw_actual = kwargs.get("actual")
 
-        try:
-            quantity = float(raw_quantity) if raw_quantity is not None else 1.0
-            estimate = float(raw_estimate) if raw_estimate is not None else 0.0
-            actual = float(raw_actual) if raw_actual is not None else None
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"Cost quantity, estimate, and actual must be numeric: {exc}") from exc
-
-        if quantity < 0.0 or estimate < 0.0 or (actual is not None and actual < 0.0):
-            raise ValueError("Cost quantity, estimate, and actual must be non-negative (fail-closed)")
-
-        if isinstance(raw_quantity, int) and not isinstance(raw_quantity, bool):
-            quantity = raw_quantity
-        if isinstance(raw_estimate, int) and not isinstance(raw_estimate, bool):
-            estimate = raw_estimate
-        if isinstance(raw_actual, int) and not isinstance(raw_actual, bool):
-            actual = raw_actual
+        quantity = _parse_non_negative_finite(raw_quantity, "Cost quantity", 1.0)
+        estimate = _parse_non_negative_finite(raw_estimate, "Cost estimate", 0.0)
+        actual = (
+            _parse_non_negative_finite(raw_actual, "Cost actual", None)
+            if raw_actual is not None
+            else None
+        )
 
         incremental_cost = actual if actual is not None else estimate
-        self._cumulative_cost += Decimal(str(incremental_cost))
+        try:
+            self._cumulative_cost += Decimal(str(incremental_cost))
+        except (InvalidOperation, TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"Cost calculation failed (fail-closed): {exc}") from exc
 
         self._cost_seq += 1
         record_id = f"cost-{self._cost_seq}"
@@ -214,7 +240,7 @@ class CapacityAccounting:
             "estimate": estimate,
             "actual": actual,
             "currency": currency,
-            "source": _sanitize_string_value(source),
+            "source": source,
             "timestamp": timestamp,
             "record_id": record_id,
         }
@@ -231,25 +257,39 @@ class CapacityAccounting:
 
     def guard_budget(self, amount: float = 0.0) -> None:
         """Enforces fail-closed monthly budget check with typed BudgetExceededError."""
+        if amount is None or isinstance(amount, bool):
+            raise BudgetExceededError(
+                f"Invalid budget amount {amount!r}: must be numeric (fail-closed)"
+            )
         try:
-            numeric_amount = float(amount) if amount is not None else 0.0
+            numeric_amount = float(amount)
         except (TypeError, ValueError) as exc:
             raise BudgetExceededError(f"Invalid budget amount {amount!r} (fail-closed)") from exc
+
+        if not math.isfinite(numeric_amount):
+            raise BudgetExceededError(
+                f"Budget amount must be a finite number, got {numeric_amount} (fail-closed)"
+            )
 
         if numeric_amount < 0.0:
             raise BudgetExceededError(
                 f"Negative budget amount {numeric_amount} is rejected (fail-closed)"
             )
 
-        projected = self._cumulative_cost + Decimal(str(numeric_amount))
-        budget_limit = Decimal(str(self._monthly_budget))
+        try:
+            projected = self._cumulative_cost + Decimal(str(numeric_amount))
+            budget_limit = Decimal(str(self._monthly_budget))
 
-        if projected > budget_limit:
-            raise BudgetExceededError(
-                f"Budget exceeded (fail-closed): projected cost {float(projected):.4f} "
-                f"exceeds monthly budget {float(budget_limit):.4f} "
-                f"(current={float(self._cumulative_cost):.4f}, requested={numeric_amount:.4f})"
-            )
+            if projected > budget_limit:
+                raise BudgetExceededError(
+                    f"Budget exceeded (fail-closed): projected cost {float(projected):.4f} "
+                    f"exceeds monthly budget {float(budget_limit):.4f} "
+                    f"(current={float(self._cumulative_cost):.4f}, requested={numeric_amount:.4f})"
+                )
+        except BudgetExceededError:
+            raise
+        except (InvalidOperation, TypeError, ValueError, OverflowError) as exc:
+            raise BudgetExceededError(f"Budget calculation failed (fail-closed): {exc}") from exc
         return None
 
     def revision_view(self, revision: Optional[str] = None) -> dict[str, Any]:
