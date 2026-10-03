@@ -1329,6 +1329,7 @@ tasks:
   evidence_outputs:
   - docs/parallel-delivery/evidence/cap-j-p2/capability-view-evidence.json
   - docs/parallel-delivery/evidence/cap-j-p2/targeted-test-output.txt
+  specFile: .ai-pm/specs/TASK-CAP-J-P2.md
   rollback:
     strategy: revert_task_commit
     reference: docs/11-roadmap.md
