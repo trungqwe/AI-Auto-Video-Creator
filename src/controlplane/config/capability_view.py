@@ -17,6 +17,7 @@ import collections.abc
 import copy
 from datetime import datetime, timezone
 import math
+import sys
 import re
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
@@ -179,10 +180,40 @@ class CapacityIndicator:
         utilization: float = 0.0,
         confidence: str = "observed",
     ) -> None:
-        self._limit = float(limit)
-        self._used = float(used)
-        self._remaining = float(remaining)
-        self._utilization = float(utilization)
+        if (
+            isinstance(limit, bool)
+            or isinstance(used, bool)
+            or isinstance(remaining, bool)
+            or isinstance(utilization, bool)
+        ):
+            raise ValueError("Boolean values are not valid numeric capacity indicators")
+
+        l = float(limit)
+        u = float(used)
+        r = float(remaining)
+        ut = float(utilization)
+
+        if not math.isfinite(l):
+            raise ValueError(f"Capacity limit must be finite (got {limit!r})")
+        if l < 0.0:
+            raise ValueError(f"Capacity limit cannot be negative (got {limit!r})")
+        if not math.isfinite(u):
+            raise ValueError(f"Capacity used must be finite (got {used!r})")
+        if u < 0.0:
+            raise ValueError(f"Capacity used cannot be negative (got {used!r})")
+        if not math.isfinite(r):
+            raise ValueError(f"Capacity remaining must be finite (got {remaining!r})")
+        if r < 0.0:
+            raise ValueError(f"Capacity remaining cannot be negative (got {remaining!r})")
+        if not math.isfinite(ut):
+            raise ValueError(f"Capacity utilization must be finite (got {utilization!r})")
+        if ut < 0.0:
+            raise ValueError(f"Capacity utilization cannot be negative (got {utilization!r})")
+
+        self._limit = l
+        self._used = u
+        self._remaining = r
+        self._utilization = ut
         self._confidence = str(confidence)
 
     @property
@@ -576,9 +607,15 @@ def build_capability_view(observation: Mapping[str, Any]) -> CapabilityView:
     if fail_closed_reasons:
         status = "unknown"
         reason = "; ".join(fail_closed_reasons)
+        safe_limit = (
+            limit if (limit is not None and math.isfinite(limit) and limit >= 0.0) else 0.0
+        )
+        safe_used = (
+            used if (used is not None and math.isfinite(used) and used >= 0.0) else 0.0
+        )
         capacity = CapacityIndicator(
-            limit=limit if limit is not None else 0.0,
-            used=used if used is not None else 0.0,
+            limit=safe_limit,
+            used=safe_used,
             remaining=0.0,
             utilization=0.0,
             confidence="unreliable",
@@ -586,7 +623,18 @@ def build_capability_view(observation: Mapping[str, Any]) -> CapabilityView:
     else:
         assert limit is not None and used is not None
         remaining = max(0.0, limit - used)
-        utilization = (used / limit) if limit > 0.0 else 0.0
+        if not math.isfinite(remaining) or remaining < 0.0:
+            remaining = 0.0
+
+        try:
+            utilization = (used / limit) if limit > 0.0 else 0.0
+        except (OverflowError, ZeroDivisionError):
+            utilization = sys.float_info.max
+
+        if not math.isfinite(utilization):
+            utilization = sys.float_info.max
+        elif utilization < 0.0:
+            utilization = 0.0
 
         capacity = CapacityIndicator(
             limit=limit,

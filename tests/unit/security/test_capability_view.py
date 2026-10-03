@@ -570,6 +570,85 @@ class TestCapabilityView(unittest.TestCase):
         self.assertEqual(view.status, "available")
         self.assertNotIn("secret-crash", repr(view))
 
+    def test_counterexample_utilization_finite_when_limit_tiny_and_used_huge(self) -> None:
+        """Finding Sol C2: utilization must be finite even when limit is tiny and used is huge.
+
+        Maintains fail-closed classification and ensures capacity indicators are finite.
+        """
+        # Case A: limit=1e-300, used=1e300
+        obs_huge = copy.deepcopy(self.valid_obs)
+        obs_huge["limit"] = 1e-300
+        obs_huge["used"] = 1e300
+        view_huge = build_capability_view(obs_huge)
+
+        self.assertEqual(view_huge.status, "unavailable")
+        self.assertIsNotNone(view_huge.reason)
+        self.assertIn("exhausted", view_huge.reason.lower())
+        self.assertTrue(math.isfinite(view_huge.capacity.utilization))
+        self.assertGreaterEqual(view_huge.capacity.utilization, 1.0)
+        self.assertEqual(view_huge.capacity.remaining, 0.0)
+        self.assertTrue(math.isfinite(view_huge.capacity.limit))
+        self.assertTrue(math.isfinite(view_huge.capacity.used))
+
+        # Case B: subnormal limit=1e-320, used=1e308
+        obs_sub = copy.deepcopy(self.valid_obs)
+        obs_sub["limit"] = 1e-320
+        obs_sub["used"] = 1e308
+        view_sub = build_capability_view(obs_sub)
+        self.assertEqual(view_sub.status, "unavailable")
+        self.assertTrue(math.isfinite(view_sub.capacity.utilization))
+        self.assertEqual(view_sub.capacity.remaining, 0.0)
+
+        # Case C: subnormal limit=1e-320, used=1.0
+        obs_sub1 = copy.deepcopy(self.valid_obs)
+        obs_sub1["limit"] = 1e-320
+        obs_sub1["used"] = 1.0
+        view_sub1 = build_capability_view(obs_sub1)
+        self.assertEqual(view_sub1.status, "unavailable")
+        self.assertTrue(math.isfinite(view_sub1.capacity.utilization))
+        self.assertEqual(view_sub1.capacity.remaining, 0.0)
+
+        # Case D: JSON serialization succeeds without float 'inf' ValueError
+        dict_repr = view_huge.to_dict()
+        import json
+        serialized = json.dumps(dict_repr, allow_nan=False)
+        self.assertIn("utilization", serialized)
+
+    def test_capacity_indicator_enforces_finite_bounds(self) -> None:
+        """CapacityIndicator directly rejects non-finite, negative or boolean capacity values."""
+        # Non-finite limit, used, remaining, utilization
+        for bad_val in [math.inf, -math.inf, math.nan]:
+            with self.assertRaises(ValueError):
+                CapacityIndicator(limit=bad_val)
+            with self.assertRaises(ValueError):
+                CapacityIndicator(used=bad_val)
+            with self.assertRaises(ValueError):
+                CapacityIndicator(remaining=bad_val)
+            with self.assertRaises(ValueError):
+                CapacityIndicator(utilization=bad_val)
+
+        # Negative values
+        for neg_val in [-1.0, -0.0001, -100.0]:
+            with self.assertRaises(ValueError):
+                CapacityIndicator(limit=neg_val)
+            with self.assertRaises(ValueError):
+                CapacityIndicator(used=neg_val)
+            with self.assertRaises(ValueError):
+                CapacityIndicator(remaining=neg_val)
+            with self.assertRaises(ValueError):
+                CapacityIndicator(utilization=neg_val)
+
+        # Boolean values
+        for b_val in [True, False]:
+            with self.assertRaises(ValueError):
+                CapacityIndicator(limit=b_val)
+            with self.assertRaises(ValueError):
+                CapacityIndicator(used=b_val)
+            with self.assertRaises(ValueError):
+                CapacityIndicator(remaining=b_val)
+            with self.assertRaises(ValueError):
+                CapacityIndicator(utilization=b_val)
+
 
 if __name__ == "__main__":
     unittest.main()
