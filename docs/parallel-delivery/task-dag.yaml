@@ -1264,6 +1264,95 @@ tasks:
   resource_locks:
   - LOCK-SRC-CONFIG-SECURITY
   merge_priority: 260
+- id: TASK-CAP-J-P2
+  milestone: M2
+  kind: work_package_slice
+  status: ready
+  authority:
+    state: granted
+    scope: capability_view_projection
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/modules/capability-j-providers.md
+  - docs/09-contracts/11-configuration-security-contracts.md
+  depends_on:
+  - task: TASK-CAP-J-P1-C
+    condition: integrated
+  requirement_refs:
+  - QR-REL-007
+  - QR-COST-001
+  contract_refs:
+  - id: CONTRACT-CONFIG-SECURITY
+    registry: CONTRACT-CONFIG-SECURITY
+    revision: sha256:989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+  invariant_refs:
+  - INV-013
+  - INV-021
+  module_owners:
+  - J
+  owned_paths:
+  - src/controlplane/config/capability_view.py
+  - tests/unit/security/test_capability_view.py
+  forbidden_paths:
+  - src/controlplane/api/main.py
+  - src/controlplane/security/dpapi/**
+  - migrations/**
+  - src/creative/**
+  - src/render/**
+  - src/ingestion/**
+  - src/catalog/**
+  - src/voice/**
+  - docs/09-contracts/**
+  - docs/milestones/**/evidence/**
+  - .ai-pm/**
+  resource_locks:
+  - LOCK-SRC-CONFIG-SECURITY
+  runtime_prerequisites:
+  - python
+  - unittest
+  acceptance:
+  - requirement: CapabilityView conforms to CT-CAP-003 with provider/account scope, status, capacity indicators, observation time and next check, without secrets.
+    instrument: tests.unit.security.test_capability_view.TestCapabilityView.test_build_view_schema_and_redaction
+    counterexample: View exposes a secret-like field, omits required identity, or emits an unsupported status.
+    red_observation: Capability view projection is not implemented; targeted tests must fail behaviorally before implementation.
+    limitations: Projection verifies supplied observations only; it does not claim live provider quota accuracy.
+  - requirement: Status classification is deterministic and fail-closed for exhausted, degraded, unavailable and unknown observations.
+    instrument: tests.unit.security.test_capability_view.TestCapabilityView.test_status_classification_fail_closed
+    counterexample: Exhausted capacity is reported available or malformed observations silently become healthy.
+    red_observation: Status classifier is absent before implementation.
+    limitations: No live network call is made by this slice.
+  - requirement: Multiple observations select the newest observation per capability scope without mutating source records.
+    instrument: tests.unit.security.test_capability_view.TestCapabilityView.test_latest_projection_is_immutable
+    counterexample: Older observation wins, input dictionaries are mutated, or returned view aliases internal state.
+    red_observation: Latest-observation projection is absent before implementation.
+    limitations: Persistence and cross-process locking remain outside this bounded slice.
+  evidence_outputs:
+  - docs/parallel-delivery/evidence/cap-j-p2/capability-view-evidence.json
+  - docs/parallel-delivery/evidence/cap-j-p2/targeted-test-output.txt
+  rollback:
+    strategy: revert_task_commit
+    reference: docs/11-roadmap.md
+    preserves_accepted_evidence: true
+  route:
+    control:
+      model: cx/gpt-6-astra
+      effort: medium
+    implement:
+      provider: 9router
+      harness: Codex CLI
+      model: ag/gemini-3.8-flash-high
+      effort: high
+    review:
+      provider: 9router
+      harness: Claude Code
+      model: cx/gpt-6.1-sol
+      effort: high
+    supreme_audit:
+      provider: 9router
+      harness: Claude Code
+      model: cx/gpt-6-astra
+      effort: medium
+  merge_priority: 270
 single_writer_restrictions:
   composition_root:
     path: src/controlplane/api/main.py
