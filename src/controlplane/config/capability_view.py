@@ -3,10 +3,10 @@
 Provides:
 - Schema-conformant, immutable CapabilityView and CapacityIndicator projections.
 - Deterministic, fail-closed status classification:
-  * available: valid observation, remaining capacity > 0, healthy state.
-  * unavailable: exhausted capacity or health unavailable/revoked/invalid.
+  * available: valid observation, capacity limit > 0 and remaining capacity > 0, healthy state.
+  * unavailable: zero capacity limit, exhausted capacity, or health unavailable/revoked/invalid.
   * degraded: degraded health, uncertain quota, or active backoff.
-  * unknown: missing identity, invalid timestamp, or non-finite/negative numeric data.
+  * unknown: missing identity, missing/invalid timestamp, invalid numeric data, or missing/malformed health.
 - Exhaustive secret redaction preventing leakage in keys, values, or string representations.
 - Multi-observation projection selecting latest observation per capability scope with sequence tie-breaker.
 - Input immutability and non-aliasing guarantees.
@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import collections.abc
 import copy
-from datetime import datetime
+from datetime import datetime, timezone
 import math
 import re
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence, Tuple
 
 
 DISALLOWED_PLACEHOLDERS = frozenset({"default", "unknown", "system", "none", "null"})
@@ -35,6 +35,14 @@ _ASSIGNMENT_RE = re.compile(
     r"(?i)\b(password|passwd|secret(?:\s*[_-]?key)?|raw(?:\s*[_-]?secret)?|client(?:\s*[_-]?secret)?|private(?:\s*[_-]?key)?|api(?:\s*[_-]?key)?|access(?:\s*[_-]?token)?|refresh(?:\s*[_-]?token)?|auth(?:\s*[_-]?token)?|bearer(?:\s*[_-]?token)?|credentials?|token)(\s*[:=]\s*)([^\s,;]+)"
 )
 _SECRET_TOKEN_RE = re.compile(r"\b(sk-[a-zA-Z0-9_\-]{8,}|AIza[0-9A-Za-z\-_]{35})\b")
+
+
+
+HEALTHY_VALUES = frozenset({"healthy", "ok", "up", "available"})
+DEGRADED_VALUES = frozenset({"degraded", "warning", "slow", "high_latency", "elevated_error"})
+UNAVAILABLE_VALUES = frozenset({"unavailable", "revoked", "invalid", "unhealthy", "offline", "down"})
+UNKNOWN_VALUES = frozenset({"unknown"})
+VALID_HEALTH_VALUES = HEALTHY_VALUES | DEGRADED_VALUES | UNAVAILABLE_VALUES | UNKNOWN_VALUES
 
 
 def _is_sensitive_key(key: Any) -> bool:
@@ -109,24 +117,33 @@ def _sanitize_value(val: Any) -> Any:
         return "[REDACTED]"
 
 
-def _parse_timestamp(raw_val: Any) -> Optional[str]:
+def _parse_timestamp_dt(raw_val: Any) -> Optional[datetime]:
+    """Parses timestamp into UTC datetime; rejects booleans, non-finite and malformed values."""
     if raw_val is None or isinstance(raw_val, bool):
         return None
     try:
         if isinstance(raw_val, (int, float)):
             if not math.isfinite(raw_val) or raw_val <= 0:
                 return None
-            dt = datetime.utcfromtimestamp(float(raw_val))
-            return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            return datetime.fromtimestamp(float(raw_val), tz=timezone.utc)
         s = str(raw_val).strip()
         if not s:
             return None
-        # Normalize ISO string or validate
-        # Check basic ISO 8601 formatting
-        # Try datetime parsing
         clean_s = s.replace("Z", "+00:00") if s.endswith("Z") else s
-        datetime.fromisoformat(clean_s)
-        return _sanitize_string_value(s)
+        dt = datetime.fromisoformat(clean_s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def _parse_timestamp(raw_val: Any) -> Optional[str]:
+    try:
+        dt = _parse_timestamp_dt(raw_val)
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt is not None else None
     except Exception:
         return None
 
@@ -403,6 +420,26 @@ def _validate_identity_str(val: Any) -> tuple[Optional[str], Optional[str]]:
     return (_sanitize_string_value(s), None)
 
 
+def _parse_sequence_number(val: Any) -> Tuple[Optional[int], bool]:
+    """Parses sequence number tie-breaker; rejects booleans and non-integers."""
+    if val is None or isinstance(val, bool):
+        return (None, False)
+    if isinstance(val, int):
+        return (val, True)
+    if isinstance(val, float):
+        if math.isfinite(val) and val.is_integer():
+            return (int(val), True)
+        return (None, False)
+    if isinstance(val, str):
+        s = val.strip()
+        if s.isdigit() or (s.startswith("-") and s[1:].isdigit()):
+            try:
+                return (int(s), True)
+            except Exception:
+                return (None, False)
+    return (None, False)
+
+
 def build_capability_view(observation: Mapping[str, Any]) -> CapabilityView:
     """Builds a projected CapabilityView from a raw observation mapping (CT-CAP-003).
 
@@ -480,10 +517,15 @@ def build_capability_view(observation: Mapping[str, Any]) -> CapabilityView:
     next_check_at = _parse_timestamp(raw_next_check) if raw_next_check is not None else None
 
     # 3. Numeric capacity validation and recalculation
-    raw_limit = observation.get("limit", 0.0)
-    limit, limit_err = _parse_numeric(raw_limit)
-    if limit_err:
-        fail_closed_reasons.append(f"limit: {limit_err}")
+    # Requirement: limit must be present and finite; limit=0 cannot be available
+    if "limit" not in observation or observation.get("limit") is None:
+        fail_closed_reasons.append("limit: missing required capacity limit")
+        limit = None
+    else:
+        raw_limit = observation.get("limit")
+        limit, limit_err = _parse_numeric(raw_limit)
+        if limit_err:
+            fail_closed_reasons.append(f"limit: {limit_err}")
 
     raw_used = observation.get("used", observation.get("usage", 0.0))
     used, used_err = _parse_numeric(raw_used)
@@ -496,7 +538,38 @@ def build_capability_view(observation: Mapping[str, Any]) -> CapabilityView:
     except Exception:
         confidence = "uncertain"
 
-    # 4. Status determination
+    # 4. Health validation (fail-closed, no default to healthy)
+    health_category: Optional[str] = None
+    clean_health: Optional[str] = None
+    if "health" not in observation or observation.get("health") is None:
+        fail_closed_reasons.append("health: missing required health value")
+    else:
+        raw_health = observation.get("health")
+        if isinstance(raw_health, bool):
+            fail_closed_reasons.append("health: health value cannot be boolean")
+        elif not isinstance(raw_health, str):
+            fail_closed_reasons.append(
+                f"health: invalid type {type(raw_health).__name__}, expected string"
+            )
+        else:
+            clean_health = _sanitize_string_value(raw_health).lower().strip()
+            if not clean_health:
+                fail_closed_reasons.append("health: health value cannot be empty")
+            elif clean_health in HEALTHY_VALUES:
+                health_category = "healthy"
+            elif clean_health in DEGRADED_VALUES:
+                health_category = "degraded"
+            elif clean_health in UNAVAILABLE_VALUES:
+                health_category = "unavailable"
+            elif clean_health in UNKNOWN_VALUES:
+                health_category = "unknown"
+                fail_closed_reasons.append(f"health: provider health is '{clean_health}'")
+            else:
+                fail_closed_reasons.append(
+                    f"health: unrecognized health value '{clean_health}'"
+                )
+
+    # 5. Status determination
     status: str = "unknown"
     reason: Optional[str] = None
 
@@ -523,7 +596,6 @@ def build_capability_view(observation: Mapping[str, Any]) -> CapabilityView:
             confidence=confidence,
         )
 
-        health_raw = str(observation.get("health", "healthy")).lower().strip()
         is_backoff = bool(
             observation.get("backoff_active")
             or observation.get("in_backoff")
@@ -534,15 +606,18 @@ def build_capability_view(observation: Mapping[str, Any]) -> CapabilityView:
             or bool(observation.get("is_quota_uncertain"))
         )
 
-        if health_raw in {"unavailable", "revoked", "invalid", "unhealthy", "offline", "down"}:
+        if health_category == "unknown":
+            status = "unknown"
+            reason = f"Provider health is '{clean_health}'"
+        elif health_category == "unavailable":
             status = "unavailable"
-            reason = f"Provider health is '{health_raw}'"
-        elif limit > 0.0 and remaining <= 0.0:
+            reason = f"Provider health is '{clean_health}'"
+        elif limit <= 0.0 or remaining <= 0.0:
             status = "unavailable"
-            reason = "Capacity exhausted"
-        elif health_raw in {"degraded", "warning", "slow", "high_latency", "elevated_error"}:
+            reason = "Capacity exhausted" if limit > 0.0 else "Capacity limit is zero"
+        elif health_category == "degraded":
             status = "degraded"
-            reason = f"Provider health is degraded ({health_raw})"
+            reason = f"Provider health is degraded ({clean_health})"
         elif is_uncertain:
             status = "degraded"
             reason = f"Quota confidence is uncertain ({confidence})"
@@ -591,25 +666,78 @@ def _get_scope_key(obs: Mapping[str, Any]) -> str:
     return f"{provider}:{cap_type}:{scope}"
 
 
-def _get_sequence_number(obs: Mapping[str, Any]) -> int:
-    """Extracts sequence number tie-breaker, defaulting to 0."""
-    raw_seq = obs.get("sequence", obs.get("seq", obs.get("revision_seq", 0)))
+def _extract_sequence_number(obs: Mapping[str, Any]) -> Tuple[Optional[int], bool]:
+    """Extracts sequence tie-breaker; returns (sequence, is_valid)."""
+    for key in ("sequence", "seq", "revision_seq"):
+        if key in obs and obs[key] is not None:
+            return _parse_sequence_number(obs[key])
+    return (None, False)
+
+
+def _extract_observation_dt(obs: Mapping[str, Any]) -> Optional[datetime]:
+    """Extracts parsed UTC datetime for an observation."""
+    for key in ("last_observed_at", "observed_at", "timestamp", "heartbeat_at"):
+        if key in obs and obs[key] is not None:
+            dt = _parse_timestamp_dt(obs[key])
+            if dt is not None:
+                return dt
+    return None
+
+
+def _canonical_obs_tie_key(obs: Mapping[str, Any]) -> str:
+    """Deterministic string key used to break ties if timestamp and sequence tie."""
     try:
-        return int(raw_seq)
+        items = []
+        for k in sorted(obs.keys()):
+            if not _is_sensitive_key(k):
+                items.append(f"{k}={obs[k]!r}")
+        return "|".join(items)
     except Exception:
-        return 0
+        return ""
 
 
-def _get_observation_time_key(obs: Mapping[str, Any]) -> str:
-    """Extracts comparable observation timestamp string."""
-    raw_time = (
-        obs.get("last_observed_at")
-        or obs.get("observed_at")
-        or obs.get("timestamp")
-        or obs.get("heartbeat_at")
-    )
-    parsed = _parse_timestamp(raw_time)
-    return parsed or ""
+def _is_candidate_newer(
+    existing: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+) -> bool:
+    """Determines whether candidate observation is newer than existing observation (CT-CAP-003).
+
+    Rules:
+    1. Candidate with valid timestamp ALWAYS beats existing with missing/malformed timestamp.
+    2. Candidate with missing/malformed timestamp CANNOT beat existing with valid timestamp.
+    3. If both have valid timestamps: newer datetime wins. Equal datetime ties to sequence.
+    4. If neither has valid timestamp: sequence tie-breaker applies.
+    5. Sequence tie-breaker: valid sequence beats missing/malformed sequence. Higher sequence wins.
+    6. Equal timestamp and sequence: deterministic tie-break based on canonical key.
+    """
+    dt_exist = _extract_observation_dt(existing)
+    dt_cand = _extract_observation_dt(candidate)
+
+    if dt_cand is not None and dt_exist is None:
+        return True
+    if dt_cand is None and dt_exist is not None:
+        return False
+    if dt_cand is not None and dt_exist is not None:
+        if dt_cand > dt_exist:
+            return True
+        if dt_cand < dt_exist:
+            return False
+
+    seq_cand, cand_has_seq = _extract_sequence_number(candidate)
+    seq_exist, exist_has_seq = _extract_sequence_number(existing)
+
+    if cand_has_seq and not exist_has_seq:
+        return True
+    if not cand_has_seq and exist_has_seq:
+        return False
+    if cand_has_seq and exist_has_seq:
+        assert seq_cand is not None and seq_exist is not None
+        if seq_cand > seq_exist:
+            return True
+        if seq_cand < seq_exist:
+            return False
+
+    return _canonical_obs_tie_key(candidate) > _canonical_obs_tie_key(existing)
 
 
 def project_latest_capability_views(
@@ -619,8 +747,8 @@ def project_latest_capability_views(
 
     Selection rules:
     1. Group observations by capability scope.
-    2. Select observation with newest observed_at timestamp.
-    3. In case of equal timestamp, choose observation with higher sequence.
+    2. Select observation with newest observed_at timestamp (malformed/missing cannot beat valid).
+    3. In case of equal timestamp, choose observation with higher sequence (deterministic fail-closed).
     4. Deterministically sort projected views by capability_id.
     """
     if not observations:
@@ -637,16 +765,8 @@ def project_latest_capability_views(
             continue
 
         existing = latest_by_scope[scope]
-        existing_time = _get_observation_time_key(existing)
-        new_time = _get_observation_time_key(obs)
-
-        if new_time > existing_time:
+        if _is_candidate_newer(existing, obs):
             latest_by_scope[scope] = obs
-        elif new_time == existing_time:
-            existing_seq = _get_sequence_number(existing)
-            new_seq = _get_sequence_number(obs)
-            if new_seq > existing_seq:
-                latest_by_scope[scope] = obs
 
     projected = [build_capability_view(obs) for obs in latest_by_scope.values()]
     projected.sort(key=lambda v: v.capability_id)

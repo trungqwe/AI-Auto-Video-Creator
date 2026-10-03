@@ -6,6 +6,10 @@ Verifies:
 3. Recalculated non-negative finite capacity indicators: limit, used, remaining, utilization, confidence.
 4. Latest projection across scopes: newest observed_at, sequence tie-breaker, input immutability.
 5. Defensive edge cases: malformed objects, throwing exceptions, nested secret injections.
+6. Counterexamples for Finding CT-CAP-003:
+   - limit=0 or missing limit cannot be available; capacity limit must be present, finite, and > 0.
+   - health missing, malformed, or not in contract must not default to healthy/available; fail-closed.
+   - latest observation selection: malformed/missing timestamp cannot beat valid observation; deterministic sequence tie-breaker.
 """
 from __future__ import annotations
 
@@ -51,6 +55,7 @@ class TestCapabilityView(unittest.TestCase):
             "provider": "google",
             "account_scope": "account-proj-123",
             "status": "available",
+            "health": "healthy",
             "compatible_versions": ["gemini-1.5-pro", "gemini-1.5-flash"],
             "limit": 1000.0,
             "used": 250.0,
@@ -239,6 +244,212 @@ class TestCapabilityView(unittest.TestCase):
             v_time = build_capability_view(obs_time)
             self.assertEqual(v_time.status, "unknown", f"Bad timestamp {bad_time} must yield unknown")
             self.assertIsNotNone(v_time.reason)
+
+    def test_counterexample_capacity_limit_fail_closed(self) -> None:
+        """Finding CT-CAP-003 (1): limit=0 or missing limit cannot be available.
+
+        Capacity limit must be present, finite, and positive (> 0) when status is available.
+        """
+        # 1. limit=0 cannot be available -> must be unavailable
+        obs_zero = copy.deepcopy(self.valid_obs)
+        obs_zero["limit"] = 0.0
+        obs_zero["used"] = 0.0
+        v_zero = build_capability_view(obs_zero)
+        self.assertNotEqual(v_zero.status, "available")
+        self.assertEqual(v_zero.status, "unavailable")
+        self.assertIsNotNone(v_zero.reason)
+        self.assertTrue(
+            "limit is zero" in v_zero.reason.lower() or "exhausted" in v_zero.reason.lower()
+        )
+
+        # 2. missing limit cannot be available -> must be unknown
+        obs_no_limit = copy.deepcopy(self.valid_obs)
+        del obs_no_limit["limit"]
+        v_no_limit = build_capability_view(obs_no_limit)
+        self.assertNotEqual(v_no_limit.status, "available")
+        self.assertEqual(v_no_limit.status, "unknown")
+        self.assertIn("limit", v_no_limit.reason)
+
+        obs_none_limit = copy.deepcopy(self.valid_obs)
+        obs_none_limit["limit"] = None
+        v_none_limit = build_capability_view(obs_none_limit)
+        self.assertNotEqual(v_none_limit.status, "available")
+        self.assertEqual(v_none_limit.status, "unknown")
+
+        # 3. Available view guarantees present, finite, and positive limit
+        v_avail = build_capability_view(self.valid_obs)
+        self.assertEqual(v_avail.status, "available")
+        self.assertIsNotNone(v_avail.capacity.limit)
+        self.assertTrue(math.isfinite(v_avail.capacity.limit))
+        self.assertGreater(v_avail.capacity.limit, 0.0)
+        self.assertGreater(v_avail.capacity.remaining, 0.0)
+
+    def test_counterexample_health_fail_closed(self) -> None:
+        """Finding CT-CAP-003 (2): health missing, malformed, or not in contract must not default to healthy/available.
+
+        Must classify fail-closed (unknown or unavailable per contract) with clear reason.
+        """
+        # 1. Missing health cannot default to healthy/available -> unknown
+        obs_no_health = copy.deepcopy(self.valid_obs)
+        del obs_no_health["health"]
+        v_no_health = build_capability_view(obs_no_health)
+        self.assertNotEqual(v_no_health.status, "available")
+        self.assertEqual(v_no_health.status, "unknown")
+        self.assertIn("health", v_no_health.reason.lower())
+
+        obs_none_health = copy.deepcopy(self.valid_obs)
+        obs_none_health["health"] = None
+        v_none_health = build_capability_view(obs_none_health)
+        self.assertEqual(v_none_health.status, "unknown")
+
+        obs_empty_health = copy.deepcopy(self.valid_obs)
+        obs_empty_health["health"] = "   "
+        v_empty_health = build_capability_view(obs_empty_health)
+        self.assertEqual(v_empty_health.status, "unknown")
+
+        # 2. Malformed health (boolean, numeric, dict, list) -> unknown
+        for bad_health in [True, False, 12345, 0.5, {"status": "ok"}, ["healthy"]]:
+            obs_bad = copy.deepcopy(self.valid_obs)
+            obs_bad["health"] = bad_health
+            v_bad = build_capability_view(obs_bad)
+            self.assertNotEqual(v_bad.status, "available")
+            self.assertEqual(v_bad.status, "unknown", f"Health {bad_health!r} must fail-closed to unknown")
+            self.assertIn("health", v_bad.reason.lower())
+
+        # 3. Unrecognized health value not in contract -> unknown
+        for unknown_health in ["super_fine", "unknown_custom_state", "all_good", "perfect"]:
+            obs_unrec = copy.deepcopy(self.valid_obs)
+            obs_unrec["health"] = unknown_health
+            v_unrec = build_capability_view(obs_unrec)
+            self.assertNotEqual(v_unrec.status, "available")
+            self.assertEqual(v_unrec.status, "unknown")
+            self.assertIn("unrecognized health value", v_unrec.reason)
+
+        # 4. Explicit 'unknown' health -> unknown
+        obs_explicit_unknown = copy.deepcopy(self.valid_obs)
+        obs_explicit_unknown["health"] = "unknown"
+        v_explicit_unknown = build_capability_view(obs_explicit_unknown)
+        self.assertEqual(v_explicit_unknown.status, "unknown")
+
+        # 5. Contract healthy values -> available (when capacity is positive)
+        for h_val in ["healthy", "ok", "up", "available"]:
+            obs_h = copy.deepcopy(self.valid_obs)
+            obs_h["health"] = h_val
+            v_h = build_capability_view(obs_h)
+            self.assertEqual(v_h.status, "available", f"Health {h_val} should yield available")
+
+        # 6. Contract degraded values -> degraded
+        for d_val in ["degraded", "warning", "slow", "high_latency", "elevated_error"]:
+            obs_d = copy.deepcopy(self.valid_obs)
+            obs_d["health"] = d_val
+            v_d = build_capability_view(obs_d)
+            self.assertEqual(v_d.status, "degraded")
+
+        # 7. Contract unavailable values -> unavailable
+        for u_val in ["unavailable", "revoked", "invalid", "unhealthy", "offline", "down"]:
+            obs_u = copy.deepcopy(self.valid_obs)
+            obs_u["health"] = u_val
+            v_u = build_capability_view(obs_u)
+            self.assertEqual(v_u.status, "unavailable")
+
+    def test_counterexample_latest_projection_timestamp_and_sequence_fail_closed(self) -> None:
+        """Finding CT-CAP-003 (3): latest projection timestamp and sequence tie-breaking rules.
+
+        - Timestamp malformed or missing CANNOT win over a valid observation (even with higher sequence).
+        - Sequence tie-breaker is deterministic and fail-closed.
+        """
+        obs_valid = copy.deepcopy(self.valid_obs)
+        obs_valid["capability_id"] = "cap-scope-test"
+        obs_valid["last_observed_at"] = "2026-10-04T00:00:00Z"
+        obs_valid["sequence"] = 1
+        obs_valid["used"] = 100.0
+
+        obs_malformed_ts = copy.deepcopy(self.valid_obs)
+        obs_malformed_ts["capability_id"] = "cap-scope-test"
+        obs_malformed_ts["last_observed_at"] = "corrupt-non-iso-timestamp"
+        obs_malformed_ts["sequence"] = 999999
+        obs_malformed_ts["used"] = 900.0
+
+        obs_missing_ts = copy.deepcopy(self.valid_obs)
+        obs_missing_ts["capability_id"] = "cap-scope-test"
+        obs_missing_ts["last_observed_at"] = None
+        obs_missing_ts["sequence"] = 888888
+        obs_missing_ts["used"] = 800.0
+
+        # Permutation 1: [malformed, valid] -> valid must win
+        res1 = project_latest_capability_views([obs_malformed_ts, obs_valid])
+        self.assertEqual(len(res1), 1)
+        self.assertEqual(res1[0].last_observed_at, "2026-10-04T00:00:00Z")
+        self.assertEqual(res1[0].capacity.used, 100.0)
+
+        # Permutation 2: [valid, malformed] -> valid must stay
+        res2 = project_latest_capability_views([obs_valid, obs_malformed_ts])
+        self.assertEqual(len(res2), 1)
+        self.assertEqual(res2[0].last_observed_at, "2026-10-04T00:00:00Z")
+        self.assertEqual(res2[0].capacity.used, 100.0)
+
+        # Permutation 3: [missing, valid] -> valid must win
+        res3 = project_latest_capability_views([obs_missing_ts, obs_valid])
+        self.assertEqual(res3[0].capacity.used, 100.0)
+
+        # Permutation 4: [valid, missing] -> valid must stay
+        res4 = project_latest_capability_views([obs_valid, obs_missing_ts])
+        self.assertEqual(res4[0].capacity.used, 100.0)
+
+        # Equal timestamp sequence tie-breaker:
+        obs_seq1 = copy.deepcopy(self.valid_obs)
+        obs_seq1["capability_id"] = "cap-seq-test"
+        obs_seq1["last_observed_at"] = "2026-10-04T00:05:00Z"
+        obs_seq1["sequence"] = 5
+        obs_seq1["used"] = 50.0
+
+        obs_seq2 = copy.deepcopy(self.valid_obs)
+        obs_seq2["capability_id"] = "cap-seq-test"
+        obs_seq2["last_observed_at"] = "2026-10-04T00:05:00Z"
+        obs_seq2["sequence"] = 10
+        obs_seq2["used"] = 70.0
+
+        res_seq_asc = project_latest_capability_views([obs_seq1, obs_seq2])
+        self.assertEqual(res_seq_asc[0].capacity.used, 70.0)
+
+        res_seq_desc = project_latest_capability_views([obs_seq2, obs_seq1])
+        self.assertEqual(res_seq_desc[0].capacity.used, 70.0)
+
+        # Valid sequence beats malformed sequence on equal timestamp
+        obs_seq_bad = copy.deepcopy(self.valid_obs)
+        obs_seq_bad["capability_id"] = "cap-seq-bad"
+        obs_seq_bad["last_observed_at"] = "2026-10-04T00:05:00Z"
+        obs_seq_bad["sequence"] = "not-an-int"
+        obs_seq_bad["used"] = 999.0
+
+        obs_seq_ok = copy.deepcopy(self.valid_obs)
+        obs_seq_ok["capability_id"] = "cap-seq-bad"
+        obs_seq_ok["last_observed_at"] = "2026-10-04T00:05:00Z"
+        obs_seq_ok["sequence"] = 1
+        obs_seq_ok["used"] = 20.0
+
+        res_bad1 = project_latest_capability_views([obs_seq_bad, obs_seq_ok])
+        self.assertEqual(res_bad1[0].capacity.used, 20.0)
+
+        res_bad2 = project_latest_capability_views([obs_seq_ok, obs_seq_bad])
+        self.assertEqual(res_bad2[0].capacity.used, 20.0)
+
+        # Equal timestamp AND equal sequence: deterministic tie-break across permutations
+        obs_tie_a = copy.deepcopy(self.valid_obs)
+        obs_tie_a["capability_id"] = "cap-exact-tie"
+        obs_tie_a["last_observed_at"] = "2026-10-04T00:05:00Z"
+        obs_tie_a["sequence"] = 1
+        obs_tie_a["used"] = 11.0
+
+        obs_tie_b = copy.deepcopy(self.valid_obs)
+        obs_tie_b["capability_id"] = "cap-exact-tie"
+        obs_tie_b["last_observed_at"] = "2026-10-04T00:05:00Z"
+        obs_tie_b["sequence"] = 1
+        obs_tie_b["used"] = 22.0
+
+        res_tie_ab = project_latest_capability_views([obs_tie_a, obs_tie_b])
+        res_tie_ba = project_latest_capability_views([obs_tie_b, obs_tie_a])
+        self.assertEqual(res_tie_ab[0].capacity.used, res_tie_ba[0].capacity.used)
 
     def test_latest_projection_is_immutable(self) -> None:
         """Instrument 3: Multiple observations select the newest observation per scope without mutation.
