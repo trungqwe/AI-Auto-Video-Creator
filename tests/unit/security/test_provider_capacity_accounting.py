@@ -1,6 +1,6 @@
 import unittest
 
-from src.controlplane.config.accounting import BudgetExceededError, CapacityAccounting
+from src.controlplane.config.accounting import BudgetExceededError, CapacityAccounting, CapacityAccountingError, MissingProvenanceError
 
 
 class TestProviderCapacityAccounting(unittest.TestCase):
@@ -59,12 +59,13 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         self.assertEqual(snapshot["reset_window"], "2026-10-03T18:00:00Z")
 
     def test_snapshot_validation_fail_closed(self):
+        valid_snap = {"provider": "9router", "project": "AI-Auto-Video-Creator", "account": "worker"}
         with self.assertRaises(ValueError):
-            self.accounting.record_capacity_snapshot(limit=-1, used=10)
+            self.accounting.record_capacity_snapshot(**valid_snap, limit=-1, used=10)
         with self.assertRaises(ValueError):
-            self.accounting.record_capacity_snapshot(limit=10, used=-5)
+            self.accounting.record_capacity_snapshot(**valid_snap, limit=10, used=-5)
         with self.assertRaises(ValueError):
-            self.accounting.record_capacity_snapshot(limit="not-a-number", used=10)
+            self.accounting.record_capacity_snapshot(**valid_snap, limit="not-a-number", used=10)
 
     def test_secret_leak_prevention_exhaustive(self):
         sensitive_kwargs = {
@@ -178,12 +179,19 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         self.assertEqual(fresh.revision_view(second["revision"])["used"], 30)
 
     def test_cost_record_immutability_and_validation(self):
+        valid_cost = {
+            "provider": "9router",
+            "service": "codex",
+            "operation": "completion",
+            "source": "usage_receipt",
+            "timestamp": "2026-10-03T08:00:00Z",
+        }
         with self.assertRaises(ValueError):
-            self.accounting.record_cost(quantity=-1)
+            self.accounting.record_cost(**valid_cost, quantity=-1)
         with self.assertRaises(ValueError):
-            self.accounting.record_cost(estimate=-0.5)
+            self.accounting.record_cost(**valid_cost, estimate=-0.5)
         with self.assertRaises(ValueError):
-            self.accounting.record_cost(actual=-10.0)
+            self.accounting.record_cost(**valid_cost, actual=-10.0)
 
         record = self.accounting.record_cost(
             provider="9router", service="codex", operation="completion",
@@ -253,6 +261,7 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         # Check raw private key in account_scope
         pk_snapshot = self.accounting.record_capacity_snapshot(
             provider="9router",
+            project="AI-Auto-Video-Creator",
             account_scope=raw_private_key,
             limit=50,
             used=5,
@@ -331,23 +340,35 @@ class TestProviderCapacityAccounting(unittest.TestCase):
 
     def test_cost_record_numeric_validation_fail_closed(self):
         """Finding 2: Cost quantity, estimate, and actual must reject NaN, Infinity, negatives, booleans."""
+        valid_cost = {
+            "provider": "9router",
+            "service": "codex",
+            "operation": "completion",
+            "source": "usage_receipt",
+            "timestamp": "2026-10-03T08:00:00Z",
+        }
         for bad_val in [float("nan"), float("inf"), float("-inf"), -1.0, True, False]:
             with self.subTest(bad_val=bad_val):
                 with self.assertRaises(ValueError):
-                    self.accounting.record_cost(quantity=bad_val)
+                    self.accounting.record_cost(**valid_cost, quantity=bad_val)
                 with self.assertRaises(ValueError):
-                    self.accounting.record_cost(estimate=bad_val)
+                    self.accounting.record_cost(**valid_cost, estimate=bad_val)
                 with self.assertRaises(ValueError):
-                    self.accounting.record_cost(actual=bad_val)
+                    self.accounting.record_cost(**valid_cost, actual=bad_val)
 
     def test_capacity_snapshot_numeric_validation_fail_closed(self):
         """Finding 2: Limit and used must reject NaN, Infinity, negatives, booleans."""
+        valid_snap = {
+            "provider": "9router",
+            "project": "AI-Auto-Video-Creator",
+            "account": "worker",
+        }
         for bad_val in [float("nan"), float("inf"), float("-inf"), -5, True, False]:
             with self.subTest(bad_val=bad_val):
                 with self.assertRaises(ValueError):
-                    self.accounting.record_capacity_snapshot(limit=bad_val, used=10)
+                    self.accounting.record_capacity_snapshot(**valid_snap, limit=bad_val, used=10)
                 with self.assertRaises(ValueError):
-                    self.accounting.record_capacity_snapshot(limit=10, used=bad_val)
+                    self.accounting.record_capacity_snapshot(**valid_snap, limit=10, used=bad_val)
 
     def test_monthly_budget_nan_and_infinity_fail_closed(self):
         """Finding 2: monthly_budget must reject NaN, Infinity, negatives, booleans."""
@@ -361,6 +382,194 @@ class TestProviderCapacityAccounting(unittest.TestCase):
             with self.subTest(bad_val=bad_val):
                 with self.assertRaises(ValueError):
                     acct.monthly_budget = bad_val
+
+
+    def test_numeric_overflow_fail_closed(self):
+        """Finding 1 (C2): OverflowError (10**400) must be converted to BudgetExceededError or typed fail-closed ValueError."""
+        huge_int = 10**400
+        neg_huge_int = -10**400
+        huge_str = "1" + "0" * 400
+
+        # guard_budget must raise BudgetExceededError
+        with self.assertRaises(BudgetExceededError):
+            self.accounting.guard_budget(huge_int)
+        with self.assertRaises(BudgetExceededError):
+            self.accounting.guard_budget(neg_huge_int)
+        with self.assertRaises(BudgetExceededError):
+            self.accounting.guard_budget(huge_str)
+
+        # CapacityAccounting init and setter must raise ValueError
+        with self.assertRaises(ValueError):
+            CapacityAccounting(monthly_budget=huge_int)
+        with self.assertRaises(ValueError):
+            CapacityAccounting(monthly_budget=huge_str)
+
+        acct = CapacityAccounting(monthly_budget=10.0)
+        with self.assertRaises(ValueError):
+            acct.monthly_budget = huge_int
+        with self.assertRaises(ValueError):
+            acct.monthly_budget = huge_str
+
+        # record_capacity_snapshot must reject huge integer for limit and used
+        valid_snap = {
+            "provider": "9router",
+            "project": "AI-Auto-Video-Creator",
+            "account": "worker",
+        }
+        with self.assertRaises(ValueError):
+            self.accounting.record_capacity_snapshot(**valid_snap, limit=huge_int, used=10)
+        with self.assertRaises(ValueError):
+            self.accounting.record_capacity_snapshot(**valid_snap, limit=10, used=huge_int)
+
+        # record_cost must reject huge integer for quantity, estimate, and actual
+        valid_cost = {
+            "provider": "9router",
+            "service": "codex",
+            "operation": "completion",
+            "source": "usage_receipt",
+            "timestamp": "2026-10-03T08:00:00Z",
+        }
+        with self.assertRaises(ValueError):
+            self.accounting.record_cost(**valid_cost, quantity=huge_int)
+        with self.assertRaises(ValueError):
+            self.accounting.record_cost(**valid_cost, estimate=huge_int)
+        with self.assertRaises(ValueError):
+            self.accounting.record_cost(**valid_cost, actual=huge_int)
+
+    def test_capacity_snapshot_missing_or_empty_scope_fail_closed(self):
+        """Finding 2 (C2): Snapshot scope fields (provider, project, account, scope) must be provided; missing or empty rejected fail-closed."""
+        base_valid = {
+            "provider": "9router",
+            "model": "ag/gemini-3.8-flash-high",
+            "project": "AI-Auto-Video-Creator",
+            "account_scope": "worker",
+            "limit": 100,
+            "used": 10,
+        }
+
+        # 1. provider missing or empty
+        for bad_p in ["", "   ", None, True, False]:
+            kwargs = dict(base_valid)
+            kwargs["provider"] = bad_p
+            with self.subTest(bad_provider=bad_p):
+                with self.assertRaises(MissingProvenanceError):
+                    self.accounting.record_capacity_snapshot(**kwargs)
+
+        kwargs_no_prov = dict(base_valid)
+        del kwargs_no_prov["provider"]
+        with self.assertRaises(MissingProvenanceError):
+            self.accounting.record_capacity_snapshot(**kwargs_no_prov)
+
+        # 2. project missing or empty
+        for bad_prj in ["", "   ", None, True, False]:
+            kwargs = dict(base_valid)
+            kwargs["project"] = bad_prj
+            with self.subTest(bad_project=bad_prj):
+                with self.assertRaises(MissingProvenanceError):
+                    self.accounting.record_capacity_snapshot(**kwargs)
+
+        kwargs_no_prj = dict(base_valid)
+        del kwargs_no_prj["project"]
+        with self.assertRaises(MissingProvenanceError):
+            self.accounting.record_capacity_snapshot(**kwargs_no_prj)
+
+        # 3. account / scope / account_scope missing all or empty
+        kwargs_no_acc = dict(base_valid)
+        del kwargs_no_acc["account_scope"]
+        with self.assertRaises(MissingProvenanceError):
+            self.accounting.record_capacity_snapshot(**kwargs_no_acc)
+
+        for bad_acc in ["", "   ", None, True, False]:
+            with self.subTest(bad_acc=bad_acc):
+                with self.assertRaises(MissingProvenanceError):
+                    self.accounting.record_capacity_snapshot(
+                        provider="9router", project="AI-Auto-Video-Creator", account=bad_acc
+                    )
+                with self.assertRaises(MissingProvenanceError):
+                    self.accounting.record_capacity_snapshot(
+                        provider="9router", project="AI-Auto-Video-Creator", scope=bad_acc
+                    )
+                with self.assertRaises(MissingProvenanceError):
+                    self.accounting.record_capacity_snapshot(
+                        provider="9router", project="AI-Auto-Video-Creator", account_scope=bad_acc
+                    )
+
+        # 4. Valid individual and combined account/scope specifications
+        snap1 = self.accounting.record_capacity_snapshot(
+            provider="9router", project="AI-Auto-Video-Creator", account="acc-only"
+        )
+        self.assertEqual(snap1["account"], "acc-only")
+        self.assertEqual(snap1["account_scope"], "acc-only")
+        self.assertEqual(snap1["scope"], "acc-only")
+
+        snap2 = self.accounting.record_capacity_snapshot(
+            provider="9router", project="AI-Auto-Video-Creator", scope="scope-only"
+        )
+        self.assertEqual(snap2["account"], "scope-only")
+        self.assertEqual(snap2["scope"], "scope-only")
+
+        snap3 = self.accounting.record_capacity_snapshot(
+            provider="9router", project="AI-Auto-Video-Creator", account="acc-val", scope="scope-val"
+        )
+        self.assertEqual(snap3["account"], "acc-val")
+        self.assertEqual(snap3["scope"], "scope-val")
+
+    def test_cost_record_missing_or_empty_provenance_fail_closed(self):
+        """Finding 2 (C2): Cost provenance fields (provider, service, operation, source, timestamp) must be provided; missing or empty rejected."""
+        base_valid = {
+            "provider": "9router",
+            "service": "codex",
+            "operation": "completion",
+            "quantity": 1,
+            "unit": "request",
+            "estimate": 1.0,
+            "actual": 1.0,
+            "currency": "USD",
+            "source": "usage_receipt",
+            "timestamp": "2026-10-03T08:00:00Z",
+        }
+
+        required_keys = ("provider", "service", "operation", "source", "timestamp")
+        for req_k in required_keys:
+            # Missing key from kwargs
+            kwargs_missing = dict(base_valid)
+            del kwargs_missing[req_k]
+            with self.subTest(missing_key=req_k):
+                with self.assertRaises(MissingProvenanceError):
+                    self.accounting.record_cost(**kwargs_missing)
+
+            # Empty, whitespace, None, boolean
+            for bad_val in ["", "   ", None, True, False]:
+                kwargs_bad = dict(base_valid)
+                kwargs_bad[req_k] = bad_val
+                with self.subTest(key=req_k, bad_val=bad_val):
+                    with self.assertRaises(MissingProvenanceError):
+                        self.accounting.record_cost(**kwargs_bad)
+
+    def test_cost_record_optional_scope_fields_validation(self):
+        """Finding 2 (C2): Optional scope fields (project, account, scope) in cost record must be non-empty if provided."""
+        base_valid = {
+            "provider": "9router",
+            "service": "codex",
+            "operation": "completion",
+            "source": "usage_receipt",
+            "timestamp": "2026-10-03T08:00:00Z",
+        }
+
+        for scope_k in ("project", "account", "scope"):
+            # Empty / None / boolean rejected
+            for bad_val in ["", "   ", None, True, False]:
+                kwargs = dict(base_valid)
+                kwargs[scope_k] = bad_val
+                with self.subTest(scope_k=scope_k, bad_val=bad_val):
+                    with self.assertRaises(MissingProvenanceError):
+                        self.accounting.record_cost(**kwargs)
+
+            # Valid non-empty preserved
+            kwargs_ok = dict(base_valid)
+            kwargs_ok[scope_k] = f"test-{scope_k}-val"
+            record = self.accounting.record_cost(**kwargs_ok)
+            self.assertEqual(record[scope_k], f"test-{scope_k}-val")
 
 
 if __name__ == "__main__":
