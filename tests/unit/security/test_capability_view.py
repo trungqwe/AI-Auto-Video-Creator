@@ -1,4 +1,4 @@
-﻿"""Behavioral tests for CT-CAP-003 CapabilityView projection (TASK-CAP-J-P2).
+"""Behavioral tests for CT-CAP-003 CapabilityView projection (TASK-CAP-J-P2).
 
 Verifies:
 1. Schema conformity: required fields, non-secret leakage, redaction, non-aliasing.

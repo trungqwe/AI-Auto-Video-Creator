@@ -1,4 +1,4 @@
-﻿"""Projection CapabilityView for Module J under CONTRACT-CONFIG-SECURITY (CT-CAP-003).
+"""Projection CapabilityView for Module J under CONTRACT-CONFIG-SECURITY (CT-CAP-003).
 
 Provides:
 - Schema-conformant, immutable CapabilityView and CapacityIndicator projections.
