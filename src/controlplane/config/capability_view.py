@@ -31,9 +31,21 @@ _PRIVATE_KEY_RE = re.compile(
     r"-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)",
     re.IGNORECASE,
 )
-_BEARER_RE = re.compile(r"(?i)\bBearer(?:\s+|[:=]\s*|-)([^\s,;]+)")
+_BEARER_RE = re.compile(r"(?i)\bBearer(?:\s+|[:=]\s*|-)(['\"]?)([^\s,;'\"]+)\1")
 _ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(password|passwd|secret(?:\s*[_-]?key)?|raw(?:\s*[_-]?secret)?|client(?:\s*[_-]?secret)?|private(?:\s*[_-]?key)?|api(?:\s*[_-]?key)?|access(?:\s*[_-]?token)?|refresh(?:\s*[_-]?token)?|auth(?:\s*[_-]?token)?|bearer(?:\s*[_-]?token)?|credentials?|token)(\s*[:=]\s*)([^\s,;]+)"
+    r"""(?ix)
+    (?P<lead>
+        (?P<kquote>['\"]?)
+        \b(?:password|passwd|secret(?:\s*[_-]?key)?|raw(?:\s*[_-]?secret)?|client(?:\s*[_-]?secret)?|private(?:\s*[_-]?key)?|api(?:\s*[_-]?key)?|access(?:\s*[_-]?token)?|refresh(?:\s*[_-]?token)?|auth(?:\s*[_-]?token)?|bearer(?:\s*[_-]?token)?|credentials?|token)\b
+        (?P=kquote)
+        \s*[:=]\s*
+    )
+    (?P<val>
+        (?P<vquote>['\"])[^'\"]*(?P=vquote)
+        |
+        [^\s,;{}]+
+    )
+    """
 )
 _SECRET_TOKEN_RE = re.compile(r"\b(sk-[a-zA-Z0-9_\-]{8,}|AIza[0-9A-Za-z\-_]{35})\b")
 
@@ -60,7 +72,14 @@ def _sanitize_string_value(val: str) -> str:
     try:
         val = _PRIVATE_KEY_RE.sub("[REDACTED PRIVATE KEY]", val)
         val = _BEARER_RE.sub("Bearer [REDACTED]", val)
-        val = _ASSIGNMENT_RE.sub(lambda m: m.group(1) + m.group(2) + "[REDACTED]", val)
+        def _repl_assignment(m: re.Match[str]) -> str:
+            lead = m.group("lead")
+            vquote = m.group("vquote")
+            if vquote:
+                return f"{lead}{vquote}[REDACTED]{vquote}"
+            return f"{lead}[REDACTED]"
+
+        val = _ASSIGNMENT_RE.sub(_repl_assignment, val)
         val = _SECRET_TOKEN_RE.sub("[REDACTED]", val)
         return val
     except Exception:
@@ -158,7 +177,7 @@ def _parse_numeric(val: Any) -> tuple[Optional[float], Optional[str]]:
     try:
         num = float(val)
     except Exception:
-        return (None, f"Cannot convert {val!r} to float")
+        return (None, f"Cannot convert {type(val).__name__} value to float")
 
     if not math.isfinite(num):
         return (None, f"Value must be finite (got {num})")
@@ -194,27 +213,27 @@ class CapacityIndicator:
         ut = float(utilization)
 
         if not math.isfinite(l):
-            raise ValueError(f"Capacity limit must be finite (got {limit!r})")
+            raise ValueError(f"Capacity limit must be finite (got {l})")
         if l < 0.0:
-            raise ValueError(f"Capacity limit cannot be negative (got {limit!r})")
+            raise ValueError(f"Capacity limit cannot be negative (got {l})")
         if not math.isfinite(u):
-            raise ValueError(f"Capacity used must be finite (got {used!r})")
+            raise ValueError(f"Capacity used must be finite (got {u})")
         if u < 0.0:
-            raise ValueError(f"Capacity used cannot be negative (got {used!r})")
+            raise ValueError(f"Capacity used cannot be negative (got {u})")
         if not math.isfinite(r):
-            raise ValueError(f"Capacity remaining must be finite (got {remaining!r})")
+            raise ValueError(f"Capacity remaining must be finite (got {r})")
         if r < 0.0:
-            raise ValueError(f"Capacity remaining cannot be negative (got {remaining!r})")
+            raise ValueError(f"Capacity remaining cannot be negative (got {r})")
         if not math.isfinite(ut):
-            raise ValueError(f"Capacity utilization must be finite (got {utilization!r})")
+            raise ValueError(f"Capacity utilization must be finite (got {ut})")
         if ut < 0.0:
-            raise ValueError(f"Capacity utilization cannot be negative (got {utilization!r})")
+            raise ValueError(f"Capacity utilization cannot be negative (got {ut})")
 
         self._limit = l
         self._used = u
         self._remaining = r
         self._utilization = ut
-        self._confidence = str(confidence)
+        self._confidence = _sanitize_string_value(str(confidence))
 
     @property
     def limit(self) -> float:
@@ -434,11 +453,20 @@ class CapabilityView:
 
 
 def _validate_identity_str(val: Any) -> tuple[Optional[str], Optional[str]]:
-    """Validates required identity string fields; rejects empty, bool or placeholders."""
+    """Validates required identity string fields; rejects empty, bool, non-scalar or structured inputs."""
     if val is None:
         return (None, "Missing required identity value (None)")
     if isinstance(val, bool):
         return (None, "Identity value cannot be boolean")
+    if (
+        isinstance(val, (collections.abc.Mapping, collections.abc.Iterable, dict, list, tuple, set, frozenset))
+        and not isinstance(val, (str, bytes))
+    ):
+        return (None, f"Identity value cannot be structured type ({type(val).__name__})")
+    if hasattr(val, "raw_secret") or (hasattr(val, "__dict__") and not isinstance(val, (str, int, float))):
+        return (None, f"Identity value cannot be structured type ({type(val).__name__})")
+    if not isinstance(val, (str, int)):
+        return (None, f"Identity value cannot be non-scalar type ({type(val).__name__})")
     try:
         s = str(val).strip()
     except Exception:
@@ -448,7 +476,15 @@ def _validate_identity_str(val: Any) -> tuple[Optional[str], Optional[str]]:
         return (None, "Identity value cannot be empty")
     if s.lower() in DISALLOWED_PLACEHOLDERS:
         return (None, f"Identity value cannot use disallowed placeholder '{s}'")
-    return (_sanitize_string_value(s), None)
+    if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+        return (None, "Identity value cannot be structured representation")
+    if _is_sensitive_key(s):
+        return (None, "Identity value cannot be sensitive keyword")
+
+    sanitized = _sanitize_string_value(s)
+    if sanitized != s:
+        return (None, "Identity value contains sensitive data")
+    return (sanitized, None)
 
 
 def _parse_sequence_number(val: Any) -> Tuple[Optional[int], bool]:
@@ -520,6 +556,7 @@ def build_capability_view(observation: Mapping[str, Any]) -> CapabilityView:
         capability_id, err = _validate_identity_str(raw_cap_id)
         if err:
             fail_closed_reasons.append(f"capability_id: {err}")
+            capability_id = "unknown"
     elif provider and capability_type and account_scope:
         capability_id = f"{provider}:{capability_type}:{account_scope}"
     else:
@@ -528,7 +565,8 @@ def build_capability_view(observation: Mapping[str, Any]) -> CapabilityView:
     raw_location = observation.get("location", "cloud")
     location, loc_err = _validate_identity_str(raw_location)
     if loc_err:
-        location = "cloud"
+        fail_closed_reasons.append(f"location: {loc_err}")
+        location = "unknown"
 
     # 2. Timestamp validation
     raw_observed = (
@@ -564,10 +602,24 @@ def build_capability_view(observation: Mapping[str, Any]) -> CapabilityView:
         fail_closed_reasons.append(f"used: {used_err}")
 
     raw_confidence = observation.get("confidence", "observed")
-    try:
-        confidence = _sanitize_string_value(str(raw_confidence).strip())
-    except Exception:
+    if (
+        isinstance(raw_confidence, (collections.abc.Mapping, collections.abc.Iterable, dict, list, tuple, set))
+        and not isinstance(raw_confidence, (str, bytes))
+    ):
         confidence = "uncertain"
+    else:
+        try:
+            s_conf = str(raw_confidence).strip()
+            if (s_conf.startswith("{") and s_conf.endswith("}")) or (s_conf.startswith("[") and s_conf.endswith("]")):
+                confidence = "uncertain"
+            else:
+                sanitized_conf = _sanitize_string_value(s_conf)
+                if sanitized_conf != s_conf or _is_sensitive_key(s_conf):
+                    confidence = "uncertain"
+                else:
+                    confidence = sanitized_conf
+        except Exception:
+            confidence = "uncertain"
 
     # 4. Health validation (fail-closed, no default to healthy)
     health_category: Optional[str] = None
@@ -606,7 +658,7 @@ def build_capability_view(observation: Mapping[str, Any]) -> CapabilityView:
 
     if fail_closed_reasons:
         status = "unknown"
-        reason = "; ".join(fail_closed_reasons)
+        reason = _sanitize_string_value("; ".join(fail_closed_reasons))
         safe_limit = (
             limit if (limit is not None and math.isfinite(limit) and limit >= 0.0) else 0.0
         )
@@ -675,17 +727,44 @@ def build_capability_view(observation: Mapping[str, Any]) -> CapabilityView:
         else:
             status = "available"
             raw_reason = observation.get("reason")
-            reason = _sanitize_string_value(str(raw_reason).strip()) if raw_reason else None
+            if raw_reason is not None:
+                if (
+                    isinstance(raw_reason, (collections.abc.Mapping, collections.abc.Iterable, dict, list, tuple, set))
+                    and not isinstance(raw_reason, (str, bytes))
+                ):
+                    reason = "[REDACTED]"
+                else:
+                    try:
+                        s_reason = str(raw_reason).strip()
+                        if (s_reason.startswith("{") and s_reason.endswith("}")) or (s_reason.startswith("[") and s_reason.endswith("]")):
+                            reason = "[REDACTED]"
+                        else:
+                            reason = _sanitize_string_value(s_reason)
+                    except Exception:
+                        reason = "[REDACTED]"
+            else:
+                reason = None
 
     # Compatible versions
     raw_versions = observation.get("compatible_versions") or observation.get("versions") or []
     compatible_versions: list[str] = []
     if isinstance(raw_versions, (list, tuple, set)):
         for v in raw_versions:
+            if (
+                isinstance(v, (collections.abc.Mapping, collections.abc.Iterable, dict, list, tuple, set))
+                and not isinstance(v, (str, bytes))
+            ):
+                continue
             if not _is_sensitive_key(v):
-                clean_v = _sanitize_string_value(str(v).strip())
-                if clean_v:
-                    compatible_versions.append(clean_v)
+                try:
+                    s_v = str(v).strip()
+                    if (s_v.startswith("{") and s_v.endswith("}")) or (s_v.startswith("[") and s_v.endswith("]")):
+                        continue
+                    clean_v = _sanitize_string_value(s_v)
+                    if clean_v and clean_v == s_v:
+                        compatible_versions.append(clean_v)
+                except Exception:
+                    continue
 
     return CapabilityView(
         capability_id=capability_id or "unknown",
@@ -705,12 +784,18 @@ def build_capability_view(observation: Mapping[str, Any]) -> CapabilityView:
 
 def _get_scope_key(obs: Mapping[str, Any]) -> str:
     """Extracts a unique capability scope key for projection grouping."""
+    def _is_structured(val: Any) -> bool:
+        return isinstance(val, (collections.abc.Mapping, collections.abc.Iterable, dict, list, tuple, set)) and not isinstance(val, (str, bytes))
+
     cap_id = obs.get("capability_id") or obs.get("id")
-    if cap_id:
+    if cap_id and not _is_structured(cap_id):
         return str(cap_id).strip()
-    provider = str(obs.get("provider", "")).strip()
-    cap_type = str(obs.get("capability_type") or obs.get("type", "")).strip()
-    scope = str(obs.get("account_scope") or obs.get("scope") or obs.get("account", "")).strip()
+    raw_p = obs.get("provider", "")
+    provider = str(raw_p).strip() if not _is_structured(raw_p) else "unknown"
+    raw_t = obs.get("capability_type") or obs.get("type", "")
+    cap_type = str(raw_t).strip() if not _is_structured(raw_t) else "unknown"
+    raw_s = obs.get("account_scope") or obs.get("scope") or obs.get("account", "")
+    scope = str(raw_s).strip() if not _is_structured(raw_s) else "unknown"
     return f"{provider}:{cap_type}:{scope}"
 
 
@@ -738,7 +823,8 @@ def _canonical_obs_tie_key(obs: Mapping[str, Any]) -> str:
         items = []
         for k in sorted(obs.keys()):
             if not _is_sensitive_key(k):
-                items.append(f"{k}={obs[k]!r}")
+                sanitized_val = _sanitize_value(obs[k])
+                items.append(f"{k}={sanitized_val!r}")
         return "|".join(items)
     except Exception:
         return ""

@@ -650,5 +650,89 @@ class TestCapabilityView(unittest.TestCase):
                 CapacityIndicator(utilization=b_val)
 
 
+    def test_remediation_no_secret_leakage_and_structured_identity_fail_closed(self) -> None:
+        """Remediation for Sol CHANGES_REQUESTED findings:
+
+        1. _parse_numeric must not leak raw input or secret markers into reason, to_dict(), or repr().
+        2. Structured inputs (e.g. {"api_key": "..."}) in identity or other fields must be rejected
+           fail-closed, never become available, and never leak markers into to_dict(), repr(), or reason.
+        """
+        # Finding 1: numeric input containing probe/secret value
+        for numeric_field in ["limit", "used"]:
+            for secret_val in [
+                "api_key=PROBE_ONLY_VALUE",
+                "token=PROBE_ONLY_VALUE",
+                "password=PROBE_ONLY_VALUE",
+                {"api_key": "PROBE_ONLY_VALUE"},
+            ]:
+                obs = copy.deepcopy(self.valid_obs)
+                obs[numeric_field] = secret_val
+                view = build_capability_view(obs)
+
+                self.assertEqual(view.status, "unknown")
+                self.assertIsNotNone(view.reason)
+                self.assertNotIn("PROBE_ONLY_VALUE", str(view.reason))
+                self.assertNotIn("PROBE_ONLY_VALUE", repr(view))
+                self.assertNotIn("PROBE_ONLY_VALUE", str(view.to_dict()))
+                self.assertNotIn("PROBE_ONLY_VALUE", str(view))
+                self.assertIn("Cannot convert", str(view.reason))
+
+        # Finding 2: structured input in identity fields
+        identity_fields = ["provider", "account_scope", "capability_type", "capability_id", "location"]
+        for field in identity_fields:
+            for malformed_id in [
+                {"api_key": "PROBE_NESTED_ONLY_VALUE"},
+                {"auth": {"api_key": "PROBE_NESTED_ONLY_VALUE"}},
+                [{"api_key": "PROBE_NESTED_ONLY_VALUE"}],
+                '{"api_key": "PROBE_NESTED_ONLY_VALUE"}',
+                "{'api_key': 'PROBE_NESTED_ONLY_VALUE'}",
+                "api_key=PROBE_NESTED_ONLY_VALUE",
+            ]:
+                obs = copy.deepcopy(self.valid_obs)
+                obs[field] = malformed_id
+                view = build_capability_view(obs)
+
+                # Malformed structured identity MUST NOT become available
+                self.assertNotEqual(view.status, "available", f"Field {field} with {malformed_id!r} must not be available")
+                self.assertEqual(view.status, "unknown")
+
+                # Secret marker must not appear anywhere in to_dict(), repr() or reason
+                d = view.to_dict()
+                self.assertNotIn("PROBE_NESTED_ONLY_VALUE", str(d))
+                self.assertNotIn("PROBE_NESTED_ONLY_VALUE", repr(view))
+                self.assertNotIn("PROBE_NESTED_ONLY_VALUE", str(view))
+                self.assertNotIn("PROBE_NESTED_ONLY_VALUE", str(view.reason))
+                self.assertNotIn("{'api_key'", str(d))
+                self.assertNotIn('{"api_key"', str(d))
+
+        # Structured input in versions, confidence, and reason
+        obs_misc = copy.deepcopy(self.valid_obs)
+        obs_misc["compatible_versions"] = [
+            {"api_key": "PROBE_NESTED_ONLY_VALUE"},
+            '{"api_key": "PROBE_NESTED_ONLY_VALUE"}',
+            "gemini-2.0",
+        ]
+        obs_misc["confidence"] = {"api_key": "PROBE_NESTED_ONLY_VALUE"}
+        obs_misc["reason"] = {"api_key": "PROBE_NESTED_ONLY_VALUE"}
+
+        view_misc = build_capability_view(obs_misc)
+        self.assertNotIn("PROBE_NESTED_ONLY_VALUE", str(view_misc.to_dict()))
+        self.assertNotIn("PROBE_NESTED_ONLY_VALUE", repr(view_misc))
+        self.assertNotIn("PROBE_NESTED_ONLY_VALUE", str(view_misc.reason))
+        self.assertEqual(list(view_misc.compatible_versions), ["gemini-2.0"])
+        self.assertEqual(view_misc.capacity.confidence, "uncertain")
+
+        # Latest projection with structured identity input
+        obs_proj = copy.deepcopy(self.valid_obs)
+        obs_proj["provider"] = {"api_key": "PROBE_NESTED_ONLY_VALUE"}
+        obs_proj["sequence"] = 999999
+        projected = project_latest_capability_views([obs_proj])
+        self.assertEqual(len(projected), 1)
+        self.assertNotEqual(projected[0].status, "available")
+        self.assertEqual(projected[0].status, "unknown")
+        self.assertNotIn("PROBE_NESTED_ONLY_VALUE", str(projected[0].to_dict()))
+        self.assertNotIn("PROBE_NESTED_ONLY_VALUE", repr(projected[0]))
+
+
 if __name__ == "__main__":
     unittest.main()
