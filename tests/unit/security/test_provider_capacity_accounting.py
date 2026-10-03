@@ -109,6 +109,67 @@ class SecretCrashIterable:
     def __repr__(self):
         return f"SecretCrashIterable({self.secret})"
 
+class SecretCrashOnNthDeepcopy:
+    """Object that succeeds during the first N-1 deepcopies and raises on the Nth deepcopy."""
+
+    def __init__(
+        self,
+        fail_at: int = 3,
+        secret: str = "sk-third-deepcopy-secret-99999",
+        exc_cls: type[Exception] = RuntimeError,
+    ):
+        self.state = {"count": 0}
+        self.fail_at = fail_at
+        self.secret = secret
+        self.exc_cls = exc_cls
+
+    def __deepcopy__(self, memo):
+        self.state["count"] += 1
+        if self.state["count"] >= self.fail_at:
+            raise self.exc_cls(f"secret={self.secret}")
+        new_obj = SecretCrashOnNthDeepcopy(self.fail_at, self.secret, self.exc_cls)
+        new_obj.state = self.state
+        memo[id(self)] = new_obj
+        return new_obj
+
+    def __str__(self):
+        return f"SecretCrashOnNthDeepcopy(count={self.state['count']})"
+
+    def __repr__(self):
+        return f"SecretCrashOnNthDeepcopy(count={self.state['count']})"
+
+
+class SecretCrashCapacityAccountingError:
+    """Object whose __deepcopy__ raises CapacityAccountingError containing a secret."""
+
+    def __init__(self, secret: str = "sk-custom-cap-error-secret-77777"):
+        self.secret = secret
+
+    def __deepcopy__(self, memo):
+        raise CapacityAccountingError(f"secret={self.secret}")
+
+    def __str__(self):
+        return f"SecretCrashCapacityAccountingError({self.secret})"
+
+    def __repr__(self):
+        return f"SecretCrashCapacityAccountingError({self.secret})"
+
+
+class SecretCrashBudgetExceededError:
+    """Object whose __deepcopy__ raises BudgetExceededError containing a secret."""
+
+    def __init__(self, secret: str = "sk-custom-budget-error-secret-88888"):
+        self.secret = secret
+
+    def __deepcopy__(self, memo):
+        raise BudgetExceededError(f"secret={self.secret}")
+
+    def __str__(self):
+        return f"SecretCrashBudgetExceededError({self.secret})"
+
+    def __repr__(self):
+        return f"SecretCrashBudgetExceededError({self.secret})"
+
 class TestProviderCapacityAccounting(unittest.TestCase):
     def setUp(self):
         self.accounting = CapacityAccounting(monthly_budget=10.0)
@@ -1031,6 +1092,8 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         self.test_custom_objects_raising_runtime_error_boundary_fail_closed()
         self.test_custom_int_subclass_with_throwing_str_and_repr()
         self.test_custom_objects_raising_deepcopy_or_iterator_fail_closed_and_state_unchanged()
+        self.test_safe_deepcopy_never_reraises_verbatim_exceptions_and_redacts()
+        self.test_record_capacity_snapshot_and_cost_fail_on_third_deepcopy_and_state_unchanged()
 
     def test_custom_objects_raising_deepcopy_or_iterator_fail_closed_and_state_unchanged(self):
         """Regression test (C6): object with __deepcopy__ or iterator raising RuntimeError containing secret
@@ -1221,6 +1284,249 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         self.assertEqual(acct.cumulative_cost, 2.50)
         self.assertEqual(len(acct._cost_records), 1)
 
+
+    def test_safe_deepcopy_never_reraises_verbatim_exceptions_and_redacts(self):
+        """Test that _safe_deepcopy never re-raises CapacityAccountingError, BudgetExceededError,
+        or custom exceptions verbatim, and always converts to typed redacted error with from None.
+        """
+        import traceback
+        from src.controlplane.config.accounting import _safe_deepcopy
+
+        # 1. CapacityAccountingError with secret
+        cap_secret = "sk-direct-cap-secret-11111"
+        cap_obj = SecretCrashCapacityAccountingError(cap_secret)
+        with self.assertRaises(CapacityAccountingError) as cm:
+            _safe_deepcopy(cap_obj)
+        self.assertEqual(str(cm.exception), "sanitization failed (fail-closed)")
+        self.assertNotIn(cap_secret, repr(cm.exception))
+        self.assertNotIn("secret=", repr(cm.exception))
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertIsNone(cm.exception.__context__)
+        tb_str = "".join(traceback.format_exception(cm.exception))
+        self.assertNotIn(cap_secret, tb_str)
+
+        # 2. BudgetExceededError with secret
+        budget_secret = "sk-direct-budget-secret-22222"
+        budget_obj = SecretCrashBudgetExceededError(budget_secret)
+        with self.assertRaises(BudgetExceededError) as cm:
+            _safe_deepcopy(budget_obj)
+        self.assertIsInstance(cm.exception, BudgetExceededError)
+        self.assertEqual(str(cm.exception), "sanitization failed (fail-closed)")
+        self.assertNotIn(budget_secret, repr(cm.exception))
+        self.assertNotIn("secret=", repr(cm.exception))
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertIsNone(cm.exception.__context__)
+        tb_str = "".join(traceback.format_exception(cm.exception))
+        self.assertNotIn(budget_secret, tb_str)
+
+        # 3. RuntimeError with secret
+        runtime_secret = "sk-direct-runtime-secret-33333"
+        runtime_obj = SecretCrashDeepcopy(runtime_secret)
+        with self.assertRaises(CapacityAccountingError) as cm:
+            _safe_deepcopy(runtime_obj)
+        self.assertEqual(str(cm.exception), "sanitization failed (fail-closed)")
+        self.assertNotIn(runtime_secret, repr(cm.exception))
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertIsNone(cm.exception.__context__)
+        tb_str = "".join(traceback.format_exception(cm.exception))
+        self.assertNotIn(runtime_secret, tb_str)
+
+    def test_record_capacity_snapshot_and_cost_fail_on_third_deepcopy_and_state_unchanged(self):
+        """Regression test (C7): fail on 3rd deepcopy with RuntimeError or CapacityAccountingError('secret=...').
+        Verifies atomicity (state, seq, cost unchanged) and typed redacted error with no secret/context leak.
+        """
+        import traceback
+
+        acct = CapacityAccounting(monthly_budget=50.0)
+        initial_seq = acct._revision_seq
+        initial_snapshots_len = len(acct._snapshots)
+        initial_revisions_len = len(acct._revisions)
+        initial_cost = acct.cumulative_cost
+        initial_cost_seq = acct._cost_seq
+        initial_cost_records_len = len(acct._cost_records)
+
+        # 1. Snapshot: fail on third deepcopy with RuntimeError containing secret
+        snap_secret_rt = "sk-snap-fail3-rt-12345"
+        snap_obj_rt = SecretCrashOnNthDeepcopy(fail_at=3, secret=snap_secret_rt, exc_cls=RuntimeError)
+        with self.assertRaises(CapacityAccountingError) as cm:
+            acct.record_capacity_snapshot(
+                provider="9router",
+                project="AI-Auto-Video-Creator",
+                account="worker",
+                scope="worker",
+                bad_data=snap_obj_rt,
+            )
+        self.assertEqual(str(cm.exception), "sanitization failed (fail-closed)")
+        self.assertNotIn(snap_secret_rt, repr(cm.exception))
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertIsNone(cm.exception.__context__)
+        tb_str = "".join(traceback.format_exception(cm.exception))
+        self.assertNotIn(snap_secret_rt, tb_str)
+        self.assertEqual(acct._revision_seq, initial_seq)
+        self.assertEqual(len(acct._snapshots), initial_snapshots_len)
+        self.assertEqual(len(acct._revisions), initial_revisions_len)
+
+        # 2. Snapshot: fail on third deepcopy with CapacityAccountingError('secret=...')
+        snap_secret_cap = "sk-snap-fail3-cap-67890"
+        snap_obj_cap = SecretCrashOnNthDeepcopy(fail_at=3, secret=snap_secret_cap, exc_cls=CapacityAccountingError)
+        with self.assertRaises(CapacityAccountingError) as cm:
+            acct.record_capacity_snapshot(
+                provider="9router",
+                project="AI-Auto-Video-Creator",
+                account="worker",
+                scope="worker",
+                bad_data=snap_obj_cap,
+            )
+        self.assertEqual(str(cm.exception), "sanitization failed (fail-closed)")
+        self.assertNotIn(snap_secret_cap, repr(cm.exception))
+        self.assertNotIn("secret=", repr(cm.exception))
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertIsNone(cm.exception.__context__)
+        tb_str = "".join(traceback.format_exception(cm.exception))
+        self.assertNotIn(snap_secret_cap, tb_str)
+        self.assertEqual(acct._revision_seq, initial_seq)
+        self.assertEqual(len(acct._snapshots), initial_snapshots_len)
+        self.assertEqual(len(acct._revisions), initial_revisions_len)
+
+        # 3. Snapshot: object directly raising CapacityAccountingError('secret=...') on deepcopy
+        snap_secret_direct = "sk-snap-direct-cap-11223"
+        snap_obj_direct = SecretCrashCapacityAccountingError(snap_secret_direct)
+        with self.assertRaises(CapacityAccountingError) as cm:
+            acct.record_capacity_snapshot(
+                provider="9router",
+                project="AI-Auto-Video-Creator",
+                account="worker",
+                scope="worker",
+                bad_data=snap_obj_direct,
+            )
+        self.assertEqual(str(cm.exception), "sanitization failed (fail-closed)")
+        self.assertNotIn(snap_secret_direct, repr(cm.exception))
+        self.assertNotIn("secret=", repr(cm.exception))
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertIsNone(cm.exception.__context__)
+        tb_str = "".join(traceback.format_exception(cm.exception))
+        self.assertNotIn(snap_secret_direct, tb_str)
+        self.assertEqual(acct._revision_seq, initial_seq)
+        self.assertEqual(len(acct._snapshots), initial_snapshots_len)
+        self.assertEqual(len(acct._revisions), initial_revisions_len)
+
+        # 4. Cost: fail on third deepcopy with RuntimeError containing secret
+        cost_secret_rt = "sk-cost-fail3-rt-33445"
+        cost_obj_rt = SecretCrashOnNthDeepcopy(fail_at=3, secret=cost_secret_rt, exc_cls=RuntimeError)
+        with self.assertRaises(CapacityAccountingError) as cm:
+            acct.record_cost(
+                provider="9router",
+                service="codex",
+                operation="completion",
+                project="AI-Auto-Video-Creator",
+                account="worker",
+                scope="worker",
+                source="usage_receipt",
+                timestamp="2026-10-03T08:00:00Z",
+                estimate=15.0,
+                actual=15.0,
+                bad_data=cost_obj_rt,
+            )
+        self.assertEqual(str(cm.exception), "sanitization failed (fail-closed)")
+        self.assertNotIn(cost_secret_rt, repr(cm.exception))
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertIsNone(cm.exception.__context__)
+        tb_str = "".join(traceback.format_exception(cm.exception))
+        self.assertNotIn(cost_secret_rt, tb_str)
+        self.assertEqual(acct.cumulative_cost, initial_cost)
+        self.assertEqual(acct._cost_seq, initial_cost_seq)
+        self.assertEqual(len(acct._cost_records), initial_cost_records_len)
+        self.assertEqual(len(acct._revisions), initial_revisions_len)
+
+        # 5. Cost: fail on third deepcopy with CapacityAccountingError('secret=...')
+        cost_secret_cap = "sk-cost-fail3-cap-55667"
+        cost_obj_cap = SecretCrashOnNthDeepcopy(fail_at=3, secret=cost_secret_cap, exc_cls=CapacityAccountingError)
+        with self.assertRaises(CapacityAccountingError) as cm:
+            acct.record_cost(
+                provider="9router",
+                service="codex",
+                operation="completion",
+                project="AI-Auto-Video-Creator",
+                account="worker",
+                scope="worker",
+                source="usage_receipt",
+                timestamp="2026-10-03T08:00:00Z",
+                estimate=20.0,
+                actual=20.0,
+                bad_data=cost_obj_cap,
+            )
+        self.assertEqual(str(cm.exception), "sanitization failed (fail-closed)")
+        self.assertNotIn(cost_secret_cap, repr(cm.exception))
+        self.assertNotIn("secret=", repr(cm.exception))
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertIsNone(cm.exception.__context__)
+        tb_str = "".join(traceback.format_exception(cm.exception))
+        self.assertNotIn(cost_secret_cap, tb_str)
+        self.assertEqual(acct.cumulative_cost, initial_cost)
+        self.assertEqual(acct._cost_seq, initial_cost_seq)
+        self.assertEqual(len(acct._cost_records), initial_cost_records_len)
+        self.assertEqual(len(acct._revisions), initial_revisions_len)
+
+        # 6. Cost: object directly raising CapacityAccountingError('secret=...') on deepcopy
+        cost_secret_direct = "sk-cost-direct-cap-77889"
+        cost_obj_direct = SecretCrashCapacityAccountingError(cost_secret_direct)
+        with self.assertRaises(CapacityAccountingError) as cm:
+            acct.record_cost(
+                provider="9router",
+                service="codex",
+                operation="completion",
+                project="AI-Auto-Video-Creator",
+                account="worker",
+                scope="worker",
+                source="usage_receipt",
+                timestamp="2026-10-03T08:00:00Z",
+                estimate=10.0,
+                actual=10.0,
+                bad_data=cost_obj_direct,
+            )
+        self.assertEqual(str(cm.exception), "sanitization failed (fail-closed)")
+        self.assertNotIn(cost_secret_direct, repr(cm.exception))
+        self.assertNotIn("secret=", repr(cm.exception))
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertIsNone(cm.exception.__context__)
+        tb_str = "".join(traceback.format_exception(cm.exception))
+        self.assertNotIn(cost_secret_direct, tb_str)
+        self.assertEqual(acct.cumulative_cost, initial_cost)
+        self.assertEqual(acct._cost_seq, initial_cost_seq)
+        self.assertEqual(len(acct._cost_records), initial_cost_records_len)
+        self.assertEqual(len(acct._revisions), initial_revisions_len)
+
+        # 7. Verify subsequent valid operations succeed cleanly from preserved state
+        valid_snap = acct.record_capacity_snapshot(
+            provider="9router",
+            model="ag/gemini-3.8-flash-high",
+            project="AI-Auto-Video-Creator",
+            account="worker",
+            scope="worker",
+            quota_domain="monthly",
+            limit=100,
+            used=10,
+        )
+        self.assertEqual(acct._revision_seq, 1)
+        self.assertTrue(valid_snap["revision"].startswith("rev-1-"))
+        self.assertEqual(len(acct._snapshots), 1)
+
+        valid_cost = acct.record_cost(
+            provider="9router",
+            service="codex",
+            operation="completion",
+            project="AI-Auto-Video-Creator",
+            account="worker",
+            scope="worker",
+            source="usage_receipt",
+            timestamp="2026-10-03T08:00:00Z",
+            estimate=3.50,
+            actual=3.50,
+        )
+        self.assertEqual(acct._cost_seq, 1)
+        self.assertEqual(valid_cost["record_id"], "cost-1")
+        self.assertEqual(acct.cumulative_cost, 3.50)
+        self.assertEqual(len(acct._cost_records), 1)
 
 # Attach alias so unittest -k "numeric_overflow or numeric_validation or missing_or_empty" executes cleanly
 setattr(

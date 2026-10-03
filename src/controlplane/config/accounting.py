@@ -62,14 +62,26 @@ _JWT_RE = re.compile(
 
 def _safe_deepcopy(val: Any) -> Any:
     failed = False
+    is_budget = False
     try:
         return copy.deepcopy(val)
-    except CapacityAccountingError:
+    except (KeyboardInterrupt, SystemExit):
         raise
-    except Exception:
+    except BudgetExceededError:
         failed = True
+        is_budget = True
+    except (Exception, BaseException):
+        failed = True
+
     if failed:
-        raise CapacityAccountingError("sanitization failed (fail-closed)") from None
+        err = (
+            BudgetExceededError("sanitization failed (fail-closed)")
+            if is_budget
+            else CapacityAccountingError("sanitization failed (fail-closed)")
+        )
+        err.__cause__ = None
+        err.__context__ = None
+        raise err from None
 
 
 def _is_sensitive_key(key: Any) -> bool:
@@ -77,7 +89,7 @@ def _is_sensitive_key(key: Any) -> bool:
     str_failed = False
     try:
         clean_k = str(key).lower().strip()
-    except CapacityAccountingError:
+    except (KeyboardInterrupt, SystemExit):
         raise
     except Exception:
         str_failed = True
@@ -98,7 +110,7 @@ def _sanitize_string_value(val: str) -> str:
         val = _SECRET_TOKEN_RE.sub("[REDACTED]", val)
         val = _JWT_RE.sub("[REDACTED]", val)
         res = val
-    except CapacityAccountingError:
+    except (KeyboardInterrupt, SystemExit):
         raise
     except Exception:
         sub_failed = True
@@ -113,7 +125,7 @@ def _sanitize_value(val: Any) -> Any:
     try:
         if hasattr(val, "raw_secret"):
             has_secret_attr = True
-    except CapacityAccountingError:
+    except (KeyboardInterrupt, SystemExit):
         raise
     except Exception:
         attr_failed = True
@@ -133,7 +145,7 @@ def _sanitize_value(val: Any) -> Any:
         items = None
         try:
             items = list(val.items())
-        except CapacityAccountingError:
+        except (KeyboardInterrupt, SystemExit):
             raise
         except Exception:
             items_failed = True
@@ -146,7 +158,7 @@ def _sanitize_value(val: Any) -> Any:
             sens_failed = False
             try:
                 is_sens = _is_sensitive_key(k)
-            except CapacityAccountingError:
+            except (KeyboardInterrupt, SystemExit):
                 raise
             except Exception:
                 sens_failed = True
@@ -164,7 +176,7 @@ def _sanitize_value(val: Any) -> Any:
         res_int = 0
         try:
             res_int = int(val)
-        except CapacityAccountingError:
+        except (KeyboardInterrupt, SystemExit):
             raise
         except Exception:
             int_failed = True
@@ -177,7 +189,7 @@ def _sanitize_value(val: Any) -> Any:
         res_float = 0.0
         try:
             res_float = float(val)
-        except CapacityAccountingError:
+        except (KeyboardInterrupt, SystemExit):
             raise
         except Exception:
             float_failed = True
@@ -193,7 +205,7 @@ def _sanitize_value(val: Any) -> Any:
         items = None
         try:
             items = list(val)
-        except CapacityAccountingError:
+        except (KeyboardInterrupt, SystemExit):
             raise
         except Exception:
             iter_failed = True
@@ -210,7 +222,7 @@ def _sanitize_value(val: Any) -> Any:
                 res_coll = type(val)(sanitized)
             else:
                 res_coll = sanitized
-        except CapacityAccountingError:
+        except (KeyboardInterrupt, SystemExit):
             raise
         except Exception:
             coll_failed = True
@@ -222,7 +234,7 @@ def _sanitize_value(val: Any) -> Any:
     try:
         str(val)
         repr(val)
-    except CapacityAccountingError:
+    except (KeyboardInterrupt, SystemExit):
         raise
     except Exception:
         str_failed = True
@@ -243,7 +255,7 @@ def _sanitize_field_str(val: Any, default: str = "") -> str:
     s = None
     try:
         s = str(sanitized).strip()
-    except CapacityAccountingError:
+    except (KeyboardInterrupt, SystemExit):
         raise
     except Exception:
         str_failed = True
@@ -264,7 +276,7 @@ def _validate_required_provenance_field(val: Any, name: str) -> str:
     s = None
     try:
         s = str(sanitized).strip()
-    except CapacityAccountingError:
+    except (KeyboardInterrupt, SystemExit):
         raise
     except Exception:
         str_failed = True
@@ -409,7 +421,7 @@ class CapacityAccounting:
         canonical_json = None
         try:
             canonical_json = json.dumps(canonical_payload, sort_keys=True, separators=(",", ":"))
-        except CapacityAccountingError:
+        except (KeyboardInterrupt, SystemExit):
             raise
         except Exception:
             json_failed = True
@@ -442,12 +454,18 @@ class CapacityAccounting:
                 snapshot_record[k] = _sanitize_value(v)
 
         stored = _safe_deepcopy(snapshot_record)
+        return_record = _safe_deepcopy(stored)
+
+        next_snapshots = list(self._snapshots)
+        next_snapshots.append(stored)
+        next_revisions = dict(self._revisions)
+        next_revisions[revision_id] = stored
 
         self._revision_seq = next_revision_seq
-        self._revisions[revision_id] = stored
-        self._snapshots.append(stored)
+        self._revisions = next_revisions
+        self._snapshots = next_snapshots
 
-        return _safe_deepcopy(stored)
+        return return_record
 
     def record_cost(self, **kwargs: Any) -> dict[str, Any]:
         """Records an immutable incremental cost record preserving full provenance (CT-COST-001)."""
@@ -522,13 +540,19 @@ class CapacityAccounting:
                 cost_record[k] = _sanitize_value(v)
 
         stored = _safe_deepcopy(cost_record)
+        return_record = _safe_deepcopy(stored)
+
+        next_cost_records = list(self._cost_records)
+        next_cost_records.append(stored)
+        next_revisions = dict(self._revisions)
+        next_revisions[record_id] = stored
 
         self._cumulative_cost = new_cumulative_cost
         self._cost_seq = next_cost_seq
-        self._cost_records.append(stored)
-        self._revisions[record_id] = stored
+        self._cost_records = next_cost_records
+        self._revisions = next_revisions
 
-        return _safe_deepcopy(stored)
+        return return_record
 
     def guard_budget(self, amount: float = 0.0) -> None:
         """Enforces fail-closed monthly budget check with typed BudgetExceededError."""
