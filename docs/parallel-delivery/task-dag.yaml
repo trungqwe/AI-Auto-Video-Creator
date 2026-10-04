@@ -105,7 +105,6 @@ current_authority:
   - M2-P7A
   - M2-P7B
   locked:
-  - M2-P8
   - M2-P9
   - M3
   - MODULE-A
@@ -141,6 +140,7 @@ waves:
   - TASK-CAP-J-P1-A-GREEN
   - TASK-CAP-J-P1-B
   - TASK-CAP-J-P1-C
+  - M2-P8
 - id: WAVE-2-CONSUMERS
   status: future_template
   admission: exact_frozen_contract_revisions_required
@@ -258,13 +258,14 @@ tasks:
       effort: medium
       use: external_extremely_difficult_audit_only
   merge_priority: 10
-- id: M2-P8-LOCKED
+- id: M2-P8
   milestone: M2
-  kind: authority_sentinel
-  status: stopped
+  kind: work_package_slice
+  status: ready
+  requireAstra: true
   authority:
-    state: locked
-    scope: no_behavioral_red_no_implementation
+    state: granted
+    scope: control_plane_admin_ui_and_real_browser_e2e
     does_not_authorize_descendants: true
   authority_refs:
   - docs/12-pre-code-checklist.md
@@ -277,6 +278,118 @@ tasks:
   - FR-UI-003
   - QR-UX-001
   - QR-PERF-005
+  - QR-PERF-006
+  contract_refs:
+  - id: CT-CMN-003
+    registry: CONTRACT-COMMON
+    revision: sha256:dfdce8db13d5f1d1f286ccd233a66caf39f48552da2dbbad26692fde7be978e8
+  - id: CT-API-008
+    registry: CONTRACT-CONTROL-API-STREAM
+    revision: sha256:ea16fe04759e6bdf3b7bdde3e27ad498d13a271bd45d412ba0e9068a9b918e12
+  invariant_refs:
+  - INV-001
+  - INV-002
+  - INV-012
+  - INV-016
+  module_owners:
+  - H
+  owned_paths:
+  - src/controlplane/ui/**
+  - tests/m2/e2e/**
+  - src/controlplane/application/test_driver.py
+  forbidden_paths:
+  - src/m1proof/**
+  - tests/m1/**
+  - src/ingestion/**
+  - src/catalog/**
+  - src/creative/**
+  - src/voice/**
+  - src/render/**
+  - src/controlplane/api/main.py
+  - docs/09-contracts/**
+  - protected-checkouts/main/**
+  - protected-checkouts/backup/**
+  resource_locks:
+  - LOCK-SRC-CONTROL-UI
+  - LOCK-DEPENDENCY-UNIVERSE
+  - LOCK-MIGRATION-SEQUENCE
+  runtime_prerequisites:
+  - node_22
+  - npm_10
+  - python
+  - playwright
+  acceptance:
+  - requirement: React TypeScript AG Grid renders Operations, Batches and Jobs in Vietnamese from the real Control API.
+    instrument: npm --prefix src/controlplane/ui run build
+    counterexample: UI is absent, not UTF-8, or renders hard-coded fixture rows instead of API data.
+    red_observation: P8 admin UI and API client are not implemented before the bounded task.
+    limitations: This slice does not open Module A or production collection.
+  - requirement: StartProductionBatch uses Idempotency-Key and renders a durable CommandReceipt without duplicate side effects.
+    instrument: tests/m2/e2e/admin-command-idempotency.spec.ts
+    counterexample: repeated command creates a second operation or receipt is not shown.
+    red_observation: command form and receipt flow are absent before implementation.
+    limitations: Test driver is test-only and cannot authorize production mutation.
+  - requirement: SSE updates the real browser DOM through ACCEPTED to RUNNING to SUCCEEDED.
+    instrument: tests/m2/e2e/operations-sse.spec.ts
+    counterexample: browser requires refresh, loses cursor, or accepts a fabricated frontend event.
+    red_observation: no real EventSource-to-AG-Grid flow exists before implementation.
+    limitations: The driver advances only isolated test state.
+  - requirement: Error modal is safe and XSS input is escaped without secrets or raw stack traces in DOM/logs.
+    instrument: tests/m2/e2e/safe-error-modal.spec.ts
+    counterexample: script executes or technical detail leaks into user-visible output.
+    red_observation: safe error boundary and sanitization are absent before implementation.
+    limitations: Secret scanner and full M2 exit audit remain P9.
+  - requirement: UI responsiveness meets QR-PERF-005 and command acknowledgement meets QR-PERF-006.
+    instrument: tests/m2/e2e/performance-budget.spec.ts
+    counterexample: 95 percent of normal actions exceed two seconds or acknowledgement exceeds one second.
+    red_observation: no measured browser performance evidence exists before implementation.
+    limitations: Dataset scale remains outside this slice.
+  evidence_outputs:
+  - docs/milestones/m2-control-plane/evidence/m2-p8/**
+  specFile: docs/milestones/m2-control-plane/implementation-plan.md
+  rollback:
+    strategy: revert_task_commit
+    reference: docs/milestones/m2-control-plane/implementation-plan.md
+    preserves_accepted_evidence: true
+  route:
+    control:
+      provider: 9router
+      harness: Codex CLI
+      model: cx/gpt-6-astra
+      effort: medium
+    implement:
+      provider: 9router
+      harness: Codex CLI
+      model: ag/gemini-3.8-flash-high
+      effort: high
+    review:
+      provider: 9router
+      harness: Claude Code
+      model: cx/gpt-6.1-sol
+      effort: high
+    supreme_audit:
+      provider: 9router
+      harness: Claude Code
+      model: cx/gpt-6-astra
+      effort: medium
+  merge_priority: 280
+- id: M2-P8-LOCKED
+  milestone: M2
+  kind: authority_sentinel
+  status: stopped
+  authority:
+    state: locked
+    scope: historical_sentinel_preserved_while_bounded_p8_is_active
+    does_not_authorize_descendants: true
+  authority_refs:
+  - docs/12-pre-code-checklist.md
+  - docs/milestones/m2-control-plane/implementation-plan.md
+  depends_on:
+  - task: M2-P7B-ACCEPTED
+    condition: accepted
+  requirement_refs:
+  - FR-UI-001
+  - FR-UI-003
   contract_refs: []
   invariant_refs: []
   module_owners:
@@ -310,7 +423,7 @@ tasks:
   - docs/12-pre-code-checklist.md
   - docs/milestones/m2-control-plane/implementation-plan.md
   depends_on:
-  - task: M2-P8-LOCKED
+  - task: M2-P8
     condition: accepted
   requirement_refs: []
   contract_refs: []
@@ -1387,4 +1500,5 @@ external_nodes:
   state: accepted
   authority_ref: docs/12-pre-code-checklist.md
   source_ref: c44214ad027986a0db7cb9d8e221590f232a0036
-  evidence_ref: docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-green-20260917040648
+  evidence_ref: docs/parallel-delivery/evidence/external-attestations/m2-p7b-accepted.json
+  evidenceSha: 544cf10d9789cb9941537fd5182925718dbc26d2aff1f4bd6248f4d08ecc4f79

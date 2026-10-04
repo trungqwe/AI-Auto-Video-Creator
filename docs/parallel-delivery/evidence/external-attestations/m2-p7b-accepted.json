@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "external_dependency_attestation_v1",
+  "nodeId": "M2-P7B-ACCEPTED",
+  "taskId": "M2-P7B-ACCEPTED",
+  "status": "ACCEPTED",
+  "candidateSha": "c44214ad027986a0db7cb9d8e221590f232a0036",
+  "sourceEvidencePath": "docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-green-20260917040648",
+  "sourceStatusFile": "docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-green-20260917040648/status.json",
+  "sourceStatus": "READY_FOR_REVIEW",
+  "acceptanceBasis": {
+    "greenGate": "PASS",
+    "oracleArtifact": "docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-green-20260917040648/p7b-oracle.xml",
+    "oracleSha256": "eccfd844878f3dbb8cf235d0ea30acd577c9ccd7c022ce1ee2b5bf05703739e3",
+    "hardeningArtifact": "docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-green-20260917040648/p7b-hardening.xml",
+    "hardeningSha256": "627e85ef0cddad34415cb40ed8fd486c84b970f8cc1a6bab5d6f35a4eb1f68bb",
+    "regressionCount": 12
+  },
+  "attestedBy": "Control",
+  "immutable": true,
+  "note": "Control attestation binds the accepted external dependency to the historical P7B green run without mutating historical evidence."
+}

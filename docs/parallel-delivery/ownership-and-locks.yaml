@@ -164,6 +164,14 @@ path_ownership:
     owner_role: Module_G_Orchestration_Owner
     mode: exclusive
     lock: LOCK-SRC-ORCHESTRATION
+  - id: PATH-SRC-CONTROL-UI
+    patterns:
+      - src/controlplane/ui/**
+      - tests/m2/e2e/**
+      - src/controlplane/application/test_driver.py
+    owner_role: Module_H_Control_UI_Owner
+    mode: exclusive
+    lock: LOCK-SRC-CONTROL-UI
   - id: PATH-SRC-CONFIG-SECURITY
     patterns:
       - src/controlplane/config/**
@@ -368,6 +376,12 @@ locks:
     class: path
     mode: exclusive
     scope: capability_g_orchestration_code
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-SRC-CONTROL-UI
+    class: path
+    mode: exclusive
+    scope: src_controlplane_control_ui_and_m2_e2e
     lease_seconds: 1800
     renewable: true
   - id: LOCK-SRC-CONFIG-SECURITY
