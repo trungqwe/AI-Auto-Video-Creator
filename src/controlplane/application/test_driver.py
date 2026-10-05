@@ -111,6 +111,15 @@ def ensure_schema_and_fixtures(admin_dsn: str, db_name: str = DEFAULT_TEST_DB_NA
             """,
             (DEFAULT_ACTOR_ID, DEFAULT_WORKSPACE_ID),
         )
+        conn.execute(
+            """
+            INSERT INTO controlplane.cp_technical_details
+            (detail_ref, workspace_id, correlation_id, error_type, stack_trace, sanitized_context)
+            VALUES ('00000000-0000-0000-0000-000000000999', %s, 'corr-test-xss-001', 'TestDiagnosticError', 'Traceback (most recent call last):\n  File "/app/test.py", line 42, in test_fn\n    raise ValueError("canary_raw_stack_trace_leak")', '{}'::jsonb)
+            ON CONFLICT (detail_ref) DO NOTHING
+            """,
+            (DEFAULT_WORKSPACE_ID,),
+        )
         conn.commit()
 
     return target_conn_str

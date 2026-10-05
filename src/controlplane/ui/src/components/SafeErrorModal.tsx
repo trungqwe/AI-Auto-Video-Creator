@@ -105,16 +105,22 @@ export const SafeErrorModal: React.FC<SafeErrorModalProps> = ({ error, onClose }
                   <div style={{ marginBottom: '0.25rem', fontWeight: 600 }}>
                     Loại ngoại lệ: {technicalDetail.error_type}
                   </div>
-                  <pre
+                  {technicalDetail.correlation_id && (
+                    <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                      Mã tương quan: {technicalDetail.correlation_id}
+                    </div>
+                  )}
+                  <div
+                    data-testid="safe-diagnostic-notice"
                     style={{
-                      whiteSpace: 'pre-wrap',
-                      fontFamily: 'monospace',
                       fontSize: '0.75rem',
                       color: 'var(--text-secondary)',
+                      fontStyle: 'italic',
+                      marginTop: '0.25rem',
                     }}
                   >
-                    {technicalDetail.internal_detail}
-                  </pre>
+                    Chi tiết kỹ thuật và stack trace được lưu trữ an toàn trên máy chủ bảo mật. Theo chính sách bảo vệ an toàn thông tin, raw stack trace không được kết xuất vào DOM trình duyệt.
+                  </div>
                 </div>
               )}
             </div>

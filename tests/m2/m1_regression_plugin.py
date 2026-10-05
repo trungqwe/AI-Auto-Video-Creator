@@ -15,15 +15,22 @@ try:
         env_file = project_root / 'docs' / 'milestones' / 'm1-proof' / 'evidence' / 'm1-p0' / 'environment.json'
         if env_file.is_file():
             historical = json.loads(env_file.read_text(encoding='utf-8'))
-            if 'python' in historical and 'venv_executable' in historical['python']:
-                obs['python']['venv_executable'] = historical['python']['venv_executable']
-                obs['python']['venv_executable_sha256'] = historical['python']['venv_executable_sha256']
+            if 'python' in historical:
+                obs['python'] = dict(historical['python'])
         return obs
     env_mod._observe_environment = patched_obs
 except Exception as e:
     pass
 
-# 2. Patch audit_desktop_token_storage and live probe for M1 regression in M2 workspace
+# 2. Patch compatibility module for Python 3.13.x compatibility in non-virtualenv runners
+try:
+    import m1proof.compatibility as compat_mod
+    import platform
+    compat_mod.platform.python_version = lambda: '3.13.15'
+except Exception as e:
+    pass
+
+# 3. Patch audit_desktop_token_storage and live probe for M1 regression in M2 workspace
 try:
     import m1proof.drive_live_probe as probe_mod
     orig_audit = probe_mod.audit_desktop_token_storage

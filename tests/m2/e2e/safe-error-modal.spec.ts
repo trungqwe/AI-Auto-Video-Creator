@@ -46,11 +46,29 @@ test.describe('Safe Error Inspection Modal and XSS Sanitization', () => {
     const refText = await refBox.textContent();
     expect(refText?.trim()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 
-    // Verify no secret patterns exist in visible DOM
+    // Verify retrieval of technical details renders safe metadata and notice, but NO raw stack trace in DOM
+    const fetchBtn = page.locator('[data-testid="fetch-technical-detail-btn"]');
+    await expect(fetchBtn).toBeVisible();
+    await fetchBtn.click();
+
+    const detailContent = page.locator('[data-testid="technical-detail-content"]');
+    await expect(detailContent).toBeVisible();
+    await expect(detailContent).toContainText('TestDiagnosticError');
+    await expect(page.locator('[data-testid="safe-diagnostic-notice"]')).toBeVisible();
+
+    // Verify no secret patterns or raw stack traces exist anywhere in visible DOM
     const bodyText = await page.innerText('body');
     expect(bodyText).not.toContain('CANARY_SECRET');
     expect(bodyText).not.toContain('m2test_password');
     expect(bodyText).not.toContain('POSTGRES_PASSWORD');
+    expect(bodyText).not.toContain('Traceback (most recent call last)');
+    expect(bodyText).not.toContain('canary_raw_stack_trace_leak');
+    expect(bodyText).not.toContain('File "/app/test.py"');
+
+    const fullHtml = await page.content();
+    expect(fullHtml).not.toContain('Traceback (most recent call last)');
+    expect(fullHtml).not.toContain('canary_raw_stack_trace_leak');
+    expect(fullHtml).not.toContain('File "/app/test.py"');
 
     // Close modal
     await page.locator('[data-testid="dismiss-error-modal-btn"]').click();

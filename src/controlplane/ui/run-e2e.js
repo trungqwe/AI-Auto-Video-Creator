@@ -9,15 +9,28 @@ const nodePath = current ? `${nodeModules}${path.delimiter}${current}` : nodeMod
 
 const args = process.argv.slice(2);
 const normalizedArgs = [];
+const pendingGrep = [];
+
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--grep' && i + 1 < args.length) {
-    normalizedArgs.push(`--grep=${args[i + 1]}`);
-    i++;
-  } else if (!args[i].startsWith('-') && args[i].includes('|')) {
-    normalizedArgs.push(`--grep=${args[i]}`);
+  const arg = args[i];
+  if (arg === '--grep' || arg === '-g') {
+    if (i + 1 < args.length) {
+      normalizedArgs.push(`--grep=${args[i + 1]}`);
+      i++;
+    }
+  } else if (arg.startsWith('--grep=') || arg.startsWith('-g=')) {
+    normalizedArgs.push(arg);
+  } else if (arg.startsWith('-')) {
+    normalizedArgs.push(arg);
+  } else if (arg.endsWith('.ts') || arg.endsWith('.js') || arg.includes('/') || arg.includes('\\')) {
+    normalizedArgs.push(arg);
   } else {
-    normalizedArgs.push(args[i]);
+    pendingGrep.push(arg);
   }
+}
+
+if (pendingGrep.length > 0) {
+  normalizedArgs.push(`--grep=${pendingGrep.join(' ')}`);
 }
 
 const cli = path.resolve(nodeModules, '@playwright', 'test', 'cli.js');
