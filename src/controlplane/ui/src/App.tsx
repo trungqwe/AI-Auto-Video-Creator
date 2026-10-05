@@ -25,6 +25,7 @@ export const App: React.FC = () => {
   const [workspaceId, setWorkspaceId] = useState<string>('');
   const [activeError, setActiveError] = useState<ProblemDetail | null>(null);
   const [bootstrapped, setBootstrapped] = useState<boolean>(false);
+  const [subscriptionEpoch, setSubscriptionEpoch] = useState<number>(0);
 
   // Load API snapshot
   const loadData = useCallback(async () => {
@@ -94,6 +95,7 @@ export const App: React.FC = () => {
       onResync: (serverCursor: string | null) => {
         // SSE cursor recovery: replace expired cursor with server-provided cursor (or null to reconnect at baseline)
         setLastCursor(serverCursor);
+        setSubscriptionEpoch((prev) => prev + 1);
         loadData();
       },
     });
@@ -101,7 +103,7 @@ export const App: React.FC = () => {
     return () => {
       unsubscribe();
     };
-  }, [bootstrapped, lastCursor, loadData]);
+  }, [bootstrapped, lastCursor, subscriptionEpoch, loadData]);
 
   const handleCommandSuccess = (_receipt: CommandReceipt) => { void _receipt;
     // Refresh operations and batches immediately

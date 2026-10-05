@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from typing import Any
+from typing import Any, Callable, Protocol
 import uuid
 
 CURRENT_DIR = Path(__file__).resolve().parent
@@ -116,6 +116,117 @@ def ensure_schema_and_fixtures(admin_dsn: str, db_name: str = DEFAULT_TEST_DB_NA
     return target_conn_str
 
 
+class ApplicationLifecyclePort(Protocol):
+    """Application lifecycle port for domain aggregate state transitions and seeding."""
+
+    def find_batch_id_for_operation(
+        self, *, workspace_id: str, operation_id: str
+    ) -> str | None: ...
+
+    def transition_batch_lifecycle(
+        self, *, workspace_id: str, batch_id: str, target_state: BatchState
+    ) -> BatchState: ...
+
+    def seed_job_and_batch(
+        self,
+        *,
+        workspace_id: str,
+        job_id: str,
+        batch_id: str,
+        status: str,
+        snapshot_ref: str,
+        revision: int,
+        target_count: int = 5,
+    ) -> None: ...
+
+
+class PostgresApplicationLifecycleRepository:
+    """PostgreSQL implementation of ApplicationLifecyclePort using UoW connection."""
+
+    def __init__(self, connection: Any) -> None:
+        self._connection = connection
+
+    def find_batch_id_for_operation(
+        self, *, workspace_id: str, operation_id: str
+    ) -> str | None:
+        receipt_row = self._connection.execute(
+            """
+            SELECT receipt_id, resource_ref
+            FROM controlplane.cp_command_receipts
+            WHERE workspace_id = %s AND operation_id = %s
+            """,
+            (workspace_id, operation_id),
+        ).fetchone()
+        if receipt_row and receipt_row[1]:
+            res_ref = receipt_row[1]
+            if isinstance(res_ref, dict) and res_ref.get("kind") == "production_batch":
+                return res_ref.get("batch_id")
+        return None
+
+    def transition_batch_lifecycle(
+        self, *, workspace_id: str, batch_id: str, target_state: BatchState
+    ) -> BatchState:
+        batch_row = self._connection.execute(
+            """
+            SELECT status
+            FROM controlplane.cp_production_batches
+            WHERE workspace_id = %s AND batch_id = %s
+            FOR UPDATE
+            """,
+            (workspace_id, batch_id),
+        ).fetchone()
+        if not batch_row:
+            raise LookupError(f"Batch {batch_id} not found in workspace {workspace_id}")
+
+        current_state = BatchState(batch_row[0])
+        if target_state == current_state:
+            return current_state
+
+        result = transition_batch(
+            current_state=current_state,
+            current_revision=1,
+            expected_revision=1,
+            requested_state=target_state,
+        )
+        self._connection.execute(
+            """
+            UPDATE controlplane.cp_production_batches
+            SET status = %s
+            WHERE workspace_id = %s AND batch_id = %s
+            """,
+            (result.state.value, workspace_id, batch_id),
+        )
+        return result.state
+
+    def seed_job_and_batch(
+        self,
+        *,
+        workspace_id: str,
+        job_id: str,
+        batch_id: str,
+        status: str,
+        snapshot_ref: str,
+        revision: int,
+        target_count: int = 5,
+    ) -> None:
+        self._connection.execute(
+            """
+            INSERT INTO controlplane.cp_production_batches
+            (workspace_id, batch_id, status, target_count)
+            VALUES (%s, %s, 'CREATED', %s)
+            ON CONFLICT (workspace_id, batch_id) DO NOTHING
+            """,
+            (workspace_id, batch_id, target_count),
+        )
+        self._connection.execute(
+            """
+             INSERT INTO controlplane.cp_video_jobs
+            (job_id, workspace_id, batch_id, status, snapshot_ref, revision)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (workspace_id, job_id) DO UPDATE SET status=%s, revision=%s
+            """,
+            (job_id, workspace_id, batch_id, status, snapshot_ref, revision, status, revision),
+        )
 class TestDriver:
     """Internal application test driver for advancing isolated test state."""
 
@@ -124,11 +235,13 @@ class TestDriver:
         dsn: str,
         workspace_id: str = DEFAULT_WORKSPACE_ID,
         actor_id: str = DEFAULT_ACTOR_ID,
+        lifecycle_factory: Callable[[Any], ApplicationLifecyclePort] | None = None,
     ) -> None:
         self.dsn = dsn
         self.workspace_id = workspace_id
         self.actor_id = actor_id
         self.manager = TransactionManager(dsn)
+        self.lifecycle_factory = lifecycle_factory or PostgresApplicationLifecycleRepository
 
     def advance_operation_state(
         self,
@@ -143,64 +256,30 @@ class TestDriver:
         norm_status = status.upper()
 
         with self.manager.unit_of_work() as uow:
-            conn = uow.connection
+            lifecycle_repo = self.lifecycle_factory(uow.connection)
 
-            # 1. Lookup operation receipt
-            receipt_row = conn.execute(
-                """
-                SELECT receipt_id, resource_ref
-                FROM controlplane.cp_command_receipts
-                WHERE workspace_id = %s AND operation_id = %s
-                """,
-                (self.workspace_id, operation_id),
-            ).fetchone()
-
-            batch_id: str | None = None
-            if receipt_row and receipt_row[1]:
-                res_ref = receipt_row[1]
-                if isinstance(res_ref, dict) and res_ref.get("kind") == "production_batch":
-                    batch_id = res_ref.get("batch_id")
-
-            # 2. Advance authoritative batch lifecycle if batch exists
+            # 1. Advance authoritative batch lifecycle via application port
+            batch_id = lifecycle_repo.find_batch_id_for_operation(
+                workspace_id=self.workspace_id, operation_id=operation_id
+            )
             if batch_id:
-                batch_row = conn.execute(
-                    """
-                    SELECT status
-                    FROM controlplane.cp_production_batches
-                    WHERE workspace_id = %s AND batch_id = %s
-                    FOR UPDATE
-                    """,
-                    (self.workspace_id, batch_id),
-                ).fetchone()
+                if norm_status in ("RUNNING", "STARTED"):
+                    target_batch_state = BatchState.RUNNING
+                elif norm_status in ("SUCCEEDED", "COMPLETED"):
+                    target_batch_state = BatchState.COMPLETED_TARGET
+                elif norm_status in ("FAILED", "FAILED_SYSTEM"):
+                    target_batch_state = BatchState.FAILED_SYSTEM
+                else:
+                    target_batch_state = None
 
-                if batch_row:
-                    current_batch_state = BatchState(batch_row[0])
-                    if norm_status in ("RUNNING", "STARTED"):
-                        target_batch_state = BatchState.RUNNING
-                    elif norm_status in ("SUCCEEDED", "COMPLETED"):
-                        target_batch_state = BatchState.COMPLETED_TARGET
-                    elif norm_status in ("FAILED", "FAILED_SYSTEM"):
-                        target_batch_state = BatchState.FAILED_SYSTEM
-                    else:
-                        target_batch_state = current_batch_state
+                if target_batch_state is not None:
+                    lifecycle_repo.transition_batch_lifecycle(
+                        workspace_id=self.workspace_id,
+                        batch_id=batch_id,
+                        target_state=target_batch_state,
+                    )
 
-                    if target_batch_state != current_batch_state:
-                        trans_result = transition_batch(
-                            current_state=current_batch_state,
-                            current_revision=1,
-                            expected_revision=1,
-                            requested_state=target_batch_state,
-                        )
-                        conn.execute(
-                            """
-                            UPDATE controlplane.cp_production_batches
-                            SET status = %s
-                            WHERE workspace_id = %s AND batch_id = %s
-                            """,
-                            (trans_result.state.value, self.workspace_id, batch_id),
-                        )
-
-            # 3. Domain Event to Outbox
+            # 2. Domain Event to Outbox
             event = DomainEvent(
                 contract_name="controlplane.operation",
                 contract_version=1,
@@ -222,10 +301,10 @@ class TestDriver:
                 schema_version=1,
                 sensitivity="internal",
             )
-            PostgresOutboxRepository(conn).enqueue(event)
+            PostgresOutboxRepository(uow.connection).enqueue(event)
 
             # 4. Append to operation stream for real-time SSE stream consumers
-            cursor = PostgresOperationStreamRepository(conn).append(
+            cursor = PostgresOperationStreamRepository(uow.connection).append(
                 event=event, safe_summary=summary, operation_id=operation_id
             )
             return cursor
@@ -239,29 +318,19 @@ class TestDriver:
         snapshot_ref: str = "snap-test-001",
         revision: int = 1,
     ) -> str:
-        """Seed an isolated test job with its parent batch."""
+        """Seed an isolated test job with its parent batch via application lifecycle port."""
         jid = job_id or str(uuid.uuid4())
         bid = batch_id or str(uuid.uuid4())
-        with psycopg.connect(self.dsn) as conn:
-            conn.execute(
-                """
-                INSERT INTO controlplane.cp_production_batches
-                (workspace_id, batch_id, status, target_count)
-                VALUES (%s, %s, 'CREATED', 5)
-                ON CONFLICT (workspace_id, batch_id) DO NOTHING
-                """,
-                (self.workspace_id, bid),
+        with self.manager.unit_of_work() as uow:
+            lifecycle_repo = self.lifecycle_factory(uow.connection)
+            lifecycle_repo.seed_job_and_batch(
+                workspace_id=self.workspace_id,
+                job_id=jid,
+                batch_id=bid,
+                status=status,
+                snapshot_ref=snapshot_ref,
+                revision=revision,
             )
-            conn.execute(
-                """
-                INSERT INTO controlplane.cp_video_jobs
-                (job_id, workspace_id, batch_id, status, snapshot_ref, revision)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (workspace_id, job_id) DO UPDATE SET status=%s, revision=%s
-                """,
-                (jid, self.workspace_id, bid, status, snapshot_ref, revision, status, revision),
-            )
-            conn.commit()
         return jid
 
 
@@ -339,6 +408,35 @@ def create_test_application(
         job1 = driver.seed_job(status="ACTIVE", snapshot_ref="snap-seed-01")
         job2 = driver.seed_job(status="CREATED", snapshot_ref="snap-seed-02")
         return {"seeded": [job1, job2]}
+
+    @web_app.post("/test-driver/set-retention-watermark")
+    async def set_retention_watermark(request: Request) -> JSONResponse:
+        body = await request.json()
+        watermark = int(body["watermark"])
+        with driver.manager.unit_of_work() as uow:
+            if watermark <= 0:
+                uow.connection.execute(
+                    """
+                    DELETE FROM controlplane.cp_operation_stream_retention_watermarks
+                    WHERE workspace_id = %s
+                    """,
+                    (driver.workspace_id,),
+                )
+            else:
+                uow.connection.execute(
+                    """
+                    INSERT INTO controlplane.cp_operation_stream_retention_watermarks
+                    (workspace_id, minimum_available_cursor, minimum_available_at)
+                    VALUES (%s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (workspace_id)
+                    DO UPDATE SET minimum_available_cursor = EXCLUDED.minimum_available_cursor,
+                                  minimum_available_at = CURRENT_TIMESTAMP
+                    """,
+                    (driver.workspace_id, watermark),
+                )
+        return JSONResponse({"ok": True, "watermark": watermark})
+
+
 
     # Mount UI static build if dist directory exists
     target_dist = dist_dir or (SRC_DIR / "controlplane" / "ui" / "dist")

@@ -165,7 +165,7 @@ def test_h08_expired_cursor_exact_resync_close():
                         assert response.status_code == 200
                         assert body == ('event: resync_required\n'
                                         'data: {"resync_required":true,"reason":"cursor_expired",'
-                                        '"action":"query_resource_snapshots"}\n\n')
+                                        f'"action":"query_resource_snapshots","cursor":"{boundary}"}}\n\n')
                         assert "id:" not in body
         finally:
             manager.close()

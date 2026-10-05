@@ -194,7 +194,7 @@ export function subscribeToOperationsStream(
       try {
         if (e.data) {
           const parsed = JSON.parse(e.data);
-          if (parsed && parsed.cursor) {
+          if (parsed && parsed.cursor != null) {
             serverCursor = String(parsed.cursor);
           }
         }

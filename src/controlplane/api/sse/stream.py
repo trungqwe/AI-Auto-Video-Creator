@@ -118,9 +118,15 @@ class SseStreamPresenter:
             last_validation = time.monotonic()
             try:
                 if classification == "resync_required":
-                    yield ('event: resync_required\n'
-                           'data: {"resync_required":true,"reason":"cursor_expired",'
-                           '"action":"query_resource_snapshots"}\n\n')
+                    watermark = service._reader.retention_watermark(workspace_id=workspace_id)
+                    recovery_cursor = watermark if watermark is not None else service.initial_baseline(workspace_id=workspace_id)
+                    payload = json.dumps({
+                        "resync_required": True,
+                        "reason": "cursor_expired",
+                        "action": "query_resource_snapshots",
+                        "cursor": str(recovery_cursor),
+                    }, separators=(",", ":"))
+                    yield f"event: resync_required\ndata: {payload}\n\n"
                     return
                 yield "retry: 1000\n\n"
                 while not await request.is_disconnected():
