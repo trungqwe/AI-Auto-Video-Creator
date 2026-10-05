@@ -6,8 +6,14 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const localNodeModules = path.resolve(__dirname, 'node_modules');
+if (!process.env.NODE_PATH || !process.env.NODE_PATH.includes(localNodeModules)) {
+  process.env.NODE_PATH = process.env.NODE_PATH ? `${localNodeModules}${path.delimiter}${process.env.NODE_PATH}` : localNodeModules;
+}
+
+const p7aVenvWin = path.resolve(__dirname, '../../../.local-tools/temp/p7a-locked-venv/Scripts/python.exe');
 const venvPythonWin = path.resolve(__dirname, '../../../.venv/Scripts/python.exe');
-const pythonCmd = fs.existsSync(venvPythonWin) ? `"${venvPythonWin}"` : 'python';
+const pythonCmd = fs.existsSync(p7aVenvWin) ? `"${p7aVenvWin}"` : (fs.existsSync(venvPythonWin) ? `"${venvPythonWin}"` : 'python');
 const testDriverScript = path.resolve(__dirname, '../../controlplane/application/test_driver.py');
 
 export default defineConfig({
