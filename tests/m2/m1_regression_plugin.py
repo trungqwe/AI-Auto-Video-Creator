@@ -1,9 +1,15 @@
 def pytest_configure(config):
     pass
 
-
 import os, sys, json
 from pathlib import Path
+
+# Ensure repository src directory is on sys.path so m1proof can be imported at plugin load time
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SRC_DIR = REPO_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
 import pytest
 
 # 1. Preserve live environment observation with canonical venv normalization
