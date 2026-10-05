@@ -8,6 +8,8 @@ from typing import Any, Callable, Protocol
 class ControlQueryPort(Protocol):
     def operations(self, *, workspace_id: str) -> list[dict[str, object]]: ...
     def operation(self, *, workspace_id: str, operation_id: str) -> dict[str, object] | None: ...
+    def batches(self, *, workspace_id: str) -> list[dict[str, object]]: ...
+    def batch(self, *, workspace_id: str, batch_id: str) -> dict[str, object] | None: ...
     def jobs(self, *, workspace_id: str) -> list[dict[str, object]]: ...
     def job(self, *, workspace_id: str, job_id: str) -> dict[str, object] | None: ...
     def configs(self, *, workspace_id: str) -> list[dict[str, object]]: ...
@@ -27,6 +29,17 @@ class ControlApiQueryService:
         )
         if item is None:
             raise LookupError("operation not found")
+        return item
+
+    def batches(self, *, connection: Any, workspace_id: str) -> list[dict[str, object]]:
+        return self._repository_factory(connection).batches(workspace_id=workspace_id)
+
+    def batch(self, *, connection: Any, workspace_id: str, batch_id: str) -> dict[str, object]:
+        item = self._repository_factory(connection).batch(
+            workspace_id=workspace_id, batch_id=batch_id,
+        )
+        if item is None:
+            raise LookupError("batch not found")
         return item
 
     def jobs(self, *, connection: Any, workspace_id: str) -> list[dict[str, object]]:

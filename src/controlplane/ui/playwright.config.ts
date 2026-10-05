@@ -38,6 +38,10 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     reuseExistingServer: !process.env.CI,
     timeout: 30000,
+    env: {
+      ...process.env,
+      PYTHONPATH: path.resolve(__dirname, '../../'),
+    },
   },
   projects: [
     {

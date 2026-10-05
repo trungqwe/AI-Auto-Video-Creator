@@ -3,6 +3,7 @@ import { BatchItem, CommandReceipt, JobItem, OperationItem, ProblemDetail, SSEEv
 import {
   ApiError,
   bootstrapSession,
+  fetchBatches,
   fetchJobs,
   fetchOperations,
   subscribeToOperationsStream,
@@ -28,37 +29,14 @@ export const App: React.FC = () => {
   // Load API snapshot
   const loadData = useCallback(async () => {
     try {
-      const ops = await fetchOperations();
+      const [ops, bts, jbs] = await Promise.all([
+        fetchOperations(),
+        fetchBatches(),
+        fetchJobs(),
+      ]);
       setOperations(ops);
-
-      const jbs = await fetchJobs();
+      setBatches(bts);
       setJobs(jbs);
-
-      // Derive batches from operations & jobs if no dedicated endpoint
-      const batchMap = new Map<string, BatchItem>();
-      ops.forEach((op) => {
-        op.resource_refs.forEach((ref) => {
-          if (ref.kind === 'production_batch' && ref.batch_id) {
-            batchMap.set(ref.batch_id, {
-              batch_id: ref.batch_id,
-              status: op.status,
-              target_count: 1,
-              created_at: op.accepted_at,
-            });
-          }
-        });
-      });
-      jbs.forEach((jb) => {
-        if (!batchMap.has(jb.batch_id)) {
-          batchMap.set(jb.batch_id, {
-            batch_id: jb.batch_id,
-            status: jb.status,
-            target_count: 1,
-            created_at: jb.created_at,
-          });
-        }
-      });
-      setBatches(Array.from(batchMap.values()));
     } catch (err) {
       console.error('Lỗi khi nạp dữ liệu từ Control API:', err);
     }
@@ -97,48 +75,25 @@ export const App: React.FC = () => {
           setLastCursor(event.cursor);
         }
 
-        if (event.resource_type === 'operation') {
-          setOperations((prev) => {
-            const idx = prev.findIndex((o) => o.operation_id === event.resource_id);
-            let derivedStatus = 'ACCEPTED';
-            const kind = event.event_kind.toLowerCase();
-            if (kind.includes('running')) derivedStatus = 'RUNNING';
-            else if (kind.includes('succeeded') || kind.includes('completed')) derivedStatus = 'SUCCEEDED';
-            else if (kind.includes('failed')) derivedStatus = 'FAILED';
-
-            if (idx >= 0) {
-              const updated = [...prev];
-              updated[idx] = {
-                ...updated[idx],
-                status: derivedStatus,
-                latest_event_kind: event.event_kind,
-                latest_safe_summary: event.summary,
-              };
-              return updated;
-            } else {
-              const newOp: OperationItem = {
-                operation_id: event.resource_id,
-                command_ref: event.correlation_id || 'stream-op',
-                receipt_id: 'receipt-stream',
-                status: derivedStatus,
-                resource_refs: [],
-                accepted_at: event.occurred_at,
-                latest_event_kind: event.event_kind,
-                latest_safe_summary: event.summary,
-              };
-              return [newOp, ...prev];
-            }
-          });
+        // Authoritative execution state is reloaded from API
+        if (event.resource_type === 'operation' || event.event_kind.startsWith('operation.')) {
+          loadData();
         }
 
         if (event.event_kind.startsWith('production_batch')) {
+          loadData();
+        }
+
+        if (event.resource_type === 'job' || event.event_kind.startsWith('job.')) {
           loadData();
         }
       },
       onStatusChange: (status) => {
         setSseStatus(status);
       },
-      onResync: () => {
+      onResync: (serverCursor: string | null) => {
+        // SSE cursor recovery: replace expired cursor with server-provided cursor (or null to reconnect at baseline)
+        setLastCursor(serverCursor);
         loadData();
       },
     });

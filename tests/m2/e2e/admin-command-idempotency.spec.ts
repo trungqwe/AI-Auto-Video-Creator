@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../../src/controlplane/ui/node_modules/@playwright/test/index.js';
 import { authenticateSession } from './auth-helper.ts';
 
 test.describe('Admin Command Idempotency (StartProductionBatch)', () => {
@@ -76,5 +76,11 @@ test.describe('Admin Command Idempotency (StartProductionBatch)', () => {
     await expect(page.locator('[data-testid="safe-error-modal"]')).toContainText('IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD');
     await page.locator('[data-testid="dismiss-error-modal-btn"]').click();
     await expect(page.locator('[data-testid="safe-error-modal"]')).not.toBeVisible();
+
+    // 10. Check Batches grid: target_count is 3 from authoritative API snapshot (not hardcoded to 1)
+    await page.locator('[data-testid="tab-batches"]').click();
+    await expect(page.locator('[data-testid="batches-panel"]').locator('.ag-root-wrapper')).toBeVisible();
+    const batchCell = page.locator('.ag-cell[col-id="target_count"]').filter({ hasText: '3' });
+    await expect(batchCell.first()).toBeVisible({ timeout: 5000 });
   });
 });

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../../src/controlplane/ui/node_modules/@playwright/test/index.js';
 import { authenticateSession } from './auth-helper.ts';
 
 test.describe('Performance Budget (QR-PERF-005 and QR-PERF-006)', () => {

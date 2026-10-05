@@ -36,6 +36,28 @@ def operation(request: Request, operation_id: str) -> dict[str, object]:
     return result
 
 
+@router.get("/batches")
+def batches(request: Request) -> dict[str, object]:
+    with request.app.state.manager.borrow_connection() as connection:
+        items = request.app.state.query_service.batches(
+            connection=connection, workspace_id=_identity(request)["workspace_id"],
+        )
+    return {"items": items, "next_cursor": None}
+
+
+@router.get("/batches/{batch_id}")
+def batch(request: Request, batch_id: str) -> dict[str, object]:
+    batch_id = str(uuid.UUID(batch_id))
+    with request.app.state.manager.borrow_connection() as connection:
+        result = request.app.state.query_service.batch(
+            connection=connection, workspace_id=_identity(request)["workspace_id"],
+            batch_id=batch_id,
+        )
+    if result is None:
+        raise LookupError("batch not found")
+    return result
+
+
 @router.post("/batches")
 async def start_batch(request: Request) -> JSONResponse:
     payload = await request.json()

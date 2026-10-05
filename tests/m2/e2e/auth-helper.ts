@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import { Page } from '../../../src/controlplane/ui/node_modules/@playwright/test/index.js';
 
 export async function authenticateSession(page: Page) {
   // 1. Request a valid test launch capability

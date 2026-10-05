@@ -1,4 +1,5 @@
 import {
+  BatchItem,
   CommandReceipt,
   JobItem,
   OperationItem,
@@ -98,6 +99,11 @@ export async function fetchOperations(): Promise<OperationItem[]> {
   return data.items || [];
 }
 
+export async function fetchBatches(): Promise<BatchItem[]> {
+  const data = await request<{ items: BatchItem[]; next_cursor: string | null }>('/v1/batches');
+  return data.items || [];
+}
+
 export async function fetchJobs(): Promise<JobItem[]> {
   const data = await request<{ items: JobItem[]; next_cursor: string | null }>('/v1/jobs');
   return data.items || [];
@@ -128,7 +134,7 @@ export function subscribeToOperationsStream(
   handlers: {
     onEvent: (event: SSEEventPayload) => void;
     onStatusChange: (status: 'connecting' | 'connected' | 'disconnected' | 'resync') => void;
-    onResync: () => void;
+    onResync: (serverCursor: string | null) => void;
   }
 ): () => void {
   const url = cursor ? `/v1/operations/stream?cursor=${encodeURIComponent(cursor)}` : '/v1/operations/stream';
@@ -178,9 +184,24 @@ export function subscribeToOperationsStream(
       });
     });
 
-    eventSource.addEventListener('resync_required', () => {
+    eventSource.addEventListener('resync_required', (e: MessageEvent) => {
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
       handlers.onStatusChange('resync');
-      handlers.onResync();
+      let serverCursor: string | null = null;
+      try {
+        if (e.data) {
+          const parsed = JSON.parse(e.data);
+          if (parsed && parsed.cursor) {
+            serverCursor = String(parsed.cursor);
+          }
+        }
+      } catch {
+        // ignore parse error
+      }
+      handlers.onResync(serverCursor);
     });
 
     eventSource.onmessage = (e: MessageEvent) => {

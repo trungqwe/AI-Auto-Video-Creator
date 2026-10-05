@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../../src/controlplane/ui/node_modules/@playwright/test/index.js';
 import { authenticateSession } from './auth-helper.ts';
 
 test.describe('Operations SSE Real-Time Stream Flow', () => {
@@ -63,5 +63,12 @@ test.describe('Operations SSE Real-Time Stream Flow', () => {
     // 9. Verify real browser DOM updates to SUCCEEDED via SSE without page refresh
     await expect(row.locator('.pill')).toHaveText(/SUCCEEDED/i, { timeout: 10000 });
     await expect(row).toContainText('Tác vụ đã hoàn thành xuất sắc!');
+
+    // 10. Verify page refresh preserves authoritative state (does not regress to ACCEPTED)
+    await page.reload();
+    const opCellAfterReload = page.locator('.ag-cell').filter({ hasText: opId! });
+    await expect(opCellAfterReload).toBeVisible({ timeout: 5000 });
+    const rowAfterReload = page.locator('.ag-row', { has: opCellAfterReload });
+    await expect(rowAfterReload.locator('.pill')).toHaveText(/SUCCEEDED/i);
   });
 });

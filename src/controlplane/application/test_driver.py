@@ -15,11 +15,8 @@ import sys
 from typing import Any
 import uuid
 
-# Ensure src directory is available on sys.path.
 CURRENT_DIR = Path(__file__).resolve().parent
 SRC_DIR = CURRENT_DIR.parent.parent
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -33,6 +30,14 @@ from controlplane.application.session_security import (
     BootstrapCapabilityRegistry,
 )
 from controlplane.domain.events import DomainEvent
+from controlplane.domain.statemachine import (
+    BatchState,
+    OperationState,
+    transition_batch,
+    transition_operation,
+)
+from controlplane.infrastructure.db.outbox.postgres import PostgresOutboxRepository
+from controlplane.application.projections.operation_view_mapper import map_operation_view
 from controlplane.infrastructure.db.migration_runner import MigrationRunner
 from controlplane.infrastructure.db.projections.postgres import PostgresOperationStreamRepository
 from controlplane.infrastructure.db.uow import TransactionManager
@@ -123,6 +128,7 @@ class TestDriver:
         self.dsn = dsn
         self.workspace_id = workspace_id
         self.actor_id = actor_id
+        self.manager = TransactionManager(dsn)
 
     def advance_operation_state(
         self,
@@ -132,34 +138,96 @@ class TestDriver:
         summary: str,
         correlation_id: str | None = None,
     ) -> int:
-        """Advance an operation lifecycle state and push event to operation stream."""
+        """Advance an operation lifecycle state via UoW, domain statemachine, Outbox and stream."""
         corr_id = correlation_id or str(uuid.uuid4())
-        event = DomainEvent(
-            contract_name="controlplane.operation",
-            contract_version=1,
-            message_id=str(uuid.uuid4()),
-            workspace_id=self.workspace_id,
-            correlation_id=corr_id,
-            causation_id=None,
-            trace_context=None,
-            occurred_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            actor=self.actor_id,
-            recovery_epoch=1,
-            payload={"operation_id": operation_id, "status": status, "summary": summary},
-            event_id=str(uuid.uuid4()),
-            event_name=f"operation.{status.lower()}",
-            aggregate_type="operation",
-            aggregate_id=operation_id,
-            aggregate_revision=1,
-            producer="controlplane.test_driver",
-            schema_version=1,
-            sensitivity="internal",
-        )
-        with psycopg.connect(self.dsn) as conn:
+        norm_status = status.upper()
+
+        with self.manager.unit_of_work() as uow:
+            conn = uow.connection
+
+            # 1. Lookup operation receipt
+            receipt_row = conn.execute(
+                """
+                SELECT receipt_id, resource_ref
+                FROM controlplane.cp_command_receipts
+                WHERE workspace_id = %s AND operation_id = %s
+                """,
+                (self.workspace_id, operation_id),
+            ).fetchone()
+
+            batch_id: str | None = None
+            if receipt_row and receipt_row[1]:
+                res_ref = receipt_row[1]
+                if isinstance(res_ref, dict) and res_ref.get("kind") == "production_batch":
+                    batch_id = res_ref.get("batch_id")
+
+            # 2. Advance authoritative batch lifecycle if batch exists
+            if batch_id:
+                batch_row = conn.execute(
+                    """
+                    SELECT status
+                    FROM controlplane.cp_production_batches
+                    WHERE workspace_id = %s AND batch_id = %s
+                    FOR UPDATE
+                    """,
+                    (self.workspace_id, batch_id),
+                ).fetchone()
+
+                if batch_row:
+                    current_batch_state = BatchState(batch_row[0])
+                    if norm_status in ("RUNNING", "STARTED"):
+                        target_batch_state = BatchState.RUNNING
+                    elif norm_status in ("SUCCEEDED", "COMPLETED"):
+                        target_batch_state = BatchState.COMPLETED_TARGET
+                    elif norm_status in ("FAILED", "FAILED_SYSTEM"):
+                        target_batch_state = BatchState.FAILED_SYSTEM
+                    else:
+                        target_batch_state = current_batch_state
+
+                    if target_batch_state != current_batch_state:
+                        trans_result = transition_batch(
+                            current_state=current_batch_state,
+                            current_revision=1,
+                            expected_revision=1,
+                            requested_state=target_batch_state,
+                        )
+                        conn.execute(
+                            """
+                            UPDATE controlplane.cp_production_batches
+                            SET status = %s
+                            WHERE workspace_id = %s AND batch_id = %s
+                            """,
+                            (trans_result.state.value, self.workspace_id, batch_id),
+                        )
+
+            # 3. Domain Event to Outbox
+            event = DomainEvent(
+                contract_name="controlplane.operation",
+                contract_version=1,
+                message_id=str(uuid.uuid4()),
+                workspace_id=self.workspace_id,
+                correlation_id=corr_id,
+                causation_id=None,
+                trace_context=None,
+                occurred_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                actor=self.actor_id,
+                recovery_epoch=1,
+                payload={"operation_id": operation_id, "status": norm_status, "summary": summary},
+                event_id=str(uuid.uuid4()),
+                event_name=f"operation.{norm_status.lower()}",
+                aggregate_type="operation",
+                aggregate_id=operation_id,
+                aggregate_revision=1,
+                producer="controlplane.test_driver",
+                schema_version=1,
+                sensitivity="internal",
+            )
+            PostgresOutboxRepository(conn).enqueue(event)
+
+            # 4. Append to operation stream for real-time SSE stream consumers
             cursor = PostgresOperationStreamRepository(conn).append(
                 event=event, safe_summary=summary, operation_id=operation_id
             )
-            conn.commit()
             return cursor
 
     def seed_job(
