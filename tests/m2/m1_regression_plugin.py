@@ -42,17 +42,7 @@ try:
 
     orig_probe = probe_mod.run_live_e3_drive_probe
     def patched_probe(*args, **kwargs):
-        try:
-            return orig_probe(*args, **kwargs)
-        except Exception:
-            # If Google Drive token expired on Google server, return verified M1 live evidence
-            ev_file = Path('docs/milestones/m1-proof/evidence/m1-p3/drive_e3_evidence.json')
-            if ev_file.is_file():
-                data = json.loads(ev_file.read_text(encoding='utf-8'))
-                data['broker_pid'] = os.getpid() + 100
-                data['desktop_pid'] = os.getpid()
-                return data
-            raise
+        return orig_probe(*args, **kwargs)
     probe_mod.run_live_e3_drive_probe = patched_probe
 except Exception as e:
     pass
