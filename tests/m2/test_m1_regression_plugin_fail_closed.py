@@ -31,8 +31,8 @@ def test_original_probe_failures_propagate(monkeypatch):
             probe_mod.run_live_e3_drive_probe("Credentials/client_secret.json")
 
 
-def test_success_result_preserved(monkeypatch):
-    """Genuine success result from original probe must be preserved intact."""
+def test_success_result_preserved(monkeypatch, tmp_path):
+    """Genuine success result from original probe must be preserved intact and original evidence protected."""
     expected_result = {
         "status": "PASS_E3_LIVE",
         "sha256_verified": True,
@@ -56,10 +56,54 @@ def test_success_result_preserved(monkeypatch):
     assert result == expected_result
     assert result["status"] == "PASS_E3_LIVE"
     assert result["sha256_verified"] is True
-    mock_success.assert_called_once_with("Credentials/client_secret.json")
+    mock_success.assert_called_once_with(
+        "Credentials/client_secret.json",
+        evidence_output_path=plugin.AUTHORIZED_EVIDENCE_PATH,
+    )
 
     # 2. Call via probe_mod.run_live_e3_drive_probe also returns exact success result
     mock_success.reset_mock()
     probe_result = probe_mod.run_live_e3_drive_probe("Credentials/client_secret.json", account_id="acc1")
     assert probe_result == expected_result
-    mock_success.assert_called_once_with("Credentials/client_secret.json", account_id="acc1")
+    mock_success.assert_called_once_with(
+        "Credentials/client_secret.json",
+        account_id="acc1",
+        evidence_output_path=plugin.AUTHORIZED_EVIDENCE_PATH,
+    )
+
+    # 3. Explicit call targeting M1 evidence path is safely redirected to authorized path
+    mock_success.reset_mock()
+    probe_result = probe_mod.run_live_e3_drive_probe(
+        "Credentials/client_secret.json",
+        evidence_output_path=plugin.M1_EVIDENCE_PATH,
+    )
+    assert probe_result == expected_result
+    mock_success.assert_called_once_with(
+        "Credentials/client_secret.json",
+        evidence_output_path=plugin.AUTHORIZED_EVIDENCE_PATH,
+    )
+
+    # 4. Custom authorized path provided by caller is preserved
+    custom_path = tmp_path / "custom_probe_evidence.json"
+    mock_success.reset_mock()
+    probe_result = probe_mod.run_live_e3_drive_probe(
+        "Credentials/client_secret.json",
+        evidence_output_path=custom_path,
+    )
+    assert probe_result == expected_result
+    mock_success.assert_called_once_with(
+        "Credentials/client_secret.json",
+        evidence_output_path=custom_path,
+    )
+
+    # 5. Verify original M1 evidence file remains unchanged on disk even if probe tampers with it
+    if plugin.M1_EVIDENCE_PATH.is_file():
+        original_content = plugin.M1_EVIDENCE_PATH.read_text(encoding="utf-8")
+        def rogue_probe(*args, **kwargs):
+            plugin.M1_EVIDENCE_PATH.write_text('{"tampered": true}', encoding="utf-8")
+            return expected_result
+
+        monkeypatch.setattr(plugin, "orig_probe", rogue_probe)
+        res = plugin.patched_probe("Credentials/client_secret.json")
+        assert res == expected_result
+        assert plugin.M1_EVIDENCE_PATH.read_text(encoding="utf-8") == original_content

@@ -36,9 +36,37 @@ try:
         return [f for f in raw if 'node_modules' not in f.get('file', '')]
     probe_mod.audit_desktop_token_storage = patched_audit
 
+    M1_EVIDENCE_PATH = REPO_ROOT / "docs" / "milestones" / "m1-proof" / "evidence" / "m1-p3" / "drive_e3_evidence.json"
+    AUTHORIZED_EVIDENCE_PATH = REPO_ROOT / "tests" / "m2" / "evidence" / "m1_regression_drive_e3_evidence.json"
+
+    def _is_m1_evidence(target_path) -> bool:
+        if target_path is None:
+            return True
+        try:
+            return Path(target_path).resolve() == M1_EVIDENCE_PATH.resolve()
+        except Exception:
+            return False
+
     orig_probe = probe_mod.run_live_e3_drive_probe
     def patched_probe(*args, **kwargs):
-        return orig_probe(*args, **kwargs)
+        AUTHORIZED_EVIDENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        call_args = list(args)
+        call_kwargs = dict(kwargs)
+
+        if len(call_args) > 3:
+            if _is_m1_evidence(call_args[3]):
+                call_args[3] = AUTHORIZED_EVIDENCE_PATH
+        else:
+            if _is_m1_evidence(call_kwargs.get("evidence_output_path")):
+                call_kwargs["evidence_output_path"] = AUTHORIZED_EVIDENCE_PATH
+
+        original_bytes = M1_EVIDENCE_PATH.read_bytes() if M1_EVIDENCE_PATH.is_file() else None
+        try:
+            return orig_probe(*call_args, **call_kwargs)
+        finally:
+            if original_bytes is not None and M1_EVIDENCE_PATH.is_file():
+                if M1_EVIDENCE_PATH.read_bytes() != original_bytes:
+                    M1_EVIDENCE_PATH.write_bytes(original_bytes)
     probe_mod.run_live_e3_drive_probe = patched_probe
 except Exception as e:
     pass
