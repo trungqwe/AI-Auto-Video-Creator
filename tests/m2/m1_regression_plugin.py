@@ -61,12 +61,18 @@ try:
                 call_kwargs["evidence_output_path"] = AUTHORIZED_EVIDENCE_PATH
 
         original_bytes = M1_EVIDENCE_PATH.read_bytes() if M1_EVIDENCE_PATH.is_file() else None
+        original_auth_bytes = AUTHORIZED_EVIDENCE_PATH.read_bytes() if AUTHORIZED_EVIDENCE_PATH.is_file() else None
         try:
             return orig_probe(*call_args, **call_kwargs)
         finally:
             if original_bytes is not None and M1_EVIDENCE_PATH.is_file():
                 if M1_EVIDENCE_PATH.read_bytes() != original_bytes:
                     M1_EVIDENCE_PATH.write_bytes(original_bytes)
+            if original_auth_bytes is not None and AUTHORIZED_EVIDENCE_PATH.is_file():
+                if AUTHORIZED_EVIDENCE_PATH.read_bytes() != original_auth_bytes:
+                    AUTHORIZED_EVIDENCE_PATH.write_bytes(original_auth_bytes)
+            elif original_auth_bytes is None and AUTHORIZED_EVIDENCE_PATH.is_file():
+                AUTHORIZED_EVIDENCE_PATH.unlink()
     probe_mod.run_live_e3_drive_probe = patched_probe
 except Exception as e:
     pass
