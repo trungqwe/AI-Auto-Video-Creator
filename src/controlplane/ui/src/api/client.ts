@@ -132,7 +132,7 @@ export async function fetchTechnicalDetail(detailRef: string): Promise<Technical
 export function subscribeToOperationsStream(
   cursor: string | null,
   handlers: {
-    onEvent: (event: SSEEventPayload) => void;
+    onEvent: (event: SSEEventPayload & { stream_event_id?: string | number }) => void;
     onStatusChange: (status: 'connecting' | 'connected' | 'disconnected' | 'resync') => void;
     onResync: (serverCursor: string | null) => void;
   }
@@ -140,6 +140,7 @@ export function subscribeToOperationsStream(
   const url = cursor ? `/v1/operations/stream?cursor=${encodeURIComponent(cursor)}` : '/v1/operations/stream';
   let eventSource: EventSource | null = null;
   let isClosed = false;
+  const seenStreamEventIds = new Set<string>();
 
   function connect() {
     if (isClosed) return;
@@ -155,9 +156,19 @@ export function subscribeToOperationsStream(
       handlers.onStatusChange('disconnected');
     };
 
-    const handlePayload = (eventData: string) => {
+    const handlePayload = (eventData: string, lastEventId?: string) => {
       try {
-        const parsed = JSON.parse(eventData) as SSEEventPayload;
+        const parsed = JSON.parse(eventData) as SSEEventPayload & { stream_event_id?: string | number };
+        const rawEventId = parsed.stream_event_id != null
+          ? String(parsed.stream_event_id)
+          : (lastEventId || parsed.cursor || '');
+        if (rawEventId) {
+          parsed.stream_event_id = rawEventId;
+          if (seenStreamEventIds.has(rawEventId)) {
+            return;
+          }
+          seenStreamEventIds.add(rawEventId);
+        }
         handlers.onEvent(parsed);
       } catch (err) {
         console.warn('Không thể giải mã dữ liệu SSE:', err);
@@ -180,7 +191,7 @@ export function subscribeToOperationsStream(
 
     eventKinds.forEach((kind) => {
       eventSource?.addEventListener(kind, (e: MessageEvent) => {
-        handlePayload(e.data);
+        handlePayload(e.data, e.lastEventId);
       });
     });
 
@@ -205,7 +216,7 @@ export function subscribeToOperationsStream(
     });
 
     eventSource.onmessage = (e: MessageEvent) => {
-      handlePayload(e.data);
+      handlePayload(e.data, e.lastEventId);
     };
   }
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BatchItem, CommandReceipt, JobItem, OperationItem, ProblemDetail, SSEEventPayload } from './types/api.ts';
 import {
   ApiError,
@@ -26,6 +26,8 @@ export const App: React.FC = () => {
   const [activeError, setActiveError] = useState<ProblemDetail | null>(null);
   const [bootstrapped, setBootstrapped] = useState<boolean>(false);
   const [subscriptionEpoch, setSubscriptionEpoch] = useState<number>(0);
+  const seenStreamEventIdsRef = useRef<Set<string>>(new Set());
+  const lastCursorRef = useRef<string | null>(null);
 
   // Load API snapshot
   const loadData = useCallback(async () => {
@@ -70,10 +72,25 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!bootstrapped) return;
 
-    const unsubscribe = subscribeToOperationsStream(lastCursor, {
-      onEvent: (event: SSEEventPayload) => {
+    const unsubscribe = subscribeToOperationsStream(lastCursorRef.current, {
+      onEvent: (event: SSEEventPayload & { stream_event_id?: string | number }) => {
+        const streamEventId = String(event.stream_event_id ?? event.cursor ?? '');
+        if (streamEventId) {
+          if (seenStreamEventIdsRef.current.has(streamEventId)) {
+            // Deduplicate event: drop repeated stream_event_id to prevent redundant reload and overwriting lastCursor
+            return;
+          }
+          seenStreamEventIdsRef.current.add(streamEventId);
+        }
+
         if (event.cursor) {
-          setLastCursor(event.cursor);
+          const current = lastCursorRef.current;
+          const isNumeric = current !== null && /^\d+$/.test(current) && /^\d+$/.test(event.cursor);
+          const isNewerOrEqual = !current || (isNumeric ? BigInt(event.cursor) >= BigInt(current) : event.cursor >= current);
+          if (isNewerOrEqual) {
+            setLastCursor(event.cursor);
+            lastCursorRef.current = event.cursor;
+          }
         }
 
         // Authoritative execution state is reloaded from API
@@ -94,7 +111,9 @@ export const App: React.FC = () => {
       },
       onResync: (serverCursor: string | null) => {
         // SSE cursor recovery: replace expired cursor with server-provided cursor (or null to reconnect at baseline)
+        seenStreamEventIdsRef.current.clear();
         setLastCursor(serverCursor);
+        lastCursorRef.current = serverCursor;
         setSubscriptionEpoch((prev) => prev + 1);
         loadData();
       },
@@ -103,7 +122,7 @@ export const App: React.FC = () => {
     return () => {
       unsubscribe();
     };
-  }, [bootstrapped, lastCursor, subscriptionEpoch, loadData]);
+  }, [bootstrapped, subscriptionEpoch, loadData]);
 
   const handleCommandSuccess = (_receipt: CommandReceipt) => { void _receipt;
     // Refresh operations and batches immediately
