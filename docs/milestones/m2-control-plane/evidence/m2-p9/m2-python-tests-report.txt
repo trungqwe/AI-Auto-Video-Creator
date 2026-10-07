@@ -1,0 +1,21 @@
+===================== M2 PYTHON TEST SUITE REPORT =====================
+Milestone: M2 Control Plane
+Target Test Suite: tests/m2 (P0..P7B, Plugin, P9 Exit Gate)
+Python Interpreter: .venv/Scripts/python.exe (Python 3.13.15)
+Breakdown:
+  - P0 Architecture, Validator & Packaging: 33 passed
+  - P1 Database, UoW & Workspaces: 11 passed
+  - P2 Envelopes, Idempotency & Receipts: 11 passed
+  - P3 Outbox, Projections & Cursors: 11 passed
+  - P4 5 State Machines Lifecycle: 9 passed
+  - P5A Config Revisions & Secret Handle: 5 passed
+  - P5B Artifact Metadata & Location CAS: 5 passed
+  - P6 Orchestration Shell & Reservations: 4 passed
+  - P7A Control API Security & Hardening: 40 passed
+  - P7B SSE Stream & Hardening: 43 passed
+  - M1 Regression Plugin Fail-Closed Tests: 2 passed
+  - P9 Exit Gate Verification Tests: 6 passed
+Total Tests: 180 passed, 0 failed, 0 errors, 0 skipped
+Status: GREEN 100%
+Timestamp (UTC): 2026-10-07T20:53:10.066104+00:00
+========================================================================

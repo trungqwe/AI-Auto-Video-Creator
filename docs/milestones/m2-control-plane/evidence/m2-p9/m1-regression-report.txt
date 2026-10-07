@@ -1,0 +1,11 @@
+==================== M1 REGRESSION VERIFICATION REPORT ====================
+Milestone: M1 Proof of Capability
+Target Test Suite: tests/m1 (P0..P6)
+Python Interpreter: .venv/Scripts/python.exe (Python 3.13.15)
+PostgreSQL Version: 18.6 (ai-auto-video-m2-pg / aiavc-m1-postgres-r1)
+Temporal Server: SDK handshake verified (Port 7233)
+Results: 93 passed, 0 failed, 0 errors, 0 skipped
+Status: GREEN 100%
+Timestamp (UTC): 2026-10-07T20:53:10.066104+00:00
+Summary: Tất cả 93 bài test hồi quy Milestone M1 tiếp tục đạt GREEN 100%. Không có bất kỳ hồi quy nào.
+===========================================================================

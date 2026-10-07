@@ -1,0 +1,82 @@
+{
+  "schema_version": "m2_package_status_v1",
+  "milestone": "M2",
+  "package": "M2-P9",
+  "package_name": "Ki\u1ec3m ch\u1ee9ng H\u1ed3i quy, Qu\u00e9t B\u1ea3o m\u1eadt, T\u1ed5ng h\u1ee3p Manifest & Nghi\u1ec7m thu Exit Gate M2",
+  "run_id": "run-m2-p9-20261008000000",
+  "timestamp_utc": "2026-10-07T20:53:10.066104+00:00",
+  "semantic_profile": "m2-p9",
+  "status": "PASS",
+  "gates": [
+    {
+      "gate_id": "GATE-M2-01",
+      "name": "M1 Regression Verification (93 Tests)",
+      "status": "PASS",
+      "evidence_files": [
+        "m1-regression-report.txt"
+      ]
+    },
+    {
+      "gate_id": "GATE-M2-02",
+      "name": "M2 Python Test Suite (180 Tests)",
+      "status": "PASS",
+      "evidence_files": [
+        "m2-python-tests-report.txt"
+      ]
+    },
+    {
+      "gate_id": "GATE-M2-03",
+      "name": "Playwright Browser E2E Suite (5 Tests)",
+      "status": "PASS",
+      "evidence_files": [
+        "playwright-e2e-report.txt"
+      ]
+    },
+    {
+      "gate_id": "GATE-M2-04",
+      "name": "M2 Standalone Secret Scanner",
+      "status": "PASS",
+      "evidence_files": [
+        "secret-scan.json"
+      ]
+    },
+    {
+      "gate_id": "GATE-M2-05",
+      "name": "Disposable DB Full Migration Down/Up Cycle",
+      "status": "PASS",
+      "evidence_files": [
+        "migration-rollback-report.txt"
+      ]
+    },
+    {
+      "gate_id": "GATE-M2-06",
+      "name": "M2 Evidence Integrity & Non-Self-Referential Manifest",
+      "status": "PASS",
+      "evidence_files": [
+        "manifest-synthesis-report.txt"
+      ]
+    }
+  ],
+  "evidence_summary": {
+    "m1_regression_tests": {
+      "total": 93,
+      "passed": 93,
+      "failed": 0,
+      "skipped": 0
+    },
+    "m2_python_tests": {
+      "total": 180,
+      "passed": 180,
+      "failed": 0,
+      "skipped": 0
+    },
+    "playwright_e2e_tests": {
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "secret_scan_violations": 0,
+    "migration_versions_verified": 8
+  }
+}

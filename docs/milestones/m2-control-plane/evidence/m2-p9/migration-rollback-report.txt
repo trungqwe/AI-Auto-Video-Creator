@@ -1,0 +1,19 @@
+================ M2 MIGRATION DOWN/UP VERIFICATION REPORT ================
+Milestone: M2 Control Plane
+Database: PostgreSQL 18.6 (Disposable database test pattern m2_p1_test_<uuid>)
+Migrations Tested:
+  - 0001_initial_controlplane.sql
+  - 0002_idempotency_and_receipts.sql
+  - 0003_outbox_and_projections.sql
+  - 0004_config_and_secrets.sql
+  - 0005_artifact_metadata.sql
+  - 0006_orchestration_shell.sql
+  - 0007_technical_details.sql
+  - 0008_operation_stream_workspace_cursor_index.sql
+Cycle Verified:
+  1. Forward migrate_up(): 8/8 applied successfully
+  2. Backward migrate_down(): 8/8 rolled back cleanly, schema and cp_schema_migrations dropped
+  3. Re-apply migrate_up(): 8/8 applied successfully
+Status: VERIFIED 100% (No migration modification required)
+Timestamp (UTC): 2026-10-07T20:53:10.066104+00:00
+==========================================================================

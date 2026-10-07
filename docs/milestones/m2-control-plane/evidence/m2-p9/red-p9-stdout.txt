@@ -1,0 +1,35 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\DAG-implement-plan\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\DAG-implement-plan
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 6 items
+
+tests/m2/test_p9_m2_exit_gate.py::test_tst_m2_p9_001_m2_manifest_and_gate_evaluation FAILED [ 16%]
+tests/m2/test_p9_m2_exit_gate.py::test_tst_m2_p9_002_artifact_tamper_detection PASSED [ 33%]
+tests/m2/test_p9_m2_exit_gate.py::test_tst_m2_p9_003_m1_regression_suite_93_tests PASSED [ 50%]
+tests/m2/test_p9_m2_exit_gate.py::test_tst_m2_p9_004_secret_scanner_clean_and_fail_closed_canary PASSED [ 66%]
+tests/m2/test_p9_m2_exit_gate.py::test_tst_m2_p9_005_migration_full_down_up_cycle_disposable_db PASSED [ 83%]
+tests/m2/test_p9_m2_exit_gate.py::test_tst_m2_p9_006_m2_exit_gate_and_audit_report FAILED [100%]
+
+================================== FAILURES ===================================
+_____________ test_tst_m2_p9_001_m2_manifest_and_gate_evaluation ______________
+tests\m2\test_p9_m2_exit_gate.py:95: in test_tst_m2_p9_001_m2_manifest_and_gate_evaluation
+    res = validate_manifest_file(LIVE_MANIFEST_PATH, REPO_ROOT)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\m2\test_p9_m2_exit_gate.py:85: in validate_manifest_file
+    raise FileNotFoundError(f"Manifest file missing: {manifest_path}")
+E   FileNotFoundError: Manifest file missing: C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\DAG-implement-plan\docs\milestones\m2-control-plane\evidence\manifest.json
+______________ test_tst_m2_p9_006_m2_exit_gate_and_audit_report _______________
+tests\m2\test_p9_m2_exit_gate.py:259: in test_tst_m2_p9_006_m2_exit_gate_and_audit_report
+    assert LIVE_AUDIT_PATH.is_file(), f"M2 Exit Audit report missing at {LIVE_AUDIT_PATH}"
+E   AssertionError: M2 Exit Audit report missing at C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\DAG-implement-plan\docs\milestones\m2-control-plane\audit-m2.md
+E   assert False
+E    +  where False = is_file()
+E    +    where is_file = WindowsPath('C:/Users/Admin/orca/workspaces/AI-Auto-Video-Creator/DAG-implement-plan/docs/milestones/m2-control-plane/audit-m2.md').is_file
+=========================== short test summary info ===========================
+FAILED tests/m2/test_p9_m2_exit_gate.py::test_tst_m2_p9_001_m2_manifest_and_gate_evaluation
+FAILED tests/m2/test_p9_m2_exit_gate.py::test_tst_m2_p9_006_m2_exit_gate_and_audit_report
+========================= 2 failed, 4 passed in 0.86s =========================
