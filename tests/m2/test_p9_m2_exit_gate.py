@@ -95,7 +95,7 @@ def test_tst_m2_p9_001_m2_manifest_and_gate_evaluation() -> None:
     res = validate_manifest_file(LIVE_MANIFEST_PATH, REPO_ROOT)
     assert res["valid"] is True
     assert res["verified_count"] > 0
-    for expected_pkg in ["m2-p0", "m2-p1", "m2-p2", "m2-p3", "m2-p4", "m2-p5a", "m2-p5b", "m2-p6", "m2-p7a", "m2-p7b", "m2-p9"]:
+    for expected_pkg in ["m2-p0", "m2-p1", "m2-p2", "m2-p3", "m2-p4", "m2-p5a", "m2-p5b", "m2-p6", "m2-p7a", "m2-p7b", "m2-p8", "m2-p9"]:
         assert expected_pkg in res["packages"]
 
     fake_manifest = {

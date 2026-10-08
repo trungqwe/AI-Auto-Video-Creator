@@ -14,7 +14,7 @@ Kiểm toán toàn diện Milestone M2 Control Plane được thực hiện đ�
 1. `docs/milestones/m2-control-plane/spec.md`: Đặc tả kỹ thuật Milestone M2.
 2. `docs/milestones/m2-control-plane/implementation-plan.md`: Kế hoạch thực thi và Tiêu chuẩn Exit Gate M2.
 3. `docs/10-test-strategy.md`: Chiến lược kiểm thử toàn cục của hệ thống.
-4. Toàn bộ chuỗi gói bằng chứng bất biến từ M2-P0 đến M2-P8 và M2-P9 (`docs/milestones/m2-control-plane/evidence/`).
+4. Toàn bộ chuỗi gói bằng chứng bất biến từ M2-P0 đến M2-P8 và M2-P9 (docs/milestones/m2-control-plane/evidence/, tests/m2/evidence/, src/controlplane/ui/dist/, tests/m2/e2e/).
 5. Kết quả kiểm thử thực nghiệm trên toolchain chuẩn: Python 3.13.15, Node.js 22.17.0, PostgreSQL 18.6 thật và trình duyệt Playwright Chromium thật.
 
 ---
@@ -67,8 +67,9 @@ Kiểm toán toàn diện Milestone M2 Control Plane được thực hiện đ�
   * Bảo đảm tính tương thích ngược tuyệt đối; không phá vỡ bất kỳ giao thức chứng minh nào của M1.
 
 ### Tiêu chí 6: Báo cáo Kiểm toán M2 Hoàn tất
-- Báo cáo kiểm toán này cùng với tệp manifest băm SHA-256 DAG tổng hợp tại `docs/milestones/m2-control-plane/evidence/manifest.json` đã ràng buộc hoàn toàn và khóa chặt toàn bộ artifacts của Milestone M2.
-- Gói bằng chứng P9 tại `docs/milestones/m2-control-plane/evidence/m2-p9/` lưu trữ đầy đủ log thực thi, kết quả kiểm tra integrity, provenance và zero secret leak.
+- Báo cáo kiểm toán này cùng với tệp manifest băm SHA-256 DAG tổng hợp tại docs/milestones/m2-control-plane/evidence/manifest.json đã ràng buộc hoàn toàn và khóa chặt toàn bộ artifacts của Milestone M2 (từ M2-P0 đến M2-P8 và M2-P9).
+- Gói bằng chứng P9 tại docs/milestones/m2-control-plane/evidence/m2-p9/ lưu trữ đầy đủ log thực thi, kết quả kiểm tra integrity, provenance và zero secret leak.
+- Bằng chứng gói M2-P8 được ràng buộc đầy đủ trong manifest thông qua các artifact phân phối UI (src/controlplane/ui/dist/), bằng chứng hồi quy M1 (tests/m2/evidence/m1-regression.xml, tests/m2/evidence/m1_regression_drive_e3_evidence.json) và bộ kiểm thử trình duyệt thật E2E (tests/m2/e2e/*.spec.ts).
 
 ---
 

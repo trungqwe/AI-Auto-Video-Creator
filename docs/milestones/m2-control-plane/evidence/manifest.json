@@ -48,6 +48,10 @@
       "status": "PASS",
       "artifacts_count": 195
     },
+    "m2-p8": {
+      "status": "PASS",
+      "artifacts_count": 11
+    },
     "m2-p9": {
       "status": "PASS",
       "artifacts_count": 13
@@ -4018,6 +4022,61 @@
       "path": "docs/milestones/m2-control-plane/evidence/m2-p9/status.md",
       "sha256": "8b661a195b2cf7bd95a1f99df80d936d6f4b720dd9c6d6ca2639b469abcdfcea",
       "size_bytes": 1821
+    },
+    {
+      "path": "src/controlplane/ui/dist/assets/index-CNmdI0B1.css",
+      "sha256": "0c7fbe3bbfe54d53b2a817857fefca26bb826cbb7cca49a41ae8fee19e698bff",
+      "size_bytes": 231497
+    },
+    {
+      "path": "src/controlplane/ui/dist/assets/index-Dd0WysB0.js",
+      "sha256": "9dfc0b8d8fa0ebe82acc1a48b3c46b909d3a2a439d9615ce49ea40962d7fead6",
+      "size_bytes": 1061040
+    },
+    {
+      "path": "src/controlplane/ui/dist/assets/index-Dd0WysB0.js.map",
+      "sha256": "523350bbf8e4e9f1a7801c02361462674941650b48df712945cec851148009c8",
+      "size_bytes": 3480264
+    },
+    {
+      "path": "src/controlplane/ui/dist/index.html",
+      "sha256": "c3f1b438a3ccc3303f1f7c20dbed4ad0a9ec94866c8fae7757381375e7ad7ab6",
+      "size_bytes": 714
+    },
+    {
+      "path": "tests/m2/e2e/admin-command-idempotency.spec.ts",
+      "sha256": "940632b718a7c73ecaea358f93467bd087fd7a0e1196751c39252d5a9022bab7",
+      "size_bytes": 4989
+    },
+    {
+      "path": "tests/m2/e2e/auth-helper.ts",
+      "sha256": "adbbdf3c58ece149ca248b54756a5efe7e4d6734f5d0a09b230836100d5344d1",
+      "size_bytes": 913
+    },
+    {
+      "path": "tests/m2/e2e/operations-sse.spec.ts",
+      "sha256": "ca0d4bbd903c370e23e39f6362292e831da4ee222c7e54e62d850157b676164b",
+      "size_bytes": 7372
+    },
+    {
+      "path": "tests/m2/e2e/performance-budget.spec.ts",
+      "sha256": "acfead7160374078ccc5ce36d94417832a4a80eacfd5eb1eca3878b1b78f13db",
+      "size_bytes": 4018
+    },
+    {
+      "path": "tests/m2/e2e/safe-error-modal.spec.ts",
+      "sha256": "17580534afc440c516080f1a90144c4f7ff7e1c66ebeffb2c403412d0347057a",
+      "size_bytes": 3650
+    },
+    {
+      "path": "tests/m2/evidence/m1-regression.xml",
+      "sha256": "7e74c59daf158aab11856812af87e7a3c078c795c5737483f040485fd205f2d4",
+      "size_bytes": 13189
+    },
+    {
+      "path": "tests/m2/evidence/m1_regression_drive_e3_evidence.json",
+      "sha256": "4d3cade86fb975a9fd7f1bcf22a17f1d581a83a4a472aa314250f30f1756a889",
+      "size_bytes": 928
     }
   ]
 }
