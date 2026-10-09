@@ -66,7 +66,12 @@ graph TD
 
 ## 3. Ranh Giới Sở Hữu Mã Nguồn (Single-Writer Ownership & Source Paths)
 
-Tuân thủ nguyên tắc Single-Writer tại `docs/parallel-delivery/ownership-and-locks.yaml`: Phân hệ A là người ghi duy nhất (Single-Writer) vào các aggregate và đường dẫn được phân quyền.
+Tuân thủ nguyên tắc Single-Writer tại `docs/parallel-delivery/ownership-and-locks.yaml`: Phân hệ A sẽ là người ghi duy nhất (Single-Writer) vào các aggregate và đường dẫn khi được cấp thẩm quyền và đăng ký chính thức.
+
+> **Lưu ý ranh giới sở hữu & Trạng thái đề xuất (Proposed Paths Boundary):**
+> - Trong sổ bộ sở hữu hiện hành (`docs/parallel-delivery/ownership-and-locks.yaml`), các đường dẫn `src/source_ingestion/**`, `tests/unit/collection/**` và `tests/integration/collection/**` là **proposed paths (đường dẫn đề xuất)**, hiện tại **chưa có ownership entry** nào được cấp trong registry.
+> - Sổ bộ hiện hành chỉ có `PATH-SRC-INGESTION` (`src/ingestion/**`) thuộc quyền độc quyền của `Module_B_Ingestion_Owner`. Tuyệt đối **không dùng `LOCK-SRC-INGESTION` của Module B để thay thế** và không làm nhòe ranh giới giữa Module A và Module B.
+> - Package M3-A **không tự sửa registry**, và **không khẳng định package đã khóa đầy đủ** ranh giới sở hữu mã nguồn. Mọi đường dẫn dưới đây đều ở trạng thái đề xuất (proposed) chờ gate phê duyệt.
 
 ### 3.1. Aggregates thuộc quyền sở hữu của Phân hệ A
 - `SourceCandidate`: Thực thể đề xuất nguồn từ auto-discovery hoặc nhập liệu thủ công.
@@ -78,9 +83,9 @@ Tuân thủ nguyên tắc Single-Writer tại `docs/parallel-delivery/ownership-
 
 ### 3.2. Cấu trúc thư mục mã nguồn cụ thể (Target Specific Source Paths)
 
-Khi được cấp quyền implementation, mã nguồn Phân hệ A sẽ được bố trí theo cấu trúc modular monolith:
+Khi được cấp quyền implementation và sau khi ownership entry được đăng ký vào registry, mã nguồn Phân hệ A dự kiến được bố trí theo cấu trúc modular monolith:
 
-| Đường dẫn dự kiến | Vai trò kiến trúc | Ranh giới sở hữu |
+| Đường dẫn đề xuất (Proposed Paths) | Vai trò kiến trúc | Ranh giới sở hữu (Chưa đăng ký) |
 |---|---|---|
 | `src/source_ingestion/__init__.py` | Module entry point | Thuộc quyền exclusive của A |
 | `src/source_ingestion/domain/models.py` | Thực thể Source, Run, Attempt, Package | Domain logic thuần, không I/O |
@@ -96,9 +101,8 @@ Khi được cấp quyền implementation, mã nguồn Phân hệ A sẽ đượ
 | `src/source_ingestion/adapters/web_scraper_adapter.py` | Parser HTML cho web tin tức tổng hợp | Trích xuất DOM và metadata |
 | `src/source_ingestion/infrastructure/db/repositories.py` | Repository persistence qua PostgreSQL UoW | Transaction boundary A |
 | `src/source_ingestion/infrastructure/outbox.py` | Producer transactional outbox events | At-least-once domain events |
-| `tests/unit/collection/**` | Bộ kiểm thử unit cho domain, SSRF, adapters | Phân hệ A sở hữu |
-| `tests/integration/collection/**` | Bộ kiểm thử tích hợp DB UoW, transactional race | Phân hệ A sở hữu |
-
+| `tests/unit/collection/**` | Bộ kiểm thử unit cho domain, SSRF, adapters | Phân hệ A sở hữu (Proposed path) |
+| `tests/integration/collection/**` | Bộ kiểm thử tích hợp DB UoW, transactional race | Phân hệ A sở hữu (Proposed path) |
 ### 3.3. Ranh giới cấm ghi (Strictly Forbidden Cross-Owner Paths)
 - Tuyệt đối không ghi vào các bảng của B: `articles`, `article_revisions`, `events`, `event_updates`.
 - Tuyệt đối không ghi vào các bảng của C: `media_assets`, `media_usage`, `hooks`.
@@ -118,9 +122,14 @@ Theo mô hình `ownership-and-locks.yaml` và `operating-model.md`:
 | Tên Khóa (Lock ID) | Kiểu khóa (Type) | Mục đích bảo vệ | Fencing Token & Rule |
 |---|---|---|---|
 | `LOCK-CONTRACT-SOURCE-CONTENT` | Exclusive Contract Lock | Bảo vệ tính bất biến của hợp đồng nguồn CT-SRC-* và CT-CNT-* | Đóng băng ở SHA-256 xác định; không writer nào được sửa |
-| `LOCK-SRC-SOURCE-INGESTION` | Exclusive Path Lock | Bảo vệ mã nguồn `src/source_ingestion/**` | Cấp cho worker implementer trong suốt ca làm việc |
+| `LOCK-SRC-SOURCE-INGESTION` | Proposed Path Lock (Chưa đăng ký) | Khóa đề xuất bảo vệ mã nguồn `src/source_ingestion/**` và tests collection | **Khóa đề xuất, hiện chưa tồn tại trong registry**. Bắt buộc phải có gate đăng ký chính thức vào `ownership-and-locks.yaml` trước dispatch implementation; chưa đăng ký thì dispatch bị BLOCKED fail-closed |
 | `LOCK-POSTGRES-TEST-DB` | Exclusive by DB namespace | Cách ly database thử nghiệm (ví dụ `db:m3_collection_test`) | Disposable database function/run-scoped; dọn dẹp sạch sau test |
 | `LOCK-MIGRATION-SEQUENCE` | Serialized Migration Lock | Khi tạo migration `0009` cho các bảng của Module A | Single-writer tuần tự qua merge queue; cấm tạo song song |
+
+> **Quy tắc khóa tài nguyên & Fencing (Lock Invariants):**
+> - `LOCK-SRC-SOURCE-INGESTION` là **proposed lock chưa được đăng ký** trong `docs/parallel-delivery/ownership-and-locks.yaml`.
+> - Tuyệt đối **không tự ý sửa registry**, **không dùng `LOCK-SRC-INGESTION` của Module B thay thế** và **không khẳng định package đã khóa đầy đủ**.
+> - Việc thiếu entry `LOCK-SRC-SOURCE-INGESTION` trong registry là một open gate: Mọi dispatch implementation đối với Phân hệ A đều bị **BLOCKED** fail-closed cho tới khi gate này được giải quyết.
 
 ---
 
@@ -151,10 +160,19 @@ Trước khi kích hoạt sản xuất (`production_activation_authorized`), cá
 | `QUALITY-OPEN-005` | Cơ chế proxy cho trending / hot content discovery | Adapter web scraper trong A6 | Trước khi nghiệm thu content selection |
 | `POLICY-SRC-001` | Tiêu chí phân loại Tier 1 / 2 / 3 và ngưỡng tin mới không trùng theo chủ đề | `PlanCollectionCycle` (CT-SRC-004) | Cung cấp qua `ConfigRevision` từ J; không hardcode |
 | `POLICY-SRC-002` | Quy tắc bắt buộc title đối với từng loại nguồn tin (web vs social) | Validation lớp 2 trong CT-SRC-006 | Cung cấp qua chính sách adapter; không mặc định |
+| `GATE-M3-A-OWNERSHIP-LOCK` | Control / Authority Owner phê duyệt và đăng ký `PATH-SRC-SOURCE-INGESTION` (`src/source_ingestion/**`, `tests/unit/collection/**`, `tests/integration/collection/**`) cùng `LOCK-SRC-SOURCE-INGESTION` vào `docs/parallel-delivery/ownership-and-locks.yaml` | Toàn bộ quá trình cấp quyền và dispatch implementation Phân hệ A | Trước khi dispatch M3 implementation. Chưa có gate phê duyệt và đăng ký thì implementation bị **BLOCKED** fail-closed |
 | `USER-CKPT-M3` | Checkpoint phê duyệt chính thức mở Milestone M3 từ Người dùng | Chuyển trạng thái từ `planned` sang `implementation_authorized` | Điều kiện tiên quyết tuyệt đối trước dòng code đầu tiên của M3 |
 
 ---
 
 ## 7. Kết Luận & Định Hướng Tiếp Theo
 
-Gói chuẩn bị `M3-A` đã hoàn tất việc đóng khung ranh giới kỹ thuật, ánh xạ 100% tài liệu thẩm quyền hiện hành, khóa bất biến các hợp đồng giao tiếp và thiết lập lộ trình kiểm thử test-first nghiêm ngặt. Hệ thống sẵn sàng cho bước thẩm tra kỹ thuật read-only từ Sol-Lead và Astra-Lead.
+Gói chuẩn bị `M3-A` đã hoàn tất việc thiết lập cơ sở kế hoạch kỹ thuật (`planned`), ánh xạ đầy đủ tài liệu thẩm quyền hiện hành, đóng băng phiên bản các hợp đồng giao tiếp (CT-SRC-*, CT-CNT-*) và thiết lập lộ trình kiểm thử test-first nghiêm ngặt.
+
+Tuy nhiên, gói này **không khẳng định đã khóa đầy đủ ranh giới**: các đường dẫn mã nguồn (`src/source_ingestion/**`, `tests/unit/collection/**`, `tests/integration/collection/**`) và khóa `LOCK-SRC-SOURCE-INGESTION` mới chỉ ở trạng thái đề xuất (**proposed paths & proposed lock**), hiện **chưa có ownership entry** và **chưa được đăng ký** trong sổ bộ `docs/parallel-delivery/ownership-and-locks.yaml`. Phân hệ A tuyệt đối không tự sửa registry và không dùng `LOCK-SRC-INGESTION` của Module B để thay thế.
+
+Do đó, toàn bộ hoạt động dispatch implementation của Phân hệ A tiếp tục bị **BLOCKED** fail-closed cho đến khi đáp ứng đồng thời hai điều kiện tiên quyết:
+1. Gate `GATE-M3-A-OWNERSHIP-LOCK` được Control / Authority Owner phê duyệt và đăng ký chính thức vào `ownership-and-locks.yaml`.
+2. Checkpoint `USER-CKPT-M3` được Người dùng phê duyệt chính thức mở Milestone M3.
+
+Hồ sơ kế hoạch sẵn sàng cho bước thẩm tra kỹ thuật read-only từ Sol-Lead và Astra-Lead.

@@ -90,6 +90,14 @@ A0 (Contract & Fixtures)
 | `A6` | Tìm kiếm bổ sung, auto-discovery candidate CT-STATE-002A | `tests/unit/collection/test_a6_candidate_discovery.py` | `python -m unittest tests/unit/collection/test_a6_candidate_discovery.py` |
 | `A7` | Projections cho UI Admin, SSE stream, hardening & gate G06 | `tests/integration/collection/test_a7_acceptance_gate.py` | `python -m unittest tests/integration/collection/test_a7_acceptance_gate.py` |
 
+> **Lưu ý ranh giới đường dẫn kiểm thử & Gate thực thi (Test Paths & Execution Gate):**
+> - Toàn bộ các đường dẫn kiểm thử `tests/unit/collection/**` và `tests/integration/collection/**` nêu trên là **proposed paths (đường dẫn đề xuất)**, hiện tại **chưa có ownership entry** trong `docs/parallel-delivery/ownership-and-locks.yaml`.
+> - Khóa `LOCK-SRC-SOURCE-INGESTION` bảo vệ các đường dẫn này là **proposed lock chưa được đăng ký** trong registry. Tuyệt đối không dùng `LOCK-SRC-INGESTION` của Module B thay thế và không tự sửa registry.
+> - Kế hoạch kiểm thử này xác lập ở trạng thái `planned_test_strategy`, **không khẳng định package đã khóa đầy đủ ranh giới**.
+> - Việc tạo tệp kiểm thử và thực thi các gói công việc implementation A0..A7 bị **BLOCKED** fail-closed cho đến khi:
+>   1. Gate `GATE-M3-A-OWNERSHIP-LOCK` được Control / Authority Owner phê duyệt và đăng ký chính thức vào `ownership-and-locks.yaml`.
+>   2. Checkpoint `USER-CKPT-M3` được Người dùng phê duyệt chính thức mở Milestone M3.
+
 ---
 
 ## 4. Kiểm Thử Hồi Quy Toàn Hệ Thống (Regression Invariants)
