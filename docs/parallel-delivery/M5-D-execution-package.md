@@ -42,9 +42,9 @@ Gói chuẩn bị thực thi `M5-D` thiết lập toàn bộ cơ sở kỹ thu�
 
 ```mermaid
 graph TD
-    M2_BASELINE["M2 Baseline: M2-P1..P7B (ACCEPTED/CLOSED) & P8/P9 (LOCKED)"] --> M3A["M3-A Kế hoạch chuẩn bị (ACCEPTED / FROZEN)"]
-    M3A --> M4CI["M4-CI Kế hoạch chuẩn bị C-I (ACCEPTED / FROZEN)"]
-    M4CI --> M5D_PREP["M5-D Kế hoạch chuẩn bị D (TÀI LIỆU NÀY - PLANNED)"]
+    M2_BASELINE["M2 Baseline: M2-P1..P7B (ACCEPTED/CLOSED) & P8/P9 (LOCKED)"] --> M3A["M3-A Kế hoạch chuẩn bị (LOCKED / planned)"]
+    M3A --> M4CI["M4-CI Kế hoạch chuẩn bị C-I (LOCKED / planned)"]
+    M4CI --> M5D_PREP["M5-D Kế hoạch chuẩn bị D (TÀI LIỆU NÀY - planned)"]
     M5D_PREP --> USER_CKPT["User Checkpoint phê duyệt mở Milestone M5"]
     USER_CKPT --> D0["D0: Contract Closure & Fixtures (RED -> GREEN)"]
     D0 --> D1["D1: ProductionSnapshot & Untrusted Boundary"]
@@ -57,10 +57,10 @@ graph TD
 ```
 
 ### 2.1. Điều kiện tiền đề kỹ thuật (Technical Preconditions)
-1. **Cơ sở hạ tầng M2-P1..P7B cùng kế hoạch M3-A và M4-CI:** Cơ sở hạ tầng PostgreSQL Connection Pool, Transactional Outbox, Command/Query Envelopes, SQLite local journal, Windows DPAPI Secret Broker và hợp đồng chuẩn đã sẵn sàng từ phạm vi M2-P1..P7B (ACCEPTED/CLOSED). Lưu ý theo authority hiện hành, M2-P8 và M2-P9 tiếp tục duy trì trạng thái LOCKED (chưa có quyền RED/implementation, M2 chưa hoàn tất toàn bộ); các gói chuẩn bị M3-A và M4-CI là kế hoạch đã đóng băng (ACCEPTED / FROZEN).
-2. **Hạ tầng AI Adapter & Secret Broker (Module J):** Cổng gọi mô hình AI thông qua `CT-AI-ROUTE-001` sẵn sàng cung cấp provider handle ngắn hạn, cô lập hoàn toàn API keys khỏi Module D (Gate G03/G04).
-3. **Kho tài nguyên Media & Hook (Module C):** Danh mục `MediaAsset`, `VisualHook`, `AudioHook` và `ThumbnailCandidate` sẵn sàng phục vụ truy vấn ứng viên theo `CT-MED-005` và `CT-MED-006`.
-4. **Sổ bộ 5 Preset (Five-Preset Registry):** Định nghĩa 5 nhóm preset phong cách video chuẩn đã được khóa revision, sẵn sàng cho việc gán ghép trong `ProductionPlan`.
+1. **Cơ sở hạ tầng M2-P1..P7B cùng ranh giới authority M3-A và M4-CI:** Cơ sở hạ tầng PostgreSQL Connection Pool, Transactional Outbox, Command/Query Envelopes, SQLite local journal, Windows DPAPI Secret Broker và hợp đồng chuẩn đã sẵn sàng từ phạm vi M2-P1..P7B (ACCEPTED/CLOSED). Lưu ý theo authority hiện hành tại `docs/12-pre-code-checklist.md`: M2-P8 và M2-P9 tiếp tục duy trì trạng thái LOCKED (chưa có quyền RED/implementation, M2 chưa hoàn tất toàn bộ); Milestone M3 / Phân hệ A tiếp tục bị khóa chặt (NOT AUTHORIZED / LOCKED); Milestone M4 (Gói chuẩn bị C-I) mới ở mức kế hoạch (planned / LOCKED). Cả M3-A và M4-CI chưa được coi là ACCEPTED hay FROZEN runtime, và tuyệt đối không được tự cấp authority mới; toàn bộ mã nguồn sản phẩm và migration của các phân hệ này vẫn tiếp tục bị khóa chặt (NOT AUTHORIZED).
+2. **Hạ tầng AI Adapter & Secret Broker (Module J) - Phụ thuộc hợp đồng (Planned Dependency):** Cổng gọi mô hình AI thông qua `CT-AI-ROUTE-001` (Gate G03/G04) là điều kiện tiền đề kiến trúc ở cấp hợp đồng. Hạ tầng runtime thực tế của Module J chưa hoàn tất và chưa sẵn sàng; Phân hệ D không giả định runtime đã sẵn sàng mà xác định đây là phụ thuộc kế hoạch, chỉ được kích hoạt khi hạ tầng Module J hoàn tất và được cấp quyền kiểm chứng.
+3. **Kho tài nguyên Media & Hook (Module C) - Phụ thuộc hợp đồng (Planned Dependency):** Danh mục `MediaAsset`, `VisualHook`, `AudioHook` và `ThumbnailCandidate` (theo `CT-MED-005` và `CT-MED-006`) là điều kiện tiền đề logic theo hợp đồng từ Phân hệ C. Do Phân hệ C (thuộc Milestone M4) hiện đang ở trạng thái planned / LOCKED và chưa triển khai runtime, Phân hệ D ghi nhận đây là phụ thuộc kế hoạch (planned dependency); runtime catalog chưa sẵn sàng và phải qua gate xác nhận trước khi thực hiện tích hợp.
+4. **Sổ bộ 5 Preset (Five-Preset Registry) & Cấu hình:** Định nghĩa 5 nhóm preset phong cách video chuẩn được xác lập ở cấp hợp đồng và quy chuẩn thiết kế, cần được cấu hình chính thức từ Module J / Config Registry trước khi kích hoạt `ProductionPlan` trên môi trường thực tế.
 
 ---
 
