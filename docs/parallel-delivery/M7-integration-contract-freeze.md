@@ -206,7 +206,7 @@ Quy trình tích hợp toàn diện của Milestone M7 kết nối liền mạch
 | `INV-008` | Render package chỉ chứa artifact đã verify | I, D, E -> F (Render Package)| Từ chối dựng hình nếu bất kỳ artifact nào thiếu SHA-256 |
 | `INV-009` | QC pass chưa đủ hoàn thành nếu chưa sync Drive | F, I -> G (Completion Gate) | Chặn ghi nhận completed nếu tệp chưa verify trên Cloud |
 | `INV-010` | Completion tăng target đúng một lần | G -> H (Batch Accounting) | Ghi nhận hoàn thành nguyên tử vào `CompletionLedger` |
-| `INV-011` | Cleanup cần ledger, verify, lease check và đúng epoch | I, G (Storage Cleanup) | Cấm xóa tệp nếu chưa đủ 4 điều kiện an toàn |
+| `INV-011` | Cleanup cần ledger, verify, lease check và đúng epoch | I, G (Storage Cleanup) | Cấm xóa tệp nếu chưa đủ 5 điều kiện an toàn |
 | `INV-012` | Secret tuyệt đối không rò rỉ vào log/event/history | J -> Toàn hệ thống | Bộ lọc `RedactionFilter` thanh lọc toàn diện |
 | `INV-013` | Cùng một lượt, 1-3 video khác góc kể | D -> G (Batch Round) | Đa dạng hóa góc nhìn (Angle Diversity) trong cùng đợt |
 | `INV-014` | Giữa các lượt, biến thể khác ít nhất một yếu tố thực tế | D -> G (Cross-Round) | Ngăn ngừa trùng lặp video qua sổ đối chiếu biến thể |
