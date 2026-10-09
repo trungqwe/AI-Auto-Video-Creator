@@ -40,94 +40,113 @@
 ## 3. Chi Tiết Giao Diện Điều Phối & Workflow Lô (Phân Hệ G)
 
 ### 3.1. Hợp đồng Workflow & Thực thi (CONTRACT-WORKFLOW-EXECUTION)
-- **`CT-WF-001` (Workflow Catalog):** Định nghĩa 6 workflow logic cốt lõi:
-  1. `DailyCollectionWorkflow`: Thu thập tin định kỳ theo Tier và ngưỡng chủ đề (chạy trên Cloud khi Desktop tắt).
-  2. `ContentEnrichmentWorkflow`: Chuẩn hóa, khử trùng, gom cụm sự kiện và chuẩn bị media (Cloud + fallback local).
+- **`CT-WF-001` (Các workflow logic):** Định nghĩa 6 workflow logic cốt lõi:
+  1. `DailyCollectionWorkflow`: Thu thập tin định kỳ theo Tier và ngưỡng chủ đề, chạy độc lập trên Cloud khi desktop tắt.
+  2. `ContentEnrichmentWorkflow`: Chuẩn hóa, khử trùng, gom cụm sự kiện và chuẩn bị media/index (Cloud + fallback local).
   3. `ProductionBatchWorkflow`: Điều phối sản xuất lô video tự động theo chỉ tiêu user đặt (Cloud control, child jobs chờ desktop).
-  4. `VideoProductionWorkflow`: Child workflow sản xuất 1 video từ snapshot đến hoàn thành (độc lập, lỗi 1 video không hỏng batch).
-  5. `DebugStageWorkflow`: Thực thi một stage đơn lẻ có quan sát, phục vụ gỡ lỗi và kiểm thử.
-  6. `MaintenanceWorkflow`: Khôi phục đối soát artifact, dọn dẹp bộ nhớ đệm, kiểm tra quota và diễn tập backup/restore.
-- **`CT-WF-002` (Task Queue & Capability Routing):** Định tuyến công việc theo khả năng máy trạm: `cloud-lightweight`, `desktop-heavy-render`, `desktop-probe-transcode`.
-- **`CT-WF-003` (Retry & Timeout Policy):** Retry có exponential backoff và jitter; timeout riêng biệt cho từng activity; phân biệt rõ lỗi tạm thời (retryable) và lỗi vĩnh viễn (non-retryable).
-- **`CT-WF-004` (Desktop Reconnection):** Desktop offline trong vòng 5 phút không làm hủy workflow; workflow chuyển sang trạng thái chờ capability (`waiting_capability`) và tiếp tục ngay khi desktop kết nối lại mà không chạy lại từ đầu.
-- **`CT-WF-005` (Fencing Token & Generation Guard):** Mỗi activity grant mang `execution_generation`. Worker thế hệ cũ bị trễ nhịp sẽ bị từ chối commit kết quả (`INV-003`, `INV-016`).
-- **`CT-WF-006` (Replay History Compatibility):** Đảm bảo tính tương thích lịch sử workflow qua các phiên bản mã nguồn cập nhật mà không gây lỗi Non-Deterministic Error (`G01`).
+  4. `VideoProductionWorkflow`: Child workflow sản xuất 1 video từ snapshot đến hoàn thành (cô lập độc lập, lỗi 1 video không làm hỏng batch).
+  5. `DebugStageWorkflow`: Chạy một stage đơn lẻ có quan sát, `auto_advance=false`, phục vụ gỡ lỗi và kiểm thử.
+  6. `MaintenanceWorkflow`: Đối soát artifact, dọn dẹp cache/staging, kiểm tra quota và diễn tập backup/restore.
+- **`CT-WF-002` (Capability routing):** Định tuyến công việc theo hàng đợi năng lực logic (`control-workflows`, `cloud-io`, `cloud-ai`, `desktop-cpu`, `desktop-gpu`, `desktop-render`). Tên queue vật lý là cấu hình; capability và retry policy phân tách logic.
+- **`CT-WF-003` (`ActivityRequest`):** Lệnh thực thi activity mang đầy đủ context: `workflow_id`, `workflow_run_id`, `video_job_id`, `stage_run_id`, `activity_name`, `activity_version`, `execution_grant` (bắt buộc với side effect/commit), `input_refs` (bất biến), `operation_key` (khóa idempotency), `deadline_at`, `capability_requirements`, `retry_policy_ref`. Payload không chứa blob hoặc secret.
+- **`CT-WF-004` (`ExecutionGrant`):** Cấp quyền thực thi có fencing: `grant_id`, `stage_run_id`, `execution_generation`, `recovery_epoch`, `worker_lease_id`, `issued_at`, `expires_at`, `allowed_operation`, `input_fingerprint`. Kết quả từ worker generation cũ bị từ chối với `STALE_EXECUTION_GENERATION` (`INV-003`); kết quả từ epoch cũ trả `STALE_RECOVERY_EPOCH` (`INV-016`).
+- **`CT-WF-005` (`OperationReceipt`):** Biên lai thực thi idempotency cho side effect: `operation_key`, `operation_type`, `input_fingerprint`, `recovery_epoch`, `state`, `external_operation_ref`, `output_refs`, `attempt`, `problem`. Trả lại output cũ nếu `succeeded`; reconcile trước nếu `outcome_unknown`; tạo attempt mới cùng key nếu `failed` & retryable.
+- **`CT-WF-006` (`ActivityResult`):** Kết quả activity mang fencing identity (`stage_run_id`, `grant_id`, `execution_generation`, `recovery_epoch`), `disposition` (`succeeded`, `failed`, `waiting`, `outcome_unknown`, `stale`), `output_refs`, `metrics`, `warnings`, `problem`, `operation_receipt_ref`, `completed_at`. Workflow chỉ chuyển stage thành `SUCCEEDED` sau khi owner xác nhận commit output.
+- **`CT-WF-007` (Quy tắc sống còn):** Heartbeat báo tiến độ và checkpoint kỹ thuật; timeout schedule-to-start phản ánh thiếu capability; khi desktop/provider offline, stage chuyển `WAITING_CAPABILITY`; tuân thủ R18: stage tạo script, production plan và voice chỉ bắt đầu khi desktop production capability đang hoạt động; desktop offline trong 5 phút không hủy workflow mà tự động tiếp tục khi reconnect; timeout start-to-close và heartbeat cấu hình riêng theo activity.
+- **`CT-WF-008` (Ba ngữ nghĩa khác nhau):** Phân định nghiêm ngặt 3 hành động:
+  1. `Retry kỹ thuật`: Giữ nguyên job, snapshot, intent, fingerprint; tạo attempt mới; không tính là video mới.
+  2. `Tạo lại từ stage` (`RegenerateFromStage`): Giữ job, snapshot, intent; tạo revision downstream mới; vô hiệu hóa refs cũ.
+  3. `Tạo biến thể mới` (`CreateNewVariant`): Tạo `video_job_id` mới; dùng cùng nguồn nhưng snapshot job mới; intent mới; tạo script/plan/output mới.
+- **`CT-WF-009` (Tương thích khi triển khai):** Versioning workflow: Workflow đang chạy tiếp tục theo version logic đã ghi; activity result có version riêng; đảm bảo replay history compatibility qua các bản cập nhật mà không gây lỗi Non-Deterministic Error (`Gate G01`).
 
 ### 3.2. Hợp đồng Điều Phối Sản Xuất Lô & Biến Thể (CONTRACT-ORCHESTRATION)
-- **`CT-ORC-001` (`StartProductionBatch`):** Tiếp nhận chỉ tiêu sản xuất (`target_completed_videos`), phạm vi chủ đề, cấu hình chính sách, chế độ thực thi (`auto` / `debug`), và khóa idempotency duy nhất.
-- **`CT-ORC-002` (Batch Target & Allocation Rule):** Phân bổ video theo từng vòng; mỗi bài viết/sự kiện chỉ sản xuất từ 1 đến 3 video (`INV-013`).
-- **`CT-ORC-003` (`ProductionBatchState`):** Quản lý vòng đời lô: `created` -> `running` -> (`paused` / `reconciling`) -> `completed` / `stopped_no_work` / `failed_budget_exceeded`.
-- **`CT-ORC-004` (Batch Control Commands):** Điều khiển lô từ UI: `PauseBatch`, `ResumeBatch`, `CancelBatch`, `ForceReconcileBatch`.
-- **`CT-ORC-005` (`VideoJob` Lifecycle):** Quản lý vòng đời từng job: `snapshot_locked` -> `script_generated` -> `voice_ready` -> `rendered` -> `qc_passed` -> `cloud_verified` -> `completed`.
-- **`CT-ORC-006` (StageRun & Execution Grant):** Cấp quyền thực thi có thời hạn (`lease_expiry`), generation token và khóa tài nguyên (`resource_locks`).
-- **`CT-ORC-007` (Command Receipt & Decoupled State):** Trả về biên lai ghi nhận lệnh ngay lập tức (`INV-001`); trạng thái thực thi thực tế được đọc bất đồng bộ từ PostgreSQL.
-- **`CT-ORC-008` (Capacity Reservation Guard):** Tổng số video đã hoàn thành cộng với các slot công việc đang thực hiện không bao giờ vượt quá chỉ tiêu lô (`INV-018`).
-- **`CT-ORC-009` (Atomic Completion Ledger):** Ghi nhận hoàn thành video vào sổ cái nguyên tử, tăng biến đếm hoàn thành đúng 1 lần (`INV-010`), đồng thời liên kết chặt chẽ với cập nhật tần suất sử dụng media của Phân hệ C (`INV-017`).
-- **`CT-ORC-010` (Batch Stopping Reasons):** Định nghĩa tường minh lý do dừng lô: đạt chỉ tiêu (`target_reached`), cạn nguồn tin đủ điều kiện (`no_eligible_work`), hết ngân sách chi phí (`budget_limit_exceeded`), hoặc người dùng can thiệp (`user_cancelled`).
-- **`CT-ORC-011` (Variant Reservation & Cross-Round Diversity):** Đảm bảo các biến thể giữa các đợt sản xuất khác nhau phải khác biệt ít nhất một yếu tố thực tế (góc tiếp cận, hook, phong cách dựng hoặc cấu trúc kịch bản) (`INV-014`).
-- **`CT-ORC-012` (Disambiguation: Retry vs Variant):** Phân định rõ ràng: `Retry` là thử lại một công việc thất bại với cùng tham số; `Variant` là sinh một sản phẩm mới khác biệt từ cùng nguồn dữ liệu.
-- **`CT-ORC-013` (Zero Work Discarded Without State):** Tuyệt đối không có công việc nào bị biến mất mà không có trạng thái cuối cùng hoặc nhật ký truy vết.
+- **`CT-ORC-001` (`StartProductionBatch`):** Tiếp nhận chỉ tiêu sản xuất (`target_completed_videos`), phạm vi chủ đề (topic scope), revision chính sách/cấu hình, chế độ thực thi (`auto` / `debug`), app session ref, cost/capacity constraints, và khóa idempotency duy nhất. Trả về batch ID/revision, accepted operation, effective policy refs.
+- **`CT-ORC-002` (`AllocateVideoJob`):** Phân bổ video job từ bài viết/sự kiện candidate đủ điều kiện. Khóa batch và tạo `BatchCapacityReservation` trong cùng transaction. Chỉ cấp job khi `completed_count + active_capacity_reservations < target_completed_videos` (`INV-018`). Mỗi sự kiện/tin trong một lượt chỉ tạo 1-3 job và phải khác góc kể (`INV-013`).
+- **`CT-ORC-003` (`StageRun`):** Quản lý lần chạy stage: `stage_run_id`, `stage_type`, `job_id`, `input_refs`, `state` (theo state machine), `attempt`, `execution_generation`, `dependency_refs`, `output_refs`, `wait_reason`, `problem`. G chỉ đánh dấu stage succeeded khi owner xác nhận commit output và grant hợp lệ.
+- **`CT-ORC-004` (`RunDebugStage`):** Thực thi một module stage đơn lẻ có quan sát, bắt buộc `auto_advance=false`, dùng cùng schema/validation với auto pipeline. Không tự động đi tiếp stage sau và không tạo production completion trừ khi có lệnh riêng.
+- **`CT-ORC-005` (`RetryStage`):** Thử lại kỹ thuật giữ nguyên `video_job_id`, snapshot, intent và input fingerprint; tăng attempt và execution generation; không tăng completed count.
+- **`CT-ORC-006` (`CreateNewVariant`):** Tạo `video_job_id` mới với intent mới; D bắt buộc validate quy tắc khác biệt; chỉ sau completion mới ghi media usage và tính vào target lô.
+- **`CT-ORC-007` (`SetJobWaiting`):** Thiết lập lý do chờ có cấu trúc: `desktop_offline`, `local_ai_unavailable`, `provider_unavailable`, `quota_wait`, `artifact_not_ready`, `insufficient_disk`, `dependency_wait`, `credential_unavailable`. Tuân thủ R18: không bắt đầu script/plan/voice khi desktop capability chưa hoạt động.
+- **`CT-ORC-008` (`CommitVideoCompletion`):** Transaction nguyên tử 8 bước hoàn tất video: (1) kiểm tra job; (2) kiểm tra revision/hash/grant/epoch, khóa registry revision theo CT-ORC-012, kiểm tra validation; (3) tạo `CompletionLedger` duy nhất; (4) đánh job completed; (5) chuyển capacity reservation thành completion, chuyển `VariantReservation` thành `CONVERTED`, tăng registry revision và completed count đúng 1 lần; (6) gọi Unit of Work của C ghi `MediaUsage`; (7) phát outbox `VideoCompleted`; (8) tạo cleanup eligibility.
+- **`CT-ORC-009` (`CompletionLedger`):** Sổ cái hoàn thành video duy nhất: completion ID, job/batch/session refs, video output artifact/hash/cloud location, QualityReport, variant validation, media usage manifest, completed time, output naming metadata, cost summary, cleanup policy ref (`INV-010`, `INV-017`).
+- **`CT-ORC-010` (Lý do dừng lô):** Định nghĩa tường minh 4 lý do dừng: `COMPLETED_TARGET` (đạt chỉ tiêu target), `COMPLETED_EXHAUSTED` (hết candidate đủ điều kiện), `WAITING_CAPABILITY` (chờ năng lực thiếu), `FAILED_SYSTEM` (lỗi điều phối/hạ tầng nghiêm trọng). Video đơn lẻ lỗi không làm dừng toàn bộ batch.
+- **`CT-ORC-011` (`AppSession`):** Phiên ứng dụng bật/tắt: session ID, start/end time, desktop identity, log scope, output folder `YY-MM-DD`, `YY-MM-DD (1)` khi có video hoàn thành hợp lệ. Restart app không reset batch/job checkpoint.
+- **`CT-ORC-012` (`ReserveVariant` / `ReleaseVariant`):** Giữ chỗ nội dung biến thể độc lập với capacity reservation. Sổ đối soát biến thể do G quản lý với revision workspace compare-and-swap; D đối chiếu chữ ký thực tế của script/voice/media/timeline/output với active reservations và lịch sử; trạng thái `ACTIVE` giữ nguyên khi chờ/offline, chuyển `CONVERTED` khi completion hoặc `RELEASED` khi lỗi/hủy (`INV-014`).
 
 ---
 
 ## 4. Chi Tiết Giao Diện Điều Khiển, Sự Kiện & Lưu Trữ (Phân Hệ H & I)
 
-### 4.1. Hợp đồng Điều Khiển & Quan Sát UI (CONTRACT-CONTROL-API-STREAM)
-- **`CT-API-001` (Control API REST Endpoints):** Các điểm cuối quản trị: tạo/dừng lô, kích hoạt thu thập, xem danh sách bài viết/sự kiện/media, điều chỉnh cấu hình và tài khoản.
-- **`CT-API-002` (Command Mutation Idempotency):** Mọi lệnh thay đổi trạng thái bắt buộc mang `idempotency_key` và trả về `CommandReceipt` có UUID xác định (`INV-001`).
-- **`CT-API-003` (Server-Sent Events Stream):** Luồng sự kiện thời gian thực đẩy trạng thái lô, tiến độ job, cảnh báo chi phí và log hệ thống về giao diện Desktop UI.
-- **`CT-API-004` (SSE Resync & Cursor Protocol):** Khi mất kết nối mạng, client gửi lại `Last-Event-ID`; server tự động bù đắp các sự kiện bị thiếu từ bảng `outbox` mà không bỏ sót bất kỳ thay đổi nào.
-- **`CT-API-005` (Comprehensive Observability Screens):** Cung cấp dữ liệu đầy đủ cho các màn hình: Nguồn tin (`Source`), Nội dung (`Content`), Media & Hook, Jobs, Stages, Lô (`Batch`), Phiên làm việc (`Session`), Logs, Cấu hình (`Config`), Tài khoản (`Account`) và Chi phí (`Cost`).
-- **`CT-API-006` (No-Silent-Failure Reconciliation):** UI phát hiện và hiển thị rõ ràng mọi sai lệch giữa cache cục bộ và cơ sở dữ liệu xác thực; không âm thầm giấu lỗi.
-- **`CT-API-007` (Role-Based Admin Protection):** Chặn các thao tác nguy hiểm (xóa hàng loạt, xoay vòng khóa bí mật, khôi phục database) nếu thiếu quyền quản trị.
-- **`CT-API-008` (Audit Log Stream):** Ghi nhận đầy đủ thông tin người thực hiện lệnh, thời điểm, tham số và kết quả phản hồi.
+### 4.1. Hợp đồng Điều Khiển & Luồng Cập Nhật (CONTRACT-CONTROL-API-STREAM & CONTRACT-BATCHES-QUERY)
+- **`CT-API-001` (Quy tắc request HTTP):** Base path có version `/v1`; mutation bắt buộc mang `Idempotency-Key` (`INV-001`); metadata update bắt buộc `If-Match` hoặc `expected_revision`; mọi request authenticate và ràng buộc vào `workspace_id`; response mang `correlation_id`; lệnh async trả `202 Accepted`; xung đột trả `409 Conflict`; lỗi trả chuẩn RFC 7807 `ProblemDetail`.
+- **`CT-API-002` (Danh mục query):** Danh mục query 13 tài nguyên logic: Sources, Articles, Events, Media, Hooks, Batches, Jobs, Stage runs, Sessions, Logs, Configuration, Capabilities, Operations. Query không tự động download thêm nguồn hay materialize nặng lên desktop.
+- **`CT-API-003` (Quản lý nguồn):** Command `RegisterSource` (kiểm tra an toàn URL), `UpdateSourceMetadata` (Tier, topic/tag, toggle), `RemoveSource` (tombstone revision, ngừng thu thập, không tự thêm lại `INV-015`), `RestoreSource`, `TestSource`.
+- **`CT-API-004` (Quản lý hook và media):** Command `ImportVisualHook` (video hook mờ), `ImportAudioHook`, `UpdateHookMetadata`, `UpdateMediaMetadata`. Không có command sửa byte bản gốc tại chỗ; bản xử lý là artifact version mới.
+- **`CT-API-005` (Sản xuất và debug):** Command `StartProductionBatch` (user đặt target videos và cấu hình lô), `RunDebugStage` (chạy 1 module, `auto_advance=false`), `RetryStage` (cùng job/snapshot, attempt mới, giữ input logic), `CreateNewVariant` (job mới, intent mới, đạt quy tắc khác biệt), `RegenerateFromStage` (tạo revision đầu ra mới, giữ output cũ để audit).
+- **`CT-API-006` (Cấu hình và tài khoản ngoài):** Command `PublishConfigurationRevision` (áp dụng cho job chưa bắt đầu tạo script), `UpdateSecret` (chỉ đi vào secret boundary, không trả lại secret), `TestExternalAccount` (kết quả đã redacted), `EnableExternalAccount`, `DisableExternalAccount`.
+- **`CT-API-007` (`OperationView`):** Theo dõi command bất đồng bộ: `operation_id`, `command_ref`, `status` (`accepted`, `running`, `waiting`, `outcome_unknown`, `succeeded`, `failed`), `progress`, `resource_refs`, `wait_reason`, `problem`.
+- **`CT-API-008` (`OperationStream`):** Endpoint SSE `GET /v1/operations/stream?cursor=...`. Mỗi item có `stream_event_id` duy nhất, `cursor` tăng dần, `event_kind`, `summary` an toàn, `correlation_id`. Client reconnect bằng cursor; deduplicate theo `stream_event_id`; query lại snapshot khi cursor hết hạn retention.
+- **`CT-API-009` (Sửa khi lô đang chạy):** Metadata/config revision mới chỉ áp dụng cho video chưa bắt đầu tạo script; job đã snapshot giữ nguyên revision cũ; sửa đồng thời trả `REVISION_CONFLICT`.
+- **`CT-API-010` (Bảo mật biên UI):** Local UI dùng HTTPS / loopback Origin (`localhost / 127.0.0.1`), chống CSRF, escape nội dung nguồn ngoài, secret đã lưu chỉ hiển thị metadata và không bao giờ rò rỉ secret ra UI, log có audit actor (`INV-012`).
+- Kèm **`CONTRACT-BATCHES-QUERY`** (`CT-BAT-001..004`):
+  - `CT-BAT-001` (`list_batches`): `GET /api/v1/batches` tra cứu danh sách batch kèm phân trang và lọc status.
+  - `CT-BAT-002` (`batch_detail`): `GET /api/v1/batches/{batch_id}` chi tiết batch, tiến độ từng job và `capacity_reservation` ({total_slots, allocated_slots}).
+  - `CT-BAT-003` (`filter_batches`): Bộ lọc nâng cao (date_range, status_in, priority_min, has_errors).
+  - `CT-BAT-004` (`paginate_batches`): Quy chuẩn phân trang offset/limit (max_limit 100, default_limit 20).
 
 ### 4.2. Hợp đồng Sự Kiện Nghiệp Vụ (CONTRACT-DOMAIN-EVENTS)
-- **`CT-EVT-001` (Domain Event Standard Schema):** Cấu trúc chuẩn của mọi sự kiện: `event_id`, `event_type`, `aggregate_type`, `aggregate_id`, `occurred_at`, `payload`, `producer_service`.
-- **`CT-EVT-002` (Transactional Outbox Pattern):** Mọi sự kiện miền bắt buộc được lưu đồng thời trong cùng transaction cơ sở dữ liệu với aggregate và được phân phối đáng tin cậy.
-- **`CT-EVT-003` (Consumer Idempotency Guard):** Mọi consumer phải kiểm tra `event_id` trước khi thực hiện tác vụ; không sinh side-effect lặp (`INV-002`).
-- **`CT-EVT-004` (Event Catalog):** Danh mục sự kiện đầy đủ: `SourceDiscovered`, `ArticleNormalized`, `ContentSnapshotCreated`, `ScriptGenerated`, `VoiceRendered`, `VideoRendered`, `QualityReportGenerated`, `ArtifactUploaded`, `ArtifactVerified`, `BatchProgressUpdated`, `BatchCompleted`.
+- **`CT-EVT-001` (Delivery contract):** Chuyển phát at-least-once qua transactional outbox; ghi cùng transaction với thay đổi nghiệp vụ; thứ tự bảo đảm theo aggregate và `aggregate_revision`; consumer bắt buộc idempotent và lưu checkpoint outbox deduplication (`INV-002`).
+- **`CT-EVT-002` (`DomainEvent`):** Envelope chuẩn gồm: `event_id` (duy nhất, bất biến), `event_name` (thì quá khứ), `aggregate_type`, `aggregate_id`, `aggregate_revision`, `producer`, `schema_version`, `recovery_epoch`, `payload`, `sensitivity`. Tuyệt đối không chứa blob, secret, raw OAuth token, long signed URL hay log stack trace (`INV-012`).
+- **`CT-EVT-003` (Payload policy):** Mang ID và revision của đối tượng thay đổi; dùng `ResourceRef` / `ArtifactRef` cho dữ liệu lớn; field mới phải optional với consumer cũ; enum là open set; event đã phát không được sửa tại chỗ (sửa bằng event hiệu chỉnh mới).
+- **`CT-EVT-004` (Subscription policy):** Event chỉ thông báo thay đổi đã diễn ra, không tự trao quyền sửa aggregate khác; consumer muốn thay đổi phải gửi command về owner; UI projection H rebuild từ dữ liệu owner và event checkpoint; mapping lỗi an toàn trước khi hiển thị.
+- **`CT-EVT-005` (Recovery policy):** Xử lý gap bằng cách tạm dừng và query snapshot; event lặp deduplicate qua outbox checkpoint (`INV-002`); schema không hợp lệ đưa vào dead-letter/quarantine; replay kiểm tra receipt cũ; sau restore, event từ epoch cũ bị quarantine và không được mutation trực tiếp (`INV-016`).
+- **Catalog sự kiện chuẩn 10 phân hệ A..J:**
+  - Phân hệ A: `SourceRegistered`, `SourceMetadataUpdated`, `SourceRemoved`, `SourceRestored`, `SourceCandidateDiscovered`, `SourceCandidateResolved`, `CollectionRunStarted`, `CollectedDocumentAvailable`, `CollectionRunCompleted`, `CollectionRunFailed`.
+  - Phân hệ B: `ArticleRevisionAccepted`, `DuplicateDocumentResolved`, `EventLinkResolved`, `EventUpdateAccepted`.
+  - Phân hệ C: `MediaDiscovered`, `MediaCataloged`, `MediaAnalysisAccepted`, `MediaRenditionReady`, `MediaAvailabilityChanged`, `HookImported`, `HookMetadataUpdated`, `HookEnabled`, `HookDisabled`.
+  - Phân hệ D: `ProductionSnapshotCommitted`, `StoryAnglesGenerated`, `ScriptVersionCreated`, `ProductionPlanCreated`, `VariantValidated`, `OutputMetadataCreated`.
+  - Phân hệ E: `ImageSafetyAssessed`, `MediaProcessingCompleted`, `VoiceReady`, `WordTimingReady`.
+  - Phân hệ F: `RenderCompleted`, `OutputQualityChecked`.
+  - Phân hệ G: `BatchStarted`, `JobAllocated`, `StageStateChanged`, `JobWaiting`, `JobFailed`, `VideoCompleted`, `BatchTargetReached`, `BatchExhausted`.
+  - Phân hệ I: `ArtifactLocationVerified`, `CleanupAuthorized`, `CleanupCompleted`, `StorageHealthChanged`.
+  - Phân hệ J: `ConfigurationRevisionPublished`, `ProviderHealthChanged`, `QuotaObserved`, `CredentialChanged`.
 
 ### 4.3. Hợp đồng Lưu Trữ & Đồng Bộ Hybrid (CONTRACT-STORAGE)
-- **`CT-STO-001` (Hybrid Storage Tiering):** Phân tầng dữ liệu rõ ràng giữa Local NVMe SSD (tệp tạm, xử lý render nhanh) và Google Drive Cloud Storage (kho lưu trữ lâu dài, bản phân phối cuối cùng).
-- **`CT-STO-002` (Artifact Immutability & Content Addressing):** Mọi artifact được định danh bằng mã băm SHA-256; một khi đã tạo thì không thể sửa đổi nội dung.
-- **`CT-STO-003` (Storage Intent Lifecycle):** Phân loại vòng đời: `ephemeral_scratch`, `reusable_rendition`, `production_output`, `cold_archive`.
-- **`CT-STO-004` (Google Drive Resumable Upload):** Cơ chế tải lên đám mây hỗ trợ nối tiếp khi đứt kết nối mạng; tự động thử lại với lũy thừa thời gian chờ.
-- **`CT-STO-005` (Cloud Verification Protocol):** Tệp sau khi upload lên Google Drive bắt buộc được tải về phần đầu hoặc kiểm tra MD5/SHA-256 checksum từ Google API; chỉ khi khớp hoàn toàn mới đánh dấu `cloud_verified` (`Gate G04`).
-- **`CT-STO-006` (Zero Premature Deletion Rule):** Tuyệt đối cấm xóa bản sao cục bộ duy nhất nếu chưa có chứng nhận xác minh toàn vẹn trên đám mây (`INV-009`, `INV-011`).
-- **`CT-STO-007` (Local Journal Reconciliation):** Sổ nhật ký tệp cục bộ (`LocalJournal`) đối soát hai chiều với database và Cloud Drive, phát hiện tệp rác mồ côi hoặc tệp bị thiếu.
-- **`CT-STO-008` (Safe File Naming on Windows):** Chuẩn hóa tên tệp theo quy tắc Windows (loại bỏ ký tự đặc biệt, giới hạn 240 ký tự, cấu trúc `YYYY-MM-DD/HHMMSS_topic_hash.mp4`).
-- **`CT-STO-009` (Atomic Cleanup Engine):** Dọn dẹp tệp tạm sau khi render hoàn tất; chỉ dọn khi đã qua kiểm tra 4 điều kiện: có trong sổ cái, đã verify trên cloud, đã hết hạn thuê (`lease expired`), và đúng epoch khôi phục (`INV-011`).
-- **`CT-STO-010` (Backup Epoch & Isolated Restore):** Định kỳ sao lưu database và manifest; khi khôi phục sang epoch mới, toàn bộ message, grant và event từ epoch cũ bị cô lập hoàn toàn (`INV-016`, `Gate G05`).
+- **`CT-STO-001` (`DeclareArtifactVersion`):** Khai báo artifact kind, content hash SHA-256, size, media type, lineage, retention class, storage class, idempotent version mapping. Cùng byte và policy quy về version hiện có; byte khác luôn tạo version mới, không ghi đè.
+- **`CT-STO-002` (`RegisterArtifactLocation`):** Đăng ký vị trí vật lý trên cloud hoặc local staging/cache, provider object ID, logical path, observed hash/size, state, last verified time, lease. Không đưa raw credential vào location.
+- **`CT-STO-003` (`PersistArtifactToCloud`):** Tải lên và xác minh cloud với operation receipt, retry idempotent; timeout chuyển `OUTCOME_UNKNOWN` để đối soát; bắt buộc verify object tồn tại và kiểm chứng checksum/integrity trước khi phát `ArtifactLocationVerified` (`Gate G04`).
+- **`CT-STO-004` (`MaterializeArtifactSet`):** Tải artifact set xuống desktop staging; giới hạn working set tối đa cho 5 video làm việc gần nhất; chỉ render trên location đã verify hash; không dùng path ngoài staging root.
+- **`CT-STO-005` (`LocalJournalEntry`):** Sổ nhật ký SQLite cục bộ ghi nhận device, session, job, stage, generation, lease, hash, recovery epoch; hỗ trợ phục hồi sau sự cố crash mà không vi phạm nguồn sự thật PostgreSQL/Cloud.
+- **`CT-STO-006` (`PersistVideoOutput`):** Đồng bộ video đầu ra MP4 lên Google Drive bền vững, đối chiếu hash, metadata đặt tên file; G chỉ commit completion sau khi có xác nhận này.
+- **`CT-STO-007` (`RequestCleanupEvaluation`):** Đánh giá điều kiện dọn dẹp local artifact (`eligible`, `deferred`, `forbidden`) dựa trên ledger, retention, active lease và recovery epoch.
+- **`CT-STO-008` (`CleanupAuthorization`):** Cấp phép dọn dẹp bất biến với 5 điều kiện an toàn: thuộc staging/cache được phép xóa, không có lease/consumer hoạt động, đã verify trên cloud, cùng recovery epoch, resolved absolute path nằm trong staging root. Phát `CleanupCompleted` (`INV-011`).
+- **`CT-STO-009` (`RecoveryEpoch`):** Tạo recovery epoch opaque mới sau mỗi lần restore/rebuild; cô lập toàn bộ command/result/event/cleanup từ epoch cũ; đối soát 6 chiều giữa DB, Cloud, Journal và Ledger (`INV-016`, `Gate G05`).
+- **`CT-STO-010` (`StoragePlacementPolicy`):** Phân tầng lưu trữ Google Drive 4 tài khoản (20TB), định mức quota, phân vùng logic theo loại dữ liệu, fallback account, retention class.
+- **`CT-STO-011` (`AllocateOutputPath`):** Chuẩn hóa tên file an toàn trên Windows và tạo thư mục xuất xưởng logic `YY-MM-DD`, `YY-MM-DD (1)` khi phiên `AppSession` có video hoàn thành hợp lệ.
 
 ---
 
 ## 5. Chi Tiết Quản Trị Cấu Hình, An Toàn & Chi Phí (Phân Hệ J)
 
-### 5.1. Quản Trị Cấu Hình Đa Tầng (CONTRACT-CONFIG-SECURITY)
-- **`CT-CFG-001` (Hierarchical Configuration Engine):** Nạp cấu hình theo thứ tự ưu tiên: Default Hệ Thống -> File Cấu Hình -> Biến Môi Trường -> Cấu Hình Lô Cụ Thể.
-- **`CT-CFG-002` (Configuration Snapshot Immutability):** Mỗi công việc (`VideoJob`) khóa chặt một bản snapshot cấu hình tại thời điểm khởi tạo; việc thay đổi cấu hình toàn cục sau đó không làm ảnh hưởng đến các job đang chạy (`INV-004`).
-- **`CT-CFG-003` (Dynamic Schema Validation):** Kiểm định tính hợp lệ của toàn bộ tham số cấu hình bằng Pydantic / JSON Schema nghiêm ngặt trước khi áp dụng.
+### 5.1. Quản Trị Cấu Hình Có Phiên Bản (CONTRACT-CONFIG-SECURITY)
+- **`CT-CFG-001` (`PublishConfigurationRevision`):** Xuất bản bản sửa đổi cấu hình bất biến theo scope (`workspace`, `module`, `provider`, `preset`, `policy`, `prompt`). Base revision là lineage bất biến trước đó. Job đã commit production snapshot giữ nguyên revision cũ (`INV-004`); job chưa bắt đầu tạo script có thể dùng revision mới.
+- **`CT-CFG-002` (`ResolveConfigurationBundle`):** Hợp nhất cấu hình đã phân giải cho workflow/stage: exact revision refs, merged typed values, bundle fingerprint, provenance. Tuyệt đối không trả secret value trong bundle.
 
-### 5.2. An Toàn Thông Tin & Không Rò Rỉ Bí Mật (CONTRACT-CONFIG-SECURITY)
-- **`CT-SEC-001` (Zero Secret Leakage Principle):** Tuyệt đối không xuất hiện API key, token OAuth, private key hoặc mật khẩu trong log hệ thống, Temporal workflow history, SSE stream, database audit, hay màn hình UI (`INV-012`).
-- **`CT-SEC-002` (Secret Storage & In-Memory Redaction):** Bí mật được lưu trữ trong keyring bảo mật của hệ điều hành hoặc tệp mã hóa AES-GCM; trong bộ nhớ chỉ giải mã khi cần gọi API và tự động che giấu bằng bộ lọc `RedactionFilter` trước khi xuất log.
-- **`CT-SEC-003` (Untrusted Source Isolation & Sandboxing):** Dữ liệu thu thập từ Internet và RSS ngoài được đối xử như dữ liệu không tin cậy; cấm sử dụng trực tiếp để thay đổi chính sách, gọi công cụ hệ điều hành hoặc tạo đường dẫn tệp chưa kiểm định (`INV-020`).
-- **`CT-SEC-004` (Prompt Injection Defense):** Bộ lọc làm sạch đầu vào nội dung nguồn trước khi truyền vào prompt mô hình AI, ngăn chặn kỹ thuật chèn prompt gián tiếp (Indirect Prompt Injection).
-- **`CT-SEC-005` (Local HTTPS & Secure Origin):** Giao tiếp giữa Control UI và Backend trên Desktop bắt buộc dùng TLS cục bộ hoặc ràng buộc nghiêm ngặt với loopback origin (`localhost / 127.0.0.1`), phòng chống tấn công CSRF / DNS rebinding.
+### 5.2. Bí Mật & Thông Số Xác Thực (CONTRACT-CONFIG-SECURITY)
+- **`CT-SEC-001` (`UpdateSecret`):** Cập nhật secret qua kênh bảo vệ vào secret store; response chỉ gồm metadata/alias/fingerprint đã che giấu. Tuyệt đối không có API đọc lại secret value (`INV-012`).
+- **`CT-SEC-002` (`IssueShortLivedCredential`):** Cấp phát credential ngắn hạn có phạm vi và thời hạn cho desktop/worker; không lưu Google Drive refresh token dài hạn trên desktop; không đưa credential vào Temporal history, event, trace, log, prompt hoặc error detail.
+- **`CT-SEC-003` (Trust rules):** Ranh giới tin cậy: mọi caller được xác thực và ràng buộc workspace; URL ngoài qua SSRF validation; nội dung ngoài không đưa trực tiếp vào shell (`INV-020`); error/log redaction trước khi lưu trữ và stream; credential bị revoke có hiệu lực cao hơn snapshot cũ.
+- **`CT-SEC-004` (`AuditRecord`):** Ghi nhật ký kiểm toán bất biến cho mọi thao tác nhạy cảm (cấu hình, secret, nguồn, debug/retry, cleanup/recovery); lưu actor, correlation, action, redacted reason; không chứa secret value.
 
-### 5.3. Quản Trị Tài Khoản, Định Mức Tài Nguyên & Ngân Sách Chi Phí
-- **`CT-ACC-001` (Provider Account Pool Management):** Quản lý luân chuyển nhiều tài khoản provider (OpenAI, Gemini, Anthropic, ElevenLabs, Google Drive); tự động chuyển đổi khi chạm giới hạn tốc độ (Rate Limit / HTTP 429).
-- **`CT-ACC-002` (Health Check & Circuit Breaker):** Giám sát trạng thái hoạt động của từng tài khoản nhà cung cấp; tự động mở mạch ngắt (Circuit Breaker) khi phát hiện lỗi xác thực liên tiếp hoặc số dư tài khoản cạn kiệt.
-- **`CT-CAP-001` (System Resource Admission Control):** Kiểm soát cấp phát tài nguyên phần cứng trước khi nhận tác vụ mới:
-  - CPU usage < 85%;
-  - RAM khả dụng tối thiểu > 4 GB;
-  - Disk NVMe khả dụng tối thiểu > 20 GB;
-  - GPU VRAM khả dụng tối thiểu > 2 GB;
-  - Slot GPU độc quyền (`LOCK-DESKTOP-GPU`) được cấp phát tuần tự qua mutex.
-- **`CT-COST-001` (Real-Time Cost Tracking):** Tích lũy chi phí gọi API theo từng token, từng giây âm thanh TTS, và từng tác vụ phân tích; lưu vết chi tiết trong `CostLedger`.
-- **`CT-COST-002` (80% Budget Forecast Warning):** Tự động dự báo xu hướng chi phí của lô sản xuất; phát cảnh báo khẩn cấp lên UI và dừng nhận job mới nếu chi phí dự kiến vượt ngưỡng 80% ngân sách tháng (`Gate G03`).
-- **`CT-COST-003` (Monthly Incremental Cost Boundary):** Đảm bảo chi phí phát sinh thực tế dưới 50 USD/tháng trên quy mô vận hành chuẩn (`R24`, `Gate G03`).
+### 5.3. Quản Trị Tài Khoản, Định Tuyến, Năng Lực & Chi Phí
+- **`CT-ACC-001` (`ExternalAccountView`):** Quản lý metadata tài khoản provider bên ngoài: identity, provider, account_label, status, capabilities, quota_observation_ref, health (đã redacted credential).
+- **`CT-ACC-002` (`TestExternalAccount`):** Kiểm thử tài khoản với request nhỏ nhất cần thiết và trả kết quả đã redacted; không tự bật account hay đổi routing.
+- **`CT-AI-ROUTE-001` (`ResolveProviderRoute`):** Định tuyến provider/model/account theo vai trò AI, snapshot/config, độ nhạy cảm dữ liệu, ràng buộc chất lượng/chi phí và quota domain thực tế.
+- **`CT-AI-ROUTE-002` (Fallback):** Xử lý chuyển đổi dự phòng: việc không cần AI vẫn chạy khi AI unavailable; stage AI chờ phục hồi hoặc fallback local; không tự ý thêm dịch vụ trả phí; fallback thay model phải ghi model/config revision.
+- **`CT-CAP-001` (`ProviderCapacitySnapshot`):** Ghi nhận giới hạn quota quan sát được, usage, reset window, rate-limit state theo provider/model/account; không suy đoán quota đơn thuần từ số tài khoản.
+- **`CT-CAP-002` (`ReserveProviderCapacity`):** Giữ chỗ năng lực dự kiến trước khi điều phối tác vụ; xử lý rate limit bằng waiting/backoff, không tạo retry storm.
+- **`CT-CAP-003` (`CapabilityView`):** Hình chiếu sức khỏe năng lực hệ thống (cloud/desktop/provider, status, capacity indicators) phục vụ điều phối waiting/resume.
+- **`CT-COST-001` (`RecordIncrementalCost`):** Ghi nhận chi phí phát sinh thực tế cho dự án (API trả thêm, nền, lưu trữ bổ sung) vào `CostLedger`; đối soát ngưỡng dự báo 80% ngân sách và trần chi phí gia tăng dưới 50 USD/tháng (`Gate G03`, `R24`).
 
 ---
 
@@ -153,11 +172,11 @@ Quy trình tích hợp toàn diện của Milestone M7 kết nối liền mạch
        ▼ (CT-RND-001..006, CT-QC-001..002 / RenderOutput & QualityReport)
 [I: Lưu Trữ Hybrid & Sync Drive]
        │
-       ▼ (CT-STO-001..012 / CloudVerifiedArtifact)
+       ▼ (CT-STO-001..011 / CloudVerifiedArtifact)
 [G: Điều Phối Lô & Workflow Temporal] ◄── [J: Config, Security, Cost & Quota]
        │                                     (CT-CFG-*, CT-SEC-*, CT-COST-*)
        ▼
-[H: Control API, SSE Stream & UI Dashboard] (CT-API-001..008, CT-EVT-001..008)
+[H: Control API, SSE Stream & UI Dashboard] (CT-API-001..010, CT-BAT-001..004, CT-EVT-001..005)
 ```
 
 1. **Ranh giới A -> B:** B nhận dữ liệu nguồn thô từ A, khử trùng lặp và phân tích thực thể.

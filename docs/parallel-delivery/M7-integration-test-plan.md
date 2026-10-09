@@ -21,31 +21,31 @@
 
 Kế hoạch kiểm thử M7 bao gồm đúng 24 Test Oracles bắt buộc, được tổ chức thành 7 nhóm kiểm định chuyên biệt:
 
-### 2.1. Nhóm E2E Pipeline & Batch Allocation (CT-ORC-001..011, INV-010, INV-013, INV-014, INV-018)
+### 2.1. Nhóm E2E Pipeline & Batch Allocation (CT-ORC-001..012, INV-010, INV-013, INV-014, INV-018)
 | Mã Kiểm Thử | Tình Huống Kiểm Thử (Test Scenario) | Kết Quả Kỳ Vọng (Expected Oracle Outcome) | Ràng Buộc Hợp Đồng / Bất Biến |
 |---|---|---|---|
 | `TST-INT-E2E-001` | Toàn trình sản xuất 1 video hợp lệ từ crawl nguồn thô đến upload và xác thực Google Drive | Video hoàn tất 61-70s, MP4 1080x1920 30fps, đủ hook, subtitle burn-in, thumbnail 0-3s, QC pass, upload và verify checksum trên Cloud thành công | `E2E-001`, `CT-CMN-*`, `OBJ-002` |
 | `TST-INT-BAT-001` | Tiếp nhận batch target từ người dùng; phân bổ theo vòng và giới hạn 1-3 video/tin | Thuật toán phân bổ gán chính xác 1-3 video cho mỗi bài viết hợp lệ; hoàn thành đúng chỉ tiêu target đã cấu hình | `CT-ORC-002`, `INV-010`, `INV-013` |
-| `TST-INT-BAT-002` | Kiểm tra giới hạn sức chứa đồng thời trong quá trình sản xuất lô | Số video đã hoàn thành cộng với các slot công việc đang thực hiện không bao giờ vượt quá chỉ tiêu lô (`target_completed_videos`) | `CT-ORC-008`, `INV-018` |
-| `TST-INT-VAR-001` | Đa dạng hóa biến thể giữa các đợt sản xuất khác nhau từ cùng nguồn tin | Các video sinh ra khác biệt ít nhất một yếu tố thực tế (góc tiếp cận, hook, phong cách dựng); được xác thực qua sổ đối chiếu biến thể | `CT-ORC-011`, `INV-014` |
+| `TST-INT-BAT-002` | Kiểm tra giới hạn sức chứa đồng thời trong quá trình sản xuất lô | Số video đã hoàn thành cộng với các slot công việc đang thực hiện không bao giờ vượt quá chỉ tiêu lô (`target_completed_videos`) | `CT-ORC-002`, `INV-018` |
+| `TST-INT-VAR-001` | Đa dạng hóa biến thể giữa các đợt sản xuất khác nhau từ cùng nguồn tin | Các video sinh ra khác biệt ít nhất một yếu tố thực tế (góc tiếp cận, hook, phong cách dựng); được xác thực qua sổ đối chiếu biến thể | `CT-ORC-012`, `INV-014` |
 
-### 2.2. Nhóm Chịu Lỗi, Cô Lập Lỗi & Tái Lập Workflow (CT-WF-001..006, INV-001..003, INV-016)
+### 2.2. Nhóm Chịu Lỗi, Cô Lập Lỗi & Tái Lập Workflow (CT-WF-001..009, INV-001..003, INV-016)
 | Mã Kiểm Thử | Tình Huống Kiểm Thử (Test Scenario) | Kết Quả Kỳ Vọng (Expected Oracle Outcome) | Ràng Buộc Hợp Đồng / Bất Biến |
 |---|---|---|---|
-| `TST-INT-FLT-001` | Một video trong lô gặp lỗi vĩnh viễn (ví dụ lỗi định dạng nguồn hoặc vi phạm an toàn nội dung) | Child workflow của video đó kết thúc ở trạng thái lỗi được ghi nhận rõ; toàn bộ batch và các video độc lập khác vẫn tiếp tục bình thường | `CT-WF-001`, `CT-ORC-005`, `R16` |
-| `TST-INT-RPL-001` | Tái lập lịch sử workflow Temporal qua các phiên bản mã nguồn cập nhật | Lịch sử chạy (History events) của workflow cũ tái lập thành công mà không gây lỗi Non-Deterministic Error | `Gate G01`, `CT-WF-006` |
-| `TST-INT-REC-001` | Máy trạm Desktop mất mạng đột ngột trong 4 phút 30 giây rồi kết nối lại | Workflow chuyển sang `waiting_capability` và tự động tiếp tục khi desktop online mà không chạy lại từ đầu | `CT-WF-004`, `INV-003` |
-| `TST-INT-FNC-001` | Worker thế hệ cũ gửi kết quả muộn sau khi tác vụ đã được phân bổ lại cho worker mới | Hệ thống từ chối commit kết quả từ worker có generation token cũ; bảo toàn tính toàn vẹn trạng thái | `CT-WF-005`, `INV-003`, `INV-016` |
-| `TST-INT-IDM-001` | Gửi mutation lệnh lặp nhiều lần và phát tán domain event lặp nhiều lần | Trả về `CommandReceipt` ban đầu; consumer chỉ xử lý side-effect đúng một lần duy nhất qua outbox deduplication | `INV-001`, `INV-002`, `CT-API-002`, `CT-EVT-003` |
+| `TST-INT-FLT-001` | Một video trong lô gặp lỗi vĩnh viễn (ví dụ lỗi định dạng nguồn hoặc vi phạm an toàn nội dung) | Child workflow của video đó kết thúc ở trạng thái lỗi được ghi nhận rõ; toàn bộ batch và các video độc lập khác vẫn tiếp tục bình thường | `CT-WF-001`, `CT-ORC-003`, `CT-ORC-010`, `R16` |
+| `TST-INT-RPL-001` | Tái lập lịch sử workflow Temporal qua các phiên bản mã nguồn cập nhật | Lịch sử chạy (History events) của workflow cũ tái lập thành công mà không gây lỗi Non-Deterministic Error | `Gate G01`, `CT-WF-009` |
+| `TST-INT-REC-001` | Máy trạm Desktop mất mạng đột ngột trong 4 phút 30 giây rồi kết nối lại | Workflow chuyển sang `waiting_capability` và tự động tiếp tục khi desktop online mà không chạy lại từ đầu | `CT-WF-007`, `INV-003` |
+| `TST-INT-FNC-001` | Worker thế hệ cũ gửi kết quả muộn sau khi tác vụ đã được phân bổ lại cho worker mới | Hệ thống từ chối commit kết quả từ worker có generation token cũ; bảo toàn tính toàn vẹn trạng thái | `CT-WF-004`, `CT-WF-006`, `INV-003`, `INV-016` |
+| `TST-INT-IDM-001` | Gửi mutation lệnh lặp nhiều lần và phát tán domain event lặp nhiều lần | Trả về `CommandReceipt` ban đầu; consumer chỉ xử lý side-effect đúng một lần duy nhất qua outbox deduplication | `INV-001`, `INV-002`, `CT-API-001`, `CT-WF-005`, `CT-EVT-001`, `CT-EVT-005` |
 
-### 2.3. Nhóm Lưu Trữ Hybrid, Dọn Dẹp & Khôi Phục Thảm Họa (CT-STO-001..010, INV-009, INV-011, INV-016, INV-017)
+### 2.3. Nhóm Lưu Trữ Hybrid, Dọn Dẹp & Khôi Phục Thảm Họa (CT-STO-001..011, INV-009, INV-011, INV-016, INV-017)
 | Mã Kiểm Thử | Tình Huống Kiểm Thử (Test Scenario) | Kết Quả Kỳ Vọng (Expected Oracle Outcome) | Ràng Buộc Hợp Đồng / Bất Biến |
 |---|---|---|---|
-| `TST-INT-DRV-001` | Upload video MP4 lên Google Drive thật với cơ chế resumable upload và xác thực checksum | Tải lên thành công qua nhiều chunk ngắt quãng; checksum SHA-256 đối chiếu khớp hoàn toàn giữa Cloud và Local | `Gate G04`, `CT-STO-004`, `CT-STO-005` |
+| `TST-INT-DRV-001` | Upload video MP4 lên Google Drive thật với cơ chế resumable upload và xác thực checksum | Tải lên thành công qua nhiều chunk ngắt quãng; checksum SHA-256 đối chiếu khớp hoàn toàn giữa Cloud và Local | `Gate G04`, `CT-STO-003`, `CT-STO-002` |
 | `TST-INT-DRV-002` | Video đã qua kiểm định QC pass nhưng quá trình tải lên Google Drive bị gián đoạn chưa hoàn tất | Trạng thái job dừng tại `qc_passed`; tuyệt đối không được ghi nhận hoàn thành (`completed`) khi chưa có `cloud_verified` | `INV-009`, `CT-QC-002` |
-| `TST-INT-CLN-001` | Động cơ dọn dẹp quét thư mục tệp tạm sau khi render hoàn tất | Tệp chỉ bị xóa khi thỏa mãn đủ 4 điều kiện: có trong sổ cái, đã verify trên cloud, đã hết hạn thuê, và đúng epoch khôi phục | `INV-011`, `CT-STO-009` |
-| `TST-INT-MED-001` | Ghi nhận hoàn thành video vào CompletionLedger và cập nhật tần suất sử dụng media của Phân hệ C | Cả hai thao tác cùng commit thành công hoặc cùng rollback nếu xảy ra sự cố cơ sở dữ liệu (tính nguyên tử phân tán) | `INV-017`, `CT-ORC-009` |
-| `TST-INT-RST-001` | Khôi phục cơ sở dữ liệu từ bản sao lưu và gán một epoch mới (`BackupEpoch`) | Hệ thống hoạt động bình thường trên epoch mới; toàn bộ message, grant và event từ epoch cũ bị cô lập hoàn toàn | `Gate G05`, `INV-016`, `CT-STO-010` |
+| `TST-INT-CLN-001` | Động cơ dọn dẹp quét thư mục tệp tạm sau khi render hoàn tất | Tệp chỉ bị xóa khi thỏa mãn đủ 4 điều kiện: có trong sổ cái, đã verify trên cloud, đã hết hạn thuê, và đúng epoch khôi phục | `INV-011`, `CT-STO-007`, `CT-STO-008` |
+| `TST-INT-MED-001` | Ghi nhận hoàn thành video vào CompletionLedger và cập nhật tần suất sử dụng media của Phân hệ C | Cả hai thao tác cùng commit thành công hoặc cùng rollback nếu xảy ra sự cố cơ sở dữ liệu (tính nguyên tử phân tán) | `INV-017`, `CT-ORC-008`, `CT-ORC-009` |
+| `TST-INT-RST-001` | Khôi phục cơ sở dữ liệu từ bản sao lưu và gán một epoch mới (`BackupEpoch`) | Hệ thống hoạt động bình thường trên epoch mới; toàn bộ message, grant và event từ epoch cũ bị cô lập hoàn toàn | `Gate G05`, `INV-016`, `CT-STO-009` |
 
 ### 2.4. Nhóm Bảo Mật, Sandbox & Không Rò Rỉ Secret (CT-SEC-001..005, INV-012, INV-020)
 | Mã Kiểm Thử | Tình Huống Kiểm Thử (Test Scenario) | Kết Quả Kỳ Vọng (Expected Oracle Outcome) | Ràng Buộc Hợp Đồng / Bất Biến |
@@ -53,19 +53,19 @@ Kế hoạch kiểm thử M7 bao gồm đúng 24 Test Oracles bắt buộc, đư
 | `TST-INT-SEC-001` | Rà soát toàn bộ nhật ký hệ thống, Temporal workflow history, SSE stream và màn hình UI | 100% token, API key, mật khẩu và khóa bí mật được che giấu bởi `RedactionFilter`; tuyệt đối 0 trường hợp rò rỉ | `INV-012`, `CT-SEC-001`, `CT-SEC-002` |
 | `TST-INT-SAN-001` | Đưa nội dung nguồn chứa payload độc hại (Prompt Injection gián tiếp, liên kết SSRF, đường dẫn Path Traversal) | Bộ lọc an toàn phát hiện và vô hiệu hóa payload; cấm tuyệt đối việc thực thi lệnh hệ điều hành hoặc đổi chính sách | `INV-020`, `CT-SEC-003`, `CT-SEC-004` |
 
-### 2.5. Nhóm Điều Khiển, Giao Diện & Quan Sát (CT-API-001..008, CT-EVT-001..004)
+### 2.5. Nhóm Điều Khiển, Giao Diện & Quan Sát (CT-API-001..010, CT-BAT-001..004, CT-EVT-001..005)
 | Mã Kiểm Thử | Tình Huống Kiểm Thử (Test Scenario) | Kết Quả Kỳ Vọng (Expected Oracle Outcome) | Ràng Buộc Hợp Đồng / Bất Biến |
 |---|---|---|---|
-| `TST-INT-SSE-001` | Kênh SSE stream bị mất kết nối mạng và kết nối lại sau 10 giây | Client gửi lại `Last-Event-ID`; server bù đắp đầy đủ toàn bộ các sự kiện bị thiếu từ bảng outbox mà không bỏ sót | `CT-API-003`, `CT-API-004` |
-| `TST-INT-CTL-001` | Người dùng thực hiện các thao tác Pause, Resume, Cancel và ForceReconcile trên lô đang chạy | Động cơ điều phối chuyển đổi trạng thái chính xác theo máy trạng thái, dừng an toàn các activity đang chờ | `CT-API-001`, `CT-ORC-004` |
-| `TST-INT-OBS-001` | Kiểm tra tính nhất quán dữ liệu giữa giao diện Desktop UI và cơ sở dữ liệu PostgreSQL | Toàn bộ màn hình UI (Nguồn tin, Nội dung, Media, Jobs, Lô, Logs, Chi phí) hiển thị đồng nhất; không có sai lệch âm thầm | `CT-API-005`, `CT-API-006` |
+| `TST-INT-SSE-001` | Kênh SSE stream bị mất kết nối mạng và kết nối lại sau 10 giây | Client gửi lại `Last-Event-ID`; server bù đắp đầy đủ toàn bộ các sự kiện bị thiếu từ bảng outbox mà không bỏ sót | `CT-API-008`, `CT-EVT-001`, `CT-EVT-005` |
+| `TST-INT-CTL-001` | Người dùng thực hiện các thao tác Pause, Resume, Cancel và ForceReconcile trên lô đang chạy | Động cơ điều phối chuyển đổi trạng thái chính xác theo máy trạng thái, dừng an toàn các activity đang chờ | `CT-API-005`, `CT-ORC-001`, `CT-ORC-004`, `CT-ORC-007` |
+| `TST-INT-OBS-001` | Kiểm tra tính nhất quán dữ liệu giữa giao diện Desktop UI và cơ sở dữ liệu PostgreSQL | Toàn bộ màn hình UI (Nguồn tin, Nội dung, Media, Jobs, Lô, Logs, Chi phí) hiển thị đồng nhất; không có sai lệch âm thầm | `CT-API-002`, `CT-API-007`, `CT-API-008`, `CT-API-010` |
 
-### 2.6. Nhóm Quản Trị Nhà Cung Cấp, Hạn Mức & Chi Phí (CT-ACC-001..002, CT-CAP-001, CT-COST-001..003)
+### 2.6. Nhóm Quản Trị Nhà Cung Cấp, Hạn Mức & Chi Phí (CT-ACC-001..002, CT-CAP-001..003, CT-COST-001)
 | Mã Kiểm Thử | Tình Huống Kiểm Thử (Test Scenario) | Kết Quả Kỳ Vọng (Expected Oracle Outcome) | Ràng Buộc Hợp Đồng / Bất Biến |
 |---|---|---|---|
-| `TST-INT-CST-001` | Chi phí tích lũy của lô sản xuất tăng dần và chạm mốc 80% ngân sách tháng | Hệ thống tự động phát cảnh báo khẩn cấp lên UI và dừng nhận thêm job mới vào lô sản xuất | `Gate G03`, `CT-COST-001`, `CT-COST-002` |
-| `TST-INT-CST-002` | Đo lường chi phí gia tăng thực tế trên kịch bản tải mô phỏng 1 tháng vận hành chuẩn | Tổng chi phí API (LLM, TTS) và dịch vụ đám mây thực tế nằm dưới ngưỡng giới hạn 50 USD/tháng | `Gate G03`, `CT-COST-003`, `R24` |
-| `TST-INT-CAP-001` | Hệ thống rơi vào trạng thái tài nguyên phần cứng tới hạn (CPU > 85% hoặc RAM < 4GB hoặc Disk < 20GB) | Cơ chế Admission Control từ chối tiếp nhận tác vụ mới; giải phóng tài nguyên trước khi tiếp tục | `CT-CAP-001` |
+| `TST-INT-CST-001` | Chi phí tích lũy của lô sản xuất tăng dần và chạm mốc 80% ngân sách tháng | Hệ thống tự động phát cảnh báo khẩn cấp lên UI và dừng nhận thêm job mới vào lô sản xuất | `Gate G03`, `CT-COST-001`, `CT-CAP-001` |
+| `TST-INT-CST-002` | Đo lường chi phí gia tăng thực tế trên kịch bản tải mô phỏng 1 tháng vận hành chuẩn | Tổng chi phí API (LLM, TTS) và dịch vụ đám mây thực tế nằm dưới ngưỡng giới hạn 50 USD/tháng | `Gate G03`, `CT-COST-001`, `R24` |
+| `TST-INT-CAP-001` | Hệ thống rơi vào trạng thái tài nguyên phần cứng tới hạn (CPU > 85% hoặc RAM < 4GB hoặc Disk < 20GB) | Cơ chế Admission Control từ chối tiếp nhận tác vụ mới; giải phóng tài nguyên trước khi tiếp tục | `CT-CAP-001`, `CT-CAP-002` |
 
 ### 2.7. Nhóm Hiệu Năng & Xuất Xưởng Vận Hành (Gate G02, OBJ-003, OBJ-004)
 | Mã Kiểm Thử | Tình Huống Kiểm Thử (Test Scenario) | Kết Quả Kỳ Vọng (Expected Oracle Outcome) | Ràng Buộc Hợp Đồng / Bất Biến |

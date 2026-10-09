@@ -33,17 +33,17 @@ Gói chuẩn bị thực thi `M7-INTEGRATION` thiết lập toàn bộ cơ sở 
 - **Tự động hóa lô không giám sát (Unattended Batch Automation):**
   - Tiếp nhận chỉ tiêu sản xuất do người dùng cấu hình qua UI (`target_completed_videos`), tự động phân bổ công việc theo vòng (1-3 video/tin/lượt) (`CT-ORC-001`, `CT-ORC-002`, `INV-013`).
   - Kiểm soát sức chứa lô nghiêm ngặt: Tổng số video hoàn thành cộng với các slot công việc đang thực hiện không bao giờ vượt quá chỉ tiêu lô (`INV-018`).
-  - Đảm bảo tính đa dạng biến thể giữa các đợt sản xuất khác nhau (`INV-014`, `CT-ORC-011`).
+  - Đảm bảo tính đa dạng biến thể giữa các đợt sản xuất khác nhau (`INV-014`, `CT-ORC-012`).
 - **Tích hợp toàn diện 10 phân hệ (End-to-End Cross-Module Pipeline):**
   - Kết nối đường ống dữ liệu hoàn chỉnh từ Thu thập (A) -> Chuẩn hóa & Sự kiện (B) -> Media (C) -> Trí tuệ kịch bản (D) -> Xử lý âm thanh & Timing (E) -> Dựng hình & QC (F) -> Lưu trữ & Sync Drive (I) -> Điều phối Temporal (G) -> UI/API Dashboard (H) -> Cấu hình & An toàn (J).
   - Đảm bảo tính tương thích hợp đồng tuyệt đối giữa các bước chuyển giao.
 - **Chuỗi Hardening toàn diện (Comprehensive Hardening Suite):**
-  - Chịu lỗi và cô lập lỗi: Lỗi tại một video, một nguồn tin hoặc một provider không làm dừng các công việc độc lập khác (`CT-WF-001`, `R16`).
-  - Tái kết nối máy trạm: Desktop offline trong 5 phút không làm hỏng workflow, sẵn sàng tiếp tục khi online mà không chạy lại từ đầu (`CT-WF-004`).
-  - Bảo vệ chống stale worker: Từ chối commit kết quả từ worker thế hệ cũ bằng generation token (`INV-003`, `INV-016`).
-  - Không rò rỉ bí mật: Lọc sạch 100% secret/API key khỏi log, Temporal history, SSE stream và UI (`INV-012`, `CT-SEC-001`).
-  - Sandbox dữ liệu ngoài: Chống indirect prompt injection, SSRF và path traversal từ dữ liệu RSS/web (`INV-020`, `CT-SEC-003`).
-  - An toàn dọn dẹp và khôi phục: Cấm xóa bản sao cục bộ duy nhất nếu chưa xác minh trên Google Drive (`INV-009`, `INV-011`); cô lập hoàn toàn message epoch cũ khi khôi phục từ backup (`INV-016`, Gate G05).
+  - Chịu lỗi và cô lập lỗi: Lỗi tại một video, một nguồn tin hoặc một provider không làm dừng các công việc độc lập khác (`CT-WF-001`, `CT-ORC-010`, `R16`).
+  - Tái kết nối máy trạm: Desktop offline trong 5 phút không làm hỏng workflow, sẵn sàng tiếp tục khi online mà không chạy lại từ đầu (`CT-WF-007`).
+  - Bảo vệ chống stale worker: Từ chối commit kết quả từ worker thế hệ cũ bằng execution grant và generation fencing token (`INV-003`, `INV-016`, `CT-WF-004`, `CT-WF-006`).
+  - Không rò rỉ bí mật: Lọc sạch 100% secret/API key khỏi log, Temporal history, SSE stream và UI (`INV-012`, `CT-SEC-001`, `CT-API-010`, `CT-EVT-002`).
+  - Sandbox dữ liệu ngoài: Chống indirect prompt injection, SSRF và path traversal từ dữ liệu RSS/web (`INV-020`, `CT-SEC-003`, `CT-SEC-004`).
+  - An toàn dọn dẹp và khôi phục: Cấm xóa bản sao cục bộ duy nhất nếu chưa xác minh trên Google Drive (`INV-009`, `INV-011`); cô lập hoàn toàn message epoch cũ khi khôi phục từ backup (`INV-016`, `CT-WF-004`, `CT-STO-009`, Gate G05).
 - **Benchmark 12 Giờ & Kiểm chứng Ngưỡng Vận Hành:**
   - Đạt chỉ tiêu sản xuất tối thiểu 100 video hợp lệ hoàn tất trong 12 giờ chạy liên tục trên máy mục tiêu (`Gate G02`, `OBJ-003`).
   - Đạt tối thiểu 95% video đủ đầu vào hoàn thành không cần bất kỳ can thiệp thủ công nào sau khi bắt đầu lô (`Gate G02`, `OBJ-004`).
@@ -117,7 +117,7 @@ Khi Milestone M7 được cấp quyền triển khai mã nguồn, cấu trúc th
 - `src/storage/drive_sync.py`: Upload nối tiếp lên Google Drive, xác thực checksum và làm mới token OAuth.
 - `src/storage/local_journal.py`: Sổ nhật ký tệp cục bộ đối soát hai chiều.
 - `src/storage/cleanup_engine.py`: Động cơ dọn dẹp tệp tạm nguyên tử với 4 điều kiện kiểm tra (`INV-011`).
-- `src/storage/backup_recovery.py`: Cơ chế sao lưu và khôi phục phân tách epoch (`INV-016`, Gate G05).
+- `src/storage/backup_recovery.py`: Cơ chế sao lưu và khôi phục phân tách epoch (`INV-016`, `CT-WF-004`, `CT-STO-009`, Gate G05).
 
 #### Cấu trúc Phân hệ J (`src/config`, `src/security`, `src/providers` và `tests/integration/providers`):
 - `src/config/snapshot_manager.py`: Quản lý snapshot cấu hình bất biến cho từng job (`INV-004`).
@@ -184,22 +184,22 @@ INT-0 (Composition Root & Contract Glue)
 - **Ràng buộc:** Không thay đổi hợp đồng nguồn; kiểm tra tính toàn vẹn chữ ký hàm và schema dữ liệu (`CT-CMN-*`).
 
 ### 5.2. INT-1: Unattended Batch Engine & Allocation
-- **Mục tiêu:** Hoàn thiện động cơ quản lý lô sản xuất tự động: tiếp nhận chỉ tiêu từ người dùng, thuật toán phân bổ vòng (1-3 video/tin), kiểm soát capacity reservation (`INV-010`, `INV-013`, `INV-018`, `CT-ORC-001..010`).
+- **Mục tiêu:** Hoàn thiện động cơ quản lý lô sản xuất tự động: tiếp nhận chỉ tiêu từ người dùng, thuật toán phân bổ vòng (1-3 video/tin), kiểm soát capacity reservation (`INV-010`, `INV-013`, `INV-018`, `CT-ORC-001..012`).
 
 ### 5.3. INT-2: Resilience, Child Isolation & Circuit Breaker
-- **Mục tiêu:** Thiết lập cơ chế chịu lỗi của hệ thống: bọc `VideoProductionWorkflow` thành child workflow cô lập lỗi; kiểm thử kịch bản Desktop offline và tự động phục hồi trong 5 phút; cơ chế stale worker rejection (`INV-003`, `CT-WF-001..006`, `R16`).
+- **Mục tiêu:** Thiết lập cơ chế chịu lỗi của hệ thống: bọc `VideoProductionWorkflow` thành child workflow cô lập lỗi; kiểm thử kịch bản Desktop offline và tự động phục hồi trong 5 phút; cơ chế stale worker rejection (`INV-003`, `CT-WF-001..009`, `R16`).
 
 ### 5.4. INT-3: Security, Sandboxing & Zero-Leakage Hardening
-- **Mục tiêu:** Triển khai bộ lọc `RedactionFilter` trên toàn bộ luồng log/history/SSE/UI; cơ chế khử độc dữ liệu nguồn ngoài chống prompt injection, SSRF và path traversal (`INV-012`, `INV-020`, `CT-SEC-001..005`).
+- **Mục tiêu:** Triển khai bộ lọc `RedactionFilter` trên toàn bộ luồng log/history/SSE/UI; cơ chế khử độc dữ liệu nguồn ngoài chống prompt injection, SSRF và path traversal (`INV-012`, `INV-020`, `CT-SEC-001..004`, `CT-CFG-001..002`).
 
 ### 5.5. INT-4: Control Plane, SSE Stream & UI Hardening
-- **Mục tiêu:** Hoàn thiện giao diện điều khiển và kênh đẩy sự kiện thời gian thực: SSE resync với cursor offset; không âm thầm giấu lỗi; màn hình Dashboard quan sát đầy đủ 10 phân hệ (`CT-API-001..008`, `CT-EVT-001..004`, `R19`, `R20`).
+- **Mục tiêu:** Hoàn thiện giao diện điều khiển và kênh đẩy sự kiện thời gian thực: SSE resync với cursor offset; không âm thầm giấu lỗi; màn hình Dashboard quan sát đầy đủ 10 phân hệ (`CT-API-001..010`, `CT-BAT-001..004`, `CT-EVT-001..005`, `R19`, `R20`).
 
 ### 5.6. INT-5: Hybrid Storage Reconcile, Cleanup & Isolated Restore
-- **Mục tiêu:** Hoàn thiện cơ chế đồng bộ Google Drive với xác thực SHA-256; sổ đối soát hai chiều `LocalJournal`; động cơ dọn dẹp tệp tạm nguyên tử với 4 điều kiện kiểm tra; cơ chế phục hồi cơ sở dữ liệu phân tách epoch (`INV-009`, `INV-011`, `INV-016`, `INV-017`, `CT-STO-001..010`, `Gate G04`, `Gate G05`).
+- **Mục tiêu:** Hoàn thiện cơ chế đồng bộ Google Drive với xác thực SHA-256; sổ đối soát hai chiều `LocalJournal`; động cơ dọn dẹp tệp tạm nguyên tử với 4 điều kiện kiểm tra; cơ chế phục hồi cơ sở dữ liệu phân tách epoch (`INV-009`, `INV-011`, `INV-016`, `INV-017`, `CT-STO-001..011`, `Gate G04`, `Gate G05`).
 
 ### 5.7. INT-6: Provider Routing, Quota & Cost Guard
-- **Mục tiêu:** Quản trị bể tài khoản provider với luân chuyển và circuit breaker; kiểm soát cấp phát tài nguyên phần cứng (CPU/GPU/RAM/Disk); theo dõi chi phí tích lũy và phát cảnh báo dự báo 80% ngân sách (`Gate G03`, `CT-ACC-001..002`, `CT-CAP-001`, `CT-COST-001..003`, `R23`, `R24`).
+- **Mục tiêu:** Quản trị bể tài khoản provider với luân chuyển và circuit breaker; kiểm soát cấp phát tài nguyên phần cứng (CPU/GPU/RAM/Disk); theo dõi chi phí tích lũy và phát cảnh báo dự báo 80% ngân sách (`Gate G03`, `CT-ACC-001..002`, `CT-CAP-001..003`, `CT-COST-001`, `R23`, `R24`).
 
 ### 5.8. INT-7: 12-Hour Benchmark & Performance Hardening
 - **Mục tiêu:** Chạy thử nghiệm tải liên tục trong 12 giờ trên máy mục tiêu: sản xuất tối thiểu 100 video hợp lệ hoàn tất, đạt tối thiểu 95% video tự động hoàn toàn không cần can thiệp (`Gate G02`, `OBJ-003`, `OBJ-004`).
