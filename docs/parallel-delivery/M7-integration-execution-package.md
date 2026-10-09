@@ -116,7 +116,7 @@ Khi Milestone M7 được cấp quyền triển khai mã nguồn, cấu trúc th
 #### Cấu trúc Phân hệ I (`src/storage` và `tests/integration/storage`):
 - `src/storage/drive_sync.py`: Upload nối tiếp lên Google Drive, xác thực checksum và làm mới token OAuth.
 - `src/storage/local_journal.py`: Sổ nhật ký tệp cục bộ đối soát hai chiều.
-- `src/storage/cleanup_engine.py`: Động cơ dọn dẹp tệp tạm nguyên tử với 4 điều kiện kiểm tra (`INV-011`).
+- `src/storage/cleanup_engine.py`: Động cơ dọn dẹp tệp tạm nguyên tử với 5 điều kiện kiểm tra theo `CT-STO-008` (staging/cache được phép xóa; không có lease/consumer hoạt động; đã verify trên cloud; cùng recovery epoch; resolved absolute path nằm trong staging root) (`INV-011`).
 - `src/storage/backup_recovery.py`: Cơ chế sao lưu và khôi phục phân tách epoch (`INV-016`, `CT-WF-004`, `CT-STO-009`, Gate G05).
 
 #### Cấu trúc Phân hệ J (`src/config`, `src/security`, `src/providers` và `tests/integration/providers`):
@@ -196,7 +196,7 @@ INT-0 (Composition Root & Contract Glue)
 - **Mục tiêu:** Hoàn thiện giao diện điều khiển và kênh đẩy sự kiện thời gian thực: SSE resync với cursor offset; không âm thầm giấu lỗi; màn hình Dashboard quan sát đầy đủ 10 phân hệ (`CT-API-001..010`, `CT-BAT-001..004`, `CT-EVT-001..005`, `R19`, `R20`).
 
 ### 5.6. INT-5: Hybrid Storage Reconcile, Cleanup & Isolated Restore
-- **Mục tiêu:** Hoàn thiện cơ chế đồng bộ Google Drive với xác thực SHA-256; sổ đối soát hai chiều `LocalJournal`; động cơ dọn dẹp tệp tạm nguyên tử với 4 điều kiện kiểm tra; cơ chế phục hồi cơ sở dữ liệu phân tách epoch (`INV-009`, `INV-011`, `INV-016`, `INV-017`, `CT-STO-001..011`, `Gate G04`, `Gate G05`).
+- **Mục tiêu:** Hoàn thiện cơ chế đồng bộ Google Drive với xác thực SHA-256; sổ đối soát hai chiều `LocalJournal`; động cơ dọn dẹp tệp tạm nguyên tử với 5 điều kiện kiểm tra theo `CT-STO-008` (staging/cache được phép xóa; không có lease/consumer hoạt động; đã verify trên cloud; cùng recovery epoch; resolved absolute path nằm trong staging root); cơ chế phục hồi cơ sở dữ liệu phân tách epoch (`INV-009`, `INV-011`, `INV-016`, `INV-017`, `CT-STO-001..011`, `Gate G04`, `Gate G05`).
 
 ### 5.7. INT-6: Provider Routing, Quota & Cost Guard
 - **Mục tiêu:** Quản trị bể tài khoản provider với luân chuyển và circuit breaker; kiểm soát cấp phát tài nguyên phần cứng (CPU/GPU/RAM/Disk); theo dõi chi phí tích lũy và phát cảnh báo dự báo 80% ngân sách (`Gate G03`, `CT-ACC-001..002`, `CT-CAP-001..003`, `CT-COST-001`, `R23`, `R24`).

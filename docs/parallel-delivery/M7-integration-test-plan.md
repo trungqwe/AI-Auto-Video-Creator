@@ -43,7 +43,7 @@ Kế hoạch kiểm thử M7 bao gồm đúng 24 Test Oracles bắt buộc, đư
 |---|---|---|---|
 | `TST-INT-DRV-001` | Upload video MP4 lên Google Drive thật với cơ chế resumable upload và xác thực checksum | Tải lên thành công qua nhiều chunk ngắt quãng; checksum SHA-256 đối chiếu khớp hoàn toàn giữa Cloud và Local | `Gate G04`, `CT-STO-003`, `CT-STO-002` |
 | `TST-INT-DRV-002` | Video đã qua kiểm định QC pass nhưng quá trình tải lên Google Drive bị gián đoạn chưa hoàn tất | Trạng thái job dừng tại `qc_passed`; tuyệt đối không được ghi nhận hoàn thành (`completed`) khi chưa có `cloud_verified` | `INV-009`, `CT-QC-002` |
-| `TST-INT-CLN-001` | Động cơ dọn dẹp quét thư mục tệp tạm sau khi render hoàn tất | Tệp chỉ bị xóa khi thỏa mãn đủ 4 điều kiện: có trong sổ cái, đã verify trên cloud, đã hết hạn thuê, và đúng epoch khôi phục | `INV-011`, `CT-STO-007`, `CT-STO-008` |
+| `TST-INT-CLN-001` | Động cơ dọn dẹp quét thư mục tệp tạm sau khi render hoàn tất | Tệp chỉ bị xóa khi thỏa mãn đủ 5 điều kiện theo `CT-STO-008`: staging/cache được phép xóa; không có lease/consumer hoạt động; đã verify trên cloud; cùng recovery epoch; resolved absolute path nằm trong staging root | `INV-011`, `CT-STO-007`, `CT-STO-008` |
 | `TST-INT-MED-001` | Ghi nhận hoàn thành video vào CompletionLedger và cập nhật tần suất sử dụng media của Phân hệ C | Cả hai thao tác cùng commit thành công hoặc cùng rollback nếu xảy ra sự cố cơ sở dữ liệu (tính nguyên tử phân tán) | `INV-017`, `CT-ORC-008`, `CT-ORC-009` |
 | `TST-INT-RST-001` | Khôi phục cơ sở dữ liệu từ bản sao lưu và gán một epoch mới (`BackupEpoch`) | Hệ thống hoạt động bình thường trên epoch mới; toàn bộ message, grant và event từ epoch cũ bị cô lập hoàn toàn | `Gate G05`, `INV-016`, `CT-STO-009` |
 
