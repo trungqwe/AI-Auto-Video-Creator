@@ -42,7 +42,7 @@ Gói chuẩn bị thực thi `M5-D` thiết lập toàn bộ cơ sở kỹ thu�
 
 ```mermaid
 graph TD
-    M2P9["M2-P9 Exit Gate & Evidence Synthesis (ACCEPTED)"] --> M3A["M3-A Kế hoạch chuẩn bị (ACCEPTED / FROZEN)"]
+    M2_BASELINE["M2 Baseline: M2-P1..P7B (ACCEPTED/CLOSED) & P8/P9 (LOCKED)"] --> M3A["M3-A Kế hoạch chuẩn bị (ACCEPTED / FROZEN)"]
     M3A --> M4CI["M4-CI Kế hoạch chuẩn bị C-I (ACCEPTED / FROZEN)"]
     M4CI --> M5D_PREP["M5-D Kế hoạch chuẩn bị D (TÀI LIỆU NÀY - PLANNED)"]
     M5D_PREP --> USER_CKPT["User Checkpoint phê duyệt mở Milestone M5"]
@@ -57,7 +57,7 @@ graph TD
 ```
 
 ### 2.1. Điều kiện tiền đề kỹ thuật (Technical Preconditions)
-1. **M2, M3-A và M4-CI hoàn tất:** Cơ sở hạ tầng PostgreSQL Connection Pool, Transactional Outbox, Command/Query Envelopes, SQLite local journal, Windows DPAPI Secret Broker và hợp đồng chuẩn đã sẵn sàng.
+1. **Cơ sở hạ tầng M2-P1..P7B cùng kế hoạch M3-A và M4-CI:** Cơ sở hạ tầng PostgreSQL Connection Pool, Transactional Outbox, Command/Query Envelopes, SQLite local journal, Windows DPAPI Secret Broker và hợp đồng chuẩn đã sẵn sàng từ phạm vi M2-P1..P7B (ACCEPTED/CLOSED). Lưu ý theo authority hiện hành, M2-P8 và M2-P9 tiếp tục duy trì trạng thái LOCKED (chưa có quyền RED/implementation, M2 chưa hoàn tất toàn bộ); các gói chuẩn bị M3-A và M4-CI là kế hoạch đã đóng băng (ACCEPTED / FROZEN).
 2. **Hạ tầng AI Adapter & Secret Broker (Module J):** Cổng gọi mô hình AI thông qua `CT-AI-ROUTE-001` sẵn sàng cung cấp provider handle ngắn hạn, cô lập hoàn toàn API keys khỏi Module D (Gate G03/G04).
 3. **Kho tài nguyên Media & Hook (Module C):** Danh mục `MediaAsset`, `VisualHook`, `AudioHook` và `ThumbnailCandidate` sẵn sàng phục vụ truy vấn ứng viên theo `CT-MED-005` và `CT-MED-006`.
 4. **Sổ bộ 5 Preset (Five-Preset Registry):** Định nghĩa 5 nhóm preset phong cách video chuẩn đã được khóa revision, sẵn sàng cho việc gán ghép trong `ProductionPlan`.
