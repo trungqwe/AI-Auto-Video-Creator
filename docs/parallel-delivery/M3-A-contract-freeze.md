@@ -1,23 +1,23 @@
-# ??ng B?ng H?p ??ng Giao Ti?p: M3-A (Contract Freeze Specification)
+# Đóng Băng Hợp Đồng Giao Tiếp: M3-A (Contract Freeze Specification)
 
-> **M? g?i (Package ID):** `M3-A`
-> **Tr?ng th?i ??ng b?ng:** `frozen_design_baseline`
-> **Th?m quy?n quy ??nh:** CT-CMN-012, `docs/parallel-delivery/contract-registry.yaml`, `operating-model.md`
-> **R?ng bu?c b?t bi?n:** B?t bu?c kh?p ch?nh x?c m? b?m SHA-256 ngu?n; sai m? b?m ho?c sai ngu?n ??nh ngh?a ph?i fail-closed.
-
----
-
-## 1. Nguy?n T?c ??ng B?ng H?p ??ng (Contract Freeze Principles)
-
-1. **Kh?a b?t bi?n (Immutable Baseline):** M?i c?ng vi?c chu?n b? v? tri?n khai t??ng lai c?a Ph?n h? A b?t bu?c ph?i d?a tr?n ??ng c?c phi?n b?n h?p ??ng ?? ???c ??ng b?ng d??i ??y.
-2. **Fail-Closed khi sai l?ch:** N?u ph?t hi?n m? b?m t?p ngu?n th?c t? kh?c v?i m? b?m ?? ??ng b?ng, to?n b? chu tr?nh ki?m th? v? t?ch h?p ph?i d?ng ngay l?p t?c (`FAIL_CLOSED_CONTRACT_DRIFT`).
-3. **C?m s?a t?p ngu?n h?p ??ng:** Nghi?m c?m m?i s?a ??i ??i v?i c?c t?p ngu?n trong `docs/09-contracts/**` trong ph?m vi c?a g?i n?y (`LOCK-CONTRACT-SOURCE`). M?i ?? xu?t thay ??i h?p ??ng ph?i th?ng qua quy tr?nh RFC / ADR ki?n tr?c c?p cao.
+> **Mã gói (Package ID):** `M3-A`
+> **Trạng thái đóng băng:** `frozen_design_baseline`
+> **Thẩm quyền quy định:** CT-CMN-012, `docs/parallel-delivery/contract-registry.yaml`, `operating-model.md`
+> **Ràng buộc bất biến:** Bắt buộc khớp chính xác mã băm SHA-256 nguồn; sai mã băm hoặc sai nguồn định nghĩa phải fail-closed.
 
 ---
 
-## 2. B?ng ??ng B?ng C?c H?p ??ng Li?n Quan (Exact Frozen Contract Revisions)
+## 1. Nguyên Tắc Đóng Băng Hợp Đồng (Contract Freeze Principles)
 
-| M? H?p ??ng (Contract ID) | T?p Ngu?n ??nh Ngh?a (Defining Source) | Prefixes | Owner | Exact Frozen SHA-256 |
+1. **Khóa bất biến (Immutable Baseline):** Mọi công việc chuẩn bị và triển khai tương lai của Phân hệ A bắt buộc phải dựa trên đúng các phiên bản hợp đồng đã được đóng băng dưới đây.
+2. **Fail-Closed khi sai lệch:** Nếu phát hiện mã băm tệp nguồn thực tế khác với mã băm đã đóng băng, toàn bộ chu trình kiểm thử và tích hợp phải dừng ngay lập tức (`FAIL_CLOSED_CONTRACT_DRIFT`).
+3. **Cấm sửa tệp nguồn hợp đồng:** Nghiêm cấm mọi sửa đổi đối với các tệp nguồn trong `docs/09-contracts/**` trong phạm vi của gói này (`LOCK-CONTRACT-SOURCE`). Mọi đề xuất thay đổi hợp đồng phải thông qua quy trình RFC / ADR kiến trúc cấp cao.
+
+---
+
+## 2. Bảng Đóng Băng Các Hợp Đồng Liên Quan (Exact Frozen Contract Revisions)
+
+| Mã Hợp Đồng (Contract ID) | Tệp Nguồn Định Nghĩa (Defining Source) | Prefixes | Owner | Exact Frozen SHA-256 |
 |---|---|---|---|---|
 | `CONTRACT-SOURCE-CONTENT` | `docs/09-contracts/04-source-content-contracts.md` | `CT-SRC-*`, `CT-CNT-*` | A (Co-owner: B) | `61b075d202dd0d7729123f68f26285097be8120e2de48194d0ad2fe847701f31` |
 | `CONTRACT-COMMON` | `docs/09-contracts/00-common-contract.md` | `CT-CMN-*` | CROSS-CUTTING | `dfdce8db13d5f1d1f286ccd233a66caf39f48552da2dbbad26692fde7be978e8` |
@@ -28,42 +28,42 @@
 
 ---
 
-## 3. Chi Ti?t Giao Di?n CONTRACT-SOURCE-CONTENT (Bound to Ph?n H? A)
+## 3. Chi Tiết Giao Diện CONTRACT-SOURCE-CONTENT (Bound to Phân Hệ A)
 
-### 3.1. Qu?n l? ngu?n tin (Source Lifecycle Operations)
+### 3.1. Quản lý nguồn tin (Source Lifecycle Operations)
 - **`CT-SRC-001` (`RegisterSource`):**
   - Input: `workspace_id`, `url` (canonical locator), `source_kind`, `tier`, `topics`, `collection_enabled`, `actor`, `idempotency_key`.
   - Output: `SourceRef`, `revision`, `url_validation_result`, `receipt`.
-  - B?t bi?n: URL ph?i qua ki?m tra chu?n h?a v? SSRF policy. Ngu?n c? tombstone kh?ng ???c ??ng k? l?i (tr? v? conflict k?m tombstone ref). Kh?ng t? ??ng ??i Tier.
+  - Bất biến: URL phải qua kiểm tra chuẩn hóa và SSRF policy. Nguồn có tombstone không được đăng ký lại (trả về conflict kèm tombstone ref). Không tự động đổi Tier.
 - **`CT-SRC-002` (`UpdateSourceMetadata`):**
   - Input: `source_id`, `expected_revision`, `tier`, `topics`, `notes`, `collection_enabled`, `actor`, `idempotency_key`.
   - Output: `SourceRef`, `new_revision`, `receipt`.
-  - B?t bi?n: Kh?ng s?a d? li?u b?i vi?t l?ch s? ho?c quan h? s? ki?n.
+  - Bất biến: Không sửa dữ liệu bài viết lịch sử hoặc quan hệ sự kiện.
 - **`CT-SRC-003` (`RemoveSource` / `RestoreSource`):**
-  - Remove: T?o `SourceTombstone`, d?ng m?i ho?t ??ng thu th?p, ch?n auto-discovery. Gi? nguy?n to?n b? d? li?u tin t?c/media ?? thu th?p tr??c ??.
-  - Restore: Kh?i ph?c tr?ng th?i ho?t ??ng tr??c ?? n?u policy c?n cho ph?p; n?u kh?ng chuy?n v? `DISABLED`.
+  - Remove: Tạo `SourceTombstone`, dừng mọi hoạt động thu thập, chặn auto-discovery. Giữ nguyên toàn bộ dữ liệu tin tức/media đã thu thập trước đó.
+  - Restore: Khôi phục trạng thái hoạt động trước đó nếu policy còn cho phép; nếu không chuyển về `DISABLED`.
 - **`CT-SRC-003A` (`EvaluateSourceCandidate` / `RegisterSourceCandidate`):**
-  - Lifecycle: `DISCOVERED` ? `VALIDATING` ? `READY_FOR_REGISTRATION` | `MATCHED_EXISTING` | `BLOCKED_TOMBSTONE` | `REJECTED`.
-  - ??ng k? candidate ki?m tra l?i canonical identity, source/tombstone v? policy trong c?ng m?t database transaction. N?u g?p tombstone tr? `BLOCKED_TOMBSTONE`; n?u ngu?n ?? t?n t?i tr? `MATCHED_EXISTING`.
+  - Lifecycle: `DISCOVERED` -> `VALIDATING` -> `READY_FOR_REGISTRATION` | `MATCHED_EXISTING` | `BLOCKED_TOMBSTONE` | `REJECTED`.
+  - Đăng ký candidate kiểm tra lại canonical identity, source/tombstone và policy trong cùng một database transaction. Nếu gặp tombstone trả `BLOCKED_TOMBSTONE`; nếu nguồn đã tồn tại trả `MATCHED_EXISTING`.
 
-### 3.2. L?p k? ho?ch v? chu k? thu th?p (Collection Cycle Operations)
+### 3.2. Lập kế hoạch và chu kỳ thu thập (Collection Cycle Operations)
 - **`CT-SRC-004` (`PlanCollectionCycle`):**
-  - Input: `business_date` (t?nh t? timezone revision ?? kh?a), `subject_groups`, `fresh_unique_article_target`, `source_snapshot`, `collection_policy_revision`.
-  - Output: Danh s?ch ngu?n theo th? t? x?c ??nh, l? do ch?n/b? qua, ng??ng d?ng Tier, `cycle_id`.
-  - Kh?a ??nh danh duy nh?t c?a l??t qu?t ??nh k?: `workspace_id + source_id + business_date + periodic`. Policy revision ch? l? metadata, ??i policy trong ng?y kh?ng m? l??t qu?t th? hai.
-  - B?t bi?n: M?i ngu?n ???c qu?t ??nh k? t?i ?a 1 l?n/ng?y. Tier ti?p theo ch? m? khi s? tin m?i kh?ng tr?ng ch?a ??t ng??ng m?c ti?u.
+  - Input: `business_date` (tính từ timezone revision đã khóa), `subject_groups`, `fresh_unique_article_target`, `source_snapshot`, `collection_policy_revision`.
+  - Output: Danh sách nguồn theo thứ tự xác định, lý do chọn/bỏ qua, ngưỡng dừng Tier, `cycle_id`.
+  - Khóa định danh duy nhất của lượt quét định kỳ: `workspace_id + source_id + business_date + periodic`. Policy revision chỉ là metadata, đổi policy trong ngày không mở lượt quét thứ hai.
+  - Bất biến: Mỗi nguồn được quét định kỳ tối đa 1 lần/ngày. Tier tiếp theo chỉ mở khi số tin mới không trùng chưa đạt ngưỡng mục tiêu.
 - **`CT-SRC-005` (`CollectSource`):**
   - Input: `source_revision`, `collection_cycle_id`, `collection_run_id`, `fetch_policy_revision`, `cursor`, `deadline`.
-  - Output: `CollectionRunResult` (`COMPLETED`, `COMPLETED_PARTIAL`, `FAILED_FINAL`), th?ng k? URL, document package refs, cursor m?i, redacted error logs.
-  - Partial success kh?ng l?m m?t c?c package ?? commit. Cursor ch? ti?n qua c?c m?c ?? ghi nh?n b?n v?ng.
+  - Output: `CollectionRunResult` (`COMPLETED`, `COMPLETED_PARTIAL`, `FAILED_FINAL`), thống kê URL, document package refs, cursor mới, redacted error logs.
+  - Partial success không làm mất các package đã commit. Cursor chỉ tiến qua các mốc đã ghi nhận bền vững.
 
 ---
 
-## 4. Chi Ti?t Giao Di?n B?n Giao: CollectedDocumentPackage (`CT-SRC-006`)
+## 4. Chi Tiết Giao Diện Bàn Giao: CollectedDocumentPackage (`CT-SRC-006`)
 
-`CollectedDocumentPackage` l? phong b? d? li?u k? thu?t b?n giao t? Ph?n h? A sang Ph?n h? B (`interface_a_b`):
+`CollectedDocumentPackage` là phong bì dữ liệu kỹ thuật bàn giao từ Phân hệ A sang Phân hệ B (`interface_a_b`):
 
-### 4.1. C?u tr?c Schema (Machine-Readable Contract)
+### 4.1. Cấu trúc Schema (Machine-Readable Contract)
 
 ```json
 {
@@ -167,38 +167,38 @@
 }
 ```
 
-### 4.2. Quy t?c Th?m tra Hai L?p (Two-Layer Validation Discipline)
-1. **L?p 1 ? Ki?m tra C?u tr?c Schema (Structural Validation):**
-   - Thi?u b?t k? tr??ng b?t bu?c n?o trong danh s?ch `required` -> T? ch?i ngay t?i bi?n Ph?n h? A v?i l?i `VALIDATION_ERROR`.
-   - Tuy?t ??i kh?ng t?o b?n ghi `CollectedDocument`, kh?ng ??y event outbox sang B. Ghi nh?n nh?t k? l?i v?i correlation ID an to?n.
-2. **L?p 2 ? Ki?m tra T?nh To?n V?n N?i Dung (Content Completeness):**
-   - Package ??ng c?u tr?c schema nh?ng n?i dung r?ng (empty main text) ho?c tr?ch xu?t th?t b?i -> ??nh d?u `content_eligibility = "incomplete"` k?m l? do c? th?.
-   - Khi chuy?n sang Ph?n h? B, B ti?p nh?n nh?ng tr? v? disposition `REJECTED_INCOMPLETE` theo CT-CNT-001; kh?ng t?o b?i vi?t m?i v? kh?ng t?o candidate k?ch b?n.
+### 4.2. Quy tắc Thẩm tra Hai Lớp (Two-Layer Validation Discipline)
+1. **Lớp 1 - Kiểm tra Cấu trúc Schema (Structural Validation):**
+   - Thiếu bất kỳ trường bắt buộc nào trong danh sách `required` -> Từ chối ngay tại biên Phân hệ A với lỗi `VALIDATION_ERROR`.
+   - Tuyệt đối không tạo bản ghi `CollectedDocument`, không đẩy event outbox sang B. Ghi nhận nhật ký lỗi với correlation ID an toàn.
+2. **Lớp 2 - Kiểm tra Tính Toàn Vẹn Nội Dung (Content Completeness):**
+   - Package đúng cấu trúc schema nhưng nội dung rỗng (empty main text) hoặc trích xuất thất bại -> Đánh dấu `content_eligibility = "incomplete"` kèm lý do cụ thể.
+   - Khi chuyển sang Phân hệ B, B tiếp nhận nhưng trả về disposition `REJECTED_INCOMPLETE` theo CT-CNT-001; không tạo bài viết mới và không tạo candidate kịch bản.
 
 ---
 
-## 5. M?y Tr?ng Th?i C?t L?i (Bound State Machines ? CONTRACT-STATE-MACHINES)
+## 5. Máy Trạng Thái Cốt Lõi (Bound State Machines - CONTRACT-STATE-MACHINES)
 
-### 5.1. V?ng ??i Ngu?n: `CT-STATE-001`
-- ?? th? tr?ng th?i: `ACTIVE` ? `DISABLED` ? `REMOVED_TOMBSTONE`.
-- B?t bi?n: T? `REMOVED_TOMBSTONE` ch? c? l?nh `RestoreSource` h?p l?. Ngu?n ?? remove c?m auto-discovery t?o m?i.
+### 5.1. Vòng đời Nguồn: `CT-STATE-001`
+- Đồ thị trạng thái: `ACTIVE` -> `DISABLED` -> `REMOVED_TOMBSTONE`.
+- Bất biến: Từ `REMOVED_TOMBSTONE` chỉ có lệnh `RestoreSource` hợp lệ. Nguồn đã remove cấm auto-discovery tạo mới.
 
-### 5.2. V?ng ??i L??t qu?t: `CT-STATE-002`
+### 5.2. Vòng đời Lượt quét: `CT-STATE-002`
 - Run:
-  - `SCHEDULED` ? `RUNNING`.
-  - `RUNNING` ? `WAITING_RETRY` ? `RUNNING`.
-  - `RUNNING` ? `WAITING_RECONCILIATION` ? `RUNNING` ho?c tr?ng th?i terminal.
-  - `RUNNING` ? `COMPLETED` | `COMPLETED_PARTIAL` | `FAILED_FINAL`.
-- Attempt ghi nh?n: `SUCCEEDED`, `FAILED_RETRYABLE`, `FAILED_FINAL`, `OUTCOME_UNKNOWN`.
-- B?t bi?n: `OUTCOME_UNKNOWN` kh?ng ???c t? ? retry m? ho?c t? k?t lu?n th?nh c?ng; b?t bu?c reconcile c? b?ng ch?ng.
+  - `SCHEDULED` -> `RUNNING`.
+  - `RUNNING` -> `WAITING_RETRY` -> `RUNNING`.
+  - `RUNNING` -> `WAITING_RECONCILIATION` -> `RUNNING` hoặc trạng thái terminal.
+  - `RUNNING` -> `COMPLETED` | `COMPLETED_PARTIAL` | `FAILED_FINAL`.
+- Attempt ghi nhận: `SUCCEEDED`, `FAILED_RETRYABLE`, `FAILED_FINAL`, `OUTCOME_UNKNOWN`.
+- Bất biến: `OUTCOME_UNKNOWN` không được tự ý retry mù hoặc tự kết luận thành công; bắt buộc reconcile có bằng chứng.
 
-### 5.3. V?ng ??i ?? xu?t Ngu?n (Candidate): `CT-STATE-002A`
-- `DISCOVERED` ? `VALIDATING` ? `READY_FOR_REGISTRATION` | `MATCHED_EXISTING` | `BLOCKED_TOMBSTONE` | `REJECTED`.
-- `READY_FOR_REGISTRATION` ? `REGISTERED` | `MATCHED_EXISTING` | `BLOCKED_TOMBSTONE` | `REJECTED`.
-- B?t bi?n: Registration ki?m tra l?i nguy?n t? tombstone v? existing source trong c?ng transaction.
+### 5.3. Vòng đời Đề xuất Nguồn (Candidate): `CT-STATE-002A`
+- `DISCOVERED` -> `VALIDATING` -> `READY_FOR_REGISTRATION` | `MATCHED_EXISTING` | `BLOCKED_TOMBSTONE` | `REJECTED`.
+- `READY_FOR_REGISTRATION` -> `REGISTERED` | `MATCHED_EXISTING` | `BLOCKED_TOMBSTONE` | `REJECTED`.
+- Bất biến: Registration kiểm tra lại nguyên tử tombstone và existing source trong cùng transaction.
 
 ---
 
-## 6. K?t Lu?n Kh?a B?t Bi?n
+## 6. Kết Luận Khóa Bất Biến
 
-To?n b? 6 h?p ??ng n?n t?ng c?ng c?c quy t?c chuy?n ??i tr?ng th?i v? schema phong b? d? li?u ?? ???c kh?a c?ng. Kh?ng cho ph?p b?t k? thay ??i ??n ph??ng n?o l?m tr?i l?ch baseline ?? ???c ph? duy?t.
+Toàn bộ 6 hợp đồng nền tảng cùng các quy tắc chuyển đổi trạng thái và schema phong bì dữ liệu đã được khóa cứng. Không cho phép bất kỳ thay đổi đơn phương nào làm sai lệch baseline đã được phê duyệt.
