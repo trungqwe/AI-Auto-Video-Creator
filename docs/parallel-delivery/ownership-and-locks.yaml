@@ -23,7 +23,7 @@ single_writer_rules:
 modules:
   A:
     responsibility: source_and_collection
-    aggregates: [SourceCandidate, Source, CollectionRun, CollectionAttempt, CollectedDocument]
+    aggregates: [SourceCandidate, Source, CollectionRun, CollectionAttempt, CollectedDocument, SourceTombstone]
     contract_locks: [LOCK-CONTRACT-SOURCE-CONTENT]
   B:
     responsibility: articles_revisions_events_and_updates
@@ -116,6 +116,15 @@ path_ownership:
     mode: immutable
     lock: LOCK-ACCEPTED-EVIDENCE
 
+  - id: PATH-SRC-SOURCE-INGESTION
+    patterns:
+      - src/source_ingestion/**
+      - tests/unit/collection/**
+      - tests/integration/collection/**
+      - docs/modules/a-source-collection/**
+    owner_role: Module_A_Source_Ingestion_Owner
+    mode: exclusive
+    lock: LOCK-SRC-SOURCE-INGESTION
   - id: PATH-SRC-INGESTION
     patterns:
       - src/ingestion/**
@@ -172,6 +181,14 @@ path_ownership:
     owner_role: Module_H_Control_UI_Owner
     mode: exclusive
     lock: LOCK-SRC-CONTROL-UI
+  - id: PATH-SRC-STORAGE
+    patterns:
+      - src/storage/**
+      - tests/unit/storage/**
+      - tests/integration/storage/**
+    owner_role: Module_I_Storage_Owner
+    mode: exclusive
+    lock: LOCK-SRC-STORAGE
   - id: PATH-SRC-CONFIG-SECURITY
     patterns:
       - src/controlplane/config/**
@@ -342,6 +359,12 @@ locks:
     lease_seconds: 1800
     renewable: true
 
+  - id: LOCK-SRC-SOURCE-INGESTION
+    class: path
+    mode: exclusive
+    scope: capability_a_source_collection_code
+    lease_seconds: 1800
+    renewable: true
   - id: LOCK-SRC-INGESTION
     class: path
     mode: exclusive
@@ -382,6 +405,12 @@ locks:
     class: path
     mode: exclusive
     scope: src_controlplane_control_ui_and_m2_e2e
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-SRC-STORAGE
+    class: path
+    mode: exclusive
+    scope: capability_i_storage_code
     lease_seconds: 1800
     renewable: true
   - id: LOCK-SRC-CONFIG-SECURITY
