@@ -303,7 +303,7 @@ Toàn bộ 21 bypass độc lập do Sol review phát hiện cùng các boundary
    - Trong `.validation-report.json`, trường `wrapper_commit` được phép khai báo tượng trưng `"HEAD"` (hoặc `"git:HEAD"`) hoặc exact 40-hex SHA khớp checkout HEAD thực tế.
    - Loại bỏ hoàn toàn sự tự tham chiếu SHA bất khả thi trong cấu trúc Git DAG; validator suy ra `effective_wrapper` từ runtime Git, kiểm chứng quan hệ `effective_wrapper^ == parent_commit` và toàn vẹn mã băm `bundle_sha256`.
 3. **Phân tách Rõ Ràng Trường `model` và `effort` trong Dely và Tài liệu**:
-   - Khóa route review thành Claude Code / `cx/gpt-5.6-sol` / `high` (tách riêng model và effort, nghiêm cấm slug gộp `cx/gpt-5.6-sol-high`).
+   - Khóa route review thành Claude Code native / `claude-sonnet-5-5` / `medium` theo cấu hình vai trò Dashboard (tách riêng model và effort, nghiêm cấm slug gộp như `claude-sonnet-5-5-medium`).
    - Cập nhật đồng bộ `validate.py`, `task-dag.yaml`, `operating-model.md`, `protocol.md`, `README.md`, `CHANGELOG.md` và `HANDOFF.md`.
 
 
