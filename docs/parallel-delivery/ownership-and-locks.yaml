@@ -23,7 +23,7 @@ single_writer_rules:
 modules:
   A:
     responsibility: source_and_collection
-    aggregates: [SourceCandidate, Source, CollectionRun, CollectionAttempt, CollectedDocument, SourceTombstone]
+    aggregates: [SourceCandidate, Source, CollectionRun, CollectionAttempt, CollectedDocument]
     contract_locks: [LOCK-CONTRACT-SOURCE-CONTENT]
   B:
     responsibility: articles_revisions_events_and_updates
@@ -121,7 +121,6 @@ path_ownership:
       - src/source_ingestion/**
       - tests/unit/collection/**
       - tests/integration/collection/**
-      - docs/modules/a-source-collection/**
     owner_role: Module_A_Source_Ingestion_Owner
     mode: exclusive
     lock: LOCK-SRC-SOURCE-INGESTION
