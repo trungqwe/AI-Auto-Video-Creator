@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Dict, Optional, Generator
 from contextlib import contextmanager
-from src.controlplane.security.dpapi import dpapi_decrypt
+from controlplane.security.dpapi import dpapi_decrypt
 
 
 class SecretError(Exception):
