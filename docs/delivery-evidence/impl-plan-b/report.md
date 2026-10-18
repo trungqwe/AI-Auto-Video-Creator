@@ -100,3 +100,18 @@ Không thêm thư viện; xem plan.md §9.
 ## Giới hạn
 
 Kế hoạch là tài liệu, chưa có mã; không sửa ngoài owned paths; git diff --check chỉ xét thay đổi của tệp đã theo dõi nên tệp mới được kiểm thêm bằng lệnh vệ sinh văn bản (bước 25).
+
+## Sửa sau audit Astra vòng 0 (F1)
+
+- Finding F1 (MAJOR): B-3 không khai, B-6 không gán article_revision_id, title, requested_url của ArticleRevision, trong khi B-7 (D8-B-06), B-9 và B-10 cần các trường này.
+- Sửa slices.md B-3: requirement thêm article_revision_id, article_id, title (từ extracted_content_candidate.title) và requested_url vào ArticleRevision, kèm test thiếu trường ném TypeError.
+- Sửa slices.md B-6: requirement gán article_revision_id từ id_factory, title, requested_url khi tạo revision; resolution mang article_id, article_revision_id; kèm test trên payload valid của fixture.
+- Không đổi ownedPaths: src/ingestion/domain/article.py chỉ thuộc B-3.
+- MINOR M1–M4 và NIT N1–N3 không sửa trong vòng này; đã đưa vào backlog.
+
+| # | Lệnh | Exit code | Kết quả |
+| --- | --- | --- | --- |
+| 1 | targetedCommand F1 trước khi sửa | 1 | AssertionError: [('B-3', 'article_revision_id'), ('B-3', 'title'), ('B-3', 'requested_url'), ('B-6', 'article_revision_id'), ('B-6', 'title'), ('B-6', 'requested_url')] |
+| 2 | targetedCommand F1 sau khi sửa | 0 | không có output |
+| 3 | instrument nghiệm thu | 0 | không có output |
+| 4 | `git diff --check` | 0 | không có output |
