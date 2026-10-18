@@ -1,31 +1,27 @@
-# Bàn giao phiên làm việc — Khắc phục Finding Sol-Lead về Contract Registry (Wave/DAG)
+# Bàn giao phiên làm việc — CP0-GOVERNANCE (đồng bộ nguồn quyền với Phần B)
 
 ## Đã quyết định
 
-- Khắc phục triệt để finding của Sol-Lead về sự không tương thích prefix CT-BAT-* trong docs/parallel-delivery/contract-registry.yaml:
-  1. **Khôi phục phạm vi prefix hợp đồng nguồn:** Trả CONTRACT-CONTROL-API-STREAM.id_prefixes về đúng [CT-API-*] như approved base, khớp 100% ID nguồn trong docs/09-contracts/01-control-api-and-stream.md. Tuyệt đối không sửa tệp nguồn để bảo toàn khóa bất biến LOCK-CONTRACT-SOURCE.
-  2. **Chuẩn hóa provenance cho Batches Query Contract:** Cập nhật defining_source của batches_query_contract (CONTRACT-BATCHES-QUERY) trỏ về docs/parallel-delivery/contract-registry.yaml kèm parent_contract_ref: CONTRACT-CONTROL-API-STREAM, định vị chính xác nguồn định nghĩa các endpoint CT-BAT-001..004 thuộc DOC-02.
-  3. **Đồng bộ hóa Inbound Port Module G:** Cập nhật docs/modules/capability-g-orchestration.md phân định rõ cổng nhận lệnh từ CONTRACT-CONTROL-API-STREAM (CT-API-001) và CONTRACT-BATCHES-QUERY (CT-BAT-001).
-- Bằng chứng kiểm thử mục tiêu (Targeted Verification):
-  - Lệnh kiểm tra registry check_registries chuyển từ RED (CONTRACT-CONTROL-API-STREAM: prefix CT-BAT-* matches no source contract) sang GREEN (REGISTRIES_OK, 0 lỗi).
-  - Bộ kiểm tra tĩnh docs/parallel-delivery/validate-docs-plan.py đạt PASS 100% (4/4 nhóm kiểm tra).
-  - git diff --check đạt sạch hoàn toàn, không có lỗi định dạng hay trailing whitespace.
-- Duy trì các chốt an toàn bất biến fail-closed:
-  - M2-P8/P9: Duy trì LOCKED.
-  - M3 và Phân hệ A: Duy trì NOT AUTHORIZED.
-  - Kích hoạt sản xuất: Duy trì PRODUCTION_ACTIVATION_BLOCKED.
+- Nguồn quyền (D3): M3–M7, gồm Phân hệ A, thực hiện theo ủy quyền AI_SETUP (`AI_PM_DELEGATED_AUTHORITY_RULES.md`) và chỉ thị user duyệt Phần B ngày 18/10/2026 (D0–D10). Mỗi slice chỉ sửa trong owned paths và theo tiêu chí nghiệm thu được giao.
+- M1 và M2-P1..P7B: `ACCEPTED / CLOSED`. M2-P8/P9 đã triển khai và có Auditor PASS; chưa ghi user checkpoint M2, không coi là user đã duyệt.
+- Kích hoạt sản xuất vẫn bị chặn (`PRODUCTION_ACTIVATION_BLOCKED`).
+- Commit local; push hoặc merge là quyền riêng của user.
+- Registry theo D1: path G/I nằm trong các gói của `src/controlplane`; thêm `PATH-DELIVERY-EVIDENCE`, `PATH-IMPLEMENTATION-PLANS` và các lock kế hoạch/hội tụ.
+- Bằng chứng (D4): từ M3 trở đi ghi vào `docs/delivery-evidence/<task-id viết thường>/report.md`; `docs/milestones/**/evidence/**` bất biến.
+- `validate.py` và `validate-docs-plan.py` đọc YAML bằng bộ đọc stdlib; `.validation-report.json` lỗi thời đã gỡ.
 
 ## Chưa quyết định
 
-- Chưa cấp quyền implementation hay viết test RED cho Milestone M2-P8, M2-P9 hoặc Milestone M3 / Phân hệ A. Mọi mở rộng thẩm quyền yêu cầu checkpoint độc lập và phê duyệt từ người dùng.
+- User checkpoint M2 (P8/P9) chưa được ghi.
+- USER-CKPT-D9-D10 (thư viện, cách dựng lại runtime) và CP7 tài nguyên thật (D5) chờ user.
+- Dữ liệu cũ của các node TASK-CAP-J-* (authority ref dạng `tệp:dòng`, contract ref `CONTRACT-CONFIG-SECURITY` không phải mã CT-*, thiếu trường bắt buộc, nhiều task granted cùng lock) làm `check_task_dag`/`check_registries` báo lỗi; để cho slice riêng.
 
 ## Tệp cần đọc tiếp
 
-- DAG-implement-plan.md (Kế hoạch tổng thể chiến dịch Bộ 2).
-- docs/parallel-delivery/contract-registry.yaml (Danh mục contracts đã khóa và Batches query).
-- docs/parallel-delivery/validate-docs-plan.py (Script kiểm tra tĩnh đạt PASS 100%).
-- docs/modules/capability-g-orchestration.md (Đặc tả cổng giao tiếp Module G).
+- `docs/12-pre-code-checklist.md`, `docs/11-roadmap.md` (§4)
+- `docs/parallel-delivery/ownership-and-locks.yaml`, `docs/parallel-delivery/acceptance-matrix.yaml`
+- `docs/delivery-evidence/cp0-governance/report.md`, `docs/delivery-evidence/cp0-governance/ownership-recheck.md`
 
 ## Điểm tiếp tục
 
-- Sol-Lead tiến hành rà soát kỹ thuật độc lập (ACCEPT) và Astra-Lead kiểm toán kiến trúc tối cao (PASS) trên candidate commit mới của worktree DAG-implement-plan.
+- CP2A-LAYOUT (dependency_slice) sau khi CP0-GOVERNANCE được nghiệm thu.

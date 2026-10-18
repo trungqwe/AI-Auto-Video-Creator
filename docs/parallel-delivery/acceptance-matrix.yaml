@@ -1,12 +1,19 @@
 schema_version: "1.0.0"
 kind: parallel_delivery_acceptance_matrix
 status: active_accepted
-as_of: "2026-10-02"
+as_of: "2026-10-18"
 
 description: >
   Ma trận nghiệm thu và truy xuất nguồn gốc toàn diện cho Bộ kiến trúc 2 (Wave/DAG).
   Ánh xạ chi tiết từ Yêu cầu (R01-R25, QR, FR) -> Capability phụ trách -> Task thực thi ->
   Contract ràng buộc -> Bộ kiểm thử & Oracle -> Hồ sơ Evidence -> Cổng nghiệm thu (Gate G01-G07).
+
+evidence_policy:
+  location: docs/delivery-evidence/<task-id-lowercase>/report.md
+  report_contents: [commands_run, exit_codes, results]
+  one_directory_per_task: true
+  accepted_evidence: docs/milestones/**/evidence/** stays immutable and is never moved
+  unchanged_rows: [R19, R20]
 
 matrix:
   - requirement_id: R01
@@ -15,7 +22,7 @@ matrix:
     task_id: M3-A-TEMPLATE
     contract_id: CONTRACT-SOURCE-CONTENT
     test_suite: tests/unit/collection/test_source_crawler.py
-    evidence_path: docs/milestones/m3-collection/evidence/r01-collection.json
+    evidence_path: docs/delivery-evidence/m3-a-template/report.md
     release_gate: G06
     description: Tự động thu thập bài viết từ RSS, web nguồn được cấu hình định kỳ.
 
@@ -25,7 +32,7 @@ matrix:
     task_id: TASK-CAP-B-INGESTION
     contract_id: CONTRACT-SOURCE-CONTENT
     test_suite: tests/unit/ingestion/test_article_normalization.py
-    evidence_path: docs/milestones/m3-collection/evidence/r02-dedup.json
+    evidence_path: docs/delivery-evidence/task-cap-b-ingestion/report.md
     release_gate: G06
     description: Bóc tách nội dung chính, trích xuất metadata và tính fingerprint chống trùng lặp >95%.
 
@@ -35,7 +42,7 @@ matrix:
     task_id: TASK-CAP-C-STORAGE
     contract_id: CONTRACT-CONTENT-MEDIA
     test_suite: tests/unit/catalog/test_media_catalog.py
-    evidence_path: docs/milestones/m4-media/evidence/r03-catalog.json
+    evidence_path: docs/delivery-evidence/task-cap-c-storage/report.md
     release_gate: G06
     description: Lưu trữ metadata hình ảnh/video, phân tích nhận diện vật thể và vùng an toàn 9:16.
 
@@ -45,7 +52,7 @@ matrix:
     task_id: TASK-CAP-C-STORAGE
     contract_id: CONTRACT-CONTENT-MEDIA
     test_suite: tests/unit/catalog/test_hook_analysis.py
-    evidence_path: docs/milestones/m4-media/evidence/r04-hook.json
+    evidence_path: docs/delivery-evidence/task-cap-c-storage/report.md
     release_gate: G06
     description: Đánh giá điểm hấp dẫn của visual hook, audio hook và ứng viên thumbnail.
 
@@ -55,7 +62,7 @@ matrix:
     task_id: TASK-CAP-D-SCRIPTING
     contract_id: CONTRACT-CREATIVE-AI
     test_suite: tests/unit/creative/test_script_generator.py
-    evidence_path: docs/milestones/m5-script/evidence/r05-script.json
+    evidence_path: docs/delivery-evidence/task-cap-d-scripting/report.md
     release_gate: G06
     description: Sinh lời thoại tiếng Anh tự nhiên, phân đoạn chi tiết, độ dài nghiêm ngặt 61-70 giây.
 
@@ -65,7 +72,7 @@ matrix:
     task_id: TASK-CAP-D-SCRIPTING
     contract_id: CONTRACT-CREATIVE-AI
     test_suite: tests/unit/creative/test_story_angles.py
-    evidence_path: docs/milestones/m5-script/evidence/r06-angles.json
+    evidence_path: docs/delivery-evidence/task-cap-d-scripting/report.md
     release_gate: G06
     description: Tạo 1-3 góc kể độc lập (điều tra, chuyên gia, dòng thời gian) cho cùng một sự kiện tin tức.
 
@@ -75,7 +82,7 @@ matrix:
     task_id: TASK-CAP-D-SCRIPTING
     contract_id: CONTRACT-CREATIVE-AI
     test_suite: tests/unit/creative/test_variant_fingerprint.py
-    evidence_path: docs/milestones/m5-script/evidence/r07-variants.json
+    evidence_path: docs/delivery-evidence/task-cap-d-scripting/report.md
     release_gate: G06
     description: Tính toán VariantFingerprint đảm bảo mỗi video khác biệt ít nhất một yếu tố thực tế.
 
@@ -85,7 +92,7 @@ matrix:
     task_id: TASK-CAP-D-SCRIPTING
     contract_id: CONTRACT-CREATIVE-AI
     test_suite: tests/unit/creative/test_thumbnail_marker.py
-    evidence_path: docs/milestones/m5-script/evidence/r08-thumbnail.json
+    evidence_path: docs/delivery-evidence/task-cap-d-scripting/report.md
     release_gate: G06
     description: Điểm lấy thumbnail JPEG bắt buộc phải nằm trong 3 giây đầu tiên của video.
 
@@ -95,7 +102,7 @@ matrix:
     task_id: TASK-CAP-E-VOICE
     contract_id: CONTRACT-MEDIA-PROCESSING
     test_suite: tests/unit/voice/test_tts_synthesis.py
-    evidence_path: docs/milestones/m6-render/evidence/r09-voice.json
+    evidence_path: docs/delivery-evidence/task-cap-e-voice/report.md
     release_gate: G06
     description: Chuyển kịch bản thành giọng đọc truyền cảm, chuẩn hóa âm lượng theo EBU R128 (-14 LUFS).
 
@@ -105,7 +112,7 @@ matrix:
     task_id: TASK-CAP-E-VOICE
     contract_id: CONTRACT-MEDIA-PROCESSING
     test_suite: tests/unit/voice/test_word_timing_alignment.py
-    evidence_path: docs/milestones/m6-render/evidence/r10-word-timing.json
+    evidence_path: docs/delivery-evidence/task-cap-e-voice/report.md
     release_gate: G06
     description: Bóc tách chính xác mốc bắt đầu/kết thúc ms của từng từ để phục vụ hiệu ứng karaoke.
 
@@ -115,7 +122,7 @@ matrix:
     task_id: TASK-CAP-F-RENDERING
     contract_id: CONTRACT-RENDER-QUALITY
     test_suite: tests/unit/render/test_video_pipeline.py
-    evidence_path: docs/milestones/m6-render/evidence/r11-render.json
+    evidence_path: docs/delivery-evidence/task-cap-f-rendering/report.md
     release_gate: G02
     description: Tổng hợp hình ảnh, video nền, voice track thành file MP4 1080x1920 tốc độ 30fps.
 
@@ -125,7 +132,7 @@ matrix:
     task_id: TASK-CAP-F-RENDERING
     contract_id: CONTRACT-RENDER-QUALITY
     test_suite: tests/unit/render/test_karaoke_subtitle.py
-    evidence_path: docs/milestones/m6-render/evidence/r12-karaoke.json
+    evidence_path: docs/delivery-evidence/task-cap-f-rendering/report.md
     release_gate: G06
     description: Chạy chữ đổi màu chính xác từng từ theo mốc thời gian WordTiming trên khung hình video.
 
@@ -135,7 +142,7 @@ matrix:
     task_id: TASK-CAP-F-RENDERING
     contract_id: CONTRACT-RENDER-QUALITY
     test_suite: tests/unit/render/test_qc_verification.py
-    evidence_path: docs/milestones/m6-render/evidence/r13-qc-report.json
+    evidence_path: docs/delivery-evidence/task-cap-f-rendering/report.md
     release_gate: G02
     description: Tự động thẩm định thời lượng (61-70s), kích thước 1080x1920, độ lệch tiếng và bitrate.
 
@@ -145,7 +152,7 @@ matrix:
     task_id: TASK-CAP-G-ORCHESTRATION
     contract_id: CONTRACT-WORKFLOW-EXECUTION
     test_suite: tests/unit/orchestration/test_workflow_execution.py
-    evidence_path: docs/milestones/m2-control-plane/evidence/r14-workflow.json
+    evidence_path: docs/delivery-evidence/task-cap-g-orchestration/report.md
     release_gate: G01
     description: Điều phối trạng thái công việc bền vững, hỗ trợ retry có kiểm soát và resume khi crash.
 
@@ -155,7 +162,7 @@ matrix:
     task_id: TASK-CAP-G-ORCHESTRATION
     contract_id: CONTRACT-ORCHESTRATION
     test_suite: tests/unit/orchestration/test_batch_management.py
-    evidence_path: docs/milestones/m2-control-plane/evidence/r15-batch.json
+    evidence_path: docs/delivery-evidence/task-cap-g-orchestration/report.md
     release_gate: G02
     description: Tiếp nhận lô sản xuất, kiểm tra dung lượng phần cứng và phân bổ slot render an toàn.
 
@@ -165,7 +172,7 @@ matrix:
     task_id: TASK-CAP-G-ORCHESTRATION
     contract_id: CONTRACT-CONTROL-API-STREAM
     test_suite: tests/unit/orchestration/test_operation_view.py
-    evidence_path: docs/milestones/m2-control-plane/evidence/r16-operation-state.json
+    evidence_path: docs/delivery-evidence/task-cap-g-orchestration/report.md
     release_gate: G01
     description: Tách biệt biên nhận accepted khỏi trạng thái chạy thực tế (running, succeeded, failed).
 
@@ -175,7 +182,7 @@ matrix:
     task_id: TASK-CAP-G-ORCHESTRATION
     contract_id: CONTRACT-DOMAIN-EVENTS
     test_suite: tests/unit/orchestration/test_completion_uow.py
-    evidence_path: docs/milestones/m2-control-plane/evidence/r17-completion-uow.json
+    evidence_path: docs/delivery-evidence/task-cap-g-orchestration/report.md
     release_gate: G01
     description: Cập nhật VideoJob, tăng số đếm MediaUsage và ghi ArtifactLocation trong đúng một transaction.
 
@@ -185,7 +192,7 @@ matrix:
     task_id: TASK-CAP-G-ORCHESTRATION
     contract_id: CONTRACT-WORKFLOW-EXECUTION
     test_suite: tests/unit/orchestration/test_hybrid_connectivity.py
-    evidence_path: docs/milestones/m2-control-plane/evidence/r18-hybrid.json
+    evidence_path: docs/delivery-evidence/task-cap-g-orchestration/report.md
     release_gate: G01
     description: Cloud tiếp tục thu thập khi desktop tắt; desktop tự động nối lại xử lý khi online.
 
@@ -215,7 +222,7 @@ matrix:
     task_id: M4-CI-TEMPLATE
     contract_id: CONTRACT-STORAGE
     test_suite: tests/unit/storage/test_drive_sync.py
-    evidence_path: docs/milestones/m4-media/evidence/r21-drive-sync.json
+    evidence_path: docs/delivery-evidence/m4-ci-template/report.md
     release_gate: G04
     description: Lưu trữ artifact bất biến, kiểm chứng mã băm SHA-256 và đồng bộ lên Google Drive an toàn.
 
@@ -225,7 +232,7 @@ matrix:
     task_id: M4-CI-TEMPLATE
     contract_id: CONTRACT-STORAGE
     test_suite: tests/unit/storage/test_retention_policy.py
-    evidence_path: docs/milestones/m4-media/evidence/r22-retention.json
+    evidence_path: docs/delivery-evidence/m4-ci-template/report.md
     release_gate: G04
     description: Tuyệt đối không xóa bản ghi cục bộ duy nhất trước khi Google Drive xác nhận sync thành công.
 
@@ -235,7 +242,7 @@ matrix:
     task_id: TASK-CAP-J-PROVIDERS
     contract_id: CONTRACT-CONFIG-SECURITY
     test_suite: tests/unit/security/test_vault_isolation.py
-    evidence_path: docs/milestones/m2-control-plane/evidence/r23-vault-isolation.json
+    evidence_path: docs/delivery-evidence/task-cap-j-providers/report.md
     release_gate: G04
     description: Bảo vệ API key bằng Windows DPAPI Vault trong tiến trình Broker độc lập; cấm lộ plaintext.
 
@@ -245,7 +252,7 @@ matrix:
     task_id: TASK-CAP-J-PROVIDERS
     contract_id: CONTRACT-CONFIG-SECURITY
     test_suite: tests/unit/security/test_provider_routing.py
-    evidence_path: docs/milestones/m2-control-plane/evidence/r24-ai-routing.json
+    evidence_path: docs/delivery-evidence/task-cap-j-providers/report.md
     release_gate: G03
     description: Định tuyến gọi mô hình AI theo vai trò, tự động fallback có kiểm soát và giám sát ngân sách.
 
@@ -255,7 +262,7 @@ matrix:
     task_id: TASK-CAP-C-STORAGE
     contract_id: CONTRACT-CONTENT-MEDIA
     test_suite: tests/unit/catalog/test_sensitive_image_filter.py
-    evidence_path: docs/milestones/m4-media/evidence/r25-safety-filter.json
+    evidence_path: docs/delivery-evidence/task-cap-c-storage/report.md
     release_gate: G06
     description: Áp dụng bộ lọc làm mờ ảnh nhạy cảm; không sửa đổi cấu trúc video clip nguồn.
 

@@ -1,6 +1,6 @@
 # AI Auto Video Creator
 
-> Cập nhật hiện hành: `M2-P1..P7B_ACCEPTED_CLOSED`. P8/P9 vẫn khóa; M3 và Phân hệ A `NOT AUTHORIZED`.
+> Cập nhật hiện hành (18/10/2026): M2-P1..P7B `ACCEPTED / CLOSED`; M2-P8/P9 đã triển khai và có Auditor PASS, chưa ghi user checkpoint M2. M3–M7 thực hiện theo ủy quyền AI_SETUP và chỉ thị user duyệt Phần B ngày 18/10/2026. Kích hoạt sản xuất vẫn bị chặn.
 
 Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều góc kể tiếng Anh, dựng video ngắn 61–70 giây và đồng bộ đầu ra lên cloud. Dự án được phát triển theo từng milestone có evidence gate; không coi việc chương trình chạy một lần là bằng chứng kiến trúc đã đạt.
 
@@ -13,10 +13,11 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | G01 Temporal | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G04 Drive/OAuth | `PARTIALLY_PROVEN (PASS_M1_SCOPE)` |
 | G07 Compatibility | `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` |
-| M2 Control Plane | `M2-P1..P7B_ACCEPTED_CLOSED`; P8/P9 `LOCKED` |
-| M3 / Module A | `NOT AUTHORIZED` |
+| M2 Control Plane | `M2-P1..P7B_ACCEPTED_CLOSED`; P8/P9 đã triển khai, Auditor PASS, chưa ghi user checkpoint M2 |
+| M3–M7 (gồm Module A) | Thực hiện theo ủy quyền AI_SETUP (`AI_PM_DELEGATED_AUTHORITY_RULES.md`) và Phần B được user duyệt ngày 18/10/2026; chưa milestone nào được nghiệm thu |
+| Kích hoạt sản xuất | `PRODUCTION_ACTIVATION_BLOCKED` |
 
-Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7B đã được independent review chấp thuận/đóng. P7B accepted source/tooling `c44214ad027986a0db7cb9d8e221590f232a0036` và GREEN `run-m2-p7b-green-20260917040648` giữ bất biến; candidate GREEN `run-m2-p7b-green-20260917024918` giữ làm lịch sử bị từ chối. Migration `0008`, ngoại lệ hẹp P3 `append()` và P7A H16 thuộc kết quả P7B accepted. P8/P9 chưa được mở; M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
+Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7B đã được independent review chấp thuận/đóng. P7B accepted source/tooling `c44214ad027986a0db7cb9d8e221590f232a0036` và GREEN `run-m2-p7b-green-20260917040648` giữ bất biến; candidate GREEN `run-m2-p7b-green-20260917024918` giữ làm lịch sử bị từ chối. Migration `0008`, ngoại lệ hẹp P3 `append()` và P7A H16 thuộc kết quả P7B accepted. P8/P9 đã triển khai và có Auditor PASS nhưng chưa ghi user checkpoint M2; M3–M7 thực hiện theo ủy quyền AI_SETUP và Phần B (18/10/2026).
 
 ## Bắt đầu một phiên làm việc
 
@@ -30,7 +31,7 @@ Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày
 5. [M2 toolchain lock](./docs/milestones/m2-control-plane/toolchain-lock.md) — phiên bản bắt buộc.
 6. [Kiến trúc triển khai song song (Bộ 2 Wave/DAG)](./docs/parallel-delivery/README.md) — Kiến trúc phát triển song song theo Wave/DAG (DOC-00..DOC-10), phân định rõ Wave (lộ trình, thẩm quyền) và DAG (thực thi kỹ thuật dựa trên contract freeze và single-writer). Bộ 1 dự phòng được lưu trữ đối chiếu.
 
-Bộ parallel delivery mang trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`: nó không mở P8/P9, M3/Phân hệ A hoặc milestone sau. Chỉ đọc sâu contracts/ADR được work package hiện tại trích dẫn; không remap toàn bộ dự án nếu `HANDOFF` và tài liệu nguồn sự thật còn nhất quán.
+Bộ parallel delivery mang trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY`: bản thân bộ này không cấp quyền; quyền thực hiện M3–M7 đến từ ủy quyền AI_SETUP và Phần B được user duyệt ngày 18/10/2026. Chỉ đọc sâu contracts/ADR được work package hiện tại trích dẫn; không remap toàn bộ dự án nếu `HANDOFF` và tài liệu nguồn sự thật còn nhất quán.
 
 ## Tài liệu nền
 
@@ -51,7 +52,7 @@ Bộ parallel delivery mang trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — 
 
 - `CHANGELOG.md` ghi tiến độ và thay đổi có giá trị lâu dài.
 - `HANDOFF.md` chỉ giữ trạng thái ngắn cần cho phiên tiếp theo; thay nội dung cũ thay vì tích lũy nhật ký dài.
-- Kết thúc mỗi phiên sửa đổi hoặc giai đoạn quan trọng: đồng bộ tài liệu, chạy kiểm tra phù hợp, commit theo Conventional Commits và push lên repository này.
+- Kết thúc mỗi phiên sửa đổi hoặc giai đoạn quan trọng: đồng bộ tài liệu, chạy kiểm tra phù hợp và commit local theo Conventional Commits. Push hoặc merge là quyền riêng của user.
 - Không commit secret, token, credential, dữ liệu cá nhân, log chưa redacted hoặc artifact không rõ quyền sử dụng.
 
 ## Repository
@@ -59,7 +60,7 @@ Bộ parallel delivery mang trạng thái `PROPOSED ARCHITECTURE EXPERIMENT — 
 Remote chính: <https://github.com/trungqwe/AI-Auto-Video-Creator>
 
 ## Trạng thái sau User Checkpoint M1 & Kích hoạt Milestone M2
-Milestone M1 (`M1-P0 → M1-P6`) đã hoàn tất 100% và được Người dùng phê duyệt chính thức (`ACCEPTED / CLOSED`) với **93 passed, 0 skipped** tests, Audit R5 + R5.1 ACCEPTED. Milestone M2 chính thức chuyển sang `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION`. Milestone M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
+Milestone M1 (`M1-P0 → M1-P6`) đã hoàn tất 100% và được Người dùng phê duyệt chính thức (`ACCEPTED / CLOSED`) với **93 passed, 0 skipped** tests, Audit R5 + R5.1 ACCEPTED. Milestone M2 chính thức chuyển sang `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION`. (Lịch sử: tại thời điểm đó M3 và Phân hệ A chưa được cấp quyền; trạng thái hiện hành ở bảng đầu tệp.)
 
 ## Trạng thái Hoàn tất Milestone M2-P0
 Milestone M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Architecture Rules) đã được Người dùng CHẤP THUẬN chính thức (`ACCEPTED / CLOSED`) tại commit `d84c1d7`:
@@ -75,4 +76,4 @@ Milestone M2-P0 (Authorization Sync, Toolchain Lock, Evidence Protocol & Archite
 
 Milestone M2-P1 (PostgreSQL Foundation, Raw SQL Migrations & Workspace/Identity/Session Foundation) đã được User chấp thuận plan sau independent re-audit HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`. Có đúng 11 behavioral oracle importable. Correction R2 sau audit `2541c58a85c301c9499d7179f54b4f6607b2c524` dùng production migration để xác minh composite FK P1-006, chứng minh rollback side-effect P1-010, bổ sung crash-release P1-004, khóa `psycopg_pool.ConnectionPool` và exact fixture identity.
 
-Trạng thái hiện hành: `M2-P1_ACCEPTED_CLOSED; M2-P2_RED_READY_FOR_REVIEW`. P2 full exact 11 Behavioral RED đã chạy trên PostgreSQL 18.6 Docker với `CREATEDB=true` và orphan=0; evidence chờ independent audit. Implementation P2 vẫn khóa. M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
+Trạng thái hiện hành: `M2-P1_ACCEPTED_CLOSED; M2-P2_RED_READY_FOR_REVIEW`. P2 full exact 11 Behavioral RED đã chạy trên PostgreSQL 18.6 Docker với `CREATEDB=true` và orphan=0; evidence chờ independent audit. Implementation P2 vẫn khóa. (Lịch sử: tại thời điểm đó M3 và Phân hệ A chưa được cấp quyền.)

@@ -105,13 +105,23 @@ current_authority:
   - M2-P7A
   - M2-P7B
   locked:
-  - M2-P9
-  - M3
-  - MODULE-A
-  - M4
-  - M5
-  - M6
-  - M7
+  - PRODUCTION-ACTIVATION
+  delegated_authority:
+    scope:
+    - M3
+    - MODULE-A
+    - M4
+    - M5
+    - M6
+    - M7
+    source: ai_setup_portfolio_policy_part_b
+    rules_ref: AI_PM_DELEGATED_AUTHORITY_RULES.md
+    user_directive_date: '2026-10-18'
+    template_nodes_remain_future_template: true
+  pending_user_checkpoint:
+  - M2-USER-CHECKPOINT-P8-P9
+  - USER-CKPT-D9-D10
+  - CP7-REAL-RESOURCES
   immutable_evidence_refs:
   - docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-red-20260917002633
   - docs/milestones/m2-control-plane/evidence/m2-p7b/run-m2-p7b-green-20260917040648

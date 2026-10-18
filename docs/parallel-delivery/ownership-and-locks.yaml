@@ -1,7 +1,7 @@
 schema_version: "1.0.0"
 kind: parallel_delivery_ownership_and_lock_registry
 status: proposed_experiment_no_new_implementation_authority
-as_of: "2026-09-28"
+as_of: "2026-10-18"
 authority_refs:
   - docs/06-system-map.md
   - docs/09-contracts/README.md
@@ -166,8 +166,11 @@ path_ownership:
     lock: LOCK-SRC-RENDER
   - id: PATH-SRC-ORCHESTRATION
     patterns:
-      - src/controlplane/orchestration/**
+      - src/controlplane/domain/orchestration/**
+      - src/controlplane/application/orchestration/**
+      - src/controlplane/infrastructure/db/orchestration/**
       - tests/unit/orchestration/**
+      - tests/integration/orchestration/**
       - docs/modules/capability-g-orchestration.md
     owner_role: Module_G_Orchestration_Owner
     mode: exclusive
@@ -182,7 +185,10 @@ path_ownership:
     lock: LOCK-SRC-CONTROL-UI
   - id: PATH-SRC-STORAGE
     patterns:
-      - src/storage/**
+      - src/controlplane/domain/storage_meta/**
+      - src/controlplane/application/storage_meta/**
+      - src/controlplane/infrastructure/db/storage_meta/**
+      - src/controlplane/infrastructure/storage/**
       - tests/unit/storage/**
       - tests/integration/storage/**
     owner_role: Module_I_Storage_Owner
@@ -210,6 +216,30 @@ path_ownership:
     owner_role: ContractAuthority_SingleWriter
     mode: exclusive
     lock: LOCK-CONTRACT-SOURCE
+  - id: PATH-DELIVERY-EVIDENCE
+    patterns:
+      - docs/delivery-evidence/**
+    owner_role: DeliveryTask_OneDirectoryPerTask
+    mode: exclusive_per_task_directory
+    lock: LOCK-DELIVERY-EVIDENCE
+  - id: PATH-IMPLEMENTATION-PLANS
+    patterns:
+      - docs/implementation/**
+    owner_role: ImplementationPlanOwner_OneDirectoryPerPlan
+    mode: exclusive_per_plan_directory
+    lock: LOCK-IMPL-PLAN-CONVERGENCE
+    plan_locks:
+      a: LOCK-IMPL-PLAN-A
+      b: LOCK-IMPL-PLAN-B
+      c: LOCK-IMPL-PLAN-C
+      d: LOCK-IMPL-PLAN-D
+      e: LOCK-IMPL-PLAN-E
+      f: LOCK-IMPL-PLAN-F
+      g: LOCK-IMPL-PLAN-G
+      h: LOCK-IMPL-PLAN-H
+      i: LOCK-IMPL-PLAN-I
+      j: LOCK-IMPL-PLAN-J
+      convergence: LOCK-IMPL-PLAN-CONVERGENCE
 
 locks:
   - id: LOCK-DOC-AUTHORITY
@@ -428,6 +458,102 @@ locks:
     class: path
     mode: exclusive
     scope: contracts_markdown_source
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-DELIVERY-EVIDENCE
+    class: evidence
+    mode: exclusive
+    scope: delivery_evidence_tree_one_directory_per_task
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-IMPL-PLAN-A
+    class: path
+    mode: exclusive
+    scope: implementation_plan_module_a
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-IMPL-PLAN-B
+    class: path
+    mode: exclusive
+    scope: implementation_plan_module_b
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-IMPL-PLAN-C
+    class: path
+    mode: exclusive
+    scope: implementation_plan_module_c
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-IMPL-PLAN-D
+    class: path
+    mode: exclusive
+    scope: implementation_plan_module_d
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-IMPL-PLAN-E
+    class: path
+    mode: exclusive
+    scope: implementation_plan_module_e
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-IMPL-PLAN-F
+    class: path
+    mode: exclusive
+    scope: implementation_plan_module_f
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-IMPL-PLAN-G
+    class: path
+    mode: exclusive
+    scope: implementation_plan_module_g
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-IMPL-PLAN-H
+    class: path
+    mode: exclusive
+    scope: implementation_plan_module_h
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-IMPL-PLAN-I
+    class: path
+    mode: exclusive
+    scope: implementation_plan_module_i
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-IMPL-PLAN-J
+    class: path
+    mode: exclusive
+    scope: implementation_plan_module_j
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-IMPL-PLAN-CONVERGENCE
+    class: path
+    mode: exclusive
+    scope: implementation_plan_convergence
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONVERGENCE
+    class: integration
+    mode: exclusive
+    scope: shared_resources_single_convergence_owner
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-M2-REGRESSION
+    class: path
+    mode: exclusive
+    scope: tests_m2_regression_suite
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-UI-SHELL
+    class: path
+    mode: exclusive
+    scope: controlplane_ui_shell_and_dist
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-CONTROL-API
+    class: path
+    mode: exclusive
+    scope: controlplane_control_api_routes
     lease_seconds: 1800
     renewable: true
 

@@ -21,9 +21,10 @@ Thiết kế này không tự kích hoạt task nào. Mọi task thực thi ph�
 
 - M1: `ACCEPTED / CLOSED`.
 - M2: `M2-P1..P7B_ACCEPTED_CLOSED`.
-- M2-P8 và M2-P9: `LOCKED`; không được bắt đầu Behavioral RED hoặc implementation từ tài liệu này.
-- M3 và Phân hệ A: `NOT AUTHORIZED`.
-- Các node M3–M7 trong [task DAG](./task-dag.yaml) chỉ là template thiết kế `future_template`, không phải backlog đang hoạt động.
+- M2-P8 và M2-P9: đã triển khai và có Auditor PASS; chưa ghi user checkpoint M2 (không coi là user đã duyệt).
+- M3–M7 (gồm Phân hệ A): thực hiện theo ủy quyền AI_SETUP (`AI_PM_DELEGATED_AUTHORITY_RULES.md`) và chỉ thị user duyệt Phần B ngày 18/10/2026; bundle này không tự cấp quyền.
+- Các node M3–M7 trong [task DAG](./task-dag.yaml) giữ `future_template` để truy vết; việc thực thi do Portfolio AI_SETUP biên dịch từ kế hoạch module.
+- Kích hoạt sản xuất: `PRODUCTION_ACTIVATION_BLOCKED`.
 - Toolchain M2 vẫn do [`toolchain-lock.md`](../milestones/m2-control-plane/toolchain-lock.md) khóa; không có pin nào trong bundle này được dùng để thay nó.
 - Accepted/rejected evidence lịch sử giữ bất biến.
 
@@ -50,12 +51,12 @@ Khi có mâu thuẫn, dừng node bị ảnh hưởng ở `needs_replan` hoặc 
 | [`merge-and-integration.md`](./merge-and-integration.md) | Worktree/branch, merge queue và integration gates | Một phần |
 | [`traceability.md`](./traceability.md) | Mục tiêu → FR/QR → module → contract/invariant → gate | Một phần |
 | [`security-performance-recovery.md`](./security-performance-recovery.md) | Guardrail bảo mật, hiệu năng, evidence và phục hồi | Một phần |
-| [`validate.py`](./validate.py) | Công cụ thẩm định bundle, DAG, registry, locks, scope, fixtures | Có |
+| [`validate.py`](./validate.py) | Công cụ thẩm định bundle, DAG, registry, locks, scope, fixtures; đọc YAML bằng bộ đọc stdlib (không cần PyYAML); test tại `tests/test_validate.py` | Có |
 | [`delivery_engine.py`](./delivery_engine.py) | Module thực thi lõi cho contract binding, lease manager, Orca adapter và harness compatibility | Có |
 | [`test_negative_fixtures.py`](./test_negative_fixtures.py) | Suite kiểm thử negative fixtures tự động cho 6 findings Astra round 1 và probes Sol review | Có |
 | [`test_host_boundary_harness.py`](./test_host_boundary_harness.py) | Module harness và daemon boundary cô lập cho test keystore/credential nằm ngoài candidate surface | Có |
 
-YAML dùng YAML 1.2, UTF-8 không BOM. Giá trị enum và identifier dùng tiếng Anh; mô tả cho người dùng dùng tiếng Việt.
+YAML dùng YAML 1.2, UTF-8 không BOM. Validator đọc tập con YAML bằng stdlib (mapping/sequence khối, flow `[]`/`{}`, chuỗi trích dẫn, anchor/alias, khối `>`/`|`); cấu trúc ngoài tập con bị từ chối fail-closed. Giá trị enum và identifier dùng tiếng Anh; mô tả cho người dùng dùng tiếng Việt.
 
 ## 5. Quy tắc kích hoạt tối thiểu
 
