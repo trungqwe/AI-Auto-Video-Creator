@@ -68,12 +68,16 @@ YC-HT-I-01..YC-HT-I-09 (plan.md mục 9). CT-STO-006 bị chặn tới khi có b
 - `slices.md` không đổi (13 slice I-01..I-13).
 - Nguồn đọc thêm: `src/controlplane/application/storage_meta/__init__.py` (`ArtifactLocationStore.declare`, `_UNSAFE_REFERENCE`), `src/controlplane/infrastructure/db/storage_meta/__init__.py` (bảng `cp_artifact_locations`), `docs/11-roadmap.md` §10 "Điểm còn mở phải chốt trước hoặc trong M4".
 
+## Lượt sửa I-08 trên base c474224
+
+- `slices.md` mục I-08: P5B khai `CleanupAuthorization.expires_at: str` (`src/controlplane/domain/storage_meta/__init__.py`), nên điều kiện hạn đổi thành `now < datetime.fromisoformat(authorization.expires_at)`; hết hạn → `EXPIRED`; `expires_at` không parse được hoặc thiếu múi giờ, hoặc `now` naive → `INVALID_EXPIRY`, không raise (fail-closed). Bổ sung instrument và counterexample tương ứng.
+- `plan.md` không đổi; các slice khác không đổi.
+
 ## Lệnh kiểm
 
 | Lệnh | Exit code | Kết quả |
 |---|---|---|
 | git diff --check | 0 | không có output |
 | Lệnh kiểm bắt buộc python -c (plan/slices) | 0 | không có output |
-| Kiểm nội dung bổ sung python -c (plan/slices/report) | 0 | ok 13 |
 
 Interpreter: C:/Users/Admin/orca/workspaces/AI-Auto-Video-Creator/DAG-implement-plan/.local-tools/temp/m2-controlplane-locked-venv-31315/Scripts/python.exe
