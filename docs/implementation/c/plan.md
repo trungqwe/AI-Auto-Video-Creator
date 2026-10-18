@@ -6,7 +6,7 @@
 ## 1. Nguồn chuẩn
 
 - `docs/modules/capability-c-storage.md` — đặc tả phân hệ; các lỗi được đính chính ở §2.
-- `docs/11-roadmap.md` §10 (M4 — Kho media, hook và lưu trữ hybrid) và §14.
+- `docs/11-roadmap.md` §10 (M4 — Kho media, hook và lưu trữ hybrid), §14 và §23 (open item `ROADMAP-OPEN-010`, `ROADMAP-OPEN-011`).
 - `docs/09-contracts/05-content-media-contracts.md` — CT-MED-001..009, CT-HOOK-001, CT-HOOK-002.
 - `docs/09-contracts/04-source-content-contracts.md` — CT-SRC-003.
 - `docs/09-contracts/09-orchestration-contracts.md` — CT-ORC-008, CT-ORC-009.
@@ -102,7 +102,7 @@ Test bắt buộc của roadmap §10 liên quan C:
 | Mã | Mục mở | Mặc định đã chọn | Lý do |
 | --- | --- | --- | --- |
 | D8-C-01 | Retention original/reusable/temporary (roadmap §10, ROADMAP-OPEN-010) | C không bao giờ xoá metadata/provenance; mất byte ở I chỉ đổi availability | Đặc tả C §4 và CT-MED-009; không mất dữ liệu; retention byte do I và user chốt |
-| D8-C-02 | Scale dataset cho catalog/index (roadmap §10, ROADMAP-OPEN-011) | Slice dùng `typing.Protocol` repository và fake trong bộ nhớ; truy vấn luôn có `limit` và `page_cursor` | Không cam kết hiệu năng khi chưa có số liệu; contract đã có cursor |
+| D8-C-02 | Scale dataset cho catalog/index (roadmap §10, ROADMAP-OPEN-011) | Slice dùng `typing.Protocol` repository và fake trong bộ nhớ; truy vấn luôn có `limit` và `page_cursor` | Không cam kết hiệu năng khi chưa có số liệu; contract đã có cursor. Đây là mặc định tạm cho slice, không phải quyết định ROADMAP-OPEN-011; mọi tuyên bố scale/hiệu năng phải chờ user chốt (xem danh sách chờ bên dưới) |
 | D8-C-03 | Index semantic (ADR-0002 chưa chốt embedding/approximate index) | `index_revision` số nguyên trong metadata; khớp semantic trong slice là so khớp xác định theo entity/topic/scene | Không thêm thư viện; FTS/pgvector thật cần migration (CONV-C-01) |
 | D8-C-04 | Trục trạng thái CT-STATE-005/006 | C khai báo giá trị trạng thái đọc (StrEnum đúng tên contract), không có hàm chuyển trạng thái; đồ thị chuyển gửi hội tụ (CONV-C-07) | State machine là tài nguyên dùng chung |
 | D8-C-05 | Safety → usability | Chỉ áp cho `image`: `SAFE`, `PROCESSED_READY` → `usable`; `UNCERTAIN`, `DETECTION_FAILED`, `TRANSFORM_FAILED` → `usable_with_warning`; `UNREADABLE`, `NOT_ASSESSED`, `ASSESSING`, `TRANSFORM_REQUIRED`, `TRANSFORMING` → `not_usable`; `clip`/`audio` không có trục safety ảnh | CT-STATE-006 và `TST-E2E-011`; GIẢ ĐỊNH fail-closed cho trạng thái chưa đánh giá xong, xem lại khi E chốt pipeline |
@@ -118,6 +118,7 @@ Danh sách chờ user (pendingUserCheckpoint), không ghi là đã duyệt:
 - USER-CKPT-D9-D10: thư viện và cách dựng lại runtime (§8).
 - CP7 tài nguyên thật theo D5 (§9).
 - ROADMAP-OPEN-010: retention/storage placement trước unattended cleanup (I chủ trì).
+- ROADMAP-OPEN-011: scale workload trước mọi tuyên bố performance/scale của catalog/index (roadmap §23); D8-C-02 chỉ là mặc định tạm cho slice.
 - GIẢ ĐỊNH của D8-C-05 cho trạng thái chưa đánh giá xong: xác nhận khi E chốt pipeline safety.
 
 ## 8. Thư viện (D10)

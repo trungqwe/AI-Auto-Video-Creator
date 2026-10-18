@@ -16,6 +16,7 @@
 - `docs/11-roadmap.md` §10, §14, §23
 - `docs/09-contracts/05-content-media-contracts.md`
 - `docs/09-contracts/04-source-content-contracts.md` (CT-SRC-003)
+- `docs/09-contracts/09-orchestration-contracts.md` (CT-ORC-008, CT-ORC-009)
 - `docs/09-contracts/10-storage-contracts.md`
 - `docs/09-contracts/12-state-machines.md`
 - `docs/10-test-strategy.md` §14.2, §15
@@ -36,7 +37,7 @@
 
 ## Quyết định D8
 
-Chi tiết và lý do ở `docs/implementation/c/plan.md` §7: D8-C-01 không xoá metadata/provenance; D8-C-02 repository Protocol, fake bộ nhớ và phân trang bắt buộc; D8-C-03 `index_revision` và so khớp xác định; D8-C-04 trạng thái đọc không có hàm chuyển; D8-C-05 ánh xạ safety → usability cho ảnh (GIẢ ĐỊNH fail-closed cho trạng thái chưa đánh giá xong); D8-C-06 rights không chắc chắn được lưu, không chặn; D8-C-07 checksum thuộc I; D8-C-08 media kind `image`, `clip`, `audio`; D8-C-09 thứ tự trạng thái hiển thị; D8-C-10 storage placement/quota thật thuộc I và CP7.
+Chi tiết và lý do ở `docs/implementation/c/plan.md` §7: D8-C-01 không xoá metadata/provenance; D8-C-02 repository Protocol, fake bộ nhớ và phân trang bắt buộc (mặc định tạm, ROADMAP-OPEN-011 vẫn chờ user); D8-C-03 `index_revision` và so khớp xác định; D8-C-04 trạng thái đọc không có hàm chuyển; D8-C-05 ánh xạ safety → usability cho ảnh (GIẢ ĐỊNH fail-closed cho trạng thái chưa đánh giá xong); D8-C-06 rights không chắc chắn được lưu, không chặn; D8-C-07 checksum thuộc I; D8-C-08 media kind `image`, `clip`, `audio`; D8-C-09 thứ tự trạng thái hiển thị; D8-C-10 storage placement/quota thật thuộc I và CP7.
 
 ## Quyết định D10
 
@@ -44,7 +45,7 @@ Không cần thư viện mới; chỉ stdlib và `pytest==9.1.1` đã khoá. Ada
 
 ## Danh sách chờ user (pendingUserCheckpoint)
 
-- USER-CKPT-C-I-R2, USER-CKPT-D9-D10, CP7 (D5), ROADMAP-OPEN-010, GIẢ ĐỊNH của D8-C-05.
+- USER-CKPT-C-I-R2, USER-CKPT-D9-D10, CP7 (D5), ROADMAP-OPEN-010, ROADMAP-OPEN-011, GIẢ ĐỊNH của D8-C-05.
 
 ## Yêu cầu gửi IMPL-PLAN-CONVERGENCE
 
@@ -60,6 +61,12 @@ Không cần thư viện mới; chỉ stdlib và `pytest==9.1.1` đã khoá. Ada
 - `docs/implementation/c/plan.md` §7: thêm D8-C-10 (storage placement/quota thật).
 - Nguồn đối chiếu thêm: `docs/11-roadmap.md` §10 (Test bắt buộc, Điểm còn mở), `docs/10-test-strategy.md` (`TST-SEC-INV-012`).
 
+## Đối chiếu tại HEAD 260e5bc (lệnh Orchestrator INITIAL)
+
+- Đã đối chiếu lại plan và slices với `docs/11-roadmap.md` §10 và §23, `docs/09-contracts/12-state-machines.md` (CT-STATE-005, CT-STATE-006), `src/controlplane/domain/statemachine/__init__.py` (`ArtifactLocationState`), các binding c-d/i/g-c-i/f/domain-event, các fixture CP1 (case `content_hash_uppercase`, `missing_safety_policy_revision`, `limit_as_string`, `single_opaque_score`, `missing_reason_codes`) và `pyproject.toml` (`requires-python==3.13.15`, `pytest==9.1.1`, `pythonpath = ["src"]`).
+- `docs/implementation/c/plan.md`: thêm §23 vào nguồn chuẩn; ghi D8-C-02 là mặc định tạm; thêm ROADMAP-OPEN-011 vào danh sách chờ user (roadmap §23 cấm dùng default ẩn cho open item chưa chốt).
+- Report: bổ sung nguồn `docs/09-contracts/09-orchestration-contracts.md`.
+
 ## Lệnh kiểm
 
 | # | Lệnh | Exit code | Kết quả |
@@ -68,3 +75,5 @@ Không cần thư viện mới; chỉ stdlib và `pytest==9.1.1` đã khoá. Ada
 | 2 | Instrument nghiệm thu `python -c "import re, pathlib, unicodedata; ..."` của task (bước 24) | 0 | Không có output (PASS) |
 | 3 | `git diff --check` (vòng bổ sung, bước 6) | 0 | Không có output (PASS) |
 | 4 | Instrument nghiệm thu của task bằng interpreter khoá (vòng bổ sung, bước 7) | 0 | Không có output (PASS) |
+| 5 | `git diff --check` (vòng INITIAL tại HEAD 260e5bc, bước 7) | 0 | Không có output (PASS) |
+| 6 | Instrument nghiệm thu của task bằng interpreter khoá (vòng INITIAL tại HEAD 260e5bc, bước 8) | 0 | Không có output (PASS) |
