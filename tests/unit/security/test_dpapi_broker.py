@@ -3,12 +3,12 @@
 Task: TASK-CAP-J-P1-A-RED
 """
 import unittest
-from src.controlplane.security.dpapi import (
+from controlplane.security.dpapi import (
     dpapi_encrypt,
     dpapi_decrypt,
     DPAPIDecryptionError,
 )
-from src.controlplane.security.broker import (
+from controlplane.security.broker import (
     CredentialBroker,
     SecretLifetimeExpiredError,
     UnauthorizedSecretAccessError,

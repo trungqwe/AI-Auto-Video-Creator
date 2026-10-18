@@ -18,7 +18,7 @@ import math
 import unittest
 from typing import Any
 
-from src.controlplane.config.capability_view import (
+from controlplane.config.capability_view import (
     CapabilityView,
     CapacityIndicator,
     build_capability_view,

@@ -1,13 +1,13 @@
 import unittest
-from src.controlplane.security.interfaces import SecretCredential
-from src.controlplane.security.sanitizer import sanitize_for_log
-from src.controlplane.config.models import (
+from controlplane.security.interfaces import SecretCredential
+from controlplane.security.sanitizer import sanitize_for_log
+from controlplane.config.models import (
     AIRequest,
     AIResponse,
     MissingConfigProvenanceError,
     RateLimitError
 )
-from src.controlplane.config.router import ProviderRouter
+from controlplane.config.router import ProviderRouter
 
 class MockPrimaryProvider:
     def __init__(self, fail_with_429: bool = False):

@@ -1,6 +1,6 @@
 import unittest
 
-from src.controlplane.config.accounting import BudgetExceededError, CapacityAccounting, CapacityAccountingError, InvalidNumericError, MissingProvenanceError, _parse_non_negative_finite, _validate_budget_value, _sanitize_value
+from controlplane.config.accounting import BudgetExceededError, CapacityAccounting, CapacityAccountingError, InvalidNumericError, MissingProvenanceError, _parse_non_negative_finite, _validate_budget_value, _sanitize_value
 
 
 
@@ -1290,7 +1290,7 @@ class TestProviderCapacityAccounting(unittest.TestCase):
         or custom exceptions verbatim, and always converts to typed redacted error with from None.
         """
         import traceback
-        from src.controlplane.config.accounting import _safe_deepcopy
+        from controlplane.config.accounting import _safe_deepcopy
 
         # 1. CapacityAccountingError with secret
         cap_secret = "sk-direct-cap-secret-11111"

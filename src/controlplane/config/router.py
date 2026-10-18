@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from typing import Optional, Dict, Any
-from src.controlplane.config.models import (
+from controlplane.config.models import (
     AIRequest,
     AIResponse,
     MissingConfigProvenanceError,
     RateLimitError,
 )
-from src.controlplane.security.interfaces import ProviderProtocol
-from src.controlplane.config.adapter import (
+from controlplane.security.interfaces import ProviderProtocol
+from controlplane.config.adapter import (
     ApprovedEndpointRegistry,
     DEFAULT_ENDPOINT_REGISTRY,
     DEFAULT_APPROVED_ENDPOINTS,

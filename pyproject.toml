@@ -26,3 +26,4 @@ package = false
 addopts = "--strict-config --strict-markers"
 asyncio_mode = "strict"
 testpaths = ["tests"]
+pythonpath = ["src"]
