@@ -13,7 +13,7 @@ import urllib.error
 from urllib.parse import urlparse
 import urllib.request
 
-from src.controlplane.config.models import (
+from controlplane.config.models import (
     AIRequest,
     AIResponse,
     MissingConfigProvenanceError,

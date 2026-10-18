@@ -1,5 +1,5 @@
 from typing import Any
-from src.controlplane.security.interfaces import SecretCredential
+from controlplane.security.interfaces import SecretCredential
 
 def sanitize_for_log(val: Any) -> str:
     """Sanitizes arbitrary values or SecretCredential objects for safe logging.

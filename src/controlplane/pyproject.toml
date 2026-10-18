@@ -62,6 +62,8 @@ controlplane = "controlplane.entrypoint:main"
 "controlplane.infrastructure.db.sse" = "infrastructure/db/sse"
 "controlplane.infrastructure.evidence" = "infrastructure/evidence"
 "controlplane.infrastructure.security" = "infrastructure/security"
+"controlplane.config" = "config"
+"controlplane.security" = "security"
 
 [tool.setuptools]
 packages = [
@@ -106,6 +108,8 @@ packages = [
     "controlplane.infrastructure.db.sse",
     "controlplane.infrastructure.evidence",
     "controlplane.infrastructure.security",
+    "controlplane.config",
+    "controlplane.security",
 ]
 
 [tool.setuptools.package-data]

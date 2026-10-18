@@ -9,12 +9,12 @@ import io
 import json
 import socket
 
-from src.controlplane.config.models import (
+from controlplane.config.models import (
     AIRequest,
     AIResponse,
     MissingConfigProvenanceError,
 )
-from src.controlplane.config.adapter import (
+from controlplane.config.adapter import (
     NineRouterHTTPAdapter,
     ProviderTimeoutError,
     ProviderRateLimitExceededError,
