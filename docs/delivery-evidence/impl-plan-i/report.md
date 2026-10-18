@@ -1,6 +1,6 @@
 # Báo cáo bằng chứng IMPL-PLAN-I
 
-- Task: `IMPL-PLAN-I` (planning_package), trigger INITIAL, base `f40822e0ea258ed799fffa781c2c7b06776dd21a`.
+- Task: `IMPL-PLAN-I` (planning_package), trigger INITIAL. Bản đầu: commit `fd61462` trên base `f40822e0ea258ed799fffa781c2c7b06776dd21a`; lượt bổ sung: base `fd614627798e0882fa3afd1d3e792313296dbd4c`.
 - Tệp tạo mới: `docs/implementation/i/plan.md`, `docs/implementation/i/slices.md` (13 slice I-01..I-13), `docs/delivery-evidence/impl-plan-i/report.md`.
 
 ## Nguồn đã đọc
@@ -61,13 +61,19 @@ YC-HT-I-01..YC-HT-I-09 (plan.md mục 9). CT-STO-006 bị chặn tới khi có b
 
 `M4-CI-execution-package.md` dòng 185 gán sai `QUALITY-OPEN-006` cho working set (`docs/03-quality-requirements.md` dòng 284 định nghĩa đó là output profile video).
 
+## Lượt bổ sung trên base fd61462
+
+- `plan.md` mục 2: ghi rõ CT-STO-002 do `ArtifactLocationStore.declare` P5B đáp ứng; trường còn thiếu (device ref, thời điểm verify gần nhất, trạng thái lease/retention/cleanup) chuyển vào YC-HT-I-01.
+- `plan.md` mục 6: thêm bảng đối chiếu bốn điểm mở roadmap §10; "Scale dataset cho catalog/index" thuộc phân hệ C; PUC-I-01 mở rộng sang retention log và evidence.
+- `slices.md` không đổi (13 slice I-01..I-13).
+- Nguồn đọc thêm: `src/controlplane/application/storage_meta/__init__.py` (`ArtifactLocationStore.declare`, `_UNSAFE_REFERENCE`), `src/controlplane/infrastructure/db/storage_meta/__init__.py` (bảng `cp_artifact_locations`), `docs/11-roadmap.md` §10 "Điểm còn mở phải chốt trước hoặc trong M4".
+
 ## Lệnh kiểm
 
 | Lệnh | Exit code | Kết quả |
 |---|---|---|
 | git diff --check | 0 | không có output |
 | Lệnh kiểm bắt buộc python -c (plan/slices) | 0 | không có output |
-| Kiểm phong bì slice python -c | 0 | 13 slices ok |
-| Kiểm nội dung plan/report python -c | 0 | plan/report ok |
+| Kiểm nội dung bổ sung python -c (plan/slices/report) | 0 | ok 13 |
 
 Interpreter: C:/Users/Admin/orca/workspaces/AI-Auto-Video-Creator/DAG-implement-plan/.local-tools/temp/m2-controlplane-locked-venv-31315/Scripts/python.exe

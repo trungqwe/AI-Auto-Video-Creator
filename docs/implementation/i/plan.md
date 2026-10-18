@@ -1,6 +1,6 @@
 # Kế hoạch triển khai Phân hệ I — Lưu trữ, đồng bộ và vòng đời tệp
 
-> Task: `IMPL-PLAN-I` (planning_package). Base: `f40822e0ea258ed799fffa781c2c7b06776dd21a`.
+> Task: `IMPL-PLAN-I` (planning_package). Base: `fd614627798e0882fa3afd1d3e792313296dbd4c` (bản đầu là commit `fd61462` trên `f40822e0ea258ed799fffa781c2c7b06776dd21a`; lượt này bổ sung CT-STO-002 và đối chiếu điểm mở roadmap §10).
 > Nguồn quyền: D3 — user duyệt Phần B ngày 18/10/2026; M3–M7 theo ủy quyền AI_SETUP. Kích hoạt sản xuất vẫn `PRODUCTION_ACTIVATION_BLOCKED`.
 > Đây là kế hoạch; mã nguồn do các slice trong `docs/implementation/i/slices.md` thực hiện.
 
@@ -24,7 +24,7 @@ Aggregate do I sở hữu (ownership-and-locks.yaml): `ArtifactVersion`, `Artifa
 
 | # | Năng lực (roadmap §10) | Contract | Aggregate/thành phần | Slice |
 |---|---|---|---|---|
-| 1 | Artifact, immutable version, location | CT-STO-001, CT-STO-002 | ArtifactVersion, ArtifactLocation | I-01, I-02, I-13 |
+| 1 | Artifact, immutable version, location | CT-STO-001, CT-STO-002 | ArtifactVersion, ArtifactLocation | I-01, I-02, I-13; CT-STO-002 do `ArtifactLocationStore.declare` P5B đáp ứng (xem đoạn dưới bảng) |
 | 2 | Upload idempotent, verify integrity, reconcile `OUTCOME_UNKNOWN` | CT-STO-003 | ArtifactLocation, upload receipt | I-03, I-04 |
 | 3 | Placement theo loại dữ liệu trên bốn tài khoản | CT-STO-010 | StoragePlacementPolicy (value object) | I-12 |
 | 4 | Materialize gần lượt xử lý, lease, hash verification | CT-STO-004 | ArtifactLocation local, staging root | I-06, I-07 |
@@ -34,6 +34,8 @@ Aggregate do I sở hữu (ownership-and-locks.yaml): `ArtifactVersion`, `Artifa
 | 8 | Output path allocator, sanitize title/hashtag, folder session | CT-STO-011 | OutputName (value object) | I-11 |
 
 CT-STO-006 (`PersistVideoOutput`) không có slice trong kế hoạch này vì seam F → I chưa có binding (mục 4, YC-HT-I-07).
+
+CT-STO-002 (`RegisterArtifactLocation`) không có slice riêng: `ArtifactLocationStore.declare` của P5B (`src/controlplane/application/storage_meta/__init__.py`) đã khai báo location và từ chối ref rỗng hoặc không an toàn qua `_UNSAFE_REFERENCE` (đường tuyệt đối, `..`, `file://`, `token=`, `secret=`, `password=`…), đáp ứng điều "không đưa raw credential vào location". Các trường CT-STO-002 mà dataclass `ArtifactLocation` và bảng `cp_artifact_locations` của P5B chưa có (device ref cho location local, thời điểm verify gần nhất, trạng thái lease/retention/cleanup) là migration của hội tụ (YC-HT-I-01); slice I chỉ đọc `ArtifactLocation` hiện có, không dựng aggregate location thứ hai.
 
 ## 3. Vị trí mã theo D1
 
@@ -132,11 +134,20 @@ Slice ánh xạ trong module mới của mình; đổi cột hoặc kiểu dữ 
 | D8-I-11 | Availability của `CLEANUP_ELIGIBLE`/`CLEANUP_AUTHORIZED` | Xếp `unavailable` cho consumer mới | Tránh lease mới trên bản sắp dọn (CT-STO-008 điều 2) |
 | D8-I-12 | `intended_storage_class` | Chỉ `local_staging`, `local_cache` là lớp dọn được; giá trị khác coi là không dọn được | Fixture i-artifact-version dùng `local_staging`; binding khai `string` |
 
+Đối chiếu bốn điểm còn mở của roadmap §10:
+
+| Điểm mở roadmap §10 | Xử lý trong kế hoạch I |
+|---|---|
+| Storage placement/quota thật của bốn tài khoản sau G04 | D8-I-09 (rule cấu hình, không hard-code); giá trị thật chờ PUC-I-01, đo ở CP7-I-02 |
+| Retention original, reusable, temporary, log và evidence | D8-I-06 cho artifact; thời hạn cụ thể và retention của log/evidence chờ PUC-I-01 |
+| Scale dataset cho catalog/index | Thuộc phân hệ C (catalog/index), ngoài phạm vi I; kế hoạch I không chọn mặc định |
+| Checksum/integrity khi Drive không có cùng checksum cho mọi tệp | D8-I-02; phương pháp cụ thể chốt ở G04 qua CP7-I-01 |
+
 ### 6.1. Danh sách chờ user (pendingUserCheckpoint)
 
 Không mục nào dưới đây được coi là đã duyệt.
 
-- PUC-I-01 — ROADMAP-OPEN-010: thời hạn retention và placement/quota thật của bốn tài khoản Drive. Hạn: trước unattended cleanup.
+- PUC-I-01 — ROADMAP-OPEN-010: thời hạn retention (original, reusable, temporary, output, log và evidence) và placement/quota thật của bốn tài khoản Drive. Hạn: trước unattended cleanup.
 - PUC-I-02 — ROADMAP-OPEN-004: múi giờ production dùng cho tên folder `YY-MM-DD`. Hạn: trước khi bật lịch production.
 - PUC-I-03 — Ngưỡng byte của working set và disk reserve trên máy mục tiêu (đo ở CP7-I-03). Hạn: trước khi nghiệm thu hiệu năng render.
 - PUC-I-04 — User duyệt C-I và `R2 Media Alpha` (EG-M4-I-6).
@@ -161,7 +172,7 @@ Chỉ chạy sau khi user duyệt D5. Tài khoản thật chỉ được dùng q
 
 Tài nguyên dùng chung chỉ gói hội tụ được sửa; slice I không chạm vào.
 
-- YC-HT-I-01 — Migration: thêm vào `cp_artifact_versions` các cột `intended_storage_class`, `producer_operation_ref` và `lineage_refs` dạng mảng; bảng upload receipt (operation_key, artifact_version_id, object_id cấp trước, trạng thái có `OUTCOME_UNKNOWN`) được ghi trước upload theo ADR-0006; lease materialization; revision của placement và working set policy; đổi `cp_cleanup_authorizations.recovery_epoch` sang text opaque.
+- YC-HT-I-01 — Migration: thêm vào `cp_artifact_versions` các cột `intended_storage_class`, `producer_operation_ref` và `lineage_refs` dạng mảng; bảng upload receipt (operation_key, artifact_version_id, object_id cấp trước, trạng thái có `OUTCOME_UNKNOWN`) được ghi trước upload theo ADR-0006; lease materialization; revision của placement và working set policy; đổi `cp_cleanup_authorizations.recovery_epoch` sang text opaque; thêm vào `cp_artifact_locations` và dataclass `ArtifactLocation` các trường CT-STO-002 còn thiếu: device ref cho location local, thời điểm verify gần nhất, trạng thái lease/retention/cleanup.
 - YC-HT-I-02 — Đăng ký gói `controlplane.infrastructure.storage` trong `src/controlplane/pyproject.toml` (package-dir/packages; manifest thuộc LOCK-DEPENDENCY-UNIVERSE).
 - YC-HT-I-03 — Composition root (`src/controlplane/api/main.py`, `src/main.py`): wiring service I; đường dẫn SQLite journal và staging root lấy từ cấu hình J.
 - YC-HT-I-04 — State machine: giữ nguyên CT-STATE-012; quyết định caller và đường ghi `CLEANUP_AUTHORIZED → DELETED` sau khi cleanup executor chạy, vì `ArtifactLocationStore.validate_transition` của P5B đang chặn `DELETED`.
