@@ -36,7 +36,7 @@
 
 ## Quyết định D8
 
-Chi tiết và lý do ở `docs/implementation/c/plan.md` §7: D8-C-01 không xoá metadata/provenance; D8-C-02 repository Protocol, fake bộ nhớ và phân trang bắt buộc; D8-C-03 `index_revision` và so khớp xác định; D8-C-04 trạng thái đọc không có hàm chuyển; D8-C-05 ánh xạ safety → usability cho ảnh (GIẢ ĐỊNH fail-closed cho trạng thái chưa đánh giá xong); D8-C-06 rights không chắc chắn được lưu, không chặn; D8-C-07 checksum thuộc I; D8-C-08 media kind `image`, `clip`, `audio`; D8-C-09 thứ tự trạng thái hiển thị.
+Chi tiết và lý do ở `docs/implementation/c/plan.md` §7: D8-C-01 không xoá metadata/provenance; D8-C-02 repository Protocol, fake bộ nhớ và phân trang bắt buộc; D8-C-03 `index_revision` và so khớp xác định; D8-C-04 trạng thái đọc không có hàm chuyển; D8-C-05 ánh xạ safety → usability cho ảnh (GIẢ ĐỊNH fail-closed cho trạng thái chưa đánh giá xong); D8-C-06 rights không chắc chắn được lưu, không chặn; D8-C-07 checksum thuộc I; D8-C-08 media kind `image`, `clip`, `audio`; D8-C-09 thứ tự trạng thái hiển thị; D8-C-10 storage placement/quota thật thuộc I và CP7.
 
 ## Quyết định D10
 
@@ -54,9 +54,17 @@ Không cần thư viện mới; chỉ stdlib và `pytest==9.1.1` đã khoá. Ada
 
 - Đồng bộ `HANDOFF.md`, `README.md`, `CHANGELOG.md` thuộc gói hội tụ (ngoài owned paths).
 
+## Bổ sung theo lệnh Orchestrator (HEAD a849f79)
+
+- `docs/implementation/c/plan.md` §6: ánh xạ same byte retry/byte khác version mới sang C-03; nêu phần liên quan của `INV-012`; bổ sung Unicode/collision và cleanup authorization cũ vào nhóm ngoài phạm vi C.
+- `docs/implementation/c/plan.md` §7: thêm D8-C-10 (storage placement/quota thật).
+- Nguồn đối chiếu thêm: `docs/11-roadmap.md` §10 (Test bắt buộc, Điểm còn mở), `docs/10-test-strategy.md` (`TST-SEC-INV-012`).
+
 ## Lệnh kiểm
 
 | # | Lệnh | Exit code | Kết quả |
 | --- | --- | --- | --- |
 | 1 | `git diff --check` (bước 23) | 0 | Không có output (PASS) |
 | 2 | Instrument nghiệm thu `python -c "import re, pathlib, unicodedata; ..."` của task (bước 24) | 0 | Không có output (PASS) |
+| 3 | `git diff --check` (vòng bổ sung, bước 6) | 0 | Không có output (PASS) |
+| 4 | Instrument nghiệm thu của task bằng interpreter khoá (vòng bổ sung, bước 7) | 0 | Không có output (PASS) |

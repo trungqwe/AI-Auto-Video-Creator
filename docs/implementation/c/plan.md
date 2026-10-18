@@ -88,12 +88,14 @@ Seam chưa có binding (theo `docs/parallel-delivery/bindings/README.md`), C kh�
 Test bắt buộc của roadmap §10 liên quan C:
 
 - Phần C của `TST-INT-INV-008` (artifact unverified/hash sai không được render), hash mismatch và object missing: C-08.
+- Same byte retry và byte khác version mới: phần C là C-03 (gửi lại cùng `discovery_id` → `duplicate_observation`; cùng fingerprint → không tạo asset mới; fingerprint khác → `new_asset`). Tạo artifact version mới cho byte khác thuộc I (CT-STO-001).
 - Phần usage của `TST-WF-INV-010` và `TST-WF-INV-017`: C-09 với fake unit of work; bản PostgreSQL thật sau CONV-C-01, CONV-C-02 và CP7.
 - Phần media của `TST-INT-INV-005` và `TST-E2E-002` (bài trùng có media mới): C-03.
 - Source removed nhưng media lịch sử vẫn query được (CT-SRC-003, CT-MED-009, errata m4-ci #5): C-02, C-06, C-08.
 - Sensitive Image Set, phần ánh xạ safety state sang usability (`TST-E2E-011`): C-02, C-07, C-08; detector và transform thuộc E.
 - Clip không bị safety transform: C-04 từ chối rendition `blurred`/`recolored` cho media kind `clip`.
-- `INV-011`, `INV-015` (tombstone nguồn), upload gián đoạn, path traversal/symlink/reserved name, desktop restart/reconcile: thuộc I hoặc A, ngoài phạm vi C.
+- Phần liên quan của `INV-012` (`TST-SEC-INV-012`, canary secret): ràng buộc chung trong `slices.md` cấm slice C đọc `Credentials/` hay gọi dịch vụ thật; C không nhận hay lưu secret. Kiểm canary trên log/event/history thuộc J và gói phát event của C (CONV-C-02).
+- `INV-011`, `INV-015` (tombstone nguồn), upload gián đoạn, path traversal/symlink/junction/reserved name, hashtag/Unicode/collision, desktop restart/reconcile và cleanup authorization cũ: thuộc I hoặc A, ngoài phạm vi C.
 
 ## 7. Mục mở và quyết định mặc định (D8)
 
@@ -108,6 +110,7 @@ Test bắt buộc của roadmap §10 liên quan C:
 | D8-C-07 | Checksum khi Drive không có cùng checksum (roadmap §10) | Không thuộc C; C chỉ đọc `content_sha256` do I cấp | Ranh giới C/I |
 | D8-C-08 | Media kind | `image`, `clip`, `audio`; thêm kind là thay đổi additive | Fixture c-d dùng `image`, `clip`; CT-HOOK-001 có audio |
 | D8-C-09 | Trạng thái hiển thị UI | `unavailable` > `failed` (`UNREADABLE`, `TRANSFORM_FAILED`) > `uncertain` (`UNCERTAIN`, `DETECTION_FAILED`) > `processed` > `original` | Exit gate UI §10; trạng thái xấu hơn thắng để không che lỗi |
+| D8-C-10 | Storage placement/quota thật của bốn tài khoản sau G04 (roadmap §10) | Không thuộc C; C không lưu vị trí lưu trữ hay tài khoản, chỉ giữ `artifact_version_ref` | Ranh giới C/I; cần tài khoản thật nên thuộc CP7 (§9), I chủ trì |
 
 Danh sách chờ user (pendingUserCheckpoint), không ghi là đã duyệt:
 
