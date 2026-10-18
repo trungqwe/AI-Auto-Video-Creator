@@ -1,0 +1,144 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "c-d-media-candidates",
+  "binding_id": "BINDING-C-D-MEDIA-CANDIDATES",
+  "binding_version": "1.0.0",
+  "modules": [
+    "C",
+    "D"
+  ],
+  "producer": "C",
+  "consumers": [
+    "D"
+  ],
+  "contract_ref": "CONTRACT-CONTENT-MEDIA",
+  "source": {
+    "path": "docs/09-contracts/05-content-media-contracts.md",
+    "sections": [
+      "CT-MED-005"
+    ],
+    "sha256": "ea6a3723dece842d132f634d44c32eb301fbc98b43b61d24b5c32c907782e4cf"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "MediaCandidateQuery",
+      "section": "CT-MED-005",
+      "fields": [
+        {
+          "name": "production_snapshot_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "scene_intent",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "media_kinds",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "roles",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "safety_policy_revision",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "technical_constraints",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "recency_diversity_preferences",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "excluded_usage_refs",
+          "type": "array",
+          "required": false
+        },
+        {
+          "name": "page_cursor",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "MediaCandidate",
+      "section": "CT-MED-005",
+      "fields": [
+        {
+          "name": "media_asset_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "rendition_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "artifact_version_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "provenance",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "semantic_match_components",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "technical_fitness",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "availability",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "safety_rights_status",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "recent_usage_summary",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "reason_codes",
+          "type": "array",
+          "items": "string",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

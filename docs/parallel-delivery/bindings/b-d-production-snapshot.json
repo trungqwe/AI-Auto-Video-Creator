@@ -1,0 +1,113 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "b-d-production-snapshot",
+  "binding_id": "BINDING-B-D-PRODUCTION-SNAPSHOT",
+  "binding_version": "1.0.0",
+  "modules": [
+    "B",
+    "C",
+    "D",
+    "G",
+    "J"
+  ],
+  "producer": "D",
+  "input_providers": [
+    "B",
+    "C",
+    "J"
+  ],
+  "consumers": [
+    "E",
+    "F",
+    "G"
+  ],
+  "contract_ref": "CONTRACT-CREATIVE-AI",
+  "source": {
+    "path": "docs/09-contracts/06-creative-ai-contracts.md",
+    "sections": [
+      "CT-AI-001"
+    ],
+    "sha256": "92b74489890f1eaf3915aef809af4cff0585659842f6930bbdf11d1236861b3a"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "ProductionSnapshot",
+      "section": "CT-AI-001",
+      "fields": [
+        {
+          "name": "snapshot_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "production_mode",
+          "type": "string",
+          "required": true,
+          "enum": [
+            "single_article",
+            "multi_article_event",
+            "from_then_to_now"
+          ]
+        },
+        {
+          "name": "source_refs",
+          "type": "array",
+          "items": "object",
+          "required": true
+        },
+        {
+          "name": "index_revision_refs",
+          "type": "array",
+          "items": "object",
+          "required": true
+        },
+        {
+          "name": "configuration_revision_refs",
+          "type": "array",
+          "items": "object",
+          "required": true
+        },
+        {
+          "name": "source_set_fingerprint",
+          "type": "sha256",
+          "required": true
+        },
+        {
+          "name": "configuration_bundle_fingerprint",
+          "type": "sha256",
+          "required": true
+        },
+        {
+          "name": "eligibility_reason",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "snapshot_timestamp",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "batch_ref",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "video_job_ref",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "recent_variant_exclusions",
+          "type": "array",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

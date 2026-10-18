@@ -1,0 +1,124 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "i-artifact-version",
+  "binding_id": "BINDING-I-ARTIFACT-VERSION",
+  "binding_version": "1.0.0",
+  "modules": [
+    "A",
+    "C",
+    "E",
+    "F",
+    "G",
+    "I"
+  ],
+  "producer": "I",
+  "consumers": [
+    "A",
+    "C",
+    "E",
+    "F",
+    "G"
+  ],
+  "contract_ref": "CONTRACT-STORAGE",
+  "source": {
+    "path": "docs/09-contracts/10-storage-contracts.md",
+    "sections": [
+      "CT-STO-001"
+    ],
+    "sha256": "6ab6f60bc2760ea9017ca0406e0053dc859cc06c1f0c80fff7e944d03d5e02ce"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "DeclareArtifactVersionRequest",
+      "section": "CT-STO-001",
+      "fields": [
+        {
+          "name": "artifact_kind",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "owner_resource_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "content_sha256",
+          "type": "sha256",
+          "required": true
+        },
+        {
+          "name": "size_bytes",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "media_type",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "lineage_refs",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "retention_class",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "sensitivity_class",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "intended_storage_class",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "producer_operation_ref",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "DeclareArtifactVersionResult",
+      "section": "CT-STO-001",
+      "fields": [
+        {
+          "name": "artifact_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "artifact_version_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "matched_existing",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "policy_decision",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "required_operation",
+          "type": "string",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

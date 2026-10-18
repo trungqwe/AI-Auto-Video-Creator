@@ -1,0 +1,191 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "d-e-f-voice-timing",
+  "binding_id": "BINDING-D-E-F-VOICE-TIMING",
+  "binding_version": "1.0.0",
+  "modules": [
+    "D",
+    "E",
+    "F"
+  ],
+  "producer": "E",
+  "input_providers": [
+    "D"
+  ],
+  "consumers": [
+    "F"
+  ],
+  "contract_ref": "CONTRACT-MEDIA-PROCESSING",
+  "source": {
+    "path": "docs/09-contracts/07-media-processing-contracts.md",
+    "sections": [
+      "CT-TTS-001",
+      "CT-SUB-001"
+    ],
+    "sha256": "c5f7abaea422916165d59f8a5508817729d21035cffd663123a913c49365cf49"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "VoiceTrackRequest",
+      "section": "CT-TTS-001",
+      "fields": [
+        {
+          "name": "script_version_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "script_fingerprint",
+          "type": "sha256",
+          "required": true
+        },
+        {
+          "name": "voice_profile_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "provider_route_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "expected_language",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "operation_key",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "execution_grant_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "pronunciation_hints",
+          "type": "array",
+          "required": false
+        },
+        {
+          "name": "style_parameters",
+          "type": "object",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "VoiceTrackResult",
+      "section": "CT-TTS-001",
+      "fields": [
+        {
+          "name": "voice_artifact_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "script_version_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "script_fingerprint",
+          "type": "sha256",
+          "required": true
+        },
+        {
+          "name": "voice_hash",
+          "type": "sha256",
+          "required": true
+        },
+        {
+          "name": "actual_duration_ms",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "provider_model_voice_revision",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "usage_metrics",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "warnings",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "receipt_ref",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "WordTiming",
+      "section": "CT-SUB-001",
+      "fields": [
+        {
+          "name": "script_version_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "script_fingerprint",
+          "type": "sha256",
+          "required": true
+        },
+        {
+          "name": "voice_hash",
+          "type": "sha256",
+          "required": true
+        },
+        {
+          "name": "timing_artifact_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "words",
+          "type": "array",
+          "items": "object",
+          "required": true
+        },
+        {
+          "name": "segment_boundaries",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "validation_report_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "voice_duration_ms",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "alignment_gaps",
+          "type": "array",
+          "required": false
+        }
+      ],
+      "constraints": [
+        "monotonic_word_timings"
+      ]
+    }
+  ]
+}

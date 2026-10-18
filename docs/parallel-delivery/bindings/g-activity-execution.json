@@ -1,0 +1,182 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "g-activity-execution",
+  "binding_id": "BINDING-G-ACTIVITY-EXECUTION",
+  "binding_version": "1.0.0",
+  "modules": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "I",
+    "J"
+  ],
+  "producer": "G",
+  "consumers": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "I",
+    "J"
+  ],
+  "contract_ref": "CONTRACT-WORKFLOW-EXECUTION",
+  "source": {
+    "path": "docs/09-contracts/03-workflow-and-execution.md",
+    "sections": [
+      "CT-WF-003",
+      "CT-WF-006"
+    ],
+    "sha256": "0fca25f2bc037a4c2bc58b844079dace8c19a9fd5af5c0ce8ad75e421bc2dc83"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "ActivityRequest",
+      "section": "CT-WF-003",
+      "fields": [
+        {
+          "name": "workflow_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "workflow_run_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "stage_run_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "activity_name",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "activity_version",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "input_refs",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "operation_key",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "capability_requirements",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "retry_policy_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "video_job_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "execution_grant",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "deadline_at",
+          "type": "datetime",
+          "required": false
+        }
+      ],
+      "forbidden_fields": [
+        "secret_value",
+        "raw_blob"
+      ]
+    },
+    {
+      "name": "ActivityResult",
+      "section": "CT-WF-006",
+      "fields": [
+        {
+          "name": "stage_run_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "grant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "execution_generation",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "recovery_epoch",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "disposition",
+          "type": "string",
+          "required": true,
+          "enum": [
+            "succeeded",
+            "failed",
+            "waiting",
+            "outcome_unknown",
+            "stale"
+          ]
+        },
+        {
+          "name": "output_refs",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "completed_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "metrics",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "warnings",
+          "type": "array",
+          "required": false
+        },
+        {
+          "name": "problem",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "operation_receipt_ref",
+          "type": "string",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

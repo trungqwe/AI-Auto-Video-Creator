@@ -1,0 +1,198 @@
+{
+  "seam": "f-render-package",
+  "binding_version": "1.0.0",
+  "entities": {
+    "RenderPackage": {
+      "valid": [
+        {
+          "render_package_id": "00000000-0000-4000-8000-000000000050",
+          "package_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "production_snapshot_ref": "00000000-0000-4000-8000-000000000010",
+          "script_version_ref": "00000000-0000-4000-8000-000000000030",
+          "production_plan_ref": "00000000-0000-4000-8000-000000000051",
+          "preset_revision_ref": "00000000-0000-4000-8000-000000000052",
+          "voice_artifact_ref": "00000000-0000-4000-8000-000000000034",
+          "word_timing_ref": "00000000-0000-4000-8000-000000000036",
+          "output_metadata_revision": "out-meta-v1",
+          "output_profile_revision": "out-prof-v1",
+          "language_validation_refs": [
+            "lang-val-0001"
+          ],
+          "input_artifacts": [
+            {
+              "artifact_version_id": "00000000-0000-4000-8000-000000000053",
+              "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+              "size_bytes": 1024,
+              "media_type": "audio/wav"
+            }
+          ],
+          "timeline": {
+            "segments": []
+          },
+          "hook_placement": {
+            "visual_hook_ref": "00000000-0000-4000-8000-000000000054",
+            "audio_hook_ref": "00000000-0000-4000-8000-000000000055",
+            "thumbnail_ref": "00000000-0000-4000-8000-000000000056",
+            "hook_time_range": {
+              "start_ms": 0,
+              "end_ms": 3000
+            },
+            "thumbnail_time_range": {
+              "start_ms": 500,
+              "end_ms": 1500
+            }
+          },
+          "subtitle_config": {
+            "karaoke": true
+          },
+          "mix_plan": {},
+          "allowed_fallbacks": [],
+          "materialization_manifest": {},
+          "output_path_ref": "00000000-0000-4000-8000-000000000057"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_hook_placement",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "hook_placement"
+          },
+          "payload": {
+            "render_package_id": "00000000-0000-4000-8000-000000000050",
+            "package_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "production_snapshot_ref": "00000000-0000-4000-8000-000000000010",
+            "script_version_ref": "00000000-0000-4000-8000-000000000030",
+            "production_plan_ref": "00000000-0000-4000-8000-000000000051",
+            "preset_revision_ref": "00000000-0000-4000-8000-000000000052",
+            "voice_artifact_ref": "00000000-0000-4000-8000-000000000034",
+            "word_timing_ref": "00000000-0000-4000-8000-000000000036",
+            "output_metadata_revision": "out-meta-v1",
+            "output_profile_revision": "out-prof-v1",
+            "language_validation_refs": [
+              "lang-val-0001"
+            ],
+            "input_artifacts": [
+              {
+                "artifact_version_id": "00000000-0000-4000-8000-000000000053",
+                "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "size_bytes": 1024,
+                "media_type": "audio/wav"
+              }
+            ],
+            "timeline": {
+              "segments": []
+            },
+            "subtitle_config": {
+              "karaoke": true
+            },
+            "mix_plan": {},
+            "allowed_fallbacks": [],
+            "materialization_manifest": {},
+            "output_path_ref": "00000000-0000-4000-8000-000000000057"
+          }
+        },
+        {
+          "case": "input_artifacts_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "input_artifacts"
+          },
+          "payload": {
+            "render_package_id": "00000000-0000-4000-8000-000000000050",
+            "package_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "production_snapshot_ref": "00000000-0000-4000-8000-000000000010",
+            "script_version_ref": "00000000-0000-4000-8000-000000000030",
+            "production_plan_ref": "00000000-0000-4000-8000-000000000051",
+            "preset_revision_ref": "00000000-0000-4000-8000-000000000052",
+            "voice_artifact_ref": "00000000-0000-4000-8000-000000000034",
+            "word_timing_ref": "00000000-0000-4000-8000-000000000036",
+            "output_metadata_revision": "out-meta-v1",
+            "output_profile_revision": "out-prof-v1",
+            "language_validation_refs": [
+              "lang-val-0001"
+            ],
+            "input_artifacts": "voice.wav",
+            "timeline": {
+              "segments": []
+            },
+            "hook_placement": {
+              "visual_hook_ref": "00000000-0000-4000-8000-000000000054",
+              "audio_hook_ref": "00000000-0000-4000-8000-000000000055",
+              "thumbnail_ref": "00000000-0000-4000-8000-000000000056",
+              "hook_time_range": {
+                "start_ms": 0,
+                "end_ms": 3000
+              },
+              "thumbnail_time_range": {
+                "start_ms": 500,
+                "end_ms": 1500
+              }
+            },
+            "subtitle_config": {
+              "karaoke": true
+            },
+            "mix_plan": {},
+            "allowed_fallbacks": [],
+            "materialization_manifest": {},
+            "output_path_ref": "00000000-0000-4000-8000-000000000057"
+          }
+        },
+        {
+          "case": "ai_supplied_shell_command",
+          "expected_error": {
+            "code": "forbidden_field",
+            "field": "shell_command"
+          },
+          "payload": {
+            "render_package_id": "00000000-0000-4000-8000-000000000050",
+            "package_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "production_snapshot_ref": "00000000-0000-4000-8000-000000000010",
+            "script_version_ref": "00000000-0000-4000-8000-000000000030",
+            "production_plan_ref": "00000000-0000-4000-8000-000000000051",
+            "preset_revision_ref": "00000000-0000-4000-8000-000000000052",
+            "voice_artifact_ref": "00000000-0000-4000-8000-000000000034",
+            "word_timing_ref": "00000000-0000-4000-8000-000000000036",
+            "output_metadata_revision": "out-meta-v1",
+            "output_profile_revision": "out-prof-v1",
+            "language_validation_refs": [
+              "lang-val-0001"
+            ],
+            "input_artifacts": [
+              {
+                "artifact_version_id": "00000000-0000-4000-8000-000000000053",
+                "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "size_bytes": 1024,
+                "media_type": "audio/wav"
+              }
+            ],
+            "timeline": {
+              "segments": []
+            },
+            "hook_placement": {
+              "visual_hook_ref": "00000000-0000-4000-8000-000000000054",
+              "audio_hook_ref": "00000000-0000-4000-8000-000000000055",
+              "thumbnail_ref": "00000000-0000-4000-8000-000000000056",
+              "hook_time_range": {
+                "start_ms": 0,
+                "end_ms": 3000
+              },
+              "thumbnail_time_range": {
+                "start_ms": 500,
+                "end_ms": 1500
+              }
+            },
+            "subtitle_config": {
+              "karaoke": true
+            },
+            "mix_plan": {},
+            "allowed_fallbacks": [],
+            "materialization_manifest": {},
+            "output_path_ref": "00000000-0000-4000-8000-000000000057",
+            "shell_command": "ffmpeg -i x"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,115 @@
+{
+  "seam": "domain-event-envelope",
+  "binding_version": "1.0.0",
+  "entities": {
+    "DomainEvent": {
+      "valid": [
+        {
+          "event_id": "00000000-0000-4000-8000-000000000040",
+          "event_name": "SourceRemoved",
+          "aggregate_type": "Source",
+          "aggregate_id": "00000000-0000-4000-8000-000000000041",
+          "aggregate_revision": 7,
+          "producer": "A",
+          "schema_version": "1.0.0",
+          "recovery_epoch": "epoch-0001",
+          "payload": {
+            "source_id": "00000000-0000-4000-8000-000000000041",
+            "revision": 7
+          },
+          "sensitivity": "internal"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "producer_outside_modules",
+          "expected_error": {
+            "code": "enum_violation",
+            "field": "producer"
+          },
+          "payload": {
+            "event_id": "00000000-0000-4000-8000-000000000040",
+            "event_name": "SourceRemoved",
+            "aggregate_type": "Source",
+            "aggregate_id": "00000000-0000-4000-8000-000000000041",
+            "aggregate_revision": 7,
+            "producer": "K",
+            "schema_version": "1.0.0",
+            "recovery_epoch": "epoch-0001",
+            "payload": {
+              "source_id": "00000000-0000-4000-8000-000000000041",
+              "revision": 7
+            },
+            "sensitivity": "internal"
+          }
+        },
+        {
+          "case": "aggregate_revision_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "aggregate_revision"
+          },
+          "payload": {
+            "event_id": "00000000-0000-4000-8000-000000000040",
+            "event_name": "SourceRemoved",
+            "aggregate_type": "Source",
+            "aggregate_id": "00000000-0000-4000-8000-000000000041",
+            "aggregate_revision": "7",
+            "producer": "A",
+            "schema_version": "1.0.0",
+            "recovery_epoch": "epoch-0001",
+            "payload": {
+              "source_id": "00000000-0000-4000-8000-000000000041",
+              "revision": 7
+            },
+            "sensitivity": "internal"
+          }
+        },
+        {
+          "case": "stack_trace_in_event",
+          "expected_error": {
+            "code": "forbidden_field",
+            "field": "stack_trace"
+          },
+          "payload": {
+            "event_id": "00000000-0000-4000-8000-000000000040",
+            "event_name": "SourceRemoved",
+            "aggregate_type": "Source",
+            "aggregate_id": "00000000-0000-4000-8000-000000000041",
+            "aggregate_revision": 7,
+            "producer": "A",
+            "schema_version": "1.0.0",
+            "recovery_epoch": "epoch-0001",
+            "payload": {
+              "source_id": "00000000-0000-4000-8000-000000000041",
+              "revision": 7
+            },
+            "sensitivity": "internal",
+            "stack_trace": "Traceback ..."
+          }
+        },
+        {
+          "case": "missing_recovery_epoch",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "recovery_epoch"
+          },
+          "payload": {
+            "event_id": "00000000-0000-4000-8000-000000000040",
+            "event_name": "SourceRemoved",
+            "aggregate_type": "Source",
+            "aggregate_id": "00000000-0000-4000-8000-000000000041",
+            "aggregate_revision": 7,
+            "producer": "A",
+            "schema_version": "1.0.0",
+            "payload": {
+              "source_id": "00000000-0000-4000-8000-000000000041",
+              "revision": 7
+            },
+            "sensitivity": "internal"
+          }
+        }
+      ]
+    }
+  }
+}
