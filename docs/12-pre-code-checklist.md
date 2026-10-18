@@ -1,7 +1,7 @@
 # AI Auto Video Creator — Checklist cuối trước code
 
 **Ngày lập:** 12-09-2026 (Cập nhật sau User Checkpoint M1: 13-09-2026)
-**Trạng thái:** M0 APPROVED/CLOSED; M1 ACCEPTED/CLOSED (User Checkpoint 13-09-2026 sau Audit R5.1, 93 tests PASSED, Audit R5 + R5.1 ACCEPTED); M2 AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION; M3 và Phân hệ A NOT AUTHORIZED
+**Trạng thái:** M0 APPROVED/CLOSED; M1 ACCEPTED/CLOSED (User Checkpoint 13-09-2026 sau Audit R5.1, 93 tests PASSED, Audit R5 + R5.1 ACCEPTED); M2 AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION (P8/P9 Auditor PASS, chưa ghi user checkpoint M2); M3–M7 theo ủy quyền AI_SETUP và Phần B (user duyệt 18/10/2026); kích hoạt sản xuất bị chặn
 **Cổng áp dụng:** M1 → M2 của [roadmap](./11-roadmap.md)
 **Căn cứ audit hiện hành:** [M1 audit R5 (kèm R5.1 Addendum)](./milestones/m1-proof/audit-r5.md), [M1 audit R4](./milestones/m1-proof/audit-r4.md), [M1 audit R3](./milestones/m1-proof/audit-r3.md), [M1 audit R2](./milestones/m1-proof/audit-r2.md) và [M1 audit R1](./milestones/m1-proof/audit-r1.md)
 
@@ -12,7 +12,7 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 - `[x]` nghĩa là có bằng chứng hoàn tất **ở cấp tài liệu** trong phạm vi nêu rõ.
 - `[ ]` nghĩa là chưa hoàn tất hoặc chưa có xác nhận; không được tự đánh dấu để mở cổng.
 - “Không còn BLOCKER” chỉ nói đến phát hiện thiết kế đã biết sau khắc phục, không có nghĩa mọi proof, cấu hình production hoặc kiểm thử runtime đã đạt.
-- Phê duyệt baseline và quyền code M1 đã được kích hoạt ngày 13-09-2026 (đã hoàn tất P0-P6, vượt qua Audit R5.1 và được Người dùng nghiệm thu ACCEPTED/CLOSED). Quyền lập kế hoạch và triển khai cho M2 đã chính thức được kích hoạt. Không mở quyền cho M3/Phân hệ A.
+- Phê duyệt baseline và quyền code M1 đã được kích hoạt ngày 13-09-2026 (đã hoàn tất P0-P6, vượt qua Audit R5.1 và được Người dùng nghiệm thu ACCEPTED/CLOSED). Quyền lập kế hoạch và triển khai cho M2 đã chính thức được kích hoạt. Từ 18/10/2026, M3–M7 (gồm Phân hệ A) thực hiện theo ủy quyền AI_SETUP (`AI_PM_DELEGATED_AUTHORITY_RULES.md`) và Phần B; ủy quyền này không thay user checkpoint của từng milestone.
 
 ### 1.1. Trạng thái cổng hiện hành
 
@@ -27,9 +27,10 @@ Tài liệu này là điểm kiểm tra cuối của giai đoạn thiết kế, 
 | G04 Drive/OAuth | 🟡 `PARTIALLY_PROVEN (PASS_M1_SCOPE)` | P3 đã PASS E3 (ADR-0009 Subprocess Broker OS isolation, Windows DPAPI Vault, Broker-owned provisioning, live E3 probe xác thực Drive thật) |
 | G07 Compatibility | 🟡 `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` | P5 đã PASS strict version (Python, uv, PG, Temporal, ffprobe WAV duration > 0, fail-closed dynamic matrix observation) |
 | ROADMAP-OPEN-003 | ✅ `CLOSED_FOR_M1_P3` | Credential thật đã được cung cấp; E3 live verification hoàn tất qua Broker Subprocess boundary |
-| M2 | 🟡 `M2-P1..P7B_ACCEPTED_CLOSED`; P8/P9 `LOCKED` | Independent review đã chấp thuận P7B source/tooling `c44214ad027986a0db7cb9d8e221590f232a0036` và GREEN `run-m2-p7b-green-20260917040648`: P7B 5/5 + H01–H38 38/38, P7A 4/4 + 36/36, P6→P0/architecture/M1 đạt, migration/index/quality/secret scan/semantic/provenance/hash PASS. Migration `0008`, ngoại lệ đúng thân P3 `append()` và compatibility đúng thân P7A H16 thuộc kết quả accepted. P7A Behavioral oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035` và P7B Behavioral oracle SHA-256 `d83d0f2d808f1b0067d5288ea131ded24d8fc46a16462b5254fd4167f7425738` bất biến. Candidate GREEN `run-m2-p7b-green-20260917024918` giữ nguyên làm lịch sử bị từ chối. P8/P9 chưa có quyền RED/implementation; M3/Phân hệ A `NOT AUTHORIZED`. |
-| Parallel delivery experiment | 🧪 `PROPOSED — DOCS/CONFIG ONLY` | [Bundle](./parallel-delivery/README.md) định nghĩa DAG/ownership/lease/protocol/merge queue để review; không cấp authority mới. Pilot runtime, activation và thay đổi task state cần checkpoint riêng. Rollback reference: `D:/AI_SETUP/backups/AI-Auto-Video-Creator/20260928-175542`. |
-| M3 / Module A | ⛔ `NOT AUTHORIZED` | Tiếp tục bị khóa chặt; không được bắt đầu trước khi M2 đạt exit gate và có User Checkpoint riêng |
+| M2 | 🟡 `M2-P1..P7B_ACCEPTED_CLOSED`; P8/P9 `AUDITOR_PASS — CHƯA GHI USER CHECKPOINT M2` | Independent review đã chấp thuận P7B source/tooling `c44214ad027986a0db7cb9d8e221590f232a0036` và GREEN `run-m2-p7b-green-20260917040648`: P7B 5/5 + H01–H38 38/38, P7A 4/4 + 36/36, P6→P0/architecture/M1 đạt, migration/index/quality/secret scan/semantic/provenance/hash PASS. Migration `0008`, ngoại lệ đúng thân P3 `append()` và compatibility đúng thân P7A H16 thuộc kết quả accepted. P7A Behavioral oracle SHA-256 `63151da21b07c3dd92c5b4a7acc0d4f952f188ee2425a52c9d3ac8d34eb61035` và P7B Behavioral oracle SHA-256 `d83d0f2d808f1b0067d5288ea131ded24d8fc46a16462b5254fd4167f7425738` bất biến. Candidate GREEN `run-m2-p7b-green-20260917024918` giữ nguyên làm lịch sử bị từ chối. P8/P9 đã triển khai và có Auditor PASS; chưa ghi user checkpoint M2, không coi là user đã duyệt. |
+| Parallel delivery experiment | 🧪 `PROPOSED — DOCS/CONFIG ONLY` | [Bundle](./parallel-delivery/README.md) định nghĩa DAG/ownership/lease/protocol/merge queue; bản thân bundle không cấp authority — quyền M3–M7 đến từ ủy quyền AI_SETUP và Phần B (18/10/2026). Pilot runtime, activation và thay đổi task state cần checkpoint riêng. Rollback reference: `D:/AI_SETUP/backups/AI-Auto-Video-Creator/20260928-175542`. |
+| M3–M7 / Module A | 🔵 `THEO ỦY QUYỀN AI_SETUP — PHẦN B (18/10/2026)` | Thực hiện qua slice của Portfolio AI_SETUP theo `AI_PM_DELEGATED_AUTHORITY_RULES.md`; chưa milestone nào được nghiệm thu; mục cần user duyệt ghi vào danh sách chờ `pendingUserCheckpoint` |
+| Kích hoạt sản xuất | ⛔ `PRODUCTION_ACTIVATION_BLOCKED` | Không bật production từ checklist này |
 
 Đây là bảng trạng thái có thẩm quyền trước lệnh code đầu tiên. Kết quả P2/P3 đã đạt được ghi `PASS_M1_SCOPE`; G01/G04 toàn phần vẫn `PARTIALLY_PROVEN` cho tới khi đủ evidence các milestone tiếp theo.
 
@@ -83,7 +84,7 @@ Nguồn có thẩm quyền: [charter](./00-project-charter.md), [product spec](.
 | PCC-024 | Có bảo vệ dữ liệu, secret và quan sát lỗi | [x] Có cleanup authorization, provenance, secret boundary và logging/monitoring tests. [storage](./09-contracts/10-storage-contracts.md), [security](./09-contracts/11-configuration-security-contracts.md), [10](./10-test-strategy.md). |
 | PCC-025 | Open item và giả định không bị coi là quyết định ngầm | [x] Open item có gate/owner theo tài liệu gốc; checklist không xác nhận thay user. Phân loại tại mục 5. |
 | PCC-026 | Người dùng đã đọc và chấp thuận bộ kế hoạch hiện hành | [x] User đã chấp thuận baseline 00–12, ADR, contracts, audit, roadmap và kế hoạch Phân hệ A sau khắc phục ngày 13-09-2026. |
-| PCC-027 | Người dùng cho phép bước qua ranh giới code | [x] Quyền implementation đã cấp cho M1 (ĐÃ HOÀN TẤT & ACCEPTED) và M2 (ĐÃ ĐƯỢC PHÊ DUYỆT BẮT ĐẦU). M3/Phân hệ A chưa được phép. |
+| PCC-027 | Người dùng cho phép bước qua ranh giới code | [x] Quyền implementation đã cấp cho M1 (ĐÃ HOÀN TẤT & ACCEPTED) và M2 (ĐÃ ĐƯỢC PHÊ DUYỆT BẮT ĐẦU). M3–M7 (gồm Phân hệ A) thực hiện theo ủy quyền AI_SETUP và Phần B ngày 18/10/2026. |
 | PCC-028 | Runtime/dependency/test-tool versions đã khóa trước test code đầu tiên | [x] `ROADMAP-OPEN-002=CLOSED_FOR_M1_R1`; version set và quy tắc revision/rollback ghi tại [M1-R1 lock](./milestones/m1-proof/version-lock.md). Không đồng nghĩa compatibility/G01/G04/G07 PASS. |
 | PCC-029 | Kiến trúc triển khai song song được giữ tách biệt khỏi authority sản phẩm | [x] Bundle đề xuất có task DAG, contract registry, single-writer ownership, resource lease, worker protocol và merge queue; mọi future node là `locked`/`future_template`, không tự mở P8/P9 hoặc M3+. [Parallel delivery](./parallel-delivery/README.md). |
 
@@ -140,18 +141,18 @@ Checklist không phải lệnh cài thư viện, khởi tạo framework, triển
 | Bộ tài liệu trình duyệt | 00–03, 05–08, ADR, 09-contracts, 10, 11, module A spec/plan, AUDIT mục 11 và checklist 12 này |
 | User đã đọc và chấp thuận kế hoạch sau audit | ĐÃ XÁC NHẬN cho baseline hiện hành |
 | User cho phép code | ĐÃ XÁC NHẬN: M1 hoàn tất & ACCEPTED; M2 được phép planning & implementation |
-| Phạm vi work package được phép | M2 Control Plane theo dependency của M2 implementation plan. Chưa cho phép M3/Phân hệ A |
+| Phạm vi work package được phép | M2 Control Plane theo dependency của M2 implementation plan. M3–M7 theo ủy quyền AI_SETUP và Phần B (18/10/2026) |
 | Version set trước code | M1-R1 đã khóa; ROADMAP-OPEN-002=CLOSED_FOR_M1_R1 |
 | Thời điểm và thông điệp xác nhận | 13-09-2026; User Checkpoint chính thức chấp thuận M1 và kích hoạt M2 |
-| Trạng thái cổng hiện hành | M0 APPROVED; M1 ACCEPTED/CLOSED (P0-P6 PASS, 93/93 passed); G01/G04 PARTIALLY_PROVEN; G07 SMOKE_COMPATIBILITY_PASS_M1_SCOPE; M2 AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION; M3 và Phân hệ A NOT AUTHORIZED |
+| Trạng thái cổng hiện hành | M0 APPROVED; M1 ACCEPTED/CLOSED (P0-P6 PASS, 93/93 passed); G01/G04 PARTIALLY_PROVEN; G07 SMOKE_COMPATIBILITY_PASS_M1_SCOPE; M2 AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION (P8/P9 Auditor PASS, chưa ghi user checkpoint M2); M3–M7 theo ủy quyền AI_SETUP và Phần B (user duyệt 18/10/2026); kích hoạt sản xuất bị chặn |
 
 Trạng thái phê duyệt đã được đồng bộ vào roadmap và module plan. Nếu có sửa đổi đáng kể sau phê duyệt, xác định phần ảnh hưởng và kiểm toán lại trước khi dùng bản mới.
 
-**Kết luận:** M1 và M2-P0/P1 đã được Người dùng nghiệm thu chính thức (`ACCEPTED / CLOSED`). M2-P2 là `AUTHORIZED` theo chu trình `SPEC → PLAN → RED → IMPLEMENT → RUN → TEST → FIX → VERIFY → EVIDENCE → COMMIT`; quyền hiện tại chỉ bao gồm SPEC, PLAN và Behavioral RED. Không được bắt đầu implementation P2 trước khi RED P2 hợp lệ được chứng kiến, lưu evidence và qua independent audit. Không được bắt đầu M3 hoặc Phân hệ A trước khi M2 đạt exit gate và có User Checkpoint riêng.
+**Kết luận:** M1 và M2-P0/P1 đã được Người dùng nghiệm thu chính thức (`ACCEPTED / CLOSED`). M2-P2 là `AUTHORIZED` theo chu trình `SPEC → PLAN → RED → IMPLEMENT → RUN → TEST → FIX → VERIFY → EVIDENCE → COMMIT`; quyền hiện tại chỉ bao gồm SPEC, PLAN và Behavioral RED. Không được bắt đầu implementation P2 trước khi RED P2 hợp lệ được chứng kiến, lưu evidence và qua independent audit. (Lịch sử.) Từ 18/10/2026, M3–M7 thực hiện theo ủy quyền AI_SETUP và Phần B; M2 chưa được ghi là user đã nghiệm thu.
 
 ## Trạng thái sau M1-P2 Temporal G01 Proof
 
-M1-P2 đã hoàn thành với 10 bài test đạt GREEN, evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p2/`. P0/P1/P2 `PASS`; G01 `PARTIALLY_PROVEN (PASS_M1_SCOPE)`. Đã chứng minh trên exact official binary `temporal-server.exe` v1.31.2 port 7233 loopback, roundtrip workflow/activity, idempotent retry, payload boundaries. M2/M3/Module A vẫn `NOT AUTHORIZED`.
+M1-P2 đã hoàn thành với 10 bài test đạt GREEN, evidence đầy đủ tại `docs/milestones/m1-proof/evidence/m1-p2/`. P0/P1/P2 `PASS`; G01 `PARTIALLY_PROVEN (PASS_M1_SCOPE)`. Đã chứng minh trên exact official binary `temporal-server.exe` v1.31.2 port 7233 loopback, roundtrip workflow/activity, idempotent retry, payload boundaries. (Lịch sử: tại thời điểm đó M2/M3/Module A chưa được cấp quyền.)
 
 ## Trạng thái sau M1-P3 Google Drive & OAuth G04 Proof
 
@@ -174,7 +175,7 @@ M1-P6 đã hoàn thành với 7 bài test đạt GREEN (nâng tổng số test h
 Sau các đợt re-audit độc lập R4, R5 và R5.1 (HEAD commit `08c857c`), toàn bộ 93 bài test của Milestone M1 đạt GREEN (93 passed, 0 skipped, coverage 83%), Báo cáo Kiểm toán Exit Gate `docs/milestones/m1-proof/audit-r5.md` (kèm R5.1 Addendum) được phê duyệt, Người dùng đã CHẤP THUẬN chính thức:
 - **Milestone M1**: `ACCEPTED / CLOSED`.
 - **Milestone M2**: `AUTHORIZED_FOR_PLANNING_AND_IMPLEMENTATION` (bắt đầu chu trình chuẩn bị SPEC và PLAN).
-- **Milestone M3 và Phân hệ A**: Tiếp tục duy trì trạng thái `NOT AUTHORIZED` (khóa chặt cho tới khi M2 hoàn tất exit gate và có User Checkpoint riêng).
+- **Milestone M3 và Phân hệ A**: tại thời điểm đó chưa được cấp quyền (lịch sử; trạng thái hiện hành ở mục 1.1).
 
 ## Trạng thái Nghiệm thu M2-P0/P1 & Ủy quyền M2-P2 (13-09-2026)
 
@@ -182,6 +183,15 @@ Người dùng đã CHẤP THUẬN chính thức kết quả Milestone M2-P0 t�
 - **M2-P0**: `ACCEPTED / CLOSED` (33/33 tests PASSED, 93/93 tests hồi quy M1 PASSED, 6/6 Package Gates PASS, deterministic provenance 1:1, SHA-256 DAG hợp lệ).
 - **M2-P1 Plan**: `ACCEPTED` sau independent re-audit tại HEAD `5ba3a1601f0e1402e54a82feb5b44fe94cda9197`; User đã ủy quyền Behavioral RED, nhưng không ủy quyền implementation trước evidence RED hợp lệ.
 - **Hiệu chỉnh Kế hoạch Kỹ thuật Cuối**: `implementation-plan.md` đã thay P1-007 bằng public port read/status/revoke/expire thật, có traceability cho cả 11 oracle, khóa exact accepted P0 testcase-name set 33/33, bắt buộc migration fault sandbox, và tách migration rollback guard khỏi admin database teardown.
-- **Checkpoint Behavioral RED độc lập tại commit `e42bd90e8cd8ff0e688a2db78407ef9e32d660b9`**: Audit xác nhận PostgreSQL 18.6 riêng biệt đã chạy exact 11 oracle function-scoped (run `ba8100a55e714332a3ebe41ca9d18944`), cleanup không để lại database. Cả 11 là Behavioral RED ở cấp package: P1-001/005/006/007/008 là direct-target, P1-002/003/004/009/010/011 là upstream-path prerequisite behavior cùng package. Không có setup failure hay unexpected pass. Phase là `M2-P1_RED_CONFIRMED`; implementation P1 được ủy quyền. Không sửa implementation P0, không mở P2; M3 và Phân hệ A tiếp tục bị khóa hoàn toàn (`NOT AUTHORIZED`).
+- **Checkpoint Behavioral RED độc lập tại commit `e42bd90e8cd8ff0e688a2db78407ef9e32d660b9`**: Audit xác nhận PostgreSQL 18.6 riêng biệt đã chạy exact 11 oracle function-scoped (run `ba8100a55e714332a3ebe41ca9d18944`), cleanup không để lại database. Cả 11 là Behavioral RED ở cấp package: P1-001/005/006/007/008 là direct-target, P1-002/003/004/009/010/011 là upstream-path prerequisite behavior cùng package. Không có setup failure hay unexpected pass. Phase là `M2-P1_RED_CONFIRMED`; implementation P1 được ủy quyền. Không sửa implementation P0, không mở P2; Tại thời điểm đó M3 và Phân hệ A chưa được cấp quyền (lịch sử).
 - **M2-P1 acceptance checkpoint hiện hành**: Independent audit tại `90f4195e928ecbf5622d9760465a5d09d8b4f867` chấp thuận `M2-P1 = ACCEPTED / CLOSED`: exact 11/11 mandatory oracle GREEN trên PostgreSQL 18.6 thật với disposable DB function-scoped; P1-006 dùng production migration composite FK, P1-010 chứng minh transactional probe rollback, P1-004 có crash-release proof, pool là `psycopg_pool.ConnectionPool` bắt buộc và guard khớp exact fixture identity. Frozen P0 exact set 33/33, M1 93/93, runtime capability cùng run, secret scan 0 findings, provenance và SHA-256 DAG hợp lệ; P1-aware `synthesizer_p1.py --verify-only` trả `VALIDATION: PASS`.
-- **M2-P2 checkpoint hiện hành**: `M2-P2_RED_READY_FOR_REVIEW`. Run `run-m2-p2-20260914131500` chạy full exact 11 trên PostgreSQL 18.6 Docker/`CREATEDB=true`; raw prerequisite/collection/full/postrun tồn tại, `DISPOSABLE_DB_ORPHANS=0`, `INVALID_SETUP_FAILURE=0`, `ORACLE_MISMATCH=0`, `UNEXPECTED_PASS=0`. Evidence đang chờ independent audit; không implementation P2. M3 và Phân hệ A tiếp tục `NOT AUTHORIZED`.
+- **M2-P2 checkpoint hiện hành**: `M2-P2_RED_READY_FOR_REVIEW`. Run `run-m2-p2-20260914131500` chạy full exact 11 trên PostgreSQL 18.6 Docker/`CREATEDB=true`; raw prerequisite/collection/full/postrun tồn tại, `DISPOSABLE_DB_ORPHANS=0`, `INVALID_SETUP_FAILURE=0`, `ORACLE_MISMATCH=0`, `UNEXPECTED_PASS=0`. Evidence đang chờ independent audit; không implementation P2. Tại thời điểm đó M3 và Phân hệ A chưa được cấp quyền (lịch sử).
+
+## Trạng thái ủy quyền Phần B (18/10/2026)
+
+- M3–M7, gồm Phân hệ A, thực hiện theo ủy quyền AI_SETUP (`AI_PM_DELEGATED_AUTHORITY_RULES.md`) và chỉ thị user duyệt Phần B ngày 18/10/2026 (D0–D10). Mỗi slice chỉ sửa owned paths và theo tiêu chí nghiệm thu được giao.
+- M2-P8/P9 đã triển khai và có Auditor PASS; chưa ghi user checkpoint M2. Không ghi là user đã duyệt.
+- Kích hoạt sản xuất vẫn bị chặn (`PRODUCTION_ACTIVATION_BLOCKED`).
+- Commit local; push hoặc merge là quyền riêng của user.
+- Bằng chứng từ M3 trở đi ghi vào `docs/delivery-evidence/<task-id viết thường>/report.md`; `docs/milestones/**/evidence/**` giữ bất biến.
+- Danh sách chờ user (`pendingUserCheckpoint`): user checkpoint M2 (P8/P9), USER-CKPT-D9-D10 (thư viện và cách dựng lại runtime), CP7 tài nguyên thật (D5).

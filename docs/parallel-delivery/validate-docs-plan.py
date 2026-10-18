@@ -14,7 +14,8 @@ from collections import defaultdict
 import os
 from pathlib import Path
 import sys
-import yaml
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from validate import parse_yaml_text  # noqa: E402  stdlib-only YAML subset; PyYAML is not required
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -108,7 +109,7 @@ def check_yaml_syntax() -> list[str]:
       continue
     try:
       raw = p.read_text(encoding="utf-8")
-      data = yaml.safe_load(raw)
+      data = parse_yaml_text(raw)
       if not isinstance(data, dict):
         errors.append(
             f"{rel_path}: YAML root must be a mapping, got"
@@ -126,7 +127,7 @@ def check_dag_cycles() -> list[str]:
     return [f"Cannot check cycles: {dag_path} missing"]
 
   try:
-    data = yaml.safe_load(dag_path.read_text(encoding="utf-8"))
+    data = parse_yaml_text(dag_path.read_text(encoding="utf-8"))
   except Exception as exc:
     return [f"Cannot load task-dag.yaml for cycle check: {exc}"]
 

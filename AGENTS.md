@@ -9,7 +9,7 @@
 
 - Bắt đầu phiên bằng `HANDOFF.md`, sau đó đọc checklist, roadmap và plan của milestone đang hoạt động.
 - Không suy diễn trạng thái từ tài liệu lịch sử. Trạng thái hiện hành nằm trong `docs/12-pre-code-checklist.md`.
-- Milestone M1 đã ACCEPTED / CLOSED. Milestone M2 được phép planning và implementation theo kế hoạch được duyệt. M3 và Phân hệ A tiếp tục bị khóa chặt tới khi M2 qua exit gate, audit và user checkpoint riêng.
+- Milestone M1 và M2-P1..P7B đã ACCEPTED / CLOSED. M2-P8/P9 đã triển khai và có Auditor PASS nhưng chưa ghi user checkpoint M2 (không coi là user đã duyệt). M3–M7, gồm Phân hệ A, thực hiện theo ủy quyền AI_SETUP (`AI_PM_DELEGATED_AUTHORITY_RULES.md`) và chỉ thị user duyệt Phần B ngày 18/10/2026; mỗi slice chỉ sửa trong owned paths và theo tiêu chí nghiệm thu được giao. Kích hoạt sản xuất vẫn bị chặn (`PRODUCTION_ACTIVATION_BLOCKED`).
 - Không ghi giả định thành quyết định. Nội dung chưa được xác nhận phải ghi `GIẢ ĐỊNH` hoặc open item với gate rõ ràng.
 
 ## Định tuyến skill
@@ -34,7 +34,7 @@
 4. Cập nhật tiến độ/tính năng trong `README.md` và `CHANGELOG.md` khi có thay đổi đáng chú ý.
 5. Thay nội dung `HANDOFF.md` bằng bản ngắn gồm: đã quyết định, chưa quyết định, tệp cần đọc tiếp và điểm tiếp tục.
 6. Chạy test/validation phù hợp và không tuyên bố PASS thiếu evidence.
-7. Kiểm tra secret, commit theo Conventional Commits và push lên `origin` để sao lưu/rollback/đối chiếu.
+7. Kiểm tra secret và commit local theo Conventional Commits. Push hoặc merge là quyền riêng của user; agent không tự push hay merge.
 
 <!-- dely:begin -->
 ## Dely

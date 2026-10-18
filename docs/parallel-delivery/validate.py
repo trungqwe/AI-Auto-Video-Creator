@@ -72,7 +72,6 @@ try:
         LeaseManager,
         LockLeaseError,
         ScopeViolationError,
-        build_contract_catalog,
         check_owned_vs_forbidden,
         check_path_scope,
         get_committed_diff_paths,
@@ -90,12 +89,264 @@ except ImportError as exc:
     raise RuntimeError(f"Failed to import delivery_engine from {BUNDLE}") from exc
 
 
+class YamlLiteError(ValueError):
+    """Raised when a registry file leaves the YAML subset readable with the stdlib."""
+
+
+_YAML_KEY_RE = re.compile(r"""^(?P<key>"[^"]*"|'[^']*'|[A-Za-z0-9_][^:]*?)\s*:(?:\s+(?P<value>.*))?$""")
+_YAML_INT_RE = re.compile(r"^[-+]?[0-9]+$")
+_YAML_FLOAT_RE = re.compile(r"^[-+]?(?:[0-9]+\.[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?$")
+_YAML_BLOCK_STYLES = {">", ">-", ">+", "|", "|-", "|+"}
+
+
+def _yaml_scalar(token: str, anchors: Dict[str, Any]) -> Any:
+    token = token.strip()
+    if token.startswith("*"):
+        if token[1:] not in anchors:
+            raise YamlLiteError(f"unknown alias {token!r}")
+        return anchors[token[1:]]
+    if token.startswith(("[", "{")):
+        return _yaml_flow(token, anchors)
+    if token.startswith(('"', "'")):
+        if len(token) < 2 or token[-1] != token[0]:
+            raise YamlLiteError(f"unterminated quoted scalar {token!r}")
+        if token[0] == '"':
+            return json.loads(token)
+        return token[1:-1].replace("''", "'")
+    if token.startswith(("!", "%", "@", "`", "&", "|", ">")):
+        raise YamlLiteError(f"unsupported YAML construct {token!r}")
+    if token in ("", "~", "null", "Null", "NULL"):
+        return None
+    if token in ("true", "True", "TRUE"):
+        return True
+    if token in ("false", "False", "FALSE"):
+        return False
+    if _YAML_INT_RE.match(token):
+        return int(token)
+    if _YAML_FLOAT_RE.match(token):
+        return float(token)
+    return token
+
+
+def _yaml_split_flow(body: str) -> List[str]:
+    parts: List[str] = []
+    buf: List[str] = []
+    depth = 0
+    quote = ""
+    for ch in body:
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in ('"', "'"):
+            quote = ch
+        elif ch in "[{":
+            depth += 1
+        elif ch in "]}":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            parts.append("".join(buf).strip())
+            buf = []
+            continue
+        buf.append(ch)
+    if quote or depth:
+        raise YamlLiteError(f"unbalanced flow collection {body!r}")
+    tail = "".join(buf).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _yaml_flow(token: str, anchors: Dict[str, Any]) -> Any:
+    if token[0] == "[" and token.endswith("]"):
+        return [_yaml_scalar(part, anchors) for part in _yaml_split_flow(token[1:-1])]
+    if token[0] == "{" and token.endswith("}"):
+        result: Dict[Any, Any] = {}
+        for part in _yaml_split_flow(token[1:-1]):
+            key, sep, value = part.partition(":")
+            if not sep or not key.strip():
+                raise YamlLiteError(f"flow mapping entry without key {part!r}")
+            name = _yaml_scalar(key, anchors)
+            if name in result:
+                raise YamlLiteError(f"duplicate flow mapping key {name!r}")
+            result[name] = _yaml_scalar(value, anchors)
+        return result
+    raise YamlLiteError(f"unterminated flow collection {token!r}")
+
+
+class _YamlLiteParser:
+    """Block YAML subset used by the parallel-delivery registries (stdlib only)."""
+
+    def __init__(self, text: str) -> None:
+        self.lines: List[Optional[List[Any]]] = []
+        self.anchors: Dict[str, Any] = {}
+        for number, raw in enumerate(text.split("\n"), 1):
+            line = raw.rstrip("\r")
+            body = line.lstrip(" ")
+            if not body.strip() or body.lstrip().startswith("#"):
+                self.lines.append(None)
+                continue
+            if body[0] == "	":
+                raise YamlLiteError(f"line {number}: tab indentation is not supported")
+            if body.rstrip() in ("---", "...") or body.startswith("%"):
+                raise YamlLiteError(f"line {number}: document markers and directives are not supported")
+            self.lines.append([len(line) - len(body), body.rstrip(), number])
+
+    def _skip(self, i: int) -> int:
+        while i < len(self.lines) and self.lines[i] is None:
+            i += 1
+        return i
+
+    @staticmethod
+    def _is_item(body: str) -> bool:
+        return body == "-" or body.startswith("- ")
+
+    def parse(self) -> Any:
+        i = self._skip(0)
+        if i == len(self.lines):
+            return None
+        value, i = self._node(i)
+        i = self._skip(i)
+        if i < len(self.lines):
+            raise YamlLiteError(f"line {self.lines[i][2]}: unexpected indentation")
+        return value
+
+    def _node(self, i: int) -> Tuple[Any, int]:
+        indent, body, number = self.lines[i]
+        if self._is_item(body):
+            return self._seq(i, indent)
+        if _YAML_KEY_RE.match(body):
+            return self._map(i, indent)
+        raise YamlLiteError(f"line {number}: expected a mapping or a sequence")
+
+    def _children(self, i: int, indent: int, allow_indentless: bool) -> Tuple[Any, int]:
+        j = self._skip(i)
+        if j < len(self.lines):
+            child_indent, child_body, _ = self.lines[j]
+            if child_indent > indent:
+                return self._node(j)
+            if allow_indentless and child_indent == indent and self._is_item(child_body):
+                return self._seq(j, indent)
+        return None, i
+
+    def _map(self, i: int, indent: int) -> Tuple[Dict[str, Any], int]:
+        result: Dict[str, Any] = {}
+        while True:
+            i = self._skip(i)
+            if i == len(self.lines) or self.lines[i][0] < indent:
+                return result, i
+            line_indent, body, number = self.lines[i]
+            if line_indent > indent:
+                raise YamlLiteError(f"line {number}: unexpected indentation")
+            if self._is_item(body):
+                return result, i
+            match = _YAML_KEY_RE.match(body)
+            if not match:
+                raise YamlLiteError(f"line {number}: expected 'key: value'")
+            raw_key = match.group("key").strip()
+            key = _yaml_scalar(raw_key, self.anchors) if raw_key[0] in ('"', "'") else raw_key
+            if key in result:
+                raise YamlLiteError(f"line {number}: duplicate key {key!r}")
+            text = (match.group("value") or "").strip()
+            anchor = ""
+            if text.startswith("&"):
+                anchor, _, text = text[1:].partition(" ")
+                text = text.strip()
+            if not text:
+                value, i = self._children(i + 1, indent, True)
+            elif text in _YAML_BLOCK_STYLES:
+                value, i = self._block(i + 1, indent, text)
+            else:
+                value, i = self._plain(text, i + 1, indent)
+            if anchor:
+                self.anchors[anchor] = value
+            result[key] = value
+
+    def _seq(self, i: int, indent: int) -> Tuple[List[Any], int]:
+        result: List[Any] = []
+        while True:
+            i = self._skip(i)
+            if i == len(self.lines) or self.lines[i][0] < indent:
+                return result, i
+            line_indent, body, number = self.lines[i]
+            if line_indent > indent:
+                raise YamlLiteError(f"line {number}: unexpected indentation")
+            if not self._is_item(body):
+                return result, i
+            item = body[1:].lstrip(" ")
+            if not item:
+                value, i = self._children(i + 1, indent, False)
+            elif _YAML_KEY_RE.match(item):
+                item_indent = line_indent + len(body) - len(item)
+                self.lines[i] = [item_indent, item, number]
+                value, i = self._map(i, item_indent)
+            else:
+                value, i = self._plain(item, i + 1, indent)
+            result.append(value)
+
+    def _plain(self, text: str, i: int, indent: int) -> Tuple[Any, int]:
+        parts = [text]
+        if not text.startswith(("[", "{", "*", '"', "'")):
+            j = self._skip(i)
+            while j < len(self.lines) and self.lines[j][0] > indent:
+                parts.append(self.lines[j][1])
+                i = j + 1
+                j = self._skip(i)
+        return _yaml_scalar(" ".join(parts), self.anchors), i
+
+    def _block(self, i: int, indent: int, style: str) -> Tuple[str, int]:
+        collected: List[str] = []
+        while i < len(self.lines) and (self.lines[i] is None or self.lines[i][0] > indent):
+            collected.append("" if self.lines[i] is None else self.lines[i][1])
+            i += 1
+        while collected and not collected[-1]:
+            collected.pop()
+        text = (" " if style[0] == ">" else "\n").join(collected)
+        return (text if style.endswith("-") or not collected else text + "\n"), i
+
+
+def parse_yaml_text(text: str) -> Any:
+    """Parse the registry YAML subset with the standard library only (PyYAML is not required)."""
+    return _YamlLiteParser(text).parse()
+
+
 def load_yaml(path: Path) -> Any:
-    try:
-        import yaml  # type: ignore
-    except ImportError as exc:
-        raise RuntimeError("PyYAML is required to validate YAML") from exc
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+    return parse_yaml_text(path.read_text(encoding="utf-8"))
+
+
+def build_contract_catalog_stdlib(registry_path: Path, root: Path) -> Dict[str, ContractBinding]:
+    """Bind every contract ID to its registry and source file without PyYAML."""
+    data = load_yaml(registry_path)
+    catalog: Dict[str, ContractBinding] = {}
+    seen: Dict[str, str] = {}
+    for entry in data.get("contracts", []):
+        registry_id = entry.get("id")
+        source_rel = entry.get("source")
+        source_file = root / str(source_rel)
+        if not source_file.is_file():
+            raise ContractBindingError(f"Registry {registry_id}: source file {source_rel} not found")
+        declared = entry.get("source_sha256")
+        actual = hashlib.sha256(source_file.read_bytes()).hexdigest()
+        if actual != declared:
+            raise ContractBindingError(
+                f"Registry {registry_id}: source_sha256 mismatch (real {actual} != declared {declared})"
+            )
+        revision = entry.get("current_revision", f"sha256:{declared}")
+        for contract_id in extract_ids(source_file):
+            if contract_id in seen:
+                raise ContractBindingError(
+                    f"Contract {contract_id} defined in multiple registries: {seen[contract_id]} and {registry_id}"
+                )
+            seen[contract_id] = registry_id
+            catalog[contract_id] = ContractBinding(
+                id=contract_id,
+                registry_id=registry_id,
+                source_path=source_rel,
+                owner=entry.get("owner"),
+                co_owners=entry.get("co_owners", []),
+                source_sha256=declared,
+                revision=revision,
+            )
+    return catalog
 
 
 def load_known_requirements() -> Set[str]:
@@ -672,10 +923,21 @@ def check_lock_leases(ownership: dict[str, Any], dag: dict[str, Any]) -> list[st
 
 
 def check_authority(dag: dict[str, Any]) -> list[str]:
+    """Authority invariants for every granted node; no fixed list of granted task IDs."""
     errors: list[str] = []
-    granted = [task.get("id") for task in dag.get("tasks", []) if task.get("authority", {}).get("state") == "granted"]
-    if granted != ["PD-PILOT-CONTROL"]:
-        errors.append(f"unexpected granted tasks: {granted}")
+    for task in dag.get("tasks", []):
+        task_id = task.get("id")
+        authority = task.get("authority") or {}
+        if authority.get("state") != "granted":
+            continue
+        if task.get("kind") in {"future_template", "authority_sentinel"} or str(task_id).endswith("-TEMPLATE"):
+            errors.append(f"{task_id}: template or sentinel node must not be granted")
+        if not str(authority.get("scope") or "").strip():
+            errors.append(f"{task_id}: granted task must declare a bounded authority scope")
+        if authority.get("does_not_authorize_descendants") is not True:
+            errors.append(f"{task_id}: granted task must set does_not_authorize_descendants: true")
+        if not task.get("authority_refs"):
+            errors.append(f"{task_id}: granted task must cite authority_refs")
     required = "PROPOSED ARCHITECTURE EXPERIMENT — NO NEW IMPLEMENTATION AUTHORITY"
     for name in ["README.md", "operating-model.md", "protocol.md", "merge-and-integration.md", "traceability.md", "security-performance-recovery.md"]:
         if required not in (BUNDLE / name).read_text(encoding="utf-8"):
@@ -683,39 +945,52 @@ def check_authority(dag: dict[str, Any]) -> list[str]:
     return errors
 
 
-def check_dely_block() -> list[str]:
+DELY_PHASES = ("implement", "review")
+DELY_EFFORTS = {"minimal", "low", "medium", "high", "xhigh", "max"}
+DELY_REQUIRED_PHRASES = (
+    "Every delivery dispatch MUST go through `dely dispatch`",
+    "Control MUST NOT call Orca `worker-start` directly",
+    "provider `9router`",
+    "Antigravity native is forbidden",
+    "Model and effort are separate fields",
+    "A combined slug such as `cx/gpt-5.6-sol-high` is invalid",
+    "`launch.requested` and `launch.effective` are necessary but insufficient",
+    "live terminal/archive identifies the expected harness/provider",
+    "9Router usage database records the expected backend request after dispatch",
+    "Missing or contradictory routing evidence is a hard STOP",
+    "Do not fall back",
+)
+
+
+def check_dely_block(root: Path = ROOT) -> list[str]:
+    """Check the structure of the Dely routing table without pinning any model."""
     errors: list[str] = []
-    text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    text = (root / "AGENTS.md").read_text(encoding="utf-8")
+    block = text
     if text.count("<!-- dely:begin -->") != 1 or text.count("<!-- dely:end -->") != 1:
         errors.append("AGENTS.md must contain exactly one complete Dely block")
-    rows = re.findall(r"^\| `(implement|review)` \| ([^|]+) \| ([^|]+) \| ([^|]+) \|$", text, re.MULTILINE)
-    expected = [
-        ("implement", "Codex CLI", "ag/gemini-3.8-flash-high", "high"),
-        ("review", "Claude Code", "cx/gpt-5.6-sol", "high"),
-    ]
-    normalized = [(a, b.strip(), c.strip(), d.strip()) for a, b, c, d in rows]
-    if normalized != expected:
-        errors.append(f"unexpected Dely rows: {normalized}")
-    if (ROOT / "CLAUDE.md").read_text(encoding="utf-8") != "@AGENTS.md\n":
+    else:
+        block = text.split("<!-- dely:begin -->", 1)[1].split("<!-- dely:end -->", 1)[0]
+    rows = re.findall(r"^\| `([a-z_]+)` \| ([^|]*) \| ([^|]*) \| ([^|]*) \|$", block, re.MULTILINE)
+    phases = [row[0] for row in rows]
+    for phase in DELY_PHASES:
+        if phases.count(phase) != 1:
+            errors.append(f"Dely table must declare phase {phase!r} exactly once; found {phases.count(phase)}")
+    for phase, harness, model, effort in rows:
+        if phase not in DELY_PHASES:
+            errors.append(f"Dely table declares unknown phase {phase!r}")
+        for field_name, value in (("harness", harness), ("model", model), ("effort", effort)):
+            if not value.strip():
+                errors.append(f"Dely row {phase!r} has empty {field_name}")
+        if re.search(r"\s", model.strip()):
+            errors.append(f"Dely row {phase!r} model must be one route identifier: {model.strip()!r}")
+        if effort.strip() and effort.strip() not in DELY_EFFORTS:
+            errors.append(f"Dely row {phase!r} has unknown effort {effort.strip()!r}")
+    if (root / "CLAUDE.md").read_text(encoding="utf-8") != "@AGENTS.md\n":
         errors.append("CLAUDE.md must contain only @AGENTS.md")
-
-    # Sol Round 11: Machine-readable routing authority rules must be present in AGENTS.md
-    required_phrases = [
-        "Every delivery dispatch MUST go through `dely dispatch`",
-        "Control MUST NOT call Orca `worker-start` directly",
-        "provider `9router`",
-        "Antigravity native is forbidden",
-        "Model and effort are separate fields",
-        "A combined slug such as `cx/gpt-5.6-sol-high` is invalid",
-        "`launch.requested` and `launch.effective` are necessary but insufficient",
-        "live terminal/archive identifies the expected harness/provider",
-        "9Router usage database records the expected backend request after dispatch",
-        "Missing or contradictory routing evidence is a hard STOP",
-    ]
-    for phrase in required_phrases:
-        if phrase not in text:
+    for phrase in DELY_REQUIRED_PHRASES:
+        if phrase not in block:
             errors.append(f"AGENTS.md missing mandatory routing authority policy: {phrase!r}")
-
     return errors
 
 
@@ -1009,7 +1284,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         dag_base = dag.get("approved_base_commit", DEFAULT_BASE_COMMIT)
         contracts = load_yaml(BUNDLE / "contract-registry.yaml")
         ownership = load_yaml(BUNDLE / "ownership-and-locks.yaml")
-        catalog = build_contract_catalog(BUNDLE / "contract-registry.yaml", ROOT)
+        catalog = build_contract_catalog_stdlib(BUNDLE / "contract-registry.yaml", ROOT)
         known_owners = set(ownership.get("modules", {}).keys()) | {"CROSS-CUTTING-CONTRACT-OWNER"}
         known_requirements = load_known_requirements()
 

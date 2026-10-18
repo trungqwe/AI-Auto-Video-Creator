@@ -112,7 +112,7 @@ Không dùng mock để đóng Drive/OAuth/Temporal/AI/render/restore/performanc
 - Evidence thiếu provenance, runtime pin, command/result hoặc tamper check không được dùng đóng gate.
 
 - Integration Gatekeeper phải chạy ngoài tiến trình candidate; sử dụng `SignedIntegrationEnvelope` có chữ ký bất đối xứng Ed25519 được xác thực bởi `TrustedIntegrationConsumer` ở phong bì tiến trình bên ngoài.
-- Worker chỉ được quyền push nhánh tính năng (feature branch), tuyệt đối không nắm quyền merge trực tiếp vào protected target (main/trunk).
+- Worker chỉ commit local trên nhánh tính năng (feature branch); push, PR và merge vào protected target (main/trunk) là quyền riêng của user.
 - Khóa kích hoạt production: `ProductionActivationGate.STATUS == PRODUCTION_ACTIVATION_BLOCKED` cấm merge vào production khi thiếu 4 điều kiện hạ tầng (cách ly tài khoản OS, ACL khóa riêng, runner CI/CD, và protected branch).
 
 ## 8. Rollback

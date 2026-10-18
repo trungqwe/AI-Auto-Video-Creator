@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-18 - CP0-GOVERNANCE: đồng bộ nguồn quyền, registry và validator với Phần B
+
+- Nguồn quyền (D3): AGENTS.md, README.md, HANDOFF.md, checklist và roadmap §4 ghi M3–M7 thực hiện theo ủy quyền AI_SETUP (`AI_PM_DELEGATED_AUTHORITY_RULES.md`) và chỉ thị user duyệt Phần B ngày 18/10/2026; M2-P8/P9 có Auditor PASS nhưng chưa ghi user checkpoint M2; kích hoạt sản xuất vẫn bị chặn; bỏ yêu cầu push (commit local, push/merge là quyền của user).
+- Registry (D1, D4): `PATH-SRC-ORCHESTRATION` và `PATH-SRC-STORAGE` trỏ các gói trong `src/controlplane`; thêm `PATH-DELIVERY-EVIDENCE`, `PATH-IMPLEMENTATION-PLANS`, `LOCK-DELIVERY-EVIDENCE`, `LOCK-IMPL-PLAN-A…J`, `LOCK-IMPL-PLAN-CONVERGENCE`, `LOCK-CONVERGENCE`, `LOCK-M2-REGRESSION`, `LOCK-UI-SHELL`, `LOCK-CONTROL-API`.
+- Bằng chứng (D4): `acceptance-matrix.yaml` trỏ bằng chứng của task tương lai vào `docs/delivery-evidence/<task-id>/report.md`; báo cáo tái kiểm 98bd27e/ebf3d58 tại `docs/delivery-evidence/cp0-governance/ownership-recheck.md`.
+- Validator: `validate.py` và `validate-docs-plan.py` đọc YAML bằng bộ đọc stdlib; `check_authority` không ghim danh sách task; `check_dely_block` kiểm cấu trúc bảng Dely; thêm `docs/parallel-delivery/tests/test_validate.py`; gỡ `.validation-report.json` lỗi thời.
+- `task-dag.yaml`: `current_authority.delegated_authority` ghi nguồn quyền M3–M7 là policy Portfolio AI_SETUP (Phần B, 18/10/2026); node template giữ `future_template`.
+
 ## 2026-10-01 - Khắc phục triệt để phát hiện Sol Audit trên f4ad8d5 (Yêu cầu Supervisor Capability được ký số cho Đăng ký Dispatch ngoài tiến trình, Chặn hoàn toàn Đăng ký Caller-Controlled với Exact Candidate Head)
 
 - Khắc phục triệt để phát hiện độc lập ROOT_ARCHITECTURE từ Sol trên exact candidate `f4ad8d5516ec9935de718f4cc6b4621f162140a5` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):

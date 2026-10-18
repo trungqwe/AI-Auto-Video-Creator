@@ -27,7 +27,7 @@ Trong quá trình phát triển theo mô hình Wave/DAG, hệ thống áp dụng
   - Toàn bộ hồ sơ bằng chứng trong `docs/milestones/**/evidence/**` được khóa bất biến dưới quyền `EvidenceAuthority` thông qua lock `LOCK-ACCEPTED-EVIDENCE`.
   - Mọi thao tác cấp lease sửa đổi (mutation lease), sửa nội dung, xóa tệp hoặc thay đổi mã băm SHA-256 đối với hồ sơ bằng chứng đã nghiệm thu đều bị từ chối fail-closed.
 - **Bảo toàn Hash Chứng nhận Bundle:**
-  - Báo cáo kiểm định `.validation-report.json` và mã băm SHA-256 của các thành phần kiến trúc được bảo toàn nguyên vẹn cho mục đích đối soát lịch sử.
+  - Báo cáo `.validation-report.json` cũ (candidate `f9dae86`) đã lỗi thời so với quy tắc tươi mới của `validate.py` nên được gỡ ở CP0-GOVERNANCE; bản lịch sử vẫn truy được trong Git. Báo cáo mới chỉ sinh bằng `--generate-report` đúng topology HEAD.
 
 ---
 
@@ -45,7 +45,7 @@ Chiến dịch kỹ thuật DOC-00..DOC-10 chỉ được phép tác động tr�
 - Không sửa bộ kiểm thử runtime trong `tests/**`.
 - Không sửa chuỗi migration cơ sở dữ liệu `src/**/migrations/**` hoặc các tệp `.sql`.
 - Không sửa các tệp khóa phụ thuộc môi trường: `pyproject.toml`, `uv.lock`, `package-lock.json`.
-- Không sửa code runtime của Milestone 2 cũ: `delivery_engine.py`, `validate.py`, `test_negative_fixtures.py`, `test_host_boundary_harness.py`.
+- Không sửa code runtime của Milestone 2 cũ: `delivery_engine.py`, `validate.py`, `test_negative_fixtures.py`, `test_host_boundary_harness.py` (áp dụng cho chiến dịch DOC-00..DOC-10; CP0-GOVERNANCE được giao sửa `validate.py` và `validate-docs-plan.py` để bỏ phụ thuộc PyYAML).
 
 ---
 
@@ -55,6 +55,15 @@ Chiến dịch kỹ thuật DOC-00..DOC-10 chỉ được phép tác động tr�
 |---|---|---|
 | Milestone M1 | `ACCEPTED / CLOSED` | Đã nghiệm thu toàn diện tại Checkpoint 13-09-2026 |
 | Milestone M2-P1..P7B | `ACCEPTED_CLOSED` | Giữ nguyên baseline mã nguồn và tooling |
-| Milestone M2-P8/P9 | `LOCKED` | Không tự ý mở implementation hay viết test RED |
-| Milestone M3 và Phân hệ A | `NOT AUTHORIZED` | Tiếp tục khóa chặt tới khi M2 qua exit gate |
+| Milestone M2-P8/P9 | `AUDITOR_PASS — CHƯA GHI USER CHECKPOINT M2` | Đã triển khai; không ghi là user đã duyệt |
+| Milestone M3–M7 (gồm Phân hệ A) | `THEO ỦY QUYỀN AI_SETUP — PHẦN B` | Theo `AI_PM_DELEGATED_AUTHORITY_RULES.md` và chỉ thị user duyệt Phần B ngày 18/10/2026 |
 | Kích hoạt sản xuất | `PRODUCTION_ACTIVATION_BLOCKED` | Giữ nguyên khóa fail-closed cấp OS/hạ tầng |
+
+---
+
+## 5. Nơi ghi bằng chứng từ M3 trở đi (D4)
+
+- Mỗi task ghi bằng chứng vào thư mục riêng `docs/delivery-evidence/<task-id viết thường>/` (ví dụ `docs/delivery-evidence/cp0-governance/`). Tệp bắt buộc `report.md` ghi lệnh đã chạy, exit code và kết quả của từng lệnh.
+- Registry: `PATH-DELIVERY-EVIDENCE` (`docs/delivery-evidence/**`, lock `LOCK-DELIVERY-EVIDENCE`) trong [ownership-and-locks.yaml](./ownership-and-locks.yaml); mỗi task chỉ ghi thư mục của chính nó.
+- `acceptance-matrix.yaml` trỏ `evidence_path` của các task tương lai vào vị trí này.
+- `docs/milestones/**/evidence/**` là bằng chứng đã nghiệm thu, giữ bất biến: không di chuyển, không sửa, không ghi thêm.
