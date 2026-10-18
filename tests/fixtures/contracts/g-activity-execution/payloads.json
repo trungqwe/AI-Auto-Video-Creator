@@ -1,0 +1,151 @@
+{
+  "seam": "g-activity-execution",
+  "binding_version": "1.0.0",
+  "entities": {
+    "ActivityRequest": {
+      "valid": [
+        {
+          "workflow_id": "00000000-0000-4000-8000-000000000060",
+          "workflow_run_id": "00000000-0000-4000-8000-000000000061",
+          "stage_run_id": "00000000-0000-4000-8000-000000000062",
+          "activity_name": "CreateVoiceTrack",
+          "activity_version": "1",
+          "input_refs": [
+            {
+              "ref_type": "script_version",
+              "ref_id": "00000000-0000-4000-8000-000000000030"
+            }
+          ],
+          "operation_key": "op-act-001",
+          "capability_requirements": {
+            "provider": "tts"
+          },
+          "retry_policy_ref": "00000000-0000-4000-8000-000000000063",
+          "video_job_id": "00000000-0000-4000-8000-000000000064"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_operation_key",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "operation_key"
+          },
+          "payload": {
+            "workflow_id": "00000000-0000-4000-8000-000000000060",
+            "workflow_run_id": "00000000-0000-4000-8000-000000000061",
+            "stage_run_id": "00000000-0000-4000-8000-000000000062",
+            "activity_name": "CreateVoiceTrack",
+            "activity_version": "1",
+            "input_refs": [
+              {
+                "ref_type": "script_version",
+                "ref_id": "00000000-0000-4000-8000-000000000030"
+              }
+            ],
+            "capability_requirements": {
+              "provider": "tts"
+            },
+            "retry_policy_ref": "00000000-0000-4000-8000-000000000063",
+            "video_job_id": "00000000-0000-4000-8000-000000000064"
+          }
+        },
+        {
+          "case": "input_refs_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "input_refs"
+          },
+          "payload": {
+            "workflow_id": "00000000-0000-4000-8000-000000000060",
+            "workflow_run_id": "00000000-0000-4000-8000-000000000061",
+            "stage_run_id": "00000000-0000-4000-8000-000000000062",
+            "activity_name": "CreateVoiceTrack",
+            "activity_version": "1",
+            "input_refs": "ref-1",
+            "operation_key": "op-act-001",
+            "capability_requirements": {
+              "provider": "tts"
+            },
+            "retry_policy_ref": "00000000-0000-4000-8000-000000000063",
+            "video_job_id": "00000000-0000-4000-8000-000000000064"
+          }
+        },
+        {
+          "case": "secret_in_payload",
+          "expected_error": {
+            "code": "forbidden_field",
+            "field": "secret_value"
+          },
+          "payload": {
+            "workflow_id": "00000000-0000-4000-8000-000000000060",
+            "workflow_run_id": "00000000-0000-4000-8000-000000000061",
+            "stage_run_id": "00000000-0000-4000-8000-000000000062",
+            "activity_name": "CreateVoiceTrack",
+            "activity_version": "1",
+            "input_refs": [
+              {
+                "ref_type": "script_version",
+                "ref_id": "00000000-0000-4000-8000-000000000030"
+              }
+            ],
+            "operation_key": "op-act-001",
+            "capability_requirements": {
+              "provider": "tts"
+            },
+            "retry_policy_ref": "00000000-0000-4000-8000-000000000063",
+            "video_job_id": "00000000-0000-4000-8000-000000000064",
+            "secret_value": "redacted-canary"
+          }
+        }
+      ]
+    },
+    "ActivityResult": {
+      "valid": [
+        {
+          "stage_run_id": "00000000-0000-4000-8000-000000000062",
+          "grant_id": "00000000-0000-4000-8000-000000000065",
+          "execution_generation": 3,
+          "recovery_epoch": "epoch-0001",
+          "disposition": "succeeded",
+          "output_refs": [],
+          "completed_at": "2026-10-18T08:00:00Z"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "disposition_outside_contract",
+          "expected_error": {
+            "code": "enum_violation",
+            "field": "disposition"
+          },
+          "payload": {
+            "stage_run_id": "00000000-0000-4000-8000-000000000062",
+            "grant_id": "00000000-0000-4000-8000-000000000065",
+            "execution_generation": 3,
+            "recovery_epoch": "epoch-0001",
+            "disposition": "done",
+            "output_refs": [],
+            "completed_at": "2026-10-18T08:00:00Z"
+          }
+        },
+        {
+          "case": "generation_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "execution_generation"
+          },
+          "payload": {
+            "stage_run_id": "00000000-0000-4000-8000-000000000062",
+            "grant_id": "00000000-0000-4000-8000-000000000065",
+            "execution_generation": "3",
+            "recovery_epoch": "epoch-0001",
+            "disposition": "succeeded",
+            "output_refs": [],
+            "completed_at": "2026-10-18T08:00:00Z"
+          }
+        }
+      ]
+    }
+  }
+}

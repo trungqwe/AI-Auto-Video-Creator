@@ -1,0 +1,147 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "f-render-package",
+  "binding_id": "BINDING-F-RENDER-PACKAGE",
+  "binding_version": "1.0.0",
+  "modules": [
+    "C",
+    "D",
+    "E",
+    "F",
+    "I"
+  ],
+  "producer": "F",
+  "input_providers": [
+    "C",
+    "D",
+    "E",
+    "I"
+  ],
+  "consumers": [
+    "F",
+    "G"
+  ],
+  "contract_ref": "CONTRACT-RENDER-QUALITY",
+  "source": {
+    "path": "docs/09-contracts/08-render-quality-contracts.md",
+    "sections": [
+      "CT-RND-002",
+      "CT-RND-003"
+    ],
+    "sha256": "c3e35d032c0a8e721ed35bbecb5fb57f350788e8520d6e8df5ca78284199b493"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "RenderPackage",
+      "section": "CT-RND-002",
+      "fields": [
+        {
+          "name": "render_package_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "package_fingerprint",
+          "type": "sha256",
+          "required": true
+        },
+        {
+          "name": "production_snapshot_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "script_version_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "production_plan_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "preset_revision_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "voice_artifact_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "word_timing_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "output_metadata_revision",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "output_profile_revision",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "language_validation_refs",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "input_artifacts",
+          "type": "array",
+          "items": "object",
+          "required": true
+        },
+        {
+          "name": "timeline",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "hook_placement",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "subtitle_config",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "mix_plan",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "allowed_fallbacks",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "materialization_manifest",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "output_path_ref",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "forbidden_fields": [
+        "shell_command",
+        "arbitrary_url"
+      ]
+    }
+  ]
+}

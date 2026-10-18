@@ -1,0 +1,119 @@
+{
+  "seam": "j-provider-route",
+  "binding_version": "1.0.0",
+  "entities": {
+    "ProviderRouteRequest": {
+      "valid": [
+        {
+          "ai_role": "script_generation",
+          "job_ref": "00000000-0000-4000-8000-000000000100",
+          "snapshot_ref": "00000000-0000-4000-8000-000000000010",
+          "config_refs": [],
+          "data_sensitivity": "internal",
+          "quality_latency_cost_bounds": {
+            "max_cost_class": "low"
+          },
+          "allowed_fallbacks": []
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_data_sensitivity",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "data_sensitivity"
+          },
+          "payload": {
+            "ai_role": "script_generation",
+            "job_ref": "00000000-0000-4000-8000-000000000100",
+            "snapshot_ref": "00000000-0000-4000-8000-000000000010",
+            "config_refs": [],
+            "quality_latency_cost_bounds": {
+              "max_cost_class": "low"
+            },
+            "allowed_fallbacks": []
+          }
+        }
+      ]
+    },
+    "ProviderRouteDecision": {
+      "valid": [
+        {
+          "provider_ref": "00000000-0000-4000-8000-0000000101",
+          "model_ref": "00000000-0000-4000-8000-0000000102",
+          "account_ref": "00000000-0000-4000-8000-0000000103",
+          "route_revision": "route-v1",
+          "rationale_codes": [
+            "QUOTA_AVAILABLE"
+          ],
+          "fallback_order": [],
+          "capacity_reservation_ref": "00000000-0000-4000-8000-0000000104",
+          "credential_acquisition_method": "secret_broker_handle",
+          "estimated_cost_class": "low"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "api_key_leaked",
+          "expected_error": {
+            "code": "forbidden_field",
+            "field": "api_key"
+          },
+          "payload": {
+            "provider_ref": "00000000-0000-4000-8000-0000000101",
+            "model_ref": "00000000-0000-4000-8000-0000000102",
+            "account_ref": "00000000-0000-4000-8000-0000000103",
+            "route_revision": "route-v1",
+            "rationale_codes": [
+              "QUOTA_AVAILABLE"
+            ],
+            "fallback_order": [],
+            "capacity_reservation_ref": "00000000-0000-4000-8000-0000000104",
+            "credential_acquisition_method": "secret_broker_handle",
+            "estimated_cost_class": "low",
+            "api_key": "redacted-canary"
+          }
+        },
+        {
+          "case": "missing_route_revision",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "route_revision"
+          },
+          "payload": {
+            "provider_ref": "00000000-0000-4000-8000-0000000101",
+            "model_ref": "00000000-0000-4000-8000-0000000102",
+            "account_ref": "00000000-0000-4000-8000-0000000103",
+            "rationale_codes": [
+              "QUOTA_AVAILABLE"
+            ],
+            "fallback_order": [],
+            "capacity_reservation_ref": "00000000-0000-4000-8000-0000000104",
+            "credential_acquisition_method": "secret_broker_handle",
+            "estimated_cost_class": "low"
+          }
+        },
+        {
+          "case": "fallback_order_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "fallback_order"
+          },
+          "payload": {
+            "provider_ref": "00000000-0000-4000-8000-0000000101",
+            "model_ref": "00000000-0000-4000-8000-0000000102",
+            "account_ref": "00000000-0000-4000-8000-0000000103",
+            "route_revision": "route-v1",
+            "rationale_codes": [
+              "QUOTA_AVAILABLE"
+            ],
+            "fallback_order": "gemini",
+            "capacity_reservation_ref": "00000000-0000-4000-8000-0000000104",
+            "credential_acquisition_method": "secret_broker_handle",
+            "estimated_cost_class": "low"
+          }
+        }
+      ]
+    }
+  }
+}

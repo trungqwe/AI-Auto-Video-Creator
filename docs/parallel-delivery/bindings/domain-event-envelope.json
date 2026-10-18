@@ -1,0 +1,121 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "domain-event-envelope",
+  "binding_id": "BINDING-DOMAIN-EVENT-ENVELOPE",
+  "binding_version": "1.0.0",
+  "modules": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J"
+  ],
+  "producer": "aggregate_owner",
+  "consumers": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J"
+  ],
+  "contract_ref": "CONTRACT-DOMAIN-EVENTS",
+  "source": {
+    "path": "docs/09-contracts/02-domain-events.md",
+    "sections": [
+      "CT-EVT-002",
+      "CT-EVT-003"
+    ],
+    "sha256": "8114a208cecca67e553345ea5574d68752323c79cf833c8c8c9fa5e2f86e7540"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "DomainEvent",
+      "section": "CT-EVT-002",
+      "fields": [
+        {
+          "name": "event_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "event_name",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "aggregate_type",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "aggregate_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "aggregate_revision",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "producer",
+          "type": "string",
+          "required": true,
+          "enum": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "G",
+            "H",
+            "I",
+            "J"
+          ]
+        },
+        {
+          "name": "schema_version",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "recovery_epoch",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "payload",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "sensitivity",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "forbidden_fields": [
+        "secret_value",
+        "raw_oauth_response",
+        "stack_trace",
+        "blob"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,140 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "j-provider-route",
+  "binding_id": "BINDING-J-PROVIDER-ROUTE",
+  "binding_version": "1.0.0",
+  "modules": [
+    "D",
+    "E",
+    "J"
+  ],
+  "producer": "J",
+  "consumers": [
+    "D",
+    "E"
+  ],
+  "contract_ref": "CONTRACT-CONFIG-SECURITY",
+  "source": {
+    "path": "docs/09-contracts/11-configuration-security-contracts.md",
+    "sections": [
+      "CT-AI-ROUTE-001"
+    ],
+    "sha256": "989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "ProviderRouteRequest",
+      "section": "CT-AI-ROUTE-001",
+      "fields": [
+        {
+          "name": "ai_role",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "job_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "snapshot_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "config_refs",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "data_sensitivity",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "quality_latency_cost_bounds",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "allowed_fallbacks",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "health_quota_ref",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "ProviderRouteDecision",
+      "section": "CT-AI-ROUTE-001",
+      "fields": [
+        {
+          "name": "provider_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "model_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "account_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "route_revision",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "rationale_codes",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "fallback_order",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "capacity_reservation_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "credential_acquisition_method",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "estimated_cost_class",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "project_ref",
+          "type": "string",
+          "required": false
+        }
+      ],
+      "forbidden_fields": [
+        "secret_value",
+        "api_key",
+        "access_token",
+        "refresh_token"
+      ]
+    }
+  ]
+}

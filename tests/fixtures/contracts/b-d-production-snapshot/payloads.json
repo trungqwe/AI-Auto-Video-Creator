@@ -1,0 +1,185 @@
+{
+  "seam": "b-d-production-snapshot",
+  "binding_version": "1.0.0",
+  "entities": {
+    "ProductionSnapshot": {
+      "valid": [
+        {
+          "snapshot_id": "00000000-0000-4000-8000-000000000010",
+          "production_mode": "single_article",
+          "source_refs": [
+            {
+              "ref_type": "article_revision",
+              "ref_id": "00000000-0000-4000-8000-000000000005",
+              "revision_id": "rev-1"
+            }
+          ],
+          "index_revision_refs": [
+            {
+              "ref_type": "media_index",
+              "ref_id": "00000000-0000-4000-8000-000000000006",
+              "revision_id": "idx-1"
+            }
+          ],
+          "configuration_revision_refs": [
+            {
+              "ref_type": "prompt",
+              "ref_id": "00000000-0000-4000-8000-000000000007",
+              "revision_id": "cfg-1"
+            }
+          ],
+          "source_set_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "configuration_bundle_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "eligibility_reason": "single_article_eligible",
+          "snapshot_timestamp": "2026-10-18T08:00:00Z",
+          "batch_ref": "00000000-0000-4000-8000-000000000008"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_source_set_fingerprint",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "source_set_fingerprint"
+          },
+          "payload": {
+            "snapshot_id": "00000000-0000-4000-8000-000000000010",
+            "production_mode": "single_article",
+            "source_refs": [
+              {
+                "ref_type": "article_revision",
+                "ref_id": "00000000-0000-4000-8000-000000000005",
+                "revision_id": "rev-1"
+              }
+            ],
+            "index_revision_refs": [
+              {
+                "ref_type": "media_index",
+                "ref_id": "00000000-0000-4000-8000-000000000006",
+                "revision_id": "idx-1"
+              }
+            ],
+            "configuration_revision_refs": [
+              {
+                "ref_type": "prompt",
+                "ref_id": "00000000-0000-4000-8000-000000000007",
+                "revision_id": "cfg-1"
+              }
+            ],
+            "configuration_bundle_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "eligibility_reason": "single_article_eligible",
+            "snapshot_timestamp": "2026-10-18T08:00:00Z",
+            "batch_ref": "00000000-0000-4000-8000-000000000008"
+          }
+        },
+        {
+          "case": "production_mode_outside_contract",
+          "expected_error": {
+            "code": "enum_violation",
+            "field": "production_mode"
+          },
+          "payload": {
+            "snapshot_id": "00000000-0000-4000-8000-000000000010",
+            "production_mode": "timeline",
+            "source_refs": [
+              {
+                "ref_type": "article_revision",
+                "ref_id": "00000000-0000-4000-8000-000000000005",
+                "revision_id": "rev-1"
+              }
+            ],
+            "index_revision_refs": [
+              {
+                "ref_type": "media_index",
+                "ref_id": "00000000-0000-4000-8000-000000000006",
+                "revision_id": "idx-1"
+              }
+            ],
+            "configuration_revision_refs": [
+              {
+                "ref_type": "prompt",
+                "ref_id": "00000000-0000-4000-8000-000000000007",
+                "revision_id": "cfg-1"
+              }
+            ],
+            "source_set_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "configuration_bundle_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "eligibility_reason": "single_article_eligible",
+            "snapshot_timestamp": "2026-10-18T08:00:00Z",
+            "batch_ref": "00000000-0000-4000-8000-000000000008"
+          }
+        },
+        {
+          "case": "configuration_fingerprint_not_sha256",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "configuration_bundle_fingerprint"
+          },
+          "payload": {
+            "snapshot_id": "00000000-0000-4000-8000-000000000010",
+            "production_mode": "single_article",
+            "source_refs": [
+              {
+                "ref_type": "article_revision",
+                "ref_id": "00000000-0000-4000-8000-000000000005",
+                "revision_id": "rev-1"
+              }
+            ],
+            "index_revision_refs": [
+              {
+                "ref_type": "media_index",
+                "ref_id": "00000000-0000-4000-8000-000000000006",
+                "revision_id": "idx-1"
+              }
+            ],
+            "configuration_revision_refs": [
+              {
+                "ref_type": "prompt",
+                "ref_id": "00000000-0000-4000-8000-000000000007",
+                "revision_id": "cfg-1"
+              }
+            ],
+            "source_set_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "configuration_bundle_fingerprint": "abc",
+            "eligibility_reason": "single_article_eligible",
+            "snapshot_timestamp": "2026-10-18T08:00:00Z",
+            "batch_ref": "00000000-0000-4000-8000-000000000008"
+          }
+        },
+        {
+          "case": "source_refs_as_strings",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "source_refs"
+          },
+          "payload": {
+            "snapshot_id": "00000000-0000-4000-8000-000000000010",
+            "production_mode": "single_article",
+            "source_refs": [
+              "article-1"
+            ],
+            "index_revision_refs": [
+              {
+                "ref_type": "media_index",
+                "ref_id": "00000000-0000-4000-8000-000000000006",
+                "revision_id": "idx-1"
+              }
+            ],
+            "configuration_revision_refs": [
+              {
+                "ref_type": "prompt",
+                "ref_id": "00000000-0000-4000-8000-000000000007",
+                "revision_id": "cfg-1"
+              }
+            ],
+            "source_set_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "configuration_bundle_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "eligibility_reason": "single_article_eligible",
+            "snapshot_timestamp": "2026-10-18T08:00:00Z",
+            "batch_ref": "00000000-0000-4000-8000-000000000008"
+          }
+        }
+      ]
+    }
+  }
+}

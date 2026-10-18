@@ -1,0 +1,88 @@
+{
+  "seam": "i-artifact-version",
+  "binding_version": "1.0.0",
+  "entities": {
+    "DeclareArtifactVersionRequest": {
+      "valid": [
+        {
+          "artifact_kind": "voice",
+          "owner_resource_ref": "00000000-0000-4000-8000-000000000090",
+          "content_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "size_bytes": 1024,
+          "media_type": "audio/wav",
+          "lineage_refs": [],
+          "retention_class": "per_video",
+          "sensitivity_class": "internal",
+          "intended_storage_class": "local_staging",
+          "producer_operation_ref": "00000000-0000-4000-8000-000000000091"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "content_hash_uppercase",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "content_sha256"
+          },
+          "payload": {
+            "artifact_kind": "voice",
+            "owner_resource_ref": "00000000-0000-4000-8000-000000000090",
+            "content_sha256": "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789",
+            "size_bytes": 1024,
+            "media_type": "audio/wav",
+            "lineage_refs": [],
+            "retention_class": "per_video",
+            "sensitivity_class": "internal",
+            "intended_storage_class": "local_staging",
+            "producer_operation_ref": "00000000-0000-4000-8000-000000000091"
+          }
+        },
+        {
+          "case": "missing_retention_class",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "retention_class"
+          },
+          "payload": {
+            "artifact_kind": "voice",
+            "owner_resource_ref": "00000000-0000-4000-8000-000000000090",
+            "content_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "size_bytes": 1024,
+            "media_type": "audio/wav",
+            "lineage_refs": [],
+            "sensitivity_class": "internal",
+            "intended_storage_class": "local_staging",
+            "producer_operation_ref": "00000000-0000-4000-8000-000000000091"
+          }
+        }
+      ]
+    },
+    "DeclareArtifactVersionResult": {
+      "valid": [
+        {
+          "artifact_id": "00000000-0000-4000-8000-000000000092",
+          "artifact_version_id": "00000000-0000-4000-8000-000000000093",
+          "matched_existing": false,
+          "policy_decision": "new_version",
+          "required_operation": "upload"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "matched_existing_as_text",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "matched_existing"
+          },
+          "payload": {
+            "artifact_id": "00000000-0000-4000-8000-000000000092",
+            "artifact_version_id": "00000000-0000-4000-8000-000000000093",
+            "matched_existing": "yes",
+            "policy_decision": "new_version",
+            "required_operation": "upload"
+          }
+        }
+      ]
+    }
+  }
+}

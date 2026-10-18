@@ -1,0 +1,180 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "a-b-collected-document",
+  "binding_id": "BINDING-A-B-COLLECTED-DOCUMENT",
+  "binding_version": "1.0.0",
+  "modules": [
+    "A",
+    "B"
+  ],
+  "producer": "A",
+  "consumers": [
+    "B"
+  ],
+  "contract_ref": "CONTRACT-SOURCE-CONTENT",
+  "source": {
+    "path": "docs/09-contracts/04-source-content-contracts.md",
+    "sections": [
+      "CT-SRC-006",
+      "CT-CNT-001"
+    ],
+    "sha256": "61b075d202dd0d7729123f68f26285097be8120e2de48194d0ad2fe847701f31"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "CollectedDocumentPackage",
+      "section": "CT-SRC-006",
+      "fields": [
+        {
+          "name": "collected_document_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "source_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "source_revision",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "collection_run_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "requested_url",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "final_url",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "fetched_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "http_observation",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "extraction_disposition",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "extractor_version",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "provenance_chain",
+          "type": "array",
+          "items": "object",
+          "required": true
+        },
+        {
+          "name": "warnings",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "canonical_url_candidate",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "published_at_candidate",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "name": "raw_snapshot_ref",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "extracted_content_candidate",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "content_eligibility",
+          "type": "string",
+          "required": false,
+          "enum": [
+            "candidate",
+            "incomplete"
+          ]
+        },
+        {
+          "name": "eligibility_reason",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "content_fingerprints",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "media_discoveries",
+          "type": "array",
+          "items": "object",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "CollectedDocumentResolution",
+      "section": "CT-CNT-001",
+      "fields": [
+        {
+          "name": "collected_document_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "dedup_policy_revision",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "disposition",
+          "type": "string",
+          "required": true,
+          "enum": [
+            "NEW_ARTICLE",
+            "NEW_REVISION",
+            "DUPLICATE_MEDIA_ONLY",
+            "DUPLICATE_NO_NEW_VALUE",
+            "REJECTED_INCOMPLETE"
+          ]
+        },
+        {
+          "name": "article_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "article_revision_id",
+          "type": "string",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

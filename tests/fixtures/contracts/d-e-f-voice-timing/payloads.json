@@ -1,0 +1,241 @@
+{
+  "seam": "d-e-f-voice-timing",
+  "binding_version": "1.0.0",
+  "entities": {
+    "VoiceTrackRequest": {
+      "valid": [
+        {
+          "script_version_id": "00000000-0000-4000-8000-000000000030",
+          "script_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "voice_profile_ref": "00000000-0000-4000-8000-000000000031",
+          "provider_route_ref": "00000000-0000-4000-8000-000000000032",
+          "expected_language": "en",
+          "operation_key": "op-voice-001",
+          "execution_grant_ref": "00000000-0000-4000-8000-000000000033"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_script_fingerprint",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "script_fingerprint"
+          },
+          "payload": {
+            "script_version_id": "00000000-0000-4000-8000-000000000030",
+            "voice_profile_ref": "00000000-0000-4000-8000-000000000031",
+            "provider_route_ref": "00000000-0000-4000-8000-000000000032",
+            "expected_language": "en",
+            "operation_key": "op-voice-001",
+            "execution_grant_ref": "00000000-0000-4000-8000-000000000033"
+          }
+        }
+      ]
+    },
+    "VoiceTrackResult": {
+      "valid": [
+        {
+          "voice_artifact_ref": "00000000-0000-4000-8000-000000000034",
+          "script_version_id": "00000000-0000-4000-8000-000000000030",
+          "script_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "voice_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "actual_duration_ms": 65000,
+          "provider_model_voice_revision": "tts-v1",
+          "usage_metrics": {
+            "billed_characters": 120
+          },
+          "warnings": [],
+          "receipt_ref": "00000000-0000-4000-8000-000000000035"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "duration_as_text",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "actual_duration_ms"
+          },
+          "payload": {
+            "voice_artifact_ref": "00000000-0000-4000-8000-000000000034",
+            "script_version_id": "00000000-0000-4000-8000-000000000030",
+            "script_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "voice_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "actual_duration_ms": "65s",
+            "provider_model_voice_revision": "tts-v1",
+            "usage_metrics": {
+              "billed_characters": 120
+            },
+            "warnings": [],
+            "receipt_ref": "00000000-0000-4000-8000-000000000035"
+          }
+        },
+        {
+          "case": "duration_as_boolean",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "actual_duration_ms"
+          },
+          "payload": {
+            "voice_artifact_ref": "00000000-0000-4000-8000-000000000034",
+            "script_version_id": "00000000-0000-4000-8000-000000000030",
+            "script_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "voice_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "actual_duration_ms": true,
+            "provider_model_voice_revision": "tts-v1",
+            "usage_metrics": {
+              "billed_characters": 120
+            },
+            "warnings": [],
+            "receipt_ref": "00000000-0000-4000-8000-000000000035"
+          }
+        }
+      ]
+    },
+    "WordTiming": {
+      "valid": [
+        {
+          "script_version_id": "00000000-0000-4000-8000-000000000030",
+          "script_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "voice_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "timing_artifact_ref": "00000000-0000-4000-8000-000000000036",
+          "words": [
+            {
+              "start_ms": 0,
+              "end_ms": 420,
+              "text": "Breaking",
+              "normalized_text": "breaking",
+              "confidence": 0.98
+            },
+            {
+              "start_ms": 420,
+              "end_ms": 900,
+              "text": "news",
+              "normalized_text": "news",
+              "confidence": 0.97
+            }
+          ],
+          "segment_boundaries": [
+            {
+              "start_ms": 0,
+              "end_ms": 900
+            }
+          ],
+          "validation_report_ref": "00000000-0000-4000-8000-000000000037",
+          "voice_duration_ms": 65000
+        }
+      ],
+      "invalid": [
+        {
+          "case": "words_out_of_order",
+          "expected_error": {
+            "code": "constraint_violation",
+            "field": "words"
+          },
+          "payload": {
+            "script_version_id": "00000000-0000-4000-8000-000000000030",
+            "script_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "voice_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "timing_artifact_ref": "00000000-0000-4000-8000-000000000036",
+            "words": [
+              {
+                "start_ms": 420,
+                "end_ms": 900,
+                "text": "news",
+                "normalized_text": "news",
+                "confidence": 0.97
+              },
+              {
+                "start_ms": 0,
+                "end_ms": 420,
+                "text": "Breaking",
+                "normalized_text": "breaking",
+                "confidence": 0.98
+              }
+            ],
+            "segment_boundaries": [
+              {
+                "start_ms": 0,
+                "end_ms": 900
+              }
+            ],
+            "validation_report_ref": "00000000-0000-4000-8000-000000000037",
+            "voice_duration_ms": 65000
+          }
+        },
+        {
+          "case": "word_beyond_voice_duration",
+          "expected_error": {
+            "code": "constraint_violation",
+            "field": "words"
+          },
+          "payload": {
+            "script_version_id": "00000000-0000-4000-8000-000000000030",
+            "script_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "voice_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "timing_artifact_ref": "00000000-0000-4000-8000-000000000036",
+            "words": [
+              {
+                "start_ms": 0,
+                "end_ms": 420,
+                "text": "Breaking",
+                "normalized_text": "breaking",
+                "confidence": 0.98
+              },
+              {
+                "start_ms": 420,
+                "end_ms": 70000,
+                "text": "news",
+                "normalized_text": "news",
+                "confidence": 0.97
+              }
+            ],
+            "segment_boundaries": [
+              {
+                "start_ms": 0,
+                "end_ms": 900
+              }
+            ],
+            "validation_report_ref": "00000000-0000-4000-8000-000000000037",
+            "voice_duration_ms": 65000
+          }
+        },
+        {
+          "case": "missing_voice_hash",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "voice_hash"
+          },
+          "payload": {
+            "script_version_id": "00000000-0000-4000-8000-000000000030",
+            "script_fingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "timing_artifact_ref": "00000000-0000-4000-8000-000000000036",
+            "words": [
+              {
+                "start_ms": 0,
+                "end_ms": 420,
+                "text": "Breaking",
+                "normalized_text": "breaking",
+                "confidence": 0.98
+              },
+              {
+                "start_ms": 420,
+                "end_ms": 900,
+                "text": "news",
+                "normalized_text": "news",
+                "confidence": 0.97
+              }
+            ],
+            "segment_boundaries": [
+              {
+                "start_ms": 0,
+                "end_ms": 900
+              }
+            ],
+            "validation_report_ref": "00000000-0000-4000-8000-000000000037",
+            "voice_duration_ms": 65000
+          }
+        }
+      ]
+    }
+  }
+}

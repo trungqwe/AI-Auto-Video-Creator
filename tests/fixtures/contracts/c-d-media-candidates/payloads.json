@@ -1,0 +1,162 @@
+{
+  "seam": "c-d-media-candidates",
+  "binding_version": "1.0.0",
+  "entities": {
+    "MediaCandidateQuery": {
+      "valid": [
+        {
+          "production_snapshot_ref": "00000000-0000-4000-8000-000000000010",
+          "scene_intent": {
+            "goal": "scene_intro"
+          },
+          "media_kinds": [
+            "image",
+            "clip"
+          ],
+          "roles": [
+            "illustration"
+          ],
+          "safety_policy_revision": "safe-v1",
+          "limit": 20
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_safety_policy_revision",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "safety_policy_revision"
+          },
+          "payload": {
+            "production_snapshot_ref": "00000000-0000-4000-8000-000000000010",
+            "scene_intent": {
+              "goal": "scene_intro"
+            },
+            "media_kinds": [
+              "image",
+              "clip"
+            ],
+            "roles": [
+              "illustration"
+            ],
+            "limit": 20
+          }
+        },
+        {
+          "case": "limit_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "limit"
+          },
+          "payload": {
+            "production_snapshot_ref": "00000000-0000-4000-8000-000000000010",
+            "scene_intent": {
+              "goal": "scene_intro"
+            },
+            "media_kinds": [
+              "image",
+              "clip"
+            ],
+            "roles": [
+              "illustration"
+            ],
+            "safety_policy_revision": "safe-v1",
+            "limit": "20"
+          }
+        }
+      ]
+    },
+    "MediaCandidate": {
+      "valid": [
+        {
+          "media_asset_id": "00000000-0000-4000-8000-000000000020",
+          "rendition_ref": "00000000-0000-4000-8000-000000000021",
+          "artifact_version_ref": "00000000-0000-4000-8000-000000000022",
+          "provenance": {
+            "source": "catalog"
+          },
+          "semantic_match_components": {
+            "entity": 0.9,
+            "topic": 0.8
+          },
+          "technical_fitness": {
+            "resolution": "1080p",
+            "score": 1.0
+          },
+          "availability": "AVAILABLE",
+          "safety_rights_status": {
+            "rights_cleared": true
+          },
+          "recent_usage_summary": {
+            "times_used": 0
+          },
+          "reason_codes": [
+            "ENTITY_MATCH"
+          ]
+        }
+      ],
+      "invalid": [
+        {
+          "case": "single_opaque_score",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "semantic_match_components"
+          },
+          "payload": {
+            "media_asset_id": "00000000-0000-4000-8000-000000000020",
+            "rendition_ref": "00000000-0000-4000-8000-000000000021",
+            "artifact_version_ref": "00000000-0000-4000-8000-000000000022",
+            "provenance": {
+              "source": "catalog"
+            },
+            "semantic_match_components": 0.87,
+            "technical_fitness": {
+              "resolution": "1080p",
+              "score": 1.0
+            },
+            "availability": "AVAILABLE",
+            "safety_rights_status": {
+              "rights_cleared": true
+            },
+            "recent_usage_summary": {
+              "times_used": 0
+            },
+            "reason_codes": [
+              "ENTITY_MATCH"
+            ]
+          }
+        },
+        {
+          "case": "missing_reason_codes",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "reason_codes"
+          },
+          "payload": {
+            "media_asset_id": "00000000-0000-4000-8000-000000000020",
+            "rendition_ref": "00000000-0000-4000-8000-000000000021",
+            "artifact_version_ref": "00000000-0000-4000-8000-000000000022",
+            "provenance": {
+              "source": "catalog"
+            },
+            "semantic_match_components": {
+              "entity": 0.9,
+              "topic": 0.8
+            },
+            "technical_fitness": {
+              "resolution": "1080p",
+              "score": 1.0
+            },
+            "availability": "AVAILABLE",
+            "safety_rights_status": {
+              "rights_cleared": true
+            },
+            "recent_usage_summary": {
+              "times_used": 0
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,224 @@
+{
+  "seam": "a-b-collected-document",
+  "binding_version": "1.0.0",
+  "entities": {
+    "CollectedDocumentPackage": {
+      "valid": [
+        {
+          "collected_document_id": "00000000-0000-4000-8000-000000000001",
+          "source_id": "00000000-0000-4000-8000-000000000002",
+          "source_revision": 1,
+          "collection_run_id": "00000000-0000-4000-8000-000000000003",
+          "requested_url": "https://example.com/article-1",
+          "final_url": "https://example.com/article-1-final",
+          "fetched_at": "2026-10-18T08:00:00Z",
+          "http_observation": {
+            "status": 200,
+            "media_type": "text/html"
+          },
+          "extraction_disposition": "SUCCESS",
+          "extractor_version": "1.0.0",
+          "provenance_chain": [
+            {
+              "step": "final_fetch",
+              "url": "https://example.com/article-1-final"
+            }
+          ],
+          "warnings": [],
+          "content_eligibility": "candidate",
+          "extracted_content_candidate": {
+            "title": "Sample Title",
+            "text": "Sample text",
+            "author": "Author",
+            "language": "en"
+          },
+          "media_discoveries": []
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_provenance_chain",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "provenance_chain"
+          },
+          "payload": {
+            "collected_document_id": "00000000-0000-4000-8000-000000000001",
+            "source_id": "00000000-0000-4000-8000-000000000002",
+            "source_revision": 1,
+            "collection_run_id": "00000000-0000-4000-8000-000000000003",
+            "requested_url": "https://example.com/article-1",
+            "final_url": "https://example.com/article-1-final",
+            "fetched_at": "2026-10-18T08:00:00Z",
+            "http_observation": {
+              "status": 200,
+              "media_type": "text/html"
+            },
+            "extraction_disposition": "SUCCESS",
+            "extractor_version": "1.0.0",
+            "warnings": [],
+            "content_eligibility": "candidate",
+            "extracted_content_candidate": {
+              "title": "Sample Title",
+              "text": "Sample text",
+              "author": "Author",
+              "language": "en"
+            },
+            "media_discoveries": []
+          }
+        },
+        {
+          "case": "unknown_content_eligibility",
+          "expected_error": {
+            "code": "enum_violation",
+            "field": "content_eligibility"
+          },
+          "payload": {
+            "collected_document_id": "00000000-0000-4000-8000-000000000001",
+            "source_id": "00000000-0000-4000-8000-000000000002",
+            "source_revision": 1,
+            "collection_run_id": "00000000-0000-4000-8000-000000000003",
+            "requested_url": "https://example.com/article-1",
+            "final_url": "https://example.com/article-1-final",
+            "fetched_at": "2026-10-18T08:00:00Z",
+            "http_observation": {
+              "status": 200,
+              "media_type": "text/html"
+            },
+            "extraction_disposition": "SUCCESS",
+            "extractor_version": "1.0.0",
+            "provenance_chain": [
+              {
+                "step": "final_fetch",
+                "url": "https://example.com/article-1-final"
+              }
+            ],
+            "warnings": [],
+            "content_eligibility": "complete",
+            "extracted_content_candidate": {
+              "title": "Sample Title",
+              "text": "Sample text",
+              "author": "Author",
+              "language": "en"
+            },
+            "media_discoveries": []
+          }
+        },
+        {
+          "case": "fetched_at_not_rfc3339",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "fetched_at"
+          },
+          "payload": {
+            "collected_document_id": "00000000-0000-4000-8000-000000000001",
+            "source_id": "00000000-0000-4000-8000-000000000002",
+            "source_revision": 1,
+            "collection_run_id": "00000000-0000-4000-8000-000000000003",
+            "requested_url": "https://example.com/article-1",
+            "final_url": "https://example.com/article-1-final",
+            "fetched_at": "yesterday",
+            "http_observation": {
+              "status": 200,
+              "media_type": "text/html"
+            },
+            "extraction_disposition": "SUCCESS",
+            "extractor_version": "1.0.0",
+            "provenance_chain": [
+              {
+                "step": "final_fetch",
+                "url": "https://example.com/article-1-final"
+              }
+            ],
+            "warnings": [],
+            "content_eligibility": "candidate",
+            "extracted_content_candidate": {
+              "title": "Sample Title",
+              "text": "Sample text",
+              "author": "Author",
+              "language": "en"
+            },
+            "media_discoveries": []
+          }
+        },
+        {
+          "case": "source_revision_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "source_revision"
+          },
+          "payload": {
+            "collected_document_id": "00000000-0000-4000-8000-000000000001",
+            "source_id": "00000000-0000-4000-8000-000000000002",
+            "source_revision": "3",
+            "collection_run_id": "00000000-0000-4000-8000-000000000003",
+            "requested_url": "https://example.com/article-1",
+            "final_url": "https://example.com/article-1-final",
+            "fetched_at": "2026-10-18T08:00:00Z",
+            "http_observation": {
+              "status": 200,
+              "media_type": "text/html"
+            },
+            "extraction_disposition": "SUCCESS",
+            "extractor_version": "1.0.0",
+            "provenance_chain": [
+              {
+                "step": "final_fetch",
+                "url": "https://example.com/article-1-final"
+              }
+            ],
+            "warnings": [],
+            "content_eligibility": "candidate",
+            "extracted_content_candidate": {
+              "title": "Sample Title",
+              "text": "Sample text",
+              "author": "Author",
+              "language": "en"
+            },
+            "media_discoveries": []
+          }
+        }
+      ]
+    },
+    "CollectedDocumentResolution": {
+      "valid": [
+        {
+          "collected_document_id": "00000000-0000-4000-8000-000000000001",
+          "dedup_policy_revision": "dedup-policy-r1",
+          "disposition": "NEW_ARTICLE",
+          "article_id": "00000000-0000-4000-8000-000000000004",
+          "article_revision_id": "00000000-0000-4000-8000-000000000005"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "disposition_outside_contract",
+          "expected_error": {
+            "code": "enum_violation",
+            "field": "disposition"
+          },
+          "payload": {
+            "collected_document_id": "00000000-0000-4000-8000-000000000001",
+            "dedup_policy_revision": "dedup-policy-r1",
+            "disposition": "DUPLICATE",
+            "article_id": "00000000-0000-4000-8000-000000000004",
+            "article_revision_id": "00000000-0000-4000-8000-000000000005"
+          }
+        },
+        {
+          "case": "missing_dedup_policy_revision",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "dedup_policy_revision"
+          },
+          "payload": {
+            "collected_document_id": "00000000-0000-4000-8000-000000000001",
+            "disposition": "NEW_ARTICLE",
+            "article_id": "00000000-0000-4000-8000-000000000004",
+            "article_revision_id": "00000000-0000-4000-8000-000000000005"
+          }
+        }
+      ]
+    }
+  }
+}

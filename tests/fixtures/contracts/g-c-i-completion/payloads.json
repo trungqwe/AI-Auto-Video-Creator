@@ -1,0 +1,225 @@
+{
+  "seam": "g-c-i-completion",
+  "binding_version": "1.0.0",
+  "entities": {
+    "CommitVideoCompletionRequest": {
+      "valid": [
+        {
+          "video_job_id": "00000000-0000-4000-8000-000000000070",
+          "snapshot_ref": "00000000-0000-4000-8000-000000000010",
+          "script_version_ref": "00000000-0000-4000-8000-000000000030",
+          "production_plan_ref": "00000000-0000-4000-8000-000000000051",
+          "render_attempt_ref": "00000000-0000-4000-8000-000000000071",
+          "quality_report_ref": "00000000-0000-4000-8000-000000000072",
+          "output_artifact_version_id": "00000000-0000-4000-8000-000000000073",
+          "output_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "cloud_location_verification_ref": "00000000-0000-4000-8000-000000000074",
+          "output_metadata_revision": "out-meta-v1",
+          "variant_validation_ref": "00000000-0000-4000-8000-000000000075",
+          "variant_reservation_id": "00000000-0000-4000-8000-000000000076",
+          "expected_variant_registry_revision": 12,
+          "media_usage_manifest": [
+            {
+              "media_asset_id": "00000000-0000-4000-8000-000000000020",
+              "role": "illustration"
+            }
+          ],
+          "grant_id": "00000000-0000-4000-8000-000000000077",
+          "execution_generation": 1,
+          "recovery_epoch": "epoch-0001"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_cloud_location_verification_ref",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "cloud_location_verification_ref"
+          },
+          "payload": {
+            "video_job_id": "00000000-0000-4000-8000-000000000070",
+            "snapshot_ref": "00000000-0000-4000-8000-000000000010",
+            "script_version_ref": "00000000-0000-4000-8000-000000000030",
+            "production_plan_ref": "00000000-0000-4000-8000-000000000051",
+            "render_attempt_ref": "00000000-0000-4000-8000-000000000071",
+            "quality_report_ref": "00000000-0000-4000-8000-000000000072",
+            "output_artifact_version_id": "00000000-0000-4000-8000-000000000073",
+            "output_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "output_metadata_revision": "out-meta-v1",
+            "variant_validation_ref": "00000000-0000-4000-8000-000000000075",
+            "variant_reservation_id": "00000000-0000-4000-8000-000000000076",
+            "expected_variant_registry_revision": 12,
+            "media_usage_manifest": [
+              {
+                "media_asset_id": "00000000-0000-4000-8000-000000000020",
+                "role": "illustration"
+              }
+            ],
+            "grant_id": "00000000-0000-4000-8000-000000000077",
+            "execution_generation": 1,
+            "recovery_epoch": "epoch-0001"
+          }
+        },
+        {
+          "case": "registry_revision_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "expected_variant_registry_revision"
+          },
+          "payload": {
+            "video_job_id": "00000000-0000-4000-8000-000000000070",
+            "snapshot_ref": "00000000-0000-4000-8000-000000000010",
+            "script_version_ref": "00000000-0000-4000-8000-000000000030",
+            "production_plan_ref": "00000000-0000-4000-8000-000000000051",
+            "render_attempt_ref": "00000000-0000-4000-8000-000000000071",
+            "quality_report_ref": "00000000-0000-4000-8000-000000000072",
+            "output_artifact_version_id": "00000000-0000-4000-8000-000000000073",
+            "output_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "cloud_location_verification_ref": "00000000-0000-4000-8000-000000000074",
+            "output_metadata_revision": "out-meta-v1",
+            "variant_validation_ref": "00000000-0000-4000-8000-000000000075",
+            "variant_reservation_id": "00000000-0000-4000-8000-000000000076",
+            "expected_variant_registry_revision": "12",
+            "media_usage_manifest": [
+              {
+                "media_asset_id": "00000000-0000-4000-8000-000000000020",
+                "role": "illustration"
+              }
+            ],
+            "grant_id": "00000000-0000-4000-8000-000000000077",
+            "execution_generation": 1,
+            "recovery_epoch": "epoch-0001"
+          }
+        },
+        {
+          "case": "output_hash_not_sha256",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "output_sha256"
+          },
+          "payload": {
+            "video_job_id": "00000000-0000-4000-8000-000000000070",
+            "snapshot_ref": "00000000-0000-4000-8000-000000000010",
+            "script_version_ref": "00000000-0000-4000-8000-000000000030",
+            "production_plan_ref": "00000000-0000-4000-8000-000000000051",
+            "render_attempt_ref": "00000000-0000-4000-8000-000000000071",
+            "quality_report_ref": "00000000-0000-4000-8000-000000000072",
+            "output_artifact_version_id": "00000000-0000-4000-8000-000000000073",
+            "output_sha256": "not-a-hash",
+            "cloud_location_verification_ref": "00000000-0000-4000-8000-000000000074",
+            "output_metadata_revision": "out-meta-v1",
+            "variant_validation_ref": "00000000-0000-4000-8000-000000000075",
+            "variant_reservation_id": "00000000-0000-4000-8000-000000000076",
+            "expected_variant_registry_revision": 12,
+            "media_usage_manifest": [
+              {
+                "media_asset_id": "00000000-0000-4000-8000-000000000020",
+                "role": "illustration"
+              }
+            ],
+            "grant_id": "00000000-0000-4000-8000-000000000077",
+            "execution_generation": 1,
+            "recovery_epoch": "epoch-0001"
+          }
+        }
+      ]
+    },
+    "CompletionLedgerEntry": {
+      "valid": [
+        {
+          "completion_id": "00000000-0000-4000-8000-000000000078",
+          "video_job_id": "00000000-0000-4000-8000-000000000070",
+          "batch_ref": "00000000-0000-4000-8000-000000000008",
+          "session_ref": "00000000-0000-4000-8000-000000000079",
+          "output_artifact_version_id": "00000000-0000-4000-8000-000000000073",
+          "output_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "cloud_location_ref": "00000000-0000-4000-8000-000000000080",
+          "snapshot_ref": "00000000-0000-4000-8000-000000000010",
+          "script_version_ref": "00000000-0000-4000-8000-000000000030",
+          "production_plan_ref": "00000000-0000-4000-8000-000000000051",
+          "preset_revision_ref": "00000000-0000-4000-8000-000000000052",
+          "quality_report_ref": "00000000-0000-4000-8000-000000000072",
+          "variant_validation_ref": "00000000-0000-4000-8000-000000000075",
+          "media_usage_manifest": [],
+          "completed_at": "2026-10-18T08:00:00Z",
+          "output_naming_metadata": {
+            "title": "Sample title"
+          },
+          "cost_usage_summary": {
+            "currency": "USD",
+            "amount": 0
+          },
+          "audit_actor": "system",
+          "cleanup_policy_ref": "00000000-0000-4000-8000-000000000081"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_cleanup_policy_ref",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "cleanup_policy_ref"
+          },
+          "payload": {
+            "completion_id": "00000000-0000-4000-8000-000000000078",
+            "video_job_id": "00000000-0000-4000-8000-000000000070",
+            "batch_ref": "00000000-0000-4000-8000-000000000008",
+            "session_ref": "00000000-0000-4000-8000-000000000079",
+            "output_artifact_version_id": "00000000-0000-4000-8000-000000000073",
+            "output_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "cloud_location_ref": "00000000-0000-4000-8000-000000000080",
+            "snapshot_ref": "00000000-0000-4000-8000-000000000010",
+            "script_version_ref": "00000000-0000-4000-8000-000000000030",
+            "production_plan_ref": "00000000-0000-4000-8000-000000000051",
+            "preset_revision_ref": "00000000-0000-4000-8000-000000000052",
+            "quality_report_ref": "00000000-0000-4000-8000-000000000072",
+            "variant_validation_ref": "00000000-0000-4000-8000-000000000075",
+            "media_usage_manifest": [],
+            "completed_at": "2026-10-18T08:00:00Z",
+            "output_naming_metadata": {
+              "title": "Sample title"
+            },
+            "cost_usage_summary": {
+              "currency": "USD",
+              "amount": 0
+            },
+            "audit_actor": "system"
+          }
+        },
+        {
+          "case": "completed_at_not_rfc3339",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "completed_at"
+          },
+          "payload": {
+            "completion_id": "00000000-0000-4000-8000-000000000078",
+            "video_job_id": "00000000-0000-4000-8000-000000000070",
+            "batch_ref": "00000000-0000-4000-8000-000000000008",
+            "session_ref": "00000000-0000-4000-8000-000000000079",
+            "output_artifact_version_id": "00000000-0000-4000-8000-000000000073",
+            "output_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "cloud_location_ref": "00000000-0000-4000-8000-000000000080",
+            "snapshot_ref": "00000000-0000-4000-8000-000000000010",
+            "script_version_ref": "00000000-0000-4000-8000-000000000030",
+            "production_plan_ref": "00000000-0000-4000-8000-000000000051",
+            "preset_revision_ref": "00000000-0000-4000-8000-000000000052",
+            "quality_report_ref": "00000000-0000-4000-8000-000000000072",
+            "variant_validation_ref": "00000000-0000-4000-8000-000000000075",
+            "media_usage_manifest": [],
+            "completed_at": "not-a-date",
+            "output_naming_metadata": {
+              "title": "Sample title"
+            },
+            "cost_usage_summary": {
+              "currency": "USD",
+              "amount": 0
+            },
+            "audit_actor": "system",
+            "cleanup_policy_ref": "00000000-0000-4000-8000-000000000081"
+          }
+        }
+      ]
+    }
+  }
+}

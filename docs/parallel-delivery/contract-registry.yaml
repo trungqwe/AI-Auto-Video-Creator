@@ -400,3 +400,71 @@ change_protocol:
     - consumer_guessing_unknown_schema
     - retroactive_edit_of_accepted_schema_or_evidence
     - contract_change_hidden_inside_consumer_task
+
+bindings:
+  readme: docs/parallel-delivery/bindings/README.md
+  status: cp1_contract_binding_v1
+  compatibility_window: additive_optional_fields_only_while_modules_run_in_parallel
+  breaking_change_route: increment_major_binding_version_via_MIGRATE_bindingRefs
+  supersedes_non_normative: key_interface_boundaries
+  entries:
+    - id: BINDING-A-B-COLLECTED-DOCUMENT
+      seam: a-b-collected-document
+      path: docs/parallel-delivery/bindings/a-b-collected-document.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-SOURCE-CONTENT
+      source_sha256: 61b075d202dd0d7729123f68f26285097be8120e2de48194d0ad2fe847701f31
+    - id: BINDING-B-D-PRODUCTION-SNAPSHOT
+      seam: b-d-production-snapshot
+      path: docs/parallel-delivery/bindings/b-d-production-snapshot.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-CREATIVE-AI
+      source_sha256: 92b74489890f1eaf3915aef809af4cff0585659842f6930bbdf11d1236861b3a
+    - id: BINDING-C-D-MEDIA-CANDIDATES
+      seam: c-d-media-candidates
+      path: docs/parallel-delivery/bindings/c-d-media-candidates.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-CONTENT-MEDIA
+      source_sha256: ea6a3723dece842d132f634d44c32eb301fbc98b43b61d24b5c32c907782e4cf
+    - id: BINDING-D-E-F-VOICE-TIMING
+      seam: d-e-f-voice-timing
+      path: docs/parallel-delivery/bindings/d-e-f-voice-timing.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-MEDIA-PROCESSING
+      source_sha256: c5f7abaea422916165d59f8a5508817729d21035cffd663123a913c49365cf49
+    - id: BINDING-DOMAIN-EVENT-ENVELOPE
+      seam: domain-event-envelope
+      path: docs/parallel-delivery/bindings/domain-event-envelope.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-DOMAIN-EVENTS
+      source_sha256: 8114a208cecca67e553345ea5574d68752323c79cf833c8c8c9fa5e2f86e7540
+    - id: BINDING-F-RENDER-PACKAGE
+      seam: f-render-package
+      path: docs/parallel-delivery/bindings/f-render-package.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-RENDER-QUALITY
+      source_sha256: c3e35d032c0a8e721ed35bbecb5fb57f350788e8520d6e8df5ca78284199b493
+    - id: BINDING-G-ACTIVITY-EXECUTION
+      seam: g-activity-execution
+      path: docs/parallel-delivery/bindings/g-activity-execution.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-WORKFLOW-EXECUTION
+      source_sha256: 0fca25f2bc037a4c2bc58b844079dace8c19a9fd5af5c0ce8ad75e421bc2dc83
+    - id: BINDING-G-C-I-COMPLETION
+      seam: g-c-i-completion
+      path: docs/parallel-delivery/bindings/g-c-i-completion.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-ORCHESTRATION
+      source_sha256: 402f499f2ac2613502684f1d89697cf72d0cc136b25f2fd08fae07a7c1baaf59
+    - id: BINDING-I-ARTIFACT-VERSION
+      seam: i-artifact-version
+      path: docs/parallel-delivery/bindings/i-artifact-version.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-STORAGE
+      source_sha256: 6ab6f60bc2760ea9017ca0406e0053dc859cc06c1f0c80fff7e944d03d5e02ce
+    - id: BINDING-J-PROVIDER-ROUTE
+      seam: j-provider-route
+      path: docs/parallel-delivery/bindings/j-provider-route.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-CONFIG-SECURITY
+      source_sha256: 989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
