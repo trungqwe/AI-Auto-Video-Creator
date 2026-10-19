@@ -61,3 +61,24 @@ Tổng cộng 106 yêu cầu gốc; ánh xạ chi tiết sang slice ở `plan.md
 | probe mã hóa và định dạng ba tệp | 0 | không output |
 
 Interpreter: C:/Users/Admin/orca/workspaces/AI-Auto-Video-Creator/DAG-implement-plan/.local-tools/temp/m2-controlplane-locked-venv-31315/Scripts/python.exe
+
+## Sửa lần 1 (IMPL-PLAN-CONVERGENCE-FIX1)
+
+| Mã | Cách xử lý | Vị trí sửa |
+| --- | --- | --- |
+| F1 | Ba `__init__.py` đã nằm trong `ownedPaths` của `CP-2B-DEPS` (`api/routes/modules`, `api/wiring`, `application/orchestration/workflows`), làm rõ ánh xạ `package-dir`, không tạo gói `controlplane.workflows`. | `slices.md` (mục acceptance của `CP-2B-DEPS`), `plan.md` (mục 6) |
+| F2 | Thêm hai probe `packages`/`package-dir` và `runtime.lock.json` vào `testCommands` của `CP-2B-DEPS` cùng schema trong acceptance và `plan.md` mục 4. | `slices.md` (mục acceptance và testCommands của `CP-2B-DEPS`), `plan.md` (mục 4) |
+| F3 | Probe `dist` kiểm cả ba tệp băm cũ, ghi Worker `CP-4B-UI-SHELL` là người tạo diff `dist/**` (`slices.md` và `plan.md` mục 7). | `slices.md` (mục acceptance và testCommands của `CP-4B-UI-SHELL`), `plan.md` (mục 7) |
+| F4 | `dependsOn` của `CP-3B-STATE-MACHINE`, `CP-4-WIRING`, `CP-5-COMPLETION` đã đủ trong cây hiện hành, thêm probe kiểm lại và không còn 'kho tối thiểu'. | `slices.md` (mục `CP-3B-STATE-MACHINE`, `CP-4-WIRING`, `CP-5-COMPLETION`) |
+| F5 | Backlog `BL-CV-01`..`BL-CV-10` ở `plan.md` mục 12.1 cùng mục `notes` trong các slice; việc bỏ `api/wiring` ghi `ARCHITECTURE_CHANGE` chờ user. | `plan.md` (mục 12.1), `slices.md` (mục `notes` của CP-2D, CP-4, CP-4B, CP-5, CP-6) |
+
+Bản `slices.md` trong cây này không chứa nguyên văn các lỗi F1 ('Worker thêm vào ownedPaths…') và F4 (thiếu dependsOn, 'kho tối thiểu'), nên các điểm đó chỉ được làm rõ và có probe chặn tái phát; sửa thêm hai đường dẫn test không tồn tại (`tests/integration/catalog` ở CP-5, `tests/integration/config` ở CP-6 thành `tests/unit/config`) và thêm `tests/unit/security` vào lệnh kiểm CP-4.
+
+### Lệnh kiểm
+
+| Lệnh | Exit code | Kết quả |
+| --- | --- | --- |
+| git diff --check | 0 | không output |
+| probe bắt buộc của task (plan.md và slices.md) | 0 | không output |
+| probe F1, F2, F4 (slices.md) | 0 | không output |
+| probe F3, F5 (plan.md mục 12.1 và slices.md) | 0 | không output |
