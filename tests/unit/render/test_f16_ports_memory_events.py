@@ -1,6 +1,6 @@
 """F-16: RenderRepository append-only, UoW in-memory, outbox và event của F (CT-EVT-002, CT-EVT-003).
 
-coveredIds: CT-EVT-002, CT-EVT-003, TST-SEC-INV-012
+coveredIds: CT-EVT-002, CT-EVT-003, TST-CTR-INV-002, TST-SEC-INV-012
 """
 import ast
 import copy
@@ -411,6 +411,38 @@ def test_outbox_dedups_by_deduplication_id():
     with u:
         assert append_event(u, 'd-1') == e1
         assert len(u.outbox.records()) == 2
+
+
+def test_redelivered_event_commits_side_effect_once():
+    first = events.build_render_completed(context(), attempt=succeeded())
+    redelivered = events.build_render_completed(context(event_id='evt-2', message_id='msg-2'), attempt=succeeded())
+    dedup = events.deduplication_id_for(first)
+    assert events.deduplication_id_for(redelivered) == dedup
+
+    def deliver(u, ev):
+        return u.outbox.append_event(ev.event_name, ev.aggregate_id, dataclasses.asdict(ev), dedup)
+
+    u = new_uow()
+    with u:
+        first_id = deliver(u, first)
+        assert deliver(u, redelivered) == first_id
+        assert len(u.outbox.records()) == 1
+        u.commit()
+
+    with u:
+        assert deliver(u, redelivered) == first_id
+        u.commit()
+    assert len(u.outbox.records()) == 1
+    assert u.outbox.records()[0].payload['event_id'] == 'evt-1'
+
+    crashed = new_uow()
+    with crashed:
+        deliver(crashed, first)
+    assert crashed.outbox.records() == ()
+    with crashed:
+        deliver(crashed, redelivered)
+        crashed.commit()
+    assert len(crashed.outbox.records()) == 1
 
 
 def test_outbox_rejects_unsafe_blank_or_non_mapping_input():
