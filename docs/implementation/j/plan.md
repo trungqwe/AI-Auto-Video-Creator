@@ -234,7 +234,7 @@ Có 18 slice J-01..J-18 trong `docs/implementation/j/slices.md`. Gốc của m�
 - Wave 1 (song song, không phụ thuộc slice J khác): J-01, J-02, J-03, J-04, J-05, J-07, J-08.
 - Wave 2: J-06 (sau J-04); J-09 (sau J-02); J-12 và J-16 (sau J-07).
 - Wave 3: J-10 (sau J-02, J-09); J-11 (sau J-02, J-06); J-13 (sau J-01, J-06, J-07, J-12); J-15 (sau J-02, J-06).
-- Wave 4: J-14 (sau J-13); J-17 (sau J-10); J-18 (sau J-08, J-12, J-13, J-14).
+- Wave 4: J-14 (sau J-13); J-17 (sau J-10); J-18 (sau J-02, J-08, J-12, J-13, J-14).
 
 Mỗi slice sở hữu tệp riêng nên dùng lock `LOCK-J-<số>`; `LOCK-SRC-CONFIG-SECURITY` để dành cho việc sửa tệp dùng chung của J (ba `__init__.py` P5A, `config/*.py`, `security/*.py`), do hội tụ thực hiện.
 
