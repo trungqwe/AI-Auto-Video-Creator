@@ -29,8 +29,8 @@
 
 | # | Lệnh | Exit code | Kết quả |
 |---|---|---|---|
-| 1 | `git diff --check` | 0 | kh?ng output |
-| 2 | `python -c` instrument nghi?m thu (id slice duy nh?t, ?? m?c, ti?ng Vi?t c? d?u, kh?ng U+FFFD) | 0 | kh?ng output |
+| 1 | `git diff --check` | 0 | không output |
+| 2 | `python -c` instrument nghiệm thu (id slice duy nhất, đủ mục, tiếng Việt có dấu, không U+FFFD) | 0 | không output |
 
 ## Quyết định mặc định (D8)
 
