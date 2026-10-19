@@ -381,7 +381,7 @@ Nguồn: `docs/implementation/j/plan.md`. Mỗi slice là `work_package_slice`; 
   - `src/controlplane/application/config_security/routed_invocation.py`
   - `tests/integration/config/test_j_routed_invocation.py`
   - `docs/delivery-evidence/j-18/report.md`
-- dependsOn: `J-08`, `J-12`, `J-13`, `J-14`
+- dependsOn: `J-02`, `J-08`, `J-12`, `J-13`, `J-14`
 - resourceLocks: `LOCK-J-18`
 - bindingRefs:
   - `docs/parallel-delivery/bindings/j-provider-route.json`
