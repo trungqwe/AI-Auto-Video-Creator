@@ -36,18 +36,18 @@
 
 - 3 tệp owned:
   - src/voice/domain/processing.py
-  - 	ests/unit/voice/test_e02_processing_contract.py
+  - `tests/unit/voice/test_e02_processing_contract.py`
   - docs/delivery-evidence/e-02/report.md
 - Danh mục API đã triển khai trong src/voice/domain/processing.py:
   - Disposition: enum.StrEnum (SUCCEEDED, FAILED, WAITING, OUTCOME_UNKNOWN)
   - OutputClass: enum.StrEnum (REUSABLE, PER_VIDEO, DIAGNOSTIC)
-  - ArtifactRef: frozen dataclass (ef, content_sha256) kiểm tra sha256 64 ký tự hex thường
-  - ProcessingRequest: frozen dataclass đủ 8 trường CT-PROC-001 kèm rom_mapping và property input_fingerprint
-  - ProcessingResult: frozen dataclass đủ 8 trường CT-PROC-002 kèm rom_mapping, ràng buộc chéo và kiểm tra processor_identity
+  - ArtifactRef: frozen dataclass (`ref`, `content_sha256`) kiểm tra sha256 64 ký tự hex thường
+  - ProcessingRequest: frozen dataclass đủ 8 trường CT-PROC-001 kèm `from_mapping` và property `input_fingerprint`
+  - ProcessingResult: frozen dataclass đủ 8 trường CT-PROC-002 kèm `from_mapping`, ràng buộc chéo và kiểm tra processor_identity
   - compute_input_fingerprint: tính canonical request_hash từ controlplane, bất biến theo thứ tự khóa
   - is_ready: kiểm tra điều kiện ready fail-closed (chỉ True khi succeeded, có output và toàn bộ output refs đã verify bởi I)
-  - etention_intent: phân loại vòng đời lưu trữ theo đúng kế hoạch §7
-  - alidate_result_for_request: kiểm tra đối chiếu request/result, cấm trùng lặp output ref với input ref và kiểm tra fingerprint khớp
+  - `retention_intent`: phân loại vòng đời lưu trữ theo đúng kế hoạch §7
+  - `validate_result_for_request`: kiểm tra đối chiếu request/result, cấm trùng lặp output ref với input ref và kiểm tra fingerprint khớp
   - RETENTION_INTENT_BY_KIND: mapping bất biến ánh xạ loại output sang OutputClass
 
 ## Lệnh kiểm
@@ -60,21 +60,21 @@
 
 ## Phản ví dụ đã loại trừ
 
-1. **Succeeded ready khi I chưa verify:** Loại trừ bởi 	est_is_ready_only_when_succeeded_and_all_outputs_verified; is_ready chỉ trả về True khi mọi output ref đều nằm trong tập erified_refs do I cấp, nếu thiếu hoặc tập rỗng lập tức trả False.
-2. **Thiếu processor_identity vẫn hợp lệ:** Loại trừ bởi 	est_processor_identity_rules; processor_identity bắt buộc phải là Mapping có đủ hai khóa 	ool và ersion không rỗng, nếu thiếu hoặc rỗng sẽ ném ProcessingContractError mã missing_required.
-3. **Output ghi đè input:** Loại trừ bởi 	est_validate_result_for_request; hàm đối chiếu phát hiện output ref có ID trùng với bất kỳ input ref nào và ném lỗi constraint_violation trên trường output_artifact_refs.
-4. **Voice xếp reusable:** Loại trừ bởi 	est_retention_intent_plan_section_7; etention_intent('voice') trả về OutputClass.PER_VIDEO, tuyệt đối khác OutputClass.REUSABLE.
-5. **E có hàm cleanup:** Loại trừ bởi 	est_module_has_no_delete_or_cleanup; module được kiểm tra AST toàn diện, không có bất kỳ hàm, phương thức, biến hay thuộc tính nào chứa các từ khóa cấm liên quan đến xóa hay dọn dẹp tài nguyên.
+1. **Succeeded ready khi I chưa verify:** Loại trừ bởi `test_is_ready_only_when_succeeded_and_all_outputs_verified`; `is_ready` chỉ trả về True khi mọi output ref đều nằm trong tập `verified_refs` do I cấp, nếu thiếu hoặc tập rỗng lập tức trả False.
+2. **Thiếu processor_identity vẫn hợp lệ:** Loại trừ bởi `test_processor_identity_rules`; processor_identity bắt buộc phải là Mapping có đủ hai khóa `tool` và `version` không rỗng, nếu thiếu hoặc rỗng sẽ ném ProcessingContractError mã missing_required.
+3. **Output ghi đè input:** Loại trừ bởi `test_validate_result_for_request`; hàm đối chiếu phát hiện output ref có ID trùng với bất kỳ input ref nào và ném lỗi constraint_violation trên trường output_artifact_refs.
+4. **Voice xếp reusable:** Loại trừ bởi `test_retention_intent_plan_section_7`; `retention_intent('voice')` trả về OutputClass.PER_VIDEO, tuyệt đối khác OutputClass.REUSABLE.
+5. **E có hàm cleanup:** Loại trừ bởi `test_module_has_no_delete_or_cleanup`; module được kiểm tra AST toàn diện, không có bất kỳ hàm, phương thức, biến hay thuộc tính nào chứa các từ khóa cấm liên quan đến xóa hay dọn dẹp tài nguyên.
 
 ## Quyết định mặc định (D8)
 
 1. output_storage_intent là chuỗi không rỗng, không dựng enum mới vì CT-PROC-001 chưa chốt tập giá trị cố định.
 2. ArtifactRef(ref, content_sha256) mang hash để tính input_fingerprint.
-3. processor_identity bắt buộc hai khóa 	ool và ersion kiểu chuỗi không rỗng.
+3. processor_identity bắt buộc hai khóa `tool` và `version` kiểu chuỗi không rỗng.
 4. operation_receipt_ref chỉ được phép là None khi disposition khác SUCCEEDED; khi SUCCEEDED bắt buộc phải có receipt ref.
 5. Disposition SUCCEEDED bắt buộc có ít nhất một output artifact ref (output_artifact_refs không được rỗng).
 6. is_ready nhận tập ref ID đã verify từ I (E không tự verify) và trả False khi không có output ref nào.
-7. etention_intent thực hiện fail-closed: loại kind lạ chưa định nghĩa sẽ ném constraint_violation.
+7. `retention_intent` thực hiện fail-closed: loại kind lạ chưa định nghĩa sẽ ném constraint_violation.
 8. Bảng retention tuân thủ đúng kế hoạch IMPL-PLAN-E §7 (RETENTION_INTENT_BY_KIND).
 
 ## Danh sách chờ user (pendingUserCheckpoint)
