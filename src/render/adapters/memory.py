@@ -182,4 +182,3 @@ __all__ = [
     'TransactionAlreadyActiveError',
     'TransactionNotActiveError',
 ]
-

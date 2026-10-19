@@ -263,4 +263,3 @@ __all__ = [
     'ensure_safe_event_payload',
     'envelope_issues',
 ]
-
