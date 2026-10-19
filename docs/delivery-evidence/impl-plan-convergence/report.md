@@ -82,3 +82,28 @@ Bản `slices.md` trong cây này không chứa nguyên văn các lỗi F1 ('Wor
 | probe bắt buộc của task (plan.md và slices.md) | 0 | không output |
 | probe F1, F2, F4 (slices.md) | 0 | không output |
 | probe F3, F5 (plan.md mục 12.1 và slices.md) | 0 | không output |
+
+## Sửa lần 2 (IMPL-PLAN-CONVERGENCE-FIX2)
+
+Ghi chú nguồn lỗi: `plan.md` và `slices.md` tại HEAD 806814fcdb1fd24c30948086d8ad40c6752a77ca đã có đúng các cạnh của spec (`CP-3B-STATE-MACHINE` dependsOn `CP-2D-REGISTRY`; `CP-4-WIRING` và `CP-5-COMPLETION` có `PERSIST-*`; adapter CP-5 ở `infrastructure/db/orchestration`); các gói đã biên dịch mới làm rơi chúng. Lần sửa này thêm cạnh tường minh, quy tắc biên dịch, mã BL-CV cho phần ngoài phong bì và probe đọc mã thật.
+
+| Mã | Cách xử lý | Vị trí sửa |
+| --- | --- | --- |
+| F1 | Thêm `CP-2D-REGISTRY` tường minh vào dependsOn của `CP-4-WIRING` và `CP-4B-UI-SHELL` (CP-3B đã có); thêm mục 11.1 liệt kê cạnh bắt buộc và quy tắc không bỏ cạnh; notes BL-CV-01 ở CP-3B. | `plan.md` mục 11 và 11.1; `slices.md` CP-3B, CP-4, CP-4B |
+| F2 | Giữ `PERSIST-A`..`PERSIST-G`, `PERSIST-I`, `PERSIST-J` ở CP-4 và `PERSIST-C`, `PERSIST-G`, `PERSIST-I` ở CP-5, giữ cụm «kho PostgreSQL của PERSIST-C»; ghi `PERSIST-*` là cổng chờ như `USER-CKPT-D9-D10`; thêm phản ví dụ về kho tạm. | `plan.md` mục 11.1; `slices.md` CP-5 |
+| F3 | Adapter giữ ở `infrastructure/db/orchestration` (gói đã khai ở `pyproject.toml`), cấm gói `infrastructure/db/completion`; thêm BL-CV-11 và probe `tomllib` vào `testCommands` của CP-5. | `plan.md` mục 9 và 12.1; `slices.md` CP-5 |
+| F4 | `control_api_queries.py` và `control.py` nằm trong ownedPaths của CP-4; thêm test PostgreSQL thật trên `PostgresControlQueries` (hơn 100 dòng, đi hết các trang), probe đọc tệp bỏ `LIMIT 100` và `next_cursor: None`, và BL-CV-12. | `plan.md` mục 6 và 12.1; `slices.md` CP-4 |
+| F5 | Thêm bốn probe đọc nguồn vào `testCommands` của CP-4B: `App.tsx`, `client.ts`, `OperationsGrid.tsx` cùng `index.css`, `types/api.ts`. | `plan.md` mục 7; `slices.md` CP-4B |
+| F6 | Thêm BL-CV-13 (nút kiểm thử và `/test-driver`: BLOCKED vì `Header.tsx` ngoài ownedPaths, hai spec M2 đóng băng và `auth-helper.ts` phụ thuộc, đường cấp phiên sản xuất chưa có), BL-CV-14 (`runtime.lock.json` và hai gói `api.wiring`, `orchestration.workflows`), BL-CV-15 (CP-6); mở rộng BL-CV-07 (CSS, `client.ts`, `types/api.ts`); BL-CV-01 giữ cho CP-2D; quy tắc 11.1 mục 2: phần ngoài phong bì ghi BLOCKED hoặc PENDING, không bị loại. | `plan.md` mục 11.1 và 12.1; `slices.md` CP-2B-DEPS, CP-4B, CP-6 |
+
+Quyết định: yêu cầu «gỡ hoặc khóa nút `handleTriggerTestError` và `/test-driver`» của CP-4B chuyển thành BL-CV-13 (BLOCKED, giữ nguyên, có gate) thay vì làm trong CP-4B; đây là hoãn có gate, không phải bỏ thiết kế đã duyệt.
+
+### Lệnh kiểm (sửa lần 2)
+
+| Lệnh | Exit code | Kết quả |
+| --- | --- | --- |
+| git diff --check | 0 | không output |
+| probe bắt buộc của task (plan.md và slices.md) | 0 | không output |
+| git diff --check (sau khi ghi report) | 0 | không output |
+
+Interpreter: C:/Users/Admin/orca/workspaces/AI-Auto-Video-Creator/DAG-implement-plan/.local-tools/temp/m2-controlplane-locked-venv-31315/Scripts/python.exe
