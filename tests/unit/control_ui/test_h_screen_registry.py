@@ -134,6 +134,12 @@ def test_resource_path_is_v1_prefix_plus_id():
         assert screen['resourcePath'] == '/v1/' + screen['id'], screen['id']
 
 
+def test_v1_helper_returns_v1_prefixed_string():
+    code = _code(REGISTRY_PATH)
+    helper = re.findall(r'^const v1 = .*$', code, re.M)
+    assert helper == ['const v1 = (segment: string): string => `/v1/${segment}`;'], helper
+
+
 SYNTHETIC_BLOCK = '''
   {
     id: 'fake-scripts',

@@ -18,20 +18,29 @@
 - Lệnh thực thi: `python -m pytest tests/unit/control_ui/test_h_screen_registry.py -q -p no:cacheprovider` (chạy sau khi cài đặt 18 màn hình ở bước 12)
 - Exit code thực tế: 0
 - Dòng tóm tắt nguyên văn: `22 passed in 0.04s`
+- Vòng 1 (trước F1); bằng chứng sau sửa F1 xem mục Vòng sửa REVIEW_FINDINGS.
 
 ## Thay đổi
 
 - 3 tệp thuộc owned paths:
   - `src/controlplane/ui/src/features/screens/screenRegistry.ts`: Registry 18 màn hình UI phân bố qua các milestone M2–M7, xuất khẩu các kiểu `Milestone`, `ScreenSpec`, danh sách cấm `FORBIDDEN_EDITABLE_FIELDS` (`as const`), hằng số `SCREEN_REGISTRY` và hàm lọc `screensForMilestone(m)`. 4 màn hình M2 (`operations`, `batches`, `jobs`, `configs`) có `backendStatus` là 'available' với `resourcePath` khớp các route GET trong `src/controlplane/api/routes/control.py`; 14 màn hình còn lại (M3–M7) có `backendStatus` là 'pending_module'. Tuân thủ D8-H-05: chỉ 3 màn hình `sources`, `hooks`, `media` có trường cho phép sửa theo đúng allowlist; các màn hình `articles`, `events`, `snapshots`, `story-angles`, `scripts` có `readOnly: true` và `editableFields: []`; không có màn hình nào giao với tập trường cấm `FORBIDDEN_EDITABLE_FIELDS`.
-  - `tests/unit/control_ui/test_h_screen_registry.py`: Bộ kiểm thử pytest 22 ca kiểm tra cấu trúc registry UI bằng regex (phân tích mã nguồn TypeScript thuần, không qua I/O mạng hay bundler): xác thực đúng 18 id duy nhất theo thứ tự roadmap §14; map milestone M2–M7 và module A/B/C/D/G/I/J; kiểm tra đối chiếu route GET thực tế trong `control.py`; xác nhận 14 màn hình pending_module; kiểm tra mỗi màn hình có ít nhất 3 cột không trùng lặp và không chứa tên trường cấm; kiểm tra tập trường được sửa không giao tập cấm; kiểm tra bộ phát hiện cấm trên khối giả lập `fake-scripts`; kiểm tra cờ `readOnly` và allowlist chính xác; kiểm tra tiêu đề tiếng Việt có dấu; xác thực bảo vệ guard H-16 (không chứa literal endpoint cấm); kiểm tra bề mặt export đầy đủ; kiểm tra mã nguồn UTF-8 thuần, không BOM, không `any`, không `fetch(`, không `import`.
+  - `tests/unit/control_ui/test_h_screen_registry.py`: Bộ kiểm thử pytest 23 ca kiểm tra cấu trúc registry UI bằng regex (phân tích mã nguồn TypeScript thuần, không qua I/O mạng hay bundler): xác thực đúng 18 id duy nhất theo thứ tự roadmap §14; map milestone M2–M7 và module A/B/C/D/G/I/J; kiểm tra đối chiếu route GET thực tế trong `control.py`; xác nhận 14 màn hình pending_module; kiểm tra mỗi màn hình có ít nhất 3 cột không trùng lặp và không chứa tên trường cấm; kiểm tra tập trường được sửa không giao tập cấm; kiểm tra bộ phát hiện cấm trên khối giả lập `fake-scripts`; kiểm tra cờ `readOnly` và allowlist chính xác; kiểm tra tiêu đề tiếng Việt có dấu; xác thực bảo vệ guard H-16 (không chứa literal endpoint cấm); kiểm tra bề mặt export đầy đủ; kiểm tra mã nguồn UTF-8 thuần, không BOM, không `any`, không `fetch(`, không `import`; kiểm tra helper v1 trả chuỗi template '/v1/' + segment.
   - `docs/delivery-evidence/h-15/report.md`: Báo cáo bằng chứng nghiệm thu ghi lại chi tiết môi trường, RED, GREEN, thay đổi, bảng kết quả lệnh kiểm, quyết định mặc định (D8), ánh xạ phản ví dụ, coveredIds, danh sách chờ user và giới hạn.
 
 ## Lệnh kiểm
 
 | # | Lệnh | Exit code | Kết quả |
 |---|---|---|---|
-| 1 | `python -m pytest tests/unit/control_ui/test_h_screen_registry.py -q -p no:cacheprovider` | 0 | `22 passed in 0.04s` |
+| 1 | `python -m pytest tests/unit/control_ui/test_h_screen_registry.py -q -p no:cacheprovider` | 0 | `23 passed in 0.03s` |
 | 2 | `git diff --check` | 0 | PASS (không output, không trailing whitespace, không lỗi định dạng diff) |
+
+## Vòng sửa REVIEW_FINDINGS (F1)
+
+- `F1 (MAJOR)`: helper `v1` ở screenRegistry.ts:30 trả RegExp thay vì chuỗi; đã đổi thành template literal `/v1/${segment}` (chỉ một dòng).
+- Test mới `test_v1_helper_returns_v1_prefixed_string` khoá đúng định nghĩa helper vì test cũ chỉ parse văn bản.
+- RED sau khi thêm test, trước khi sửa TS: lệnh `python -m pytest tests/unit/control_ui/test_h_screen_registry.py -q -p no:cacheprovider`, exit code 1, dòng tóm tắt `1 failed, 22 passed in 0.14s`, lỗi AssertionError.
+- GREEN sau khi sửa: cùng lệnh, exit code 0, dòng tóm tắt `23 passed in 0.03s`.
+- `git diff --check`: exit code 0.
 
 ## Quyết định mặc định (D8)
 

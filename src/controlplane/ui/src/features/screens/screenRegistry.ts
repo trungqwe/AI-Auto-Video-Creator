@@ -27,7 +27,7 @@ export const FORBIDDEN_EDITABLE_FIELDS = [
   'secret_value',
 ] as const;
 
-const v1 = (segment: string): string => /v1/;
+const v1 = (segment: string): string => `/v1/${segment}`;
 
 export const SCREEN_REGISTRY: readonly ScreenSpec[] = [
 {
