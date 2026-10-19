@@ -1,6 +1,6 @@
 """E-16: integration CreateVoiceTrack and CreateWordTiming in-process (CT-TTS-001, CT-SUB-001, CT-RND-002).
 
-coveredIds: CT-TTS-001, CT-SUB-001, CT-RND-002, TST-MEDIA-INV-007 (phía E)
+coveredIds: CT-TTS-001, CT-SUB-001, CT-RND-002, TST-MEDIA-INV-007 (phía E), TST-E2E-001 (đoạn voice và timing, phía E)
 """
 
 from __future__ import annotations
