@@ -3,9 +3,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from importlib import import_module
 from typing import Any, Protocol
 
-from controlplane.infrastructure.security.secret_redaction import redact_value
+# ARCH-RULE-003: the domain layer must not statically import the infrastructure layer.
+# The J-02 redactor is resolved at module load instead, so the name stays the same object.
+redact_value = import_module('controlplane.infrastructure.security.secret_redaction').redact_value
 
 AUDIT_REQUIRED_ACTIONS: frozenset[str] = frozenset({
     'config_change', 'prompt_change', 'policy_change', 'preset_change',
