@@ -94,3 +94,15 @@ Hai tệp `plan.md` và `slices.md` (13 slice) được giữ nguyên, không s�
 | Probe chữ có dấu và không BOM của ba tệp .md | 0 | PASS: plan.md, slices.md và report.md có chữ tiếng Việt đủ dấu, không có ký tự thay thế U+FFFD, không có BOM |
 
 Các mục OI-ADAPT-01 đến OI-ADAPT-12 và danh sách chờ user ở `plan.md` mục 9 vẫn là mục mở, không ghi là user đã duyệt.
+
+## Vòng sửa IMPL-PLAN-ADAPT-FIX1 (F1)
+
+- F1 (MAJOR, ADAPT-DEPS): lệnh kiểm của dependency slice chỉ kiểm hình thức nên một `uv.lock` sửa tay vẫn qua. Đã thay hai probe cũ trong `testCommands` của `ADAPT-DEPS` (`slices.md`) bằng hai probe `tomllib` cấu trúc: (1) `pyproject.toml` có đúng mười dependency, gồm sáu gói cũ giữ nguyên và bốn gói ghim `==`; (2) `uv.lock` có khối `[[package]]` đúng phiên bản của bốn gói, mọi wheel và sdist của gói registry có sha256 dạng 64 chữ số hex, bốn gói có phụ thuộc bắc cầu và wheel, mọi phụ thuộc được tham chiếu đều có khối, `requires-dist` của gốc có đúng mười mục khớp phiên bản đã khóa.
+- `uv lock --locked` không nằm trong danh sách lệnh cho phép của lệnh làm việc (uv ngoài python, pytest, node, npm, git) nên không đưa vào `testCommands`; ghi ở `instrument` là cổng nhận do Control chạy, và `requirement` cấm chép tay khối lock (không chạy được `uv lock` thì BLOCKED).
+- Giữ nguyên: `ownedPaths`, `dependsOn`, `resourceLocks` của `ADAPT-DEPS` và toàn bộ mười hai slice khác. Bảy MINOR/NIT của audit vòng 1 không sửa trong vòng này, thuộc backlog.
+- Hai probe mới chưa chạy được trong lane kế hoạch vì `pyproject.toml` và `uv.lock` chưa có bốn gói; chúng chạy khi `ADAPT-DEPS` được thực thi.
+
+| Lệnh | Exit code | Kết quả |
+| --- | --- | --- |
+| Lệnh kiểm bắt buộc của task | 0 | PASS: 13 slice hợp lệ, block ADAPT-DEPS và tổng ký tự trong giới hạn |
+| `git diff --check` | 0 | PASS: không có lỗi khoảng trắng thừa |
