@@ -1,6 +1,6 @@
 """H-04: SQL keyset tham số hóa cho danh sách (connection giả).
 
-coveredIds: CT-API-001, CT-API-002
+coveredIds: CT-API-001, CT-API-002, QR-PERF-005
 """
 from __future__ import annotations
 
@@ -288,3 +288,19 @@ def test_specs_match_control_api_queries(name, spec):
     assert tuple(column.strip() for column in match['cols'].split(',')) == spec.select_columns
     assert match['id'] == spec.id_column
     assert match['sort'] in spec.sort_columns
+
+
+def test_qr_perf_005_page_fetch_is_single_bounded_keyset_query():
+    first = FakeConnection([job_row(i) for i in range(11)])
+    deep = FakeConnection([job_row(i) for i in range(11)])
+    fetch_page(first, JOBS_SPEC, make_query(limit=10), workspace_id=WORKSPACE)
+    fetch_page(deep, JOBS_SPEC, make_query(limit=10, cursor=CURSOR), workspace_id=WORKSPACE)
+    for connection in (first, deep):
+        assert len(connection.calls) == 1
+        sql, params = connection.calls[0]
+        assert sql.endswith(' LIMIT %s')
+        assert params[-1] == 11
+        assert 'OFFSET' not in sql.upper()
+    assert '(created_at, job_id) < (%s, %s)' in deep.calls[0][0]
+    assert '(created_at, job_id)' not in first.calls[0][0]
+    assert first.calls[0][0].split(' ORDER BY ')[1] == deep.calls[0][0].split(' ORDER BY ')[1]
