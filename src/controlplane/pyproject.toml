@@ -15,6 +15,7 @@ dependencies = [
     "pydantic==2.13.5",
     "psycopg[binary,pool]==3.3.5",
     "cryptography==46.0.5",
+    "temporalio==1.32.0",
 ]
 
 [project.scripts]
@@ -46,6 +47,7 @@ controlplane = "controlplane.entrypoint:main"
 "controlplane.application.sse" = "application/sse"
 "controlplane.api" = "api"
 "controlplane.api.routes" = "api/routes"
+"controlplane.api.routes.modules" = "api/routes/modules"
 "controlplane.api.sse" = "api/sse"
 "controlplane.infrastructure" = "infrastructure"
 "controlplane.infrastructure.db" = "infrastructure/db"
@@ -62,6 +64,7 @@ controlplane = "controlplane.entrypoint:main"
 "controlplane.infrastructure.db.sse" = "infrastructure/db/sse"
 "controlplane.infrastructure.evidence" = "infrastructure/evidence"
 "controlplane.infrastructure.security" = "infrastructure/security"
+"controlplane.infrastructure.storage" = "infrastructure/storage"
 "controlplane.config" = "config"
 "controlplane.security" = "security"
 
@@ -92,6 +95,7 @@ packages = [
     "controlplane.application.sse",
     "controlplane.api",
     "controlplane.api.routes",
+    "controlplane.api.routes.modules",
     "controlplane.api.sse",
     "controlplane.infrastructure",
     "controlplane.infrastructure.db",
@@ -108,6 +112,7 @@ packages = [
     "controlplane.infrastructure.db.sse",
     "controlplane.infrastructure.evidence",
     "controlplane.infrastructure.security",
+    "controlplane.infrastructure.storage",
     "controlplane.config",
     "controlplane.security",
 ]
