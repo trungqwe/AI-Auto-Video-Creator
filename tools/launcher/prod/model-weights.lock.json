@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "storage": {
+    "base_dir_default": "LOCALAPPDATA/AIAutoVideoCreator",
+    "subdir": "models",
+    "in_git": false
+  },
+  "reason": "trọng số đặt ngoài cây Git, sha256 chưa có nên là null kèm BLOCKED tới khi Control tải, tính hash và ghi (OI-ADAPT-06), Worker không bịa giá trị",
+  "files": [
+    {
+      "name": "kokoro-v1.0.onnx",
+      "group": "kokoro-onnx",
+      "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx",
+      "sha256": null,
+      "status": "BLOCKED"
+    },
+    {
+      "name": "voices-v1.0.bin",
+      "group": "kokoro-onnx",
+      "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin",
+      "sha256": null,
+      "status": "BLOCKED"
+    },
+    {
+      "name": "config.json",
+      "group": "faster-whisper-small.en",
+      "url": "https://huggingface.co/Systran/faster-whisper-small.en/resolve/<commit>/config.json",
+      "sha256": null,
+      "status": "BLOCKED",
+      "repo": "Systran/faster-whisper-small.en",
+      "commit": null,
+      "note": "commit do Control điền khi ghim và Control xác minh lại danh sách tệp model của kho."
+    },
+    {
+      "name": "model.bin",
+      "group": "faster-whisper-small.en",
+      "url": "https://huggingface.co/Systran/faster-whisper-small.en/resolve/<commit>/model.bin",
+      "sha256": null,
+      "status": "BLOCKED",
+      "repo": "Systran/faster-whisper-small.en",
+      "commit": null,
+      "note": "commit do Control điền khi ghim và Control xác minh lại danh sách tệp model của kho."
+    },
+    {
+      "name": "tokenizer.json",
+      "group": "faster-whisper-small.en",
+      "url": "https://huggingface.co/Systran/faster-whisper-small.en/resolve/<commit>/tokenizer.json",
+      "sha256": null,
+      "status": "BLOCKED",
+      "repo": "Systran/faster-whisper-small.en",
+      "commit": null,
+      "note": "commit do Control điền khi ghim và Control xác minh lại danh sách tệp model của kho."
+    },
+    {
+      "name": "vocabulary.txt",
+      "group": "faster-whisper-small.en",
+      "url": "https://huggingface.co/Systran/faster-whisper-small.en/resolve/<commit>/vocabulary.txt",
+      "sha256": null,
+      "status": "BLOCKED",
+      "repo": "Systran/faster-whisper-small.en",
+      "commit": null,
+      "note": "commit do Control điền khi ghim và Control xác minh lại danh sách tệp model của kho."
+    }
+  ]
+}

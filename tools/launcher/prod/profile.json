@@ -1,0 +1,661 @@
+{
+  "meta": {
+    "profile_name": {
+      "value": "production",
+      "reason": "Hồ sơ cấu hình dùng cho môi trường sản xuất.",
+      "basis": "DECIDED"
+    },
+    "revision": {
+      "value": 1,
+      "reason": "Phiên bản sửa đổi ban đầu của hồ sơ cấu hình.",
+      "basis": "DECIDED"
+    }
+  },
+  "collection": {
+    "source_kind": {
+      "value": [
+        "rss_feed",
+        "atom_feed",
+        "web_page"
+      ],
+      "reason": "Khớp ba loại adapter v1 theo MODULE-A-OPEN-001.",
+      "basis": "DECIDED"
+    },
+    "tiers": {
+      "value": {
+        "tier_1": "thông tấn lớn và cơ quan chính thức",
+        "tier_2": "báo chuyên ngành",
+        "tier_3": "blog"
+      },
+      "reason": "Phân loại nguồn tin để tính điểm nóng theo C5 và MODULE-A-OPEN-002.",
+      "basis": "DECIDED"
+    },
+    "fetch_policy": {
+      "feed": {
+        "value": {
+          "max_redirects": 5,
+          "max_body_bytes": 5242880,
+          "timeout_seconds": 20,
+          "content_types": [
+            "application/rss+xml",
+            "application/atom+xml",
+            "application/xml",
+            "text/xml"
+          ]
+        },
+        "reason": "Feed công khai thường dưới 1 MiB, trần 5 MiB chặn phản hồi bất thường khi chưa đo.",
+        "basis": "CONSERVATIVE_DEFAULT"
+      },
+      "article": {
+        "value": {
+          "max_redirects": 5,
+          "max_body_bytes": 5242880,
+          "timeout_seconds": 20,
+          "content_types": [
+            "text/html",
+            "application/xhtml+xml"
+          ]
+        },
+        "reason": "Trang bài viết hiếm khi vượt quá 2 MiB, giới hạn 5 MiB an toàn.",
+        "basis": "CONSERVATIVE_DEFAULT"
+      },
+      "image": {
+        "value": {
+          "max_redirects": 5,
+          "max_body_bytes": 15728640,
+          "timeout_seconds": 30,
+          "content_types": [
+            "image/jpeg",
+            "image/png",
+            "image/webp"
+          ]
+        },
+        "reason": "Ảnh báo chí thường dưới 5 MiB, không nhận SVG và GIF vì rủi ro nội dung chủ động.",
+        "basis": "CONSERVATIVE_DEFAULT"
+      }
+    },
+    "retry_fetch": {
+      "value": {
+        "max_attempts": 3,
+        "backoff_base_seconds": 2,
+        "backoff_max_seconds": 60,
+        "respect_retry_after": true
+      },
+      "reason": "Tránh dồn tải lên nguồn theo MODULE-A-OPEN-009 khi chưa có số đo thực tế.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "concurrency": {
+      "value": {
+        "global_fetches": 4,
+        "per_host_fetches": 1
+      },
+      "reason": "Chạy trên một máy với mạng gia đình, giới hạn fetch để lịch sự với nguồn.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "collection_interval_minutes": {
+      "value": 180,
+      "reason": "Đủ tươi cho các lô chạy qua đêm và chỉ thu thập khi worker bật theo U1.",
+      "basis": "DECIDED"
+    },
+    "freshness_window_hours": {
+      "value": 48,
+      "reason": "Tin tức cũ hơn 48 giờ không còn tính là tin nóng.",
+      "basis": "DECIDED"
+    },
+    "extraction_min_text_chars": {
+      "value": 600,
+      "reason": "Dưới ngưỡng thì đánh dấu PARTIAL, 600 ký tự đủ cho ý chính của một kịch bản.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "user_agent": {
+      "value": "AIAutoVideoCreator/1.0",
+      "reason": "Định danh cố định của ứng dụng và không chứa thông tin bí mật.",
+      "basis": "DECIDED"
+    }
+  },
+  "ai": {
+    "route_endpoint": {
+      "value": "http://127.0.0.1:20128/v1",
+      "reason": "Endpoint 9Router duy nhất được duyệt, Control xác nhận ở CP7 theo OI-ADAPT-05.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "route_model_refs": {
+      "value": {
+        "analysis": "ag/gemini-3.8-flash-high",
+        "angle": "ag/gemini-3.8-flash-high",
+        "script": "ag/gemini-3.8-flash-high",
+        "selection": "ag/gemini-3.8-flash-high",
+        "metadata": "ag/gemini-3.8-flash-high",
+        "image_safety": "ag/gemini-3.8-flash-high"
+      },
+      "reason": "Tuyến Gemini đang dùng theo U1 cho mọi vai trò AI, có thể đổi bằng revision cấu hình.",
+      "basis": "DECIDED"
+    },
+    "request_timeout_seconds": {
+      "value": 120,
+      "reason": "Phản hồi script của model flash thường dưới 60 giây, đặt gấp đôi để chịu tải khi chưa đo.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "retry": {
+      "value": {
+        "max_attempts": 3,
+        "backoff_base_seconds": 2,
+        "backoff_max_seconds": 60
+      },
+      "reason": "Chính sách thử lại AI theo QUALITY-OPEN-003 khi chưa có số đo thực tế.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "reservation_ttl_seconds": {
+      "value": 300,
+      "reason": "Thời gian giữ chỗ hạn ngạch dài hơn hai lần timeout yêu cầu.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "quota_wait_poll_seconds": {
+      "value": 300,
+      "reason": "Thăm dò hạn mức 5 phút một lần để không làm dồn dập tải lên gateway.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "quota_wait_max": {
+      "value": {
+        "ceiling": "none",
+        "warn_every_seconds": 3600
+      },
+      "reason": "Không đặt trần thời gian chờ theo U1, hết hạn mức thì chờ và tự chạy tiếp.",
+      "basis": "DECIDED"
+    }
+  },
+  "budget": {
+    "monthly_limit": {
+      "value": 50,
+      "reason": "Giới hạn ngân sách AI 50 USD mỗi tháng theo quyết định C5.",
+      "basis": "DECIDED"
+    },
+    "currency": {
+      "value": "USD",
+      "reason": "Đơn vị tiền tệ tính toán chi phí AI cố định là USD.",
+      "basis": "DECIDED"
+    },
+    "hard_stop": {
+      "value": true,
+      "reason": "Bật dừng cứng ngay khi chạm trần ngân sách để bảo vệ chi phí theo C5.",
+      "basis": "DECIDED"
+    },
+    "warn_at_ratio": {
+      "value": 0.8,
+      "reason": "Cảnh báo sớm khi chi phí AI chạm ngưỡng 80% ngân sách tháng.",
+      "basis": "DECIDED"
+    },
+    "window_timezone": {
+      "value": "Asia/Ho_Chi_Minh",
+      "reason": "Cửa sổ chu kỳ tính ngân sách hàng tháng theo múi giờ Asia/Ho_Chi_Minh.",
+      "basis": "DECIDED"
+    }
+  },
+  "credential": {
+    "max_ttl_seconds": {
+      "value": 3300,
+      "reason": "Access token Google sống 3600 giây, đặt trần 3300 giây để chừa 300 giây an toàn.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    }
+  },
+  "voice": {
+    "engine": {
+      "value": {
+        "library": "kokoro-onnx",
+        "voice": "af_heart",
+        "lang": "en-us",
+        "speed": 1.0,
+        "output": {
+          "format": "wav",
+          "channels": 1,
+          "sample_rate_hz": 24000,
+          "sample_width_bits": 16
+        }
+      },
+      "reason": "Kokoro cục bộ giọng af_heart mặc định theo C3, chốt lại sau khi nghe thử ở CP7-E-01.",
+      "basis": "DECIDED"
+    },
+    "duration_range_ms": {
+      "value": {
+        "min": 61000,
+        "max": 70000
+      },
+      "reason": "Khoảng thời lượng âm thanh giọng đọc theo ràng buộc CT-AI-004.",
+      "basis": "DECIDED"
+    },
+    "speech_rate_wpm": {
+      "value": 150,
+      "reason": "Tốc độ đọc chọn mức thấp 150 từ mỗi phút để script không vượt 70 giây khi chưa đo.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "tts_timeout_seconds": {
+      "value": 180,
+      "reason": "Kokoro trên CPU mất vài giây cho 10 giây âm thanh, đặt trần 180 giây an toàn.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "stage_retry": {
+      "value": {
+        "max_attempts": 3,
+        "backoff_base_seconds": 5,
+        "backoff_max_seconds": 120
+      },
+      "reason": "G quyết định thử lại tầng voice theo TEST-OPEN-003 vì E không tự retry.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    }
+  },
+  "aligner": {
+    "engine": {
+      "value": {
+        "library": "faster-whisper",
+        "model": "small.en",
+        "device": "cpu",
+        "compute_type": "int8",
+        "beam_size": 5,
+        "word_timestamps": true,
+        "language": "en",
+        "local_files_only": true
+      },
+      "reason": "Faster-whisper chạy CPU int8 không cần CUDA, nhường GPU cho NVENC và đủ chính xác.",
+      "basis": "DECIDED"
+    },
+    "word_timing_tolerance_ms": {
+      "value": 150,
+      "reason": "Whisper lệch khoảng 100 ms, phụ đề karaoke chấp nhận dưới 150 ms và sẽ đo ở CP7-E-02.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "max_unmatched_word_ratio": {
+      "value": 0.05,
+      "reason": "Quá 5% từ không khớp là lỗi và không thực hiện nội suy.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    }
+  },
+  "audio": {
+    "loudness": {
+      "value": {
+        "integrated_lufs": -16,
+        "true_peak_dbtp": -1.5,
+        "lra": 11,
+        "warn_tolerance_lu": 1.5,
+        "enforcement": "warn_only"
+      },
+      "reason": "Chuẩn âm lượng phổ biến cho video ngắn dọc, chỉ cảnh báo theo roadmap §12.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "bed_gain_db": {
+      "value": -20,
+      "reason": "Nhạc nền giảm 20 dB so với giọng đọc để không át lời theo mức thận trọng.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    }
+  },
+  "image_safety": {
+    "categories": {
+      "value": [
+        "minor_child",
+        "nudity_sexual",
+        "graphic_violence",
+        "weapon",
+        "hate_symbol"
+      ],
+      "reason": "Tập danh mục nhạy cảm tối thiểu theo quy định CT-PROC-006.",
+      "basis": "DECIDED"
+    },
+    "thresholds": {
+      "value": {
+        "reject_min_confidence": {
+          "minor_child": 0.5,
+          "nudity_sexual": 0.5
+        },
+        "blur_min_confidence": {
+          "graphic_violence": 0.5,
+          "weapon": 0.5,
+          "hate_symbol": 0.5
+        },
+        "blur_without_region_action": "reject",
+        "uncertain_range": {
+          "min": 0.3,
+          "max_exclusive": 0.5,
+          "action": "reject"
+        },
+        "detector_failure_action": "reject"
+      },
+      "reason": "Nghiêng về chặn an toàn vì bỏ một ảnh rẻ hơn rủi ro nội dung, đo ở CP7-E-03.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "boxblur": {
+      "value": {
+        "luma_radius": 40,
+        "luma_power": 3
+      },
+      "reason": "Che mờ vùng nhạy cảm đủ mạnh nhưng vẫn giữ được bố cục tổng thể.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "vision": {
+      "value": {
+        "timeout_seconds": 120,
+        "max_long_edge_px": 1024
+      },
+      "reason": "Giới hạn cạnh dài ảnh 1024 px để giảm token tiêu thụ mà vẫn đủ nhận diện.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    }
+  },
+  "render": {
+    "profile": {
+      "value": {
+        "width": 1080,
+        "height": 1920,
+        "fps": 30,
+        "video_codec": "h264_nvenc",
+        "audio_codec": "aac",
+        "audio_bitrate_kbps": 192,
+        "audio_sample_rate_hz": 48000,
+        "audio_channels": 2,
+        "container": "mp4",
+        "movflags": "+faststart"
+      },
+      "reason": "Thông số video dọc tiêu chuẩn theo quyết định C và ROADMAP-OPEN-007.",
+      "basis": "DECIDED"
+    },
+    "nvenc": {
+      "value": {
+        "video_codec": "h264_nvenc",
+        "args": "-preset p5 -tune hq -rc vbr -cq 23 -b:v 0 -maxrate 12M -bufsize 24M -profile:v high -pix_fmt yuv420p -g 60 -bf 2"
+      },
+      "reason": "Cân bằng chất lượng và tốc độ render để đạt dưới 7 phút mỗi video khi chưa đo.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "fallback": {
+      "value": {
+        "video_codec": "libx264",
+        "args": "-preset medium -crf 21 -pix_fmt yuv420p"
+      },
+      "reason": "Tùy chọn dự phòng dùng libx264 an toàn khi phần cứng không khởi tạo được NVENC.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "timeout_seconds": {
+      "value": 900,
+      "reason": "Gấp nhiều lần thời gian dự kiến, quá hạn coi là không xác định kết quả.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "presets": {
+      "value": {
+        "common": {
+          "font": "Arial",
+          "bold": true,
+          "font_size": 72,
+          "outline_width": 4,
+          "margin_v": 360,
+          "color_format": "#RRGGBB"
+        },
+        "variants": {
+          "bold-yellow": {
+            "highlight_color": "#FFD400",
+            "outline_color": "#000000"
+          },
+          "clean-white": {
+            "highlight_color": "#FFFFFF",
+            "outline_color": "#1A1A1A"
+          },
+          "neon-cyan": {
+            "highlight_color": "#00F0FF",
+            "outline_color": "#002B33"
+          },
+          "news-red": {
+            "highlight_color": "#FF3B30",
+            "outline_color": "#FFFFFF"
+          },
+          "soft-shadow": {
+            "highlight_color": "#F5E6C8",
+            "outline_color": "#3A3A3A"
+          }
+        }
+      },
+      "reason": "Năm preset phụ đề theo ROADMAP-OPEN-009, user duyệt ở nghiệm thu và font theo OI-ADAPT-08.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    }
+  },
+  "qc": {
+    "duration_range_ms": {
+      "value": {
+        "min": 61000,
+        "max": 70000,
+        "inclusive": true
+      },
+      "reason": "Khoảng thời lượng video hợp lệ theo tiêu chuẩn kiểm tra chất lượng CT-QC-001.",
+      "basis": "DECIDED"
+    },
+    "required_language": {
+      "value": "en",
+      "reason": "Ngôn ngữ bắt buộc của video xuất bản là tiếng Anh theo CT-QC-002.",
+      "basis": "DECIDED"
+    },
+    "karaoke_tolerance_ms": {
+      "value": 150,
+      "reason": "Dung sai đồng bộ phụ đề karaoke trùng với dung sai căn chỉnh từ của aligner.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "hook_similarity_min": {
+      "value": 0.85,
+      "reason": "Hook phải nhận diện rõ trong khung hình khi chưa đo kiểm ở CP7-F-02.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "hook_audio_min_dbfs": {
+      "value": -40,
+      "reason": "Ngưỡng âm lượng tối thiểu của hook âm thanh để đảm bảo không bị mất tiếng.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "visual_continuity_min": {
+      "value": 0.6,
+      "reason": "Độ liên tục thị giác tối thiểu, chỉ cảnh báo và không chặn theo roadmap §12.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "max_file_bytes": {
+      "value": 157286400,
+      "reason": "Kích thước tệp video tối đa 150 MiB đủ cho 65 giây ở bitrate 12 Mbit/s.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    }
+  },
+  "gpu": {
+    "slots": {
+      "value": {
+        "lock": "LOCK-DESKTOP-GPU",
+        "slots": 2
+      },
+      "reason": "Card đồ họa RTX 4070 SUPER 12 GB cho phép chạy song song hai phiên NVENC.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    }
+  },
+  "drive": {
+    "account": {
+      "value": {
+        "account_ref": "drive-primary",
+        "scope": "https://www.googleapis.com/auth/drive.file",
+        "accounts": 1
+      },
+      "reason": "Sử dụng một tài khoản Google Drive duy nhất với quyền tối thiểu drive.file theo U2.",
+      "basis": "DECIDED"
+    },
+    "folders": {
+      "value": {
+        "root": "AI-Auto-Video-Creator",
+        "original": "AI-Auto-Video-Creator/original",
+        "reusable": "AI-Auto-Video-Creator/reusable",
+        "output": "AI-Auto-Video-Creator/output/YY-MM-DD",
+        "date_timezone": "Asia/Ho_Chi_Minh"
+      },
+      "reason": "Cấu trúc thư mục lưu trữ Drive phân cấp theo quy định CT-STO-011 và D8-I-08.",
+      "basis": "DECIDED"
+    },
+    "chunk_bytes": {
+      "value": 8388608,
+      "reason": "Kích thước mỗi chunk tải lên là 8 MiB, đúng bội số của 262144 theo yêu cầu Drive API.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "chunk_timeout_seconds": {
+      "value": 120,
+      "reason": "Thời gian chờ tối đa cho mỗi chunk tải lên khi chưa có số đo thực tế.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "retry": {
+      "value": {
+        "max_attempts": 5,
+        "backoff_base_seconds": 2,
+        "backoff_max_seconds": 60
+      },
+      "reason": "Chính sách thử lại với exponential backoff theo khuyến nghị của Google Drive API.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "session_ttl_seconds": {
+      "value": 518400,
+      "reason": "Phiên tải lên resumable sống tối đa 6 ngày để chừa 1 ngày an toàn trước hạn 7 ngày.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "quota_reserve_ratio": {
+      "value": 0.2,
+      "reason": "Tỷ lệ dự trữ dung lượng trống tối thiểu 20% trước khi dừng nhận tải lên mới.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "verify": {
+      "value": {
+        "primary": "md5_drive_vs_md5_at_upload",
+        "fallback": "redownload_and_compare_sha256"
+      },
+      "reason": "Đối soát tải lên bằng MD5 và dự phòng tải lại so sánh SHA-256 theo yêu cầu phân hệ I.",
+      "basis": "DECIDED"
+    }
+  },
+  "working_set": {
+    "max_video_sets": {
+      "value": 5,
+      "reason": "Giới hạn tối đa 5 bộ video trong working set cùng lúc theo D8-I-03.",
+      "basis": "DECIDED"
+    },
+    "max_bytes": {
+      "value": 21474836480,
+      "reason": "Dung lượng tối đa cho working set là 20 GiB, đủ chứa 5 bộ video có dư.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "disk_reserve_bytes": {
+      "value": 32212254720,
+      "reason": "Dung lượng đĩa trống dự trữ tối thiểu 30 GiB để không bị tràn ổ đĩa khi render.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    }
+  },
+  "retention": {
+    "original": {
+      "value": {
+        "policy": "keep_forever",
+        "local_cleanup": "only_after_cloud_verified"
+      },
+      "reason": "Lưu giữ tài sản gốc vĩnh viễn và chỉ xóa bản cục bộ sau khi đã xác thực đám mây.",
+      "basis": "DECIDED"
+    },
+    "reusable": {
+      "value": {
+        "policy": "keep_forever",
+        "local_cleanup": "only_after_cloud_verified"
+      },
+      "reason": "Lưu giữ tài nguyên tái sử dụng vĩnh viễn và dọn dẹp cục bộ sau khi tải lên an toàn.",
+      "basis": "DECIDED"
+    },
+    "output": {
+      "value": {
+        "policy": "keep_forever",
+        "local_cleanup": "only_after_cloud_verified"
+      },
+      "reason": "Lưu giữ video đầu ra vĩnh viễn và chỉ dọn bản cục bộ sau khi đã xác thực Drive.",
+      "basis": "DECIDED"
+    },
+    "temporary": {
+      "value": {
+        "delete_after_hours": 24,
+        "counted_from": "checked_and_completed"
+      },
+      "reason": "Tệp tạm thời được xóa sau 24 giờ kể từ khi tác vụ kiểm tra hoàn tất theo C5.",
+      "basis": "DECIDED"
+    },
+    "log_days": {
+      "value": 30,
+      "reason": "Thời gian lưu trữ nhật ký vận hành 30 ngày theo mức thận trọng QUALITY-OPEN-009.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "audit_days": {
+      "value": 365,
+      "reason": "Thời gian lưu trữ dữ liệu kiểm toán hệ thống 365 ngày theo QUALITY-OPEN-009.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    }
+  },
+  "time": {
+    "timezone": {
+      "value": {
+        "name": "Asia/Ho_Chi_Minh",
+        "storage": "UTC",
+        "applies_to": [
+          "business_date",
+          "drive_folder_names",
+          "budget_monthly_window"
+        ]
+      },
+      "reason": "Múi giờ nghiệp vụ Asia/Ho_Chi_Minh lưu trữ UTC theo quyết định C5 và ROADMAP-OPEN-004.",
+      "basis": "DECIDED"
+    }
+  },
+  "workflow": {
+    "start_to_close_seconds": {
+      "value": {
+        "control-workflows": 60,
+        "cloud-io": 900,
+        "cloud-ai": 240,
+        "desktop-cpu": 600,
+        "desktop-gpu": 900,
+        "desktop-render": 1200
+      },
+      "reason": "Thời gian tối đa thực thi workflow lớn hơn timeout của adapter theo D8-G-07.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "heartbeat_seconds": {
+      "value": 30,
+      "reason": "Khoảng thời gian gửi heartbeat định kỳ 30 giây để phát hiện sớm worker gặp sự cố.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "retry": {
+      "value": {
+        "initial_interval_seconds": 5,
+        "backoff_coefficient": 2.0,
+        "maximum_interval_seconds": 120,
+        "maximum_attempts": 3
+      },
+      "reason": "Cấu hình thử lại tự động cho workflow theo quy định D8-G-07.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "schedule": {
+      "value": {
+        "cloud_schedule_enabled": false,
+        "collection_runs_when": "worker_running"
+      },
+      "reason": "Không bật lịch cloud, tác vụ thu thập tin tức chỉ chạy khi worker đang bật theo U1.",
+      "basis": "DECIDED"
+    }
+  },
+  "batch": {
+    "videos_per_news_per_round": {
+      "value": 2,
+      "reason": "Số lượng video sinh ra cho mỗi tin trong một vòng là 2 theo roadmap §13.",
+      "basis": "DECIDED"
+    },
+    "target": {
+      "value": {
+        "sample_run": 10,
+        "overnight_trial": 100
+      },
+      "reason": "Mục tiêu 10 video cho lần chạy mẫu và 100 video cho đợt chạy thử nghiệm qua đêm theo U4.",
+      "basis": "DECIDED"
+    }
+  },
+  "resume": {
+    "ready_within_seconds": {
+      "value": 300,
+      "reason": "Thời gian tối đa để sẵn sàng tiếp tục phiên trong 300 giây theo roadmap §13.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    }
+  }
+}
