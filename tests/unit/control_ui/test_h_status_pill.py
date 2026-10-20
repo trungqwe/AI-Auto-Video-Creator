@@ -1,6 +1,6 @@
 """H-12: component StatusPill (nhãn chữ, ARIA, testid, không HTML thô, không gọi API).
 
-coveredIds: CT-API-007, EG-M2-H-4
+coveredIds: CT-API-007, EG-M2-H-4, CT-API-010, QR-UX-003
 """
 import pathlib
 import re
@@ -91,3 +91,24 @@ def test_raw_html_and_self_fetching_components_are_reported():
     found = find_violations("import { api } from '../api/client.ts';")
     assert 'forbidden:api/client' in found
     assert 'import:../api/client.ts' in found
+
+
+def test_qr_ux_003_status_is_text_label_and_aria_not_color_only():
+    text = read_source()
+    assert re.search(r'>\s*\{presentation\.label\}\s*</span>', text) is not None
+    assert 'aria-label={presentation.label}' in text
+    assert ROLE in text
+    assert 'className={`pill ${presentation.cssClass}`}' in text
+    assert "normalized === '' ? 'unknown' : normalized" in text
+    found = find_violations(text.replace('{presentation.label}', 'removed'))
+    assert 'missing:{presentation.label}' in found
+
+
+def test_ct_api_010_external_status_value_is_never_rendered_as_raw_html():
+    text = read_source()
+    assert re.search(r'>\s*\{\s*status\s*\}', text) is None
+    assert re.findall(r'>\s*\{([^{}]*)\}\s*</span>', text) == ['presentation.label']
+    assert 'dangerouslysetinnerhtml' not in text.lower()
+    assert 'innerhtml' not in text.lower()
+    found = find_violations(text + '\nconst X = () => <span dangerouslySetInnerHTML={{ __html: status }} />;')
+    assert 'forbidden:dangerouslysetinnerhtml' in found
