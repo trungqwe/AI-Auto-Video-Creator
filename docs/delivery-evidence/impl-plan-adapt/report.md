@@ -55,3 +55,42 @@ sha256 tính trên byte tệp trong worktree tại HEAD d9d23586d3af1fa6b2f2b6b7
 - D8-ADAPT-03: tệp adapter mới của A, D, E, F luôn là `real_<tên>.py`; không dùng glob thư mục.
 - D8-ADAPT-04: mã kiểm sha256 FFmpeg có hai bản độc lập ở E và F để không import chéo phân hệ.
 - D8-ADAPT-05: mỗi tham số production có `value`, `reason`, `basis`; giá trị không đo được là `CONSERVATIVE_DEFAULT` và nằm trong runbook.
+
+## Vòng sửa AUDIT_FAIL (F1, F2)
+
+- F1 (MAJOR): ownedPaths và resourceLocks đã đưa vào phong bì policy
+
+| Cũ | Mới |
+| --- | --- |
+| `ninerouter_executor.py` ở `src/controlplane/config` | `src/creative/adapters/real_route_executor.py` (theo `real_*.py`, thay cho `real_ninerouter_executor.py` để loại bỏ chuỗi `ninerouter_executor` theo probe phong bì) |
+| `google_oauth_loopback.py` | `src/controlplane/infrastructure/security/oauth_google_loopback.py` |
+| `drive_token_provider.py` | `src/controlplane/infrastructure/security/oauth_drive_token.py` |
+| `google_drive_object_store.py` | `src/controlplane/infrastructure/storage/drive_object_store.py` |
+| `deploy/production/**` | `tools/launcher/prod/**` |
+| `deploy/launcher/**` | `tools/launcher/**` |
+| `docs/operations/runbook-v1.md` | `docs/runbook/runbook-v1.md` |
+| `LOCK-EXTERNAL-DRIVE` | bỏ (I chờ J qua dependsOn) |
+| `LOCK-PRODUCTION-PROFILE` | `LOCK-COMPOSITION-ROOT` |
+
+- F2 (MAJOR): ADAPT-WIRE và ADAPT-PROD đổi kind thành convergence_slice (sở hữu composition root).
+- M1 và M2 là MINOR, không sửa trong vòng này; OI-ADAPT-01 giữ nguyên việc Control xác minh kokoro-onnx trên registry trước ADAPT-DEPS.
+
+### Lệnh đã chạy
+
+| Lệnh | Exit code | Kết quả |
+| --- | --- | --- |
+| Probe phong bì (bước 18) | 0 | PASS: mọi ownedPaths trong phong bì, mọi khóa trong registry, ADAPT-WIRE và ADAPT-PROD là convergence_slice, không còn từ cũ |
+| Lệnh kiểm bắt buộc (bước 19) | 0 | PASS: 13 slice, mỗi block dưới 3000 ký tự, tổng ký tự dưới 38000, cấu trúc hợp lệ, tiếng Việt đủ dấu |
+| `git diff --check` | 0 | PASS: không có lỗi khoảng trắng thừa hay định dạng diff |
+
+## Xác nhận trạng thái hiện hành (INITIAL, HEAD 75a389191eeda76d975f8c9055d270f7f5354448)
+
+Hai tệp `plan.md` và `slices.md` (13 slice) được giữ nguyên, không sửa trong lượt này; các slice ID, port, tệp binding và mã nguồn được dẫn tới đã đối chiếu khớp với cây hiện tại.
+
+| Lệnh | Exit code | Kết quả |
+| --- | --- | --- |
+| `git diff --check` | 0 | PASS: không có lỗi khoảng trắng thừa trước khi thực hiện |
+| Probe cấu trúc `plan.md` và `slices.md` theo lệnh kiểm bắt buộc | 0 | PASS: 13 slice hợp lệ, mỗi block dưới 3000 ký tự, tổng dưới 38000, ADAPT-DEPS và ADAPT-PROD có mặt, tiếng Việt có dấu, không có ký tự thay thế |
+| Probe chữ có dấu và không BOM của ba tệp .md | 0 | PASS: plan.md, slices.md và report.md có chữ tiếng Việt đủ dấu, không có ký tự thay thế U+FFFD, không có BOM |
+
+Các mục OI-ADAPT-01 đến OI-ADAPT-12 và danh sách chờ user ở `plan.md` mục 9 vẫn là mục mở, không ghi là user đã duyệt.

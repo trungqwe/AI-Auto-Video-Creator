@@ -78,19 +78,19 @@ Mọi slice chờ `CP-2B-DEPS` và `USER-CKPT-D9-D10`. Cạnh tới gói bị ch
 | --- | --- | --- | --- | --- |
 | `ADAPT-DEPS` | dependency_slice | `pyproject.toml`, `uv.lock` | `LOCK-DEPENDENCY-UNIVERSE`, `LOCK-CONVERGENCE` | `IMPL-PLAN-ADAPT` |
 | `ADAPT-A` | work_package_slice | `src/source_ingestion/adapters/real_http_transport.py`, `real_feed_source.py`, `real_media_fetch.py` | `LOCK-SRC-SOURCE-INGESTION` | `ADAPT-DEPS`, `GATE-CP-2D-REGISTRY` |
-| `ADAPT-D` | work_package_slice | `src/creative/adapters/real_ai_invocation.py`, `src/controlplane/config/ninerouter_executor.py`, `adapter.py` | `LOCK-SRC-CREATIVE`, `LOCK-SRC-CONFIG-SECURITY` | `J-18` |
+| `ADAPT-D` | work_package_slice | `src/creative/adapters/real_ai_invocation.py`, `real_route_executor.py`, `src/controlplane/config/adapter.py` | `LOCK-SRC-CREATIVE`, `LOCK-SRC-CONFIG-SECURITY` | `J-18` |
 | `ADAPT-E` | work_package_slice | `src/voice/adapters/real_kokoro_tts.py`, `real_whisper_aligner.py` | `LOCK-SRC-VOICE` | `ADAPT-DEPS` |
 | `ADAPT-E-MEDIA` | work_package_slice | `src/voice/adapters/real_ffmpeg_media_tool.py`, `real_llm_image_safety.py` | `LOCK-SRC-VOICE` | `ADAPT-D` |
 | `ADAPT-F` | work_package_slice | `src/render/adapters/real_ffmpeg_renderer.py`, `real_ffprobe_probe.py` | `LOCK-SRC-RENDER`, `LOCK-DESKTOP-GPU` | `F-18` |
-| `ADAPT-J` | work_package_slice | `src/controlplane/infrastructure/security/google_oauth_loopback.py`, `drive_token_provider.py` | `LOCK-SRC-CONFIG-SECURITY`, `LOCK-EXTERNAL-DRIVE` | `J-17`, `GATE-PERSIST-J` |
-| `ADAPT-I` | work_package_slice | `src/controlplane/infrastructure/storage/google_drive_object_store.py` | `LOCK-SRC-STORAGE`, `LOCK-EXTERNAL-DRIVE` | `ADAPT-J` |
-| `ADAPT-CONFIG` | work_package_slice | `deploy/production/**` | `LOCK-PRODUCTION-PROFILE` (GIẢ ĐỊNH) | `J-09` |
-| `ADAPT-WIRE` | work_package_slice | `src/controlplane/api/wiring/**` | `LOCK-COMPOSITION-ROOT` | `CP-4-WIRING`, `GATE-CP-5-COMPLETION`, mọi slice adapter |
-| `ADAPT-SEED` | work_package_slice | `deploy/production/seed/**` | `LOCK-PRODUCTION-PROFILE` | `ADAPT-WIRE`, `GATE-PERSIST-A`, `GATE-PERSIST-C` |
-| `ADAPT-PROD` | work_package_slice | `src/main.py`, `src/controlplane/api/wiring/production.py` | `LOCK-COMPOSITION-ROOT` | `CP-4-WIRING`, `GATE-CP-5-COMPLETION`, `GATE-CP-6-WORKFLOW`, `ADAPT-WIRE` |
-| `ADAPT-LAUNCH` | work_package_slice | `deploy/launcher/**`, `docs/operations/runbook-v1.md` | `LOCK-PRODUCTION-PROFILE` | `ADAPT-PROD`, `ADAPT-SEED` |
+| `ADAPT-J` | work_package_slice | `src/controlplane/infrastructure/security/oauth_google_loopback.py`, `oauth_drive_token.py` | `LOCK-SRC-CONFIG-SECURITY` | `J-17`, `GATE-PERSIST-J` |
+| `ADAPT-I` | work_package_slice | `src/controlplane/infrastructure/storage/drive_object_store.py` | `LOCK-SRC-STORAGE` | `ADAPT-J` |
+| `ADAPT-CONFIG` | work_package_slice | `tools/launcher/prod/*.json` | `LOCK-COMPOSITION-ROOT` | `J-09` |
+| `ADAPT-WIRE` | convergence_slice | `src/controlplane/api/wiring/**` | `LOCK-COMPOSITION-ROOT` | `CP-4-WIRING`, `GATE-CP-5-COMPLETION`, mọi slice adapter |
+| `ADAPT-SEED` | work_package_slice | `tools/launcher/prod/seed/**` | `LOCK-COMPOSITION-ROOT` | `ADAPT-WIRE`, `GATE-PERSIST-A`, `GATE-PERSIST-C` |
+| `ADAPT-PROD` | convergence_slice | `src/main.py`, `src/controlplane/api/wiring/production.py` | `LOCK-COMPOSITION-ROOT` | `CP-4-WIRING`, `GATE-CP-5-COMPLETION`, `GATE-CP-6-WORKFLOW`, `ADAPT-WIRE` |
+| `ADAPT-LAUNCH` | work_package_slice | `tools/launcher/docker-compose.yml`, `tools/launcher/launcher.py`, `docs/runbook/runbook-v1.md` | `LOCK-COMPOSITION-ROOT` | `ADAPT-PROD`, `ADAPT-SEED` |
 
-**DAG**: A, D, E, F, J, CONFIG chạy song song khi khóa khác nhau (E và E-MEDIA cùng khóa nên tuần tự); E-MEDIA sau D (dùng route AI); I sau J (token); WIRE sau mọi slice adapter và `CP-4-WIRING`; SEED và PROD sau WIRE; LAUNCH cuối. Khóa của `deploy/**`, `docs/operations/**`, `tests/integration/adapt/**` và `src/controlplane/config/ninerouter_executor.py` chưa có trong `ownership-and-locks.yaml`: Control mở rộng phong bì khi biên dịch (OI-ADAPT-02).
+**DAG**: A, D, E, F, J, CONFIG chạy song song khi khóa khác nhau (E và E-MEDIA cùng khóa nên tuần tự); E-MEDIA sau D (dùng route AI); I sau J (token); WIRE sau mọi slice adapter và `CP-4-WIRING`; SEED và PROD sau WIRE; LAUNCH cuối. `ADAPT-WIRE` và `ADAPT-PROD` là `convergence_slice` vì sở hữu composition root (`src/controlplane/api/wiring/**`, `src/main.py`). `ADAPT-CONFIG`, `ADAPT-SEED` và `ADAPT-LAUNCH` giữ `LOCK-COMPOSITION-ROOT` vì hồ sơ production là đầu vào của composition root, nên SEED và PROD (cùng chờ WIRE) chạy tuần tự. Mọi đường dẫn slice nằm trong phong bì ownership hiện hành: tệp mới của A, D, E, F là `real_*.py`; Drive và OAuth là `drive_*.py` và `oauth_*.py`; hồ sơ production và launcher ở `tools/launcher/**`; runbook ở `docs/runbook/**`; test ở `tests/integration/adapt/**` (OI-ADAPT-02).
 
 ## 5. Chi tiết theo phân hệ
 
@@ -104,14 +104,14 @@ Mọi slice chờ `CP-2B-DEPS` và `USER-CKPT-D9-D10`. Cạnh tới gói bị ch
 ### 5.2. ADAPT-D — AI qua J và 9Router (CP7-D-01, CP7-D-05)
 
 - `AIInvocationPort` (`src/creative/ports/ai.py`) cài bằng `real_ai_invocation.py` trên `RoutedInvocationService` (J-18); D không nhận secret, không tự resolve route.
-- `ninerouter_executor.py` cài `ProviderExecutorPort` bằng `NineRouterHTTPAdapter` (`src/controlplane/config/adapter.py`); endpoint, timeout, retry, backoff lấy từ cấu hình (mục 7.2).
+- `real_route_executor.py` (trong `src/creative/adapters/`) cài `ProviderExecutorPort` bằng `NineRouterHTTPAdapter` (`src/controlplane/config/adapter.py`); endpoint, timeout, retry, backoff lấy từ cấu hình (mục 7.2).
 - **BL-CV-04 (quyết định D8-ADAPT-01)**: thêm đường dựng `ApprovedEndpointRegistry` từ danh sách endpoint của cấu hình J; giữ `DEFAULT_APPROVED_ENDPOINTS` (có host `mock-9router`) làm nền test để `tests/unit/security/test_http_router_adapter.py` xanh không sửa; mã production không chứa `mock-9router`.
 - **Hết hạn mức**: `WAITING_PROVIDER` và `BUDGET_BLOCKED` của J-18 thành kết quả chờ có thể thử lại; G đặt job chờ (`WAITING_CAPABILITY`, lý do hạn mức) và thăm dò lại mỗi `quota_wait_poll_seconds`, tự chạy tiếp khi hạn mức hồi; không đặt trần thời gian chờ, chỉ cảnh báo.
 - **Chi phí**: ghi qua `CostLedgerPort` của J; tuyến Gemini của 9Router không phát sinh chi phí thêm nên `usage_cost` có thể bằng 0, nhưng `monthly_limit` 50 USD và `hard_stop` vẫn được đánh giá (cảnh báo ở 80%).
 
 ### 5.3. ADAPT-E và ADAPT-E-MEDIA — TTS, aligner, an toàn ảnh, FFmpeg (CP7-E-01 đến CP7-E-05)
 
-- **TTS** (`real_kokoro_tts.py`, `TtsEnginePort`): `kokoro-onnx` chạy cục bộ, không mạng; nạp `kokoro-v1.0.onnx` và `voices-v1.0.bin` từ thư mục trọng số ngoài cây Git, kiểm sha256 theo `deploy/production/model-weights.lock.json` trước khi nạp; thiếu hoặc lệch sha256 thì `TtsProviderError` không thể thử lại, không tải ngầm. Đầu ra WAV mono PCM 16-bit 24000 Hz trong staging.
+- **TTS** (`real_kokoro_tts.py`, `TtsEnginePort`): `kokoro-onnx` chạy cục bộ, không mạng; nạp `kokoro-v1.0.onnx` và `voices-v1.0.bin` từ thư mục trọng số ngoài cây Git, kiểm sha256 theo `tools/launcher/prod/model-weights.lock.json` trước khi nạp; thiếu hoặc lệch sha256 thì `TtsProviderError` không thể thử lại, không tải ngầm. Đầu ra WAV mono PCM 16-bit 24000 Hz trong staging.
 - **Aligner** (`real_whisper_aligner.py`, `AlignerPort`): `faster_whisper.WhisperModel` nạp từ thư mục cục bộ (`local_files_only`), `word_timestamps=True`, `language` `en`; từ phiên âm được căn vào `script_text` bằng so khớp chuỗi trên token đã chuẩn hóa; từ không khớp được đánh dấu và đếm, quá `max_unmatched_word_ratio` thì `AlignerError`; không nội suy mốc thời gian. `aligner_revision` gồm phiên bản thư viện và hash model.
 - **An toàn ảnh** (`real_llm_image_safety.py`): detector gọi AI thị giác qua route J với `ai_role` `image_safety`, ép đầu ra JSON có kiểu (category, confidence, vùng chuẩn hóa); sai kiểu, quá hạn hay lỗi route là `DETECTION_FAILED` và bị xử lý như không an toàn (fail-closed). Ảnh chỉ đi tới route J đã duyệt, nội dung ảnh không vào log.
 - **FFmpeg** (`real_ffmpeg_media_tool.py`): `MediaToolPort`, `TransformPort` và `ProbePort` bằng `subprocess.run` với danh sách đối số (không shell) trên `ffmpeg.exe` và `ffprobe.exe` đã ghim (mục 3.2); che vùng nhạy cảm bằng bộ lọc `boxblur` theo `TransformRegion`; ghi tệp ra tên mới, không ghi đè đầu vào; có timeout.
@@ -125,26 +125,26 @@ Mọi slice chờ `CP-2B-DEPS` và `USER-CKPT-D9-D10`. Cạnh tới gói bị ch
 
 ### 5.5. ADAPT-I — Google Drive (CP7-I-01)
 
-`google_drive_object_store.py` (trong `src/controlplane/infrastructure/storage/`, gói đã khai) cài `CloudObjectPort` (`cloud_persist.py`) bằng `google-api-python-client` đã khóa: `files.generateIds` cấp file ID trước; upload resumable theo chunk vào đúng file ID đó nên thử lại không tạo tệp thứ hai; HTTP 409 là `ObjectAlreadyExistsError`; phiên hết hạn thì mở phiên mới cùng file ID; hết retry vì timeout là `TimeoutError` để I ghi `OUTCOME_UNKNOWN` rồi reconcile bằng `lookup`; `lookup` dùng metadata Drive và, khi thiếu checksum khớp sha256, tải lại theo chunk để tính sha256. Token chỉ lấy qua `credential_method` của broker J.
+`drive_object_store.py` (trong `src/controlplane/infrastructure/storage/`, gói đã khai) cài `CloudObjectPort` (`cloud_persist.py`) bằng `google-api-python-client` đã khóa: `files.generateIds` cấp file ID trước; upload resumable theo chunk vào đúng file ID đó nên thử lại không tạo tệp thứ hai; HTTP 409 là `ObjectAlreadyExistsError`; phiên hết hạn thì mở phiên mới cùng file ID; hết retry vì timeout là `TimeoutError` để I ghi `OUTCOME_UNKNOWN` rồi reconcile bằng `lookup`; `lookup` dùng metadata Drive và, khi thiếu checksum khớp sha256, tải lại theo chunk để tính sha256. Token chỉ lấy qua `credential_method` của broker J.
 
 ### 5.6. ADAPT-J — OAuth một lần và broker DPAPI (CP7-J-01)
 
-`google_oauth_loopback.py` chạy luồng OAuth bằng `google-auth-oauthlib` đã khóa: máy chủ loopback `127.0.0.1` cổng ngẫu nhiên, PKCE và `state`, scope duy nhất `https://www.googleapis.com/auth/drive.file`, đóng cổng ngay khi xong hoặc quá hạn. Client ID và secret của ứng dụng Google do user đặt ở tệp JSON ngoài cây Git (đường dẫn từ cấu hình, nội dung không bao giờ in). Refresh token ghi vào `DpapiSecretStore` qua `SecretStorePort` với `secret_ref` `drive-primary-oauth`; PostgreSQL chỉ giữ metadata handle. `drive_token_provider.py` trả access token ngắn hạn cho broker và làm mới khi hết hạn; refresh token không rời broker. **Điểm dừng user thứ nhất**: user bấm đồng ý trên trình duyệt một lần (CP7-ADAPT-01); hướng dẫn từng bước nằm ở console của launcher và runbook (OI-ADAPT-03).
+`oauth_google_loopback.py` chạy luồng OAuth bằng `google-auth-oauthlib` đã khóa: máy chủ loopback `127.0.0.1` cổng ngẫu nhiên, PKCE và `state`, scope duy nhất `https://www.googleapis.com/auth/drive.file`, đóng cổng ngay khi xong hoặc quá hạn. Client ID và secret của ứng dụng Google do user đặt ở tệp JSON ngoài cây Git (đường dẫn từ cấu hình, nội dung không bao giờ in). Refresh token ghi vào `DpapiSecretStore` qua `SecretStorePort` với `secret_ref` `drive-primary-oauth`; PostgreSQL chỉ giữ metadata handle. `oauth_drive_token.py` trả access token ngắn hạn cho broker và làm mới khi hết hạn; refresh token không rời broker. **Điểm dừng user thứ nhất**: user bấm đồng ý trên trình duyệt một lần (CP7-ADAPT-01); hướng dẫn từng bước nằm ở console của launcher và runbook (OI-ADAPT-03).
 
 ## 6. Hồ sơ production, wiring, launcher và runbook
 
-1. **Hai hồ sơ**: `test` (mặc định, giữ hành vi của CP-4-WIRING) và `production`. `src/main.py` (BL-CV-06: CP-4-WIRING chỉ tạo bản đọc cấu hình, dựng `TransactionManager` rồi gọi `create_app`) được `ADAPT-PROD` mở rộng để ở `production` nạp `deploy/production/profile.json` (thiếu tham số thì từ chối khởi động, không default ẩn), gọi các `build_<phân hệ>_services` rồi `create_app`.
+1. **Hai hồ sơ**: `test` (mặc định, giữ hành vi của CP-4-WIRING) và `production`. `src/main.py` (BL-CV-06: CP-4-WIRING chỉ tạo bản đọc cấu hình, dựng `TransactionManager` rồi gọi `create_app`) được `ADAPT-PROD` mở rộng để ở `production` nạp `tools/launcher/prod/profile.json` (thiếu tham số thì từ chối khởi động, không default ẩn), gọi các `build_<phân hệ>_services` rồi `create_app`.
 2. **Một cổng loopback TLS**: uvicorn `127.0.0.1:8443`, chứng chỉ tự ký (SAN `127.0.0.1` và `localhost`) do launcher tạo bằng `cryptography` ngoài cây Git; `/v1/*` do `create_app` phục vụ, đường còn lại phục vụ `src/controlplane/ui/dist`; Origin cho phép đúng `https://127.0.0.1:8443` và `https://localhost:8443`.
 3. **Tắt test-driver ở máy chủ**: `create_test_application` và `TestDriver` (`src/controlplane/application/test_driver.py`) chỉ dành cho test; mô-đun production không import chúng nên mọi `/test-driver/*` trả 404.
 4. **Capability một lần (BL-CV-13, quyết định D8-ADAPT-02)**: `ui/dist` vẫn gọi `POST /test-driver/issue-capability` khi chưa có phiên (`api/client.ts` dòng 67 đến 83) và `App.tsx` dòng 49 đến 62 chấp nhận bootstrap thất bại khi cookie đã có. Launcher phát capability bằng `BootstrapCapabilityRegistry.issue` (TTL tối đa 60 giây, một lần) và mở `https://127.0.0.1:8443/launch?cap=<capability>`; route `GET /launch` mới (ngoài `/v1`) gọi `consume`, tạo phiên bằng `SessionSecurityService.create`, đặt cookie `cp_session` như `redeem_bootstrap` rồi chuyển hướng `/`. UI và spec M2 giữ nguyên byte; capability dùng lại hoặc quá hạn trả 403.
 5. **Wiring**: mỗi phân hệ một mô-đun `src/controlplane/api/wiring/<phân hệ>.py` với `build_<phân hệ>_services(manager, config)` do `CP-4-WIRING` tạo; `ADAPT-WIRE` đọc danh sách thật (tìm `def build_.*_services`) rồi mở rộng để ở `production` dựng service bằng adapter thật (A, D, E, F, I, J) trên kho PostgreSQL của các `GATE-PERSIST-*`; không tạo mô-đun trùng, không import chéo.
-6. **Launcher** (`deploy/launcher/launcher.py`, stdlib): `start` (compose, `MigrationRunner`, chứng chỉ, worker, capability, mở trình duyệt), `stop` (chỉ dừng worker; container và dữ liệu giữ nguyên, việc dở tiếp tục khi `start` lại), `down`, `status`, `backup`, `restore`, `oauth`. `docker-compose.yml`: `postgres` và `temporal` theo `image@sha256:<digest>` từ `runtime.lock.json`, cổng chỉ `127.0.0.1` (PostgreSQL `57028`, Temporal `7233`), volume đặt tên, không mở UI Temporal.
-7. **Runbook** (`docs/operations/runbook-v1.md`, tiếng Việt, sáu mục): khởi động, dừng, tiếp tục, sao lưu (`pg_dump` qua `docker exec`), khôi phục (recovery epoch mới theo G05), xử lý lỗi theo bảng triệu chứng; cộng danh sách giá trị chọn không có căn cứ đo (mục 7) cần đo ở CP7.
+6. **Launcher** (`tools/launcher/launcher.py`, stdlib): `start` (compose, `MigrationRunner`, chứng chỉ, worker, capability, mở trình duyệt), `stop` (chỉ dừng worker; container và dữ liệu giữ nguyên, việc dở tiếp tục khi `start` lại), `down`, `status`, `backup`, `restore`, `oauth`. `docker-compose.yml`: `postgres` và `temporal` theo `image@sha256:<digest>` từ `runtime.lock.json`, cổng chỉ `127.0.0.1` (PostgreSQL `57028`, Temporal `7233`), volume đặt tên, không mở UI Temporal.
+7. **Runbook** (`docs/runbook/runbook-v1.md`, tiếng Việt, sáu mục): khởi động, dừng, tiếp tục, sao lưu (`pg_dump` qua `docker exec`), khôi phục (recovery epoch mới theo G05), xử lý lỗi theo bảng triệu chứng; cộng danh sách giá trị chọn không có căn cứ đo (mục 7) cần đo ở CP7.
 8. **Thứ tự khởi động**: compose up, chờ PostgreSQL và Temporal khỏe, `MigrationRunner`, worker (sáu task queue của `GATE-CP-6-WORKFLOW`), ứng dụng, capability, trình duyệt.
 
 ## 7. Cấu hình production (giá trị của mọi đầu vào INPUT_NOT_READY và pendingUserCheckpoint)
 
-Mục này cho giá trị production của mọi tham số mà kế hoạch phân hệ đánh dấu `INPUT_NOT_READY` hoặc `pendingUserCheckpoint`. `ADAPT-CONFIG` ghi chúng vào `deploy/production/profile.json`, mỗi tham số có `value`, `reason` và `basis` (`DECIDED`, `MEASURED` hoặc `CONSERVATIVE_DEFAULT`). Giá trị không có căn cứ đo là `CONSERVATIVE_DEFAULT`, được ghi vào runbook và đo ở CP7; kết quả đo thay giá trị bằng revision cấu hình mới, không đổi mã. Nhãn «chưa đo» nghĩa là chưa có số đo trên máy này.
+Mục này cho giá trị production của mọi tham số mà kế hoạch phân hệ đánh dấu `INPUT_NOT_READY` hoặc `pendingUserCheckpoint`. `ADAPT-CONFIG` ghi chúng vào `tools/launcher/prod/profile.json`, mỗi tham số có `value`, `reason` và `basis` (`DECIDED`, `MEASURED` hoặc `CONSERVATIVE_DEFAULT`). Giá trị không có căn cứ đo là `CONSERVATIVE_DEFAULT`, được ghi vào runbook và đo ở CP7; kết quả đo thay giá trị bằng revision cấu hình mới, không đổi mã. Nhãn «chưa đo» nghĩa là chưa có số đo trên máy này.
 
 ### 7.1. Thu thập (A)
 
@@ -263,7 +263,7 @@ Lý do: bảy nguồn độc lập đủ cho điểm «số nguồn độc lập
 
 ### 7.8. Bộ hook và media seed tối thiểu cho lần chạy mẫu
 
-Tất cả do chính hệ thống tự tạo (không rủi ro bản quyền), sinh bằng `deploy/production/seed/make_seed_media.py`, đặt ngoài cây Git ở thư mục dữ liệu `seed` (gốc dữ liệu mặc định `LOCALAPPDATA/AIAutoVideoCreator`), ghi sha256 từng tệp trong `hooks.json`, nhập qua dịch vụ ứng dụng của C (`import_hook`, `register_discovery`), không qua UI.
+Tất cả do chính hệ thống tự tạo (không rủi ro bản quyền), sinh bằng `tools/launcher/prod/seed/make_seed_media.py`, đặt ngoài cây Git ở thư mục dữ liệu `seed` (gốc dữ liệu mặc định `LOCALAPPDATA/AIAutoVideoCreator`), ghi sha256 từng tệp trong `hooks.json`, nhập qua dịch vụ ứng dụng của C (`import_hook`, `register_discovery`), không qua UI.
 
 | Nhóm | Số lượng và đặc tả | Lý do |
 | --- | --- | --- |
@@ -275,7 +275,7 @@ Năm hook hình nhân năm hook âm thanh cho 25 tổ hợp, đủ cho 10 video 
 
 ### 7.9. Trọng số model và tài nguyên test
 
-Trọng số đặt ngoài cây Git ở `LOCALAPPDATA/AIAutoVideoCreator/models`. `deploy/production/model-weights.lock.json` ghi URL https cố định kèm sha256 từng tệp; sha256 chưa có trong tài liệu nên là `null` kèm `status` `BLOCKED` tới khi Control tải, tính hash và ghi (OI-ADAPT-06); Worker không bịa giá trị.
+Trọng số đặt ngoài cây Git ở `LOCALAPPDATA/AIAutoVideoCreator/models`. `tools/launcher/prod/model-weights.lock.json` ghi URL https cố định kèm sha256 từng tệp; sha256 chưa có trong tài liệu nên là `null` kèm `status` `BLOCKED` tới khi Control tải, tính hash và ghi (OI-ADAPT-06); Worker không bịa giá trị.
 
 | Tài nguyên | Địa chỉ cố định (Control xác minh khi tải) | sha256 |
 | --- | --- | --- |
@@ -310,7 +310,7 @@ Không mục nào là đã duyệt; mục cần user vẫn ở `pendingUserCheck
 | Mã | Nội dung | Mặc định đã chọn | Lý do |
 | --- | --- | --- | --- |
 | OI-ADAPT-01 | Phiên bản registry của bốn gói, nhất là `kokoro-onnx==0.4.9` | Control xác minh trên PyPI trước `ADAPT-DEPS`; lệnh làm việc thắng số trong kế hoạch | Orchestrator không có quyền gọi registry |
-| OI-ADAPT-02 | `ownership-and-locks.yaml` chưa phủ `deploy/**`, `docs/operations/**`, `tests/integration/adapt/**`, `ninerouter_executor.py`; `LOCK-PRODUCTION-PROFILE` là tên GIẢ ĐỊNH | Control mở rộng phong bì khi biên dịch | Registry thuộc `CP-2D-REGISTRY` |
+| OI-ADAPT-02 | Phong bì ownership phải phủ đường dẫn của mọi slice | Đường dẫn đã đặt trong phong bì hiện hành (`real_*.py`, `drive_*.py`, `oauth_*.py`, `tools/launcher/**`, `docs/runbook/**`, `tests/integration/adapt/**`) và mọi khóa lấy từ registry, không mở rộng phong bì | Registry thuộc `CP-2D-REGISTRY`; nếu Control đổi phong bì thì lập lại đường dẫn |
 | OI-ADAPT-03 | «Dashboard hướng dẫn OAuth từng bước» trong khi UI giữ nguyên | Hướng dẫn ở console của launcher và runbook; màn hình riêng cần slice UI mới | Ghi chú Control giữ nguyên UI và spec M2 |
 | OI-ADAPT-04 | Cấp phiên cho UI đã dựng (BL-CV-13) | Route `GET /launch` ở máy chủ (D8-ADAPT-02), không sửa UI | UI chấp nhận bootstrap thất bại khi đã có cookie |
 | OI-ADAPT-05 | Cổng và tên tuyến thật của 9Router | `http://127.0.0.1:20128/v1`, `ag/gemini-3.8-flash-high` | Giá trị mặc định thận trọng; Control xác nhận ở CP7-ADAPT-02 |
