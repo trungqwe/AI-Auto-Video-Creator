@@ -1,6 +1,6 @@
 """F-20: worker activity handler của F cho workflow G (CT-WF-003, CT-WF-006).
 
-coveredIds: CT-WF-003, CT-WF-006, TST-E2E-014 (phía F)
+coveredIds: CT-WF-003, CT-WF-006, TST-WF-INV-003, TST-E2E-014 (phía F)
 """
 from __future__ import annotations
 
@@ -249,7 +249,7 @@ def test_a_full_gpu_pool_gives_a_retryable_capacity_problem_without_waiting():
 
 
 @pytest.mark.parametrize('stale', [OLD_GENERATION, OLD_EPOCH], ids=['old_generation', 'old_recovery_epoch'])
-def test_stale_grant_is_rejected_before_any_input_lookup_or_commit(stale):
+def test_stale_grant_is_rejected_before_any_input_lookup_or_commit(stale):  # TST-WF-INV-003
     rig = ActivityRig()
     before = snapshot(rig.uow)
     result = run(rig, RENDER, 'op-key-1', [pkg_ref('package-1')], stale)
@@ -261,7 +261,7 @@ def test_stale_grant_is_rejected_before_any_input_lookup_or_commit(stale):
     assert rig.deps.results.get('ws-1', 'op-key-1') is None
 
 
-def test_stale_grant_cannot_write_a_new_attempt_after_a_current_one_committed():
+def test_stale_grant_cannot_write_a_new_attempt_after_a_current_one_committed():  # TST-WF-INV-003
     rig = ActivityRig()
     package_id, _ = rendered(rig)
     before = snapshot(rig.uow)
@@ -271,7 +271,7 @@ def test_stale_grant_cannot_write_a_new_attempt_after_a_current_one_committed():
     assert snapshot(rig.uow) == before and rig.renderer.calls == 1 and len(rig.lease.acquired) == 1
 
 
-def test_stale_grant_does_not_receive_the_stored_result_of_a_newer_generation():
+def test_stale_grant_does_not_receive_the_stored_result_of_a_newer_generation():  # TST-WF-INV-003
     rig = ActivityRig()
     run(rig, RESOLVE)
     result = run(rig, RESOLVE, grant=OLD_GENERATION)
@@ -569,4 +569,4 @@ def test_handler_never_reads_the_secret_values_of_a_command():
 
 def test_module_docstring_lists_the_covered_ids():
     docstring = ast.get_docstring(ast.parse(pathlib.Path(__file__).read_text(encoding='utf-8')))
-    assert 'coveredIds: CT-WF-003, CT-WF-006, TST-E2E-014' in docstring
+    assert 'coveredIds: CT-WF-003, CT-WF-006, TST-WF-INV-003, TST-E2E-014' in docstring
