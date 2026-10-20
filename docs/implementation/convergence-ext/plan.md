@@ -30,11 +30,11 @@ Mỗi mã BL-CV dưới đây là việc nằm ngoài phong bì của IMPL-PLAN-
 | BL-CV-09 | CP-6-WORKFLOW | A-18 sang GrantClaims (YC-HT-G-10) ở src/source_ingestion/worker/activity_handler.py và tests/integration/collection/test_a18_worker_activity.py | GATE-CP-6-WORKFLOW | PENDING |
 | BL-CV-10 | CP-6-WORKFLOW | src/controlplane/api/wiring/workflow.py | GATE-CP-6-WORKFLOW | PENDING |
 | BL-CV-15 | CP-6-WORKFLOW | toàn bộ ownedPaths của CP-6 | GATE-CP-6-WORKFLOW | PENDING |
-| BL-CV-14 | CP-2B-RUNTIME-PATHS (tools/runtime/runtime.lock.json) và CP-2B-PACKAGES (ba __init__.py, src/controlplane/pyproject.toml) | ghi ba pin D9; khai bốn gói và tạo ba __init__.py rỗng | GATE-CP-2B-DEPS-PATHS | PENDING |
+| BL-CV-14 | CP-2B-RUNTIME-PATHS (tools/runtime/runtime.lock.json, hai __init__.py của api/wiring và application/orchestration/workflows) và CP-2B-PACKAGES (src/controlplane/pyproject.toml) | ghi ba pin D9; tạo hai __init__.py rỗng; khai ba gói api.wiring, orchestration.workflows, infrastructure.storage | GATE-CP-2B-DEPS-PATHS | PENDING |
 
 Hai cạnh state machine PUC-J-03 và YC-HT-I-04 do CP-3C-STATE-EDGES xử lý; slice này không thả cổng Portfolio nào và chạy sau CP-3B-STATE-MACHINE và CP-2D-REGISTRY (mục 4).
 
-**GIẢ ĐỊNH**: GATE-CP-2B-DEPS-PATHS chỉ được thả khi cả CP-2B-RUNTIME-PATHS và CP-2B-PACKAGES đạt Auditor PASS; Control đối chiếu với Portfolio khi biên dịch. Các slice đang chờ CP-2B-DEPS (CP-4-WIRING, CP-6-WORKFLOW) giữ cạnh đó và chờ thêm cổng này; không bỏ cạnh nào.
+**GIẢ ĐỊNH**: GATE-CP-2B-DEPS-PATHS chỉ được thả khi cả CP-2B-RUNTIME-PATHS và CP-2B-PACKAGES đạt Auditor PASS; Control đối chiếu với Portfolio khi biên dịch. Các slice đang chờ CP-2B-DEPS (CP-4-WIRING, CP-6-WORKFLOW) giữ cạnh đó và chờ thêm cổng này; không bỏ cạnh nào. CP-2B-PACKAGES chạy sau CP-2B-RUNTIME-PATHS vì khai gói trong pyproject cần hai `__init__.py` đã có. `__init__.py` của gói `controlplane.api.routes.modules` và việc khai gói đó nằm ngoài phong bì của kế hoạch này, thuộc CP-2B-DEPS đã biên dịch (mục mở OI-EXT-02, mục 7).
 
 ## 3. Ba pin D9 trong tools/runtime/runtime.lock.json (CP-2B-RUNTIME-PATHS)
 
@@ -54,6 +54,7 @@ fmpeg.exe.
 ull hay BLOCKED trong tệp vì cả ba đã đo.
 - Tệp thuộc ownedPaths của CP-2B-RUNTIME-PATHS; CP-2B-DEPS đã biên dịch không chứa tệp này, nếu Control mở phong bì cho CP-2B-DEPS thì phần ghi tệp vẫn chỉ có một owner.
 - Định dạng đầu ra 1080x1920, 30 fps, H.264 (NVENC, libx264 dự phòng), AAC, MP4 là quyết định Control, không ghi vào tệp pin.
+- CP-2B-RUNTIME-PATHS cũng tạo hai `__init__.py` rỗng tại `src/controlplane/api/wiring/` và `src/controlplane/application/orchestration/workflows/`; CP-2B-PACKAGES chạy sau và chỉ khai gói trong `src/controlplane/pyproject.toml`.
 
 ## 4. Hai cạnh state machine đã duyệt (CP-3C-STATE-EDGES)
 
@@ -67,7 +68,7 @@ ull hay BLOCKED trong tệp vì cả ba đã đo.
 alidate_transition vẫn từ chối DELETED | src/controlplane/application/storage_meta/__init__.py |
 
 3. Contract và registry trong cùng slice: sửa CT-STATE-013 và CT-STATE-012 trong docs/09-contracts/12-state-machines.md; cập nhật source_sha256 và current_revision của CONTRACT-STATE-MACHINES trong docs/parallel-delivery/contract-registry.yaml (hiện cùng là 2cab18e858b2e78eb3a578b5a64568619d20c7cb09fed2cb7766bc0636fb9f28) bằng sha256 byte tệp contract sau khi sửa, tính bằng probe, không gõ tay.
-4. Thứ tự: sau CP-3B-STATE-MACHINE và CP-2D-REGISTRY (cùng sửa registry và giữ LOCK-CONTRACT-STATE-MACHINES). Test hiện có phải sửa: tests/unit/config/test_j_status_graph.py (đang khẳng định 5 cạnh và DEGRADED, INVALID không có cạnh thoát). Test M2 giữ nguyên byte; Control chạy tests/m2 trên PostgreSQL 18.6 sau slice.
+4. Thứ tự: sau CP-3B-STATE-MACHINE và CP-2D-REGISTRY (cùng sửa registry và giữ LOCK-CONTRACT-STATE-MACHINES). Test hiện có phải sửa: tests/unit/config/test_j_status_graph.py (đang khẳng định 5 cạnh và DEGRADED, INVALID không có cạnh thoát; cũng nhận thêm test phục hồi tài khoản và test record_cleanup_deleted, không tạo tệp test mới ngoài phong bì). Test M2 giữ nguyên byte; Control chạy tests/m2 trên PostgreSQL 18.6 sau slice.
 5. Mục mở OI-EXT-01: nơi lưu cleanup_receipt_ref ngoài receipt của cleanup executor; gói này không thêm cột hay migration, mặc định đơn giản là chỉ kiểm bằng chứng khi ghi.
 
 ## 5. Các BL-CV còn lại (không tuyên bố đã làm)
@@ -89,7 +90,7 @@ Không mục nào ở bảng này được ghi là đã làm; các slice CP-4-EV
 | Slice | dependsOn chính | Khóa tài nguyên | Cổng thả |
 | --- | --- | --- | --- |
 | CP-2B-RUNTIME-PATHS | IMPL-PLAN-CONVERGENCE, IMPL-PLAN-CONVERGENCE-EXT | LOCK-DEPENDENCY-UNIVERSE, LOCK-CONVERGENCE | GATE-CP-2B-DEPS-PATHS (cùng CP-2B-PACKAGES) |
-| CP-2B-PACKAGES | IMPL-PLAN-CONVERGENCE, IMPL-PLAN-CONVERGENCE-EXT | LOCK-DEPENDENCY-UNIVERSE, LOCK-CONVERGENCE | GATE-CP-2B-DEPS-PATHS |
+| CP-2B-PACKAGES | IMPL-PLAN-CONVERGENCE, IMPL-PLAN-CONVERGENCE-EXT, CP-2B-RUNTIME-PATHS | LOCK-DEPENDENCY-UNIVERSE, LOCK-CONVERGENCE | GATE-CP-2B-DEPS-PATHS |
 | CP-2D-REGISTRY | CP1-CONTRACT-BINDING, CP2A-LAYOUT, IMPL-PLAN-CONVERGENCE, IMPL-PLAN-CONVERGENCE-EXT | LOCK-PARALLEL-REGISTRY, LOCK-DOC-AUTHORITY, LOCK-DOC-INDEX, LOCK-CONVERGENCE | GATE-CP-2D-REGISTRY |
 | CP-3C-STATE-EDGES | CP-3B-STATE-MACHINE, CP-2D-REGISTRY, IMPL-PLAN-CONVERGENCE-EXT | LOCK-CONTRACT-STATE-MACHINES, LOCK-CONTRACT-SOURCE, LOCK-PARALLEL-REGISTRY, LOCK-SRC-STORAGE, LOCK-SRC-CONFIG-SECURITY, LOCK-CONVERGENCE | không thả cổng Portfolio |
 | CP-5-COMPLETION | CP-3-MIGRATIONS, CP-4-WIRING, GATE-PERSIST-C, GATE-PERSIST-G, GATE-PERSIST-I, CP-2D-REGISTRY, CP-2B-PACKAGES | LOCK-SRC-ORCHESTRATION, LOCK-COMPOSITION-ROOT, LOCK-POSTGRES-TEST-DB, LOCK-CONVERGENCE | GATE-CP-5-COMPLETION |
@@ -102,6 +103,7 @@ Cạnh gốc giữ nguyên: CP-3B-STATE-MACHINE chờ CP-2D-REGISTRY; CP-4-WIRIN
 - USER-CKPT-D9-D10 (thư viện và cách dựng lại runtime; ba pin đã có theo Control, không thay cho checkpoint này)
 - PUC-G-02 giữ nguyên, không mở cạnh nào
 - OI-EXT-01 (mục 4)
+- OI-EXT-02: `__init__.py` của gói `controlplane.api.routes.modules` và việc khai gói đó ở pyproject nằm ngoài phong bì của kế hoạch này; thuộc CP-2B-DEPS đã biên dịch, mặc định không làm ở đây
 - Điểm dừng user duy nhất của v1 trước nghiệm thu mẫu là OAuth Drive một lần
 - Nghiệm thu cuối gồm checkpoint M2 và ngoại lệ CP-2C
 - Không mục nào được ghi là đã duyệt.

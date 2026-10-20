@@ -1,7 +1,7 @@
 # Báo cáo bằng chứng IMPL-PLAN-CONVERGENCE-EXT
 
 - Task: `IMPL-PLAN-CONVERGENCE-EXT` (planning_package)
-- Trigger: `INITIAL`
+- Trigger: `REVIEW_FINDINGS` (vòng sửa F1; lần đầu là `INITIAL`)
 - Cơ sở: HEAD `bf52905b3b8547f82a51aa2ccc926f7b7ae1b0bc`
 - Tệp tạo mới:
   - `docs/implementation/convergence-ext/plan.md`
@@ -40,7 +40,7 @@ Nhắc plan.md mục 2 (BL-CV-01, 06, 08, 09, 10, 11, 14, 15) và mục 5 (BL-CV
 | BL-CV-09 | CP-6-WORKFLOW | A-18 sang GrantClaims (YC-HT-G-10) ở src/source_ingestion/worker/activity_handler.py và tests/integration/collection/test_a18_worker_activity.py | GATE-CP-6-WORKFLOW | PENDING |
 | BL-CV-10 | CP-6-WORKFLOW | src/controlplane/api/wiring/workflow.py | GATE-CP-6-WORKFLOW | PENDING |
 | BL-CV-15 | CP-6-WORKFLOW | toàn bộ ownedPaths của CP-6 | GATE-CP-6-WORKFLOW | PENDING |
-| BL-CV-14 | CP-2B-RUNTIME-PATHS (tools/runtime/runtime.lock.json) và CP-2B-PACKAGES (ba __init__.py, src/controlplane/pyproject.toml) | ghi ba pin D9; khai bốn gói và tạo ba __init__.py rỗng | GATE-CP-2B-DEPS-PATHS | PENDING |
+| BL-CV-14 | CP-2B-RUNTIME-PATHS (tools/runtime/runtime.lock.json, hai __init__.py của api/wiring và application/orchestration/workflows) và CP-2B-PACKAGES (src/controlplane/pyproject.toml) | ghi ba pin D9; tạo hai __init__.py rỗng; khai ba gói api.wiring, orchestration.workflows, infrastructure.storage | GATE-CP-2B-DEPS-PATHS | PENDING |
 
 ### 2. Các BL-CV còn lại (plan.md mục 5)
 
@@ -86,6 +86,18 @@ Interpreter khóa đã dùng: Python 3.13.12 (`C:\Users\Admin\AppData\Local\Prog
 | Probe Bước 18 (Kiểm tra plan.md: 15 mã BL-CV, 3 pin hex, 4 mã cổng, tên module ngoài, tiếng Việt có dấu > 500) | 0 | Đạt. Đủ 15 mã BL-CV-01..15, đủ 3 pin hex, đủ 4 mã cổng, diacritics > 500, không mất dấu. |
 | Probe Bước 19 (Kiểm tra slices.md: kind, locks, GATE-PERSIST-C, old hash trong CP-3C, cấm UI slice ids) - Lần 1 | 1 | Không đạt (`AssertionError: old hash recorded` do khối CP-3C ban đầu chưa ghép đủ phần acceptance 2). |
 | Probe Bước 19 (Kiểm tra slices.md: kind, locks, GATE-PERSIST-C, old hash trong CP-3C, cấm UI slice ids) - Lần 2 | 0 | Đạt. Khối CP-3C chứa đầy đủ acceptance 1, acceptance 2 với old hash 64 ký tự, testCommands và notes; toàn bộ 6 khối đều đạt kiểm tra. |
+
+## Vòng sửa REVIEW_FINDINGS (F1)
+
+- F1 (MAJOR) đã xử lý: đưa ownedPaths về đúng phong bì acceptance. CP-3C-STATE-EDGES bỏ hai tệp test mới `tests/unit/config/test_j_account_recovery.py` và `tests/unit/storage/test_i_cleanup_deleted.py`; các test mới nằm trong `tests/unit/config/test_j_status_graph.py`. CP-2B-PACKAGES bỏ `api/routes/modules/__init__.py` và việc khai gói tương ứng (OI-EXT-02), chuyển hai `__init__.py` của `api/wiring` và `application/orchestration/workflows` sang CP-2B-RUNTIME-PATHS, thêm cạnh `CP-2B-RUNTIME-PATHS` vào dependsOn.
+- F2, F3 (MINOR) không sửa trong vòng này theo kỷ luật hội tụ, đưa vào backlog.
+- Lệnh kiểm vòng này (chạy bằng interpreter khóa của lane):
+
+| Lệnh | Exit code | Kết quả |
+| --- | --- | --- |
+| `git diff --check` | 0 | Đạt. Không có lỗi khoảng trắng hay xung đột marker. |
+| Probe bắt buộc của task (bước 6) | 0 | Đạt. Đúng 6 slice, mỗi khối <= 7000 ký tự, tổng khối <= 38000 ký tự, cạnh GATE-PERSIST-* chuẩn xác, không có chr(65533). |
+| Probe đối chiếu F1 (bước 7) | 0 | Đạt. Hai init nằm ở runtime-paths, packages không sở hữu init và phụ thuộc runtime-paths, routes/modules không còn trong slices.md, không còn test_j_account_recovery và test_i_cleanup_deleted, test_j_status_graph.py vẫn được sở hữu. |
 
 ## Mục mở
 
