@@ -51,23 +51,23 @@
   - **(4) Nghiệm thu Acceptance Test mới (`test_20`)**: Bổ sung `test_20_sol_finding_candidate_dispatch_registration_and_credentials_remediated` trong `test_negative_fixtures.py` kiểm chứng toàn diện các trường hợp negative (chặn đọc/ghi credentials, từ chối đăng ký dispatch với base/candidate/task giả mạo, từ chối raw IPC, từ chối overrides) và positive (supervisor đăng ký dispatch hợp lệ, ký phong bì, consumer xác minh và tiêu thụ, chống replay tuần tự và đồng thời).
   - **(5) Kết quả kiểm thử**: Toàn bộ 404 test fixtures đạt PASS 100%; cổng kích hoạt sản xuất duy trì `ProductionActivationGate.STATUS == 'PRODUCTION_ACTIVATION_BLOCKED'`.
 
-## 2026-10-01 - Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n 6fc2d5a (Th?c thi Host-bound Authority, R?ng bu?c Dispatch x?c th?c v? T?ch bi?t Domain Role-to-Key nghi?m ng?t)
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 6fc2d5a (Thực thi Host-bound Authority, Ràng buộc Dispatch xác thực và Tách biệt Domain Role-to-Key nghiêm ngặt)
 
-- Kh?c ph?c tri?t ?? ph?t hi?n ??c l?p ROOT_ARCHITECTURE t? Sol tr?n exact candidate `6fc2d5ac30648b3d99b9c26d6150a6b96a2b2777` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
-  - **(1) R?ng bu?c Host-bound Authority v? Dispatch**: Lo?i b? ho?n to?n tham s? `envelope_data` kh?i `ExternalReviewProducer` v? `ExternalIntegrationProducer` (n?m `ProtocolViolationError` fail-closed); daemon t? ??ng tr?ch xu?t c?c tr??ng th?m quy?n (`candidate_commit`, `base_commit`, `delivery_task_id`, `role`, `phase`) t? b?n ghi dispatch ?? ??ng k? (`TrustedHostRegisterDispatch`) thay v? cho ph?p caller t?y ? cung c?p; t? ch?i m?i override commit/task mismatch.
-  - **(2) ??ng k?n Credential Vault trong Host State**: Chuy?n to?n b? th?ng tin x?c th?c daemon (`token`, `port`, `authkey`, `proc`) v?o `_HostBoundaryState` kh?ng th? truy c?p t? candidate; `_InternalHostBoundaryVaultMeta` n?m `ProtocolViolationError` fail-closed khi truy c?p.
-  - **(3) T?ch bi?t nghi?m ng?t Domain Role-to-Key**: Ph?n chia ??c quy?n th?m quy?n k? theo t?ng domain: ch? `rev_key_lead_v1` k? review, ch? `integ_gatekeeper_v1` k? integration; kh?a `control_authority_v1` b? c?m ho?n to?n kh?ng ???c k? phong b?; daemon v? producer t? ch?i wrong-role key fail-closed; consumer ki?m tra vai tr? d? ki?n tr??c khi x?c minh ch? k? v? tr??c khi ti?u th?.
-  - **(4) B?o to?n Snapshot Registry b?t bi?n tr??c Side Effect**: B? sung ph??ng th?c `snapshot()` trong `DurableConsumptionRegistry`; ch?ng minh t?t c? c?c n? l?c vi ph?m th?m quy?n ho?c sai vai tr? ??u b? ch?n tr??c `check_and_consume` v? kh?ng l?m thay ??i tr?ng th?i registry.
-  - **(5) Nghi?m thu Acceptance Test m?i (`test_19`)**: Th?m `test_19_sol_findings_remediation_root_architecture_and_role_separation` trong `test_negative_fixtures.py` ki?m ch?ng to?n di?n c?c k?ch b?n negative/positive cho c? 2 finding, ??t 100% PASS tr?n to?n b? 403 test fixtures.
+- Khắc phục triệt để phát hiện độc lập ROOT_ARCHITECTURE từ Sol trên exact candidate `6fc2d5ac30648b3d99b9c26d6150a6b96a2b2777` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Ràng buộc Host-bound Authority và Dispatch**: Loại bỏ hoàn toàn tham số `envelope_data` khỏi `ExternalReviewProducer` và `ExternalIntegrationProducer` (ném `ProtocolViolationError` fail-closed); daemon tự động trích xuất các trường thẩm quyền (`candidate_commit`, `base_commit`, `delivery_task_id`, `role`, `phase`) từ bản ghi dispatch đã đăng ký (`TrustedHostRegisterDispatch`) thay vì cho phép caller tùy ý cung cấp; từ chối mọi override commit/task mismatch.
+  - **(2) Đóng kín Credential Vault trong Host State**: Chuyển toàn bộ thông tin xác thực daemon (`token`, `port`, `authkey`, `proc`) vào `_HostBoundaryState` không thể truy cập từ candidate; `_InternalHostBoundaryVaultMeta` ném `ProtocolViolationError` fail-closed khi truy cập.
+  - **(3) Tách biệt nghiêm ngặt Domain Role-to-Key**: Phân chia độc quyền thẩm quyền ký theo từng domain: chỉ `rev_key_lead_v1` ký review, chỉ `integ_gatekeeper_v1` ký integration; khóa `control_authority_v1` bị cấm hoàn toàn không được ký phong bì; daemon và producer từ chối wrong-role key fail-closed; consumer kiểm tra vai trò dự kiến trước khi xác minh chữ ký và trước khi tiêu thụ.
+  - **(4) Bảo toàn Snapshot Registry bất biến trước Side Effect**: Bổ sung phương thức `snapshot()` trong `DurableConsumptionRegistry`; chứng minh tất cả các nỗ lực vi phạm thẩm quyền hoặc sai vai trò đều bị chặn trước `check_and_consume` và không làm thay đổi trạng thái registry.
+  - **(5) Nghiệm thu Acceptance Test mới (`test_19`)**: Thêm `test_19_sol_findings_remediation_root_architecture_and_role_separation` trong `test_negative_fixtures.py` kiểm chứng toàn diện các kịch bản negative/positive cho cả 2 finding, đạt 100% PASS trên toàn bộ 403 test fixtures.
 
-## 2026-10-01 - Kh?c ph?c tri?t ?? ph?t hi?n Sol Audit tr?n a25c80f (B?o v? th?ng tin x?c th?c Vault, Lo?i b? Generic Signing Endpoints v? T?ch bi?t External Envelope Producers ngo?i ti?n tr?nh)
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên a25c80f (Bảo vệ thông tin xác thực Vault, Loại bỏ Generic Signing Endpoints và Tách biệt External Envelope Producers ngoài tiến trình)
 
-- Kh?c ph?c tri?t ?? ph?t hi?n ??c l?p ROOT_ARCHITECTURE t? Sol tr?n exact candidate `a25c80f9f4ab965ce21e7fe5e09babd87c9cc8d8` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
-  - **(1) B?o v? th?ng tin x?c th?c Vault**: Th?m metaclass `_InternalHostBoundaryVaultMeta` ng?n ch?n ho?n to?n truy c?p tr?c ti?p v?o thu?c t?nh `.token`, `.port`, `.authkey` t? m? in-process (n?m `ProtocolViolationError` fail-closed).
-  - **(2) Lo?i b? Generic Signing Endpoint**: Daemon ngo?i ti?n tr?nh t? ch?i l?nh `SIGN_FIXTURE_PAYLOAD` fail-closed, kh?ng k? b?t k? payload bytes t?y ? n?o t? caller.
-  - **(3) Lo?i b? Generic Signing Functions**: X?a b? ho?n to?n 6 h?m k? m? generic (`host_sign_fixture_payload`, `host_sign_review_envelope`, `host_sign_integration_envelope` v? c?c b? danh `TrustedHostSign*`) kh?i b? m?t candidate; c? g?ng import b? ch?n b?i `ImportError` fail-closed.
-  - **(4) Chuy?n Envelope Construction sang External Producers**: B? sung `ExternalReviewProducer` v? `ExternalIntegrationProducer` (c?ng b? danh `TrustedExternal*`); daemon ngo?i ti?n tr?nh t? d?ng canonical envelope v? t? bind metadata, ng?n ch?n ho?n to?n kh? n?ng candidate t? ch? t?o v? xin ch? k? cho arbitrary payload.
-  - **(5) C?p nh?t v? m? r?ng Negative Fixtures**: C?p nh?t to?n b? c?c b?i ki?m th? k? phong b? trong `test_negative_fixtures.py` sang external producers; m? r?ng `test_18z` ki?m ch?ng 11 ti?u ch? b?o m?t to?n di?n.
+- Khắc phục triệt để phát hiện độc lập ROOT_ARCHITECTURE từ Sol trên exact candidate `a25c80f9f4ab965ce21e7fe5e09babd87c9cc8d8` (approved base: `4a7c8c921b7e05066505d51b168a02c3fde61317`):
+  - **(1) Bảo vệ thông tin xác thực Vault**: Thêm metaclass `_InternalHostBoundaryVaultMeta` ngăn chặn hoàn toàn truy cập trực tiếp vào thuộc tính `.token`, `.port`, `.authkey` từ mã in-process (ném `ProtocolViolationError` fail-closed).
+  - **(2) Loại bỏ Generic Signing Endpoint**: Daemon ngoài tiến trình từ chối lệnh `SIGN_FIXTURE_PAYLOAD` fail-closed, không ký bất kỳ payload bytes tùy ý nào từ caller.
+  - **(3) Loại bỏ Generic Signing Functions**: Xóa bỏ hoàn toàn 6 hàm ký mã generic (`host_sign_fixture_payload`, `host_sign_review_envelope`, `host_sign_integration_envelope` và các bí danh `TrustedHostSign*`) khỏi bề mặt candidate; cố gắng import bị chặn bởi `ImportError` fail-closed.
+  - **(4) Chuyển Envelope Construction sang External Producers**: Bổ sung `ExternalReviewProducer` và `ExternalIntegrationProducer` (cùng bí danh `TrustedExternal*`); daemon ngoài tiến trình tự dựng canonical envelope và tự bind metadata, ngăn chặn hoàn toàn khả năng candidate tự chế tạo và xin chữ ký cho arbitrary payload.
+  - **(5) Cập nhật và mở rộng Negative Fixtures**: Cập nhật toàn bộ các bài kiểm thử ký phong bì trong `test_negative_fixtures.py` sang external producers; mở rộng `test_18z` kiểm chứng 11 tiêu chí bảo mật toàn diện.
 
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên 2eb47f6 (Loại bỏ hoàn toàn Private Key khỏi In-Process/Fixture, Cơ chế ký mờ qua IPC và Quản lý khóa ngoài tiến trình)
 
@@ -77,22 +77,22 @@
   - **(3) Cập nhật Negative Fixtures**: Toàn bộ các bài kiểm thử ký phong bì chuyển sang sử dụng helper ký mờ; thêm `test_18z` kiểm chứng toàn diện các tiêu chí nghiệm thu của reviewer Sol.
   - **(4) Niêm phong sealed module**: Bổ sung các helper ký mờ vào `_SEALED_ATTRS` trong `_SealedFixtureModule`.
 
-## 2026-10-01 � Kh?c ph?c tri?t d? ph�t hi?n Sol Audit tr�n b5af69c (Key Custody Invariant, C?p Ph�t Pinned Key Material B?t Bi?n & T? Ch?i Caller-Selected Bytes)
+## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên b5af69c (Key Custody Invariant, Cấp Phát Pinned Key Material Bất Biến & Từ Chối Caller-Selected Bytes)
 
-- Kh?c ph?c tri?t d? ph�t hi?n d?c l?p (actionable finding) t? Sol tr�n exact candidate b5af69c7b81733df99ace98731bbd06ffee1bd1a (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
-  - **(1) Host Boundary �?c Quy?n C?p Ph�t Pinned Key Material B?t Bi?n**:
-    - Trong `docs/parallel-delivery/test_host_boundary_harness.py`, `_ensure_internal_host_boundary_harness()` t?o v� s? h?u c�c c?p kh�a Ed25519 b?t bi?n cho `ALLOWED_FIXTURE_KEY_IDS` (`rev_key_lead_v1`, `integ_gatekeeper_v1`, `control_authority_v1`) t?i `_InternalHostBoundaryVault.fixture_keypairs` v� `_InternalHostBoundaryVault.fixture_public_keys` (`MappingProxyType`).
-    - B? sung helper m�y ch? `get_fixture_authority_keypair(key_id)` v� `get_fixture_authority_public_key(key_id)` b?o d?m quy?n luu k� kh�a thu?c v? ranh gi?i host.
-  - **(2) T? Ch?i Tri?t �? Caller-Selected Public Key Bytes Fail-Closed**:
-    - C?p nh?t `TrustedHostIsolatedKeyStore` v� `TrustedHostKeyStoreHandoff` th�ng qua `_validate_and_resolve_fixture_pinned_keys`: t? ch?i l?p t?c b?t k? caller-selected public key bytes n�o kh�ng kh?p ch�nh x�c v?i host pinned keys (`hmac.compare_digest`) v?i `ProtocolViolationError`.
-  - **(3) C?p Nh?t Fixture Suite S? D?ng Pinned Key Material C?a Host**:
-    - Chuy?n 11 v? tr� kh?i t?o kh�a (`test_03`, `test_04`, `test_05`, `test_06`, `test_07`, `test_10`, `test_11d`, `test_12`, `test_13`, `test_14`, `test_15`) sang l?y key material ch�nh danh t? host boundary.
+- Khắc phục triệt để phát hiện độc lập (actionable finding) từ Sol trên exact candidate b5af69c7b81733df99ace98731bbd06ffee1bd1a (approved base: 4a7c8c921b7e05066505d51b168a02c3fde61317):
+  - **(1) Host Boundary Độc Quyền Cấp Phát Pinned Key Material Bất Biến**:
+    - Trong `docs/parallel-delivery/test_host_boundary_harness.py`, `_ensure_internal_host_boundary_harness()` tạo và sở hữu các cặp khóa Ed25519 bất biến cho `ALLOWED_FIXTURE_KEY_IDS` (`rev_key_lead_v1`, `integ_gatekeeper_v1`, `control_authority_v1`) tại `_InternalHostBoundaryVault.fixture_keypairs` và `_InternalHostBoundaryVault.fixture_public_keys` (`MappingProxyType`).
+    - Bổ sung helper máy chủ `get_fixture_authority_keypair(key_id)` và `get_fixture_authority_public_key(key_id)` bảo đảm quyền lưu ký khóa thuộc về ranh giới host.
+  - **(2) Từ Chối Triệt Để Caller-Selected Public Key Bytes Fail-Closed**:
+    - Cập nhật `TrustedHostIsolatedKeyStore` và `TrustedHostKeyStoreHandoff` thông qua `_validate_and_resolve_fixture_pinned_keys`: từ chối lập tức bất kỳ caller-selected public key bytes nào không khớp chính xác với host pinned keys (`hmac.compare_digest`) với `ProtocolViolationError`.
+  - **(3) Cập Nhật Fixture Suite Sử Dụng Pinned Key Material Của Host**:
+    - Chuyển 11 vị trí khởi tạo khóa (`test_03`, `test_04`, `test_05`, `test_06`, `test_07`, `test_10`, `test_11d`, `test_12`, `test_13`, `test_14`, `test_15`) sang lấy key material chính danh từ host boundary.
   - **(4) Regression Counterexample Fresh Subprocess Trong test_18y**:
-    - C?p nh?t b�i ki?m tra `test_18y`: t�i hi?n counterexample an to�n c?a Sol, kh?ng d?nh `ALLOWED_ID_ATTACKER_KEY_ACCEPTED == False`, n? l?c truy?n caller-selected bytes b? ch?n fail-closed, v� kh?ng d?nh positive control ch? k� host-owned x�c minh th�nh c�ng.
-  - **(5) Ni�m Phong To�n Di?n Trong _SealedFixtureModule**:
-    - Kh�a k�n to�n b? helper m?i (`get_fixture_authority_...`, `TrustedHostFixture...`) kh?i candidate module.
-  - **(6) To�n B? B? Ki?m Th? & C?ng Th?m �?nh PASS 100%**:
-    - To�n b? **401/401 tests PASS (100%)**, 12/12 checks PASS; `PRODUCTION_ACTIVATION_BLOCKED` ti?p t?c du?c b?o v? fail-closed.
+    - Cập nhật bài kiểm tra `test_18y`: tái hiện counterexample an toàn của Sol, khẳng định `ALLOWED_ID_ATTACKER_KEY_ACCEPTED == False`, nỗ lực truyền caller-selected bytes bị chặn fail-closed, và khẳng định positive control chữ ký host-owned xác minh thành công.
+  - **(5) Niêm Phong Toàn Diện Trong _SealedFixtureModule**:
+    - Khóa kín toàn bộ helper mới (`get_fixture_authority_...`, `TrustedHostFixture...`) khỏi candidate module.
+  - **(6) Toàn Bộ Bộ Kiểm Thử & Cổng Thẩm Định PASS 100%**:
+    - Toàn bộ **401/401 tests PASS (100%)**, 12/12 checks PASS; `PRODUCTION_ACTIVATION_BLOCKED` tiếp tục được bảo vệ fail-closed.
 
 ## 2026-10-01 — Khắc phục triệt để phát hiện Sol Audit trên a7d9820 (Tách Biệt Hoàn Toàn Test Harness Ra Module Riêng Biệt, Vô Hiệu Hóa Bypass Raw Module Dictionary & Khử Triệt Để Quyền Tự Cấp Khóa)
 
