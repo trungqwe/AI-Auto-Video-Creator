@@ -19,6 +19,8 @@ from controlplane.domain.interfaces.outbox import IOutboxWriter
 from controlplane.domain.interfaces.uow import IUnitOfWork
 from controlplane.infrastructure.db.migration_runner import MigrationRunner
 from controlplane.infrastructure.db.uow import TransactionManager
+from voice.application.media_pipeline import MediaUnitOfWork
+from voice.application.voice_pipeline import VoiceUnitOfWork
 from voice.domain.voice_track import VoiceTrack
 from voice.domain.word_timing import WordTimingRecord, validate_word_timing
 from voice.persistence import (
@@ -402,6 +404,20 @@ def test_persist_e_unit_of_work_guards(manager: TransactionManager, migrated_db:
         unbound.outputs.latest(KIND_VOICE, 'k')
     with unbound.bind(workspace_id=WORKSPACE_ID):
         assert unbound.outputs.latest(KIND_VOICE, 'k') is None
+
+
+@pytest.mark.parametrize('protocol', [VoiceUnitOfWork, MediaUnitOfWork])
+def test_persist_e_unit_of_work_satisfies_voice_and_media_ports(manager: TransactionManager, protocol: type) -> None:
+    uow = _uow(manager)
+    required = {'outputs', 'outbox', 'commit', '__enter__', '__exit__'}
+    assert set(protocol.__annotations__) <= required
+    for name in required | set(protocol.__annotations__):
+        assert hasattr(uow, name), name
+    assert isinstance(uow.outputs, OutputRepository) and isinstance(uow.outbox, IOutboxWriter)
+    with uow as entered:
+        assert entered is uow and uow.active
+        uow.commit()
+    assert not uow.active
 
 
 def test_persist_e_connections_return_to_pool(manager: TransactionManager, migrated_db: Db) -> None:

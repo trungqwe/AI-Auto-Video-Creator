@@ -105,6 +105,16 @@ Exit code: 0
 - Bước 6 (quét adapter):
   - Exit code: 0 (không có AssertionError)
 
+## 5c. Kiểm lại ở HEAD b979cb1 và bổ sung test tuân thủ cổng UoW
+
+- Lý do: acceptance 2 yêu cầu PostgresVoiceUnitOfWork thỏa VoiceUnitOfWork và MediaUnitOfWork; trước đó test chỉ kiểm IUnitOfWork và IOutboxWriter.
+- Thay đổi: thêm test_persist_e_unit_of_work_satisfies_voice_and_media_ports (tham số hóa theo hai Protocol, kiểm đủ thành viên outputs, outbox, commit, __enter__, __exit__ và vòng vào/ra giao dịch); mã adapter không đổi.
+- Test mới xanh ngay khi thêm vì adapter đã đủ thành viên; đây là test đặc trưng, không phải RED mới. Oracle RED của adapter vẫn là mục 3.
+- Bước 1 (trước khi thêm test): dòng tổng kết 17 passed in 10.04s, exit code 0.
+- Bước 4 (sau khi thêm test): dòng tổng kết 19 passed in 12.47s, exit code 0.
+- Bước 5 (quét adapter): exit code 0.
+- git diff --check: chạy lại sau khi ghi báo cáo, kết quả xem trong worker_done.
+
 ## 6. Mục mở
 
 - OI-PERSIST-E-01: chỉ cài KIND_VOICE và KIND_WORD_TIMING theo yêu cầu; các kind khác mà VoicePipeline và MediaPipeline đang dùng (receipt, receipt_by_request, tts_invocation, timing_report, language_evidence, probe_report, image_safety_assessment, processed_media, audio_bed_result) ném UnsupportedKindError nên chưa thể nối UoW này vào pipeline ở CP-4-WIRING cho tới khi có slice bổ sung; không tự thêm kind.
