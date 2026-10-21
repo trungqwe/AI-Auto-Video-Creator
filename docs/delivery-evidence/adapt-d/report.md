@@ -1,7 +1,13 @@
 # ADAPT-D: AIInvocationPort trên RoutedInvocationService qua 9Router
 
 ## 1. Phạm vi và tệp đã sửa
-Liệt kê: src/controlplane/config/adapter.py (thêm ApprovedEndpointRegistry.from_config và config_owned; NineRouterHTTPAdapter chấp nhận registry config_owned; DEFAULT_APPROVED_ENDPOINTS giữ nguyên), src/creative/adapters/real_route_executor.py, src/creative/adapters/real_ai_invocation.py, tests/integration/adapt/d/test_adapt_d_ai.py, docs/delivery-evidence/adapt-d/report.md. Nêu rõ không sửa tests/unit/security/test_http_router_adapter.py.
+- `src/controlplane/config/adapter.py` (thêm `ApprovedEndpointRegistry.from_config` và thuộc tính `config_owned`; `NineRouterHTTPAdapter` chấp nhận registry `config_owned`; `DEFAULT_APPROVED_ENDPOINTS` giữ nguyên)
+- `src/creative/adapters/real_route_executor.py` (mô-đun mới)
+- `src/creative/adapters/real_ai_invocation.py`
+- `tests/integration/adapt/d/test_adapt_d_ai.py`
+- `docs/delivery-evidence/adapt-d/report.md`
+Không sửa `tests/unit/security/test_http_router_adapter.py`.
+Rebase: HEAD d28aefd là con trực tiếp của integration head 258b993, không có xung đột, không đổi mã sản phẩm ở lượt cấp lại này.
 
 ## 2. Thiết kế và giả định D8
 - RoutedAIInvocation gọi RoutedInvocationService.invoke (J-18), không tự resolve; WAITING_PROVIDER do RATE_LIMIT hoặc TIMEOUT (hoặc chưa có route) và BUDGET_BLOCKED thành WaitingAIInvocationResult (retryable=True); WAITING_PROVIDER sau lỗi AUTH hoặc UNKNOWN là lỗi cuối provider_failed để thông tin xác thực sai không chờ vô hạn.
@@ -10,15 +16,13 @@ Liệt kê: src/controlplane/config/adapter.py (thêm ApprovedEndpointRegistry.f
 - should_block của J chặn khi chi đã tiêu lớn hơn hạn mức (bằng đúng hạn mức chưa chặn); đây là hành vi J-18 hiện có, không đổi ở slice này.
 
 ## 3. Lệnh đã chạy
-Bảng: lệnh, exit code, kết quả thực tế cho bước 2 (RED: nêu 4 test lỗi AttributeError), bước 5, bước 25 (số test passed), bước 26, và git diff --check.
+Kết quả chạy trên baseline đã rebase (stdout/stderr và exit code thực tế):
 
 | Bước | Lệnh | Exit code | Kết quả thực tế |
 | --- | --- | --- | --- |
-| Bước 2 | `python -m pytest tests/integration/adapt/d/test_adapt_d_ai.py -q -p no:cacheprovider` | 1 | 4 failed (RED hợp lệ: AttributeError tại `ApprovedEndpointRegistry.from_config` và `config_owned`) |
-| Bước 5 | `python -m pytest tests/integration/adapt/d/test_adapt_d_ai.py tests/unit/security/test_http_router_adapter.py -q -p no:cacheprovider` | 0 | 7 passed in 0.09s (4 test registry đạt, 3 test unit security giữ nguyên và đạt) |
-| Bước 25 | `python -m pytest tests/integration/adapt/d/test_adapt_d_ai.py tests/unit/security/test_http_router_adapter.py -q -p no:cacheprovider` | 0 | 20 passed in 0.17s (toàn bộ 17 test tích hợp D và 3 test unit security đều xanh) |
-| Bước 26 | `python -c "import pathlib; t = ' '.join(pathlib.Path(p).read_text(encoding='utf-8') for p in ['src/creative/adapters/real_ai_invocation.py', 'src/creative/adapters/real_route_executor.py']); assert 'RoutedInvocationService' in t and 'mock-9router' not in t and 'from src.' not in t, 'adapter D'"` | 0 | Khớp probe: 'RoutedInvocationService' hiện diện, không có 'mock-9router' và không có 'from src.' |
-| Kiểm tra diff | `git diff --check` | 0 | Sạch, không có cảnh báo whitespace hay lỗi xuống dòng |
+| Lệnh 1 | git diff --check | 0 | Sạch |
+| Lệnh 2 | python -m pytest tests/integration/adapt/d/test_adapt_d_ai.py tests/unit/security/test_http_router_adapter.py -q -p no:cacheprovider | 0 | 20 passed (17 test tích hợp D, 3 test unit security) |
+| Lệnh 3 | probe adapter D (RoutedInvocationService có, mock-9router và from src. không có) | 0 | Đạt |
 
 ## 4. RED/GREEN
 Nêu trung thực: RED hợp lệ chỉ chứng kiến cho phần registry (AttributeError). Phần real_* được viết sau test registry nên không có RED riêng của phần AI; không tuyên bố ngược lại.
