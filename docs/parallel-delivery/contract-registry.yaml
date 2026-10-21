@@ -250,8 +250,8 @@ contracts:
       - J
     consumers: [A, B, C, D, E, F, G, H, I, J]
     kind: state_machine
-    current_revision: sha256:2cab18e858b2e78eb3a578b5a64568619d20c7cb09fed2cb7766bc0636fb9f28
-    source_sha256: 2cab18e858b2e78eb3a578b5a64568619d20c7cb09fed2cb7766bc0636fb9f28
+    current_revision: sha256:dba18f16f63959c95e4d2ff7d629fd1598137b432876e073cb7152b297aab0af
+    source_sha256: dba18f16f63959c95e4d2ff7d629fd1598137b432876e073cb7152b297aab0af
     lifecycle: active_accepted
     compatibility_window: all_persisted_nonterminal_entities_and_running_workflows
     lock: LOCK-CONTRACT-STATE-MACHINES

@@ -98,6 +98,45 @@ class ArtifactLocationStore:
             raise ForbiddenTransitionError(aggregate_type="artifact_location", current_state=kwargs["current_state"], requested_next_state=kwargs["requested_state"], current_revision=kwargs["current_revision"])
         return transition_artifact_location(**kwargs)
 
+    def record_cleanup_deleted(self, **kwargs: Any) -> ArtifactLocation:
+        """The only write path to DELETED (YC-HT-I-04): needs a matching CleanupAuthorization and cleanup evidence."""
+        repository = _repository(self._repository_factory, kwargs)
+        location = repository.get_location(kwargs["workspace_id"], kwargs["location_id"])
+        if location is None:
+            raise PermissionError("artifact location not found in workspace")
+        if location.state is not ArtifactLocationState.CLEANUP_AUTHORIZED:
+            raise ValueError("POLICY_VIOLATION: location is not cleanup authorized")
+        if location.revision != kwargs["expected_revision"]:
+            raise RevisionConflictError(location.revision)
+        authorization = kwargs.get("authorization")
+        if (
+            not isinstance(authorization, CleanupAuthorization)
+            or authorization.workspace_id != location.workspace_id
+            or authorization.location_id != location.location_id
+            or authorization.artifact_version_id != location.artifact_version_id
+            or kwargs.get("artifact_version_id") != location.artifact_version_id
+        ):
+            raise ValueError("POLICY_VIOLATION: cleanup authorization mismatch")
+        version = repository.get_version(location.workspace_id, location.artifact_version_id)
+        if (
+            version is None
+            or version.artifact_version_id != location.artifact_version_id
+            or version.sha256_hash != authorization.artifact_hash
+            or version.sha256_hash != kwargs.get("artifact_hash")
+        ):
+            raise ValueError("POLICY_VIOLATION: artifact binding mismatch")
+        if kwargs.get("cleanup_deleted") is not True:
+            raise ValueError("POLICY_VIOLATION: cleanup did not confirm deletion")
+        receipt_ref = kwargs.get("cleanup_receipt_ref")
+        if not isinstance(receipt_ref, str) or not receipt_ref.strip() or _UNSAFE_REFERENCE.search(receipt_ref):
+            raise ValueError("VALIDATION_ERROR: unsafe cleanup_receipt_ref")
+        transition_artifact_location(current_state=location.state, current_revision=location.revision, expected_revision=kwargs["expected_revision"], requested_state=ArtifactLocationState.DELETED)
+        result = repository.update_location(location, kwargs["expected_revision"], ArtifactLocationState.DELETED, None)
+        if result is None:
+            latest = repository.get_location(location.workspace_id, location.location_id)
+            raise RevisionConflictError(latest.revision if latest else location.revision)
+        return result
+
 
 class CleanupAuthorizationStore:
     def __init__(self, repository_factory: RepositoryFactory) -> None:

@@ -3,12 +3,13 @@
 Pure domain: no I/O, no clock, no mutation; every function returns a new ExternalAccount and the caller passes `now_iso`.
 The account holds credential metadata only (version, timestamps), never a secret value or handle.
 REVOKED -> ENABLED is not an ACCOUNT_EDGES edge (J-04, D8-J-09); it exists only in reactivate_with_new_credential.
+DEGRADED/INVALID -> ENABLED (PUC-J-03) is an ACCOUNT_EDGES edge used only by recover_after_passing_test.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from controlplane.domain.config_security.status_graph import ExternalAccountStatus, account_status_view
+from controlplane.domain.config_security.status_graph import ExternalAccountStatus, account_status_view, require_account_transition
 
 
 @dataclass(frozen=True)
@@ -86,3 +87,17 @@ def reactivate_with_new_credential(account: ExternalAccount, new_version: int, n
         account, status=ExternalAccountStatus.ENABLED, credential_version=new_version, credential_updated_at=now_iso,
         revision=account.revision + 1,
     )
+
+
+_RECOVERABLE = frozenset({ExternalAccountStatus.DEGRADED, ExternalAccountStatus.INVALID})
+
+
+def recover_after_passing_test(account: ExternalAccount) -> ExternalAccount:
+    """New ENABLED account from a DEGRADED or INVALID one, revision+1 (PUC-J-03); any other status raises ValueError.
+
+    The caller proves the passing CT-ACC-002 test of this same account; this pure function never probes or reads a secret.
+    """
+    if account.status not in _RECOVERABLE:
+        raise ValueError('only a DEGRADED or INVALID account can recover after a passing test')
+    require_account_transition(account.status, ExternalAccountStatus.ENABLED, account.revision)
+    return replace(account, status=ExternalAccountStatus.ENABLED, revision=account.revision + 1)
