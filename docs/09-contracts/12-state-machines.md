@@ -188,15 +188,19 @@ Từ `VERIFIED`: → `CLEANUP_ELIGIBLE` → `CLEANUP_AUTHORIZED` → `DELETED`. 
 
 Location có thể bị đánh `MISSING` sau lần verify trước; artifact version vẫn tồn tại logic và có thể có location khác. Không có recovery edge P4 từ `MISSING`, `CORRUPT` hoặc `OUTCOME_UNKNOWN`, và không có cleanup shortcut.
 
+Cạnh `CLEANUP_AUTHORIZED` → `DELETED` (YC-HT-I-04) chỉ được ghi qua đường ghi có bằng chứng cleanup: location đang `CLEANUP_AUTHORIZED`, CleanupAuthorization khớp location, artifact version và hash, kết quả cleanup xác nhận đã xóa, và có `cleanup_receipt_ref` hợp lệ. Không có đường ghi nào khác sang `DELETED`; transition chung vẫn từ chối `DELETED`.
+
 ## 14. Configuration và external account
 
 ### CT-STATE-013
 
 ConfigRevision có đúng các cạnh sau: `DRAFT → PUBLISHED`; `PUBLISHED → SUPERSEDED`; và `DRAFT | PUBLISHED | SUPERSEDED → INVALIDATED` khi owner J xác nhận security defect. `INVALIDATED` là terminal. `SUPERSEDED` không terminal tuyệt đối: không có cạnh nghiệp vụ thường nào đi ra, nhưng vẫn có cạnh security-invalidation tường minh đến `INVALIDATED` để lưu sự kiện security của revision lịch sử. Mọi cạnh không được liệt kê đều bị cấm, gồm `DRAFT → SUPERSEDED`, `SUPERSEDED → PUBLISHED`, `INVALIDATED → *`, mọi self-transition và mọi cạnh từ `DRAFT`/`PUBLISHED` khác các cạnh nêu trên. Cạnh cấm trả `FORBIDDEN_TRANSITION` và không có side effect.
 
-Security invalidation không sửa payload, content hash, identity hay revision của ConfigRevision bất biến; nó chỉ commit state/audit/evidence security theo owner J. Job phụ thuộc phải chờ hoặc đánh giá lại theo policy. ExternalAccount tiếp tục là aggregate riêng; graph dưới đây không cấp quyền mở rộng lifecycle account.
+Security invalidation không sửa payload, content hash, identity hay revision của ConfigRevision bất biến; nó chỉ commit state/audit/evidence security theo owner J. Job phụ thuộc phải chờ hoặc đánh giá lại theo policy. ExternalAccount tiếp tục là aggregate riêng; graph dưới đây chỉ mở đúng một ngoại lệ lifecycle account là cạnh phục hồi PUC-J-03 (ARCHITECTURE_CHANGE do user duyệt ngày 20/10/2026), không cấp quyền mở rộng nào khác.
 
 External account: `DISABLED` ↔ `ENABLED` → `DEGRADED` | `INVALID` | `REVOKED`.
+
+Cạnh phục hồi PUC-J-03: `DEGRADED` | `INVALID` → `ENABLED` chỉ khi lần kiểm CT-ACC-002 của chính tài khoản đó đạt (`ok` là true và `external_account_id` khớp tài khoản). Ngoài hai cạnh này, `DEGRADED` và `INVALID` không có cạnh thoát; mọi cạnh khác không được liệt kê đều bị cấm.
 
 `REVOKED` là terminal cho credential version; account có thể được kích hoạt bằng credential version mới, không hồi sinh secret cũ.
 

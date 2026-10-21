@@ -1,7 +1,7 @@
 """J-04: đồ thị trạng thái ConfigRevision và ExternalAccount (CT-STATE-013, CT-ACC-001; D8-J-09).
 
-Pure domain: no I/O, no clock, no mutation. Edges are the exact CT-STATE-013 text; self-transitions are forbidden, INVALIDATED is terminal
-and DEGRADED, INVALID, REVOKED have no exit edge (REVOKED is re-enabled only by a new credential version, J-06).
+Pure domain: no I/O, no clock, no mutation. Edges are the exact CT-STATE-013 text including the two PUC-J-03 recovery edges (DEGRADED -> ENABLED, INVALID -> ENABLED); self-transitions are forbidden, INVALIDATED is terminal
+and REVOKED has no exit edge (REVOKED is re-enabled only by a new credential version, J-06).
 ConfigRevisionStatus and ForbiddenTransitionError are imported read-only.
 """
 from __future__ import annotations
@@ -36,6 +36,8 @@ ACCOUNT_EDGES: frozenset[tuple[ExternalAccountStatus, ExternalAccountStatus]] = 
     (ExternalAccountStatus.ENABLED, ExternalAccountStatus.DEGRADED),
     (ExternalAccountStatus.ENABLED, ExternalAccountStatus.INVALID),
     (ExternalAccountStatus.ENABLED, ExternalAccountStatus.REVOKED),
+    (ExternalAccountStatus.DEGRADED, ExternalAccountStatus.ENABLED),
+    (ExternalAccountStatus.INVALID, ExternalAccountStatus.ENABLED),
 })
 
 
