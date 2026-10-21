@@ -54,16 +54,31 @@
 
 ## Lệnh đã chạy
 
-| STT | Lệnh kiểm | Exit code | Kết quả thực tế |
+Các lệnh kiểm tra được thực thi bằng interpreter khoá của lane (`C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\33f06a7a\venv\Scripts\python.exe`).
+
+| STT | Mã | Exit code | Kết quả thực tế |
 | --- | --- | --- | --- |
-| 1 | `git diff --check` | 0 | Không có lỗi khoảng trắng thừa, ký tự lạ hoặc conflict marker. |
-| 2 | `python -m pytest tests/contract/test_bindings.py -q -p no:cacheprovider` | 0 | 293 passed in 0.36s (phủ toàn bộ 20 binding manifest và fixtures tương ứng). |
-| 3 | `python -c "import pathlib; t = pathlib.Path('docs/parallel-delivery/ownership-and-locks.yaml').read_text(encoding='utf-8'); assert 'src/controlplane/api/wiring/**' in t and 'tests/integration/catalog/**' in t"` | 0 | Khẳng định tồn tại `src/controlplane/api/wiring/**` và `tests/integration/catalog/**` trong ownership-and-locks.yaml. |
-| 4 | `python -m pytest tests/unit/config/test_j_route_binding.py tests/unit/voice/test_e14_tts_route_invocation.py tests/unit/creative/test_d04_ai_route_invocation.py -q -p no:cacheprovider` | 0 | 216 passed in 0.23s (phần tử valid thứ hai thêm vào `j-provider-route` không gây hồi quy test hiện có). |
-| 5 | Probe (1): Mẫu path mới và LOCK-H (`python -c "import pathlib; t = pathlib.Path('docs/parallel-delivery/ownership-and-locks.yaml').read_text(encoding='utf-8'); p = ['tests/integration/ingestion/**', ...]; assert ..."`) | 0 | Khớp toàn bộ assertions; 13 mẫu mới duy nhất, đủ 16 lock H, wiring nằm trong khối PATH-COMPOSITION-ROOT trước PATH-CONTRACT-SOURCE. |
-| 6 | Probe (2): Oracle test ID trong catalog (`python -c "import pathlib, re; c = pathlib.Path('docs/10-test-strategy.md').read_text(encoding='utf-8'); ...; print(len(ids), 'oracle test ids all in catalog')"`) | 0 | Nguyên văn output: 33 oracle test ids all in catalog. |
-| 7 | Probe (3): schema_version & recovery_epoch string (`python -c "import json, pathlib; bad = [p.name for p in pathlib.Path('docs/parallel-delivery/bindings').glob('*.json') ...]; assert not bad, bad"`) | 0 | Khớp assertion; không có trường nào mang kiểu số hay kiểu khác string. |
-| 8 | Probe (4): Hash contracts & `CONTRACT-STATE-MACHINES` (`python -c "import hashlib, pathlib; r = pathlib.Path('`docs/parallel-delivery/contract-registry.yaml`').read_text(encoding='utf-8'); ..."`) | 0 | Khớp assertion; hash 13 contracts nguyên vẹn, `CONTRACT-STATE-MACHINES` không bị sửa đổi (2cab18e858b2e78eb3a578b5a64568619d20c7cb09fed2cb7766bc0636fb9f28). |
+| 1 | L1 | 0 | Không có cảnh báo khoảng trắng thừa hay conflict marker. |
+| 2 | L2 | 0 | 293 passed in 0.36s |
+| 3 | L3 | 0 | Assert qua: `src/controlplane/api/wiring/**` và `tests/integration/catalog/**` có trong ownership-and-locks.yaml. |
+| 4 | L4 | 0 | Assert qua: wiring nằm trong PATH-COMPOSITION-ROOT và đủ LOCK-H-01..16. |
+| 5 | L5 | 0 | 33 ids [] |
+| 6 | L6 | 0 | Assert qua: không fixture nào khai schema_version hoặc recovery_epoch bằng số. |
+| 7 | L7 | 0 | 50 passed in 0.06s |
+| 8 | L8 | 0 | Assert qua: BL-CV-01/06 PENDING, không có ký tự hỏng hay lệnh bị cắt bằng ba chấm. |
+| 9 | L9 | 0 | Không có cảnh báo khoảng trắng thừa hay conflict marker. |
+
+```text
+L1: git diff --check
+L2: python -m pytest tests/contract/test_bindings.py -q -p no:cacheprovider
+L3: python -c "import pathlib; t = pathlib.Path('docs/parallel-delivery/ownership-and-locks.yaml').read_text(encoding='utf-8'); assert 'src/controlplane/api/wiring/**' in t and 'tests/integration/catalog/**' in t"
+L4: python -c "import pathlib; t = pathlib.Path('docs/parallel-delivery/ownership-and-locks.yaml').read_text(encoding='utf-8'); a = t.index('id: PATH-COMPOSITION-ROOT'); b = t.index('id: PATH-CONTRACT-SOURCE'); w = t.index('src/controlplane/api/wiring/**'); assert a < w < b, 'wiring must sit in PATH-COMPOSITION-ROOT'; assert t.count('src/controlplane/api/wiring/**') == 1; assert all(('id: LOCK-H-' + str(n).zfill(2)) in t for n in range(1, 17)), 'LOCK-H-01..16'"
+L5: python -c "import pathlib, re; c = pathlib.Path('docs/10-test-strategy.md').read_text(encoding='utf-8'); ids = set(); [ids.update(re.findall('TST-[A-Z0-9]+(?:-[A-Z0-9]+)+', p.read_text(encoding='utf-8'))) for p in pathlib.Path('docs/implementation').glob('*/slices.md')]; miss = sorted(i for i in ids if i not in c); print(len(ids), 'ids', miss); assert not miss, miss"
+L6: python -c "import pathlib, re; q = chr(34); r = re.compile(q + '(schema_version|recovery_epoch)' + q + ' *: *[0-9]'); bad = [str(p) for p in pathlib.Path('tests/fixtures/contracts').glob('*/payloads.json') if r.search(p.read_text(encoding='utf-8'))]; assert not bad, bad"
+L7: python -m pytest tests/unit/config/test_j_route_binding.py -q -p no:cacheprovider
+L8: python -c "import pathlib; t = pathlib.Path('docs/delivery-evidence/cp-2d-registry/report.md').read_text(encoding='utf-8'); assert 'BL-CV-01: PENDING' in t and 'BL-CV-06: PENDING' in t; assert chr(65533) not in t; assert ' est_' not in t and '| cceptance' not in t and ('a' + chr(96) + 'a-malicious') not in t; assert 'Đính chính' in t; assert t.count('...') == 0, 'truncated command'"
+L9: git diff --check
+```
 
 ## Rebase lên fe206ac
 
@@ -102,7 +117,7 @@ Trích số dòng trong tệp `docs/parallel-delivery/ownership-and-locks.yaml`:
     - `tests/integration/control_ui/**`: dòng 194
   - `src/controlplane/api/wiring/**`: dòng 222 (thuộc PATH-COMPOSITION-ROOT)
 - Khai báo khóa tài nguyên Phân hệ H: đủ 16 khóa từ LOCK-H-01 (dòng 572) đến LOCK-H-16 (dòng 662).
-- Xác nhận vị trí wiring: mẫu `src/controlplane/api/wiring/**` nằm ở dòng 222 bên trong khối PATH-COMPOSITION-ROOT (dòng 215–224), nằm trước khối PATH-CONTRACT-SOURCE (dòng 226).
+- Xác nhận vị trí wiring: mẫu `src/controlplane/api/wiring/**` nằm ở dòng 222 bên trong khối PATH-COMPOSITION-ROOT (dòng 218–225), nằm trước khối PATH-CONTRACT-SOURCE (dòng 226).
 
 ## Ánh xạ seam sang manifest
 
@@ -131,41 +146,69 @@ Trích số dòng trong tệp `docs/parallel-delivery/ownership-and-locks.yaml`:
 
 | Tài liệu | Mục đính chính | Vị trí tệp:dòng | Tóm tắt nội dung sửa đổi |
 | --- | --- | --- | --- |
-| capability-b-ingestion.md | B mục 3 (#1) | docs/modules/capability-b-ingestion.md:9-10 | Cập nhật scope, path phân quyền B. |
-| capability-b-ingestion.md | B mục 3 (#2) | docs/modules/capability-b-ingestion.md:25-27 | Đính chính port tiếp nhận tài liệu thô CT-SRC-006 và CT-CNT-001. |
-| capability-b-ingestion.md | B mục 3 (#3) | docs/modules/capability-b-ingestion.md:30-32 | Đính chính port cung cấp snapshot CT-AI-001 (-d-production-snapshot). |
-| capability-b-ingestion.md | B mục 3 (#4) | docs/modules/capability-b-ingestion.md:37-39 | Đính chính port đánh giá cập nhật CT-CNT-005 và EventUpdateEvaluation. |
-| capability-b-ingestion.md | B mục 3 (#5) | docs/modules/capability-b-ingestion.md:44-46 | Đính chính gate Implementation Authorized. |
-| capability-b-ingestion.md | B mục 3 (#6) | docs/modules/capability-b-ingestion.md:53-54 | DoD bullet 1: provenance và canonical fingerprint bất biến. |
-| capability-b-ingestion.md | B mục 3 (#7) | docs/modules/capability-b-ingestion.md:57-58 | DoD bullet 5: snapshot idempotent. |
-| capability-b-ingestion.md | B mục 3 (#8) | docs/modules/capability-b-ingestion.md:67 | Thêm path `tests/integration/ingestion/**`.. |
-| capability-b-ingestion.md | B mục 3 (#9) | docs/modules/capability-b-ingestion.md:81-82 | Cập nhật lệnh kiểm thử tự động oracle est_article_collector.py. |
-| capability-b-ingestion.md | B mục 3 (#10) | docs/modules/capability-b-ingestion.md:87-89 | Đính chính invariant INV-004. |
-| capability-c-storage.md | C mục 2 (#1) | docs/modules/capability-c-storage.md:32 | Đính chính port truy vấn media CT-MED-005 và hook CT-MED-006. |
-| capability-c-storage.md | C mục 2 (#2) | docs/modules/capability-c-storage.md:33 | Đính chính port ghi nhận lượt dùng CT-MED-008 trong UoW. |
-| capability-c-storage.md | C mục 2 (#3) | docs/modules/capability-c-storage.md:61-63 | Invariant INV-005, INV-008, INV-010, INV-017. |
-| capability-c-storage.md | C mục 2 (#4) | docs/modules/capability-c-storage.md:51 | DoD bullet 2: Byte và SHA-256 thuộc artifact version của Module I. |
-| capability-c-storage.md | C mục 2 (#5) | docs/modules/capability-c-storage.md:53 | DoD bullet 4: C cung cấp truy vấn và candidate độc lập. |
-| capability-c-storage.md | C mục 2 (#6) | docs/modules/capability-c-storage.md:70, 85 | Thêm path `tests/integration/catalog/**`. và lệnh pytest est_catalog_hooks.py. |
-| capability-c-storage.md | C mục 2 (#7) | docs/modules/capability-c-storage.md:96 | Mục 9: State machine CT-STATE-005, CT-STATE-006 là tài nguyên hội tụ chung. |
-| capability-c-storage.md | C mục 2 (#8) | docs/modules/capability-c-storage.md:97 | Mục 9: Test ID lấy từ catalog docs/10-test-strategy.md. |
-| capability-c-storage.md | C mục 2 (#9) | docs/modules/capability-c-storage.md:98 | Mục 9: CT-STATE-012 có cạnh VERIFIED → MISSING không phục hồi. |
-| capability-d-scripting.md | D (a)–(c) | docs/modules/capability-d-scripting.md:9-10, 26-30 | Đính chính scope, nhận snapshot nội dung CT-AI-001, nhận candidate CT-MED-005 và CT-MED-006. |
-| capability-d-scripting.md | D (g)–(l) | docs/modules/capability-d-scripting.md:32-41, 49-70, 85 | Đính chính port CT-AI-004, CT-ORC-012, gate, DoD, path `tests/integration/creative/**`. và lệnh test oracle. |
-| capability-e-voice.md | E (f)–(j) | docs/modules/capability-e-voice.md:9-14, 23-39 | Đính chính scope, contract_refs, CT-AI-004, route CT-AI-ROUTE-001, audio bed CT-PROC-001. |
-| capability-e-voice.md | E (k)–(o) | docs/modules/capability-e-voice.md:46-57, 65, 78-86 | Đính chính gate, DoD, path `tests/integration/voice/**`., lệnh test oracle và invariants INV-001, INV-004. |
-| capability-f-rendering.md | F (f)–(j) | docs/modules/capability-f-rendering.md:9-10, 25-39, 48-50 | Đính chính scope, render package CT-RND-002, timing CT-TTS-001, CT-RND-005, gate. |
-| capability-f-rendering.md | F (k)–(n) | docs/modules/capability-f-rendering.md:59-62, 69, 85-91 | Đính chính DoD, path `tests/integration/render/**`., lệnh test oracle và invariants INV-006, INV-010. |
-| capability-g-orchestration.md | G ERR-G-01..04 | docs/modules/capability-g-orchestration.md:15-37 | Đính chính scope, contract_refs, port lệnh CT-API-002, phát luồng CT-API-005. |
-| capability-g-orchestration.md | G ERR-G-05..08 | docs/modules/capability-g-orchestration.md:53-70, 87-90 | Đính chính gate, DoD UoW atomic completion, idempotent dispatch và invariants INV-009, INV-010. |
-| capability-j-providers.md | J ERR-J-01 | docs/modules/capability-j-providers.md:56-57 | Loại bỏ mock giả lập, kiểm thử route chuẩn với fixture j-provider-route. |
-| cceptance-matrix.yaml | R09–R13 | docs/parallel-delivery/acceptance-matrix.yaml:102-155 | Cập nhật contract_refs, mô tả và trỏ test_suite thật cho `TASK-CAP-E-VOICE` và `TASK-CAP-F-RENDERING`. |
+| capability-b-ingestion.md | B mục 3 #1 | docs/modules/capability-b-ingestion.md:12, 25 | `DocumentPackage` và CT-SRC-001 thay bằng `CollectedDocumentPackage` (CT-SRC-006) và `CollectedDocumentResolution` (CT-CNT-001), binding `a-b-collected-document`. |
+| capability-b-ingestion.md | B mục 3 #2 | docs/modules/capability-b-ingestion.md:25 | Idempotency theo `collected_document_id` + `dedup_policy_revision`, không theo `provenance_hash`. |
+| capability-b-ingestion.md | B mục 3 #3 | docs/modules/capability-b-ingestion.md:12, 28 | `ProductionSnapshot` (CT-AI-001) do D sinh, B là input_provider; CT-CNT-002 chỉ là quy tắc bài đại diện. |
+| capability-b-ingestion.md | B mục 3 #4 | docs/modules/capability-b-ingestion.md:29 | Sự kiện `ArticleRevisionAccepted`, `DuplicateDocumentResolved`, `EventLinkResolved`, `EventUpdateAccepted` theo envelope CT-EVT-002/003; CT-EVT-001 là ngữ nghĩa chuyển phát. |
+| capability-b-ingestion.md | B mục 3 #5 | docs/modules/capability-b-ingestion.md:56 | INV-005 (repost), INV-004 (snapshot giữ refs), INV-006 (EventUpdateAccepted) kèm test ID catalog. |
+| capability-b-ingestion.md | B mục 3 #6 | docs/modules/capability-b-ingestion.md:57 | INV-010 và INV-011 không thuộc B; outbox theo CT-EVT-001. |
+| capability-b-ingestion.md | B mục 3 #7 | docs/modules/capability-b-ingestion.md:58 | Ngưỡng trùng fingerprint nằm trong dedup policy revision (D8-B-01). |
+| capability-b-ingestion.md | B mục 3 #8 | docs/modules/capability-b-ingestion.md:91 | Mỗi collected document một transaction (CT-STATE-003, D8-B-11), không rollback toàn lô. |
+| capability-b-ingestion.md | B mục 3 #9 | docs/modules/capability-b-ingestion.md:67 | Thêm `tests/integration/ingestion/**` vào Allowed Paths. |
+| capability-b-ingestion.md | B mục 3 #10 | docs/modules/capability-b-ingestion.md:38, 84, 92 | Lệnh pytest theo tệp `tests/unit/ingestion/test_ingestion_resolve_document.py`; schema qua migration REQ-B-CONV-01, không dùng namespace `db:ingestion`. |
+| capability-c-storage.md | C mục 2 #1 | docs/modules/capability-c-storage.md:32 | Truy vấn media là CT-MED-005 (binding `c-d-media-candidates`), truy vấn hook là CT-MED-006; CT-HOOK-001 là `ImportHook`. |
+| capability-c-storage.md | C mục 2 #2 | docs/modules/capability-c-storage.md:33 | Lượt dùng ghi bằng CT-MED-008 trong UoW của CT-ORC-008/009; CT-STO-002 là `RegisterArtifactLocation` của I. |
+| capability-c-storage.md | C mục 2 #3 | docs/modules/capability-c-storage.md:59 | INV-005, INV-008, INV-010, INV-017 (phần C); INV-006 là timeline mode, INV-012 là canary secret. |
+| capability-c-storage.md | C mục 2 #4 | docs/modules/capability-c-storage.md:51 | Byte và SHA-256 thuộc artifact version của I (CT-STO-001); `MediaAsset` giữ canonical fingerprint bất biến. |
+| capability-c-storage.md | C mục 2 #5 | docs/modules/capability-c-storage.md:53 | C cung cấp truy vấn và candidate độc lập (CT-MED-004, CT-MED-006); ràng buộc hook mỗi plan thuộc D. |
+| capability-c-storage.md | C mục 2 #6 | docs/modules/capability-c-storage.md:69, 85 | Thêm `tests/integration/catalog/**` vào Allowed Paths; lệnh pytest `tests/unit/catalog/test_catalog_hooks.py`. |
+| capability-c-storage.md | C mục 2 #7 | docs/modules/capability-c-storage.md:96 | CT-STATE-005, CT-STATE-006 và migration là tài nguyên dùng chung của gói hội tụ (CONV-C-07, CONV-C-01). |
+| capability-c-storage.md | C mục 2 #8 | docs/modules/capability-c-storage.md:97 | Test ID lấy từ catalog docs/10-test-strategy.md, không dùng `TST-CAT-*`; bằng chứng ở docs/delivery-evidence/<task-id>/report.md. |
+| capability-c-storage.md | C mục 2 #9 | docs/modules/capability-c-storage.md:98 | CT-STATE-012 có cạnh `VERIFIED → MISSING`, không có cạnh phục hồi từ MISSING, CORRUPT, OUTCOME_UNKNOWN. |
+| capability-d-scripting.md | D mục 2 (a)–(c) | docs/modules/capability-d-scripting.md:12, 26, 49–50, 59–60 | Không có `ArticleSnapshot`: D nhận ref qua CT-AI-001 và CT-CNT-003; INV-014 là tái khai thác, thời lượng kiểm ở F; thumbnail nằm trong time range hook (CT-MED-004, CT-RND-003 điều kiện 3). |
+| capability-d-scripting.md | D mục 2 (g) | docs/modules/capability-d-scripting.md:57–58 | INV-004 là snapshot bất biến (`TST-INT-INV-004`), INV-013 là StoryAngle khác nhau (`TST-AI-INV-013`). |
+| capability-d-scripting.md | D mục 2 (h) | docs/modules/capability-d-scripting.md:26, 31 | Nội dung bài qua CT-AI-001/CT-CNT-003, không qua CT-CNT-002; D là input_provider của `RenderPackage` (CT-RND-002/003, binding `f-render-package`). |
+| capability-d-scripting.md | D mục 2 (i) | docs/modules/capability-d-scripting.md:49 | Bỏ hằng 140–165 từ; tốc độ đọc lấy từ policy. |
+| capability-d-scripting.md | D mục 2 (j) | docs/modules/capability-d-scripting.md:69 | Thêm `tests/integration/creative/**` vào Allowed Paths. |
+| capability-d-scripting.md | D mục 2 (k) | docs/modules/capability-d-scripting.md:85 | Lệnh pytest `tests/unit/creative/test_d08_script_version.py` thay lệnh unittest cũ. |
+| capability-d-scripting.md | D mục 2 (l) | docs/modules/capability-d-scripting.md:92 | Release giữ chỗ biến thể là quyền của G (CT-ORC-012); fallback prompt chỉ qua revision J (CT-AI-ROUTE-002). |
+| capability-e-voice.md | E mục 2 (f) | docs/modules/capability-e-voice.md:54–56 | INV-007 (`TST-MEDIA-INV-007`), INV-008 (`TST-INT-INV-008`), INV-019 (`TST-QC-INV-019`) theo catalog; tăng đơn điệu là CT-SUB-001 bất biến 1. |
+| capability-e-voice.md | E mục 2 (g) | docs/modules/capability-e-voice.md:46 | 61–70 giây là `DURATION_RANGE` (CT-QC-001) kiểm ở F; E ghi `actual_duration_ms`, không hằng trong mã. |
+| capability-e-voice.md | E mục 2 (h) | docs/modules/capability-e-voice.md:47 | Sai số ±100 ms là hằng tự đặt, thuộc ROADMAP-OPEN-008 / TEST-OPEN-006. |
+| capability-e-voice.md | E mục 2 (i) | docs/modules/capability-e-voice.md:48 | Bỏ hằng LUFS; loudness lấy từ preset audio policy (CT-AUD-001). |
+| capability-e-voice.md | E mục 2 (j) | docs/modules/capability-e-voice.md:24–25 | CT-AUD-001 là `PrepareAudioBed`; gọi TTS qua route J (CT-AI-ROUTE-001, binding `j-provider-route`); `VoiceTrackRequest` không mang văn bản, đọc qua `d-e-script-text` hoặc `ScriptTextPort`. |
+| capability-e-voice.md | E mục 2 (k) | docs/modules/capability-e-voice.md:12, 15 | E sở hữu probe, analyze, image safety, transform, normalize, audio bed (CT-PROC-001..008, CT-AUD-001); `ProcessedMedia` gồm ảnh và clip, không có lọc tạp âm. |
+| capability-e-voice.md | E mục 2 (l) | docs/modules/capability-e-voice.md:65 | Thêm `tests/integration/voice/**` vào Allowed Paths. |
+| capability-e-voice.md | E mục 2 (m) | docs/modules/capability-e-voice.md:81 | Lệnh pytest `tests/unit/voice/test_e09_word_timing.py` thay lệnh unittest cũ. |
+| capability-e-voice.md | E mục 2 (n) | docs/modules/capability-e-voice.md:88 | Output bất biến, lỗi ghi thành attempt thất bại; retry và fallback do G, engine dự phòng theo `fallback_order` của J; E không cleanup (CT-PROC-008). |
+| capability-e-voice.md | E mục 2 (o) | docs/modules/capability-e-voice.md:37 | Slice dùng WAV của `wave` stdlib và fake; kiểm rò rỉ bộ nhớ với thư viện thật thuộc CP7. |
+| capability-f-rendering.md | F mục 2 (f) | docs/modules/capability-f-rendering.md:58–59 | INV-001, INV-002, INV-009, INV-018 theo catalog; kích thước và thời lượng là gate `OUTPUT_PROFILE_VALID` và `DURATION_RANGE` (CT-QC-001); chuyển giao theo CT-RND-005. |
+| capability-f-rendering.md | F mục 2 (g) | docs/modules/capability-f-rendering.md:12, 48–49 | Bỏ hằng 1080x1920, 30 fps, H.264, AAC; output profile theo `output_profile_revision`. |
+| capability-f-rendering.md | F mục 2 (h) | docs/modules/capability-f-rendering.md:52 | Bỏ hằng lệch tiếng 50 ms; sai số karaoke là ROADMAP-OPEN-008, QUALITY-OPEN-007, TEST-OPEN-006. |
+| capability-f-rendering.md | F mục 2 (i) | docs/modules/capability-f-rendering.md:51 | Thumbnail nằm trong time range hook (CT-RND-003 điều kiện 3, gate `THUMBNAIL_PRESENT`), không cố định 3 giây đầu. |
+| capability-f-rendering.md | F mục 2 (j) | docs/modules/capability-f-rendering.md:25, 29 | F resolve `RenderPackage` (CT-RND-002); F trả output ready cho G (CT-RND-005, binding `f-g-output-ready`), không gửi thẳng cho I; CT-QC-001 là `InspectOutput`. |
+| capability-f-rendering.md | F mục 2 (k) | docs/modules/capability-f-rendering.md:38, 92 | `LOCK-DESKTOP-GPU` do G cấp; RenderAttempt bất biến, F không xóa tệp, cleanup thuộc I. |
+| capability-f-rendering.md | F mục 2 (l) | docs/modules/capability-f-rendering.md:37, 69, 74 | ffmpeg/ffprobe thuộc CONV-F-13 và CP7; thêm `tests/integration/render/**`; `src/controlplane/**` chỉ đọc. |
+| capability-f-rendering.md | F mục 2 (m) | docs/modules/capability-f-rendering.md:85 | Lệnh pytest `tests/unit/render/test_f09_karaoke_plan.py` thay lệnh unittest cũ. |
+| capability-f-rendering.md | F mục 2 (n) | docs/modules/capability-f-rendering.md:60 | Gate `DURATION_RANGE` fail thì không tạo `VideoOutput` ready; F không tự cắt hay kéo video. |
+| capability-g-orchestration.md | ERR-G-01 | docs/modules/capability-g-orchestration.md:71–73 | Allowed Paths là `src/controlplane/domain/application/infrastructure/db/orchestration` cùng `tests/unit` và `tests/integration` orchestration. |
+| capability-g-orchestration.md | ERR-G-02 | docs/modules/capability-g-orchestration.md:29 | Lệnh của G là CT-API-005; CT-API-001 là quy tắc request; CT-BAT-001..004 thuộc H; không có pause/resume/cancel (PUC-G-03). |
+| capability-g-orchestration.md | ERR-G-03 | docs/modules/capability-g-orchestration.md:34 | Completion UoW là CT-ORC-008 và CT-ORC-009; CT-ORC-002 là `AllocateVideoJob`. |
+| capability-g-orchestration.md | ERR-G-04 | docs/modules/capability-g-orchestration.md:60–64 | INV-010 completion lặp, INV-017 ledger và MediaUsage cùng commit, INV-016 epoch cũ, INV-018 allocator; một worker mỗi stage là hệ quả của INV-003. |
+| capability-g-orchestration.md | ERR-G-05 | docs/modules/capability-g-orchestration.md:86, 89 | Lệnh pytest `tests/unit/orchestration/test_g_fencing.py`; RED hợp lệ là `ACTIVE → COMPLETED` bỏ qua READY_FOR_COMPLETION (CT-STATE-009). |
+| capability-g-orchestration.md | ERR-G-06 | docs/modules/capability-g-orchestration.md:12, 15, 20 | `Batch` gọi là `ProductionBatch` (bảng `cp_production_batches`); `stage_type` theo CT-ORC-003. |
+| capability-g-orchestration.md | ERR-G-07 | docs/modules/capability-g-orchestration.md:54 | Ngưỡng admission lấy từ cấu hình J (D8-G-07); `schedule-policy.yaml` không phải ngưỡng sản phẩm. |
+| capability-g-orchestration.md | ERR-G-08 | docs/modules/capability-g-orchestration.md:53 | I verify ArtifactLocation trước (`cloud_location_verification_ref`); G không ghi ArtifactLocation trong transaction completion. |
+| capability-j-providers.md | ERR-J-01 | docs/modules/capability-j-providers.md:56–58 | INV-012, INV-004, INV-020 đúng catalog; INV-013 là StoryAngle, INV-015 là tombstone nguồn, INV-021 không tồn tại; routing bám CT-AI-ROUTE-001/002. |
+| acceptance-matrix.yaml | TASK-CAP-E-VOICE (R09, R10) | docs/parallel-delivery/acceptance-matrix.yaml:99–119 | Thêm `contract_refs` (CT-TTS-001, CT-AI-ROUTE-001; CT-SUB-001), trỏ `test_suite` vào `test_e08_voice_track.py` và `test_e09_word_timing.py` có thật, bỏ hằng loudness. |
+| acceptance-matrix.yaml | TASK-CAP-F-RENDERING (R11–R13) | docs/parallel-delivery/acceptance-matrix.yaml:121–152 | Thêm `contract_refs` (CT-RND-002/004; CT-SUB-001; CT-QC-001/002, CT-RND-005), trỏ `test_suite` vào `test_f10_render_command_spec.py`, `test_f09_karaoke_plan.py`, `test_f13_technical_gates.py`, bỏ hằng profile và sai số. |
 
 ## Catalog test
 
-- Đăng ký bộ test bảo mật SSRF cho Phân hệ A: TST-SEC-SSRF-001 đến TST-SEC-SSRF-005 tại docs/10-test-strategy.md mục 35.1 (dòng 1207–1215), bao gồm từ chối fail-closed cho loopback, private IPv4/IPv6, link-local, cloud metadata service (169.254.169.254) và DNS rebinding.
-- Quy ước corpus có version: mục 35.2 (dòng 1217–1232), cấu trúc thư mục `tests/fixtures/corpora/<corpus-name>/<version>/...` với trường metadata corpus_version (chuỗi dạng SemVer x.y.z), đăng ký corpus ban đầu `a`a-malicious-url-corpus` phiên bản 1.0.0.
-- Các test ID giao diện `TST-UX-*` của Phân hệ H được ghi rõ chưa đăng ký tại mục 35.3 (dòng 1234–1236) do H tự khai báo khi triển khai UI.
+- Đăng ký TST-SEC-SSRF-001..005 tại docs/10-test-strategy.md mục 35.1 (dòng 1207–1215): loopback (001), dải riêng RFC 1918 (002), endpoint metadata 169.254.169.254 (003), DNS rebinding và redirect nội bộ (004), scheme ngoài http/https (005).
+- Quy ước corpus có version tại mục 35.2 (dòng 1217–1232): `tests/fixtures/corpora/<corpus_id>/v<MAJOR>/` kèm `corpus.manifest.json` ghi `corpus_id`, `corpus_version` (SemVer) và sha256 từng tệp; bảng 10 corpus_id, trong đó `a-malicious-url-corpus` dùng cho TST-SEC-SSRF-001..005. Tên quy ước là GIẢ ĐỊNH; corpus thật do slice sở hữu tạo.
+- Mục 35.3 (dòng 1234–1236): `TST-UX-*`, `TST-CAT-*`, `TST-CRE-*`, `TST-STO-SYNC-*` chưa slice nào dùng làm oracle nên chưa đăng ký.
+- Oracle: lệnh L5 duyệt mọi test ID `TST-..` trong docs/implementation/*/slices.md và xác nhận đều có trong catalog; ghi số ID và danh sách thiếu đúng như output thực tế của bước chạy L5: 33 ids [].
 
 ## BL-CV
 
