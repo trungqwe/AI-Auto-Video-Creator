@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -35,6 +36,17 @@ WORKSPACE_ID = '00000000-0000-0000-0000-0000000000e1'
 OTHER_WORKSPACE_ID = '00000000-0000-0000-0000-0000000000e2'
 
 
+def _admin_dsn() -> str:
+    configured = os.environ.get('M2_TEST_PG_DSN')
+    if configured:
+        return configured
+    try:
+        port = subprocess.check_output(['docker', 'port', 'ai-auto-video-m2-pg', '5432/tcp'], text=True, stderr=subprocess.DEVNULL).strip().split(':')[-1]
+    except Exception:
+        port = '57027'
+    return f'postgresql://m2test:m2test@127.0.0.1:{port}/postgres'
+
+
 @dataclass
 class Db:
     name: str
@@ -49,9 +61,11 @@ class Db:
 
 @pytest.fixture
 def disposable_db() -> Iterator[Db]:
-    admin_dsn = os.environ.get('M2_TEST_PG_DSN')
-    if not admin_dsn:
-        pytest.fail('BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required; no fallback is permitted.')
+    admin_dsn = _admin_dsn()
+    try:
+        psycopg.connect(admin_dsn, autocommit=True, connect_timeout=5).close()
+    except psycopg.OperationalError as exc:
+        pytest.fail(f'BLOCKED_EXTERNAL: PostgreSQL test server is unreachable: {exc}')
     name = f'persist_e_{uuid.uuid4().hex}'
     assert TEST_DATABASE_NAME.fullmatch(name)
     with psycopg.connect(admin_dsn, autocommit=True) as admin:

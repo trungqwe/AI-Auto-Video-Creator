@@ -1,6 +1,6 @@
 # Báo cáo PERSIST-E: adapter PostgreSQL của voice
 
-- Base HEAD: a3d84e838a0937515eb62eb5c3a35016ab88e7df
+- Base HEAD (sau cấp lại grant G1): 3fe2c45381923cb139eebc88847f7c43cb87cd81; Control rebase lên cb554068e3a5838a89d67d592ca625f26e0b6397, không có xung đột
 - SHA candidate: xem trong worker_done
 
 ## 1. Phạm vi và tệp đã tạo
@@ -90,6 +90,20 @@ Exit code: 0
 Lệnh kiểm tra khoảng trắng thừa (Bước 22):
 git diff --check
 Exit code: 0
+
+## 5b. Khắc phục sau thu hồi grant G1 (INTEGRATION_CHECK_FAILED)
+
+- Nguyên nhân: fixture disposable_db trước đây chỉ đọc M2_TEST_PG_DSN, không có DSN mặc định như tests/m2/conftest.py nên thiếu biến thì cả 17 test ERROR ở fixture trong 0,60 giây.
+- Thay đổi: thêm _admin_dsn(): ưu tiên M2_TEST_PG_DSN, rồi docker port ai-auto-video-m2-pg, dự phòng cổng 57027; không kết nối được thì pytest.fail BLOCKED_EXTERNAL; vẫn PostgreSQL thật, mã adapter không đổi.
+- Bước 1 (lỗi thật quan sát trước khi sửa):
+  - Lỗi đầu tiên: Failed: BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required; no fallback is permitted.
+  - Dòng tổng kết: 17 errors in 0.44s
+  - Exit code: 1
+- Bước 5 (sau khi sửa):
+  - Dòng tổng kết: 17 passed in 8.86s
+  - Exit code: 0
+- Bước 6 (quét adapter):
+  - Exit code: 0 (không có AssertionError)
 
 ## 6. Mục mở
 
