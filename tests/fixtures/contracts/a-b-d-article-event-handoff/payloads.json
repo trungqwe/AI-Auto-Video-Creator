@@ -1,0 +1,164 @@
+{
+  "seam": "a-b-d-article-event-handoff",
+  "binding_version": "1.0.0",
+  "entities": {
+    "SourceTierView": {
+      "valid": [
+        {
+          "source_id": "00000000-0000-4000-8000-000000000401",
+          "source_revision": 1,
+          "tier": "tier_1"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_tier",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "tier"
+          },
+          "payload": {
+            "source_id": "00000000-0000-4000-8000-000000000401",
+            "source_revision": 1
+          }
+        },
+        {
+          "case": "source_revision_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "source_revision"
+          },
+          "payload": {
+            "source_id": "00000000-0000-4000-8000-000000000401",
+            "source_revision": "1",
+            "tier": "tier_1"
+          }
+        }
+      ]
+    },
+    "ArticleRevisionAccepted": {
+      "valid": [
+        {
+          "article_id": "00000000-0000-4000-8000-000000000411",
+          "article_revision_id": "00000000-0000-4000-8000-000000000412",
+          "normalized_content_ref": "00000000-0000-4000-8000-000000000413",
+          "source_refs": [
+            "00000000-0000-4000-8000-000000000401"
+          ],
+          "fetched_at": "2026-10-21T08:00:00Z",
+          "topic_classification": [
+            "technology"
+          ],
+          "dedup_fingerprints": [
+            "fp-exact-0001"
+          ],
+          "media_discovery_refs": [],
+          "extractor_version": "extractor-1.0.0",
+          "completeness_state": "complete"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_dedup_fingerprints",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "dedup_fingerprints"
+          },
+          "payload": {
+            "article_id": "00000000-0000-4000-8000-000000000411",
+            "article_revision_id": "00000000-0000-4000-8000-000000000412",
+            "normalized_content_ref": "00000000-0000-4000-8000-000000000413",
+            "source_refs": [
+              "00000000-0000-4000-8000-000000000401"
+            ],
+            "fetched_at": "2026-10-21T08:00:00Z",
+            "topic_classification": [
+              "technology"
+            ],
+            "media_discovery_refs": [],
+            "extractor_version": "extractor-1.0.0",
+            "completeness_state": "complete"
+          }
+        },
+        {
+          "case": "topic_classification_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "topic_classification"
+          },
+          "payload": {
+            "article_id": "00000000-0000-4000-8000-000000000411",
+            "article_revision_id": "00000000-0000-4000-8000-000000000412",
+            "normalized_content_ref": "00000000-0000-4000-8000-000000000413",
+            "source_refs": [
+              "00000000-0000-4000-8000-000000000401"
+            ],
+            "fetched_at": "2026-10-21T08:00:00Z",
+            "topic_classification": "technology",
+            "dedup_fingerprints": [
+              "fp-exact-0001"
+            ],
+            "media_discovery_refs": [],
+            "extractor_version": "extractor-1.0.0",
+            "completeness_state": "complete"
+          }
+        }
+      ]
+    },
+    "EventUpdateEvaluation": {
+      "valid": [
+        {
+          "event_id": "00000000-0000-4000-8000-000000000421",
+          "is_new_development": true,
+          "new_claims": [
+            "claim-0001"
+          ],
+          "source_revision_refs": [
+            "00000000-0000-4000-8000-000000000412"
+          ],
+          "confidence": 0.9,
+          "reason": "NEW_FACT_CONFIRMED"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "is_new_development_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "is_new_development"
+          },
+          "payload": {
+            "event_id": "00000000-0000-4000-8000-000000000421",
+            "is_new_development": "true",
+            "new_claims": [
+              "claim-0001"
+            ],
+            "source_revision_refs": [
+              "00000000-0000-4000-8000-000000000412"
+            ],
+            "confidence": 0.9,
+            "reason": "NEW_FACT_CONFIRMED"
+          }
+        },
+        {
+          "case": "missing_reason",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "reason"
+          },
+          "payload": {
+            "event_id": "00000000-0000-4000-8000-000000000421",
+            "is_new_development": true,
+            "new_claims": [
+              "claim-0001"
+            ],
+            "source_revision_refs": [
+              "00000000-0000-4000-8000-000000000412"
+            ],
+            "confidence": 0.9
+          }
+        }
+      ]
+    }
+  }
+}

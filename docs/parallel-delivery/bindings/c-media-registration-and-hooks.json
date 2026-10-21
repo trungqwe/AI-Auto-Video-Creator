@@ -1,0 +1,266 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "c-media-registration-and-hooks",
+  "binding_id": "BINDING-C-MEDIA-REGISTRATION-AND-HOOKS",
+  "binding_version": "1.0.0",
+  "modules": [
+    "A",
+    "C",
+    "D",
+    "E"
+  ],
+  "producer": "C",
+  "input_providers": [
+    "A",
+    "E"
+  ],
+  "consumers": [
+    "D"
+  ],
+  "contract_ref": "CONTRACT-CONTENT-MEDIA",
+  "source": {
+    "path": "docs/09-contracts/05-content-media-contracts.md",
+    "sections": [
+      "CT-MED-001",
+      "CT-MED-003",
+      "CT-MED-004",
+      "CT-MED-006"
+    ],
+    "sha256": "ea6a3723dece842d132f634d44c32eb301fbc98b43b61d24b5c32c907782e4cf"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "MediaDiscoveryRegistration",
+      "section": "CT-MED-001",
+      "fields": [
+        {
+          "name": "discovery_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "source_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "article_ref",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "event_ref",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "original_locator",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "media_kind",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "caption_context",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "observed_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "provenance_chain",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "content_sha256",
+          "type": "sha256",
+          "required": false
+        },
+        {
+          "name": "relation",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "MediaDiscoveryResult",
+      "section": "CT-MED-001",
+      "fields": [
+        {
+          "name": "media_asset_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "disposition",
+          "type": "string",
+          "enum": [
+            "new_asset",
+            "new_provenance",
+            "duplicate_observation",
+            "rejected"
+          ],
+          "required": true
+        },
+        {
+          "name": "acquisition_operation_ref",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "RenditionRegistration",
+      "section": "CT-MED-003",
+      "fields": [
+        {
+          "name": "source_media_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "source_artifact_version_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "transformation_spec_revision",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "processor_version",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "output_artifact_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "quality_report_ref",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "safety_state",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "lineage",
+          "type": "array",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ThumbnailCandidate",
+      "section": "CT-MED-004",
+      "fields": [
+        {
+          "name": "subject_refs",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "relation_ref",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "crop_focus",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "overlay_intent",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "safety_state",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "source_provenance",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "visual_similarity_fingerprint",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "HookCandidateQuery",
+      "section": "CT-MED-006",
+      "fields": [
+        {
+          "name": "hook_kind",
+          "type": "string",
+          "enum": [
+            "visual_hook",
+            "audio_hook"
+          ],
+          "required": true
+        },
+        {
+          "name": "topic",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "emotion",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "pacing",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "story_entities",
+          "type": "array",
+          "items": "string",
+          "required": false
+        },
+        {
+          "name": "duration_requirements",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "recent_usage_exclusions",
+          "type": "array",
+          "items": "string",
+          "required": false
+        },
+        {
+          "name": "preset_compatibility_ref",
+          "type": "string",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

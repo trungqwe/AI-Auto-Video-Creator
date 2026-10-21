@@ -1,0 +1,236 @@
+{
+  "seam": "c-media-registration-and-hooks",
+  "binding_version": "1.0.0",
+  "entities": {
+    "MediaDiscoveryRegistration": {
+      "valid": [
+        {
+          "discovery_id": "00000000-0000-4000-8000-000000000501",
+          "source_ref": "00000000-0000-4000-8000-000000000401",
+          "original_locator": "https://example.test/media/1.jpg",
+          "media_kind": "image",
+          "observed_at": "2026-10-21T08:00:00Z",
+          "provenance_chain": [
+            {
+              "step": "source_page"
+            }
+          ],
+          "relation": "hero_image"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_original_locator",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "original_locator"
+          },
+          "payload": {
+            "discovery_id": "00000000-0000-4000-8000-000000000501",
+            "source_ref": "00000000-0000-4000-8000-000000000401",
+            "media_kind": "image",
+            "observed_at": "2026-10-21T08:00:00Z",
+            "provenance_chain": [
+              {
+                "step": "source_page"
+              }
+            ],
+            "relation": "hero_image"
+          }
+        },
+        {
+          "case": "content_sha256_uppercase",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "content_sha256"
+          },
+          "payload": {
+            "discovery_id": "00000000-0000-4000-8000-000000000501",
+            "source_ref": "00000000-0000-4000-8000-000000000401",
+            "original_locator": "https://example.test/media/1.jpg",
+            "media_kind": "image",
+            "observed_at": "2026-10-21T08:00:00Z",
+            "provenance_chain": [
+              {
+                "step": "source_page"
+              }
+            ],
+            "relation": "hero_image",
+            "content_sha256": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        }
+      ]
+    },
+    "MediaDiscoveryResult": {
+      "valid": [
+        {
+          "media_asset_ref": "00000000-0000-4000-8000-000000000511",
+          "disposition": "new_asset"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "disposition_unknown",
+          "expected_error": {
+            "code": "enum_violation",
+            "field": "disposition"
+          },
+          "payload": {
+            "media_asset_ref": "00000000-0000-4000-8000-000000000511",
+            "disposition": "merged"
+          }
+        },
+        {
+          "case": "missing_media_asset_ref",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "media_asset_ref"
+          },
+          "payload": {
+            "disposition": "new_asset"
+          }
+        }
+      ]
+    },
+    "RenditionRegistration": {
+      "valid": [
+        {
+          "source_media_ref": "00000000-0000-4000-8000-000000000511",
+          "source_artifact_version_ref": "00000000-0000-4000-8000-000000000512",
+          "transformation_spec_revision": "spec-v1",
+          "processor_version": "tool-1.0.0",
+          "output_artifact_ref": "00000000-0000-4000-8000-000000000513",
+          "safety_state": "SAFE",
+          "lineage": [
+            "00000000-0000-4000-8000-000000000512"
+          ]
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_transformation_spec_revision",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "transformation_spec_revision"
+          },
+          "payload": {
+            "source_media_ref": "00000000-0000-4000-8000-000000000511",
+            "source_artifact_version_ref": "00000000-0000-4000-8000-000000000512",
+            "processor_version": "tool-1.0.0",
+            "output_artifact_ref": "00000000-0000-4000-8000-000000000513",
+            "safety_state": "SAFE",
+            "lineage": [
+              "00000000-0000-4000-8000-000000000512"
+            ]
+          }
+        },
+        {
+          "case": "lineage_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "lineage"
+          },
+          "payload": {
+            "source_media_ref": "00000000-0000-4000-8000-000000000511",
+            "source_artifact_version_ref": "00000000-0000-4000-8000-000000000512",
+            "transformation_spec_revision": "spec-v1",
+            "processor_version": "tool-1.0.0",
+            "output_artifact_ref": "00000000-0000-4000-8000-000000000513",
+            "safety_state": "SAFE",
+            "lineage": "x"
+          }
+        }
+      ]
+    },
+    "ThumbnailCandidate": {
+      "valid": [
+        {
+          "subject_refs": [
+            "entity-0001"
+          ],
+          "crop_focus": {
+            "x": 0.5,
+            "y": 0.4
+          },
+          "safety_state": "SAFE",
+          "source_provenance": {
+            "source": "catalog"
+          },
+          "visual_similarity_fingerprint": "phash-0001"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_crop_focus",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "crop_focus"
+          },
+          "payload": {
+            "subject_refs": [
+              "entity-0001"
+            ],
+            "safety_state": "SAFE",
+            "source_provenance": {
+              "source": "catalog"
+            },
+            "visual_similarity_fingerprint": "phash-0001"
+          }
+        },
+        {
+          "case": "subject_refs_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "subject_refs"
+          },
+          "payload": {
+            "subject_refs": "entity-0001",
+            "crop_focus": {
+              "x": 0.5,
+              "y": 0.4
+            },
+            "safety_state": "SAFE",
+            "source_provenance": {
+              "source": "catalog"
+            },
+            "visual_similarity_fingerprint": "phash-0001"
+          }
+        }
+      ]
+    },
+    "HookCandidateQuery": {
+      "valid": [
+        {
+          "hook_kind": "visual_hook",
+          "topic": "technology",
+          "pacing": "fast"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "hook_kind_unknown",
+          "expected_error": {
+            "code": "enum_violation",
+            "field": "hook_kind"
+          },
+          "payload": {
+            "hook_kind": "thumbnail",
+            "topic": "technology",
+            "pacing": "fast"
+          }
+        },
+        {
+          "case": "missing_hook_kind",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "hook_kind"
+          },
+          "payload": {
+            "topic": "technology",
+            "pacing": "fast"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -468,3 +468,63 @@ bindings:
       binding_version: "1.0.0"
       contract_ref: CONTRACT-CONFIG-SECURITY
       source_sha256: 989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+    - id: BINDING-H-G-CONTROL-API
+      seam: h-g-control-api
+      path: docs/parallel-delivery/bindings/h-g-control-api.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-CONTROL-API-STREAM
+      source_sha256: ea16fe04759e6bdf3b7bdde3e27ad498d13a271bd45d412ba0e9068a9b918e12
+    - id: BINDING-A-B-D-ARTICLE-EVENT-HANDOFF
+      seam: a-b-d-article-event-handoff
+      path: docs/parallel-delivery/bindings/a-b-d-article-event-handoff.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-SOURCE-CONTENT
+      source_sha256: 61b075d202dd0d7729123f68f26285097be8120e2de48194d0ad2fe847701f31
+    - id: BINDING-C-MEDIA-REGISTRATION-AND-HOOKS
+      seam: c-media-registration-and-hooks
+      path: docs/parallel-delivery/bindings/c-media-registration-and-hooks.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-CONTENT-MEDIA
+      source_sha256: ea6a3723dece842d132f634d44c32eb301fbc98b43b61d24b5c32c907782e4cf
+    - id: BINDING-D-E-SCRIPT-TEXT
+      seam: d-e-script-text
+      path: docs/parallel-delivery/bindings/d-e-script-text.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-CREATIVE-AI
+      source_sha256: 92b74489890f1eaf3915aef809af4cff0585659842f6930bbdf11d1236861b3a
+    - id: BINDING-E-PROCESSING-AUDIO-BED
+      seam: e-processing-audio-bed
+      path: docs/parallel-delivery/bindings/e-processing-audio-bed.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-MEDIA-PROCESSING
+      source_sha256: c5f7abaea422916165d59f8a5508817729d21035cffd663123a913c49365cf49
+    - id: BINDING-F-G-OUTPUT-READY
+      seam: f-g-output-ready
+      path: docs/parallel-delivery/bindings/f-g-output-ready.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-RENDER-QUALITY
+      source_sha256: c3e35d032c0a8e721ed35bbecb5fb57f350788e8520d6e8df5ca78284199b493
+    - id: BINDING-D-G-VARIANT-RESERVATION
+      seam: d-g-variant-reservation
+      path: docs/parallel-delivery/bindings/d-g-variant-reservation.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-ORCHESTRATION
+      source_sha256: 402f499f2ac2613502684f1d89697cf72d0cc136b25f2fd08fae07a7c1baaf59
+    - id: BINDING-I-STORAGE-OUTPUT-PATH
+      seam: i-storage-output-path
+      path: docs/parallel-delivery/bindings/i-storage-output-path.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-STORAGE
+      source_sha256: 6ab6f60bc2760ea9017ca0406e0053dc859cc06c1f0c80fff7e944d03d5e02ce
+    - id: BINDING-J-CONFIG-BUNDLE
+      seam: j-config-bundle
+      path: docs/parallel-delivery/bindings/j-config-bundle.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-CONFIG-SECURITY
+      source_sha256: 989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645
+    - id: BINDING-J-ACCOUNT-CAPABILITY
+      seam: j-account-capability
+      path: docs/parallel-delivery/bindings/j-account-capability.json
+      binding_version: "1.0.0"
+      contract_ref: CONTRACT-CONFIG-SECURITY
+      source_sha256: 989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645

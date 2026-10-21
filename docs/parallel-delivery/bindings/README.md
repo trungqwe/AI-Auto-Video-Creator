@@ -16,6 +16,16 @@ Mục đích: Binding là bản khoá máy đọc được của các trường 
 | `g-c-i-completion` | C, F, G, I | CONTRACT-ORCHESTRATION | docs/09-contracts/09-orchestration-contracts.md | CT-ORC-008, CT-ORC-009 | 1.0.0 |
 | `i-artifact-version` | A, C, E, F, G, I | CONTRACT-STORAGE | docs/09-contracts/10-storage-contracts.md | CT-STO-001 | 1.0.0 |
 | `j-provider-route` | D, E, J | CONTRACT-CONFIG-SECURITY | docs/09-contracts/11-configuration-security-contracts.md | CT-AI-ROUTE-001 | 1.0.0 |
+| `h-g-control-api` | G, H | CONTRACT-CONTROL-API-STREAM | docs/09-contracts/01-control-api-and-stream.md | CT-API-002, CT-API-005, CT-API-007, CT-API-008 | 1.0.0 |
+| `a-b-d-article-event-handoff` | A, B, D | CONTRACT-SOURCE-CONTENT | docs/09-contracts/04-source-content-contracts.md | CT-SRC-006, CT-CNT-003, CT-CNT-005 | 1.0.0 |
+| `c-media-registration-and-hooks` | A, C, D, E | CONTRACT-CONTENT-MEDIA | docs/09-contracts/05-content-media-contracts.md | CT-MED-001, CT-MED-003, CT-MED-004, CT-MED-006 | 1.0.0 |
+| `d-e-script-text` | D, E | CONTRACT-CREATIVE-AI | docs/09-contracts/06-creative-ai-contracts.md | CT-AI-004 | 1.0.0 |
+| `e-processing-audio-bed` | E, F, G | CONTRACT-MEDIA-PROCESSING | docs/09-contracts/07-media-processing-contracts.md | CT-PROC-001, CT-PROC-002, CT-AUD-001 | 1.0.0 |
+| `f-g-output-ready` | F, G | CONTRACT-RENDER-QUALITY | docs/09-contracts/08-render-quality-contracts.md | CT-RND-005 | 1.0.0 |
+| `d-g-variant-reservation` | D, G | CONTRACT-ORCHESTRATION | docs/09-contracts/09-orchestration-contracts.md | CT-ORC-012 | 1.0.0 |
+| `i-storage-output-path` | D, F, G, I | CONTRACT-STORAGE | docs/09-contracts/10-storage-contracts.md | CT-STO-004, CT-STO-006, CT-STO-011 | 1.0.0 |
+| `j-config-bundle` | A, B, C, D, E, F, G, H, I, J | CONTRACT-CONFIG-SECURITY | docs/09-contracts/11-configuration-security-contracts.md | CT-CFG-002 | 1.0.0 |
+| `j-account-capability` | G, H, J | CONTRACT-CONFIG-SECURITY | docs/09-contracts/11-configuration-security-contracts.md | CT-ACC-001, CT-SEC-001, CT-CAP-002, CT-CAP-003 | 1.0.0 |
 
 ## Định dạng contract-binding/v1
 
@@ -55,15 +65,32 @@ Mỗi seam được gán một bộ fixture tương ứng tại `tests/fixtures/
 
 1. Tên trường `snake_case` được suy diễn trực tiếp từ mô tả nghiệp vụ của contract khi văn bản gốc chưa đặt tên biến cụ thể; đây là GIẢ ĐỊNH đặt tên chuẩn hóa, mọi thay đổi tên sau này phải đi qua quy trình MIGRATE.
 2. Các giá trị enum chưa được chốt danh sách đầy đủ trong contract được tạm thời khai báo ở kiểu `string`.
-3. Khối `key_interface_boundaries` trong `contract-registry.yaml` chứa một số định nghĩa thực thể tự đặt (như `DocumentPackage`, `ArticleSnapshot`) không chuẩn hoá; các thực thể này được thay thế hoàn toàn bằng 10 binding mạch nối chuẩn trong thư mục này.
+3. Khối `key_interface_boundaries` trong `contract-registry.yaml` chứa một số định nghĩa thực thể tự đặt (như `DocumentPackage`, `ArticleSnapshot`) không chuẩn hoá; các thực thể này được thay thế hoàn toàn bằng các binding mạch nối chuẩn (20 manifest sau CP-2D-REGISTRY) trong thư mục này.
 
-## Seam chưa có binding (follow-up)
 
-Các mạch nối sau đây chưa lập manifest binding trong đợt này và sẽ được bổ sung tiếp:
-- H ↔ G: Control API (`CONTRACT-CONTROL-API-STREAM`, trạng thái `active_accepted`, hiện đang được bảo vệ bởi bộ test `tests/m2`).
-- A → C: Media discovery (`CT-MED-001`).
-- E → C: Rendition (`CT-MED-003`).
-- F → I: Video output (`CT-STO-006`).
-- J → mọi phân hệ: Configuration bundle (`CT-CFG-002`).
+## Ánh xạ seam logic sang manifest (CP-2D-REGISTRY)
 
-Bất kỳ phân hệ nào cần tương tác với các seam chưa có binding trên đều phải mở một slice binding trước theo nguyên tắc fail-closed.
+| Manifest | Seam logic | Thực thể |
+| --- | --- | --- |
+| c-media-registration-and-hooks | A→C, E→C, C→D (CT-MED-004, CT-MED-006; CT-MED-005 vẫn ở c-d-media-candidates) | MediaDiscoveryRegistration, MediaDiscoveryResult, RenditionRegistration, ThumbnailCandidate, HookCandidateQuery |
+| a-b-d-article-event-handoff | A→B Tier, B→D | SourceTierView, ArticleRevisionAccepted, EventUpdateEvaluation |
+| d-e-script-text | D→E | ScriptTextView |
+| e-processing-audio-bed | G→E, E→F | ProcessingRequest, ProcessingResult, AudioBedResult |
+| d-g-variant-reservation | D↔G | VariantReservationRequest, VariantReservationResult |
+| i-storage-output-path | D→I, F→I, I→F | AllocateOutputPathRequest, AllocateOutputPathResult, PersistVideoOutputResult, MaterializeArtifactSetRequest, MaterializeArtifactSetResult |
+| f-g-output-ready | F→G | RenderOutputReady |
+| j-config-bundle | J→mọi phân hệ, J→F (preset và tool config) | ConfigurationBundleRequest, ConfigurationBundle |
+| h-g-control-api | H↔G | ResourceQuery, ProductionCommand, OperationView, OperationStreamItem |
+| j-account-capability | H↔J, J→G | ExternalAccountView, SecretUpdateResult, CapacityReservationHint, CapabilityView |
+
+## Quyết định mặc định bổ sung (D8, CP-2D-REGISTRY)
+
+- (a) seam cùng tệp contract nguồn và cùng contract_ref gộp vào một manifest vì `source.path` là duy nhất cho mỗi manifest, mỗi seam là thực thể có `section` riêng;
+- (b) tên trường snake_case và kiểu là GIẢ ĐỊNH theo mục D8 số 1 và 2, enum chưa chốt để `string`;
+- (c) `schema_version` và `recovery_epoch` là chuỗi (D8-G-10), manifest mới không khai hai trường này;
+- (d) không thực thể nào mang giá trị secret, `UpdateSecret` chỉ có kết quả không chứa giá trị;
+- (e) seam đã có binding không tạo lại, `ai_role` là chuỗi mở và fixture `j-provider-route` có thêm vai trò TTS `voice_synthesis` (tên là GIẢ ĐỊNH, J đăng ký vai trò thật).
+
+## Seam còn lại chưa có binding
+
+Các hợp đồng CT-SRC-001..005, CT-SRC-003A, CT-MED-002, CT-MED-007, CT-MED-008, CT-MED-009, CT-HOOK-001, CT-HOOK-002, CT-STO-002, CT-STO-003, CT-STO-005, CT-STO-007..010, CT-SEC-002, CT-COST-001 chưa có binding seam; chỉ dùng trong phạm vi một phân hệ hoặc qua workflow G; cần seam mới thì mở slice binding trước theo nguyên tắc fail-closed.

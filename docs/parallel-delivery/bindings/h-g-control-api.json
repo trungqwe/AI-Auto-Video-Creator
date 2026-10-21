@@ -1,0 +1,236 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "h-g-control-api",
+  "binding_id": "BINDING-H-G-CONTROL-API",
+  "binding_version": "1.0.0",
+  "modules": [
+    "G",
+    "H"
+  ],
+  "producer": "H",
+  "consumers": [
+    "G"
+  ],
+  "contract_ref": "CONTRACT-CONTROL-API-STREAM",
+  "source": {
+    "path": "docs/09-contracts/01-control-api-and-stream.md",
+    "sections": [
+      "CT-API-002",
+      "CT-API-005",
+      "CT-API-007",
+      "CT-API-008"
+    ],
+    "sha256": "ea16fe04759e6bdf3b7bdde3e27ad498d13a271bd45d412ba0e9068a9b918e12"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "ResourceQuery",
+      "section": "CT-API-002",
+      "fields": [
+        {
+          "name": "workspace_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "resource",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "filters",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "cursor",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "ProductionCommand",
+      "section": "CT-API-005",
+      "fields": [
+        {
+          "name": "command",
+          "type": "string",
+          "enum": [
+            "StartProductionBatch",
+            "RunDebugStage",
+            "RetryStage",
+            "CreateNewVariant",
+            "RegenerateFromStage"
+          ],
+          "required": true
+        },
+        {
+          "name": "workspace_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "idempotency_key",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "target_ref",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "expected_revision",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "parameters",
+          "type": "object",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "OperationView",
+      "section": "CT-API-007",
+      "fields": [
+        {
+          "name": "operation_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "command_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "enum": [
+            "accepted",
+            "running",
+            "waiting",
+            "outcome_unknown",
+            "succeeded",
+            "failed"
+          ],
+          "required": true
+        },
+        {
+          "name": "progress",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "resource_refs",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "started_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "finished_at",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "name": "wait_reason",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "problem",
+          "type": "object",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "OperationStreamItem",
+      "section": "CT-API-008",
+      "fields": [
+        {
+          "name": "stream_event_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "cursor",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "resource_type",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "resource_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "resource_revision",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "event_kind",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "occurred_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "recorded_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "correlation_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "resync_required",
+          "type": "boolean",
+          "required": false
+        }
+      ],
+      "forbidden_fields": [
+        "stack_trace",
+        "secret_value"
+      ]
+    }
+  ]
+}

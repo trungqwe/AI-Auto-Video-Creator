@@ -9,7 +9,7 @@
 
 ## 1. Mục tiêu và Trách nhiệm Nghiệp vụ
 
-Capability F là khâu hoàn thiện kỹ thuật số của quy trình sản xuất, chịu trách nhiệm kết hợp kịch bản, hình ảnh, video nền, file giọng đọc và dữ liệu word timing để dựng video ngắn hoàn chỉnh độ phân giải 1080p (tỷ lệ 9:16 dọc), áp dụng hiệu ứng chạy chữ karaoke từng từ, tạo thumbnail bắt mắt trong hook và thực thi kiểm tra chất lượng (Quality Control - QC) trước khi xuất xưởng.
+Capability F là khâu hoàn thiện kỹ thuật số của quy trình sản xuất, chịu trách nhiệm kết hợp kịch bản, hình ảnh, video nền, file giọng đọc và dữ liệu word timing để dựng video ngắn hoàn chỉnh đầu ra theo `output_profile_revision`, áp dụng hiệu ứng chạy chữ karaoke từng từ, tạo thumbnail bắt mắt trong hook và thực thi kiểm tra chất lượng (Quality Control - QC) trước khi xuất xưởng.
 
 ### Aggregates do Module F sở hữu độc quyền (Single-Writer):
 - `Preset`: Cấu hình phong cách dựng video (font chữ, màu sắc karaoke highlight, bố cục khung hình, hiệu ứng chuyển cảnh).
@@ -22,11 +22,11 @@ Capability F là khâu hoàn thiện kỹ thuật số của quy trình sản xu
 ## 2. Cổng Giao tiếp & Hợp đồng Khóa (Ports & Frozen Contracts)
 
 ### Inbound Ports:
-- **Port Nhận Gói Dựng (Render Package):** Nhận kế hoạch phân cảnh và chỉ dẫn dựng từ Module D qua `CONTRACT-RENDER-QUALITY` (`CT-RND-001`).
+- **Port Resolve RenderPackage:** F resolve `RenderPackage` từ ref của C, D, E, I (`CT-RND-002`, binding `f-render-package`); D chỉ là input_provider.
 - **Port Nhận Audio & Subtitle Timing:** Nhận `VoiceTrack` và `WordTiming` từ Module E qua `CONTRACT-MEDIA-PROCESSING` (`CT-SUB-001`).
 
 ### Outbound Ports:
-- **Port Bàn giao Video Hoàn tất:** Thông báo hoàn thành render và gửi `QualityReport` cho Orchestration (Module G) và Storage (Module I) qua `CONTRACT-RENDER-QUALITY` (`CT-QC-001`).
+- **Port Output Ready:** F trả output ready cho G (`CT-RND-005`, binding `f-g-output-ready`); G yêu cầu I đồng bộ và verify (`CT-STO-006`) rồi commit completion (`CT-ORC-008`); F không gửi video thẳng cho I; `CT-QC-001` là `InspectOutput`, không phải cổng bàn giao.
 
 ---
 
@@ -34,8 +34,8 @@ Capability F là khâu hoàn thiện kỹ thuật số của quy trình sản xu
 
 Trước khi chuyển sang trạng thái `implementation_authorized`, task thuộc Capability F phải thỏa mãn:
 1. `CONTRACT-RENDER-QUALITY` đã được đóng băng phiên bản (`frozen revision`).
-2. Môi trường có sẵn binary `ffmpeg` và `ffprobe` chuẩn hóa theo toolchain lock.
-3. GPU lease slot (`LOCK-DESKTOP-GPU`) được cấp phát hợp lệ thông qua LeaseManager, không vượt quá hạn ngạch 2 slot đồng thời.
+2. Binary `ffmpeg` và `ffprobe` khóa theo toolchain là việc CONV-F-13 và CP7; slice dùng metadata giả.
+3. Slot `LOCK-DESKTOP-GPU` do LeaseManager và G cấp; F chỉ giữ qua port lease và trả khi xong hoặc lỗi.
 4. Thư mục đầu ra được cô lập riêng trên ổ đĩa, không can thiệp vào thư mục của các module khác.
 
 ---
@@ -45,21 +45,19 @@ Trước khi chuyển sang trạng thái `implementation_authorized`, task thu�
 Gói công việc Capability F chỉ được nghiệm thu khi đạt đủ các điều kiện:
 1. Toàn bộ unit tests và integration render tests đạt `PASS`.
 2. Tiêu chuẩn Video MP4 thành phẩm:
-   - **Thời lượng:** Nghiêm ngặt từ **61 đến 70 giây**.
-   - **Độ phân giải & Tỷ lệ:** Chuẩn 1080x1920 (9:16 dọc), tốc độ khung hình 30fps.
-   - **Codec:** Video H.264 / AAC Audio, tương thích tối đa với các nền tảng video ngắn (TikTok, YouTube Shorts, Reels).
+   - **Thời lượng:** gate `DURATION_RANGE` (`CT-QC-001`); khoảng 61–70 giây nằm trong quality policy revision.
+   - **Output profile:** theo `output_profile_revision` (ROADMAP-OPEN-007, QUALITY-OPEN-006, TEST-OPEN-005, TECH-OPEN-012); không có hằng 1080x1920, 30 fps, H.264, AAC.
 3. Karaoke Subtitle: Hiệu ứng chữ đổi màu theo đúng mốc `WordTiming` của từng từ, nằm trong vùng an toàn hiển thị.
-4. Thumbnail Hook: File thumbnail JPEG chất lượng cao được trích xuất từ khung hình nằm trong 3 giây đầu tiên.
-5. Báo cáo chất lượng `QualityReport` đạt chuẩn (không có dropped frames bất thường, không lệch tiếng quá 50ms).
+4. Thumbnail Hook: thumbnail nằm trong time range của hook (`CT-RND-003` điều kiện 3, gate `THUMBNAIL_PRESENT`), không cố định 3 giây đầu.
+5. `QualityReport` đạt hard gate theo `CT-QC-001`; sai số karaoke là ROADMAP-OPEN-008, QUALITY-OPEN-007, TEST-OPEN-006 chưa chốt; `VISUAL_CONTINUITY` và `AUDIO_MIX_QUALITY` là warning hoặc score.
 
 ---
 
 ## 5. Danh mục Bất biến Kiến trúc (Invariant References)
 
-- **`INV-001` (Exact Aspect Ratio & Resolution):** Mọi video xuất xưởng phải có kích thước đúng 1080x1920 (9:16 dọc).
-- **`INV-002` (Video Duration Constraint):** Video thành phẩm có độ dài dưới 61 giây hoặc trên 70 giây phải bị loại bỏ tự động tại cổng QC.
-- **`INV-009` (Atomic Render Cleanup):** Mọi file tạm (temp clips, audio chunks) phải được xóa sạch sau khi render; chỉ lưu lại file MP4 hoàn chỉnh và thumbnail.
-- **`INV-018` (Quality Control Gate):** Video chỉ được chuyển giao sang Storage khi `QualityReport.passed == True`.
+- **`INV-001`** (`TST-CTR-INV-001`): idempotency command; **`INV-002`** (`TST-CTR-INV-002`): idempotency event; **`INV-009`** (`TST-E2E-INV-009`): QC pass mà upload chưa verify thì không completion, không xóa local; **`INV-018`** (`TST-WF-INV-018`): allocator.
+- Kích thước và thời lượng là gate `OUTPUT_PROFILE_VALID` và `DURATION_RANGE` (`CT-QC-001`); điều kiện chuyển giao là `CT-RND-005`.
+- Gate `DURATION_RANGE` fail thì không tạo `VideoOutput` ready; F không tự cắt hay kéo video (`CT-QC-001`).
 
 ---
 
@@ -68,11 +66,12 @@ Gói công việc Capability F chỉ được nghiệm thu khi đạt đủ các
 - **Allowed Paths (Được phép chỉnh sửa khi authorized):**
   - `src/render/**`
   - `tests/unit/render/**`
+  - `tests/integration/render/**`
   - `docs/modules/capability-f-rendering.md`
 - **Forbidden Paths (Tuyệt đối cấm can thiệp):**
   - `src/creative/**`
   - `src/voice/**`
-  - `src/controlplane/**`
+  - `src/controlplane/**` (không sửa; F vẫn import module có sẵn ở chế độ chỉ đọc)
   - `docs/09-contracts/**`
 
 ---
@@ -83,11 +82,11 @@ Gói công việc Capability F chỉ được nghiệm thu khi đạt đủ các
 - **Quan sát RED:** Kiểm thử fail rõ ràng khi video đầu ra có kích thước 1920x1080 (ngang) hoặc khi phụ đề không hiển thị đúng thời điểm.
 - **Targeted Test Command:**
   ```bash
-  python -m unittest tests/unit/render/test_video_pipeline.py -k test_output_specs_and_karaoke
+  python -m pytest tests/unit/render/test_f09_karaoke_plan.py -q -p no:cacheprovider
   ```
 
 ---
 
 ## 8. Tiêu chí Rollback & Phục hồi Lỗi
 
-- **Nguyên tắc Rollback:** Nếu quá trình render bị gián đoạn hoặc thất bại ở cổng QC, hủy bỏ `RenderAttempt`, dọn dẹp toàn bộ file tạm trên đĩa, giải phóng slot GPU `LOCK-DESKTOP-GPU` ngay lập tức và trả mã lỗi chi tiết về Orchestration.
+- **Nguyên tắc Rollback:** RenderAttempt bất biến: lỗi ghi thành attempt thất bại, retry dùng attempt và artifact mới (`CT-RND-004`, `CT-STATE-011`); F không xóa tệp, cleanup thuộc Module I (`CT-STO-007`, `CT-STO-008`) và exit gate M6; F trả slot GPU khi xong hoặc lỗi.

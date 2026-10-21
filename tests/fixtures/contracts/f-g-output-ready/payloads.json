@@ -1,0 +1,72 @@
+{
+  "seam": "f-g-output-ready",
+  "binding_version": "1.0.0",
+  "entities": {
+    "RenderOutputReady": {
+      "valid": [
+        {
+          "render_receipt_ref": "00000000-0000-4000-8000-000000000801",
+          "render_receipt_state": "succeeded",
+          "output_artifact_ref": "00000000-0000-4000-8000-000000000802",
+          "output_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "quality_report_ref": "00000000-0000-4000-8000-000000000803",
+          "hard_gates_passed": true,
+          "report_refs_committed": true,
+          "execution_grant_ref": "00000000-0000-4000-8000-000000000804"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "receipt_not_succeeded",
+          "expected_error": {
+            "code": "enum_violation",
+            "field": "render_receipt_state"
+          },
+          "payload": {
+            "render_receipt_ref": "00000000-0000-4000-8000-000000000801",
+            "render_receipt_state": "failed",
+            "output_artifact_ref": "00000000-0000-4000-8000-000000000802",
+            "output_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "quality_report_ref": "00000000-0000-4000-8000-000000000803",
+            "hard_gates_passed": true,
+            "report_refs_committed": true,
+            "execution_grant_ref": "00000000-0000-4000-8000-000000000804"
+          }
+        },
+        {
+          "case": "hard_gates_passed_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "hard_gates_passed"
+          },
+          "payload": {
+            "render_receipt_ref": "00000000-0000-4000-8000-000000000801",
+            "render_receipt_state": "succeeded",
+            "output_artifact_ref": "00000000-0000-4000-8000-000000000802",
+            "output_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "quality_report_ref": "00000000-0000-4000-8000-000000000803",
+            "hard_gates_passed": "true",
+            "report_refs_committed": true,
+            "execution_grant_ref": "00000000-0000-4000-8000-000000000804"
+          }
+        },
+        {
+          "case": "missing_quality_report_ref",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "quality_report_ref"
+          },
+          "payload": {
+            "render_receipt_ref": "00000000-0000-4000-8000-000000000801",
+            "render_receipt_state": "succeeded",
+            "output_artifact_ref": "00000000-0000-4000-8000-000000000802",
+            "output_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "hard_gates_passed": true,
+            "report_refs_committed": true,
+            "execution_grant_ref": "00000000-0000-4000-8000-000000000804"
+          }
+        }
+      ]
+    }
+  }
+}

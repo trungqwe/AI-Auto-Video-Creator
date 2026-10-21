@@ -1,0 +1,127 @@
+{
+  "seam": "j-config-bundle",
+  "binding_version": "1.0.0",
+  "entities": {
+    "ConfigurationBundleRequest": {
+      "valid": [
+        {
+          "workspace_id": "ws-0001",
+          "job_ref": "00000000-0000-4000-8000-000000001101",
+          "evaluation_time": "2026-10-21T08:00:00Z",
+          "required_config_capabilities": [
+            "render_preset"
+          ],
+          "snapshot_state": "pre_snapshot"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "evaluation_time_not_datetime",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "evaluation_time"
+          },
+          "payload": {
+            "workspace_id": "ws-0001",
+            "job_ref": "00000000-0000-4000-8000-000000001101",
+            "evaluation_time": "now",
+            "required_config_capabilities": [
+              "render_preset"
+            ],
+            "snapshot_state": "pre_snapshot"
+          }
+        },
+        {
+          "case": "missing_required_config_capabilities",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "required_config_capabilities"
+          },
+          "payload": {
+            "workspace_id": "ws-0001",
+            "job_ref": "00000000-0000-4000-8000-000000001101",
+            "evaluation_time": "2026-10-21T08:00:00Z",
+            "snapshot_state": "pre_snapshot"
+          }
+        }
+      ]
+    },
+    "ConfigurationBundle": {
+      "valid": [
+        {
+          "config_revision_refs": [
+            "00000000-0000-4000-8000-000000001111"
+          ],
+          "merged_values": {
+            "render.preset": "preset-a"
+          },
+          "bundle_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+          "value_provenance": {
+            "render.preset": "00000000-0000-4000-8000-000000001111"
+          },
+          "validation_warnings": []
+        }
+      ],
+      "invalid": [
+        {
+          "case": "secret_value_in_bundle",
+          "expected_error": {
+            "code": "forbidden_field",
+            "field": "secret_value"
+          },
+          "payload": {
+            "config_revision_refs": [
+              "00000000-0000-4000-8000-000000001111"
+            ],
+            "merged_values": {
+              "render.preset": "preset-a"
+            },
+            "bundle_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+            "value_provenance": {
+              "render.preset": "00000000-0000-4000-8000-000000001111"
+            },
+            "validation_warnings": [],
+            "secret_value": "x"
+          }
+        },
+        {
+          "case": "bundle_fingerprint_not_sha256",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "bundle_fingerprint"
+          },
+          "payload": {
+            "config_revision_refs": [
+              "00000000-0000-4000-8000-000000001111"
+            ],
+            "merged_values": {
+              "render.preset": "preset-a"
+            },
+            "bundle_fingerprint": "fp-1",
+            "value_provenance": {
+              "render.preset": "00000000-0000-4000-8000-000000001111"
+            },
+            "validation_warnings": []
+          }
+        },
+        {
+          "case": "missing_config_revision_refs",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "config_revision_refs"
+          },
+          "payload": {
+            "merged_values": {
+              "render.preset": "preset-a"
+            },
+            "bundle_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+            "value_provenance": {
+              "render.preset": "00000000-0000-4000-8000-000000001111"
+            },
+            "validation_warnings": []
+          }
+        }
+      ]
+    }
+  }
+}

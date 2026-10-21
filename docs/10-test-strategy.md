@@ -1199,3 +1199,38 @@ Lộ trình xây dựng được ghi tại [11-roadmap.md](./11-roadmap.md). Sau
 | TST-COL-PKG-004 | Thiếu source-kind policy; publication time tùy chọn thiếu; fetch fail chưa đủ package | INPUT_NOT_READY khi thiếu policy; thiếu trường conditional không tự thành schema error; fetch failure chỉ là observation/run outcome, không tạo tin incomplete giả. |
 
 Các thay đổi registry không liên quan có thể gây stale nhưng không được dẫn tới busy loop: retry có giới hạn/backoff theo policy, hết budget đi đường lỗi job hiện có, không bỏ qua validation. Timeout/backoff số cụ thể vẫn qua benchmark/cấu hình trước production.
+
+## 35. Đăng ký test ID và corpus bổ sung (CP-2D-REGISTRY)
+
+Mục này đăng ký bổ sung vào catalog ngày 21/10/2026 theo errata m3-a mục 6 và các kế hoạch phân hệ A đến J. Mã chỉ được dùng làm oracle khi đã nằm trong bảng của tài liệu này.
+
+### 35.1. Test ID SSRF của phân hệ A
+
+| ID | Đầu vào/tình huống | Oracle bắt buộc |
+|---|---|---|
+| TST-SEC-SSRF-001 | URL đích là loopback (`http://127.0.0.1`, `http://localhost`, `http://[::1]`) | Từ chối fail-closed trước khi mở socket, không có request ra mạng (CT-SRC-001, CT-SEC-003). |
+| TST-SEC-SSRF-002 | URL đích thuộc dải riêng RFC 1918 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) | Từ chối fail-closed, không gửi request. |
+| TST-SEC-SSRF-003 | URL đích là endpoint metadata hạ tầng (`http://169.254.169.254/`) | Từ chối fail-closed và ghi nhận vi phạm an toàn đã redacted. |
+| TST-SEC-SSRF-004 | DNS rebinding: lần phân giải đầu ra IP công cộng, lần sau ra IP nội bộ; redirect trả về địa chỉ nội bộ | Kiểm địa chỉ ngay trước khi kết nối ở mọi hop, chặn và đóng kết nối. |
+| TST-SEC-SSRF-005 | Scheme khác `http` và `https` (`file://`, `gopher://`, `ftp://`) | Từ chối fail-closed, chỉ cho phép `http` và `https`. |
+
+### 35.2. Corpus có version
+
+Mọi corpus dùng làm oracle nằm dưới `tests/fixtures/corpora/<corpus_id>/v<MAJOR>/`, kèm `corpus.manifest.json` ghi `corpus_id`, `corpus_version` (SemVer) và sha256 từng tệp; nội dung đổi thì tăng version, không sửa tại chỗ. Quy ước đặt tên là GIẢ ĐỊNH, slice sở hữu tạo corpus.
+
+| corpus_id | Phân hệ | Dùng cho |
+|---|---|---|
+| a-news-corpus | A | News Corpus (CONV-A-08) |
+| a-malicious-url-corpus | A | TST-SEC-SSRF-001..005 |
+| e-sensitive-image-set | E | CT-PROC-005, TST-E2E-011 |
+| e-word-timing-corpus | E | CT-SUB-001 |
+| e-tts-utterance-set | E | CT-TTS-001 |
+| d-prompt-development-set | D | CONV-D-09 |
+| d-locked-holdout | D | CONV-D-09 |
+| f-video-audio-short-corpus | F | CT-QC-001 |
+| f-golden-frames | F | CT-QC-001 (tolerance) |
+| f-karaoke-corpus | F | CT-RND-002 subtitle_config |
+
+### 35.3. Chưa đăng ký
+
+Chưa slice nào dùng `TST-UX-*`, `TST-CAT-*`, `TST-CRE-*`, `TST-STO-SYNC-*` làm oracle nên chưa đăng ký; cần dùng thì đăng ký bằng slice sở hữu tài liệu này.

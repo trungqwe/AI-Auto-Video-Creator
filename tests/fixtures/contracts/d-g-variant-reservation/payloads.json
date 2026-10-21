@@ -1,0 +1,114 @@
+{
+  "seam": "d-g-variant-reservation",
+  "binding_version": "1.0.0",
+  "entities": {
+    "VariantReservationRequest": {
+      "valid": [
+        {
+          "job_ref": "00000000-0000-4000-8000-000000000901",
+          "snapshot_ref": "00000000-0000-4000-8000-000000000902",
+          "article_event_refs": [
+            "00000000-0000-4000-8000-000000000903"
+          ],
+          "round_id": "round-0001",
+          "script_version_ref": "00000000-0000-4000-8000-000000000904",
+          "production_plan_ref": "00000000-0000-4000-8000-000000000905",
+          "variant_signature": "sig-0001",
+          "variation_policy_revision": "variation-v1",
+          "validation_ref": "00000000-0000-4000-8000-000000000906",
+          "expected_registry_revision": 7,
+          "idempotency_key": "idem-0901",
+          "execution_grant_ref": "00000000-0000-4000-8000-000000000907"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_validation_ref",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "validation_ref"
+          },
+          "payload": {
+            "job_ref": "00000000-0000-4000-8000-000000000901",
+            "snapshot_ref": "00000000-0000-4000-8000-000000000902",
+            "article_event_refs": [
+              "00000000-0000-4000-8000-000000000903"
+            ],
+            "round_id": "round-0001",
+            "script_version_ref": "00000000-0000-4000-8000-000000000904",
+            "production_plan_ref": "00000000-0000-4000-8000-000000000905",
+            "variant_signature": "sig-0001",
+            "variation_policy_revision": "variation-v1",
+            "expected_registry_revision": 7,
+            "idempotency_key": "idem-0901",
+            "execution_grant_ref": "00000000-0000-4000-8000-000000000907"
+          }
+        },
+        {
+          "case": "expected_registry_revision_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "expected_registry_revision"
+          },
+          "payload": {
+            "job_ref": "00000000-0000-4000-8000-000000000901",
+            "snapshot_ref": "00000000-0000-4000-8000-000000000902",
+            "article_event_refs": [
+              "00000000-0000-4000-8000-000000000903"
+            ],
+            "round_id": "round-0001",
+            "script_version_ref": "00000000-0000-4000-8000-000000000904",
+            "production_plan_ref": "00000000-0000-4000-8000-000000000905",
+            "variant_signature": "sig-0001",
+            "variation_policy_revision": "variation-v1",
+            "validation_ref": "00000000-0000-4000-8000-000000000906",
+            "expected_registry_revision": "7",
+            "idempotency_key": "idem-0901",
+            "execution_grant_ref": "00000000-0000-4000-8000-000000000907"
+          }
+        }
+      ]
+    },
+    "VariantReservationResult": {
+      "valid": [
+        {
+          "outcome": "ACTIVE",
+          "reservation_id": "00000000-0000-4000-8000-000000000911",
+          "reservation_revision": 1,
+          "registry_revision": 8,
+          "receipt_ref": "00000000-0000-4000-8000-000000000912"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "outcome_released",
+          "expected_error": {
+            "code": "enum_violation",
+            "field": "outcome"
+          },
+          "payload": {
+            "outcome": "RELEASED",
+            "reservation_id": "00000000-0000-4000-8000-000000000911",
+            "reservation_revision": 1,
+            "registry_revision": 8,
+            "receipt_ref": "00000000-0000-4000-8000-000000000912"
+          }
+        },
+        {
+          "case": "registry_revision_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "registry_revision"
+          },
+          "payload": {
+            "outcome": "ACTIVE",
+            "reservation_id": "00000000-0000-4000-8000-000000000911",
+            "reservation_revision": 1,
+            "registry_revision": "8",
+            "receipt_ref": "00000000-0000-4000-8000-000000000912"
+          }
+        }
+      ]
+    }
+  }
+}

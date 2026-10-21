@@ -1,6 +1,6 @@
 # AI Auto Video Creator
 
-> Cập nhật hiện hành (18/10/2026): M2-P1..P7B `ACCEPTED / CLOSED`; M2-P8/P9 đã triển khai và có Auditor PASS, chưa ghi user checkpoint M2. M3–M7 thực hiện theo ủy quyền AI_SETUP và chỉ thị user duyệt Phần B ngày 18/10/2026. Kích hoạt sản xuất vẫn bị chặn.
+> Cập nhật hiện hành (18/10/2026): M2-P1..P7B `ACCEPTED / CLOSED`; M2-P8/P9 đã triển khai và có Auditor PASS, chưa ghi user checkpoint M2. M3–M7 thực hiện theo ủy quyền AI_SETUP và chỉ thị user duyệt Phần B ngày 18/10/2026. Kích hoạt sản xuất vẫn bị chặn. CP-2D-REGISTRY (21/10/2026): đã cập nhật registry ownership, 10 binding mới, catalog test và tài liệu module; BL-CV-01 và BL-CV-06 vẫn PENDING tới Auditor PASS.
 
 Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều góc kể tiếng Anh, dựng video ngắn 61–70 giây và đồng bộ đầu ra lên cloud. Dự án được phát triển theo từng milestone có evidence gate; không coi việc chương trình chạy một lần là bằng chứng kiến trúc đã đạt.
 
@@ -15,6 +15,7 @@ Hệ thống tự động hóa việc thu thập tin và media, tạo nhiều g�
 | G07 Compatibility | `SMOKE_COMPATIBILITY_PASS_M1_SCOPE` |
 | M2 Control Plane | `M2-P1..P7B_ACCEPTED_CLOSED`; P8/P9 đã triển khai, Auditor PASS, chưa ghi user checkpoint M2 |
 | M3–M7 (gồm Module A) | Thực hiện theo ủy quyền AI_SETUP (`AI_PM_DELEGATED_AUTHORITY_RULES.md`) và Phần B được user duyệt ngày 18/10/2026; chưa milestone nào được nghiệm thu |
+| Hội tụ CP-2D-REGISTRY | Registry, binding, fixture, catalog test và tài liệu module đã cập nhật; BL-CV-01, BL-CV-06 `PENDING` tới Auditor PASS; cổng GATE-CP-2D-REGISTRY do Control thả |
 | Kích hoạt sản xuất | `PRODUCTION_ACTIVATION_BLOCKED` |
 
 Toàn bộ M1 đã được Người dùng chấp thuận tại checkpoint ngày 13-09-2026 (93 passed, 0 skipped). M2-P1..P7B đã được independent review chấp thuận/đóng. P7B accepted source/tooling `c44214ad027986a0db7cb9d8e221590f232a0036` và GREEN `run-m2-p7b-green-20260917040648` giữ bất biến; candidate GREEN `run-m2-p7b-green-20260917024918` giữ làm lịch sử bị từ chối. Migration `0008`, ngoại lệ hẹp P3 `append()` và P7A H16 thuộc kết quả P7B accepted. P8/P9 đã triển khai và có Auditor PASS nhưng chưa ghi user checkpoint M2; M3–M7 thực hiện theo ủy quyền AI_SETUP và Phần B (18/10/2026).

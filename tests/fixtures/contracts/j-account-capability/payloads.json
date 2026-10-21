@@ -1,0 +1,215 @@
+{
+  "seam": "j-account-capability",
+  "binding_version": "1.0.0",
+  "entities": {
+    "ExternalAccountView": {
+      "valid": [
+        {
+          "external_account_id": "00000000-0000-4000-8000-000000001201",
+          "provider": "gemini",
+          "account_label": "Account A",
+          "status": "enabled",
+          "capabilities": [
+            "script_generation"
+          ],
+          "credential_metadata": {
+            "present": true,
+            "updated_at": "2026-10-20T08:00:00Z"
+          }
+        }
+      ],
+      "invalid": [
+        {
+          "case": "status_suspended",
+          "expected_error": {
+            "code": "enum_violation",
+            "field": "status"
+          },
+          "payload": {
+            "external_account_id": "00000000-0000-4000-8000-000000001201",
+            "provider": "gemini",
+            "account_label": "Account A",
+            "status": "suspended",
+            "capabilities": [
+              "script_generation"
+            ],
+            "credential_metadata": {
+              "present": true,
+              "updated_at": "2026-10-20T08:00:00Z"
+            }
+          }
+        },
+        {
+          "case": "api_key_in_view",
+          "expected_error": {
+            "code": "forbidden_field",
+            "field": "api_key"
+          },
+          "payload": {
+            "external_account_id": "00000000-0000-4000-8000-000000001201",
+            "provider": "gemini",
+            "account_label": "Account A",
+            "status": "enabled",
+            "capabilities": [
+              "script_generation"
+            ],
+            "credential_metadata": {
+              "present": true,
+              "updated_at": "2026-10-20T08:00:00Z"
+            },
+            "api_key": "redacted-canary"
+          }
+        },
+        {
+          "case": "missing_credential_metadata",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "credential_metadata"
+          },
+          "payload": {
+            "external_account_id": "00000000-0000-4000-8000-000000001201",
+            "provider": "gemini",
+            "account_label": "Account A",
+            "status": "enabled",
+            "capabilities": [
+              "script_generation"
+            ]
+          }
+        }
+      ]
+    },
+    "SecretUpdateResult": {
+      "valid": [
+        {
+          "secret_ref": "00000000-0000-4000-8000-000000001211",
+          "provider_ref": "gemini",
+          "last_updated_at": "2026-10-21T08:00:00Z",
+          "validation_state": "valid",
+          "fingerprint_or_version": "v3",
+          "actor_ref": "actor-0001"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "secret_value_echoed",
+          "expected_error": {
+            "code": "forbidden_field",
+            "field": "secret_value"
+          },
+          "payload": {
+            "secret_ref": "00000000-0000-4000-8000-000000001211",
+            "provider_ref": "gemini",
+            "last_updated_at": "2026-10-21T08:00:00Z",
+            "validation_state": "valid",
+            "fingerprint_or_version": "v3",
+            "actor_ref": "actor-0001",
+            "secret_value": "redacted-canary"
+          }
+        },
+        {
+          "case": "missing_actor_ref",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "actor_ref"
+          },
+          "payload": {
+            "secret_ref": "00000000-0000-4000-8000-000000001211",
+            "provider_ref": "gemini",
+            "last_updated_at": "2026-10-21T08:00:00Z",
+            "validation_state": "valid",
+            "fingerprint_or_version": "v3"
+          }
+        }
+      ]
+    },
+    "CapacityReservationHint": {
+      "valid": [
+        {
+          "capacity_reservation_ref": "00000000-0000-4000-8000-000000001221",
+          "provider_ref": "gemini",
+          "account_ref": "00000000-0000-4000-8000-000000001201",
+          "capability": "script_generation",
+          "expires_at": "2026-10-21T09:00:00Z"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_expires_at",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "expires_at"
+          },
+          "payload": {
+            "capacity_reservation_ref": "00000000-0000-4000-8000-000000001221",
+            "provider_ref": "gemini",
+            "account_ref": "00000000-0000-4000-8000-000000001201",
+            "capability": "script_generation"
+          }
+        },
+        {
+          "case": "expires_at_as_number",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "expires_at"
+          },
+          "payload": {
+            "capacity_reservation_ref": "00000000-0000-4000-8000-000000001221",
+            "provider_ref": "gemini",
+            "account_ref": "00000000-0000-4000-8000-000000001201",
+            "capability": "script_generation",
+            "expires_at": 3600
+          }
+        }
+      ]
+    },
+    "CapabilityView": {
+      "valid": [
+        {
+          "capability_id": "cap-desktop-render",
+          "capability_type": "desktop_render",
+          "location": "desktop",
+          "status": "available",
+          "compatible_versions": [
+            "1.0.0"
+          ],
+          "last_observed_at": "2026-10-21T08:00:00Z"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "status_ready",
+          "expected_error": {
+            "code": "enum_violation",
+            "field": "status"
+          },
+          "payload": {
+            "capability_id": "cap-desktop-render",
+            "capability_type": "desktop_render",
+            "location": "desktop",
+            "status": "ready",
+            "compatible_versions": [
+              "1.0.0"
+            ],
+            "last_observed_at": "2026-10-21T08:00:00Z"
+          }
+        },
+        {
+          "case": "missing_last_observed_at",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "last_observed_at"
+          },
+          "payload": {
+            "capability_id": "cap-desktop-render",
+            "capability_type": "desktop_render",
+            "location": "desktop",
+            "status": "available",
+            "compatible_versions": [
+              "1.0.0"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

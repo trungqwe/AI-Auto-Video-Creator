@@ -1,0 +1,192 @@
+{
+  "seam": "e-processing-audio-bed",
+  "binding_version": "1.0.0",
+  "entities": {
+    "ProcessingRequest": {
+      "valid": [
+        {
+          "processing_operation_id": "op-proc-0001",
+          "stage_run_id": "00000000-0000-4000-8000-000000000701",
+          "execution_grant": {
+            "generation": 1
+          },
+          "input_artifact_refs": [
+            "00000000-0000-4000-8000-000000000702"
+          ],
+          "operation_spec_revision": "spec-v1",
+          "output_storage_intent": "staging"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_operation_spec_revision",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "operation_spec_revision"
+          },
+          "payload": {
+            "processing_operation_id": "op-proc-0001",
+            "stage_run_id": "00000000-0000-4000-8000-000000000701",
+            "execution_grant": {
+              "generation": 1
+            },
+            "input_artifact_refs": [
+              "00000000-0000-4000-8000-000000000702"
+            ],
+            "output_storage_intent": "staging"
+          }
+        },
+        {
+          "case": "input_artifact_refs_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "input_artifact_refs"
+          },
+          "payload": {
+            "processing_operation_id": "op-proc-0001",
+            "stage_run_id": "00000000-0000-4000-8000-000000000701",
+            "execution_grant": {
+              "generation": 1
+            },
+            "input_artifact_refs": "art-1",
+            "operation_spec_revision": "spec-v1",
+            "output_storage_intent": "staging"
+          }
+        }
+      ]
+    },
+    "ProcessingResult": {
+      "valid": [
+        {
+          "disposition": "succeeded",
+          "output_artifact_refs": [
+            "00000000-0000-4000-8000-000000000703"
+          ],
+          "processor_identity": "ffmpeg-test-build",
+          "input_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+          "output_hashes": [
+            "0000000000000000000000000000000000000000000000000000000000000000"
+          ],
+          "operation_receipt_ref": "00000000-0000-4000-8000-000000000704"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "disposition_unknown_value",
+          "expected_error": {
+            "code": "enum_violation",
+            "field": "disposition"
+          },
+          "payload": {
+            "disposition": "ready",
+            "output_artifact_refs": [
+              "00000000-0000-4000-8000-000000000703"
+            ],
+            "processor_identity": "ffmpeg-test-build",
+            "input_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+            "output_hashes": [
+              "0000000000000000000000000000000000000000000000000000000000000000"
+            ],
+            "operation_receipt_ref": "00000000-0000-4000-8000-000000000704"
+          }
+        },
+        {
+          "case": "missing_processor_identity",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "processor_identity"
+          },
+          "payload": {
+            "disposition": "succeeded",
+            "output_artifact_refs": [
+              "00000000-0000-4000-8000-000000000703"
+            ],
+            "input_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+            "output_hashes": [
+              "0000000000000000000000000000000000000000000000000000000000000000"
+            ],
+            "operation_receipt_ref": "00000000-0000-4000-8000-000000000704"
+          }
+        },
+        {
+          "case": "output_hashes_uppercase",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "output_hashes"
+          },
+          "payload": {
+            "disposition": "succeeded",
+            "output_artifact_refs": [
+              "00000000-0000-4000-8000-000000000703"
+            ],
+            "processor_identity": "ffmpeg-test-build",
+            "input_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+            "output_hashes": [
+              "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ],
+            "operation_receipt_ref": "00000000-0000-4000-8000-000000000704"
+          }
+        }
+      ]
+    },
+    "AudioBedResult": {
+      "valid": [
+        {
+          "prepared_rendition_refs": [
+            "00000000-0000-4000-8000-000000000711"
+          ],
+          "cue_timing_refs": [
+            "00000000-0000-4000-8000-000000000712"
+          ],
+          "loudness_peak_report": {
+            "integrated_lufs": -15.0,
+            "true_peak_dbfs": -1.5
+          },
+          "provenance_risk_metadata": {
+            "license": "unknown"
+          }
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_loudness_peak_report",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "loudness_peak_report"
+          },
+          "payload": {
+            "prepared_rendition_refs": [
+              "00000000-0000-4000-8000-000000000711"
+            ],
+            "cue_timing_refs": [
+              "00000000-0000-4000-8000-000000000712"
+            ],
+            "provenance_risk_metadata": {
+              "license": "unknown"
+            }
+          }
+        },
+        {
+          "case": "cue_timing_refs_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "cue_timing_refs"
+          },
+          "payload": {
+            "prepared_rendition_refs": [
+              "00000000-0000-4000-8000-000000000711"
+            ],
+            "cue_timing_refs": "cue-1",
+            "loudness_peak_report": {
+              "integrated_lufs": -15.0,
+              "true_peak_dbfs": -1.5
+            },
+            "provenance_risk_metadata": {
+              "license": "unknown"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
