@@ -20,6 +20,12 @@ FORBIDDEN_IMPORT_PREFIXES = (
 FORBIDDEN_DIR_NAMES = frozenset({'storage', 'orchestration', 'ui', 'config'})
 DYNAMIC_IMPORT_CALLS = frozenset({'import_module', '__import__'})
 
+# Miễn trừ hẹp theo kế hoạch ADAPT đã duyệt: docs/implementation/adapt/plan.md dòng 83 và 117 (ADAPT-E-MEDIA).
+# Khoá là đường dẫn tệp chính xác (posix, tính từ gốc repo), không dùng mẫu, không miễn cả thư mục adapters.
+ADAPTER_IMPORT_EXEMPTIONS = {
+    'src/voice/adapters/real_ffmpeg_media_tool.py': frozenset({'subprocess'}),
+}
+
 
 def _is_forbidden(name: str) -> bool:
     return any(name == prefix or name.startswith(prefix + '.') for prefix in FORBIDDEN_IMPORT_PREFIXES)
@@ -40,6 +46,15 @@ def find_forbidden_imports(source: str, filename: str = '<string>') -> list[str]
             if func_name in DYNAMIC_IMPORT_CALLS and isinstance(first, ast.Constant) and isinstance(first.value, str):
                 names.append(first.value)
     return sorted({name for name in names if _is_forbidden(name)})
+
+
+def find_unexempted_imports(source: str, rel_path: str, filename: str = '<string>') -> list[str]:
+    allowed = ADAPTER_IMPORT_EXEMPTIONS.get(rel_path, frozenset())
+    return [
+        name
+        for name in find_forbidden_imports(source, filename)
+        if not any(name == prefix or name.startswith(prefix + '.') for prefix in allowed)
+    ]
 
 
 def find_forbidden_dirs(base: pathlib.Path) -> list[str]:
@@ -116,6 +131,42 @@ class DetectorSelfTests(unittest.TestCase):
             )
 
 
+class AdapterExemptionTests(unittest.TestCase):
+    ADAPTER = 'src/voice/adapters/real_ffmpeg_media_tool.py'
+
+    def test_exemption_table_is_exact_paths_only(self) -> None:
+        self.assertEqual(set(ADAPTER_IMPORT_EXEMPTIONS), {self.ADAPTER})
+        self.assertEqual(ADAPTER_IMPORT_EXEMPTIONS[self.ADAPTER], frozenset({'subprocess'}))
+        for rel in ADAPTER_IMPORT_EXEMPTIONS:
+            with self.subTest(rel=rel):
+                self.assertFalse(set('*?[') & set(rel))
+                self.assertTrue((ROOT / rel).is_file())
+
+    def test_exempt_adapter_may_import_only_its_listed_item(self) -> None:
+        self.assertEqual(find_unexempted_imports('import subprocess', self.ADAPTER), [])
+        self.assertEqual(find_unexempted_imports('from subprocess import run', self.ADAPTER), [])
+        for source, expected in (
+            ('import socket', 'socket'),
+            ('import urllib.request', 'urllib.request'),
+            ('import creative', 'creative'),
+            ('import psycopg', 'psycopg'),
+        ):
+            with self.subTest(source=source):
+                self.assertIn(expected, find_unexempted_imports(source, self.ADAPTER))
+
+    def test_other_modules_still_reject_subprocess(self) -> None:
+        for rel in (
+            'src/voice/domain/other.py',
+            'src/voice/adapters/other.py',
+            'src/voice/adapters/real_llm_image_safety.py',
+            'src/voice/application/media_pipeline.py',
+            'src/voice/domain/real_ffmpeg_media_tool.py',
+        ):
+            with self.subTest(rel=rel):
+                self.assertEqual(find_unexempted_imports('import subprocess', rel), ['subprocess'])
+                self.assertIn('subprocess', find_unexempted_imports('from subprocess import run', rel))
+
+
 class PackageLayoutTests(unittest.TestCase):
     def test_package_importable_from_src_root(self) -> None:
         self.assertIsNotNone(importlib.util.find_spec('voice'), 'voice is not importable from the src/ root')
@@ -142,7 +193,7 @@ class PackageLayoutTests(unittest.TestCase):
         violations = {
             path.relative_to(ROOT).as_posix(): found
             for path in files
-            if (found := find_forbidden_imports(path.read_text(encoding='utf-8'), str(path)))
+            if (found := find_unexempted_imports(path.read_text(encoding='utf-8'), path.relative_to(ROOT).as_posix(), str(path)))
         }
         self.assertEqual(violations, {})
 
