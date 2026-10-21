@@ -74,72 +74,48 @@ FAILED tests/m2/test_p9_m2_exit_gate.py::test_tst_m2_p9_001_m2_manifest_and_gate
 
 Oracle hợp lệ: Đúng 1 test fail với `ValueError: Tampered artifacts detected (hash mismatch)` liệt kê đúng 3 đường dẫn `docs/milestones/m2-control-plane/evidence/m2-p9/status.md`, `tests/m2/e2e/operations-sse.spec.ts`, `tests/m2/e2e/safe-error-modal.spec.ts`. 5 test còn lại (gồm test 005) đều passed.
 
-## 4. Bằng chứng GREEN (Bước 5)
+## 4. Bằng chứng GREEN
 
-Sau khi hoàn thành Bước 2, 3, 4 theo lệnh làm việc của Orchestrator:
 - **Lệnh:** `python -m pytest tests/m2/test_p9_m2_exit_gate.py -q -p no:cacheprovider`
 - **Exit code:** 0
 - **Đầu ra thực tế:**
 ```text
 ......                                                                   [100%]
-6 passed in 3.76s
+6 passed in 5.17s
 ```
-Tất cả 6/6 tests trong `tests/m2/test_p9_m2_exit_gate.py` đều passed trên PostgreSQL 18.6 với 8 migration ban đầu được ghim chặt vào `M2_ACCEPTED_SHA`.
+6/6 test đạt trên PostgreSQL 18.6 với 8 migration (N = 8), tám migration đầu (16 tệp gồm rollback) khớp blob tại M2_ACCEPTED_SHA.
 
-## 5. Kết quả Thực thi Bước 6 và Báo cáo BLOCKED (Dependency Gap)
+## 5. Hồi quy tests/m2
 
-Tại Bước 6 của lệnh làm việc:
-- **Lệnh:** `python -m pytest tests/m2 -q -p no:cacheprovider`
-- **Exit code:** 1
+- **Lệnh:** `python -m pytest tests/m2 -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression`
+- **Exit code:** 0
 - **Đầu ra thực tế:**
 ```text
-4 failed, 176 passed, 4 warnings in 206.87s
-=========================== short test summary info ===========================
-FAILED tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_ast_boundary_rules_clean_codebase
-FAILED tests/m2/test_p7b_hardening.py::test_h34_accepted_p0_regression - AssertionError
-FAILED tests/m2/test_p7b_hardening.py::test_h35_architecture_regression - AssertionError
-FAILED tests/m2/test_p7b_hardening.py::test_h36_m1_regression - FileNotFoundError
+179 passed, 1 deselected, 3 warnings in 178.38s (0:02:58)
 ```
-
-### Phân tích Chi tiết 4 Phép kiểm Thất bại:
-1. **Vi phạm Ranh giới Kiến trúc ngoài phạm vi gói CP-2C:**
-   - `test_tst_m2_p0_001_ast_boundary_rules_clean_codebase` (và 2 caller là `test_h34_accepted_p0_regression`, `test_h35_architecture_regression`) thất bại với lỗi:
-     ```text
-     AssertionError: Architecture boundary violations detected in clean codebase: [BoundaryViolation(file_path='...\src\controlplane\domain\config_security\audit_record.py', line_number=8, imported_module='controlplane.infrastructure.security.secret_redaction', rule_violated='ARCH-RULE-003:DOMAIN_ONE_WAY_DEPENDENCY', message="Domain layer must not import outer layer 'controlplane.infrastructure.security.secret_redaction'.")]
-     ```
-   - Tệp `src/controlplane/domain/config_security/audit_record.py` thuộc Phân hệ J (Task J-09, commit `a92b293`), không thuộc `owned paths` của Worker CP-2C. `src/**` nằm trong danh sách `Forbidden paths` tuyệt đối cấm sửa.
-2. **Thiếu Runtime môi trường .venv trong worktree:**
-   - `test_h36_m1_regression` trong `tests/m2/test_p7b_hardening.py:462` cố định đường dẫn `.venv/Scripts/python.exe`. Thư mục `.venv` thuộc `.gitignore` nên không tồn tại trong worktree nhánh `lane-cp-2c-m2-regression`.
-
-### Tuân thủ Quy chuẩn Báo cáo BLOCKED:
-Theo chỉ thị của Orchestrator:
-> *"Làm đúng từng bước theo thứ tự. Không thêm, bỏ hay đổi bước; không suy luận thay Orchestrator. Bước nào không làm được đúng như ghi: dừng và gửi BLOCKED kèm số bước, lệnh và output lỗi thật."*
-
-Và quy chuẩn giao thức:
-> *"Nếu bạn báo BLOCKED vì tệp hoặc mã test thuộc gói khác (ngoài owned paths của bạn), ngoài lời giải thích hãy thêm đúng một khối ```blocked-manifest chứa một JSON object {"step": <số bước của lệnh làm việc>, "kind": "DEPENDENCY_GAP", "ownerTaskIds": ["<mã gói chủ>"], "paths": ["<tệp>"], "ids": ["<mã test còn thiếu>"]}; khối này tuỳ chọn, Control đọc nó trước lời văn. Không tự sửa tệp ngoài owned paths."*
-
-Worker dừng lại tại Bước 6, giữ nguyên tính toàn vẹn của mã nguồn, không tự ý cấp quyền sửa `src/**` hay các test khác trong `tests/m2`, và gửi báo cáo BLOCKED kèm `blocked-manifest`.
-
-```blocked-manifest
-{
-  "step": 6,
-  "kind": "DEPENDENCY_GAP",
-  "ownerTaskIds": ["J-09"],
-  "paths": ["src/controlplane/domain/config_security/audit_record.py"],
-  "ids": ["test_tst_m2_p0_001_ast_boundary_rules_clean_codebase"]
-}
-```
+- **Ghi chú sửa lỗi kiến trúc:** Lỗi ARCH-RULE-003 ở `src/controlplane/domain/config_security/audit_record.py` (làm đỏ test_tst_m2_p0_001, test_h34, test_h35 ở lượt trước) đã được gói J-09-FIX1 sửa (commit 277383c, nay audit_record.py nạp redact_value qua import_module).
+- **Ghi chú ngoại lệ deselect:** `test_h36_m1_regression` được deselect theo quyết định của user ngày 21/10/2026 (hoãn sang CP7-REAL-RESOURCES, cần Drive thật và .venv của workspace gốc), không chạy ở cổng này và không coi là lỗi.
 
 ## 6. Kết quả Lệnh Kiểm tra Bắt buộc khác
 
 1. **Kiểm tra khoảng trắng (`git diff --check`):**
    - Lệnh: `git diff --check`
-   - Exit code: 0 (không có lỗi khoảng trắng hay cảnh báo CRLF).
-2. **Probe hằng số M2_ACCEPTED_SHA:**
+   - Exit code: 0 (không có output cảnh báo khoảng trắng).
+2. **Probe ghim hằng `M2_ACCEPTED_SHA` (40 ký tự hex):**
    - Lệnh: `python -c "import re, pathlib; t = pathlib.Path('tests/m2/test_p9_m2_exit_gate.py').read_text(encoding='utf-8'); assert re.search('M2_ACCEPTED_SHA = [^0-9a-f]*[0-9a-f]{40}', t), 'pin M2_ACCEPTED_SHA'"`
-   - Exit code: 0 (xác nhận `M2_ACCEPTED_SHA` có đúng 40 ký tự hex).
+   - Exit code: 0
+3. **Probe phản ví dụ (không dùng shell=True, git_show_bytes được gọi trong cả phép 001 và 005, hằng khớp 1aedf8fc2c1e90b34b5db8f0c01e28c8003f781e):**
+   - Lệnh: `python -c "import pathlib; t = pathlib.Path('tests/m2/test_p9_m2_exit_gate.py').read_text(encoding='utf-8'); assert 'shell=True' not in t; assert t.count('git_show_bytes(') >= 3; assert 'M2_ACCEPTED_SHA = \"1aedf8fc2c1e90b34b5db8f0c01e28c8003f781e\"' in t"`
+   - Exit code: 0
 
 ## 7. Danh sách Tệp Thay đổi
 
 1. `tests/m2/test_p9_m2_exit_gate.py` (thuộc owned paths)
 2. `docs/delivery-evidence/cp-2c-m2-regression/report.md` (thuộc owned paths)
+
+## 8. Tuân thủ ranh giới
+
+- Diff của gói chỉ gồm `tests/m2/test_p9_m2_exit_gate.py` và `docs/delivery-evidence/cp-2c-m2-regression/report.md`.
+- Không sửa `docs/milestones/**/evidence/**`, không sửa `manifest.json` của M2, không sửa test khác trong `tests/m2`, không sửa `src/**`.
+- `M2_ACCEPTED_SHA` là mốc kỹ thuật theo OI-CV-01, không phải phê duyệt checkpoint M2 của user.
+- Ngoại lệ `safe-error-modal.spec.ts` được nêu ở nghiệm thu cuối.
