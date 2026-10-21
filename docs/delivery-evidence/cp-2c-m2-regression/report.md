@@ -120,3 +120,35 @@ Oracle hợp lệ: Đúng 1 test fail với `ValueError: Tampered artifacts dete
 - Không sửa `docs/milestones/**/evidence/**`, không sửa `manifest.json` của M2, không sửa test khác trong `tests/m2`, không sửa `src/**`.
 - `M2_ACCEPTED_SHA` là mốc kỹ thuật theo OI-CV-01, không phải phê duyệt checkpoint M2 của user.
 - Ngoại lệ `safe-error-modal.spec.ts` được nêu ở nghiệm thu cuối.
+
+## 9. Kiểm lại sau rebase lên integration head 985d542
+
+### 9.1. Cổng M2-P9 (`tests/m2/test_p9_m2_exit_gate.py`)
+- **Lệnh:** `python -m pytest tests/m2/test_p9_m2_exit_gate.py -q -p no:cacheprovider`
+- **Exit code:** 0
+- **Dòng tóm tắt:**
+```text
+6 passed in 4.99s
+```
+
+### 9.2. Kiểm thử hồi quy tests/m2
+- **Lệnh:** `python -m pytest tests/m2 -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression --deselect tests/m2/test_p7b_sse_stream.py::test_tst_m2_p7b_004_sse_session_workspace_isolation`
+- **Exit code:** 0
+- **Dòng tóm tắt:**
+```text
+178 passed, 2 deselected, 2 warnings in 181.01s (0:03:01)
+```
+
+### 9.3. Probe ghim hằng M2_ACCEPTED_SHA
+- **Lệnh:** `python -c "import re, pathlib; t = pathlib.Path('tests/m2/test_p9_m2_exit_gate.py').read_text(encoding='utf-8'); assert re.search('M2_ACCEPTED_SHA = [^0-9a-f]*[0-9a-f]{40}', t), 'pin M2_ACCEPTED_SHA'"`
+- **Exit code:** 0
+- **Dòng tóm tắt:** Thoát mã 0, không có lỗi (không có AssertionError).
+
+### Finding tests/unit
+- **Lệnh:** `python -m pytest tests/unit/collection/test_a01_package_layout.py -q -p no:cacheprovider`
+- **Exit code:** 1
+- **Dòng tóm tắt:**
+```text
+1 failed, 7 passed, 31 subtests passed in 0.14s
+```
+- **Kết luận:** test_package_modules_have_no_forbidden_imports đỏ do src/source_ingestion/adapters/real_media_fetch.py:19-20 (from catalog.application.discovery import DiscoveryObservation; from catalog.domain.identity import CanonicalFingerprint, MediaKind, ProvenanceEntry, ProvenanceRelation) vi phạm FORBIDDEN_IMPORT_PREFIXES chứa 'catalog'; tệp này do ADAPT-A đưa vào ở integration head 985d542, nằm ngoài owned paths của gói này, diff của gói này chỉ gồm hai tệp trong owned paths nên không gây ra lỗi; chủ gói là ADAPT-A (DEPENDENCY_GAP), gói này không sửa src/** hay tests/unit/**.
