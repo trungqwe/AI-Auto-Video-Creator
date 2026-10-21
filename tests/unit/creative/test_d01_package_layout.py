@@ -20,6 +20,12 @@ FORBIDDEN_IMPORT_PREFIXES = (
 FORBIDDEN_DIR_NAMES = frozenset({'storage', 'orchestration', 'ui', 'config'})
 DYNAMIC_IMPORT_CALLS = frozenset({'import_module', '__import__'})
 
+# Miễn trừ hẹp theo kế hoạch ADAPT đã duyệt: docs/implementation/adapt/plan.md dòng 81 và 107 (ADAPT-D: NineRouterHTTPAdapter, ApprovedEndpointRegistry).
+# Khoá là đường dẫn tệp chính xác (posix, tính từ gốc repo), không dùng mẫu, không miễn cả thư mục adapters.
+ADAPTER_IMPORT_EXEMPTIONS = {
+    'src/creative/adapters/real_route_executor.py': frozenset({'controlplane.config'}),
+}
+
 
 def _is_forbidden(name: str) -> bool:
     return any(name == prefix or name.startswith(prefix + '.') for prefix in FORBIDDEN_IMPORT_PREFIXES)
@@ -40,6 +46,15 @@ def find_forbidden_imports(source: str, filename: str = '<string>') -> list[str]
             if func_name in DYNAMIC_IMPORT_CALLS and isinstance(first, ast.Constant) and isinstance(first.value, str):
                 names.append(first.value)
     return sorted({name for name in names if _is_forbidden(name)})
+
+
+def find_unexempted_imports(source: str, rel_path: str, filename: str = '<string>') -> list[str]:
+    allowed = ADAPTER_IMPORT_EXEMPTIONS.get(rel_path, frozenset())
+    return [
+        name
+        for name in find_forbidden_imports(source, filename)
+        if not any(name == prefix or name.startswith(prefix + '.') for prefix in allowed)
+    ]
 
 
 def find_forbidden_dirs(base: pathlib.Path) -> list[str]:
@@ -113,6 +128,61 @@ class DetectorSelfTests(unittest.TestCase):
             )
 
 
+class AdapterExemptionTests(unittest.TestCase):
+    ADAPTER = 'src/creative/adapters/real_route_executor.py'
+
+    def test_exemption_table_is_exact_paths_only(self) -> None:
+        self.assertEqual(set(ADAPTER_IMPORT_EXEMPTIONS), {self.ADAPTER})
+        self.assertEqual(ADAPTER_IMPORT_EXEMPTIONS[self.ADAPTER], frozenset({'controlplane.config'}))
+        for rel in ADAPTER_IMPORT_EXEMPTIONS:
+            with self.subTest(rel=rel):
+                self.assertFalse(set('*?[') & set(rel))
+                self.assertTrue((ROOT / rel).is_file())
+
+    def test_exempt_adapter_may_import_only_controlplane_config(self) -> None:
+        self.assertEqual(
+            find_unexempted_imports(
+                'from controlplane.config.adapter import ApprovedEndpointRegistry, NineRouterHTTPAdapter',
+                self.ADAPTER,
+            ),
+            [],
+        )
+        self.assertEqual(
+            find_unexempted_imports('from controlplane.config.models import AIRequest', self.ADAPTER),
+            [],
+        )
+        for source, expected in (
+            ('import socket', 'socket'),
+            ('import urllib.request', 'urllib.request'),
+            ('import voice', 'voice'),
+            ('import psycopg', 'psycopg'),
+            ('from controlplane.infrastructure import db', 'controlplane.infrastructure'),
+            ('from controlplane.api import routes', 'controlplane.api'),
+        ):
+            with self.subTest(source=source):
+                self.assertIn(expected, find_unexempted_imports(source, self.ADAPTER))
+
+    def test_other_modules_still_reject_controlplane_config(self) -> None:
+        for rel in (
+            'src/creative/domain/other.py',
+            'src/creative/adapters/other.py',
+            'src/creative/adapters/real_ai_invocation.py',
+            'src/creative/application/pipeline.py',
+            'src/creative/domain/real_route_executor.py',
+        ):
+            with self.subTest(rel=rel):
+                self.assertIn(
+                    'controlplane.config.adapter',
+                    find_unexempted_imports(
+                        'from controlplane.config.adapter import NineRouterHTTPAdapter', rel
+                    ),
+                )
+                self.assertIn(
+                    'controlplane.config',
+                    find_unexempted_imports('from controlplane import config', rel),
+                )
+
+
 class PackageLayoutTests(unittest.TestCase):
     def test_package_importable_from_src_root(self) -> None:
         self.assertIsNotNone(importlib.util.find_spec('creative'), 'creative is not importable from the src/ root')
@@ -139,7 +209,7 @@ class PackageLayoutTests(unittest.TestCase):
         violations = {
             path.relative_to(ROOT).as_posix(): found
             for path in files
-            if (found := find_forbidden_imports(path.read_text(encoding='utf-8'), str(path)))
+            if (found := find_unexempted_imports(path.read_text(encoding='utf-8'), path.relative_to(ROOT).as_posix(), str(path)))
         }
         self.assertEqual(violations, {})
 

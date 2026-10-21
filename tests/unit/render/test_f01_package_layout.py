@@ -22,6 +22,13 @@ FORBIDDEN_CALL_ATTRS = frozenset({'unlink', 'rmdir', 'rmtree', 'remove', 'rename
 FORBIDDEN_FUNCTION_PREFIXES = ('delete_', 'cleanup_', 'remove_')
 DYNAMIC_IMPORT_CALLS = frozenset({'import_module', '__import__'})
 
+# Miễn trừ hẹp theo kế hoạch ADAPT đã duyệt: docs/implementation/adapt/plan.md dòng 84 và 123-124 (ADAPT-F: subprocess.run, os.replace, xoá tệp tạm).
+# Khoá là đường dẫn tệp chính xác tính từ src/render (posix), không dùng mẫu, không miễn cả thư mục adapters; giá trị là đúng chuỗi phát hiện của scan_package.
+ADAPTER_EXEMPTIONS = {
+    'adapters/real_ffmpeg_renderer.py': frozenset({'import:os', 'import:subprocess', 'call:unlink'}),
+    'adapters/real_ffprobe_probe.py': frozenset({'import:subprocess'}),
+}
+
 
 def _is_forbidden(name: str) -> bool:
     return any(name == prefix or name.startswith(prefix + '.') for prefix in FORBIDDEN_IMPORT_PREFIXES)
@@ -74,15 +81,20 @@ def package_py_files(base: pathlib.Path = PACKAGE_DIR) -> list[pathlib.Path]:
     return sorted(p for p in base.rglob('*.py') if '__pycache__' not in p.parts)
 
 
-def scan_package(base: pathlib.Path = PACKAGE_DIR) -> dict[str, list[str]]:
+def scan_package(
+    base: pathlib.Path = PACKAGE_DIR, exemptions: dict[str, frozenset[str]] = ADAPTER_EXEMPTIONS
+) -> dict[str, list[str]]:
     violations: dict[str, list[str]] = {}
     for path in package_py_files(base):
         source = path.read_text(encoding='utf-8')
+        rel = path.relative_to(base).as_posix()
         found = [f'import:{name}' for name in find_forbidden_imports(source, str(path))]
         found += [f'call:{name}' for name in find_forbidden_calls(source, str(path))]
         found += [f'def:{name}' for name in find_forbidden_functions(source, str(path))]
+        allowed = exemptions.get(rel, frozenset())
+        found = [item for item in found if item not in allowed]
         if found:
-            violations[path.relative_to(base).as_posix()] = found
+            violations[rel] = found
     return violations
 
 
@@ -194,6 +206,95 @@ class DetectorSelfTests(unittest.TestCase):
                     'worker/deep/nested.py': ['import:os'],
                 },
             )
+
+
+class AdapterExemptionTests(unittest.TestCase):
+    def _scan(self, files: dict[str, str]) -> dict[str, list[str]]:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = pathlib.Path(tmp)
+            for rel, text in files.items():
+                target = base / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(text, encoding='utf-8')
+            return scan_package(base)
+
+    def test_exemption_table_is_exact_paths_only(self) -> None:
+        self.assertEqual(
+            ADAPTER_EXEMPTIONS,
+            {
+                'adapters/real_ffmpeg_renderer.py': frozenset({'import:os', 'import:subprocess', 'call:unlink'}),
+                'adapters/real_ffprobe_probe.py': frozenset({'import:subprocess'}),
+            },
+        )
+        for rel in ADAPTER_EXEMPTIONS:
+            with self.subTest(rel=rel):
+                self.assertFalse(set('*?[') & set(rel))
+                self.assertTrue((PACKAGE_DIR / rel).is_file())
+
+    def test_exempt_adapters_accept_only_their_items(self) -> None:
+        self.assertEqual(
+            self._scan({
+                'adapters/real_ffmpeg_renderer.py': (
+                    'import os\n'
+                    'import subprocess\n\n\n'
+                    'def run(temp):\n'
+                    '    temp.unlink(missing_ok=True)\n'
+                )
+            }),
+            {},
+        )
+        self.assertEqual(
+            self._scan({'adapters/real_ffprobe_probe.py': 'import subprocess\n'}),
+            {},
+        )
+
+    def test_exempt_adapters_still_flag_other_items(self) -> None:
+        self.assertEqual(
+            self._scan({
+                'adapters/real_ffmpeg_renderer.py': (
+                    'import shutil\n'
+                    'import socket\n\n\n'
+                    'def cleanup_x(p):\n'
+                    '    p.rename(p)\n'
+                )
+            }),
+            {
+                'adapters/real_ffmpeg_renderer.py': [
+                    'import:shutil',
+                    'import:socket',
+                    'call:rename',
+                    'def:cleanup_x',
+                ]
+            },
+        )
+        self.assertEqual(
+            self._scan({
+                'adapters/real_ffprobe_probe.py': (
+                    'import os\n'
+                    'import subprocess\n\n\n'
+                    'def f(p):\n'
+                    '    p.unlink()\n'
+                )
+            }),
+            {'adapters/real_ffprobe_probe.py': ['import:os', 'call:unlink']},
+        )
+
+    def test_other_modules_still_reject_exempted_items(self) -> None:
+        for rel in (
+            'domain/other.py',
+            'adapters/other.py',
+            'adapters/fake_renderer.py',
+            'application/x.py',
+            'domain/real_ffprobe_probe.py',
+            'worker/real_ffmpeg_renderer.py',
+        ):
+            for source, expected in (
+                ('import subprocess\n', 'import:subprocess'),
+                ('import os\n', 'import:os'),
+                ('p.unlink()\n', 'call:unlink'),
+            ):
+                with self.subTest(rel=rel, source=source):
+                    self.assertEqual(self._scan({rel: source}), {rel: [expected]})
 
 
 class PackageLayoutTests(unittest.TestCase):
