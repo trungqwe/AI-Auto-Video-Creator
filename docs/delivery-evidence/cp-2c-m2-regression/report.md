@@ -152,3 +152,39 @@ Oracle hợp lệ: Đúng 1 test fail với `ValueError: Tampered artifacts dete
 1 failed, 7 passed, 31 subtests passed in 0.14s
 ```
 - **Kết luận:** test_package_modules_have_no_forbidden_imports đỏ do src/source_ingestion/adapters/real_media_fetch.py:19-20 (from catalog.application.discovery import DiscoveryObservation; from catalog.domain.identity import CanonicalFingerprint, MediaKind, ProvenanceEntry, ProvenanceRelation) vi phạm FORBIDDEN_IMPORT_PREFIXES chứa 'catalog'; tệp này do ADAPT-A đưa vào ở integration head 985d542, nằm ngoài owned paths của gói này, diff của gói này chỉ gồm hai tệp trong owned paths nên không gây ra lỗi; chủ gói là ADAPT-A (DEPENDENCY_GAP), gói này không sửa src/** hay tests/unit/**.
+
+## 10. Xác nhận cuối và phân loại finding tests/unit
+
+### 10.1. Kết quả thực thi các lệnh kiểm tra bắt buộc (bước 1-4)
+
+1. **Kiểm tra khoảng trắng (`git diff --check`):**
+   - **Lệnh:** `git diff --check`
+   - **Exit code:** 0
+   - **Dòng tóm tắt:** Thoát mã 0, không có cảnh báo khoảng trắng.
+
+2. **Cổng M2-P9 (`tests/m2/test_p9_m2_exit_gate.py`):**
+   - **Lệnh:** `python -m pytest tests/m2/test_p9_m2_exit_gate.py -q -p no:cacheprovider`
+   - **Exit code:** 0
+   - **Dòng tóm tắt:**
+```text
+6 passed in 4.94s
+```
+
+3. **Kiểm thử hồi quy tests/m2 (với hai test hoãn):**
+   - **Lệnh:** `python -m pytest tests/m2 -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression --deselect tests/m2/test_p7b_sse_stream.py::test_tst_m2_p7b_004_sse_session_workspace_isolation`
+   - **Exit code:** 0
+   - **Dòng tóm tắt:**
+```text
+178 passed, 2 deselected, 2 warnings in 177.78s (0:02:57)
+```
+
+4. **Probe ghim hằng M2_ACCEPTED_SHA (40 ký tự hex):**
+   - **Lệnh:** `python -c "import re, pathlib; t = pathlib.Path('tests/m2/test_p9_m2_exit_gate.py').read_text(encoding='utf-8'); assert re.search('M2_ACCEPTED_SHA = [^0-9a-f]*[0-9a-f]{40}', t), 'pin M2_ACCEPTED_SHA'"`
+   - **Exit code:** 0
+   - **Dòng tóm tắt:** Thoát mã 0, không có AssertionError.
+
+### 10.2. Phân loại finding tests/unit
+
+- **Kết luận:** Finding 'tests/unit exit 1' chỉ do test_package_modules_have_no_forbidden_imports tại src/source_ingestion/adapters/real_media_fetch.py:19-20 (import catalog.application.discovery và catalog.domain.identity, vi phạm FORBIDDEN_IMPORT_PREFIXES ở tests/unit/collection/test_a01_package_layout.py:12-15); tệp do ADAPT-A đưa vào ở integration head 985d542, nằm ngoài owned paths, diff của gói này chỉ gồm hai tệp trong owned paths nên không gây ra và không thể sửa trong gói này; cách xử lý thuộc ADAPT-A (sửa import hoặc sửa ranh giới trong test A-01).
+
+DEPENDENCY_GAP: ownerTaskIds ADAPT-A, paths src/source_ingestion/adapters/real_media_fetch.py, ids tests/unit/collection/test_a01_package_layout.py::PackageLayoutTests::test_package_modules_have_no_forbidden_imports
