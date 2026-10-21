@@ -157,9 +157,9 @@ def test_module_source_has_no_exception_or_traceback_handling():
     assert 'str' not in called
 
 
-def test_modules_directory_has_no_init_file():
+def test_modules_directory_is_declared_package():
     assert MODULE_PATH.parent.is_dir()
-    assert not (MODULE_PATH.parent / '__init__.py').exists()
+    assert (MODULE_PATH.parent / '__init__.py').is_file()
 
 
 def test_key_set_matches_sse_presenter_problem():

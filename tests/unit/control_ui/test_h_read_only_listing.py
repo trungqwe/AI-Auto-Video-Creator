@@ -224,9 +224,9 @@ def test_builder_signature_is_keyword_only():
         assert params[name].default is inspect.Parameter.empty
 
 
-def test_modules_directory_has_no_init_file():
+def test_modules_directory_is_declared_package():
     assert MODULE_PATH.parent.is_dir()
-    assert not (MODULE_PATH.parent / '__init__.py').exists()
+    assert (MODULE_PATH.parent / '__init__.py').is_file()
 
 
 def test_module_source_has_no_write_route_body_access_or_broad_except():
