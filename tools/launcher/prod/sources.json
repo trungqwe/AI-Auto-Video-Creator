@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "status": "LIVENESS_UNVERIFIED",
+  "reason": "bảy nguồn RSS công khai do Control đề xuất theo plan.md 7.7, địa chỉ chưa kiểm sống vì kế hoạch không gọi mạng, CP7-ADAPT-07 sẽ kiểm, nhập qua dịch vụ ứng dụng của A không qua UI",
+  "sources": [
+    {
+      "code": "bbc-world",
+      "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+      "source_kind": "rss_feed",
+      "tier": "tier_1",
+      "enabled": true,
+      "liveness": "UNVERIFIED"
+    },
+    {
+      "code": "bbc-tech",
+      "url": "https://feeds.bbci.co.uk/news/technology/rss.xml",
+      "source_kind": "rss_feed",
+      "tier": "tier_1",
+      "enabled": true,
+      "liveness": "UNVERIFIED"
+    },
+    {
+      "code": "npr-news",
+      "url": "https://feeds.npr.org/1001/rss.xml",
+      "source_kind": "rss_feed",
+      "tier": "tier_1",
+      "enabled": true,
+      "liveness": "UNVERIFIED"
+    },
+    {
+      "code": "guardian-world",
+      "url": "https://www.theguardian.com/world/rss",
+      "source_kind": "rss_feed",
+      "tier": "tier_1",
+      "enabled": true,
+      "liveness": "UNVERIFIED"
+    },
+    {
+      "code": "aljazeera-all",
+      "url": "https://www.aljazeera.com/xml/rss/all.xml",
+      "source_kind": "rss_feed",
+      "tier": "tier_1",
+      "enabled": true,
+      "liveness": "UNVERIFIED"
+    },
+    {
+      "code": "nasa-news",
+      "url": "https://www.nasa.gov/feed/",
+      "source_kind": "rss_feed",
+      "tier": "tier_1",
+      "enabled": true,
+      "liveness": "UNVERIFIED"
+    },
+    {
+      "code": "ars-technica",
+      "url": "https://feeds.arstechnica.com/arstechnica/index",
+      "source_kind": "rss_feed",
+      "tier": "tier_2",
+      "enabled": true,
+      "liveness": "UNVERIFIED"
+    }
+  ]
+}

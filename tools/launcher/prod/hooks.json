@@ -1,0 +1,391 @@
+{
+  "schema_version": 1,
+  "storage": {
+    "base_dir_default": "LOCALAPPDATA/AIAutoVideoCreator",
+    "subdir": "seed",
+    "in_git": false,
+    "generator": "tools/launcher/prod/seed/make_seed_media.py",
+    "generator_owner": "ADAPT-SEED",
+    "import_via": [
+      "import_hook",
+      "register_discovery"
+    ],
+    "import_channel": "application_service"
+  },
+  "rights": {
+    "seed_rights_status": "SELF_GENERATED",
+    "article_image_rights_status": "UNVERIFIED",
+    "article_images_in_sample_video": false,
+    "pending_user_checkpoint": "OI-ADAPT-10"
+  },
+  "recipe_templates": {
+    "lavfi_gradient_pulse_v1": {
+      "tool": "ffmpeg đã ghim trong tools/runtime/runtime.lock.json",
+      "input": "lavfi",
+      "filtergraph": "gradients=s=1080x1920:d=3:r=30:c0={c0}:c1={c1}:speed=0.02,eq=brightness='{amp}*sin(2*PI*{hz}*t)':eval=frame",
+      "output_args": "-c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -r 30 -t 3 -an"
+    },
+    "wave_sweep_v1": {
+      "tool": "python-stdlib-wave",
+      "formula": "x(t)=0.5*env(t)*sin(2*PI*(220*t+(880-220)*t*t/(2*1.5)))",
+      "duration_s": 1.5,
+      "sample_rate_hz": 24000,
+      "channels": 1,
+      "sample_width_bits": 16,
+      "quantize": "round(32767*x)",
+      "envelopes": {
+        "linear_fade_out": "1-t/1.5",
+        "linear_fade_in": "t/1.5",
+        "triangle": "1-abs(2*t/1.5-1)",
+        "exponential_decay": "exp(-3*t/1.5)",
+        "hann": "0.5-0.5*cos(2*PI*t/1.5)"
+      }
+    },
+    "background_gradient_v1": {
+      "tool": "python-stdlib-zlib-png",
+      "method": "vertical_gradient",
+      "top_hsv": {
+        "s": 0.55,
+        "v": 0.95
+      },
+      "bottom_hsv": {
+        "s": 0.85,
+        "v": 0.35
+      },
+      "interpolation": "linear_rgb_per_row",
+      "bit_depth": 8,
+      "color_type": "rgb",
+      "hue_formula": "hue_degrees=(n-1)*30"
+    }
+  },
+  "visual_hooks": [
+    {
+      "id": "vh-01",
+      "kind": "visual",
+      "file_name": "vh-01.mp4",
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "duration_ms": 3000,
+      "recipe": {
+        "template": "lavfi_gradient_pulse_v1",
+        "c0": "0x1E3C72",
+        "c1": "0x2A5298",
+        "hz": 1.0,
+        "amp": 0.06
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "vh-02",
+      "kind": "visual",
+      "file_name": "vh-02.mp4",
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "duration_ms": 3000,
+      "recipe": {
+        "template": "lavfi_gradient_pulse_v1",
+        "c0": "0xB24592",
+        "c1": "0xF15F79",
+        "hz": 1.5,
+        "amp": 0.07
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "vh-03",
+      "kind": "visual",
+      "file_name": "vh-03.mp4",
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "duration_ms": 3000,
+      "recipe": {
+        "template": "lavfi_gradient_pulse_v1",
+        "c0": "0x11998E",
+        "c1": "0x38EF7D",
+        "hz": 2.0,
+        "amp": 0.08
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "vh-04",
+      "kind": "visual",
+      "file_name": "vh-04.mp4",
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "duration_ms": 3000,
+      "recipe": {
+        "template": "lavfi_gradient_pulse_v1",
+        "c0": "0xF2994A",
+        "c1": "0xF2C94C",
+        "hz": 2.5,
+        "amp": 0.06
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "vh-05",
+      "kind": "visual",
+      "file_name": "vh-05.mp4",
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "duration_ms": 3000,
+      "recipe": {
+        "template": "lavfi_gradient_pulse_v1",
+        "c0": "0x232526",
+        "c1": "0x414345",
+        "hz": 3.0,
+        "amp": 0.1
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    }
+  ],
+  "audio_hooks": [
+    {
+      "id": "ah-01",
+      "kind": "audio",
+      "file_name": "ah-01.wav",
+      "duration_ms": 1500,
+      "sample_rate_hz": 24000,
+      "channels": 1,
+      "sample_width_bits": 16,
+      "recipe": {
+        "template": "wave_sweep_v1",
+        "envelope": "linear_fade_out"
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "ah-02",
+      "kind": "audio",
+      "file_name": "ah-02.wav",
+      "duration_ms": 1500,
+      "sample_rate_hz": 24000,
+      "channels": 1,
+      "sample_width_bits": 16,
+      "recipe": {
+        "template": "wave_sweep_v1",
+        "envelope": "linear_fade_in"
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "ah-03",
+      "kind": "audio",
+      "file_name": "ah-03.wav",
+      "duration_ms": 1500,
+      "sample_rate_hz": 24000,
+      "channels": 1,
+      "sample_width_bits": 16,
+      "recipe": {
+        "template": "wave_sweep_v1",
+        "envelope": "triangle"
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "ah-04",
+      "kind": "audio",
+      "file_name": "ah-04.wav",
+      "duration_ms": 1500,
+      "sample_rate_hz": 24000,
+      "channels": 1,
+      "sample_width_bits": 16,
+      "recipe": {
+        "template": "wave_sweep_v1",
+        "envelope": "exponential_decay"
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "ah-05",
+      "kind": "audio",
+      "file_name": "ah-05.wav",
+      "duration_ms": 1500,
+      "sample_rate_hz": 24000,
+      "channels": 1,
+      "sample_width_bits": 16,
+      "recipe": {
+        "template": "wave_sweep_v1",
+        "envelope": "hann"
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    }
+  ],
+  "background_images": [
+    {
+      "id": "bg-01",
+      "kind": "background_image",
+      "file_name": "bg-01.png",
+      "width": 1080,
+      "height": 1920,
+      "recipe": {
+        "template": "background_gradient_v1",
+        "hue_degrees": 0
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "bg-02",
+      "kind": "background_image",
+      "file_name": "bg-02.png",
+      "width": 1080,
+      "height": 1920,
+      "recipe": {
+        "template": "background_gradient_v1",
+        "hue_degrees": 30
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "bg-03",
+      "kind": "background_image",
+      "file_name": "bg-03.png",
+      "width": 1080,
+      "height": 1920,
+      "recipe": {
+        "template": "background_gradient_v1",
+        "hue_degrees": 60
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "bg-04",
+      "kind": "background_image",
+      "file_name": "bg-04.png",
+      "width": 1080,
+      "height": 1920,
+      "recipe": {
+        "template": "background_gradient_v1",
+        "hue_degrees": 90
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "bg-05",
+      "kind": "background_image",
+      "file_name": "bg-05.png",
+      "width": 1080,
+      "height": 1920,
+      "recipe": {
+        "template": "background_gradient_v1",
+        "hue_degrees": 120
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "bg-06",
+      "kind": "background_image",
+      "file_name": "bg-06.png",
+      "width": 1080,
+      "height": 1920,
+      "recipe": {
+        "template": "background_gradient_v1",
+        "hue_degrees": 150
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "bg-07",
+      "kind": "background_image",
+      "file_name": "bg-07.png",
+      "width": 1080,
+      "height": 1920,
+      "recipe": {
+        "template": "background_gradient_v1",
+        "hue_degrees": 180
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "bg-08",
+      "kind": "background_image",
+      "file_name": "bg-08.png",
+      "width": 1080,
+      "height": 1920,
+      "recipe": {
+        "template": "background_gradient_v1",
+        "hue_degrees": 210
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "bg-09",
+      "kind": "background_image",
+      "file_name": "bg-09.png",
+      "width": 1080,
+      "height": 1920,
+      "recipe": {
+        "template": "background_gradient_v1",
+        "hue_degrees": 240
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "bg-10",
+      "kind": "background_image",
+      "file_name": "bg-10.png",
+      "width": 1080,
+      "height": 1920,
+      "recipe": {
+        "template": "background_gradient_v1",
+        "hue_degrees": 270
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "bg-11",
+      "kind": "background_image",
+      "file_name": "bg-11.png",
+      "width": 1080,
+      "height": 1920,
+      "recipe": {
+        "template": "background_gradient_v1",
+        "hue_degrees": 300
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    },
+    {
+      "id": "bg-12",
+      "kind": "background_image",
+      "file_name": "bg-12.png",
+      "width": 1080,
+      "height": 1920,
+      "recipe": {
+        "template": "background_gradient_v1",
+        "hue_degrees": 330
+      },
+      "sha256": null,
+      "sha256_status": "PENDING_GENERATION"
+    }
+  ],
+  "combinations": {
+    "visual_x_audio": 25
+  }
+}
