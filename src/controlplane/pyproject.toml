@@ -44,11 +44,13 @@ controlplane = "controlplane.entrypoint:main"
 "controlplane.application.session_security" = "application/session_security"
 "controlplane.application.technical_details" = "application/technical_details"
 "controlplane.application.orchestration" = "application/orchestration"
+"controlplane.application.orchestration.workflows" = "application/orchestration/workflows"
 "controlplane.application.sse" = "application/sse"
 "controlplane.api" = "api"
 "controlplane.api.routes" = "api/routes"
 "controlplane.api.routes.modules" = "api/routes/modules"
 "controlplane.api.sse" = "api/sse"
+"controlplane.api.wiring" = "api/wiring"
 "controlplane.infrastructure" = "infrastructure"
 "controlplane.infrastructure.db" = "infrastructure/db"
 "controlplane.infrastructure.db.config_security" = "infrastructure/db/config_security"
@@ -92,11 +94,13 @@ packages = [
     "controlplane.application.session_security",
     "controlplane.application.technical_details",
     "controlplane.application.orchestration",
+    "controlplane.application.orchestration.workflows",
     "controlplane.application.sse",
     "controlplane.api",
     "controlplane.api.routes",
     "controlplane.api.routes.modules",
     "controlplane.api.sse",
+    "controlplane.api.wiring",
     "controlplane.infrastructure",
     "controlplane.infrastructure.db",
     "controlplane.infrastructure.db.config_security",
