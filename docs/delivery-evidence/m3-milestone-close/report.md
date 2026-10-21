@@ -3,8 +3,8 @@
 ## Môi trường
 
 - **Interpreter khóa của lane**: `C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\1535108e\venv\Scripts\python.exe`
-- **HEAD candidate đã kiểm**: `5dcf3d5c3252f884a812932b3d8ab5a61493439f`
-- **Xác nhận rebase**: Đã rebase thành công lên `5dcf3d5c3252f884a812932b3d8ab5a61493439f` (worktree sạch). Gói sửa lỗi `H-MODULES-PACKAGE-FIX` (`134ce6966938`) đã nằm trong nhánh tích hợp; cả 3 bài test liên quan (`test_h_metadata_update.py`, `test_h_problem_detail.py`, `test_h_read_only_listing.py`) đều đạt PASS 100% (163 passed).
+- **HEAD candidate đã kiểm**: cea333deed7ce23e4a57fe6fa2de21ca9e4db47d (commit cha trực tiếp 5dcf3d5c3252f884a812932b3d8ab5a61493439f; theo thông điệp commit, cea333d chỉ thêm tài liệu báo cáo revision 1 trước đó).
+- **Trạng thái worktree**: sạch khi bắt đầu; lịch sử chứa gói ADAPT-E-MEDIA (5c632b65335d) và H-MODULES-PACKAGE-FIX (134ce6966938); ba bài test STT 141, 142, 143 (test_h_problem_detail.py, test_h_read_only_listing.py, test_h_metadata_update.py) cho tổng 163 passed ở lần chạy này.
 - **Nguồn quyền**: User duyệt Phần B ngày 18/10/2026 (D0–D10 theo đề xuất); các milestone M3–M7 chạy theo ủy quyền AI_SETUP (`AI_PM_DELEGATED_AUTHORITY_RULES.md`).
 
 ## Gói được bao phủ
@@ -200,7 +200,7 @@
 
 ## Kết quả lệnh kiểm
 
-Toàn bộ 186 lệnh kiểm bắt buộc theo spec và work order đã được chạy lại trên candidate `5dcf3d5c3252f884a812932b3d8ab5a61493439f` bằng interpreter khóa:
+Toàn bộ 186 lệnh kiểm bắt buộc theo spec đã được chạy lại trên candidate cea333deed7ce23e4a57fe6fa2de21ca9e4db47d bằng interpreter khóa. Các lệnh pytest gốc có nhiều tệp (STT 41, 42, 126, 127, 131, 132, 133, 134) được chạy tách từng tệp; exit code gộp chỉ bằng 0 khi mọi phần đều 0, kết quả gộp là tổng số passed:
 
 | STT | Lệnh | Exit code | Kết quả nguyên văn |
 | :---: | :--- | :---: | :--- |
@@ -209,7 +209,7 @@ Toàn bộ 186 lệnh kiểm bắt buộc theo spec và work order đã được
 | 3 | `python -c "import re, pathlib, unicodedata; f = ['AGENTS.md', 'README.md', 'HANDOFF.md', 'docs/12-pre-code-checklist.md', 'docs/11-roadmap.md']; t = dict((n, unicodedata.normalize('NFC', pathlib.Path(n).read_text(encoding='utf-8'))) for n in f); lock = re.compile('NOT AUTHORIZED\|kh\u00f3a ch\u1eb7t\|kho\u00e1 ch\u1eb7t\|B\u1eca KH\u00d3A\|B\u1eca KHO\u00c1'); bad = [n + ': ' + l.strip()[:90] for n in f for l in t[n].splitlines() if 'M3' in l and lock.search(l)]; assert not bad, bad; assert not re.search('push l\u00ean .origin. \u0111\u1ec3 sao l\u01b0u', t['AGENTS.md']), 'AGENTS.md still requires a push'; assert not re.search('push l\u00ean repository n\u00e0y', t['README.md']), 'README.md still requires a push'; assert all('18/10/2026' in t[n] for n in ['AGENTS.md', 'README.md', 'HANDOFF.md']), 'authority of 18/10/2026 missing'"` | 0 | Đạt (exit 0, assertion đạt) |
 | 4 | `python -c "import re, pathlib; t = pathlib.Path('docs/parallel-delivery/ownership-and-locks.yaml').read_text(encoding='utf-8'); ids = re.findall(r'(?m)^\s*- id: ([A-Za-z0-9_.-]+)', t); dup = sorted(set(i for i in ids if ids.count(i) > 1)); assert not dup, dup; need = ['PATH-DELIVERY-EVIDENCE', 'PATH-IMPLEMENTATION-PLANS', 'LOCK-M2-REGRESSION', 'LOCK-UI-SHELL', 'LOCK-CONTROL-API', 'LOCK-CONVERGENCE'] + ['LOCK-IMPL-PLAN-' + x for x in 'A B C D E F G H I J CONVERGENCE'.split()]; miss = [i for i in need if i not in ids]; assert not miss, miss; assert 'src/storage/**' not in t and 'src/controlplane/orchestration/**' not in t, 'paths of G and I do not follow D1'; want = ['src/controlplane/domain/storage_meta/**', 'src/controlplane/domain/orchestration/**', 'docs/delivery-evidence/**', 'docs/implementation/**']; gone = [p for p in want if p not in t]; assert not gone, gone"` | 0 | Đạt (exit 0, assertion đạt) |
 | 5 | `python -c "import re, pathlib; m = pathlib.Path('docs/parallel-delivery/acceptance-matrix.yaml').read_text(encoding='utf-8'); assert not re.search(r'docs/milestones/m[3-7]', m), 'acceptance-matrix still points M3+ evidence at docs/milestones'; o = pathlib.Path('docs/parallel-delivery/overlay-and-evidence.md').read_text(encoding='utf-8'); assert 'docs/delivery-evidence/' in o, 'the D4 location is not documented'; r = pathlib.Path('docs/delivery-evidence/cp0-governance/ownership-recheck.md').read_text(encoding='utf-8'); assert all(c in r for c in ['0a3f707', '98bd27e', 'ebf3d58']), 'the recheck must name the commits'; assert re.search(r'\b[0-9a-f]{64}\b', r), 'the recheck must bind the sha256 of the diff'"` | 0 | Đạt (exit 0, assertion đạt) |
-| 6 | `python -m pytest tests/unit -q -p no:cacheprovider` | 1 | FAILED tests/unit/voice/test_e01_package_layout.py::PackageLayoutTests::test_package_modules_have_no_forbidden_imports |
+| 6 | python -m pytest tests/unit -q -p no:cacheprovider | 1 | 3 failed, 7352 passed, 2 warnings, 2416 subtests passed in 9.59s (FAILED tests/unit/creative/test_d01_package_layout.py::PackageLayoutTests::test_package_modules_have_no_forbidden_imports, tests/unit/render/test_f01_package_layout.py::PackageLayoutTests::test_package_modules_have_no_forbidden_constructs, tests/unit/voice/test_e01_package_layout.py::PackageLayoutTests::test_package_modules_have_no_forbidden_imports) |
 | 7 | `python -c "import pathlib, re, tomllib; root = pathlib.Path('src/controlplane'); keys = set(tomllib.loads((root / 'pyproject.toml').read_text(encoding='utf-8'))['tool']['setuptools']['package-dir']); pk = set('.'.join(('controlplane',) + q.parent.relative_to(root).parts) for q in root.rglob('*.py') if q.stem.strip('_') == 'init' and 'node_modules' not in q.parts); miss = sorted(pk - keys); assert not miss, miss; ini = tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8'))['tool']['pytest']['ini_options']; assert 'src' in ini.get('pythonpath', []), 'pytest pythonpath must include src'; bad = [str(q) for d in ['src', 'tests'] for q in pathlib.Path(d).rglob('*.py') if 'node_modules' not in q.parts and re.search(r'(?m)^\s*(from\|import)\s+src\.', q.read_text(encoding='utf-8', errors='replace'))]; assert not bad, bad"` | 1 | AssertionError: ['controlplane.api.wiring', 'controlplane.application.orchestration.workflows'] |
 | 8 | `python -m pytest tests/contract -q -p no:cacheprovider` | 0 | 125 passed in 0.19s |
 | 9 | `python -c "import json, pathlib, re; b = pathlib.Path('docs/parallel-delivery/bindings'); mans = sorted(b.glob('*.json')); assert (b / 'README.md').is_file() and len(mans) >= 6, 'bindings/README.md and at least six seam manifests are required'; data = [json.loads(m.read_text(encoding='utf-8')) for m in mans]; assert all(d.get('seam') and d.get('source', {}).get('path', '').startswith('docs/09-contracts/') and re.fullmatch(r'[0-9a-f]{64}', d.get('source', {}).get('sha256', '')) for d in data), 'each manifest names its contract source and its sha256'; fx = pathlib.Path('tests/fixtures/contracts'); assert all((fx / d['seam']).is_dir() for d in data), 'each seam has a fixture folder'; e = pathlib.Path('docs/parallel-delivery/errata'); assert all((e / n).is_file() for n in ['m3-a.md', 'm4-ci.md', 'm5-d.md', 'm6-ef.md', 'm7-integration.md']), 'errata for the five plan families'"` | 0 | Đạt (exit 0, assertion đạt) |
@@ -244,8 +244,8 @@ Toàn bộ 186 lệnh kiểm bắt buộc theo spec và work order đã được
 | 38 | `python -m pytest tests/integration/collection/test_a18_worker_activity.py -q -p no:cacheprovider` | 0 | 28 passed in 0.10s |
 | 39 | `python -m pytest tests/unit/collection/test_a19_rule_catalog.py -q -p no:cacheprovider` | 0 | 62 passed in 0.10s |
 | 40 | `python -m pytest tests/unit/ingestion/test_ingestion_package_validation.py -q -p no:cacheprovider` | 0 | 35 passed in 0.05s |
-| 41 | `python -m pytest tests/unit/ingestion/test_ingestion_normalization.py tests/unit/ingestion/test_ingestion_fingerprint.py -q -p no:cacheprovider` | 0 | 30 passed in 0.05s |
-| 42 | `python -m pytest tests/unit/ingestion/test_ingestion_article_aggregate.py tests/unit/ingestion/test_ingestion_memory_unit_of_work.py -q -p no:cacheprovider` | 0 | 19 passed in 0.04s |
+| 41 | python -m pytest tests/unit/ingestion/test_ingestion_normalization.py tests/unit/ingestion/test_ingestion_fingerprint.py -q -p no:cacheprovider | 0 | 30 passed (chạy tách 2 tệp) |
+| 42 | python -m pytest tests/unit/ingestion/test_ingestion_article_aggregate.py tests/unit/ingestion/test_ingestion_memory_unit_of_work.py -q -p no:cacheprovider | 0 | 19 passed (chạy tách 2 tệp) |
 | 43 | `python -m pytest tests/unit/ingestion/test_ingestion_domain_events.py -q -p no:cacheprovider` | 0 | 64 passed in 0.06s |
 | 44 | `python -m pytest tests/unit/ingestion/test_ingestion_representative.py -q -p no:cacheprovider` | 0 | 27 passed in 0.03s |
 | 45 | `python -m pytest tests/unit/ingestion/test_ingestion_resolve_document.py -q -p no:cacheprovider` | 0 | 31 passed in 0.07s |
@@ -395,46 +395,48 @@ Toàn bộ 186 lệnh kiểm bắt buộc theo spec và work order đã được
 
 | STT | Exit gate | Trạng thái | Bằng chứng kiểm thử |
 | :---: | :--- | :---: | :--- |
-| 1 | User có thể thêm nguồn và theo dõi từng lượt/stage/error trên UI | PASS | STT 142 (`test_h_read_only_listing.py`), STT 143 (`test_h_problem_detail.py`), STT 144 (`test_h_metadata_update.py`), STT 23–41 (A-01..A-19), STT 140–156 (H-01..H-16) |
-| 2 | Article/Event truy ngược được source, fetch evidence và revision | PASS | STT 42–53 (B-1..B-12: `test_b01_package_layout.py` đến `test_b12_...`), STT 4 (`pytest tests/contract` - 125 passed) |
-| 3 | Bài repost không tạo article/script candidate mới | PASS | STT 48 (`test_b07_duplicate_disposition.py`), STT 49 (`test_b08_repost_detection.py`) |
-| 4 | Event update không bị đồng nhất với nguồn đăng lại | PASS | STT 50 (`test_b09_event_timeline.py`), STT 51 (`test_b10_event_update_accepted.py`) |
-| 5 | Một nguồn lỗi không dừng cycle còn lại | PASS | STT 33 (`test_a11_partial_run_isolation.py`), STT 34 (`test_a12_error_handling.py`) |
-| 6 | A-B contract, integration, failure và security tests đạt | PASS | STT 4 (`pytest tests/contract` - 125 passed), STT 23–41 (19 unit test A passed), STT 42–53 (12 unit test B passed) |
+| 1 | User có thể thêm nguồn và theo dõi từng lượt/stage/error trên UI | PASS | STT 29 (tests/integration/collection/test_a09_source_commands.py), STT 37 (tests/unit/collection/test_a17_projections.py), STT 38 (tests/integration/collection/test_a18_worker_activity.py), STT 135 (tests/unit/control_ui/test_h_operation_view_model.py), STT 136 (tests/unit/control_ui/test_h_list_query.py), STT 137 (tests/unit/control_ui/test_h_stream_event_catalog.py), STT 138 (tests/integration/control_ui/test_h_list_queries_sql.py), STT 139 (tests/unit/control_ui/test_h_ops_read_models.py), STT 149 (tests/unit/control_ui/test_h_screen_registry.py) |
+| 2 | Article/Event truy ngược được source, fetch evidence và revision | PASS | STT 8 (tests/contract), STT 42 (tests/unit/ingestion/test_ingestion_article_aggregate.py và tests/unit/ingestion/test_ingestion_memory_unit_of_work.py), STT 45 (tests/unit/ingestion/test_ingestion_resolve_document.py), STT 48 (tests/unit/ingestion/test_ingestion_source_set.py), STT 49 (tests/unit/ingestion/test_ingestion_queries.py), STT 51 (tests/integration/ingestion/test_ingestion_flow_integration.py) |
+| 3 | Bài repost không tạo article/script candidate mới | PASS | STT 41 (tests/unit/ingestion/test_ingestion_normalization.py và tests/unit/ingestion/test_ingestion_fingerprint.py), STT 44 (tests/unit/ingestion/test_ingestion_representative.py), STT 45 (tests/unit/ingestion/test_ingestion_resolve_document.py), STT 51 (tests/integration/ingestion/test_ingestion_flow_integration.py) |
+| 4 | Event update không bị đồng nhất với nguồn đăng lại | PASS | STT 43 (tests/unit/ingestion/test_ingestion_domain_events.py), STT 46 (tests/unit/ingestion/test_ingestion_event_link.py), STT 47 (tests/unit/ingestion/test_ingestion_event_update.py), STT 51 (tests/integration/ingestion/test_ingestion_flow_integration.py) |
+| 5 | Một nguồn lỗi không dừng cycle còn lại | PASS | STT 25 (tests/unit/collection/test_a05_collection_run_states.py), STT 26 (tests/unit/collection/test_a06_checkpoint.py), STT 31 (tests/integration/collection/test_a11_collect_source.py), STT 36 (tests/integration/collection/test_a16_supplemental.py), STT 38 (tests/integration/collection/test_a18_worker_activity.py) |
+| 6 | A-B contract, integration, failure và security tests đạt | PASS | STT 8 (tests/contract), STT 21–39 (A-01..A-19, gồm riêng STT 24 tests/unit/collection/test_a04_locator_ssrf.py và STT 32 tests/unit/collection/test_a12_secure_fetch.py cho security), STT 40–51 (B) |
 | 7 | User duyệt phân hệ A-B và R1 Content Alpha | PENDING | Gate M3-EG7, chờ checkpoint nghiệm thu của người dùng |
 
 ## Đối chiếu bổ sung
 
-- **M3-EG7 (User duyệt phân hệ A-B và R1 Content Alpha)**: Trạng thái `PENDING`. Đây là gate nghiệm thu trực tiếp của người dùng sau khi phân hệ A-B hoàn thành tích hợp và kiểm thử; cần checkpoint phê duyệt của người dùng trước khi chuyển sang các giai đoạn tiếp theo.
-- **M3-REAL (Thu thập RSS/web thật trên mạng và scheduler cloud khi desktop offline, tài nguyên thật, CP7)**: Trạng thái `PENDING`. Gate này đòi hỏi kết nối mạng Internet thực tế để thu thập nguồn RSS/web thật và hạ tầng cloud scheduler hoạt động độc lập khi máy tính desktop offline; theo quy chuẩn không dùng mock để tuyên bố gate thật PASS.
+- **M3-EG7 (User duyệt phân hệ A-B và R1 Content Alpha)**: Trạng thái PENDING. Đây là gate nghiệm thu trực tiếp của người dùng sau khi phân hệ A-B hoàn thành tích hợp và kiểm thử; cần checkpoint phê duyệt của người dùng trước khi chuyển sang các giai đoạn tiếp theo.
+- **M3-REAL (Thu thập RSS/web thật trên mạng và scheduler cloud khi desktop offline, tài nguyên thật, CP7)**: Trạng thái PENDING. Gate này đòi hỏi kết nối mạng Internet thực tế để thu thập nguồn RSS/web thật và hạ tầng cloud scheduler hoạt động độc lập khi máy tính desktop offline; theo quy chuẩn không dùng mock để tuyên bố gate thật PASS.
 
 ## pendingUserCheckpoint
 
 Chỉ có đúng hai mục sau nằm trong danh sách pendingUserCheckpoint:
 
-1. `M3-EG7`: User duyệt phân hệ A-B và R1 Content Alpha.
-2. `M3-REAL`: Thu thập RSS/web thật trên mạng và scheduler cloud khi desktop offline (yêu cầu tài nguyên thật, CP7).
+1. M3-EG7: User duyệt phân hệ A-B và R1 Content Alpha.
+2. M3-REAL: Thu thập RSS/web thật trên mạng và scheduler cloud khi desktop offline (yêu cầu tài nguyên thật, CP7).
 
-Mọi tiêu chí kỹ thuật và lệnh kiểm chưa đạt đều được ghi nhận là FAIL ở mục 5 và mục 8, tuyệt đối không đưa vào pendingUserCheckpoint.
+Mọi tiêu chí kỹ thuật và lệnh kiểm chưa đạt đều được ghi nhận là FAIL ở mục Kết luận, tuyệt đối không đưa vào pendingUserCheckpoint.
 
 ## Kết luận
 
-Trạng thái nghiệm thu milestone M3: **FAIL** (chưa đạt `MILESTONE_CLOSE_READY`).
+Trạng thái nghiệm thu milestone M3: **FAIL** (chưa đạt MILESTONE_CLOSE_READY).
 
-Lý do chi tiết: Mặc dù toàn bộ 184 gói đã có SHA tích hợp đầy đủ và 6 exit gate đầu của M3 (thuộc phân hệ core A-B) đều đạt PASS, quá trình chạy lại 186 lệnh kiểm bắt buộc trên candidate phát hiện 5 lệnh trả về exit code 1 (FAIL):
+Lý do chi tiết: Mặc dù toàn bộ 184 gói đã có SHA tích hợp đầy đủ và 6 exit gate đầu của M3 (thuộc phân hệ core A-B) đều đạt PASS, quá trình chạy lại 186 lệnh kiểm bắt buộc trên candidate cea333deed7ce23e4a57fe6fa2de21ca9e4db47d phát hiện 5 lệnh trả về exit code 1 (FAIL):
 
-1. **STT 6** (`python -m pytest tests/unit -q -p no:cacheprovider`): 3 failed trong tổng số 7352 tests (`test_d01_package_layout.py`, `test_e01_package_layout.py`, `test_f01_package_layout.py`).
-2. **STT 7** (Probe pyproject package-dir): `AssertionError: ['controlplane.api.wiring', 'controlplane.application.orchestration.workflows']` do thiếu khai báo package-dir trong `src/controlplane/pyproject.toml`.
-3. **STT 61** (`tests/unit/creative/test_d01_package_layout.py`): Forbidden import `controlplane.config.models` và `controlplane.config.models.AIRequest` trong creative module.
-4. **STT 79** (`tests/unit/voice/test_e01_package_layout.py`): Forbidden import `subprocess` trong `src/voice/adapters/real_ffmpeg_media_tool.py`.
-5. **STT 99** (`tests/unit/render/test_f01_package_layout.py`): Forbidden constructs trong render module (`import:subprocess`, `call:unlink` trong `adapters/real_ffmpeg_media_render.py` và `import:subprocess` trong `adapters/real_ffprobe_probe.py`).
+1. **STT 6** (python -m pytest tests/unit -q -p no:cacheprovider): 3 failed trong tổng số 7352 tests:
+   - tests/unit/creative/test_d01_package_layout.py::PackageLayoutTests::test_package_modules_have_no_forbidden_imports
+   - tests/unit/render/test_f01_package_layout.py::PackageLayoutTests::test_package_modules_have_no_forbidden_constructs
+   - tests/unit/voice/test_e01_package_layout.py::PackageLayoutTests::test_package_modules_have_no_forbidden_imports
+2. **STT 7** (Probe pyproject package-dir): AssertionError: ['controlplane.api.wiring', 'controlplane.application.orchestration.workflows'] do thiếu khai báo package-dir trong src/controlplane/pyproject.toml.
+3. **STT 61** (tests/unit/creative/test_d01_package_layout.py): FAILED tests/unit/creative/test_d01_package_layout.py::PackageLayoutTests::test_package_modules_have_no_forbidden_imports.
+4. **STT 79** (tests/unit/voice/test_e01_package_layout.py): FAILED tests/unit/voice/test_e01_package_layout.py::PackageLayoutTests::test_package_modules_have_no_forbidden_imports.
+5. **STT 99** (tests/unit/render/test_f01_package_layout.py): FAILED tests/unit/render/test_f01_package_layout.py::PackageLayoutTests::test_package_modules_have_no_forbidden_constructs.
 
-Theo quy tắc phân quyền kỷ luật: Worker chỉ chạy lệnh và lập báo cáo trong owned paths (`docs/delivery-evidence/m3-milestone-close/**`), không tự ý sửa đổi mã nguồn hay cấu hình ngoài phạm vi để ép pass.
+Nguyên nhân gốc đã xác minh trên mã nguồn:
+- **STT 61** do src/creative/adapters/real_route_executor.py:18 import from controlplane.config.models import AIRequest (thuộc chủ gói ADAPT-D).
+- **STT 79** do src/voice/adapters/real_ffmpeg_media_tool.py:13 import subprocess (thuộc chủ gói ADAPT-E-MEDIA).
+- **STT 99** do src/render/adapters/real_ffmpeg_renderer.py:17 import subprocess, dòng 209 gọi temp.unlink, và src/render/adapters/real_ffprobe_probe.py:14 import subprocess (thuộc chủ gói ADAPT-F).
+- **STT 7** do src/controlplane/pyproject.toml chưa khai báo 'controlplane.api.wiring' và 'controlplane.application.orchestration.workflows' trong package-dir.
+- **STT 6** gộp kết quả của 3 bài test layout nêu trên (test_d01_package_layout.py, test_e01_package_layout.py, test_f01_package_layout.py).
 
-Không đổi trạng thái roadmap hay checklist.
-
-## Giới hạn
-
-- Worker chỉ thực hiện chạy kiểm thử trên candidate hiện tại và ghi nhận trung thực báo cáo vào `docs/delivery-evidence/m3-milestone-close/report.md`.
-- Báo cáo này là cơ sở để Reviewer (Sonnet 5.5) và Auditor rủi ro tối cao (Opus 5.5) thực hiện quy trình kiểm định MILESTONE_END.
-- Worker không gọi dịch vụ mạng bên ngoài, không kiểm thử với tài nguyên cloud thật và không đọc/ghi bất kỳ thông tin bí mật hay credentials nào.
+Worker không sửa mã nguồn ngoài owned paths; không đổi trạng thái roadmap hay checklist.
