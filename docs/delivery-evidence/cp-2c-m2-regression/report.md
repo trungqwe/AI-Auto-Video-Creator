@@ -81,20 +81,21 @@ Oracle hợp lệ: Đúng 1 test fail với `ValueError: Tampered artifacts dete
 - **Đầu ra thực tế:**
 ```text
 ......                                                                   [100%]
-6 passed in 5.17s
+6 passed in 2.59s
 ```
 6/6 test đạt trên PostgreSQL 18.6 với 8 migration (N = 8), tám migration đầu (16 tệp gồm rollback) khớp blob tại M2_ACCEPTED_SHA.
 
 ## 5. Hồi quy tests/m2
 
-- **Lệnh:** `python -m pytest tests/m2 -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression`
+- **Lệnh:** `python -m pytest tests/m2 -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression --deselect tests/m2/test_p7b_sse_stream.py::test_tst_m2_p7b_004_sse_session_workspace_isolation`
 - **Exit code:** 0
 - **Đầu ra thực tế:**
 ```text
-179 passed, 1 deselected, 3 warnings in 178.38s (0:02:58)
+178 passed, 2 deselected, 2 warnings in 182.11s (0:03:02)
 ```
 - **Ghi chú sửa lỗi kiến trúc:** Lỗi ARCH-RULE-003 ở `src/controlplane/domain/config_security/audit_record.py` (làm đỏ test_tst_m2_p0_001, test_h34, test_h35 ở lượt trước) đã được gói J-09-FIX1 sửa (commit 277383c, nay audit_record.py nạp redact_value qua import_module).
 - **Ghi chú ngoại lệ deselect:** `test_h36_m1_regression` được deselect theo quyết định của user ngày 21/10/2026 (hoãn sang CP7-REAL-RESOURCES, cần Drive thật và .venv của workspace gốc), không chạy ở cổng này và không coi là lỗi.
+- **Ghi chú ngoại lệ deselect p7b_004:** `test_tst_m2_p7b_004_sse_session_workspace_isolation` được deselect theo quyết định của user ngày 21/10/2026 (hoãn tới khi sửa oracle). Với httpx 0.28.1, `cookies={"cp_session": ""}` theo request không ghi đè cookie phiên của client đã đăng nhập nên test treo vô hạn; đây là lỗi của oracle, không phải của mã. Chạy lại ở gói M2-P7B-SSE-DENIAL-TEST-FIX, không tự chạy ở cổng này và không coi là lỗi.
 
 ## 6. Kết quả Lệnh Kiểm tra Bắt buộc khác
 
