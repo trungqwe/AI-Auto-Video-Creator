@@ -395,13 +395,15 @@ Toàn bộ 186 lệnh kiểm bắt buộc theo spec đã được chạy lại t
 
 | STT | Exit gate | Trạng thái | Bằng chứng kiểm thử |
 | :---: | :--- | :---: | :--- |
-| 1 | User có thể thêm nguồn và theo dõi từng lượt/stage/error trên UI | PASS | STT 29 (tests/integration/collection/test_a09_source_commands.py), STT 37 (tests/unit/collection/test_a17_projections.py), STT 38 (tests/integration/collection/test_a18_worker_activity.py), STT 135 (tests/unit/control_ui/test_h_operation_view_model.py), STT 136 (tests/unit/control_ui/test_h_list_query.py), STT 137 (tests/unit/control_ui/test_h_stream_event_catalog.py), STT 138 (tests/integration/control_ui/test_h_list_queries_sql.py), STT 139 (tests/unit/control_ui/test_h_ops_read_models.py), STT 149 (tests/unit/control_ui/test_h_screen_registry.py) |
+| 1 | User có thể thêm nguồn và theo dõi từng lượt/stage/error trên UI | FAIL | M3-EG1 chưa đạt trên candidate: UI và API chưa có chức năng thêm hay theo dõi nguồn. Bằng chứng: (a) `rg -n '@router\.(get|post|put)' src/controlplane/api` chỉ thấy các route operations, batches, jobs, configs, errors, session và operations/stream (src/controlplane/api/routes/control.py:17-126, src/controlplane/api/sse/stream.py:163, src/controlplane/api/routes/session.py:14), không có route /v1/sources; (b) src/controlplane/ui/src/App.tsx:13-15 và 209-221 chỉ dựng lưới Tác vụ, Lô, Công việc, không có màn hình Nguồn tin; (c) src/controlplane/ui/src/features/screens/screenRegistry.ts:78-86 đặt backendStatus là pending_module cho màn hình nguồn, được khóa bởi tests/unit/control_ui/test_h_screen_registry.py:125-128; (d) docs/implementation/convergence/plan.md:252 (BL-CV-05) ghi query nguồn còn PENDING chờ kho PERSIST-*. Các lệnh kiểm STT 29, 37, 38, 135, 136, 137, 138, 139 và 149 đều exit 0 nhưng chỉ kiểm lớp miền, read model và registry, không kiểm route hay màn hình nguồn nên không đủ làm bằng chứng cho gate này. Gói chủ cần hoàn tất: CP-4-WIRING (route và wiring) và CP-4B-UI-SHELL (nối màn hình vào App shell). |
 | 2 | Article/Event truy ngược được source, fetch evidence và revision | PASS | STT 8 (tests/contract), STT 42 (tests/unit/ingestion/test_ingestion_article_aggregate.py và tests/unit/ingestion/test_ingestion_memory_unit_of_work.py), STT 45 (tests/unit/ingestion/test_ingestion_resolve_document.py), STT 48 (tests/unit/ingestion/test_ingestion_source_set.py), STT 49 (tests/unit/ingestion/test_ingestion_queries.py), STT 51 (tests/integration/ingestion/test_ingestion_flow_integration.py) |
 | 3 | Bài repost không tạo article/script candidate mới | PASS | STT 41 (tests/unit/ingestion/test_ingestion_normalization.py và tests/unit/ingestion/test_ingestion_fingerprint.py), STT 44 (tests/unit/ingestion/test_ingestion_representative.py), STT 45 (tests/unit/ingestion/test_ingestion_resolve_document.py), STT 51 (tests/integration/ingestion/test_ingestion_flow_integration.py) |
 | 4 | Event update không bị đồng nhất với nguồn đăng lại | PASS | STT 43 (tests/unit/ingestion/test_ingestion_domain_events.py), STT 46 (tests/unit/ingestion/test_ingestion_event_link.py), STT 47 (tests/unit/ingestion/test_ingestion_event_update.py), STT 51 (tests/integration/ingestion/test_ingestion_flow_integration.py) |
 | 5 | Một nguồn lỗi không dừng cycle còn lại | PASS | STT 25 (tests/unit/collection/test_a05_collection_run_states.py), STT 26 (tests/unit/collection/test_a06_checkpoint.py), STT 31 (tests/integration/collection/test_a11_collect_source.py), STT 36 (tests/integration/collection/test_a16_supplemental.py), STT 38 (tests/integration/collection/test_a18_worker_activity.py) |
 | 6 | A-B contract, integration, failure và security tests đạt | PASS | STT 8 (tests/contract), STT 21–39 (A-01..A-19, gồm riêng STT 24 tests/unit/collection/test_a04_locator_ssrf.py và STT 32 tests/unit/collection/test_a12_secure_fetch.py cho security), STT 40–51 (B) |
 | 7 | User duyệt phân hệ A-B và R1 Content Alpha | PENDING | Gate M3-EG7, chờ checkpoint nghiệm thu của người dùng |
+
+**Finding F1 (MAJOR, đã xử lý trong báo cáo này)**: gate M3-EG1 (STT 1) bị chuyển từ PASS sang FAIL vì UI và API trên candidate chưa có chức năng thêm hay theo dõi nguồn. Đây là tiêu chí kỹ thuật chưa đạt nên ghi FAIL, không đưa vào pendingUserCheckpoint. Việc hoàn tất thuộc hai gói chủ CP-4-WIRING và CP-4B-UI-SHELL; báo cáo này không sửa mã nguồn, roadmap hay checklist.
 
 ## Đối chiếu bổ sung
 
@@ -419,13 +421,14 @@ Mọi tiêu chí kỹ thuật và lệnh kiểm chưa đạt đều được ghi
 
 ## Kết luận
 
-Trạng thái nghiệm thu milestone M3: **PASS về kỹ thuật (MILESTONE_CLOSE_READY), còn hai mục chờ user: M3-EG7 và M3-REAL**.
+Trạng thái nghiệm thu milestone M3: **FAIL về kỹ thuật ở gate M3-EG1 (chưa sẵn sàng đóng milestone); ngoài ra còn hai mục chờ user hoặc tài nguyên thật: M3-EG7 và M3-REAL**.
 
 Chi tiết kết quả nghiệm thu sau khi rebase lên integration head 3e15f146f9cd926403173a6b63d70db747090450:
 - **184/184 gói** thuộc phạm vi milestone M3 đã có SHA tích hợp xác thực đầy đủ.
 - **186/186 lệnh kiểm bắt buộc** đều đạt exit code 0 khi chạy lại bằng interpreter khóa 33f06a7a trên candidate 4818c5e82cf7627a174456d6b4ef56b4097d2ec3.
 - Finding CP-2B-PACKAGES đã được giải quyết triệt để và xác nhận qua STT 7 (probe package-dir) trả về exit code 0, không còn thiếu package nào trong pyproject.toml.
 - Các vấn đề kiểm tra layout gói ở lần chạy trước đã được khắc phục hoàn toàn trên nhánh tích hợp: STT 6 (unit test toàn bộ) đạt 7365 passed, STT 61 (creative package layout) đạt 12 passed, STT 79 (voice package layout) đạt 12 passed, và STT 99 (render package layout) đạt 16 passed.
-- Toàn bộ 6 exit gate kỹ thuật của M3 theo roadmap (docs/11-roadmap.md §9) đều đạt PASS.
-- Hai mục còn lại đang ở trạng thái PENDING chờ checkpoint người dùng hoặc tài nguyên thật gồm: M3-EG7 (User duyệt phân hệ A-B và R1 Content Alpha) và M3-REAL (Thu thập RSS/web thật trên mạng và scheduler cloud khi desktop offline, tài nguyên thật, CP7).
+- Trong 6 exit gate kỹ thuật của M3 theo roadmap (docs/11-roadmap.md §9), 5 gate đạt PASS (STT 2 đến 6) và gate STT 1 (M3-EG1) là FAIL: chưa có route /v1/sources và màn hình Nguồn tin trên UI (finding F1); gói chủ CP-4-WIRING và CP-4B-UI-SHELL. Mọi lệnh kiểm vẫn exit 0 nhưng không kiểm route hay màn hình nguồn, nên exit 0 không chứng minh M3-EG1.
+- Chỉ hai mục sau nằm trong pendingUserCheckpoint, đang ở trạng thái PENDING chờ checkpoint người dùng hoặc tài nguyên thật gồm: M3-EG7 (User duyệt phân hệ A-B và R1 Content Alpha) và M3-REAL (Thu thập RSS/web thật trên mạng và scheduler cloud khi desktop offline, tài nguyên thật, CP7).
 - Báo cáo này không đổi trạng thái roadmap hay checklist.
+- Milestone M3 chỉ được đóng sau khi M3-EG1 đạt (CP-4-WIRING và CP-4B-UI-SHELL hoàn tất và có lệnh kiểm route/UI nguồn) và báo cáo đóng được chạy lại trên candidate mới.
