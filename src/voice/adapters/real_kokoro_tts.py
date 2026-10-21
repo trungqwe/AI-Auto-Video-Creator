@@ -1,0 +1,220 @@
+"""Real TtsEnginePort: local Kokoro ONNX speech synthesis (CT-TTS-001).
+
+Weights stay outside the Git tree and their sha256 is checked against tools/launcher/prod/model-weights.lock.json before loading; nothing is downloaded and no network is used.
+"""
+from __future__ import annotations
+
+import hashlib
+import importlib.metadata
+import json
+import re
+import time
+import wave
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from pathlib import Path
+
+from voice.domain.tts_invocation import ProviderRouteDecision, TtsProviderError, TtsSynthesis
+from voice.domain.voice_track import verify_script_binding
+from voice.ports.script_text import ScriptText
+
+MODEL_FILE = 'kokoro-v1.0.onnx'
+VOICES_FILE = 'voices-v1.0.bin'
+WEIGHTS_GROUP = 'kokoro-onnx'
+ERROR_WEIGHTS_UNPINNED = 'weights_unpinned'
+ERROR_WEIGHTS_MISSING = 'weights_missing'
+ERROR_WEIGHTS_SHA256_MISMATCH = 'weights_sha256_mismatch'
+ERROR_WEIGHTS_IN_GIT_TREE = 'weights_in_git_tree'
+ERROR_STAGING_MISSING = 'staging_missing'
+ERROR_SAMPLE_RATE_MISMATCH = 'sample_rate_mismatch'
+ERROR_EMPTY_AUDIO = 'empty_audio'
+ERROR_RUNTIME = 'tts_runtime_error'
+_SHA256_RE = re.compile(r'[0-9a-f]{64}')
+
+
+@dataclass(frozen=True, kw_only=True)
+class KokoroConfig:
+    """Voice, speed, language and sample rate come from configuration, not from the request."""
+
+    weights_dir: Path
+    lock_path: Path
+    staging_dir: Path
+    voice: str
+    speed: float
+    language: str
+    sample_rate: int
+
+    def __post_init__(self) -> None:
+        for name in ('weights_dir', 'lock_path', 'staging_dir'):
+            value = getattr(self, name)
+            if not isinstance(value, Path) or not value.is_absolute():
+                raise ValueError(f'{name} must be an absolute Path')
+        for name in ('voice', 'language'):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f'{name} must be a non-empty string')
+        if isinstance(self.speed, bool) or not isinstance(self.speed, (int, float)) or not 0.5 <= self.speed <= 2.0:
+            raise ValueError('speed must be a number in [0.5, 2.0]')
+        if isinstance(self.sample_rate, bool) or not isinstance(self.sample_rate, int) or self.sample_rate <= 0:
+            raise ValueError('sample_rate must be a positive integer')
+
+
+def _fail(code: str, message: str, *, known_secrets: tuple[str, ...] = ()) -> TtsProviderError:
+    return TtsProviderError(code, message, retryable=False, known_secrets=known_secrets)
+
+
+def _file_sha256(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open('rb') as handle:
+        while chunk := handle.read(1024 * 1024):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _inside_git_tree(path: Path) -> bool:
+    resolved = path.resolve()
+    return any((candidate / '.git').exists() for candidate in (resolved, *resolved.parents))
+
+
+def _pinned_hashes(lock_path: Path) -> dict[str, str]:
+    """Return the pinned sha256 of the two Kokoro files; a missing, unreadable, null or BLOCKED pin is weights_unpinned."""
+    try:
+        entries = json.loads(lock_path.read_text(encoding='utf-8'))['files']
+        found = {entry['name']: entry for entry in entries if isinstance(entry, dict) and entry.get('group') == WEIGHTS_GROUP}
+    except (OSError, ValueError, KeyError, TypeError):
+        raise _fail(ERROR_WEIGHTS_UNPINNED, 'weights lock unreadable') from None
+    pins: dict[str, str] = {}
+    for name in (MODEL_FILE, VOICES_FILE):
+        entry = found.get(name, {})
+        sha = entry.get('sha256')
+        if not isinstance(sha, str) or not _SHA256_RE.fullmatch(sha) or entry.get('status') == 'BLOCKED':
+            raise _fail(ERROR_WEIGHTS_UNPINNED, f'sha256 not pinned for {name}')
+        pins[name] = sha
+    return pins
+
+
+def _to_pcm16(samples: object) -> bytes:
+    """Convert float samples in [-1, 1] to little-endian 16-bit PCM; empty or non-finite input gives b''."""
+    import numpy as np
+
+    data = np.asarray(samples, dtype=np.float32).reshape(-1)
+    if data.size == 0 or not np.isfinite(data).all():
+        return b''
+    return (np.clip(data, -1.0, 1.0) * 32767.0).astype('<i2').tobytes()
+
+
+def _default_factory(model_path: str, voices_path: str) -> object:
+    from kokoro_onnx import Kokoro
+
+    return Kokoro(model_path, voices_path)
+
+
+def _library_version() -> str:
+    try:
+        return importlib.metadata.version('kokoro-onnx')
+    except importlib.metadata.PackageNotFoundError:
+        return 'unknown'
+
+
+class RealKokoroTts:
+    """TtsEnginePort over a local kokoro_onnx model; weights are verified once, then the model is loaded once and reused."""
+
+    def __init__(
+        self,
+        config: KokoroConfig,
+        *,
+        model_factory: Callable[[str, str], object] | None = None,
+        known_secrets: tuple[str, ...] = (),
+    ) -> None:
+        if not isinstance(config, KokoroConfig):
+            raise TypeError('config must be KokoroConfig')
+        if isinstance(known_secrets, str):
+            raise TypeError('known_secrets must not be str')
+        self._config = config
+        self._factory = model_factory or _default_factory
+        self._known_secrets = (*known_secrets, str(config.weights_dir), str(config.staging_dir))
+        self._model: object | None = None
+        self._revision = ''
+
+    def _runtime_error(self, exc: Exception) -> TtsProviderError:
+        return _fail(ERROR_RUNTIME, f'{type(exc).__name__}: {exc}', known_secrets=self._known_secrets)
+
+    def _verify_weights(self) -> dict[str, str]:
+        config = self._config
+        if _inside_git_tree(config.weights_dir):
+            raise _fail(ERROR_WEIGHTS_IN_GIT_TREE, 'weights directory is inside a Git tree')
+        pins = _pinned_hashes(config.lock_path)
+        for name, expected in pins.items():
+            path = config.weights_dir / name
+            if not path.is_file():
+                raise _fail(ERROR_WEIGHTS_MISSING, f'weights file missing: {name}')
+            try:
+                actual = _file_sha256(path)
+            except OSError:
+                raise _fail(ERROR_WEIGHTS_MISSING, f'weights file unreadable: {name}') from None
+            if actual != expected:
+                raise _fail(ERROR_WEIGHTS_SHA256_MISMATCH, f'sha256 mismatch for {name}')
+        return pins
+
+    def _load(self) -> object:
+        if self._model is None:
+            pins = self._verify_weights()
+            directory = self._config.weights_dir
+            try:
+                model = self._factory(str(directory / MODEL_FILE), str(directory / VOICES_FILE))
+            except Exception as exc:
+                raise self._runtime_error(exc) from None
+            self._revision = f'kokoro-onnx=={_library_version()};model={pins[MODEL_FILE]};voices={pins[VOICES_FILE]};voice={self._config.voice}'
+            self._model = model
+        return self._model
+
+    def _write_wav(self, pcm: bytes) -> bytes:
+        config = self._config
+        digest = hashlib.sha256(pcm).hexdigest()[:32]
+        part = config.staging_dir / f'tts-{digest}.part'
+        final = config.staging_dir / f'tts-{digest}.wav'
+        try:
+            with wave.open(str(part), 'wb') as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(config.sample_rate)
+                wav.writeframes(pcm)
+            part.replace(final)
+        finally:
+            part.unlink(missing_ok=True)
+        return final.read_bytes()
+
+    def synthesize(self, decision: ProviderRouteDecision, script_text: ScriptText, request: Mapping[str, object]) -> TtsSynthesis:
+        if not isinstance(decision, ProviderRouteDecision):
+            raise TypeError('decision must be ProviderRouteDecision')
+        if not isinstance(script_text, ScriptText):
+            raise TypeError('script_text must be ScriptText')
+        if not isinstance(request, Mapping):
+            raise TypeError('request must be Mapping')
+        verify_script_binding(request, script_text)
+        config = self._config
+        if not config.staging_dir.is_dir():
+            raise _fail(ERROR_STAGING_MISSING, 'staging directory missing')
+        model = self._load()
+        started = time.perf_counter()
+        try:
+            samples, rate = model.create(script_text.text, voice=config.voice, speed=config.speed, lang=config.language)
+            if rate != config.sample_rate:
+                raise _fail(ERROR_SAMPLE_RATE_MISMATCH, 'model sample rate differs from configured sample rate')
+            pcm = _to_pcm16(samples)
+            if not pcm:
+                raise _fail(ERROR_EMPTY_AUDIO, 'model returned no usable audio')
+            wav_bytes = self._write_wav(pcm)
+        except TtsProviderError:
+            raise
+        except Exception as exc:
+            raise self._runtime_error(exc) from None
+        return TtsSynthesis(
+            audio_bytes=wav_bytes,
+            voice_revision=self._revision,
+            usage_metrics={'characters': len(script_text.text), 'audio_ms': len(pcm) // 2 * 1000 // config.sample_rate},
+            latency_ms=int(round((time.perf_counter() - started) * 1000)),
+        )
+
+
+__all__ = ('KokoroConfig', 'RealKokoroTts')
