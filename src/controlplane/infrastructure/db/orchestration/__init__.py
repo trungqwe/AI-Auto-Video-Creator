@@ -11,6 +11,10 @@ from controlplane.domain.orchestration import (
     ReservationState,
     VariantReservation,
 )
+from .allocation import PostgresAllocationStore
+from .grants import PostgresGrantStore, PostgresRecoveryEpoch
+from .start_batch import PostgresStartBatchRepository
+from .variants import PostgresVariantRegistry
 
 _CAPACITY_COLUMNS = "workspace_id::text, batch_id, job_id, reservation_id, state"
 _VARIANT_COLUMNS = (
@@ -261,4 +265,11 @@ class PostgresOrchestrationRepository:
         return _ledger(row)
 
 
-__all__ = ["PostgresOrchestrationRepository"]
+__all__ = [
+    "PostgresAllocationStore",
+    "PostgresGrantStore",
+    "PostgresOrchestrationRepository",
+    "PostgresRecoveryEpoch",
+    "PostgresStartBatchRepository",
+    "PostgresVariantRegistry",
+]
