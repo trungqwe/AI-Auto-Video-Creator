@@ -65,6 +65,24 @@
 | 7 | Probe (3): schema_version & recovery_epoch string (`python -c "import json, pathlib; bad = [p.name for p in pathlib.Path('docs/parallel-delivery/bindings').glob('*.json') ...]; assert not bad, bad"`) | 0 | Khớp assertion; không có trường nào mang kiểu số hay kiểu khác string. |
 | 8 | Probe (4): Hash contracts & `CONTRACT-STATE-MACHINES` (`python -c "import hashlib, pathlib; r = pathlib.Path('`docs/parallel-delivery/contract-registry.yaml`').read_text(encoding='utf-8'); ..."`) | 0 | Khớp assertion; hash 13 contracts nguyên vẹn, `CONTRACT-STATE-MACHINES` không bị sửa đổi (2cab18e858b2e78eb3a578b5a64568619d20c7cb09fed2cb7766bc0636fb9f28). |
 
+## Rebase lên fe206ac
+
+Rebase lên integration head fe206ac52815f87769890b77efc7d8c51807528f: thành công, không có xung đột, cây làm việc sạch.
+
+| STT | Lệnh kiểm | Exit code | Kết quả thực tế |
+| --- | --- | --- | --- |
+| 2 | `python -m pytest tests/unit -q -p no:cacheprovider` | 1 | 4 failed, 7353 passed, 1 warning, 2416 subtests passed in 11.92s |
+| 3 | `python -m pytest tests/contract/test_bindings.py -q -p no:cacheprovider` | 0 | 293 passed in 0.42s |
+| 4 | `python -c "import pathlib; t = pathlib.Path('docs/parallel-delivery/ownership-and-locks.yaml').read_text(encoding='utf-8'); assert 'src/controlplane/api/wiring/**' in t and 'tests/integration/catalog/**' in t"` | 0 | Khớp assertion; cả hai mẫu path đều tồn tại trong ownership-and-locks.yaml |
+| 5 | `git diff --check` | 0 | Không có lỗi khoảng trắng thừa, ký tự lạ hoặc conflict marker |
+
+Test unit hỏng thuộc tệp ngoài owned paths (DEPENDENCY_GAP): 4 test unit bị FAILED thuộc các tệp ngoài owned paths của CP-2D-REGISTRY:
+- `tests/unit/control_ui/test_h_metadata_update.py::test_modules_directory_has_no_init_file` (tệp liên quan: `src/controlplane/api/routes/modules/__init__.py` và `tests/unit/control_ui/test_h_metadata_update.py`)
+- `tests/unit/control_ui/test_h_problem_detail.py::test_modules_directory_has_no_init_file` (tệp liên quan: `src/controlplane/api/routes/modules/__init__.py` và `tests/unit/control_ui/test_h_problem_detail.py`)
+- `tests/unit/control_ui/test_h_read_only_listing.py::test_modules_directory_has_no_init_file` (tệp liên quan: `src/controlplane/api/routes/modules/__init__.py` và `tests/unit/control_ui/test_h_read_only_listing.py`)
+- `tests/unit/creative/test_d01_package_layout.py::PackageLayoutTests::test_package_modules_have_no_forbidden_imports` (tệp liên quan: `src/creative/adapters/real_route_executor.py` và `tests/unit/creative/test_d01_package_layout.py`)
+CP-2D-REGISTRY không sửa.
+
 ## Ownership
 
 Trích số dòng trong tệp `docs/parallel-delivery/ownership-and-locks.yaml`:
