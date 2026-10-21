@@ -296,6 +296,6 @@ def test_module_source_is_scoped_and_has_no_blanket_except():
     assert 'controlplane.api.routes.modules.problem_detail' in imported
 
 
-def test_modules_directory_has_no_init_file():
+def test_modules_directory_is_declared_package():
     assert MODULE_PATH.parent.is_dir()
-    assert not (MODULE_PATH.parent / '__init__.py').exists()
+    assert (MODULE_PATH.parent / '__init__.py').is_file()
