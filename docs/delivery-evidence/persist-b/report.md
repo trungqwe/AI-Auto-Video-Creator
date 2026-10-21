@@ -52,3 +52,12 @@ FAILED tests/integration/persistence/b/test_persist_b_postgres.py::test_migratio
 
 ## 7. Phạm vi đã sửa
 - Phạm vi đã sửa: chỉ hai tệp trong owned paths. Sau khi ghi, đọc lại tệp và xác nhận chữ có dấu còn nguyên.
+
+## 8. Xác nhận lại tại HEAD aa4ce22 (trigger INITIAL)
+- Lệnh: `python -m pytest tests/integration/persistence/b/test_persist_b_postgres.py -q -p no:cacheprovider`, exit code 1, kết quả AssertionError: {'cp_collected_document_resolutions': 'bigint', 'cp_dedup_evidence': 'bigint'}.
+- Migration không đổi: src/controlplane/infrastructure/db/migrations/0013_ingestion.sql:36 và :47 vẫn là dedup_policy_revision BIGINT; migration 0014 đến 0018 không chứa dedup_policy_revision.
+- Kết luận: BLOCKED, DEPENDENCY_GAP thuộc CP-3-MIGRATIONS; không tạo src/ingestion/persistence, không sửa migration, không tạo adapter giả.
+
+```blocked-manifest
+{"step": 1, "kind": "DEPENDENCY_GAP", "ownerTaskIds": ["CP-3-MIGRATIONS"], "paths": ["src/controlplane/infrastructure/db/migrations/0013_ingestion.sql"], "ids": ["tests/integration/persistence/b/test_persist_b_postgres.py::test_migration_0013_dedup_policy_revision_fits_string_port"]}
+```
