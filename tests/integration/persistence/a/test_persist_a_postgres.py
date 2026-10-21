@@ -5,6 +5,7 @@ import datetime
 import json
 import os
 import re
+import subprocess
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,15 +57,33 @@ class Db:
     admin_dsn: str
 
 
+def resolve_admin_dsn() -> str:
+    '''Ưu tiên M2_TEST_PG_DSN, thiếu thì dùng container PostgreSQL cục bộ của dự án như tests/m2/conftest.py.'''
+    env_dsn = os.environ.get('M2_TEST_PG_DSN')
+    if env_dsn:
+        return env_dsn
+    try:
+        output = subprocess.check_output(
+            ['docker', 'port', 'ai-auto-video-m2-pg', '5432/tcp'],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        port = output.strip().splitlines()[0].split(':')[-1]
+    except Exception:
+        port = '57027'
+    return f'postgresql://m2test:m2test@127.0.0.1:{port}/postgres'
+
+
 @pytest.fixture
 def db():
-    admin_dsn = os.environ.get('M2_TEST_PG_DSN')
-    if not admin_dsn:
-        pytest.fail('BLOCKED_EXTERNAL: M2_TEST_PG_DSN is required; no fallback is permitted.')
-    with psycopg.connect(admin_dsn, autocommit=True) as admin_conn:
-        row = admin_conn.execute('SELECT rolcreatedb FROM pg_roles WHERE rolname = current_user').fetchone()
-        if not row or not row[0]:
-            pytest.fail('BLOCKED_EXTERNAL: user lacks CREATEDB privilege.')
+    admin_dsn = resolve_admin_dsn()
+    try:
+        with psycopg.connect(admin_dsn, autocommit=True, connect_timeout=5) as admin_conn:
+            row = admin_conn.execute('SELECT rolcreatedb FROM pg_roles WHERE rolname = current_user').fetchone()
+            if not row or not row[0]:
+                pytest.fail('BLOCKED_EXTERNAL: user lacks CREATEDB privilege.')
+    except psycopg.OperationalError:
+        pytest.fail('BLOCKED_EXTERNAL: cannot connect to PostgreSQL; start container ai-auto-video-m2-pg or set M2_TEST_PG_DSN.')
     name = 'persist_a_' + uuid.uuid4().hex
     assert DB_NAME_RE.fullmatch(name)
     with psycopg.connect(admin_dsn, autocommit=True) as admin_conn:

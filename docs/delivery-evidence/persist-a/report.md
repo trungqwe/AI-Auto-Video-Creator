@@ -65,3 +65,25 @@ Danh sách ba lệnh bắt buộc và kết quả thực thi:
 5. `recovery_epoch` được ghi số khi chuỗi biểu diễn toàn chữ số thập phân, ngược lại là `NULL` để tránh lỗi commit (theo quyết định OI-PERSIST-03).
 6. Thao tác `rollback()` luôn được thực thi khi thoát khỏi khối `with`, không bao giờ tự động commit.
 7. Việc đồng bộ `README.md`, `CHANGELOG.md`, `HANDOFF.md` nằm ngoài phạm vi owned paths nên Worker không sửa, để dành cho Control/AI PM đồng bộ ở bước nghiệm thu.
+
+## Xác minh lại sau BLOCKED_EXTERNAL (REVIEW_FINDINGS)
+
+### Finding đã xử lý
+`BLOCKED_EXTERNAL: thiếu M2_TEST_PG_DSN` do môi trường của Reviewer (Sonnet 5.5) không có biến môi trường `M2_TEST_PG_DSN` dẫn tới fixture `db` ném fail fail-closed.
+
+### Thay đổi thực hiện
+- Chỉ sửa fixture `db` và bổ sung hàm `resolve_admin_dsn()` trong `tests/integration/persistence/a/test_persist_a_postgres.py`:
+  - Ưu tiên đọc biến môi trường `M2_TEST_PG_DSN`.
+  - Nếu thiếu, tự động xác định cổng động và kết nối tới container PostgreSQL 18.6 cục bộ của dự án `ai-auto-video-m2-pg` trên `127.0.0.1` theo phương thức chuẩn của `tests/m2/conftest.py` và `tests/integration/convergence/test_cp3_migration_sequence.py`.
+  - Bọc kiểm tra kết nối với timeout 5 giây; nếu không thể kết nối vẫn gọi `pytest.fail('BLOCKED_EXTERNAL: cannot connect to PostgreSQL; start container ai-auto-video-m2-pg or set M2_TEST_PG_DSN.')` (không in exception hay DSN), tuyệt đối không skip, không dùng mock hay kho tạm.
+- Giữ nguyên toàn bộ mã adapter trong `src/source_ingestion/persistence/**` và toàn bộ 22 hàm kiểm thử.
+
+### Kết quả kiểm thử thực tế
+
+Nguồn DSN trong lần chạy này: Lấy tự động từ container PostgreSQL cục bộ `ai-auto-video-m2-pg` trên 127.0.0.1 (không có biến môi trường `M2_TEST_PG_DSN`). Giá trị DSN được giấu kín theo quy tắc an toàn.
+
+| Lệnh | Exit code | Dòng tổng kết / Kết quả thực tế |
+| --- | --- | --- |
+| `python -m pytest tests/integration/persistence/a/test_persist_a_postgres.py -q -p no:cacheprovider` | 0 | `22 passed in 12.55s` |
+| `python -c "import pathlib; fs = list(pathlib.Path('src/source_ingestion/persistence').rglob('*.py')); t = ' '.join(f.read_text(encoding='utf-8') for f in fs); assert fs and 'CREATE TABLE' not in t and 'ALTER TABLE' not in t and 'from src.' not in t, 'adapter A'"` | 0 | Probe PASS: không chứa CREATE TABLE, ALTER TABLE, hay import tiền tố 'from src.'. |
+| `git diff --check` | 0 | Whitespace clean, không có cảnh báo khoảng trắng thừa. |
