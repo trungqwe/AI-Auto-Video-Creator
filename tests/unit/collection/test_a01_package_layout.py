@@ -18,8 +18,12 @@ DYNAMIC_IMPORT_CALLS = frozenset({'import_module', '__import__'})
 
 # Miễn trừ hẹp theo kế hoạch ADAPT đã duyệt: docs/implementation/adapt/plan.md dòng 101 (ADAPT-A: real_media_fetch.py dựng DiscoveryObservation của catalog để C gọi register_discovery) và binding A→C CT-MED-001 do GATE-CP-2D-REGISTRY tạo.
 # Khoá là đường dẫn tệp chính xác (posix, tính từ gốc repo), không dùng mẫu, không miễn cả thư mục adapters, không miễn cả gói catalog.
+# Miễn trừ hẹp theo kế hoạch PERSIST đã duyệt: docs/implementation/persist/plan.md mục 3 (dòng 40-41) đòi adapter dùng TransactionManager và ghi outbox controlplane.cp_outbox_events bằng kết nối của UoW; psycopg là thư viện đã khoá (plan.md dòng 15). Gói PERSIST-A: outbox.py chỉ được import PostgresOutboxRepository của controlplane, repositories.py chỉ được import psycopg.errors.
+# Không miễn cả thư mục persistence, không miễn cả gói controlplane.infrastructure, không miễn cả psycopg; mọi module cấm khác vẫn bị báo.
 ADAPTER_IMPORT_EXEMPTIONS = {
     'src/source_ingestion/adapters/real_media_fetch.py': frozenset({'catalog.application.discovery', 'catalog.domain.identity'}),
+    'src/source_ingestion/persistence/outbox.py': frozenset({'controlplane.infrastructure.db.outbox.postgres'}),
+    'src/source_ingestion/persistence/repositories.py': frozenset({'psycopg.errors'}),
 }
 
 
@@ -109,12 +113,22 @@ class DetectorSelfTests(unittest.TestCase):
 
 class AdapterExemptionTests(unittest.TestCase):
     ADAPTER = 'src/source_ingestion/adapters/real_media_fetch.py'
+    OUTBOX = 'src/source_ingestion/persistence/outbox.py'
+    REPOSITORIES = 'src/source_ingestion/persistence/repositories.py'
 
     def test_exemption_table_is_exact_path_and_set_only(self) -> None:
-        self.assertEqual(set(ADAPTER_IMPORT_EXEMPTIONS), {self.ADAPTER})
+        self.assertEqual(set(ADAPTER_IMPORT_EXEMPTIONS), {self.ADAPTER, self.OUTBOX, self.REPOSITORIES})
         self.assertEqual(
             ADAPTER_IMPORT_EXEMPTIONS[self.ADAPTER],
             frozenset({'catalog.application.discovery', 'catalog.domain.identity'}),
+        )
+        self.assertEqual(
+            ADAPTER_IMPORT_EXEMPTIONS[self.OUTBOX],
+            frozenset({'controlplane.infrastructure.db.outbox.postgres'}),
+        )
+        self.assertEqual(
+            ADAPTER_IMPORT_EXEMPTIONS[self.REPOSITORIES],
+            frozenset({'psycopg.errors'}),
         )
         for rel in ADAPTER_IMPORT_EXEMPTIONS:
             with self.subTest(rel=rel):
@@ -155,6 +169,49 @@ class AdapterExemptionTests(unittest.TestCase):
                 self.assertIn(
                     'catalog.domain.identity',
                     find_unexempted_imports('from catalog.domain.identity import MediaKind', rel),
+                )
+
+    def test_persistence_exemptions_allow_only_their_own_module(self) -> None:
+        for source in (
+            'from controlplane.infrastructure.db.outbox.postgres import PostgresOutboxRepository',
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(find_unexempted_imports(source, self.OUTBOX), [])
+        for source in (
+            'import psycopg.errors',
+            'from psycopg.errors import UniqueViolation',
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(find_unexempted_imports(source, self.REPOSITORIES), [])
+
+    def test_persistence_exemptions_still_report_other_forbidden_imports(self) -> None:
+        for rel, source, expected in (
+            (self.OUTBOX, 'import psycopg', 'psycopg'),
+            (self.OUTBOX, 'import psycopg.errors', 'psycopg.errors'),
+            (self.OUTBOX, 'from controlplane.infrastructure.db.uow import x', 'controlplane.infrastructure.db.uow'),
+            (self.OUTBOX, 'from controlplane.infrastructure.db.outbox.postgres_other import y', 'controlplane.infrastructure.db.outbox.postgres_other'),
+            (self.OUTBOX, 'from controlplane.api import z', 'controlplane.api'),
+            (self.REPOSITORIES, 'import psycopg', 'psycopg'),
+            (self.REPOSITORIES, 'import psycopg.rows', 'psycopg.rows'),
+            (self.REPOSITORIES, 'from controlplane.infrastructure.db.uow import x', 'controlplane.infrastructure.db.uow'),
+            (self.REPOSITORIES, 'from controlplane.infrastructure.db.outbox.postgres import PostgresOutboxRepository', 'controlplane.infrastructure.db.outbox.postgres'),
+        ):
+            with self.subTest(rel=rel, source=source):
+                self.assertIn(expected, find_unexempted_imports(source, rel))
+
+        for rel in (
+            'src/source_ingestion/persistence/unit_of_work.py',
+            'src/source_ingestion/persistence/other.py',
+            'src/source_ingestion/adapters/other.py',
+        ):
+            with self.subTest(rel=rel):
+                self.assertIn(
+                    'psycopg.errors',
+                    find_unexempted_imports('import psycopg.errors', rel),
+                )
+                self.assertIn(
+                    'controlplane.infrastructure.db.outbox.postgres',
+                    find_unexempted_imports('from controlplane.infrastructure.db.outbox.postgres import PostgresOutboxRepository', rel),
                 )
 
 
