@@ -115,6 +115,16 @@ Exit code: 0
 - Bước 5 (quét adapter): exit code 0.
 - git diff --check: chạy lại sau khi ghi báo cáo, kết quả xem trong worker_done.
 
+## 5d. F1 BLOCKED: miễn trừ bố cục E-01 nằm ngoài owned paths
+
+- (a) Kết quả bước 1: dòng FAILED và dòng tổng kết nguyên văn.
+  - Dòng FAILED: FAILED tests/unit/voice/test_e01_package_layout.py::PackageLayoutTests::test_package_modules_have_no_forbidden_imports
+  - Dòng tổng kết: 1 failed, 11 passed, 59 subtests passed in 0.51s
+  - Exit code khác 0 (exit code: 1); AssertionError liệt kê src/voice/persistence/outbox.py (controlplane.infrastructure.db.outbox) và src/voice/persistence/output_repository.py (psycopg.errors, psycopg.types.json).
+- (b) Nguyên nhân: FORBIDDEN_IMPORT_PREFIXES ở tests/unit/voice/test_e01_package_layout.py dòng 15-19 chứa 'psycopg' và 'controlplane.infrastructure'; ADAPTER_IMPORT_EXEMPTIONS ở dòng 25-27 chỉ có src/voice/adapters/real_ffmpeg_media_tool.py.
+- (c) Bản sửa cần có khi Control cấp ownership tệp đó, theo mẫu PERSIST-A-LAYOUT-FIX: thêm hai khoá đường dẫn chính xác vào ADAPTER_IMPORT_EXEMPTIONS là 'src/voice/persistence/outbox.py' với frozenset({'controlplane.infrastructure.db.outbox'}) và 'src/voice/persistence/output_repository.py' với frozenset({'psycopg'}); cập nhật chú thích dẫn docs/implementation/persist/plan.md dòng 15 và 40-41; viết lại test_exemption_table_is_exact_paths_only thành so sánh với đúng ba khoá; thêm test chứng minh hai tệp persistence chỉ được miễn đúng tiền tố liệt kê (import socket, creative, subprocess vẫn bị từ chối) và các module voice khác vẫn bị từ chối psycopg. Kiểm sau sửa: python -m pytest tests/unit/voice -q -p no:cacheprovider phải đạt.
+- (d) F2 (MINOR, fallback DSN m2test) đưa vào backlog, không sửa trong lượt này.
+
 ## 6. Mục mở
 
 - OI-PERSIST-E-01: chỉ cài KIND_VOICE và KIND_WORD_TIMING theo yêu cầu; các kind khác mà VoicePipeline và MediaPipeline đang dùng (receipt, receipt_by_request, tts_invocation, timing_report, language_evidence, probe_report, image_safety_assessment, processed_media, audio_bed_result) ném UnsupportedKindError nên chưa thể nối UoW này vào pipeline ở CP-4-WIRING cho tới khi có slice bổ sung; không tự thêm kind.
