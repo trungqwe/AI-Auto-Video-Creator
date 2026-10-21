@@ -23,6 +23,11 @@
    - Exit code: 0
    - Kết quả: Đọc thành công 4 tệp cấu hình bằng UTF-8, assertion hợp lệ xác nhận chuỗi 'Asia/Ho_Chi_Minh' trong profile.json.
 
+## Rebase
+
+- Đích rebase: 258b993e9766c5686581dd0698b9539fd9894bf6 (integration head); HEAD trước rebase là 59f7e93 và đã là hậu duệ trực tiếp của đích, nên rebase là no-op, không có xung đột, giữ nguyên commit đã có.
+- Kết quả chạy lại sau rebase: git diff --check exit 0; pytest tests/integration/adapt/config/test_adapt_config_profile.py exit 0 với 11 passed; lệnh đọc bốn tệp JSON và kiểm Asia/Ho_Chi_Minh exit 0.
+
 ## Mục mở
 
 - (a) `sha256` của hook và ảnh nền hiện là `null` kèm trạng thái `PENDING_GENERATION`, chờ nhiệm vụ ADAPT-SEED sinh tài sản thật rồi Control ghi lại giá trị hash thực tế, không bịa hash.
