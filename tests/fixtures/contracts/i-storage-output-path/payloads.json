@@ -1,0 +1,274 @@
+{
+  "seam": "i-storage-output-path",
+  "binding_version": "1.0.0",
+  "entities": {
+    "PersistVideoOutputResult": {
+      "valid": [
+        {
+          "output_artifact_version_id": "00000000-0000-4000-8000-000000001001",
+          "output_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "cloud_location_verification_ref": "00000000-0000-4000-8000-000000001002",
+          "output_metadata_ref": "00000000-0000-4000-8000-000000001003",
+          "upload_receipt_ref": "00000000-0000-4000-8000-000000001004",
+          "provider_namespace_ref": "drive-namespace-0001",
+          "verified_at": "2026-10-21T08:00:00Z"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_cloud_location_verification_ref",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "cloud_location_verification_ref"
+          },
+          "payload": {
+            "output_artifact_version_id": "00000000-0000-4000-8000-000000001001",
+            "output_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "output_metadata_ref": "00000000-0000-4000-8000-000000001003",
+            "upload_receipt_ref": "00000000-0000-4000-8000-000000001004",
+            "provider_namespace_ref": "drive-namespace-0001",
+            "verified_at": "2026-10-21T08:00:00Z"
+          }
+        },
+        {
+          "case": "verified_at_date_only",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "verified_at"
+          },
+          "payload": {
+            "output_artifact_version_id": "00000000-0000-4000-8000-000000001001",
+            "output_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "cloud_location_verification_ref": "00000000-0000-4000-8000-000000001002",
+            "output_metadata_ref": "00000000-0000-4000-8000-000000001003",
+            "upload_receipt_ref": "00000000-0000-4000-8000-000000001004",
+            "provider_namespace_ref": "drive-namespace-0001",
+            "verified_at": "2026-10-21"
+          }
+        }
+      ]
+    },
+    "MaterializeArtifactSetRequest": {
+      "valid": [
+        {
+          "artifact_version_manifest": [
+            {
+              "artifact_version_id": "00000000-0000-4000-8000-000000001011",
+              "content_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "size_bytes": 1024
+            }
+          ],
+          "target_device_ref": "device-0001",
+          "staging_lease_ref": "00000000-0000-4000-8000-000000001012",
+          "expected_total_bytes": 1024,
+          "operation_key": "mat-0001"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "expected_total_bytes_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "expected_total_bytes"
+          },
+          "payload": {
+            "artifact_version_manifest": [
+              {
+                "artifact_version_id": "00000000-0000-4000-8000-000000001011",
+                "content_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                "size_bytes": 1024
+              }
+            ],
+            "target_device_ref": "device-0001",
+            "staging_lease_ref": "00000000-0000-4000-8000-000000001012",
+            "expected_total_bytes": "1024",
+            "operation_key": "mat-0001"
+          }
+        },
+        {
+          "case": "missing_operation_key",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "operation_key"
+          },
+          "payload": {
+            "artifact_version_manifest": [
+              {
+                "artifact_version_id": "00000000-0000-4000-8000-000000001011",
+                "content_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                "size_bytes": 1024
+              }
+            ],
+            "target_device_ref": "device-0001",
+            "staging_lease_ref": "00000000-0000-4000-8000-000000001012",
+            "expected_total_bytes": 1024
+          }
+        }
+      ]
+    },
+    "MaterializeArtifactSetResult": {
+      "valid": [
+        {
+          "local_location_refs": [
+            "00000000-0000-4000-8000-000000001021"
+          ],
+          "verified_items": [
+            {
+              "artifact_version_id": "00000000-0000-4000-8000-000000001011",
+              "content_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "size_bytes": 1024
+            }
+          ],
+          "missing_or_corrupt_items": [],
+          "lease_expiry": "2026-10-21T09:00:00Z"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "lease_expiry_not_datetime",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "lease_expiry"
+          },
+          "payload": {
+            "local_location_refs": [
+              "00000000-0000-4000-8000-000000001021"
+            ],
+            "verified_items": [
+              {
+                "artifact_version_id": "00000000-0000-4000-8000-000000001011",
+                "content_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                "size_bytes": 1024
+              }
+            ],
+            "missing_or_corrupt_items": [],
+            "lease_expiry": "tomorrow"
+          }
+        },
+        {
+          "case": "missing_verified_items",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "verified_items"
+          },
+          "payload": {
+            "local_location_refs": [
+              "00000000-0000-4000-8000-000000001021"
+            ],
+            "missing_or_corrupt_items": [],
+            "lease_expiry": "2026-10-21T09:00:00Z"
+          }
+        }
+      ]
+    },
+    "AllocateOutputPathRequest": {
+      "valid": [
+        {
+          "app_session_ref": "00000000-0000-4000-8000-000000001031",
+          "completion_candidate_ref": "00000000-0000-4000-8000-000000001032",
+          "display_title": "Sample title",
+          "hashtags": [
+            "#news",
+            "#tech",
+            "#ai"
+          ],
+          "naming_policy_revision": "naming-v1",
+          "target_root_ref": "root-0001"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "hashtags_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "hashtags"
+          },
+          "payload": {
+            "app_session_ref": "00000000-0000-4000-8000-000000001031",
+            "completion_candidate_ref": "00000000-0000-4000-8000-000000001032",
+            "display_title": "Sample title",
+            "hashtags": "#news",
+            "naming_policy_revision": "naming-v1",
+            "target_root_ref": "root-0001"
+          }
+        },
+        {
+          "case": "missing_target_root_ref",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "target_root_ref"
+          },
+          "payload": {
+            "app_session_ref": "00000000-0000-4000-8000-000000001031",
+            "completion_candidate_ref": "00000000-0000-4000-8000-000000001032",
+            "display_title": "Sample title",
+            "hashtags": [
+              "#news",
+              "#tech",
+              "#ai"
+            ],
+            "naming_policy_revision": "naming-v1"
+          }
+        }
+      ]
+    },
+    "AllocateOutputPathResult": {
+      "valid": [
+        {
+          "sanitized_filename": "sample-title-news-tech-ai.mp4",
+          "logical_output_folder": "26-10-21",
+          "collision_sequence": 0,
+          "display_metadata": {
+            "title": "Sample title",
+            "hashtags": [
+              "#news",
+              "#tech",
+              "#ai"
+            ]
+          }
+        }
+      ],
+      "invalid": [
+        {
+          "case": "collision_sequence_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "collision_sequence"
+          },
+          "payload": {
+            "sanitized_filename": "sample-title-news-tech-ai.mp4",
+            "logical_output_folder": "26-10-21",
+            "collision_sequence": "0",
+            "display_metadata": {
+              "title": "Sample title",
+              "hashtags": [
+                "#news",
+                "#tech",
+                "#ai"
+              ]
+            }
+          }
+        },
+        {
+          "case": "missing_sanitized_filename",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "sanitized_filename"
+          },
+          "payload": {
+            "logical_output_folder": "26-10-21",
+            "collision_sequence": 0,
+            "display_metadata": {
+              "title": "Sample title",
+              "hashtags": [
+                "#news",
+                "#tech",
+                "#ai"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

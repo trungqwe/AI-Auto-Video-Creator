@@ -1,0 +1,78 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "f-g-output-ready",
+  "binding_id": "BINDING-F-G-OUTPUT-READY",
+  "binding_version": "1.0.0",
+  "modules": [
+    "F",
+    "G"
+  ],
+  "producer": "F",
+  "consumers": [
+    "G"
+  ],
+  "contract_ref": "CONTRACT-RENDER-QUALITY",
+  "source": {
+    "path": "docs/09-contracts/08-render-quality-contracts.md",
+    "sections": [
+      "CT-RND-005"
+    ],
+    "sha256": "c3e35d032c0a8e721ed35bbecb5fb57f350788e8520d6e8df5ca78284199b493"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "RenderOutputReady",
+      "section": "CT-RND-005",
+      "fields": [
+        {
+          "name": "render_receipt_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "render_receipt_state",
+          "type": "string",
+          "enum": [
+            "succeeded"
+          ],
+          "required": true
+        },
+        {
+          "name": "output_artifact_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "output_sha256",
+          "type": "sha256",
+          "required": true
+        },
+        {
+          "name": "quality_report_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "hard_gates_passed",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "report_refs_committed",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "execution_grant_ref",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

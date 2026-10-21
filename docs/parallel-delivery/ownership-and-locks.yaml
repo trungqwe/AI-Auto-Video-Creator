@@ -128,6 +128,7 @@ path_ownership:
     patterns:
       - src/ingestion/**
       - tests/unit/ingestion/**
+      - tests/integration/ingestion/**
       - docs/modules/capability-b-ingestion.md
     owner_role: Module_B_Ingestion_Owner
     mode: exclusive
@@ -136,6 +137,7 @@ path_ownership:
     patterns:
       - src/catalog/**
       - tests/unit/catalog/**
+      - tests/integration/catalog/**
       - docs/modules/capability-c-storage.md
     owner_role: Module_C_Catalog_Owner
     mode: exclusive
@@ -144,6 +146,7 @@ path_ownership:
     patterns:
       - src/creative/**
       - tests/unit/creative/**
+      - tests/integration/creative/**
       - docs/modules/capability-d-scripting.md
     owner_role: Module_D_Scripting_Owner
     mode: exclusive
@@ -152,6 +155,7 @@ path_ownership:
     patterns:
       - src/voice/**
       - tests/unit/voice/**
+      - tests/integration/voice/**
       - docs/modules/capability-e-voice.md
     owner_role: Module_E_Voice_Owner
     mode: exclusive
@@ -160,6 +164,7 @@ path_ownership:
     patterns:
       - src/render/**
       - tests/unit/render/**
+      - tests/integration/render/**
       - docs/modules/capability-f-rendering.md
     owner_role: Module_F_Rendering_Owner
     mode: exclusive
@@ -180,6 +185,13 @@ path_ownership:
       - src/controlplane/ui/**
       - tests/m2/e2e/**
       - src/controlplane/application/test_driver.py
+      - src/controlplane/application/projections/**
+      - src/controlplane/application/sse/**
+      - src/controlplane/api/sse/**
+      - src/controlplane/api/routes/modules/**
+      - src/controlplane/infrastructure/db/projections/**
+      - tests/unit/control_ui/**
+      - tests/integration/control_ui/**
     owner_role: Module_H_Control_UI_Owner
     mode: exclusive
     lock: LOCK-SRC-CONTROL-UI
@@ -207,6 +219,7 @@ path_ownership:
     patterns:
       - src/main.py
       - src/controlplane/api/main.py
+      - src/controlplane/api/wiring/**
     owner_role: SystemArchitect_SingleWriter
     mode: exclusive
     lock: LOCK-COMPOSITION-ROOT
@@ -554,6 +567,102 @@ locks:
     class: path
     mode: exclusive
     scope: controlplane_control_api_routes
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-01
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_01
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-02
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_02
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-03
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_03
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-04
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_04
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-05
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_05
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-06
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_06
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-07
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_07
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-08
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_08
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-09
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_09
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-10
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_10
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-11
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_11
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-12
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_12
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-13
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_13
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-14
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_14
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-15
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_15
+    lease_seconds: 1800
+    renewable: true
+  - id: LOCK-H-16
+    class: path
+    mode: exclusive
+    scope: control_ui_slice_h_16
     lease_seconds: 1800
     renewable: true
 

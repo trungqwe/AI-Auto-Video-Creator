@@ -29,8 +29,8 @@ Capability C chịu trách nhiệm quản lý danh mục tài nguyên truyền t
 - **Port Đăng ký Media:** Nhận thông báo phát hiện media từ Ingestion (Module B) hoặc bộ phận thu thập (Module A) qua `CONTRACT-CONTENT-MEDIA` (`CT-MED-001`).
 
 ### Outbound Ports:
-- **Port Truy vấn Hook cho Kịch bản:** Cung cấp danh sách hook phù hợp cho Module D qua `CONTRACT-CONTENT-MEDIA` (`CT-HOOK-001`).
-- **Port Khóa & Ghi nhận Lượt dùng (Media Usage):** Tham gia vào Unit of Work hoàn tất của Orchestration (Module G) để tăng số đếm sử dụng nguyên tử qua `CONTRACT-STORAGE` (`CT-STO-002`).
+- **Port Truy vấn Media và Hook cho Kịch bản:** `CT-MED-005` (truy vấn media, binding `c-d-media-candidates`) và `CT-MED-006` (truy vấn hook) của `CONTRACT-CONTENT-MEDIA`; `CT-HOOK-001` là `ImportHook`, không phải port truy vấn.
+- **Port Ghi nhận Lượt dùng (MediaUsage):** `CT-MED-008` trong cùng Unit of Work PostgreSQL với completion của Module G (`CT-ORC-008`, `CT-ORC-009`); `CT-STO-002` là `RegisterArtifactLocation` của Module I, không phải đường ghi lượt dùng.
 
 ---
 
@@ -48,16 +48,16 @@ Trước khi chuyển sang trạng thái `implementation_authorized`, task thu�
 
 Gói công việc Capability C chỉ được nghiệm thu khi đạt đủ các điều kiện:
 1. Toàn bộ unit tests và contract verification tests đạt `PASS`.
-2. Kiểm tra tính bất biến của Media Hash: Mỗi `MediaAsset` có một mã băm SHA-256 duy nhất, không thể sửa đổi sau khi đã lưu.
+2. Byte và SHA-256 thuộc artifact version của Module I (CT-STO-001); `MediaAsset` giữ canonical fingerprint bất biến; một byte có thể có nhiều provenance và một media logic có nhiều rendition (CT-MED-001..003).
 3. Nguyên tắc không xóa metadata: Xóa file vật lý ở tầng I không được làm mất lịch sử metadata và provenance ở tầng C.
-4. Đảm bảo phân loại hook chính xác: 100% video phải có visual hook, audio hook và thumbnail ứng viên theo yêu cầu nghiệp vụ.
+4. C cung cấp truy vấn và candidate độc lập (CT-MED-004, CT-MED-006); ràng buộc mỗi plan có visual hook, audio hook và thumbnail trong vùng hook thuộc Module D.
 
 ---
 
 ## 5. Danh mục Bất biến Kiến trúc (Invariant References)
 
-- **`INV-006` (Media Provenance & Immutability):** Nguồn gốc xuất xứ và giấy phép sử dụng của media phải được lưu vết vĩnh viễn trong metadata.
-- **`INV-012` (Atomic Usage Counter):** Số lượt sử dụng media chỉ được tăng trong transaction hoàn tất video, không bị tăng trùng khi chạy lại (retry).
+- **`INV-005`, `INV-008`, `INV-010`, `INV-017`:** C phục vụ phần C của các invariant này (catalog `docs/10-test-strategy.md` §14.2) và `CT-SRC-003`; `INV-006` là timeline mode và `INV-012` là canary secret, không phải provenance hay bộ đếm lượt dùng.
+- Bộ đếm lượt dùng chỉ tăng trong transaction completion (`CT-MED-008`) và không tăng lặp khi retry (`TST-WF-INV-010`, `TST-WF-INV-017`).
 
 ---
 
@@ -66,6 +66,7 @@ Gói công việc Capability C chỉ được nghiệm thu khi đạt đủ các
 - **Allowed Paths (Được phép chỉnh sửa khi authorized):**
   - `src/catalog/**`
   - `tests/unit/catalog/**`
+  - `tests/integration/catalog/**`
   - `docs/modules/capability-c-storage.md`
 - **Forbidden Paths (Tuyệt đối cấm can thiệp):**
   - `src/storage/bytes/**` (thuộc quyền Module I)
@@ -81,7 +82,7 @@ Gói công việc Capability C chỉ được nghiệm thu khi đạt đủ các
 - **Quan sát RED:** Kiểm thử fail khi hook không có điểm đánh giá chất lượng hoặc khi cố tình tăng lượt sử dụng ngoài PostgreSQL Unit of Work.
 - **Targeted Test Command:**
   ```bash
-  python -m unittest tests/unit/catalog/test_media_catalog.py -k test_hook_classification
+  python -m pytest tests/unit/catalog/test_catalog_hooks.py -q -p no:cacheprovider
   ```
 
 ---
@@ -89,3 +90,9 @@ Gói công việc Capability C chỉ được nghiệm thu khi đạt đủ các
 ## 8. Tiêu chí Rollback & Phục hồi Lỗi
 
 - **Nguyên tắc Rollback:** Revert các bản ghi metadata lỗi trong transaction; cô lập các media asset bị lỗi phân tích để xử lý lại mà không chặn quy trình chung.
+
+## 9. Đính chính từ nguồn chuẩn
+
+- State machine CT-STATE-005, CT-STATE-006 và migration PostgreSQL là tài nguyên dùng chung của gói hội tụ (CONV-C-07, CONV-C-01); C không chứa `lifecycle.py` hay repository PostgreSQL riêng.
+- Test ID lấy từ catalog `docs/10-test-strategy.md` (không dùng `TST-CAT-*`); bằng chứng ghi tại `docs/delivery-evidence/<task-id>/report.md`; media lịch sử theo CT-SRC-003 (errata m4-ci mục 3, 4, 5).
+- CT-STATE-012 có cạnh `VERIFIED → MISSING` và không có cạnh phục hồi từ `MISSING`, `CORRUPT`, `OUTCOME_UNKNOWN` (errata m4-ci mục 6).

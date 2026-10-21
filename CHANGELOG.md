@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-21 - CP-2D-REGISTRY: registry ownership, binding, fixture, catalog test và đính chính tài liệu module
+
+- Ownership: thêm `tests/integration/{ingestion,catalog,creative,voice,render}/**` vào các path của B, C, D, E, F; thêm bảy mẫu của H (YC-HT-H-01) và khai `LOCK-H-01`..`LOCK-H-16`; thêm `src/controlplane/api/wiring/**` vào `PATH-COMPOSITION-ROOT` (BL-CV-06, D8-CV-05).
+- Binding: thêm 10 manifest và fixture phủ 18 seam chưa có binding (gộp theo tệp contract nguồn, ánh xạ tại `docs/parallel-delivery/bindings/README.md`); fixture `j-provider-route` có thêm vai trò TTS; `schema_version` và `recovery_epoch` là chuỗi (D8-G-10); không sửa `docs/09-contracts/**`.
+- Catalog test: đăng ký `TST-SEC-SSRF-001..005` và quy ước corpus có version tại `docs/10-test-strategy.md` mục 35.
+- Tài liệu module: đính chính `docs/modules/capability-b-ingestion.md`, `capability-c-storage.md`, `capability-d-scripting.md`, `capability-e-voice.md`, `capability-f-rendering.md`, `capability-g-orchestration.md`, `capability-j-providers.md` theo mục Đính chính của kế hoạch B, C, D, E, F, G, J; cập nhật `TASK-CAP-E-VOICE` và `TASK-CAP-F-RENDERING` trong `acceptance-matrix.yaml`.
+- Trạng thái: BL-CV-01 và BL-CV-06 vẫn PENDING tới khi có Auditor PASS; cổng GATE-CP-2D-REGISTRY do Control thả; bằng chứng tại `docs/delivery-evidence/cp-2d-registry/report.md`.
+
 ## 2026-10-18 - CP0-GOVERNANCE: đồng bộ nguồn quyền, registry và validator với Phần B
 
 - Nguồn quyền (D3): AGENTS.md, README.md, HANDOFF.md, checklist và roadmap §4 ghi M3–M7 thực hiện theo ủy quyền AI_SETUP (`AI_PM_DELEGATED_AUTHORITY_RULES.md`) và chỉ thị user duyệt Phần B ngày 18/10/2026; M2-P8/P9 có Auditor PASS nhưng chưa ghi user checkpoint M2; kích hoạt sản xuất vẫn bị chặn; bỏ yêu cầu push (commit local, push/merge là quyền của user).

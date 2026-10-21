@@ -1,0 +1,175 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "e-processing-audio-bed",
+  "binding_id": "BINDING-E-PROCESSING-AUDIO-BED",
+  "binding_version": "1.0.0",
+  "modules": [
+    "E",
+    "F",
+    "G"
+  ],
+  "producer": "E",
+  "input_providers": [
+    "G"
+  ],
+  "consumers": [
+    "F",
+    "G"
+  ],
+  "contract_ref": "CONTRACT-MEDIA-PROCESSING",
+  "source": {
+    "path": "docs/09-contracts/07-media-processing-contracts.md",
+    "sections": [
+      "CT-PROC-001",
+      "CT-PROC-002",
+      "CT-AUD-001"
+    ],
+    "sha256": "c5f7abaea422916165d59f8a5508817729d21035cffd663123a913c49365cf49"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "ProcessingRequest",
+      "section": "CT-PROC-001",
+      "fields": [
+        {
+          "name": "processing_operation_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "stage_run_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "execution_grant",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "input_artifact_refs",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "operation_spec_revision",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "expected_output_profile",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "resource_limits",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "output_storage_intent",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ProcessingResult",
+      "section": "CT-PROC-002",
+      "fields": [
+        {
+          "name": "disposition",
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed",
+            "waiting",
+            "outcome_unknown"
+          ],
+          "required": true
+        },
+        {
+          "name": "output_artifact_refs",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "processor_identity",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "input_fingerprint",
+          "type": "sha256",
+          "required": true
+        },
+        {
+          "name": "output_hashes",
+          "type": "array",
+          "items": "sha256",
+          "required": true
+        },
+        {
+          "name": "technical_report",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "warnings",
+          "type": "array",
+          "required": false
+        },
+        {
+          "name": "operation_receipt_ref",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "AudioBedResult",
+      "section": "CT-AUD-001",
+      "fields": [
+        {
+          "name": "prepared_rendition_refs",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "cue_timing_refs",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "loudness_peak_report",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "provenance_risk_metadata",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "warnings",
+          "type": "array",
+          "required": false
+        },
+        {
+          "name": "substitutions",
+          "type": "array",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

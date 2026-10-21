@@ -1,0 +1,235 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "j-account-capability",
+  "binding_id": "BINDING-J-ACCOUNT-CAPABILITY",
+  "binding_version": "1.0.0",
+  "modules": [
+    "G",
+    "H",
+    "J"
+  ],
+  "producer": "J",
+  "consumers": [
+    "G",
+    "H"
+  ],
+  "contract_ref": "CONTRACT-CONFIG-SECURITY",
+  "source": {
+    "path": "docs/09-contracts/11-configuration-security-contracts.md",
+    "sections": [
+      "CT-ACC-001",
+      "CT-SEC-001",
+      "CT-CAP-002",
+      "CT-CAP-003"
+    ],
+    "sha256": "989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "ExternalAccountView",
+      "section": "CT-ACC-001",
+      "fields": [
+        {
+          "name": "external_account_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "provider",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "account_label",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "enum": [
+            "enabled",
+            "disabled",
+            "degraded",
+            "revoked",
+            "invalid"
+          ],
+          "required": true
+        },
+        {
+          "name": "project_ref",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "capabilities",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "quota_observation_ref",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "credential_metadata",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "health",
+          "type": "object",
+          "required": false
+        }
+      ],
+      "forbidden_fields": [
+        "secret_value",
+        "api_key",
+        "access_token",
+        "refresh_token"
+      ]
+    },
+    {
+      "name": "SecretUpdateResult",
+      "section": "CT-SEC-001",
+      "fields": [
+        {
+          "name": "secret_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "provider_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "account_ref",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "last_updated_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "validation_state",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "fingerprint_or_version",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "actor_ref",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "forbidden_fields": [
+        "secret_value",
+        "api_key",
+        "access_token",
+        "refresh_token"
+      ]
+    },
+    {
+      "name": "CapacityReservationHint",
+      "section": "CT-CAP-002",
+      "fields": [
+        {
+          "name": "capacity_reservation_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "provider_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "account_ref",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "capability",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "expires_at",
+          "type": "datetime",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "CapabilityView",
+      "section": "CT-CAP-003",
+      "fields": [
+        {
+          "name": "capability_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "capability_type",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "location",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "enum": [
+            "available",
+            "degraded",
+            "unavailable",
+            "unknown"
+          ],
+          "required": true
+        },
+        {
+          "name": "compatible_versions",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "capacity_indicators",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "last_observed_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "next_check_at",
+          "type": "datetime",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

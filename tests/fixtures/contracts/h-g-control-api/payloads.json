@@ -1,0 +1,206 @@
+{
+  "seam": "h-g-control-api",
+  "binding_version": "1.0.0",
+  "entities": {
+    "ResourceQuery": {
+      "valid": [
+        {
+          "workspace_id": "ws-0001",
+          "resource": "jobs",
+          "filters": {
+            "status": "running"
+          },
+          "limit": 50
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_resource",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "resource"
+          },
+          "payload": {
+            "workspace_id": "ws-0001",
+            "filters": {
+              "status": "running"
+            },
+            "limit": 50
+          }
+        },
+        {
+          "case": "limit_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "limit"
+          },
+          "payload": {
+            "workspace_id": "ws-0001",
+            "resource": "jobs",
+            "filters": {
+              "status": "running"
+            },
+            "limit": "50"
+          }
+        }
+      ]
+    },
+    "ProductionCommand": {
+      "valid": [
+        {
+          "command": "RetryStage",
+          "workspace_id": "ws-0001",
+          "idempotency_key": "idem-0001",
+          "target_ref": "00000000-0000-4000-8000-000000000301",
+          "parameters": {}
+        }
+      ],
+      "invalid": [
+        {
+          "case": "pause_command_not_in_contract",
+          "expected_error": {
+            "code": "enum_violation",
+            "field": "command"
+          },
+          "payload": {
+            "command": "PauseBatch",
+            "workspace_id": "ws-0001",
+            "idempotency_key": "idem-0001",
+            "target_ref": "00000000-0000-4000-8000-000000000301",
+            "parameters": {}
+          }
+        },
+        {
+          "case": "missing_idempotency_key",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "idempotency_key"
+          },
+          "payload": {
+            "command": "RetryStage",
+            "workspace_id": "ws-0001",
+            "target_ref": "00000000-0000-4000-8000-000000000301",
+            "parameters": {}
+          }
+        }
+      ]
+    },
+    "OperationView": {
+      "valid": [
+        {
+          "operation_id": "op-0001",
+          "command_ref": "RetryStage",
+          "status": "running",
+          "resource_refs": [
+            "00000000-0000-4000-8000-000000000301"
+          ],
+          "updated_at": "2026-10-21T08:00:00Z"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "status_uppercase",
+          "expected_error": {
+            "code": "enum_violation",
+            "field": "status"
+          },
+          "payload": {
+            "operation_id": "op-0001",
+            "command_ref": "RetryStage",
+            "status": "RUNNING",
+            "resource_refs": [
+              "00000000-0000-4000-8000-000000000301"
+            ],
+            "updated_at": "2026-10-21T08:00:00Z"
+          }
+        },
+        {
+          "case": "resource_refs_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "resource_refs"
+          },
+          "payload": {
+            "operation_id": "op-0001",
+            "command_ref": "RetryStage",
+            "status": "running",
+            "resource_refs": "job-1",
+            "updated_at": "2026-10-21T08:00:00Z"
+          }
+        },
+        {
+          "case": "missing_updated_at",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "updated_at"
+          },
+          "payload": {
+            "operation_id": "op-0001",
+            "command_ref": "RetryStage",
+            "status": "running",
+            "resource_refs": [
+              "00000000-0000-4000-8000-000000000301"
+            ]
+          }
+        }
+      ]
+    },
+    "OperationStreamItem": {
+      "valid": [
+        {
+          "stream_event_id": "1001",
+          "cursor": "1001",
+          "resource_type": "operation",
+          "resource_id": "op-0001",
+          "resource_revision": 3,
+          "event_kind": "operation_updated",
+          "occurred_at": "2026-10-21T08:00:00Z",
+          "recorded_at": "2026-10-21T08:00:01Z",
+          "summary": "Operation running",
+          "correlation_id": "corr-0001"
+        }
+      ],
+      "invalid": [
+        {
+          "case": "stack_trace_in_stream",
+          "expected_error": {
+            "code": "forbidden_field",
+            "field": "stack_trace"
+          },
+          "payload": {
+            "stream_event_id": "1001",
+            "cursor": "1001",
+            "resource_type": "operation",
+            "resource_id": "op-0001",
+            "resource_revision": 3,
+            "event_kind": "operation_updated",
+            "occurred_at": "2026-10-21T08:00:00Z",
+            "recorded_at": "2026-10-21T08:00:01Z",
+            "summary": "Operation running",
+            "correlation_id": "corr-0001",
+            "stack_trace": "x"
+          }
+        },
+        {
+          "case": "resource_revision_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "resource_revision"
+          },
+          "payload": {
+            "stream_event_id": "1001",
+            "cursor": "1001",
+            "resource_type": "operation",
+            "resource_id": "op-0001",
+            "resource_revision": "3",
+            "event_kind": "operation_updated",
+            "occurred_at": "2026-10-21T08:00:00Z",
+            "recorded_at": "2026-10-21T08:00:01Z",
+            "summary": "Operation running",
+            "correlation_id": "corr-0001"
+          }
+        }
+      ]
+    }
+  }
+}

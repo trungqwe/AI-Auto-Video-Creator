@@ -1,0 +1,120 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "j-config-bundle",
+  "binding_id": "BINDING-J-CONFIG-BUNDLE",
+  "binding_version": "1.0.0",
+  "modules": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J"
+  ],
+  "producer": "J",
+  "consumers": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I"
+  ],
+  "contract_ref": "CONTRACT-CONFIG-SECURITY",
+  "source": {
+    "path": "docs/09-contracts/11-configuration-security-contracts.md",
+    "sections": [
+      "CT-CFG-002"
+    ],
+    "sha256": "989d9ef22c2096f56453722f059efc1427a3018e64c1a7f67a8d514f55c69645"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "ConfigurationBundleRequest",
+      "section": "CT-CFG-002",
+      "fields": [
+        {
+          "name": "workspace_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "job_ref",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "stage_ref",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "evaluation_time",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "required_config_capabilities",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "snapshot_state",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "ConfigurationBundle",
+      "section": "CT-CFG-002",
+      "fields": [
+        {
+          "name": "config_revision_refs",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "merged_values",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "bundle_fingerprint",
+          "type": "sha256",
+          "required": true
+        },
+        {
+          "name": "value_provenance",
+          "type": "object",
+          "required": true
+        },
+        {
+          "name": "validation_warnings",
+          "type": "array",
+          "required": false
+        }
+      ],
+      "forbidden_fields": [
+        "secret_value",
+        "api_key",
+        "access_token",
+        "refresh_token"
+      ]
+    }
+  ]
+}

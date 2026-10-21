@@ -1,0 +1,217 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "i-storage-output-path",
+  "binding_id": "BINDING-I-STORAGE-OUTPUT-PATH",
+  "binding_version": "1.0.0",
+  "modules": [
+    "D",
+    "F",
+    "G",
+    "I"
+  ],
+  "producer": "I",
+  "input_providers": [
+    "D",
+    "F"
+  ],
+  "consumers": [
+    "F",
+    "G"
+  ],
+  "contract_ref": "CONTRACT-STORAGE",
+  "source": {
+    "path": "docs/09-contracts/10-storage-contracts.md",
+    "sections": [
+      "CT-STO-004",
+      "CT-STO-006",
+      "CT-STO-011"
+    ],
+    "sha256": "6ab6f60bc2760ea9017ca0406e0053dc859cc06c1f0c80fff7e944d03d5e02ce"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "PersistVideoOutputResult",
+      "section": "CT-STO-006",
+      "fields": [
+        {
+          "name": "output_artifact_version_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "output_sha256",
+          "type": "sha256",
+          "required": true
+        },
+        {
+          "name": "cloud_location_verification_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "output_metadata_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "upload_receipt_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "provider_namespace_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "verified_at",
+          "type": "datetime",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "MaterializeArtifactSetRequest",
+      "section": "CT-STO-004",
+      "fields": [
+        {
+          "name": "artifact_version_manifest",
+          "type": "array",
+          "items": "object",
+          "required": true
+        },
+        {
+          "name": "target_device_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "staging_lease_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "expected_total_bytes",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "priority",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "deadline",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "name": "operation_key",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "MaterializeArtifactSetResult",
+      "section": "CT-STO-004",
+      "fields": [
+        {
+          "name": "local_location_refs",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "verified_items",
+          "type": "array",
+          "items": "object",
+          "required": true
+        },
+        {
+          "name": "missing_or_corrupt_items",
+          "type": "array",
+          "required": true
+        },
+        {
+          "name": "metrics",
+          "type": "object",
+          "required": false
+        },
+        {
+          "name": "lease_expiry",
+          "type": "datetime",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "AllocateOutputPathRequest",
+      "section": "CT-STO-011",
+      "fields": [
+        {
+          "name": "app_session_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "completion_candidate_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "display_title",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "hashtags",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "naming_policy_revision",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "target_root_ref",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "AllocateOutputPathResult",
+      "section": "CT-STO-011",
+      "fields": [
+        {
+          "name": "sanitized_filename",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "logical_output_folder",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "collision_sequence",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "display_metadata",
+          "type": "object",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,177 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "a-b-d-article-event-handoff",
+  "binding_id": "BINDING-A-B-D-ARTICLE-EVENT-HANDOFF",
+  "binding_version": "1.0.0",
+  "modules": [
+    "A",
+    "B",
+    "D"
+  ],
+  "producer": "B",
+  "input_providers": [
+    "A"
+  ],
+  "consumers": [
+    "D"
+  ],
+  "contract_ref": "CONTRACT-SOURCE-CONTENT",
+  "source": {
+    "path": "docs/09-contracts/04-source-content-contracts.md",
+    "sections": [
+      "CT-SRC-006",
+      "CT-CNT-003",
+      "CT-CNT-005"
+    ],
+    "sha256": "61b075d202dd0d7729123f68f26285097be8120e2de48194d0ad2fe847701f31"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "SourceTierView",
+      "section": "CT-SRC-006",
+      "fields": [
+        {
+          "name": "source_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "source_revision",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "tier",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "source_status",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "policy_revision",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "ArticleRevisionAccepted",
+      "section": "CT-CNT-003",
+      "fields": [
+        {
+          "name": "article_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "article_revision_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "normalized_content_ref",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "source_refs",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "publication_time",
+          "type": "datetime",
+          "required": false
+        },
+        {
+          "name": "fetched_at",
+          "type": "datetime",
+          "required": true
+        },
+        {
+          "name": "time_confidence",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "topic_classification",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "dedup_fingerprints",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "media_discovery_refs",
+          "type": "array",
+          "required": false
+        },
+        {
+          "name": "extractor_version",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "completeness_state",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "EventUpdateEvaluation",
+      "section": "CT-CNT-005",
+      "fields": [
+        {
+          "name": "event_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "is_new_development",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "new_claims",
+          "type": "array",
+          "required": false
+        },
+        {
+          "name": "source_revision_refs",
+          "type": "array",
+          "items": "string",
+          "required": true
+        },
+        {
+          "name": "confidence",
+          "type": "number",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "event_update_revision",
+          "type": "string",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

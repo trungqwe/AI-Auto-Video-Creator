@@ -101,17 +101,19 @@ matrix:
     capability: CAP-E-VOICE
     task_id: TASK-CAP-E-VOICE
     contract_id: CONTRACT-MEDIA-PROCESSING
-    test_suite: tests/unit/voice/test_tts_synthesis.py
+    contract_refs: [CT-TTS-001, CT-AI-ROUTE-001]
+    test_suite: tests/unit/voice/test_e08_voice_track.py
     evidence_path: docs/delivery-evidence/task-cap-e-voice/report.md
     release_gate: G06
-    description: Chuyển kịch bản thành giọng đọc truyền cảm, chuẩn hóa âm lượng theo EBU R128 (-14 LUFS).
+    description: Chuyển kịch bản thành giọng đọc tiếng Anh qua route của J (CT-AI-ROUTE-001); mục tiêu loudness lấy từ preset audio policy (CT-AUD-001), không hằng trong mã.
 
   - requirement_id: R10
     name: Căn chỉnh mốc thời gian từng từ cho Karaoke Subtitle
     capability: CAP-E-VOICE
     task_id: TASK-CAP-E-VOICE
     contract_id: CONTRACT-MEDIA-PROCESSING
-    test_suite: tests/unit/voice/test_word_timing_alignment.py
+    contract_refs: [CT-SUB-001]
+    test_suite: tests/unit/voice/test_e09_word_timing.py
     evidence_path: docs/delivery-evidence/task-cap-e-voice/report.md
     release_gate: G06
     description: Bóc tách chính xác mốc bắt đầu/kết thúc ms của từng từ để phục vụ hiệu ứng karaoke.
@@ -121,17 +123,19 @@ matrix:
     capability: CAP-F-RENDERING
     task_id: TASK-CAP-F-RENDERING
     contract_id: CONTRACT-RENDER-QUALITY
-    test_suite: tests/unit/render/test_video_pipeline.py
+    contract_refs: [CT-RND-002, CT-RND-004]
+    test_suite: tests/unit/render/test_f10_render_command_spec.py
     evidence_path: docs/delivery-evidence/task-cap-f-rendering/report.md
     release_gate: G02
-    description: Tổng hợp hình ảnh, video nền, voice track thành file MP4 1080x1920 tốc độ 30fps.
+    description: Tổng hợp hình ảnh, video nền, voice track thành file MP4 theo output_profile_revision (ROADMAP-OPEN-007); kích thước, fps và codec là tham số, không hằng trong mã.
 
   - requirement_id: R12
     name: Hiển thị phụ đề Karaoke đổi màu theo từng từ
     capability: CAP-F-RENDERING
     task_id: TASK-CAP-F-RENDERING
     contract_id: CONTRACT-RENDER-QUALITY
-    test_suite: tests/unit/render/test_karaoke_subtitle.py
+    contract_refs: [CT-SUB-001, CT-RND-002]
+    test_suite: tests/unit/render/test_f09_karaoke_plan.py
     evidence_path: docs/delivery-evidence/task-cap-f-rendering/report.md
     release_gate: G06
     description: Chạy chữ đổi màu chính xác từng từ theo mốc thời gian WordTiming trên khung hình video.
@@ -141,10 +145,11 @@ matrix:
     capability: CAP-F-RENDERING
     task_id: TASK-CAP-F-RENDERING
     contract_id: CONTRACT-RENDER-QUALITY
-    test_suite: tests/unit/render/test_qc_verification.py
+    contract_refs: [CT-QC-001, CT-QC-002, CT-RND-005]
+    test_suite: tests/unit/render/test_f13_technical_gates.py
     evidence_path: docs/delivery-evidence/task-cap-f-rendering/report.md
     release_gate: G02
-    description: Tự động thẩm định thời lượng (61-70s), kích thước 1080x1920, độ lệch tiếng và bitrate.
+    description: Tự động thẩm định theo CT-QC-001: gate DURATION_RANGE và OUTPUT_PROFILE_VALID lấy khoảng từ quality policy revision; sai số karaoke là ROADMAP-OPEN-008, chưa chốt.
 
   - requirement_id: R14
     name: Điều phối quy trình công việc bền vững (Workflow Engine)

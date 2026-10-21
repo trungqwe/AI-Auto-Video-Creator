@@ -1,27 +1,27 @@
-# Bàn giao phiên làm việc — CP0-GOVERNANCE (đồng bộ nguồn quyền với Phần B)
+# Bàn giao phiên làm việc — CP-2D-REGISTRY (registry, binding, fixture, catalog test, tài liệu module)
 
 ## Đã quyết định
 
-- Nguồn quyền (D3): M3–M7, gồm Phân hệ A, thực hiện theo ủy quyền AI_SETUP (`AI_PM_DELEGATED_AUTHORITY_RULES.md`) và chỉ thị user duyệt Phần B ngày 18/10/2026 (D0–D10). Mỗi slice chỉ sửa trong owned paths và theo tiêu chí nghiệm thu được giao.
-- M1 và M2-P1..P7B: `ACCEPTED / CLOSED`. M2-P8/P9 đã triển khai và có Auditor PASS; chưa ghi user checkpoint M2, không coi là user đã duyệt.
-- Kích hoạt sản xuất vẫn bị chặn (`PRODUCTION_ACTIVATION_BLOCKED`).
-- Commit local; push hoặc merge là quyền riêng của user.
-- Registry theo D1: path G/I nằm trong các gói của `src/controlplane`; thêm `PATH-DELIVERY-EVIDENCE`, `PATH-IMPLEMENTATION-PLANS` và các lock kế hoạch/hội tụ.
-- Bằng chứng (D4): từ M3 trở đi ghi vào `docs/delivery-evidence/<task-id viết thường>/report.md`; `docs/milestones/**/evidence/**` bất biến.
-- `validate.py` và `validate-docs-plan.py` đọc YAML bằng bộ đọc stdlib; `.validation-report.json` lỗi thời đã gỡ.
+- Nguồn quyền (D3): user duyệt Phần B ngày 18/10/2026; M3–M7 chạy theo ủy quyền AI_SETUP (`AI_PM_DELEGATED_AUTHORITY_RULES.md`); kích hoạt sản xuất vẫn `PRODUCTION_ACTIVATION_BLOCKED`; commit local, push và merge là quyền của user.
+- Registry: `ownership-and-locks.yaml` có thêm `tests/integration/{ingestion,catalog,creative,voice,render}/**`, bảy mẫu của H (YC-HT-H-01), `LOCK-H-01`..`LOCK-H-16` và `src/controlplane/api/wiring/**` trong `PATH-COMPOSITION-ROOT` (D8-CV-05).
+- Binding: 10 manifest mới cùng fixture phủ 18 seam chưa có binding (gộp theo tệp contract nguồn, ánh xạ tại `docs/parallel-delivery/bindings/README.md`); fixture `j-provider-route` có vai trò TTS `voice_synthesis` (tên là GIẢ ĐỊNH); `schema_version`, `recovery_epoch` là chuỗi (D8-G-10); không sửa `docs/09-contracts/**`; mục CONTRACT-STATE-MACHINES giữ nguyên cho CP-3C-STATE-EDGES.
+- Catalog test: `TST-SEC-SSRF-001..005` và quy ước corpus có version tại `docs/10-test-strategy.md` mục 35.
+- Tài liệu module B, C, D, E, F, G, J đã đính chính theo kế hoạch; `TASK-CAP-E-VOICE`, `TASK-CAP-F-RENDERING` cập nhật trong `acceptance-matrix.yaml`.
+- BL-CV-01 và BL-CV-06: `PENDING` tới khi có Auditor PASS; cổng `GATE-CP-2D-REGISTRY` do Control thả.
 
 ## Chưa quyết định
 
-- User checkpoint M2 (P8/P9) chưa được ghi.
-- USER-CKPT-D9-D10 (thư viện, cách dựng lại runtime) và CP7 tài nguyên thật (D5) chờ user.
-- Dữ liệu cũ của các node TASK-CAP-J-* (authority ref dạng `tệp:dòng`, contract ref `CONTRACT-CONFIG-SECURITY` không phải mã CT-*, thiếu trường bắt buộc, nhiều task granted cùng lock) làm `check_task_dag`/`check_registries` báo lỗi; để cho slice riêng.
+- `USER-CKPT-D9-D10`, checkpoint M2 (P8/P9) và nghiệm thu cuối của v1.
+- `PUC-G-02` giữ nguyên; `OI-EXT-01`, `OI-EXT-02`.
+- Tài nguyên thật (Drive/OAuth, GPU, AI trả phí, chạy 12 giờ) thuộc CP7.
+- `TASK-CAP-*` trong `task-dag.yaml` còn `contract_refs` rỗng (ngoài owned paths của slice này).
 
 ## Tệp cần đọc tiếp
 
-- `docs/12-pre-code-checklist.md`, `docs/11-roadmap.md` (§4)
-- `docs/parallel-delivery/ownership-and-locks.yaml`, `docs/parallel-delivery/acceptance-matrix.yaml`
-- `docs/delivery-evidence/cp0-governance/report.md`, `docs/delivery-evidence/cp0-governance/ownership-recheck.md`
+- `docs/delivery-evidence/cp-2d-registry/report.md`
+- `docs/parallel-delivery/bindings/README.md`, `docs/parallel-delivery/ownership-and-locks.yaml`
+- `docs/implementation/convergence-ext/plan.md` (mục 2, 4, 6)
 
 ## Điểm tiếp tục
 
-- CP2A-LAYOUT (dependency_slice) sau khi CP0-GOVERNANCE được nghiệm thu.
+- Auditor audit CP-2D-REGISTRY; sau PASS Control thả `GATE-CP-2D-REGISTRY` rồi mở CP-3B-STATE-MACHINE, CP-3C-STATE-EDGES, CP-4-WIRING và CP-4B-UI-SHELL theo DAG.

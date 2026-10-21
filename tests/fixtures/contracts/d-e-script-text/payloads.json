@@ -1,0 +1,94 @@
+{
+  "seam": "d-e-script-text",
+  "binding_version": "1.0.0",
+  "entities": {
+    "ScriptTextView": {
+      "valid": [
+        {
+          "script_version_id": "00000000-0000-4000-8000-000000000601",
+          "script_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+          "narration_segments": [
+            {
+              "order": 1,
+              "text": "Breaking news from today.",
+              "claim_mode": "source_backed"
+            }
+          ],
+          "pronunciation_hints": []
+        }
+      ],
+      "invalid": [
+        {
+          "case": "missing_script_fingerprint",
+          "expected_error": {
+            "code": "missing_required",
+            "field": "script_fingerprint"
+          },
+          "payload": {
+            "script_version_id": "00000000-0000-4000-8000-000000000601",
+            "narration_segments": [
+              {
+                "order": 1,
+                "text": "Breaking news from today.",
+                "claim_mode": "source_backed"
+              }
+            ],
+            "pronunciation_hints": []
+          }
+        },
+        {
+          "case": "narration_segments_as_string",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "narration_segments"
+          },
+          "payload": {
+            "script_version_id": "00000000-0000-4000-8000-000000000601",
+            "script_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+            "narration_segments": "text",
+            "pronunciation_hints": []
+          }
+        },
+        {
+          "case": "script_fingerprint_not_sha256",
+          "expected_error": {
+            "code": "wrong_type",
+            "field": "script_fingerprint"
+          },
+          "payload": {
+            "script_version_id": "00000000-0000-4000-8000-000000000601",
+            "script_fingerprint": "fp-1",
+            "narration_segments": [
+              {
+                "order": 1,
+                "text": "Breaking news from today.",
+                "claim_mode": "source_backed"
+              }
+            ],
+            "pronunciation_hints": []
+          }
+        },
+        {
+          "case": "secret_value_present",
+          "expected_error": {
+            "code": "forbidden_field",
+            "field": "secret_value"
+          },
+          "payload": {
+            "script_version_id": "00000000-0000-4000-8000-000000000601",
+            "script_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+            "narration_segments": [
+              {
+                "order": 1,
+                "text": "Breaking news from today.",
+                "claim_mode": "source_backed"
+              }
+            ],
+            "pronunciation_hints": [],
+            "secret_value": "x"
+          }
+        }
+      ]
+    }
+  }
+}

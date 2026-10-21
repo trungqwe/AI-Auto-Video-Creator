@@ -53,9 +53,9 @@ Gói công việc Capability J chỉ được nghiệm thu khi đạt đủ các
 
 ## 5. Danh mục Bất biến Kiến trúc (Invariant References)
 
-- **`INV-013` (AI Adapter Role Routing):** Lời gọi AI phải đi qua adapter Module J; cấm gọi trực tiếp SDK từ module nghiệp vụ.
-- **`INV-015` (Secret Lifetime & Vault Isolation):** Secret và khóa truy cập chỉ được giải mã tạm thời trong tiến trình cô lập của Broker, không lưu trữ dạng plain-text trên đĩa.
-- **`INV-021` (Configuration Provenance):** Mọi công việc sản xuất phải được gắn chặt với phiên bản cấu hình (`config_revision_id`) và prompt (`prompt_revision_id`) cụ thể.
+- **`INV-012`** (`TST-SEC-INV-012`): canary secret không xuất hiện trong log, event, history hay lỗi; **`INV-004`** (`TST-INT-INV-004`): đổi cấu hình sau snapshot không đổi job đã snapshot; **`INV-020`** (`TST-SEC-INV-020`): ref hoặc chỉ thị giả từ nội dung không có hiệu lực.
+- Định tuyến và fallback bám `CT-AI-ROUTE-001`, `CT-AI-ROUTE-002` và mục 11 của `docs/09-contracts/11-configuration-security-contracts.md`; adapter AI qua Module J không có mã INV riêng.
+- `INV-013` là StoryAngle (`TST-AI-INV-013`), `INV-015` là tombstone nguồn (`TST-INT-INV-015`) và `INV-021` không tồn tại, các nhãn đó không thuộc J; docstring cũ trong `src/controlplane/config/*.py` và `src/controlplane/security/*.py` còn nhãn sai, không sửa trong slice này (YC-HT-J-10).
 
 ---
 

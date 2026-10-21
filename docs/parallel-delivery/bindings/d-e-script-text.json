@@ -1,0 +1,64 @@
+{
+  "schema": "contract-binding/v1",
+  "seam": "d-e-script-text",
+  "binding_id": "BINDING-D-E-SCRIPT-TEXT",
+  "binding_version": "1.0.0",
+  "modules": [
+    "D",
+    "E"
+  ],
+  "producer": "D",
+  "consumers": [
+    "E"
+  ],
+  "contract_ref": "CONTRACT-CREATIVE-AI",
+  "source": {
+    "path": "docs/09-contracts/06-creative-ai-contracts.md",
+    "sections": [
+      "CT-AI-004"
+    ],
+    "sha256": "92b74489890f1eaf3915aef809af4cff0585659842f6930bbdf11d1236861b3a"
+  },
+  "compatibility": {
+    "mode": "additive_optional_only",
+    "breaking_change": "increment_major_binding_version_via_MIGRATE_bindingRefs"
+  },
+  "field_naming": "snake_case_derived_from_contract_text",
+  "entities": [
+    {
+      "name": "ScriptTextView",
+      "section": "CT-AI-004",
+      "fields": [
+        {
+          "name": "script_version_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "script_fingerprint",
+          "type": "sha256",
+          "required": true
+        },
+        {
+          "name": "narration_segments",
+          "type": "array",
+          "items": "object",
+          "required": true
+        },
+        {
+          "name": "pronunciation_hints",
+          "type": "array",
+          "required": false
+        },
+        {
+          "name": "language_policy_ref",
+          "type": "string",
+          "required": false
+        }
+      ],
+      "forbidden_fields": [
+        "secret_value"
+      ]
+    }
+  ]
+}
