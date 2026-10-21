@@ -51,6 +51,12 @@ Sau khi implement Bước 8-11, chạy kiểm thử Bước 12 đạt GREEN:
 | 19 | `python -m pytest tests/unit/config tests/unit/storage tests/unit/statemachine -q -p no:cacheprovider` | 1 | `ERROR: file or directory not found: tests/unit/statemachine` (tests/unit/config và tests/unit/storage: 1100 passed, nhưng tests/unit/statemachine không tồn tại do CP-3B đặt test tại tests/integration/convergence/) |
 | 20 | `python -m pytest tests/unit/security tests/m2/test_p4_statemachines.py tests/contract/test_bindings.py -q -p no:cacheprovider` | 0 | `679 passed, 398 subtests passed in 1.28s` |
 | 21 | `git diff --check` | 0 | Clean whitespace |
+| 22 | `python -m pytest tests/unit/config tests/unit/storage tests/integration/convergence/test_cp3b_catalog_graphs.py tests/integration/convergence/test_cp3b_source_parity.py -q -p no:cacheprovider` | 0 | `1125 passed, 239 subtests passed in 0.84s` |
+| 23 | `python -m pytest tests/unit/security tests/m2/test_p4_statemachines.py tests/contract/test_bindings.py -q -p no:cacheprovider` | 0 | `679 passed, 398 subtests passed in 0.78s` |
+| 24 | `python -m pytest tests/unit/config/test_j_status_graph.py -q -p no:cacheprovider` | 0 | `118 passed in 0.11s` |
+| 25 | `python -c "import hashlib, pathlib, re; t = pathlib.Path('docs/parallel-delivery/contract-registry.yaml').read_text(encoding='utf-8'); h = hashlib.sha256(pathlib.Path('docs/09-contracts/12-state-machines.md').read_bytes()).hexdigest(); m = re.search('id: CONTRACT-STATE-MACHINES[^@]*?current_revision: sha256:([0-9a-f]{64})[^@]*?source_sha256: ([0-9a-f]{64})', t); assert m is not None and m.group(1) == h and m.group(2) == h, h; assert '2cab18e858b2e78eb3a578b5a64568619d20c7cb09fed2cb7766bc0636fb9f28' not in t, 'old hash must be gone'"` | 0 | sha256 current_revision và source_sha256 khớp byte contract; giá trị cũ đã biến mất |
+| 26 | `python -c "import pathlib; t = pathlib.Path('docs/09-contracts/12-state-machines.md').read_text(encoding='utf-8'); assert 'PUC-J-03' in t and 'YC-HT-I-04' in t, 'contract names both approved edges'"` | 0 | contract nêu PUC-J-03 và YC-HT-I-04 |
+| 27 | `git diff --check` | 0 | Clean whitespace |
 
 ## Quyết định
 
@@ -63,4 +69,4 @@ Sau khi implement Bước 8-11, chạy kiểm thử Bước 12 đạt GREEN:
 - OI-EXT-01: PENDING, nơi lưu cleanup_receipt_ref ngoài receipt của cleanup executor, không thêm cột hay migration.
 - Control chạy tests/m2 trên PostgreSQL 18.6, Worker không chạy.
 - Tách test sang tệp riêng là backlog.
-- DEPENDENCY_GAP: `tests/unit/statemachine` chưa tồn tại ở integration head do gói chủ CP-3B-STATE-MACHINE đặt tệp test tại `tests/integration/convergence/`; lệnh Bước 19 bị chặn bởi thiếu thư mục này.
+- Đã giải quyết: Bước 19 cũ dùng đường dẫn `tests/unit/statemachine` không tồn tại; lệnh kiểm bắt buộc hiện hành của task dùng `tests/integration/convergence/test_cp3b_catalog_graphs.py` và `tests/integration/convergence/test_cp3b_source_parity.py` (cả hai đã có ở HEAD) và đã chạy ở bước 22 với kết quả đạt.
