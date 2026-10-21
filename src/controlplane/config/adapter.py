@@ -90,6 +90,28 @@ class ApprovedEndpointRegistry:
             self._approved: frozenset[str] = frozenset(normalized_list)
         else:
             self._approved = DEFAULT_APPROVED_ENDPOINTS
+        self._config_owned: bool = False
+
+    @classmethod
+    def from_config(cls, endpoints: Iterable[str]) -> "ApprovedEndpointRegistry":
+        """Build the registry from the endpoint list of the configuration (BL-CV-04, D8-ADAPT-01).
+
+        The list is host/configuration-owned, so the DEFAULT_APPROVED_ENDPOINTS subset check of the constructor does not apply.
+        An empty list or an invalid entry fails closed with UnapprovedEndpointError.
+        """
+        if isinstance(endpoints, (str, bytes)):
+            raise UnapprovedEndpointError("Config endpoints must be an iterable of endpoint strings")
+        normalized = frozenset(cls._normalize(ep) for ep in endpoints)
+        if not normalized:
+            raise UnapprovedEndpointError("Config endpoint list must not be empty (fail-closed)")
+        registry = cls.__new__(cls)
+        registry._approved = normalized
+        registry._config_owned = True
+        return registry
+
+    @property
+    def config_owned(self) -> bool:
+        return self._config_owned
 
     @staticmethod
     def _normalize(endpoint: str) -> str:
@@ -149,11 +171,13 @@ class NineRouterHTTPAdapter:
         backoff_factor: float = 0.5,
         registry: Optional[ApprovedEndpointRegistry] = None,
     ) -> None:
-        if registry is not None and registry is not DEFAULT_ENDPOINT_REGISTRY:
+        if registry is not None and registry is not DEFAULT_ENDPOINT_REGISTRY and not (
+            isinstance(registry, ApprovedEndpointRegistry) and registry.config_owned
+        ):
             raise UnapprovedEndpointError(
                 "Caller-supplied endpoint registry is rejected: authority is strictly host/configuration-owned (INV-013)"
             )
-        self._registry = DEFAULT_ENDPOINT_REGISTRY
+        self._registry = registry if registry is not None else DEFAULT_ENDPOINT_REGISTRY
         self._bound_endpoint: str = self._registry.validate(base_url)
         self.timeout = timeout
         self.max_retries = max_retries
