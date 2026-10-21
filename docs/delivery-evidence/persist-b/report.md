@@ -61,3 +61,9 @@ FAILED tests/integration/persistence/b/test_persist_b_postgres.py::test_migratio
 ```blocked-manifest
 {"step": 1, "kind": "DEPENDENCY_GAP", "ownerTaskIds": ["CP-3-MIGRATIONS"], "paths": ["src/controlplane/infrastructure/db/migrations/0013_ingestion.sql"], "ids": ["tests/integration/persistence/b/test_persist_b_postgres.py::test_migration_0013_dedup_policy_revision_fits_string_port"]}
 ```
+
+## 9. Xác nhận lại tại HEAD 3f99214 (trigger INITIAL, lượt PERSIST-B thứ ba)
+- Lệnh: `python -m pytest tests/integration/persistence/b/test_persist_b_postgres.py -q -p no:cacheprovider`, exit code 1, kết quả AssertionError: {'cp_collected_document_resolutions': 'bigint', 'cp_dedup_evidence': 'bigint'}.
+- Migration không đổi: src/controlplane/infrastructure/db/migrations/0013_ingestion.sql:36 và :47 vẫn là dedup_policy_revision BIGINT; src/ingestion/application/ports.py:27 vẫn yêu cầu str; migration 0014 đến 0018 không chứa dedup_policy_revision.
+- Kết luận: BLOCKED, DEPENDENCY_GAP thuộc CP-3-MIGRATIONS. Không tạo src/ingestion/persistence, không sửa migration, không tạo adapter giả, không workaround ánh xạ chuỗi sang BIGINT.
+- Cần chủ CP-3-MIGRATIONS đổi dedup_policy_revision của cp_collected_document_resolutions và cp_dedup_evidence sang TEXT NOT NULL (giữ khóa chính ba cột) và quyết định chỗ lưu hai kind article_media_attachment, activity_result; sau đó mở lại PERSIST-B.
