@@ -289,9 +289,9 @@ def test_tst_m2_p7b_004_sse_session_workspace_isolation():
         own = _append(dsn, WORKSPACE_A, "own-event")
         foreign = _append(dsn, WORKSPACE_B, "foreign-event")
         with authenticated_app(dsn) as (client, app, manager):
-            denied = client.get(
-                "/v1/operations/stream", cookies={"cp_session": ""},
-                headers={"Origin": "https://localhost:8443"},
+            anonymous = TestClient(app, base_url="https://localhost:8443", raise_server_exceptions=False)
+            denied = anonymous.get(
+                "/v1/operations/stream", headers={"Origin": "https://localhost:8443"},
             )
             assert denied.status_code == 403
             with manager.borrow_connection() as connection:
