@@ -33,7 +33,7 @@ CREATE TRIGGER cp_article_revisions_append_only BEFORE UPDATE OR DELETE ON contr
 CREATE TABLE controlplane.cp_collected_document_resolutions (
     workspace_id UUID NOT NULL REFERENCES controlplane.cp_workspaces(workspace_id) ON DELETE RESTRICT,
     collected_document_id TEXT NOT NULL,
-    dedup_policy_revision BIGINT NOT NULL,
+    dedup_policy_revision TEXT NOT NULL,
     payload JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -44,7 +44,7 @@ CREATE TABLE controlplane.cp_dedup_evidence (
     workspace_id UUID NOT NULL REFERENCES controlplane.cp_workspaces(workspace_id) ON DELETE RESTRICT,
     evidence_id TEXT NOT NULL,
     collected_document_id TEXT NOT NULL,
-    dedup_policy_revision BIGINT NOT NULL,
+    dedup_policy_revision TEXT NOT NULL,
     payload JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (workspace_id, evidence_id)
