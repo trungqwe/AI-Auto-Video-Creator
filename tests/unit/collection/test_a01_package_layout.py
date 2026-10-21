@@ -16,6 +16,12 @@ FORBIDDEN_IMPORT_PREFIXES = (
 FORBIDDEN_DIR_NAMES = frozenset({'storage', 'orchestration', 'ui'})
 DYNAMIC_IMPORT_CALLS = frozenset({'import_module', '__import__'})
 
+# Miễn trừ hẹp theo kế hoạch ADAPT đã duyệt: docs/implementation/adapt/plan.md dòng 101 (ADAPT-A: real_media_fetch.py dựng DiscoveryObservation của catalog để C gọi register_discovery) và binding A→C CT-MED-001 do GATE-CP-2D-REGISTRY tạo.
+# Khoá là đường dẫn tệp chính xác (posix, tính từ gốc repo), không dùng mẫu, không miễn cả thư mục adapters, không miễn cả gói catalog.
+ADAPTER_IMPORT_EXEMPTIONS = {
+    'src/source_ingestion/adapters/real_media_fetch.py': frozenset({'catalog.application.discovery', 'catalog.domain.identity'}),
+}
+
 
 def _is_forbidden(name: str) -> bool:
     return any(name == prefix or name.startswith(prefix + '.') for prefix in FORBIDDEN_IMPORT_PREFIXES)
@@ -36,6 +42,15 @@ def find_forbidden_imports(source: str, filename: str = '<string>') -> list[str]
             if func_name in DYNAMIC_IMPORT_CALLS and isinstance(first, ast.Constant) and isinstance(first.value, str):
                 names.append(first.value)
     return sorted({name for name in names if _is_forbidden(name)})
+
+
+def find_unexempted_imports(source: str, rel_path: str, filename: str = '<string>') -> list[str]:
+    allowed = ADAPTER_IMPORT_EXEMPTIONS.get(rel_path, frozenset())
+    return [
+        name
+        for name in find_forbidden_imports(source, filename)
+        if not any(name == prefix or name.startswith(prefix + '.') for prefix in allowed)
+    ]
 
 
 def find_forbidden_dirs(base: pathlib.Path) -> list[str]:
@@ -92,6 +107,57 @@ class DetectorSelfTests(unittest.TestCase):
             self.assertEqual(find_forbidden_dirs(base), ['adapters/orchestration', 'storage', 'worker/ui'])
 
 
+class AdapterExemptionTests(unittest.TestCase):
+    ADAPTER = 'src/source_ingestion/adapters/real_media_fetch.py'
+
+    def test_exemption_table_is_exact_path_and_set_only(self) -> None:
+        self.assertEqual(set(ADAPTER_IMPORT_EXEMPTIONS), {self.ADAPTER})
+        self.assertEqual(
+            ADAPTER_IMPORT_EXEMPTIONS[self.ADAPTER],
+            frozenset({'catalog.application.discovery', 'catalog.domain.identity'}),
+        )
+        for rel in ADAPTER_IMPORT_EXEMPTIONS:
+            with self.subTest(rel=rel):
+                self.assertFalse(set('*?[') & set(rel))
+                self.assertTrue((ROOT / rel).is_file())
+
+    def test_exempt_adapter_may_import_only_discovery_and_identity(self) -> None:
+        for source in (
+            'from catalog.application.discovery import DiscoveryObservation',
+            'from catalog.domain.identity import CanonicalFingerprint, MediaKind, ProvenanceEntry, ProvenanceRelation',
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(find_unexempted_imports(source, self.ADAPTER), [])
+        for source, expected in (
+            ('from creative.domain import x', 'creative.domain'),
+            ('import psycopg', 'psycopg'),
+            ('from catalog.infrastructure import y', 'catalog.infrastructure'),
+            ('from catalog.domain.other import z', 'catalog.domain.other'),
+            ('from catalog.application.other import w', 'catalog.application.other'),
+            ('import catalog', 'catalog'),
+        ):
+            with self.subTest(source=source):
+                self.assertIn(expected, find_unexempted_imports(source, self.ADAPTER))
+
+    def test_other_modules_still_reject_catalog_imports(self) -> None:
+        for rel in (
+            'src/source_ingestion/domain/other.py',
+            'src/source_ingestion/adapters/other.py',
+            'src/source_ingestion/adapters/real_feed_source.py',
+            'src/source_ingestion/application/pipeline.py',
+            'src/source_ingestion/domain/real_media_fetch.py',
+        ):
+            with self.subTest(rel=rel):
+                self.assertIn(
+                    'catalog.application.discovery',
+                    find_unexempted_imports('from catalog.application.discovery import DiscoveryObservation', rel),
+                )
+                self.assertIn(
+                    'catalog.domain.identity',
+                    find_unexempted_imports('from catalog.domain.identity import MediaKind', rel),
+                )
+
+
 class PackageLayoutTests(unittest.TestCase):
     def test_package_importable_from_src_root(self) -> None:
         self.assertIsNotNone(importlib.util.find_spec('source_ingestion'), 'source_ingestion is not importable from the src/ root')
@@ -118,7 +184,7 @@ class PackageLayoutTests(unittest.TestCase):
         violations = {
             path.relative_to(ROOT).as_posix(): found
             for path in files
-            if (found := find_forbidden_imports(path.read_text(encoding='utf-8'), str(path)))
+            if (found := find_unexempted_imports(path.read_text(encoding='utf-8'), path.relative_to(ROOT).as_posix(), str(path)))
         }
         self.assertEqual(violations, {})
 
