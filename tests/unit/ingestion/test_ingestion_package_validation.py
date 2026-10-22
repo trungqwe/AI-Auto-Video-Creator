@@ -39,6 +39,10 @@ CONSTANTS = {
     RESOLUTION: (RESOLUTION_REQUIRED, RESOLUTION_OPTIONAL, RESOLUTION_ENUM, RESOLUTION_ITEMS),
 }
 BOUNDARY_RE = re.compile(r'(?m)^\s*(from|import)\s+(src\.|socket|requests|httpx|urllib|http\.client|psycopg)')
+# Kế hoạch PERSIST đã duyệt (docs/implementation/persist/plan.md dòng 15 và mục 3 dòng 40-41) đặt adapter PostgreSQL
+# của phân hệ trong src/ingestion/persistence/** và dùng psycopg đã khoá; chỉ tầng này được import psycopg.
+PERSISTENCE_DIR = 'src/ingestion/persistence/'
+PERSISTENCE_IMPORT_PREFIXES = ('psycopg',)
 MISSING = object()
 
 
@@ -194,6 +198,20 @@ def test_non_mapping_payload_is_wrong_type(entity: str) -> None:
         assert _issues(entity, value) == [(WRONG_TYPE, '$')], value
 
 
+def boundary_offenders(rel: str, text: str) -> list[str]:
+    offenders = []
+    allowed = rel.startswith(PERSISTENCE_DIR)
+    for line in text.splitlines():
+        if not BOUNDARY_RE.match(line):
+            continue
+        if allowed:
+            module = re.match(r'\s*(?:from|import)\s+([\w.]+)', line).group(1)
+            if any(module == prefix or module.startswith(prefix + '.') for prefix in PERSISTENCE_IMPORT_PREFIXES):
+                continue
+        offenders.append(line.strip())
+    return offenders
+
+
 def test_boundary_regex_detects_forbidden_imports() -> None:
     for line in ('from src.controlplane import x', 'import requests', '    import socket', 'from urllib.parse import urlparse', 'import psycopg'):
         assert BOUNDARY_RE.search(line), line
@@ -206,7 +224,34 @@ def test_ingestion_import_boundary() -> None:
     files = sorted((root / 'src' / 'ingestion').rglob('*.py'))
     scanned = {path.relative_to(root).as_posix() for path in files}
     assert {'src/ingestion/__init__.py', 'src/ingestion/domain/package_validation.py'} <= scanned, scanned
-    offenders = [path.relative_to(root).as_posix() for path in files if BOUNDARY_RE.search(path.read_text(encoding='utf-8'))]
+    offenders = [
+        path.relative_to(root).as_posix()
+        for path in files
+        if boundary_offenders(path.relative_to(root).as_posix(), path.read_text(encoding='utf-8'))
+    ]
     assert not offenders, offenders
     for relative in ('tests/unit/ingestion/__init__.py', 'tests/integration/ingestion/__init__.py'):
         assert not (root / relative).exists(), relative
+
+
+PERSISTENCE_REL = 'src/ingestion/persistence/x.py'
+DOMAIN_REL = 'src/ingestion/domain/x.py'
+
+
+def test_persistence_layer_may_import_psycopg() -> None:
+    for line in ('import psycopg', 'from psycopg import sql', 'from psycopg.types.json import Jsonb'):
+        assert boundary_offenders(PERSISTENCE_REL, line) == [], line
+
+
+def test_persistence_layer_still_rejects_other_forbidden_prefixes() -> None:
+    for line in ('import requests', 'import socket', 'from src.controlplane import x'):
+        assert boundary_offenders(PERSISTENCE_REL, line) == [line], line
+
+
+def test_psycopg_outside_persistence_layer_is_reported() -> None:
+    for line in ('import psycopg', 'from psycopg import sql'):
+        assert boundary_offenders(DOMAIN_REL, line) == [line], line
+
+
+def test_persistence_layer_rejects_psycopg2() -> None:
+    assert boundary_offenders(PERSISTENCE_REL, 'import psycopg2') == ['import psycopg2']
