@@ -98,3 +98,11 @@ Worker không sửa các tệp trên, đồng thời không sửa `src/controlpl
 - Không tạo thêm spec `cp4b-*.spec.ts` mới khi chưa có chỉ thị.
 - Không tuyên bố PASS e2e.
 - Cổng kích hoạt sản xuất tiếp tục bị chặn (`PRODUCTION_ACTIVATION_BLOCKED`).
+
+## 7. Rebase lên a59b9d8 và tính lặp lại của build
+
+- Nhánh đã rebase lên integration head a59b9d8bba79216713b40bac3848da2adc0095b5; mã nguồn `src/controlplane/ui/src/App.tsx` được giữ nguyên vì đã nối đầy đủ `createBoundedEventDeduper` từ `features/stream/boundedEventDeduper.ts` và `screenRegistry` từ `features/screens/screenRegistry.ts`, không còn 'new Set' và tiếp tục giữ dây nối nút kiểm thử `onOpenTestError=`.
+- Finding 'lệnh kiểm tạo hoặc sửa tệp trong repo' có nguyên nhân là `npm run build` luôn ghi lại `dist/assets`, và `dist` đã commit phải khớp đúng đầu ra build; Worker đã dựng lại `dist` sau rebase, chạy build hai lần liên tiếp, ghi hai tên tệp assets thật mà `dist/index.html` tham chiếu (`assets/index-BGSg0Sqj.js` và `assets/index-CNmdI0B1.css`) và xác nhận cả hai lần đều cho cùng tên băm, vì vậy lệnh kiểm không còn tạo hay sửa tệp mới sau khi diff dist được commit.
+- Lệnh `npm run build` kết thúc hoàn toàn trước khi trả exit code 0, không có tiến trình con nào chạy nền sau khi hoàn thành.
+- Kết quả kiểm thử: probe dist đạt (Exit 0, mọi assets trong index.html là tệp thật, không còn tệp băm cũ hay mồ côi), probe App.tsx đạt (Exit 0), `git diff --check` sạch trên cây làm việc đã commit, và bộ test pytest `tests/unit/control_ui` đạt 651 passed (Exit 0).
+- Nhắc lại tuân thủ phạm vi: giữ nguyên mục 4 với BL-CV-13 BLOCKED (không gỡ/khoá nút kiểm thử và đường /test-driver), mục 5 với BL-CV-07 PENDING cho đủ bảy đường dẫn ngoài phong bì, và mục 6 giữ nguyên năm spec M2; tuyệt đối không tuyên bố PASS e2e.
