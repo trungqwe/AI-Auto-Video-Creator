@@ -29,9 +29,9 @@ MODULE_OF = {
     'stage-runs': 'G',
     'sessions': 'G', 'logs': 'G', 'accounts': 'J', 'cost': 'J',
 }
-AVAILABLE_IDS = ('operations', 'batches', 'jobs', 'configs', 'sources', 'stage-runs')
+AVAILABLE_IDS = ('operations', 'batches', 'jobs', 'configs', 'sources', 'hooks', 'stage-runs')
 PENDING_IDS = (
-    'articles', 'events', 'media', 'hooks', 'artifacts', 'snapshots',
+    'articles', 'events', 'media', 'artifacts', 'snapshots',
     'story-angles', 'scripts', 'sessions', 'logs', 'accounts', 'cost',
 )
 READ_ONLY_IDS = ('articles', 'events', 'snapshots', 'story-angles', 'scripts')
@@ -147,7 +147,7 @@ def test_available_screens_match_get_routes_of_control_router():
 
 def test_every_other_screen_is_pending_module():
     others = [s for s in SCREENS if s['id'] not in AVAILABLE_IDS]
-    assert len(others) == 12
+    assert len(others) == 11
     assert all(s['backendStatus'] == 'pending_module' for s in others)
 
 
@@ -300,6 +300,24 @@ def test_sources_is_available_with_route_and_integration_test_evidence():
     assert 'sources' in SOURCES_MODULE_TEST.read_text(encoding='utf-8')
 
 
+HOOKS_MODULE_TEST = ROOT / 'tests' / 'integration' / 'adapt' / 'prod' / 'test_adapt_prod_hooks_module.py'
+PROD_APP_TEST = ROOT / 'tests' / 'integration' / 'adapt' / 'prod' / 'test_adapt_prod_app.py'
+
+
+def test_hooks_is_available_with_route_and_integration_test_evidence():
+    assert BY_ID['hooks']['backendStatus'] == 'available'
+    assert '/v1/hooks' in router_get_paths()
+    assert HOOKS_MODULE_TEST.is_file()
+    assert 'hooks' in HOOKS_MODULE_TEST.read_text(encoding='utf-8')
+
+
+def test_media_stays_pending_module_until_backend_has_media_metadata():
+    assert BY_ID['media']['backendStatus'] == 'pending_module'
+    text = PROD_APP_TEST.read_text(encoding='utf-8')
+    assert "client(app).get('/v1/media?limit=1', headers=headers)" in text
+    assert 'media.status_code == 503' in text
+
+
 def test_editable_fields_are_accepted_by_metadata_allowlist_of_same_prefix():
     catalog = catalog_metadata_fields()
     editable = [s for s in SCREENS if s['editableFields']]
@@ -309,6 +327,7 @@ def test_editable_fields_are_accepted_by_metadata_allowlist_of_same_prefix():
         assert allowed is not None, screen['id']
         assert set(screen['editableFields']) <= allowed, screen['id']
     assert set(BY_ID['sources']['editableFields']) == catalog['/v1/sources'] == {'tier', 'topic_tags', 'notes', 'enabled'}
+    assert set(BY_ID['hooks']['editableFields']) == catalog['/v1/hooks'] == {'tags', 'description', 'enabled', 'notes'}
 
 
 @pytest.mark.parametrize('screen_id', REVISION_COLUMN_IDS)

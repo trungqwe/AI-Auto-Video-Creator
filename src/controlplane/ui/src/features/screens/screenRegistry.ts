@@ -127,7 +127,7 @@ export const SCREEN_REGISTRY: readonly ScreenSpec[] = [
     columns: ['hook_id', 'tags', 'description', 'enabled', 'notes', 'revision'],
     editableFields: ['tags', 'description', 'enabled', 'notes'],
     readOnly: false,
-    backendStatus: 'pending_module',
+    backendStatus: 'available',
   },
   {
     id: 'artifacts',
