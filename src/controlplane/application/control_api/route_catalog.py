@@ -1,6 +1,6 @@
 """Danh mục tài nguyên listing và metadata router cho Control API.
 
-UpdateSourceMetadata nằm ở route lệnh control.py (CT-API-003, trả receipt accepted) nên 'sources' chỉ có listing;
+'sources' có cả listing và metadata (PATCH /v1/sources/{item_id}, allowlist tier, topic_tags, notes, enabled; docs/implementation/convergence-ext-ui/plan.md:110); RegisterSource, RemoveSource, RestoreSource, TestSource vẫn là route lệnh ở control.py;
 không filter nào là workspace_id hay actor_id;
 không allowed_fields nào giao với FORBIDDEN_METADATA_FIELDS của metadata_update.py.
 """
@@ -59,6 +59,11 @@ LISTING_RESOURCES: tuple[ListingResource, ...] = (
 )
 
 METADATA_RESOURCES: tuple[MetadataResource, ...] = (
+    MetadataResource(
+        "sources",
+        "/v1/sources",
+        frozenset({"tier", "topic_tags", "notes", "enabled"}),
+    ),
     MetadataResource(
         "hooks",
         "/v1/hooks",

@@ -17,8 +17,11 @@ import pytest
 
 from controlplane.api.main import create_app
 from controlplane.api.routes.modules.metadata_update import (
+    FORBIDDEN_METADATA_FIELDS,
     RevisionConflictError as ModuleRevisionConflict,
 )
+import controlplane.application.control_api.command_catalog as command_catalog
+import controlplane.application.control_api.route_catalog as route_catalog
 from controlplane.application.projections.list_query import Page
 from controlplane.domain.concurrency import RevisionConflictError
 
@@ -205,7 +208,6 @@ def send(client: TestClient, method: str, path: str, body: object | None, header
 
 COMMANDS = [
     ("RegisterSource", "POST", "/v1/sources", False, {"url": "https://example.org/feed.xml", "name": "Example"}),
-    ("UpdateSourceMetadata", "PATCH", "/v1/sources/src-1", True, {"tier": "T1", "notes": "ghi chú"}),
     ("RemoveSource", "DELETE", "/v1/sources/src-1", True, None),
     ("RestoreSource", "POST", "/v1/sources/src-1/restore", True, None),
     ("TestSource", "POST", "/v1/sources/src-1/test", False, None),
@@ -219,6 +221,12 @@ COMMANDS = [
     ("TestExternalAccount", "POST", "/v1/external-accounts/acct-1/test", False, None),
     ("EnableExternalAccount", "POST", "/v1/external-accounts/acct-1/enable", True, None),
     ("DisableExternalAccount", "POST", "/v1/external-accounts/acct-1/disable", True, None),
+]
+
+# UpdateSourceMetadata không đi qua cổng lệnh: do router metadata H-09 phục vụ
+# (PATCH /v1/sources/{item_id}, 200 kèm giá trị đã commit, không phải 202 receipt).
+METADATA_ROUTED = [
+    ("UpdateSourceMetadata", "PATCH", "/v1/sources/src-1", True, {"tier": "T1", "notes": "ghi chú"}),
 ]
 
 
@@ -235,7 +243,7 @@ def RID(path: str) -> str | None:
 
 
 # ============================================================================
-# PHẦN 2a: Test lệnh Control API (15 lệnh CT-API-003..006)
+# PHẦN 2a: Test lệnh Control API (14 lệnh qua cổng lệnh CT-API-003..006; UpdateSourceMetadata xem PHẦN 2c)
 # ============================================================================
 
 
@@ -384,6 +392,108 @@ def test_command_without_gateway_is_503(name, method, path, if_match, body):
     assert data.get("code") == "CAPABILITY_UNAVAILABLE"
 
 
+# ============================================================================
+# PHẦN 2c: UpdateSourceMetadata đi qua router metadata H-09 (PATCH /v1/sources/{item_id})
+# ============================================================================
+
+METADATA_ROUTED_PARAMS = ("name,method,path,if_match,body", METADATA_ROUTED)
+
+
+def make_services() -> dict[str, RecordingModuleService]:
+    return {n: RecordingModuleService(n) for n in ("sources", "hooks", "media")}
+
+
+@pytest.mark.parametrize(*METADATA_ROUTED_PARAMS, ids=[c[0] for c in METADATA_ROUTED])
+def test_metadata_routed_returns_committed_value(name, method, path, if_match, body):
+    gateway = FakeGateway()
+    services = make_services()
+    client = make_client(make_app(gateway=gateway, module_services=services))
+    response = send(client, method, path, body, mutation_headers(if_match="3"))
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "accepted",
+        "disposition": "accepted",
+        "resource_ref": {"kind": "sources", "id": "src-1"},
+        "current_revision": 4,
+    }
+    assert "x-correlation-id" in response.headers
+    assert services["sources"].calls == [("apply_update", "src-1", 3, body)]
+    assert services["hooks"].calls == [] and services["media"].calls == []
+    assert gateway.calls == []
+
+
+@pytest.mark.parametrize(*METADATA_ROUTED_PARAMS, ids=[c[0] for c in METADATA_ROUTED])
+def test_metadata_routed_requires_idempotency_key(name, method, path, if_match, body):
+    gateway = FakeGateway()
+    services = make_services()
+    client = make_client(make_app(gateway=gateway, module_services=services))
+    response = send(client, method, path, body, mutation_headers(key=None, if_match="3"))
+    assert response.status_code == 422
+    assert services["sources"].calls == []
+    assert gateway.calls == []
+
+
+@pytest.mark.parametrize(*METADATA_ROUTED_PARAMS, ids=[c[0] for c in METADATA_ROUTED])
+def test_metadata_routed_requires_if_match(name, method, path, if_match, body):
+    gateway = FakeGateway()
+    services = make_services()
+    client = make_client(make_app(gateway=gateway, module_services=services))
+    response_missing = send(client, method, path, body, mutation_headers(if_match=None))
+    assert response_missing.status_code == 422
+    data = response_missing.json()
+    assert data.get("code") == "VALIDATION_FAILED"
+    assert "If-Match" in data.get("field_errors", {})
+    response_invalid = send(client, method, path, body, mutation_headers(if_match="abc"))
+    assert response_invalid.status_code == 422
+    assert services["sources"].calls == []
+    assert gateway.calls == []
+
+
+@pytest.mark.parametrize(*METADATA_ROUTED_PARAMS, ids=[c[0] for c in METADATA_ROUTED])
+def test_metadata_routed_stale_revision_is_409(name, method, path, if_match, body):
+    gateway = FakeGateway()
+    client = make_client(make_app(gateway=gateway, module_services=make_services()))
+    response = send(client, method, path, body, mutation_headers(if_match="99"))
+    assert response.status_code == 409
+    assert response.json().get("code") == "REVISION_CONFLICT"
+    assert gateway.calls == []
+
+
+@pytest.mark.parametrize("field", ["topics", "tags", "admin_metadata", "script"])
+@pytest.mark.parametrize(*METADATA_ROUTED_PARAMS, ids=[c[0] for c in METADATA_ROUTED])
+def test_metadata_routed_rejects_fields_outside_allowlist(name, method, path, if_match, body, field):
+    gateway = FakeGateway()
+    services = make_services()
+    client = make_client(make_app(gateway=gateway, module_services=services))
+    response = send(client, method, path, {"tier": "T1", field: "x"}, mutation_headers(if_match="3"))
+    assert response.status_code == 422
+    data = response.json()
+    assert data.get("code") == "FORBIDDEN_FIELD"
+    assert field in data.get("field_errors", {})
+    assert "tier" not in data.get("field_errors", {})
+    assert services["sources"].calls == []
+    assert gateway.calls == []
+
+
+@pytest.mark.parametrize(*METADATA_ROUTED_PARAMS, ids=[c[0] for c in METADATA_ROUTED])
+def test_metadata_routed_without_service_is_503(name, method, path, if_match, body):
+    gateway = FakeGateway()
+    client = make_client(make_app(gateway=gateway, module_services={}))
+    response = send(client, method, path, body, mutation_headers(if_match="3"))
+    assert response.status_code == 503
+    assert response.json().get("code") == "CAPABILITY_UNAVAILABLE"
+    assert gateway.calls == []
+
+
+@pytest.mark.parametrize(*METADATA_ROUTED_PARAMS, ids=[c[0] for c in METADATA_ROUTED])
+def test_metadata_routed_put_is_not_routed(name, method, path, if_match, body):
+    gateway = FakeGateway()
+    client = make_client(make_app(gateway=gateway, module_services=make_services()))
+    response = client.put(path, headers=mutation_headers(if_match="3"), json=body)
+    assert response.status_code in (404, 405)
+    assert gateway.calls == []
+
+
 def test_update_secret_never_leaks_or_reads(caplog):
     caplog.set_level(logging.DEBUG)
     gateway = FakeGateway()
@@ -448,10 +558,13 @@ def test_mount_routes_present_and_unique():
         ("GET", "/v1/media/{item_id}"),
         ("PATCH", "/v1/hooks/{item_id}"),
         ("PATCH", "/v1/media/{item_id}"),
-        ("PATCH", "/v1/sources/{resource_id}"),
+        ("PATCH", "/v1/sources/{item_id}"),
     ]
     for pair in expected:
         assert pair in pairs, f"Thiếu route {pair} trong app.routes"
+    assert ("PATCH", "/v1/sources/{resource_id}") not in pairs
+    source_patches = [p for m, p in pairs if m == "PATCH" and p.startswith("/v1/sources")]
+    assert source_patches == ["/v1/sources/{item_id}"]
 
 
 @pytest.mark.parametrize("resource", ["sources", "hooks", "media"])
@@ -484,7 +597,7 @@ def test_mount_listing_calls_service(resource):
     assert r_missing.json().get("code") == "NOT_FOUND"
 
 
-@pytest.mark.parametrize("resource,field", [("hooks", "description"), ("media", "notes")])
+@pytest.mark.parametrize("resource,field", [("hooks", "description"), ("media", "notes"), ("sources", "notes")])
 def test_mount_metadata_update_calls_service(resource, field):
     services = {n: RecordingModuleService(n) for n in ("sources", "hooks", "media")}
     service = services[resource]
@@ -528,6 +641,25 @@ def test_mount_metadata_update_calls_service(resource, field):
         json={field: "v"},
     )
     assert r_put.status_code in (404, 405)
+
+
+def test_mount_sources_metadata_accepts_tier_topic_tags_enabled():
+    services = make_services()
+    client = make_client(make_app(module_services=services))
+    changes = {"tier": "T2", "topic_tags": ["kinh-te", "cong-nghe"], "enabled": False}
+    response = client.patch("/v1/sources/s1", headers=mutation_headers(if_match="3"), json=changes)
+    assert response.status_code == 200
+    assert services["sources"].calls == [("apply_update", "s1", 3, changes)]
+    assert services["hooks"].calls == [] and services["media"].calls == []
+
+
+def test_sources_metadata_resource_allowlist():
+    resources = {r.name: r for r in route_catalog.METADATA_RESOURCES}
+    assert set(resources) == {"sources", "hooks", "media"}
+    sources = resources["sources"]
+    assert sources.prefix == "/v1/sources"
+    assert sources.allowed_fields == frozenset({"tier", "topic_tags", "notes", "enabled"})
+    assert sources.allowed_fields.isdisjoint(FORBIDDEN_METADATA_FIELDS)
 
 
 def test_mount_without_service_is_503():
@@ -710,9 +842,16 @@ def test_command_catalog_covers_contract():
     path = ROOT / "src/controlplane/application/control_api/command_catalog.py"
     assert path.is_file(), "command_catalog.py must exist"
     text = path.read_text(encoding="utf-8")
-    for cmd in COMMANDS:
-        cmd_name = cmd[0]
+    contract_names = [cmd[0] for cmd in COMMANDS] + [cmd[0] for cmd in METADATA_ROUTED]
+    assert len(contract_names) == 15
+    assert len(set(contract_names)) == 15
+    for cmd_name in contract_names:
         assert f"'{cmd_name}'" in text or f'"{cmd_name}"' in text, f"Thiếu {cmd_name} trong command_catalog.py"
+    spec_names = [spec.name for spec in command_catalog.COMMAND_SPECS]
+    assert len(spec_names) == 14
+    assert set(spec_names) == {cmd[0] for cmd in COMMANDS}
+    assert "UpdateSourceMetadata" not in spec_names
+    assert getattr(command_catalog, "METADATA_ROUTED_COMMANDS", None) == ("UpdateSourceMetadata",)
 
 # ============================================================================
 # PHẦN 5a: Fake cho test ControlCommandGateway thật

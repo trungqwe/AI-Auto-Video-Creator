@@ -1,5 +1,7 @@
 """Danh mục đặc tả các lệnh Control API (CT-API-003..006).
 
+COMMAND_SPECS gồm 14 lệnh đi qua cổng lệnh (trả 202 receipt).
+UpdateSourceMetadata (CT-API-003) do router metadata H-09 phục vụ nên không nằm trong COMMAND_SPECS mà ghi ở METADATA_ROUTED_COMMANDS.
 StartProductionBatch (POST /v1/batches) và PublishConfigurationRevision (PUT /v1/configs/{scope})
 đã có sẵn ở control.py nên KHÔNG khai báo lại ở đây.
 """
@@ -36,16 +38,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "required",
         frozenset({"url"}),
         frozenset({"url", "name", "tier", "topics", "tags", "notes"}),
-        "CT-API-003",
-    ),
-    CommandSpec(
-        "UpdateSourceMetadata",
-        "PATCH",
-        "/sources/{resource_id}",
-        True,
-        "required",
-        frozenset(),
-        frozenset({"tier", "topics", "tags", "notes", "enabled"}),
         "CT-API-003",
     ),
     CommandSpec(
@@ -179,3 +171,9 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         "CT-API-006",
     ),
 )
+
+
+# UpdateSourceMetadata do router metadata H-09 phục vụ theo docs/implementation/convergence-ext-ui/plan.md:110:
+# PATCH /v1/sources/{item_id} (route_catalog.METADATA_RESOURCES, allowlist tier, topic_tags, notes, enabled),
+# trả 200 kèm giá trị đã commit thay vì 202 receipt. Không khai CommandSpec để route lệnh không che route metadata.
+METADATA_ROUTED_COMMANDS: tuple[str, ...] = ("UpdateSourceMetadata",)
