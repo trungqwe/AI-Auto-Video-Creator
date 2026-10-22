@@ -148,5 +148,11 @@ Báo cáo kết quả kiểm tra thực tế đối với hai bài kiểm thử 
 
 - Toàn bộ kết quả kiểm thử trong báo cáo này chỉ chứng minh tính đúng đắn về logic nghiệp vụ, tính nguyên tử, tính idempotent và khả năng xử lý đồng thời trên cơ sở dữ liệu PostgreSQL 18.6 cục bộ.
 - Báo cáo này KHÔNG đóng cổng G04 và không thay thế bộ kiểm thử fault suite thật (`CP7-G-03`).
-- Báo cáo KHÔNG tuyên bố cổng `GATE-CP-5-COMPLETION` đã thả; cổng này do Control thẩm quyền quyết định mở sau khi có kết quả AUDITOR PASS từ Astra-Lead.
+- Báo cáo KHÔNG tuyên bố cổng `GATE-CP-5-COMPLETION` đã thả; cổng này do Control thẩm quyền quyết định mở sau khi có kết quả PASS của Auditor (Opus 5.5).
 - Không có bất kỳ tuyên bố nào cho rằng G04 hoặc fault suite thật đã PASS. Toàn bộ dữ liệu trong báo cáo được trích xuất chính xác từ các câu lệnh đã thực thi.
+
+## 9. Candidate
+
+- Commit nền (base) của bản sửa này: `2d3fc0cf05009689b24ab6404819f86a18d98f22` (feat(controlplane): add postgres completion unit of work and wiring).
+- Candidate SHA là SHA đầy đủ 40 ký tự của commit HEAD sau khi commit bản chỉnh báo cáo này; SHA đó được ghi trong nội dung `worker_done`, không thể tự nhúng vào tệp này vì sẽ làm đổi chính SHA.
+- BL-CV-08, BL-CV-11, BL-CV-06 giữ trạng thái PENDING; G04 và fault suite thật (CP7-G-03) không được đóng; cổng GATE-CP-5-COMPLETION chưa thả.
