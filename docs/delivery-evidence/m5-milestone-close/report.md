@@ -1,6 +1,6 @@
 # Báo cáo đóng milestone M5 (revision 2)
 
-Task: M5-MILESTONE-CLOSE-R2; candidate: HEAD cc290f002074514001fa0b03b3eb8c9e00c14db6; kết quả từng lệnh ở command-results.md cùng thư mục
+Task: M5-MILESTONE-CLOSE-R2; candidate: HEAD worktree 4771ccb6a8ead319f06cfeea9463e79522a4f223 (cây mã nguồn trùng cc290f002074514001fa0b03b3eb8c9e00c14db6, commit integrate(ADAPT-LAUNCH); hai commit sau đó d7fc16b và 4771ccb chỉ thêm báo cáo docs(m5) trong docs/delivery-evidence/m5-milestone-close/); kết quả từng lệnh ở command-results.md cùng thư mục
 
 ## 1. Phạm vi và lý do đóng ở revision 2
 
@@ -309,7 +309,7 @@ Nguồn recordHash: bản ghi quyết định point=GATE, decision=RELEASE trong
 
 | Hạng mục kiểm tra | Đạt được | Mục tiêu bắt buộc | Kết luận |
 | --- | --- | --- | --- |
-| Lệnh kiểm tra chạy lại | 269 PASS, 5 SKIP, 0 FAIL | 274/274 PASS không SKIP | CHƯA ĐẠT (5 lệnh có test skip) |
+| Lệnh kiểm tra chạy lại | 274/274 exit 0, 0 FAIL (269 lệnh không skip; 5 lệnh có test skip theo thiết kế tham số hoá hoặc môi trường Windows) | 274/274 exit 0 | ĐẠT (nguyên nhân skip đã đối chiếu mã test, không phải thiếu hạ tầng sống) |
 | SHA tích hợp các gói bắt buộc | 134/136 gói | 136/136 gói | CHƯA ĐẠT (M5-D-PLAN, F) |
 | Bản ghi recordHash 13 cổng | 13/13 cổng | 13/13 cổng | ĐẠT (recordHash do Orchestrator cấp từ portfolio/decisions.jsonl) |
 | Kiểm lại 3 điểm của R1 (Mục 2) | 3/3 điểm ĐẠT | 3/3 điểm ĐẠT | ĐẠT |
@@ -318,14 +318,18 @@ Nguồn recordHash: bản ghi quyết định point=GATE, decision=RELEASE trong
 
 ### Ghi chú bổ sung
 - Lệnh `npm run build` (STT 101) đã chạy thành công và **không làm thay đổi** bất kỳ tệp nào trong `src/controlplane/ui/dist`.
-- Các kiểm thử bị SKIP (STT 22, 99, 117, 126, 226) xuất phát từ các test case yêu cầu dịch vụ hạ tầng sống (PostgreSQL container, Docker daemon, Temporal server hoặc Windows DPAPI store thực tế) vốn không chạy trong phiên kiểm tra cục bộ này.
+- Nguyên nhân 5 lệnh có test skip (STT 22, 99, 117, 126, 226), đã đối chiếu mã test; không test nào skip vì thiếu hạ tầng sống và cả 5 lệnh đều exit 0:
+  - STT 22 (`tests/integration/convergence/test_cp4_wiring.py`, 28 skip): các test tham số hoá theo danh mục lệnh `COMMANDS` tự gọi `pytest.skip` khi lệnh không áp dụng: dòng 275 và 294 ("Lệnh không yêu cầu If-Match"), dòng 342 ("cannot vary payload for empty body without resource id"), dòng 363 ("Lệnh không có body để kiểm tra trường lạ"). Đây là thiết kế tham số hoá của test.
+  - STT 226 (`tests/integration/storage/test_storage_staging_paths.py`, 7 skip): hàm `make_symlink` (dòng 81) gọi `pytest.skip` khi `os.symlink` không tạo được symlink; tài khoản chạy trên Windows không có đặc quyền tạo symlink. Biến thể junction (dòng 86) chỉ skip ngoài Windows nên không skip ở đây.
+  - STT 99 và 126 (35 skip mỗi lệnh) là 28 skip của test_cp4_wiring cộng 7 skip của test_storage_staging_paths; STT 117 (7 skip) chỉ gồm 7 skip của test_storage_staging_paths. Không còn nguồn skip nào khác.
+  - Hai mô-đun DPAPI (`tests/integration/adapt/j/test_adapt_j_oauth.py` dòng 26, `tests/integration/config/test_j_dpapi_secret_store.py` dòng 17) chỉ skip khi nền tảng không phải win32 nên không skip trong lần chạy này.
+  - Test bị skip không được tính là test đã chạy; báo cáo chỉ ghi exit 0 của lệnh và số skip.
 - Kiểm thử `tests/m2/test_p7b_hardening.py::test_h36_m1_regression` được hoãn sang gói CP7 theo đúng quyết định của người dùng ngày 21/10/2026 (mang cờ `--deselect`, không chạy).
 - Báo cáo không thay đổi trạng thái trong roadmap hay checklist.
 
 ### Kết luận
-**KHÔNG ĐẠT** (còn 2 hạng mục mở, nằm ngoài thẩm quyền sửa của Worker).
-Milestone M5 revision 2 chưa đủ điều kiện tuyên bố ĐẠT toàn bộ vì:
-1. 5 lệnh kiểm tra có test bị skip (STT 22, 99, 117, 126, 226) do cần hạ tầng sống (PostgreSQL, Docker, Temporal, DPAPI) không chạy trong phiên này; báo cáo không tính SKIP là PASS.
-2. Thiếu SHA tích hợp cho gói M5-D-PLAN và F (134/136 gói): lịch sử git không có commit `integrate(M5-D-PLAN)` hay `integrate(F)`, và Worker không tự bịa SHA.
-Đã xử lý ở lượt này: 13/13 recordHash của các gói cổng đã được ghi ở Mục 4 (nguồn do Orchestrator cấp), không còn trạng thái BLOCKED về recordHash.
-Hai hạng mục còn lại chờ Reviewer và Auditor rủi ro phán quyết (ghi nhận ngoại lệ có lý do hoặc giao gói riêng); báo cáo không tự tuyên bố ĐẠT. Chỉ M5-EG7 và M5-REAL nằm trong pendingUserCheckpoint. Báo cáo không đổi trạng thái roadmap hay checklist.
+**KHÔNG ĐẠT** (còn 1 hạng mục mở, nằm ngoài thẩm quyền sửa của Worker).
+Kết quả chạy lại lệnh kiểm: ĐẠT. Cả 274/274 lệnh kiểm bắt buộc thoát với exit 0, 0 FAIL, chạy bằng interpreter khoá. 5 lệnh (STT 22, 99, 117, 126, 226) có test skip; nguyên nhân đã đối chiếu mã test ở Ghi chú bổ sung (tham số hoá theo thiết kế và thiếu đặc quyền symlink của Windows), không phải thiếu hạ tầng sống, và test bị skip không được tính là đã chạy.
+Hạng mục còn mở: thiếu SHA tích hợp cho M5-D-PLAN và F (134/136 gói bắt buộc): lịch sử git không có commit `integrate(M5-D-PLAN)` hay `integrate(F)`, và Worker không tự bịa SHA. Riêng F-01..F-22 đều có SHA tích hợp ở Mục 3.
+Đã xử lý: 13/13 recordHash của các gói cổng ở Mục 4 (nguồn do Orchestrator cấp).
+Hạng mục còn mở chờ Reviewer và Auditor rủi ro phán quyết (ghi nhận ngoại lệ có lý do hoặc giao gói riêng); báo cáo không tự tuyên bố ĐẠT. Chỉ M5-EG7 và M5-REAL nằm trong pendingUserCheckpoint. Báo cáo không đổi trạng thái roadmap hay checklist.

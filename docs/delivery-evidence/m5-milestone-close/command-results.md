@@ -1,8 +1,8 @@
 # Kết quả chạy lại lệnh kiểm của milestone M5 (revision 2)
 
-Candidate: HEAD cc290f002074514001fa0b03b3eb8c9e00c14db6. Interpreter khoá: C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\33f06a7a\venv\Scripts\python.exe (mọi lệnh `python` dưới đây đã chạy bằng đúng interpreter này).
+Candidate: HEAD worktree 4771ccb6a8ead319f06cfeea9463e79522a4f223 (cây mã nguồn trùng cc290f002074514001fa0b03b3eb8c9e00c14db6, integrate(ADAPT-LAUNCH); hai commit sau đó chỉ thêm báo cáo docs(m5) trong docs/delivery-evidence/m5-milestone-close/). Interpreter khoá: C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\33f06a7a\venv\Scripts\python.exe (mọi lệnh `python` dưới đây đã chạy bằng đúng interpreter này).
 
-Quy ước: STT 1-274 theo đúng thứ tự trong mục "Lệnh kiểm bắt buộc của task". Cột Exit là mã thoát của riêng đoạn lệnh đó. Pytest có test bị skip thì ghi số skip trong cột Tóm tắt và đánh dấu `SKIP` (không tính là PASS của kiểm thử thật).
+Quy ước: STT 1-274 theo đúng thứ tự trong mục "Lệnh kiểm bắt buộc của task". Cột Exit là mã thoát của riêng đoạn lệnh đó. Pytest có test bị skip thì ghi số skip trong cột Tóm tắt và đánh dấu `SKIP`: exit 0 là kết quả của lệnh, còn test bị skip không được tính là test đã chạy; nguyên nhân skip nêu ở cuối tệp.
 
 | STT | Lệnh (rút gọn) | Exit | Tóm tắt kết quả (nguyên văn dòng cuối) |
 | --- | --- | --- | --- |
@@ -283,13 +283,15 @@ Ghi chú STT 101: `npm run build` không làm đổi tệp trong src/controlplan
 | 273 | probe CT-API-010/QR-UX-003 | 0 | OK, không có lỗi |
 | 274 | pytest test_tst_m2_p0_001_ast_boundary_rules_clean_codebase | 0 | 1 passed in 0.75s |
 
-Tổng kết: Trong 274 lệnh kiểm tra đã chạy lại ở milestone M5 (revision 2), có 269 lệnh PASS, 0 lệnh FAIL, và 5 lệnh SKIP trên tổng số 274 lệnh kiểm bắt buộc.
+Tổng kết: 274/274 lệnh kiểm bắt buộc của milestone M5 (revision 2) thoát với exit 0, 0 lệnh FAIL; trong đó 269 lệnh không có test skip và 5 lệnh có test skip.
 
-Danh sách các lệnh có kiểm thử bị SKIP:
-- STT 22 (`pytest test_cp4_wiring`): 133 passed, 28 skipped, 1 warning in 3.99s (SKIP)
-- STT 99 (`pytest tests/integration + unit/control_ui`): 2758 passed, 35 skipped, 1 warning, 25 subtests passed in 217.29s (0:03:37) (SKIP)
-- STT 117 (`pytest integration/orchestration+storage+unit/catalog+storage+render`): 2306 passed, 7 skipped, 1184 subtests passed in 7.08s (SKIP)
-- STT 126 (`pytest tests/m2+tests/integration (--deselect h36)`): 2276 passed, 35 skipped, 1 deselected, 2 warnings, 25 subtests passed in 537.12s (0:08:57) (SKIP)
-- STT 226 (`pytest test_storage_staging_paths`): 373 passed, 7 skipped in 1.34s (SKIP)
+Danh sách các lệnh có test skip và nguyên nhân (đã đối chiếu mã test):
+- STT 22 (`pytest test_cp4_wiring`): 133 passed, 28 skipped, 1 warning in 3.99s (SKIP). Nguyên nhân: test tham số hoá theo danh mục lệnh `COMMANDS` gọi `pytest.skip` khi lệnh không áp dụng (`tests/integration/convergence/test_cp4_wiring.py` dòng 275, 294, 342, 363).
+- STT 99 (`pytest tests/integration + unit/control_ui`): 2758 passed, 35 skipped, 1 warning, 25 subtests passed in 217.29s (0:03:37) (SKIP). 35 = 28 (test_cp4_wiring) + 7 (test_storage_staging_paths).
+- STT 117 (`pytest integration/orchestration+storage+unit/catalog+storage+render`): 2306 passed, 7 skipped, 1184 subtests passed in 7.08s (SKIP). 7 = test_storage_staging_paths.
+- STT 126 (`pytest tests/m2+tests/integration (--deselect h36)`): 2276 passed, 35 skipped, 1 deselected, 2 warnings, 25 subtests passed in 537.12s (0:08:57) (SKIP). 35 = 28 + 7 như STT 99.
+- STT 226 (`pytest test_storage_staging_paths`): 373 passed, 7 skipped in 1.34s (SKIP). Nguyên nhân: `make_symlink` (`tests/integration/storage/test_storage_staging_paths.py` dòng 81) skip khi `os.symlink` không tạo được symlink; tài khoản chạy trên Windows không có đặc quyền tạo symlink.
+
+Không test nào skip vì thiếu hạ tầng sống. Hai mô-đun DPAPI chỉ skip khi nền tảng không phải win32 nên không skip ở lần chạy này.
 
 Không có lệnh nào bị FAIL (0/274).
