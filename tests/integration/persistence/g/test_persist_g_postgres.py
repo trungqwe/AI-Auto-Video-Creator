@@ -38,6 +38,16 @@ from controlplane.infrastructure.db.uow import TransactionManager
 REPO_ROOT = Path(__file__).resolve().parents[4]
 MIGRATIONS_DIR = REPO_ROOT / 'src' / 'controlplane' / 'infrastructure' / 'db' / 'migrations'
 ORCH_DIR = REPO_ROOT / 'src' / 'controlplane' / 'infrastructure' / 'db' / 'orchestration'
+# Kế hoạch IMPL-PLAN-CONVERGENCE-EXT đã duyệt (docs/implementation/convergence-ext/slices.md, dòng 122-137)
+# giao CP-5-COMPLETION tạo adapter này trong đúng thư mục orchestration; chỉ tệp này được miễn quét token cấm.
+EXT_COMPLETION_ADAPTER = 'postgres_completion.py'
+BANNED_ADAPTER_TOKENS = (
+    'CREATE TABLE', 'ALTER TABLE', 'CREATE INDEX',
+    'CompletionStorePort', 'connect(', 'ConnectionPool',
+    'TransactionManager', '.commit(', '.rollback(',
+    'from src.', 'import src',
+)
+
 try:
     _port = subprocess.check_output(
         ['docker', 'port', 'ai-auto-video-m2-pg', '5432/tcp'],
@@ -687,19 +697,66 @@ def test_start_batch_repository_records_stop_reason(conn, db):
         repo.stop(workspace_id=db[1], batch_id='batch-s', reason='  ')
 
 
+def banned_tokens_in(orch_dir: Path) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    for source in sorted(orch_dir.rglob('*.py')):
+        name = source.relative_to(orch_dir).as_posix()
+        if name == EXT_COMPLETION_ADAPTER:
+            continue
+        text = source.read_text(encoding='utf-8')
+        for banned in BANNED_ADAPTER_TOKENS:
+            if banned in text:
+                found.append((name, banned))
+    return found
+
+
 def test_adapter_source_has_no_ddl_completion_store_or_transaction_control():
     files = list(ORCH_DIR.rglob('*.py'))
     assert (ORCH_DIR / 'grants.py') in files
     assert (ORCH_DIR / 'allocation.py') in files
     assert (ORCH_DIR / 'variants.py') in files
 
-    text = ' '.join(f.read_text(encoding='utf-8') for f in files)
-    for banned in (
-        'CREATE TABLE', 'ALTER TABLE', 'CREATE INDEX',
-        'CompletionStorePort', 'connect(', 'ConnectionPool',
-        'TransactionManager', '.commit(', '.rollback(',
-        'from src.', 'import src',
-    ):
-        assert banned not in text, f'Found banned token: {banned}'
+    assert banned_tokens_in(ORCH_DIR) == []
 
-    assert not (ORCH_DIR / 'postgres_completion.py').exists()
+
+def write_orch_files(orch_dir: Path, files: dict[str, str]) -> None:
+    for name, content in files.items():
+        (orch_dir / name).write_text(content, encoding='utf-8')
+
+
+def test_banned_tokens_in_ignores_ext_completion_adapter(tmp_path):
+    write_orch_files(tmp_path, {
+        'grants.py': 'x = 1\n',
+        EXT_COMPLETION_ADAPTER: (
+            'from controlplane.infrastructure.db.uow import TransactionManager\n'
+            'class CompletionStorePort: ...\n'
+            'connection.commit()\n'
+            'connection.rollback()\n'
+            '# .commit( .rollback(\n'
+        ),
+    })
+    assert banned_tokens_in(tmp_path) == []
+
+
+def test_banned_tokens_in_flags_commit_in_grants(tmp_path):
+    write_orch_files(tmp_path, {
+        'grants.py': 'connection.commit()\n',
+        EXT_COMPLETION_ADAPTER: 'x = 1\n',
+    })
+    assert banned_tokens_in(tmp_path) == [('grants.py', '.commit(')]
+
+
+def test_banned_tokens_in_flags_ddl_in_variants(tmp_path):
+    write_orch_files(tmp_path, {
+        'variants.py': "SQL = 'CREATE TABLE t (id int)'\n",
+        EXT_COMPLETION_ADAPTER: 'x = 1\n',
+    })
+    assert banned_tokens_in(tmp_path) == [('variants.py', 'CREATE TABLE')]
+
+
+def test_banned_tokens_in_flags_transaction_manager_in_new_file(tmp_path):
+    write_orch_files(tmp_path, {
+        'extra.py': 'from controlplane.infrastructure.db.uow import TransactionManager\n',
+        EXT_COMPLETION_ADAPTER: 'x = 1\n',
+    })
+    assert banned_tokens_in(tmp_path) == [('extra.py', 'TransactionManager')]
