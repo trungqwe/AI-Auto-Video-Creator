@@ -651,10 +651,42 @@ def test_owned_sources_have_no_cross_imports_or_src_prefix():
                 assert top not in forbidden_prefixes, f"Cấm import chéo phân hệ: {mod} trong {path}"
 
 
-def test_wiring_package_stays_empty():
-    wiring_dir = ROOT / "src/controlplane/api/wiring"
-    files = sorted(p.name for p in wiring_dir.glob("*.py"))
-    assert files == ["__init__.py"], "BL-CV-06: Worker không tạo mô-đun wiring"
+def wiring_package_problems(wiring_dir: Path) -> list[str]:
+    # BL-CV-06 đã đóng bởi CP-2D-REGISTRY. Theo docs/implementation/convergence-ext/slices.md (EXT) dòng 137,
+    # CP-5-COMPLETION tạo completion.py; CP-6-WORKFLOW (workflow.py), ADAPT-WIRE và ADAPT-PROD cũng thêm mô-đun
+    # vào thư mục này. Phạm vi của Worker CP-4-WIRING do ownedPaths chặn, nên test chỉ kiểm gói tồn tại.
+    problems: list[str] = []
+    if not (wiring_dir / "__init__.py").is_file():
+        problems.append("BL-CV-06: thiếu src/controlplane/api/wiring/__init__.py")
+    return problems
+
+
+def test_wiring_package_exists():
+    assert wiring_package_problems(ROOT / "src/controlplane/api/wiring") == []
+
+
+def test_wiring_package_problems_only_init(tmp_path):
+    wiring_dir = tmp_path / "wiring"
+    wiring_dir.mkdir()
+    (wiring_dir / "__init__.py").write_text("", encoding="utf-8")
+    assert wiring_package_problems(wiring_dir) == []
+
+
+def test_wiring_package_problems_allows_ext_modules(tmp_path):
+    wiring_dir = tmp_path / "wiring"
+    wiring_dir.mkdir()
+    for name in ("__init__.py", "completion.py", "workflow.py"):
+        (wiring_dir / name).write_text("", encoding="utf-8")
+    assert wiring_package_problems(wiring_dir) == []
+
+
+def test_wiring_package_problems_reports_missing_init(tmp_path):
+    wiring_dir = tmp_path / "wiring"
+    wiring_dir.mkdir()
+    (wiring_dir / "completion.py").write_text("", encoding="utf-8")
+    problems = wiring_package_problems(wiring_dir)
+    assert problems != []
+    assert "BL-CV-06" in problems[0]
 
 
 def test_control_sources_have_no_secret_read_path():
