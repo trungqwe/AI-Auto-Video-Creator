@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
 import json
 import re
 import uuid
@@ -13,10 +14,11 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from controlplane.api.routes.modules.problem_detail import problem_response
+from controlplane.api.routes.modules.read_only_listing import build_listing_router
 from controlplane.application.control_api.command_catalog import COMMAND_SPECS, CommandSpec
 from controlplane.application.control_api.errors import CapabilityUnavailableError
 from controlplane.application.control_api.receipts import accepted_receipt
-from controlplane.application.projections.list_query import ListQuery, ListQueryError, parse_list_query
+from controlplane.application.projections.list_query import ListQuery, ListQueryError, Page, parse_list_query
 
 router = APIRouter(prefix="/v1")
 
@@ -250,3 +252,40 @@ def _register_command(spec: CommandSpec) -> None:
 
 for _spec in COMMAND_SPECS:
     _register_command(_spec)
+
+
+@dataclass(frozen=True)
+class QueryListing:
+    prefix: str
+    query_method: str
+    allowed_sorts: tuple[str, ...]
+    allowed_filters: frozenset[str]
+
+
+# Only resources whose table and columns exist in migrations 0009..0018 are listed; the rest stay BLOCKED (see control_api_queries.BLOCKED_LIST_RESOURCES).
+QUERY_LISTINGS: tuple[QueryListing, ...] = (
+    QueryListing("/v1/stage-runs", "stage_runs", ("created_at",), frozenset({"job_id", "status"})),
+)
+
+
+def _query_fetch_page(method: str):
+    def fetch_page(request: Request, workspace_id: str, query: ListQuery) -> Page:
+        if "direction" not in request.query_params:
+            query = replace(query, direction="desc")
+        with request.app.state.manager.borrow_connection() as connection:
+            return getattr(request.app.state.query_service, method)(
+                connection=connection, workspace_id=workspace_id, query=query,
+            )
+
+    return fetch_page
+
+
+def build_query_listing_routers() -> list[APIRouter]:
+    return [
+        build_listing_router(
+            prefix=listing.prefix, fetch_page=_query_fetch_page(listing.query_method),
+            allowed_sorts=listing.allowed_sorts, allowed_filters=listing.allowed_filters,
+            default_limit=_LIST_DEFAULT_LIMIT, max_limit=_LIST_MAX_LIMIT,
+        )
+        for listing in QUERY_LISTINGS
+    ]

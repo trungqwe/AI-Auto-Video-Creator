@@ -15,6 +15,15 @@ class ControlQueryPort(Protocol):
     def jobs(self, *, workspace_id: str, query: ListQuery) -> Page: ...
     def job(self, *, workspace_id: str, job_id: str) -> dict[str, object] | None: ...
     def configs(self, *, workspace_id: str, query: ListQuery) -> Page: ...
+    def sources(self, *, workspace_id: str, query: ListQuery) -> Page: ...
+    def articles(self, *, workspace_id: str, query: ListQuery) -> Page: ...
+    def events(self, *, workspace_id: str, query: ListQuery) -> Page: ...
+    def media(self, *, workspace_id: str, query: ListQuery) -> Page: ...
+    def hooks(self, *, workspace_id: str, query: ListQuery) -> Page: ...
+    def stage_runs(self, *, workspace_id: str, query: ListQuery) -> Page: ...
+    def sessions(self, *, workspace_id: str, query: ListQuery) -> Page: ...
+    def logs(self, *, workspace_id: str, query: ListQuery) -> Page: ...
+    def capabilities(self, *, workspace_id: str, query: ListQuery) -> Page: ...
 
 
 class ControlApiQueryService:
@@ -55,3 +64,30 @@ class ControlApiQueryService:
 
     def configs(self, *, connection: Any, workspace_id: str, query: ListQuery) -> Page:
         return self._repository_factory(connection).configs(workspace_id=workspace_id, query=query)
+
+    def sources(self, *, connection: Any, workspace_id: str, query: ListQuery) -> Page:
+        return self._repository_factory(connection).sources(workspace_id=workspace_id, query=query)
+
+    def articles(self, *, connection: Any, workspace_id: str, query: ListQuery) -> Page:
+        return self._repository_factory(connection).articles(workspace_id=workspace_id, query=query)
+
+    def events(self, *, connection: Any, workspace_id: str, query: ListQuery) -> Page:
+        return self._repository_factory(connection).events(workspace_id=workspace_id, query=query)
+
+    def media(self, *, connection: Any, workspace_id: str, query: ListQuery) -> Page:
+        return self._repository_factory(connection).media(workspace_id=workspace_id, query=query)
+
+    def hooks(self, *, connection: Any, workspace_id: str, query: ListQuery) -> Page:
+        return self._repository_factory(connection).hooks(workspace_id=workspace_id, query=query)
+
+    def stage_runs(self, *, connection: Any, workspace_id: str, query: ListQuery) -> Page:
+        return self._repository_factory(connection).stage_runs(workspace_id=workspace_id, query=query)
+
+    def sessions(self, *, connection: Any, workspace_id: str, query: ListQuery) -> Page:
+        return self._repository_factory(connection).sessions(workspace_id=workspace_id, query=query)
+
+    def logs(self, *, connection: Any, workspace_id: str, query: ListQuery) -> Page:
+        return self._repository_factory(connection).logs(workspace_id=workspace_id, query=query)
+
+    def capabilities(self, *, connection: Any, workspace_id: str, query: ListQuery) -> Page:
+        return self._repository_factory(connection).capabilities(workspace_id=workspace_id, query=query)
