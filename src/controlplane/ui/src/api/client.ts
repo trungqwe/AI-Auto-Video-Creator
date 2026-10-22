@@ -2,6 +2,8 @@ import {
   BatchItem,
   CommandReceipt,
   JobItem,
+  ModulePage,
+  ModuleRow,
   OperationItem,
   ProblemDetail,
   SSEEventPayload,
@@ -107,6 +109,57 @@ export async function fetchBatches(): Promise<BatchItem[]> {
 export async function fetchJobs(): Promise<JobItem[]> {
   const data = await request<{ items: JobItem[]; next_cursor: string | null }>('/v1/jobs');
   return data.items || [];
+}
+
+const MODULE_RESOURCE_PATH = /^\/v1\/[a-z0-9-]+$/;
+
+function assertModuleResourcePath(resourcePath: string): void {
+  if (!MODULE_RESOURCE_PATH.test(resourcePath)) {
+    throw new Error(`Đường dẫn tài nguyên không hợp lệ: ${resourcePath}`);
+  }
+}
+
+export async function fetchModulePage(
+  resourcePath: string,
+  cursor: string | null = null,
+  limit?: number
+): Promise<ModulePage> {
+  assertModuleResourcePath(resourcePath);
+  const params = new URLSearchParams();
+  if (cursor) {
+    params.set('cursor', cursor);
+  }
+  if (limit !== undefined) {
+    params.set('limit', String(limit));
+  }
+  const query = params.toString();
+  const data = await request<ModulePage>(query ? `${resourcePath}?${query}` : resourcePath);
+  return { items: data.items || [], next_cursor: data.next_cursor ?? null };
+}
+
+export async function patchModuleItem(
+  resourcePath: string,
+  itemId: string,
+  revision: number,
+  changes: Record<string, unknown>,
+  idempotencyKey: string
+): Promise<ModuleRow> {
+  assertModuleResourcePath(resourcePath);
+  if (!Number.isInteger(revision) || revision < 0) {
+    throw new Error('Revision của dòng phải là số nguyên không âm');
+  }
+  if (!idempotencyKey.trim()) {
+    throw new Error('Idempotency-Key không được rỗng');
+  }
+  return request<ModuleRow>(`${resourcePath}/${encodeURIComponent(itemId)}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'If-Match': String(revision),
+      'Idempotency-Key': idempotencyKey.trim(),
+    },
+    body: JSON.stringify(changes),
+  });
 }
 
 export async function startProductionBatch(

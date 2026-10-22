@@ -11,6 +11,12 @@ export interface OperationItem {
   accepted_at: string;
   latest_event_kind?: string | null;
   latest_safe_summary?: string | null;
+  progress?: unknown;
+  started_at?: string | null;
+  updated_at?: string | null;
+  finished_at?: string | null;
+  wait_reason?: Record<string, unknown> | null;
+  problem?: ProblemDetail;
 }
 
 export interface JobItem {
@@ -76,4 +82,11 @@ export interface SSEEventPayload {
   recorded_at: string;
   summary: string;
   correlation_id: string;
+}
+
+export type ModuleRow = Record<string, unknown>;
+
+export interface ModulePage {
+  items: ModuleRow[];
+  next_cursor: string | null;
 }

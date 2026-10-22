@@ -28,8 +28,13 @@ MODULE_OF = {
     'stage-runs': 'G',
     'sessions': 'G', 'logs': 'G', 'accounts': 'J', 'cost': 'J',
 }
-AVAILABLE_IDS = ('operations', 'batches', 'jobs', 'configs')
+AVAILABLE_IDS = ('operations', 'batches', 'jobs', 'configs', 'stage-runs')
+PENDING_IDS = (
+    'sources', 'articles', 'events', 'media', 'hooks', 'artifacts', 'snapshots',
+    'story-angles', 'scripts', 'sessions', 'logs', 'accounts', 'cost',
+)
 READ_ONLY_IDS = ('articles', 'events', 'snapshots', 'story-angles', 'scripts')
+REVISION_COLUMN_IDS = ('sources', 'media', 'hooks')
 EDITABLE_ALLOWLIST = {
     'sources': ('tier', 'topic_tags', 'notes', 'enabled'),
     'hooks': ('tags', 'description', 'enabled', 'notes'),
@@ -92,7 +97,8 @@ def router_get_paths():
     prefix = re.search(r'APIRouter\(prefix=.(/[a-z0-9/]*).\)', text)
     assert prefix is not None
     paths = re.findall(r'^@router\.get\(.(/[a-z0-9-]+).\)', text, re.M)
-    return {prefix.group(1) + path for path in paths}
+    listings = re.findall(r'^\s*QueryListing\("(/v1/[a-z0-9-]+)"', text, re.M)
+    return {prefix.group(1) + path for path in paths} | set(listings)
 
 
 SCREENS = parse_screens(_registry_body(_code(REGISTRY_PATH)))
@@ -124,7 +130,7 @@ def test_available_screens_match_get_routes_of_control_router():
 
 def test_every_other_screen_is_pending_module():
     others = [s for s in SCREENS if s['id'] not in AVAILABLE_IDS]
-    assert len(others) == 14
+    assert len(others) == 13
     assert all(s['backendStatus'] == 'pending_module' for s in others)
 
 
@@ -242,3 +248,49 @@ def test_source_is_pure_utf8_without_any_fetch_or_import():
     assert not re.search(r'\bany\b', code)
     assert 'fetch(' not in code
     assert not re.search(r'^\s*import\s', code, re.M)
+
+CLIENT_PATH = ROOT / 'src' / 'controlplane' / 'ui' / 'src' / 'api' / 'client.ts'
+QUERIES_ROUTES_TEST = ROOT / 'tests' / 'integration' / 'convergence' / 'test_cp4_queries_routes.py'
+
+
+def _client_function(name):
+    code = _code(CLIENT_PATH)
+    match = re.search(r'export async function ' + name + r'\(.*?(?=\nexport |\Z)', code, re.S)
+    assert match is not None, name
+    return match.group(0)
+
+
+def test_available_and_pending_ids_partition_the_registry():
+    assert set(AVAILABLE_IDS) | set(PENDING_IDS) == set(MILESTONE_OF)
+    assert not set(AVAILABLE_IDS) & set(PENDING_IDS)
+    assert {s['id'] for s in SCREENS if s['backendStatus'] == 'pending_module'} == set(PENDING_IDS)
+    assert {s['id'] for s in SCREENS if s['backendStatus'] == 'available'} == set(AVAILABLE_IDS)
+
+
+def test_stage_runs_is_available_with_route_and_integration_test_evidence():
+    assert BY_ID['stage-runs']['backendStatus'] == 'available'
+    assert '/v1/stage-runs' in router_get_paths()
+    assert 'stage-runs' in QUERIES_ROUTES_TEST.read_text(encoding='utf-8')
+
+
+@pytest.mark.parametrize('screen_id', REVISION_COLUMN_IDS)
+def test_editable_screens_expose_revision_column(screen_id):
+    assert 'revision' in BY_ID[screen_id]['columns']
+
+
+def test_client_patch_module_item_sends_patch_if_match_and_idempotency_key():
+    body = _client_function('patchModuleItem')
+    assert "method: 'PATCH'" in body
+    assert "'If-Match'" in body
+    assert "'Idempotency-Key'" in body
+    assert 'encodeURIComponent(itemId)' in body
+
+
+def test_client_fetch_module_page_uses_cursor_and_returns_next_cursor():
+    body = _client_function('fetchModulePage')
+    assert "params.set('cursor', cursor)" in body
+    assert 'next_cursor' in body
+
+
+def test_client_keeps_test_driver_capability_endpoint():
+    assert '/test-driver/issue-capability' in _code(CLIENT_PATH)

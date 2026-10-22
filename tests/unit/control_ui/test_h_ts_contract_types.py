@@ -99,3 +99,24 @@ def test_api_ts_unchanged_in_scope() -> None:
     if 'wait_reason' in fields:
         assert fields['wait_reason'] is True
     assert 'operationView' not in source and 'listPage' not in source
+
+def test_operation_item_declares_six_optional_operation_view_fields() -> None:
+    body = _interface_body(_read(API_TS), 'export interface OperationItem')
+    fields = _fields(body)
+    for name in sorted(OPTIONAL_FIELDS):
+        assert fields.get(name) is True, name
+    assert re.search(r'^  progress\?: unknown;', body, re.MULTILINE)
+    assert re.search(r'^  wait_reason\?: Record<string, unknown> \| null;', body, re.MULTILINE)
+    assert re.search(r'^  problem\?: ProblemDetail;', body, re.MULTILINE)
+    for name in ('started_at', 'updated_at', 'finished_at'):
+        assert re.search(rf'^  {name}\?: string \| null;', body, re.MULTILINE), name
+
+
+def test_api_ts_declares_module_page_types_without_any() -> None:
+    source = _read(API_TS)
+    assert 'export type ModuleRow = Record<string, unknown>;' in source
+    body = _interface_body(source, 'export interface ModulePage')
+    assert re.search(r'^  items: ModuleRow\[\];', body, re.MULTILINE)
+    assert re.search(r'^  next_cursor: string \| null;', body, re.MULTILINE)
+    for pattern in ANY_PATTERNS:
+        assert not re.search(pattern, source), pattern
