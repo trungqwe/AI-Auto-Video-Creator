@@ -269,6 +269,7 @@ def test_production_profile_builds_app_on_postgres(database, tmp_path, monkeypat
         assert isinstance(built, wiring('production').ProductionApp)
         assert set(built.services) == SERVICE_NAMES
         assert built.services['collection'].mode == 'production'
+        assert set(built.api_app.state.module_services) == {'sources'}
         assert built.api_app.state.allowed_origins == {f'https://127.0.0.1:{PORT}', f'https://localhost:{PORT}'}
     finally:
         built.manager.close()
@@ -296,8 +297,40 @@ def test_launch_session_authorizes_v1_requests(app):
     token = cookie_value(client(app).get(launch_path(app)), 'cp_session')
     headers = {'Cookie': 'cp_session=' + token}
     ok = client(app).get('/v1/sources?limit=1', headers=headers)
-    assert ok.status_code == 503 and ok.json()['code'] == 'CAPABILITY_UNAVAILABLE'
+    assert ok.status_code == 200 and ok.json() == {'items': [], 'next_cursor': None}
+    hooks = client(app).get('/v1/hooks?limit=1', headers=headers)
+    assert hooks.status_code == 503 and hooks.json()['code'] == 'CAPABILITY_UNAVAILABLE'
     assert client(app).get('/v1/secrets/secret-1', headers=headers).status_code in (404, 405)
+
+
+def test_sources_listed_and_updated_through_v1_on_postgres(app, config, database):
+    production = wiring('production')
+    from source_ingestion.application.source_commands import SourceCommandHandler
+    policy = production._source_policy(config)
+    handler = SourceCommandHandler(uow=app.services['collection'].uow_factory(), policy_provider=lambda workspace_id: policy,
+                                   resolver=lambda host: ('93.184.216.34',), recovery_epoch='adapt-prod-test-1')
+    handler.register_source(workspace_id=database[1], idempotency_key='seed-1', actor=ACTOR_ID, correlation_id='seed',
+                            locator='https://news.example.com/feed.xml', name='feed-1',
+                            source_kind=config.profile.collection.source_kinds[0], tier='tier_1', topics=('news',))
+    launched = client(app).get(launch_path(app))
+    session, csrf = cookie_value(launched, 'cp_session'), cookie_value(launched, 'csrf_token')
+    base = {'Cookie': f'cp_session={session}; csrf_token={csrf}', 'X-CSRF-Token': csrf, 'Origin': BASE}
+    c = client(app)
+    items = c.get('/v1/sources', headers=base).json()['items']
+    assert len(items) == 1 and 'canonical_locator' not in items[0] and items[0]['name'] == 'feed-1'
+    path = '/v1/sources/' + items[0]['source_id']
+    assert c.get(path, headers=base).json() == items[0]
+    def patch(body, key, rev, target=path):
+        return c.patch(target, json=body, headers={**base, 'Idempotency-Key': key, 'If-Match': str(rev)})
+    done = patch({'topic_tags': ['news', 'ai'], 'enabled': False}, 'k-1', 1)
+    assert done.status_code == 200 and done.json()['revision'] == 2 and done.json()['enabled'] is False
+    assert done.json()['topic_tags'] == ['ai', 'news']
+    assert patch({'topic_tags': ['news', 'ai'], 'enabled': False}, 'k-1', 1).json()['revision'] == 2
+    assert patch({'notes': 'x'}, 'k-2', 1).status_code == 409
+    reused = patch({'notes': 'x'}, 'k-1', 1)
+    assert reused.status_code == 409 and reused.json()['code'] == 'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD'
+    assert patch({'notes': 'x'}, 'k-3', 1, '/v1/sources/does-not-exist').status_code == 404
+    assert patch({'tier': 'tier_9'}, 'k-4', 2).status_code == 422
 
 
 def test_launch_rejects_foreign_host_without_consuming(app):
