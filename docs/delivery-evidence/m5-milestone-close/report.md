@@ -1,30 +1,30 @@
 # Báo cáo đóng milestone M5 (revision 2)
 
-Task: M5-MILESTONE-CLOSE-R2; candidate: HEAD worktree 4771ccb6a8ead319f06cfeea9463e79522a4f223 (cây mã nguồn trùng cc290f002074514001fa0b03b3eb8c9e00c14db6, commit integrate(ADAPT-LAUNCH); hai commit sau đó d7fc16b và 4771ccb chỉ thêm báo cáo docs(m5) trong docs/delivery-evidence/m5-milestone-close/); kết quả từng lệnh ở command-results.md cùng thư mục
+Task: M5-MILESTONE-CLOSE-R2; candidate: HEAD worktree 315ebffceb1a7f1c482d90b50bd02220b3c41dc7 (cây mã nguồn trùng cc290f002074514001fa0b03b3eb8c9e00c14db6, commit integrate(ADAPT-LAUNCH); ba commit sau đó d7fc16b, 4771ccb, 315ebff chỉ thêm/sửa báo cáo docs(m5) trong docs/delivery-evidence/m5-milestone-close/); kết quả từng lệnh ở command-results.md cùng thư mục
 
 ## 1. Phạm vi và lý do đóng ở revision 2
 
 Milestone M5 được đóng đúng một lần ở revision 2 (R2) với đầy đủ phạm vi hội tụ và tích hợp theo chính sách hiện hành. Revision trước là M5-MILESTONE-CLOSE (revision 1) đã được đóng mà không tích hợp vào nhánh chính (theo quyết định của Control ngày 20/10/2026: policy v1 bổ sung bốn dòng kế hoạch gồm IMPL-PLAN-CONVERGENCE-EXT, IMPL-PLAN-CONVERGENCE-EXT-UI, IMPL-PLAN-PERSIST, và IMPL-PLAN-ADAPT vào phạm vi đóng M5). Revision 1 đóng băng theo phạm vi cũ và chưa được giao cho Worker nào, do đó dù có chạy xong thì vẫn phải đóng lại ở R2. Control quyết định retire revision 1 theo phương pháp chấm điểm chi phí và đường găng: bớt một lượt đóng milestone thừa, hoàn trả suất thực thi cho các gói kế hoạch mở rộng.
 
-Báo cáo này là bằng chứng kỹ thuật đóng milestone nội bộ, hoàn toàn không thay đổi trạng thái trong docs/11-roadmap.md hay docs/12-pre-code-checklist.md và không tự ý tuyên bố người dùng (user) đã duyệt M5.
+Báo cáo này là bằng chứng kỹ thuật đóng milestone nội bộ, hoàn toàn không thay đổi trạng thái trong docs/11-roadmap.md hay docs/12-pre-code-checklist.md và không tự ý tuyên bố người dùng (user) đã duyệt M5. Các vai trò thẩm định trong quy trình này được ghi nhận chuẩn mực là Reviewer (Sonnet 5.5) và Auditor rủi ro (Opus 5.5).
 
 ## 2. Kiểm lại các điểm của R1
 
 Thực hiện kiểm tra thực tế trên lịch sử git và phạm vi gói của kho lưu trữ:
 
-1. **Commit integrate của M5-MILESTONE-CLOSE (R1)**: `ĐẠT`. Kiểm tra qua lệnh `git log --format=%H%x09%s --grep=^integrate(M5-MILESTONE-CLOSE` cho kết quả rỗng (không có commit tích hợp nào của revision 1 tồn tại trên lịch sử git).
+1. **Commit integrate của M5-MILESTONE-CLOSE (R1)**: `ĐẠT`. Kiểm tra qua lệnh `git log --format="%H%x09%s" '--grep=^integrate(M5-MILESTONE-CLOSE:'` cho kết quả rỗng (không có commit tích hợp nào của revision 1 tồn tại trên lịch sử git).
 2. **SHA tích hợp của bốn dòng kế hoạch bổ sung**: `ĐẠT`. Cả bốn dòng kế hoạch đều đã có commit tích hợp hợp lệ trong git:
    - `IMPL-PLAN-CONVERGENCE-EXT`: `3204b3ee38a76646bd6c05322eccd4f643ffab56`
    - `IMPL-PLAN-CONVERGENCE-EXT-UI`: `cd33459cd73cbb41accec6725e7c932da154198e`
    - `IMPL-PLAN-PERSIST`: `d9d23586d3af1fa6b2f2b6b741f3bd77e2178ab7`
    - `IMPL-PLAN-ADAPT`: `7823cf907f8c7ce056479b5fd09c502fbf570237`
-3. **Phạm vi R2 chứa đủ bốn dòng kế hoạch**: `ĐẠT`. Danh sách các gói nghiệm thu của M5-MILESTONE-CLOSE-R2 bao gồm đầy đủ cả bốn dòng kế hoạch nói trên cùng các gói thành phần phái sinh.
+3. **Phạm vi R2 chứa đủ bốn dòng kế hoạch**: `ĐẠT`. Danh sách các gói nghiệm thu của M5-MILESTONE-CLOSE-R2 bao gồm đầy đủ cả bốn dòng kế hoạch nói trên cùng các gói thành phần phái sinh tại Mục 3.
 
 ## 3. Gói được bao phủ và SHA tích hợp
 
 | Mã gói | SHA tích hợp (40 hex) | SHA candidate (12 hex trong tiêu đề) | Nguồn |
 | --- | --- | --- | --- |
-| M5-D-PLAN | KHÔNG TÌM THẤY | - | Gói kế hoạch tài liệu M5, không có commit `integrate(M5-D-PLAN)` độc lập trong git log |
+| M5-D-PLAN | 3b00c35e1ad888e99ae76fe83e28c0bc44db69ee | - | Control cấp trong lệnh làm việc: đã xác minh receipt Auditor PASS và commit nội dung là tổ tiên của nhánh tích hợp; không có commit integrate (kiểm chứng: git merge-base --is-ancestor 3b00c35e... HEAD exit 0) |
 | IMPL-PLAN-A | fb154e9f0433d45bef1994e292a948231b18d112 | 23c3e3cf22fb | `git log` (integrate(IMPL-PLAN-A): lane lane-impl-plan-a candidate 23c3e3cf22fb) |
 | IMPL-PLAN-B | 815bebb15b565c4a750854b4218a3296c7be2904 | 6e139f3b2d3b | `git log` (integrate(IMPL-PLAN-B): lane lane-impl-plan-b candidate 6e139f3b2d3b) |
 | IMPL-PLAN-C | 4035610fa62c04ebcd7bc774b4a9e4ed68c5ad1a | 56dc6fa2a949 | `git log` (integrate(IMPL-PLAN-C): lane lane-impl-plan-c candidate 56dc6fa2a949) |
@@ -45,6 +45,12 @@ Thực hiện kiểm tra thực tế trên lịch sử git và phạm vi gói c�
 | PERSIST-G-FIX1 | f03fed2f209808f80999643408f4f19a32cde567 | 6f53564a6c56 | `git log` (integrate(PERSIST-G-FIX1): lane lane-persist-g-fix1 candidate 6f53564a6c56) |
 | CP-5-COMPLETION-FIX1 | 0ba3801fb9709dd85f7ff15330a877bfd3bf6561 | c2eaba9f3460 | `git log` (integrate(CP-5-COMPLETION-FIX1): lane lane-cp-5-completion-fix1 candidate c2eaba9f3460) |
 | ADAPT-WIRE-FIX1 | 810c377c112f7ce082ab51564591ade9a519e0b0 | f42c94477378 | `git log` (integrate(ADAPT-WIRE-FIX1): lane lane-adapt-wire-fix1 candidate f42c94477378) |
+| CP-4-WIRING-FIX2 | KHÔNG TÌM THẤY | - | `git log --grep=CP-4-WIRING-FIX2` cho 0 commit integrate; không bịa SHA |
+| ADAPT-PROD-FIX1 | KHÔNG TÌM THẤY | - | `git log --grep=ADAPT-PROD-FIX1` cho 0 commit integrate; không bịa SHA |
+| CP-4B-UI-SCREENS-FIX1 | KHÔNG TÌM THẤY | - | `git log --grep=CP-4B-UI-SCREENS-FIX1` cho 0 commit integrate; không bịa SHA |
+| PERSIST-C-FIX1 | KHÔNG TÌM THẤY | - | `git log --grep=PERSIST-C-FIX1` cho 0 commit integrate; không bịa SHA |
+| ADAPT-PROD-FIX2 | KHÔNG TÌM THẤY | - | `git log --grep=ADAPT-PROD-FIX2` cho 0 commit integrate; không bịa SHA |
+| CP-4B-UI-SCREENS-FIX2 | KHÔNG TÌM THẤY | - | `git log --grep=CP-4B-UI-SCREENS-FIX2` cho 0 commit integrate; không bịa SHA |
 | A-01 | 22535f6dcff3dbf2e3187771a9bff1b34c85c838 | b11289d9c406 | `git log` (integrate(A-01): lane lane-a-01 candidate b11289d9c406) |
 | A-02 | e343a41ee6570c39d0cbeda2bd35a3bf2c15513f | 0614e8d1934d | `git log` (integrate(A-02): lane lane-a-02 candidate 0614e8d1934d) |
 | A-03 | 5e009d1c06ba60052bdd1658f939ffaadc626597 | 6382ebd2cdde | `git log` (integrate(A-03): lane lane-a-03 candidate 6382ebd2cdde) |
@@ -140,6 +146,16 @@ Thực hiện kiểm tra thực tế trên lịch sử git và phạm vi gói c�
 | E-06 | d3887fa6a224395ad1e37e00e866a8e7def930e0 | da1e6a7ba167 | `git log` (integrate(E-06): lane lane-e-06 candidate da1e6a7ba167) |
 | E-07 | 2e7c6b1ca42d83ed16dac720ca98388b1bd06ecc | a8abf025014b | `git log` (integrate(E-07): lane lane-e-07 candidate a8abf025014b) |
 | E-08 | 1bfb8b02dc928a2455330afa45edc768226a63e5 | 8dfaedb513d4 | `git log` (integrate(E-08): lane lane-e-08 candidate 8dfaedb513d4) |
+| E | KHÔNG TÌM THẤY | - | Tra cứu integrate(E): cho 0 kết quả; E là định danh phân hệ/nhóm, không có commit integrate riêng; các lát cắt E-01..E-20 đều có SHA tích hợp |
+
+Số hàng có SHA tích hợp: 116/123 hàng bắt buộc (thiếu 7 hàng: 6 gói FIX gồm CP-4-WIRING-FIX2, ADAPT-PROD-FIX1, CP-4B-UI-SCREENS-FIX1, PERSIST-C-FIX1, ADAPT-PROD-FIX2, CP-4B-UI-SCREENS-FIX2 và mã E).
+
+### Ngoài danh sách nghiệm thu
+
+Dưới đây là các nhóm gói có bằng chứng tích hợp trong repo nhưng không nằm trong danh sách nghiệm thu bắt buộc (nhóm này chỉ để Control tham khảo, không thay thế danh sách bắt buộc và không tính vào 116/123 của mục 3):
+
+| Mã gói | SHA tích hợp (40 hex) | SHA candidate (12 hex) | Nguồn |
+| --- | --- | --- | --- |
 | E-09 | c695121600c8d1b73e9153cbd26dab92cf2f6b18 | 8c4ed2542c25 | `git log` (integrate(E-09): lane lane-e-09 candidate 8c4ed2542c25) |
 | E-10 | af9306a233fc2bed399d696fb87918f5c8e7dfe0 | 237353be4524 | `git log` (integrate(E-10): lane lane-e-10 candidate 237353be4524) |
 | E-11 | 6945c76b1b309084663e2e0a6b2b668bebad88fc | 37b5acbde850 | `git log` (integrate(E-11): lane lane-e-11 candidate 37b5acbde850) |
@@ -159,16 +175,6 @@ Thực hiện kiểm tra thực tế trên lịch sử git và phạm vi gói c�
 | F-05 | 100bfcb0fcfcc4b9940c5c07a9b4afa82e1f9a45 | 8516288f5417 | `git log` (integrate(F-05): lane lane-f-05 candidate 8516288f5417) |
 | F-06 | 7622e01f50b6257f93a5c0b90f84880b5c9bf952 | c28e40d61e92 | `git log` (integrate(F-06): lane lane-f-06 candidate c28e40d61e92) |
 | F-07 | b8dc82489eb61f7e284e02ab8d4e0be7b817fc27 | d70d7c536116 | `git log` (integrate(F-07): lane lane-f-07 candidate d70d7c536116) |
-| F | KHÔNG TÌM THẤY | - | Danh sách nghiệm thu liệt kê `F` bên cạnh F-01..F-07, trong khi slices.md của phân hệ F có F-01..F-22; không có commit `integrate(F)` |
-
-Tổng số hàng có SHA tích hợp: 134/136 hàng bắt buộc.
-
-### Ngoài danh sách nghiệm thu
-
-Dưới đây là các nhóm gói có bằng chứng tích hợp trong repo nhưng không nằm trong danh sách nghiệm thu bắt buộc (cung cấp thông tin bổ sung cho Control, không thay thế danh sách bắt buộc):
-
-| Mã gói | SHA tích hợp (40 hex) | SHA candidate (12 hex) | Nguồn |
-| --- | --- | --- | --- |
 | F-08 | 95efd236a7bf8b07dc6c0aae751d1992d2c8ef5b | 9c31b35843c5 | `git log` (integrate(F-08): lane lane-f-08 candidate 9c31b35843c5) |
 | F-09 | c8cfa82317412bd023f3e19e9134f470f4fb5fce | 4d1fdeea9582 | `git log` (integrate(F-09): lane lane-f-09 candidate 4d1fdeea9582) |
 | F-10 | 4bbe03d06091909a4ca31ac63850a4dc94ce20fe | a2266598f3c9 | `git log` (integrate(F-10): lane lane-f-10 candidate a2266598f3c9) |
@@ -251,24 +257,24 @@ Dưới đây là các nhóm gói có bằng chứng tích hợp trong repo như
 
 ## 4. Gói cổng và bản ghi quyết định (recordHash)
 
-| Mã cổng | recordHash trong decisions.jsonl | Nguồn |
-| --- | --- | --- |
-| GATE-CP-2D-REGISTRY | 00103f0a72d7b9e2f1f5803cc699db79373ac38ed2e47aa206f975da0eab9514 | `portfolio/decisions.jsonl` seq 305, RELEASE, 2026-10-21T12:16:10.174Z |
-| GATE-CP-5-COMPLETION | 3b9e4c9d779043c2f76022541f4524b931ad48cce3cad2e4bc4dfff7cfb54d90 | `portfolio/decisions.jsonl` seq 399, RELEASE, 2026-10-22T07:13:58.746Z |
-| GATE-CP-6-WORKFLOW | 2be7562bea521bede4812d8b5cff124d201b562b93a416b1972baca08d720190 | `portfolio/decisions.jsonl` seq 416, RELEASE, 2026-10-22T10:55:26.470Z |
-| GATE-CP-2B-DEPS-PATHS | 3bd11714d6cb8196cb1c800bc740a76e7a4436b905cb2c98d2a8400fa1d132cf | `portfolio/decisions.jsonl` seq 263, RELEASE, 2026-10-20T17:34:21.947Z |
-| GATE-PERSIST-A | 1ccf6c904ef88886ed1dd7a66b50c2206fd1c12ac5357d926572dbf53135a343 | `portfolio/decisions.jsonl` seq 335, RELEASE, 2026-10-21T20:13:29.689Z |
-| GATE-PERSIST-B | 39f5e7e8bc503704574da52b3605d1a03911b24c29494514c865af229ca35bf4 | `portfolio/decisions.jsonl` seq 380, RELEASE, 2026-10-22T01:39:24.832Z |
-| GATE-PERSIST-C | 5327ae192465197cc63aa6f6e1ebc4670e06c063f6a1fb46a4b7e6a3ce4066f2 | `portfolio/decisions.jsonl` seq 332, RELEASE, 2026-10-21T19:47:35.509Z |
-| GATE-PERSIST-D | 794e8b5634d3adaab3d35154ae2f0d732f2dc86a477ca8faeb2cd10cbd79506f | `portfolio/decisions.jsonl` seq 370, RELEASE, 2026-10-22T00:45:33.895Z |
-| GATE-PERSIST-E | b38673dd8c05bac07daae786cf282bcbae1cb359ea80fcd24b806bf5eab94ae7 | `portfolio/decisions.jsonl` seq 375, RELEASE, 2026-10-22T01:06:00.295Z |
-| GATE-PERSIST-F | 7254c80039939250ee1d2b372b627655b8b60b998372d7c9652b4360042a9055 | `portfolio/decisions.jsonl` seq 355, RELEASE, 2026-10-21T21:48:59.851Z |
-| GATE-PERSIST-G | f71b035ffeface811ea87ccc06ba8a13129922fed922018793672d14d244fe7d | `portfolio/decisions.jsonl` seq 358, RELEASE, 2026-10-21T21:50:30.105Z |
-| GATE-PERSIST-I | b987fc8b60eaddba804f31ce51c78cfc9047db41d42203882ea5fae37c31843e | `portfolio/decisions.jsonl` seq 377, RELEASE, 2026-10-22T01:06:53.623Z |
-| GATE-PERSIST-J | cc9e80f551c0a83996a2ff710c7ce2d8d73517eed0434d4c176e55403d1399de | `portfolio/decisions.jsonl` seq 365, RELEASE, 2026-10-22T00:36:25.636Z |
+| Mã cổng | recordHash (bản ghi quyết định RELEASE) |
+| --- | --- |
+| GATE-CP-2D-REGISTRY | 00103f0a72d7b9e2f1f5803cc699db79373ac38ed2e47aa206f975da0eab9514 |
+| GATE-CP-5-COMPLETION | 3b9e4c9d779043c2f76022541f4524b931ad48cce3cad2e4bc4dfff7cfb54d90 |
+| GATE-CP-6-WORKFLOW | 2be7562bea521bede4812d8b5cff124d201b562b93a416b1972baca08d720190 |
+| GATE-CP-2B-DEPS-PATHS | 3bd11714d6cb8196cb1c800bc740a76e7a4436b905cb2c98d2a8400fa1d132cf |
+| GATE-PERSIST-A | 1ccf6c904ef88886ed1dd7a66b50c2206fd1c12ac5357d926572dbf53135a343 |
+| GATE-PERSIST-B | 39f5e7e8bc503704574da52b3605d1a03911b24c29494514c865af229ca35bf4 |
+| GATE-PERSIST-C | 5327ae192465197cc63aa6f6e1ebc4670e06c063f6a1fb46a4b7e6a3ce4066f2 |
+| GATE-PERSIST-D | 794e8b5634d3adaab3d35154ae2f0d732f2dc86a477ca8faeb2cd10cbd79506f |
+| GATE-PERSIST-E | b38673dd8c05bac07daae786cf282bcbae1cb359ea80fcd24b806bf5eab94ae7 |
+| GATE-PERSIST-F | 7254c80039939250ee1d2b372b627655b8b60b998372d7c9652b4360042a9055 |
+| GATE-PERSIST-G | f71b035ffeface811ea87ccc06ba8a13129922fed922018793672d14d244fe7d |
+| GATE-PERSIST-I | b987fc8b60eaddba804f31ce51c78cfc9047db41d42203882ea5fae37c31843e |
+| GATE-PERSIST-J | cc9e80f551c0a83996a2ff710c7ce2d8d73517eed0434d4c176e55403d1399de |
 
 Số cổng có recordHash: 13/13.
-Nguồn recordHash: bản ghi quyết định point=GATE, decision=RELEASE trong portfolio/decisions.jsonl của Control, do Orchestrator đọc và cấp cho Worker; Worker không đọc tệp này và không chạm .ai-pm/**.
+Nguồn: Control cấp trong lệnh làm việc (bản ghi quyết định RELEASE); Worker không đọc sổ quyết định của Control và không chạm .ai-pm/**.
 
 ## 5. Đối chiếu exit gate của M5 (roadmap docs/11-roadmap.md mục 11)
 
@@ -276,32 +282,42 @@ Nguồn recordHash: bản ghi quyết định point=GATE, decision=RELEASE trong
 
 | Mã | Exit gate (nguyên văn roadmap) | Slice và STT lệnh liên quan | Kết quả | Ghi chú |
 | --- | --- | --- | --- | --- |
-| G1 | Mọi output D truy được snapshot, model, prompt, config và input revision | D-04 (STT 134), D-14 (STT 144), D-17 (STT 147) | ĐẠT | Tất cả các kiểm thử STT 134, 144, 147 đều PASS (exit 0) |
-| G2 | Ba video cùng lượt không chỉ đổi style mà thật sự khác StoryAngle | D-06 (STT 136), D-11 (STT 141) | ĐẠT | Tất cả các kiểm thử STT 136, 141 đều PASS (exit 0) |
-| G3 | Variant lượt sau không exact duplicate và có khác biệt thực tế được ghi | D-11 (STT 141), D-14 (STT 144) | ĐẠT | Tất cả các kiểm thử STT 141, 144 đều PASS (exit 0) |
-| G4 | Narrative timeline bị chặn khi chỉ có repost/nguồn mới | D-07 (STT 137) | ĐẠT | Kiểm thử STT 137 PASS (exit 0) |
-| G5 | Provider lỗi không làm mất job/history và không tự thêm dịch vụ trả phí | D-15 (STT 145), D-04 (STT 134) | ĐẠT | Tất cả các kiểm thử STT 145, 134 đều PASS (exit 0) |
-| G6 | G06 phần content đạt hoặc có defect/gap rõ; chưa tuyên bố toàn G06 nếu E/F chưa đạt | D-18 (STT 148), ngưỡng 90%/95% thuộc M5-REAL | ĐẠT (phần content test) | Logic kiểm thử content đạt ở STT 148; ngưỡng chấm thật thuộc M5-REAL |
+| G1 | Mọi output D truy được snapshot, model, prompt, config và input revision | D-04 (STT 150), D-14 (STT 160), D-17 (STT 163) | ĐẠT | Tất cả các kiểm thử STT 150, 160, 163 đều PASS (exit 0) |
+| G2 | Ba video cùng lượt không chỉ đổi style mà thật sự khác StoryAngle | D-06 (STT 152), D-11 (STT 157) | ĐẠT | Tất cả các kiểm thử STT 152, 157 đều PASS (exit 0) |
+| G3 | Variant lượt sau không exact duplicate và có khác biệt thực tế được ghi | D-11 (STT 157), D-14 (STT 160) | ĐẠT | Tất cả các kiểm thử STT 157, 160 đều PASS (exit 0) |
+| G4 | Narrative timeline bị chặn khi chỉ có repost/nguồn mới | D-07 (STT 153) | ĐẠT | Kiểm thử STT 153 PASS (exit 0) |
+| G5 | Provider lỗi không làm mất job/history và không tự thêm dịch vụ trả phí | D-15 (STT 161), D-04 (STT 150) | ĐẠT | Tất cả các kiểm thử STT 161, 150 đều PASS (exit 0) |
+| G6 | G06 phần content đạt hoặc có defect/gap rõ; chưa tuyên bố toàn G06 nếu E/F chưa đạt | D-18 (STT 164), ngưỡng 90%/95% thuộc M5-REAL | ĐẠT (phần content test) | Logic kiểm thử content đạt ở STT 164; ngưỡng chấm thật thuộc M5-REAL |
 | G7 | User duyệt D và R3 Creative Alpha | M5-EG7 | CHỜ USER (M5-EG7) | Chờ người dùng phê duyệt trực tiếp, không tự xác nhận |
 
 ### Bảng đối chiếu Tiêu chí kỹ thuật (T1 - T9)
 
 | Mã | Tiêu chí kỹ thuật (nguyên văn roadmap) | Slice và STT lệnh liên quan | Kết quả | Ghi chú |
 | --- | --- | --- | --- | --- |
-| T1 | INV-004/005/006/013/014 | D-02 (STT 132), D-14 (STT 144), D-07 (STT 137), D-06 (STT 136), D-11 (STT 141) | ĐẠT | Toàn bộ kiểm thử bất biến liên quan đều PASS (exit 0) |
-| T2 | config/source đổi sau snapshot | D-02 (STT 132), D-14 (STT 144) | ĐẠT | Kiểm thử bất biến snapshot cấu hình và nguồn đều PASS |
-| T3 | AI response sai schema/thiếu field/hallucinated ref/timeout | D-03 (STT 133), D-05 (STT 135), D-08 (STT 138), D-15 (STT 145) | ĐẠT | Các kịch bản lỗi AI, validation schema và timeout đều PASS |
-| T4 | 100% inference/creative có disclosure | D-08 (STT 138) | ĐẠT | Kiểm thử gắn nhãn disclosure creative PASS (exit 0) |
+| T1 | INV-004/005/006/013/014 | D-02 (STT 148), D-14 (STT 160), D-07 (STT 153), D-06 (STT 152), D-11 (STT 157) | ĐẠT | Toàn bộ kiểm thử bất biến liên quan đều PASS (exit 0) |
+| T2 | config/source đổi sau snapshot | D-02 (STT 148), D-14 (STT 160) | ĐẠT | Kiểm thử bất biến snapshot cấu hình và nguồn đều PASS |
+| T3 | AI response sai schema/thiếu field/hallucinated ref/timeout | D-03 (STT 149), D-05 (STT 151), D-08 (STT 154), D-15 (STT 161) | ĐẠT | Các kịch bản lỗi AI, validation schema và timeout đều PASS |
+| T4 | 100% inference/creative có disclosure | D-08 (STT 154) | ĐẠT | Kiểm thử gắn nhãn disclosure creative PASS (exit 0) |
 | T5 | topic >=90% trên mẫu user chấm | M5-REAL | CHỜ TÀI NGUYÊN THẬT (M5-REAL) | Yêu cầu mẫu do người dùng chấm trên tài nguyên thật |
-| T6 | event-link >=95% | M5-REAL, B-1..B-12 (STT 70-81) | CHỜ TÀI NGUYÊN THẬT (M5-REAL) | Phần logic xác định đã kiểm chứng đạt ở B-1..B-12 (STT 70-81) |
-| T7 | media/thumbnail >=90% và hook >=90% | M5-REAL, D-09 (STT 139) | CHỜ TÀI NGUYÊN THẬT (M5-REAL) | Phần logic xác định chọn asset đã kiểm chứng đạt ở D-09 (STT 139) |
-| T8 | không dùng model làm judge duy nhất | D-03 (STT 133), D-05 (STT 135), D-08 (STT 138), D-11 (STT 141) | ĐẠT | Kiểm thử phối hợp thuật toán xác định và rule logic đều PASS |
+| T6 | event-link >=95% | M5-REAL, B-1..B-12 (STT 90-101) | CHỜ TÀI NGUYÊN THẬT (M5-REAL) | Phần logic xác định đã kiểm chứng đạt ở B-1..B-12 (STT 90-101) |
+| T7 | media/thumbnail >=90% và hook >=90% | M5-REAL, D-09 (STT 155) | CHỜ TÀI NGUYÊN THẬT (M5-REAL) | Phần logic xác định chọn asset đã kiểm chứng đạt ở D-09 (STT 155) |
+| T8 | không dùng model làm judge duy nhất | D-03 (STT 149), D-05 (STT 151), D-08 (STT 154), D-11 (STT 157) | ĐẠT | Kiểm thử phối hợp thuật toán xác định và rule logic đều PASS |
 | T9 | holdout khoá tách khỏi tập phát triển prompt | M5-REAL | CHỜ TÀI NGUYÊN THẬT (M5-REAL) | Tập holdout khoá được kiểm chứng ở gói CP7 với tài nguyên thật |
+
+### Ghi chú theo quyết định của user (2026-10-22)
+
+Theo quyết định của người dùng ngày 22/10/2026 ghi nhận trong sổ quyết định:
+> «Exit gate của roadmap rộng hơn kế hoạch đã duyệt chỉ được ghi chú trong báo cáo đóng mốc, không phải FAIL và không hỏi user. Việc kế hoạch đã duyệt có mà chưa nối do Control tự lập gói sửa.»
+
+Đối chiếu thực tế cho thấy các điểm roadmap rộng hơn kế hoạch đã duyệt bao gồm:
+1. Tiêu chí G6 («chưa tuyên bố toàn G06 nếu E/F chưa đạt»): Các gói lát cắt của phân hệ E và F đã được hoàn thành và tích hợp đầy đủ (E-01..E-20 và F-01..F-22 đều có SHA tích hợp), tuy nhiên kiểm thử toàn diện end-to-end cho G06 toàn phần sẽ do mốc M6/M7 thực hiện.
+2. Các mục mở (open items) trong roadmap docs/11-roadmap.md: TEST-OPEN-001, ngưỡng deduplication/event-link, thuật toán proxy hot/trending, việc tinh chỉnh provider/model/prompt theo benchmark đều là các open items được thiết kế cho các mốc tiếp theo hoặc gói CP7, không cấu thành điều kiện FAIL kỹ thuật của mốc M5 và không yêu cầu can thiệp từ người dùng.
+3. Các kiểm thử mới chưa đạt trong nhóm G2 (STT 29, 30, 33, 39, 41, 44, 45, 46, 47) là do các gói sửa (CP-4-WIRING-FIX2, ADAPT-PROD-FIX1, CP-4B-UI-SCREENS-FIX1, PERSIST-C-FIX1, ADAPT-PROD-FIX2, CP-4B-UI-SCREENS-FIX2) chưa được nối tích hợp; theo đúng quyết định của người dùng, việc này thuộc trách nhiệm tự lập gói sửa của Control, Worker ghi nhận trung thực kết quả chạy lệnh và không tự ý sửa code ngoài phạm vi.
 
 ## 6. pendingUserCheckpoint
 
-- `M5-EG7`: User duyệt D và R3 Creative Alpha; lý do: thẩm quyền phê duyệt thuộc về người dùng (user), Worker và Control không tự ý ghi nhận là đã được duyệt.
-- `M5-REAL`: Nhà cung cấp AI trả phí thật, mẫu user chấm với các ngưỡng: topic >=90%, event-link >=95%, media/hook >=90%, cùng tập kiểm tra holdout khoá (thuộc gói CP7); lý do: cần tài nguyên sản xuất thật và đánh giá từ người dùng, phiên kiểm này không gọi dịch vụ ngoài và không sử dụng mock để giả mạo kết quả PASS.
+- M5-EG7: User duyệt D và R3 Creative Alpha; lý do: thẩm quyền phê duyệt thuộc về người dùng (user), Worker và Control không tự ý ghi nhận là đã được duyệt.
+- M5-REAL: Nhà cung cấp AI trả phí thật, mẫu user chấm với các ngưỡng: topic >=90%, event-link >=95%, media/hook >=90%, cùng tập kiểm tra holdout khoá (thuộc gói CP7); lý do: cần tài nguyên sản xuất thật và đánh giá từ người dùng, phiên kiểm này không gọi dịch vụ ngoài và không sử dụng mock để giả mạo kết quả PASS.
 
 ## 7. Tổng kết và kết luận
 
@@ -309,27 +325,27 @@ Nguồn recordHash: bản ghi quyết định point=GATE, decision=RELEASE trong
 
 | Hạng mục kiểm tra | Đạt được | Mục tiêu bắt buộc | Kết luận |
 | --- | --- | --- | --- |
-| Lệnh kiểm tra chạy lại | 274/274 exit 0, 0 FAIL (269 lệnh không skip; 5 lệnh có test skip theo thiết kế tham số hoá hoặc môi trường Windows) | 274/274 exit 0 | ĐẠT (nguyên nhân skip đã đối chiếu mã test, không phải thiếu hạ tầng sống) |
-| SHA tích hợp các gói bắt buộc | 134/136 gói | 136/136 gói | CHƯA ĐẠT (M5-D-PLAN, F) |
-| Bản ghi recordHash 13 cổng | 13/13 cổng | 13/13 cổng | ĐẠT (recordHash do Orchestrator cấp từ portfolio/decisions.jsonl) |
+| Lệnh kiểm tra chạy lại | 279/288 exit 0, 9 FAIL (STT 29, 30, 33, 39, 41, 44, 45, 46, 47; 5 lệnh có test skip theo thiết kế tham số hoá hoặc đặc quyền symlink Windows) | 288/288 exit 0 | CHƯA ĐẠT (9 lệnh đỏ ở nhóm G2 chờ gói sửa FIX) |
+| SHA tích hợp các gói bắt buộc | 116/123 gói (M5-D-PLAN có SHA do Control cấp; thiếu 6 gói FIX và mã E) | 123/123 gói | CHƯA ĐẠT (thiếu 7 gói chưa có commit integrate) |
+| Bản ghi recordHash 13 cổng | 13/13 cổng | 13/13 cổng | ĐẠT (recordHash do Control cấp trong lệnh làm việc) |
 | Kiểm lại 3 điểm của R1 (Mục 2) | 3/3 điểm ĐẠT | 3/3 điểm ĐẠT | ĐẠT |
 | Đối chiếu Exit Gate G1-G6 | Đạt yêu cầu kỹ thuật | Đạt yêu cầu | ĐẠT |
 | Gate chờ người dùng / tài nguyên thật | M5-EG7, M5-REAL | Chỉ 2 gate được phép | ĐẠT (đúng 2 gate trong pending) |
 
 ### Ghi chú bổ sung
-- Lệnh `npm run build` (STT 101) đã chạy thành công và **không làm thay đổi** bất kỳ tệp nào trong `src/controlplane/ui/dist`.
-- Nguyên nhân 5 lệnh có test skip (STT 22, 99, 117, 126, 226), đã đối chiếu mã test; không test nào skip vì thiếu hạ tầng sống và cả 5 lệnh đều exit 0:
+- Lệnh `npm --prefix src/controlplane/ui run build` (STT 35) đã chạy thành công và **không làm thay đổi** bất kỳ tệp nào trong `src/controlplane/ui/dist`.
+- Nguyên nhân 5 lệnh có test skip (STT 22, 118, 133, 142, 241), đã đối chiếu mã test; không test nào skip vì thiếu hạ tầng sống:
   - STT 22 (`tests/integration/convergence/test_cp4_wiring.py`, 28 skip): các test tham số hoá theo danh mục lệnh `COMMANDS` tự gọi `pytest.skip` khi lệnh không áp dụng: dòng 275 và 294 ("Lệnh không yêu cầu If-Match"), dòng 342 ("cannot vary payload for empty body without resource id"), dòng 363 ("Lệnh không có body để kiểm tra trường lạ"). Đây là thiết kế tham số hoá của test.
-  - STT 226 (`tests/integration/storage/test_storage_staging_paths.py`, 7 skip): hàm `make_symlink` (dòng 81) gọi `pytest.skip` khi `os.symlink` không tạo được symlink; tài khoản chạy trên Windows không có đặc quyền tạo symlink. Biến thể junction (dòng 86) chỉ skip ngoài Windows nên không skip ở đây.
-  - STT 99 và 126 (35 skip mỗi lệnh) là 28 skip của test_cp4_wiring cộng 7 skip của test_storage_staging_paths; STT 117 (7 skip) chỉ gồm 7 skip của test_storage_staging_paths. Không còn nguồn skip nào khác.
+  - STT 241 (`tests/integration/storage/test_storage_staging_paths.py`, 7 skip): hàm `make_symlink` (dòng 81) gọi `pytest.skip` khi `os.symlink` không tạo được symlink; tài khoản chạy trên Windows không có đặc quyền tạo symlink. Biến thể junction (dòng 86) chỉ skip ngoài Windows nên không skip ở đây.
+  - STT 118 và STT 142 (35 skip mỗi lệnh) là 28 skip của test_cp4_wiring cộng 7 skip của test_storage_staging_paths; STT 133 (7 skip) chỉ gồm 7 skip của test_storage_staging_paths. Không còn nguồn skip nào khác.
   - Hai mô-đun DPAPI (`tests/integration/adapt/j/test_adapt_j_oauth.py` dòng 26, `tests/integration/config/test_j_dpapi_secret_store.py` dòng 17) chỉ skip khi nền tảng không phải win32 nên không skip trong lần chạy này.
   - Test bị skip không được tính là test đã chạy; báo cáo chỉ ghi exit 0 của lệnh và số skip.
 - Kiểm thử `tests/m2/test_p7b_hardening.py::test_h36_m1_regression` được hoãn sang gói CP7 theo đúng quyết định của người dùng ngày 21/10/2026 (mang cờ `--deselect`, không chạy).
 - Báo cáo không thay đổi trạng thái trong roadmap hay checklist.
 
 ### Kết luận
-**KHÔNG ĐẠT** (còn 1 hạng mục mở, nằm ngoài thẩm quyền sửa của Worker).
-Kết quả chạy lại lệnh kiểm: ĐẠT. Cả 274/274 lệnh kiểm bắt buộc thoát với exit 0, 0 FAIL, chạy bằng interpreter khoá. 5 lệnh (STT 22, 99, 117, 126, 226) có test skip; nguyên nhân đã đối chiếu mã test ở Ghi chú bổ sung (tham số hoá theo thiết kế và thiếu đặc quyền symlink của Windows), không phải thiếu hạ tầng sống, và test bị skip không được tính là đã chạy.
-Hạng mục còn mở: thiếu SHA tích hợp cho M5-D-PLAN và F (134/136 gói bắt buộc): lịch sử git không có commit `integrate(M5-D-PLAN)` hay `integrate(F)`, và Worker không tự bịa SHA. Riêng F-01..F-22 đều có SHA tích hợp ở Mục 3.
-Đã xử lý: 13/13 recordHash của các gói cổng ở Mục 4 (nguồn do Orchestrator cấp).
-Hạng mục còn mở chờ Reviewer và Auditor rủi ro phán quyết (ghi nhận ngoại lệ có lý do hoặc giao gói riêng); báo cáo không tự tuyên bố ĐẠT. Chỉ M5-EG7 và M5-REAL nằm trong pendingUserCheckpoint. Báo cáo không đổi trạng thái roadmap hay checklist.
+**KHÔNG ĐẠT** (về mặt kỹ thuật tự động hóa toàn bộ, còn 2 hạng mục mở thuộc thẩm quyền của Control):
+1. Kết quả chạy lại lệnh kiểm: 279/288 lệnh exit 0, còn 9 lệnh FAIL (STT 29, 30, 33, 39, 41, 44, 45, 46, 47) do thiếu các thành phần mã nguồn của 6 gói sửa FIX. 5 lệnh (STT 22, 118, 133, 142, 241) có test skip do thiết kế tham số hoá và thiếu đặc quyền symlink trên Windows.
+2. SHA tích hợp các gói bắt buộc: đạt 116/123 gói. M5-D-PLAN có SHA 3b00c35e1ad888e99ae76fe83e28c0bc44db69ee do Control cấp và đã kiểm chứng là tổ tiên hợp lệ của HEAD. Thiếu SHA tích hợp cho 6 gói FIX (CP-4-WIRING-FIX2, ADAPT-PROD-FIX1, CP-4B-UI-SCREENS-FIX1, PERSIST-C-FIX1, ADAPT-PROD-FIX2, CP-4B-UI-SCREENS-FIX2) và mã E (do chưa có commit `integrate(...)` tương ứng trên git).
+3. Đã xử lý đầy đủ: 13/13 recordHash của các gói cổng ở Mục 4 (nguồn do Control cấp trong lệnh làm việc).
+Các hạng mục còn mở trên chờ Reviewer (Sonnet 5.5) và Auditor rủi ro (Opus 5.5) phán quyết. Chỉ M5-EG7 và M5-REAL nằm trong pendingUserCheckpoint. Báo cáo không đổi trạng thái roadmap hay checklist.
