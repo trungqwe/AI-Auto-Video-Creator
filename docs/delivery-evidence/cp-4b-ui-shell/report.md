@@ -218,3 +218,39 @@ Cả hai lần cùng tên băm, tên hai tệp assets thật mà dist/index.html
 - BL-CV-13 — BLOCKED (giữ onOpenTestError=, không đụng Header.tsx và /test-driver).
 - BL-CV-07 — PENDING cho bảy đường dẫn đã liệt kê ở mục 5 (src/controlplane/ui/src/index.css, src/controlplane/ui/src/api/client.ts, src/controlplane/ui/src/components/OperationsGrid.tsx, src/controlplane/ui/src/components/BatchesGrid.tsx, src/controlplane/ui/src/components/JobsGrid.tsx, src/controlplane/ui/src/types/api.ts, src/controlplane/ui/src/screens/**).
 - Worker không chạy npm run test:e2e và không tuyên bố PASS e2e.
+
+## 10. Chạy lại toàn bộ lệnh kiểm trên HEAD 048d32f
+
+- HEAD 048d32f826080f17003db64654c6d86fe7d30d05; App.tsx và dist không đổi so với mục 1 và mục 9 nếu build cho cùng tên băm.
+- Output nguyên văn của bước 2 (`npm --prefix src/controlplane/ui run build`):
+```
+> controlplane-admin-ui@0.2.0 build
+> tsc && vite build
+
+vite v6.2.0 building for production...
+transforming...
+✓ 39 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.70 kB │ gzip:   0.44 kB
+dist/assets/index-CNmdI0B1.css    231.37 kB │ gzip:  39.04 kB
+dist/assets/index-BGSg0Sqj.js   1,066.64 kB │ gzip: 288.81 kB │ map: 3,494.52 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.79s
+```
+Exit code: 0
+- Kết quả thật của bước 1, 3, 4, 5, 6:
+  - Bước 1 (`git diff --check`): Exit code 0, không có cảnh báo khoảng trắng.
+  - Bước 3 (`python -m pytest tests/unit/control_ui -q -p no:cacheprovider`): 651 passed, 1 warning in 1.46s (Exit code 0).
+  - Bước 4 (probe dist): Exit code 0 (mọi assets/* trong dist/index.html là tệp thật, không còn index-Dd0WysB0.js hay index-Dd0WysB0.js.map, không có tệp băm mồ côi).
+  - Bước 5 (probe App.tsx): Exit code 0 (có boundedEventDeduper và screenRegistry, không có 'new Set', còn onOpenTestError=).
+  - Bước 6 (`git diff --check`): Exit code 0, không có cảnh báo.
+- BL-CV-13 — BLOCKED (giữ onOpenTestError=, không đụng Header.tsx, api/client.ts và /test-driver).
+- BL-CV-07 — PENDING cho bảy đường dẫn: src/controlplane/ui/src/index.css, src/controlplane/ui/src/api/client.ts, src/controlplane/ui/src/components/OperationsGrid.tsx, src/controlplane/ui/src/components/BatchesGrid.tsx, src/controlplane/ui/src/components/JobsGrid.tsx, src/controlplane/ui/src/types/api.ts, src/controlplane/ui/src/screens/**; Worker không sửa các tệp này, không sửa api/streamEventKinds.ts và components/Header.tsx.
+- Đối chiếu registry: control.py hiện có GET /operations, /batches, /jobs, /configs (cùng /operations/{operation_id}, /batches/{batch_id}, /jobs/{job_id}, /errors/{detail_ref}) nên bốn màn hình operations, batches, jobs, configs ở backendStatus available và mười bốn màn hình còn lại giữ pending_module; App.tsx không ghi đè backendStatus và không cấp quyền sửa article_body, script, secret (FORBIDDEN_EDITABLE_FIELDS).
+- Đính chính số lượng spec: tests/m2/e2e/ hiện có bốn tệp *.spec.ts (admin-command-idempotency, operations-sse, performance-budget, safe-error-modal), Worker không sửa tệp nào trong tests/m2/e2e/ và không tạo spec cp4b-*.spec.ts; câu 'Năm tệp' ở mục 6 giữ nguyên vì là lịch sử, không sửa.
+- Worker không chạy npm run test:e2e và không tuyên bố PASS e2e; Control chạy và ghi bằng chứng e2e.
