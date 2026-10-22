@@ -80,6 +80,11 @@ OWN_SUBSYSTEM = {
     'render': 'render',
 }
 
+# Mô-đun ghép nhiều phân hệ theo kế hoạch đã duyệt, không phải mô-đun đấu nối của một phân hệ:
+# completion.py (CP-5-COMPLETION), workflow.py (CP-6-WORKFLOW, docs/implementation/convergence/plan.md dòng 257, BL-CV-10)
+# và production.py (ADAPT-PROD, docs/implementation/adapt/slices.md, mục ADAPT-PROD).
+COMPOSITION_MODULES = {'completion', 'workflow', 'production'}
+
 
 def wiring(name: str):
     return importlib.import_module('controlplane.api.wiring.' + name)
@@ -120,9 +125,9 @@ def manager(database):
         mgr.close()
 
 
-def test_wiring_builder_inventory():
+def builder_inventory(wiring_dir: Path) -> dict[str, list[str]]:
     found: dict[str, list[str]] = {}
-    for path in sorted(WIRING.glob('*.py')):
+    for path in sorted(wiring_dir.glob('*.py')):
         tree = ast.parse(path.read_text(encoding='utf-8'))
         names = [
             node.name
@@ -131,7 +136,22 @@ def test_wiring_builder_inventory():
         ]
         if names:
             found[path.stem] = names
-    assert found == {k: [v] for k, v in EXPECTED_BUILDERS.items()}
+    return found
+
+
+def inventory_errors(found: dict[str, list[str]]) -> list[tuple[str, object]]:
+    errors: list[tuple[str, object]] = []
+    per_subsystem = {k: v for k, v in found.items() if k not in COMPOSITION_MODULES}
+    if per_subsystem != {k: [v] for k, v in EXPECTED_BUILDERS.items()}:
+        errors.append(('inventory', per_subsystem))
+    for module in sorted(COMPOSITION_MODULES & found.keys()):
+        if found[module] != ['build_' + module + '_services']:
+            errors.append((module, found[module]))
+    return errors
+
+
+def test_wiring_builder_inventory():
+    assert inventory_errors(builder_inventory(WIRING)) == []
 
 
 def test_wiring_sources_have_no_forbidden_text():
@@ -154,10 +174,10 @@ def test_wiring_sources_have_no_forbidden_text():
     assert bad == []
 
 
-def test_wiring_modules_do_not_cross_import_subsystems():
-    bad = []
-    for path in sorted(WIRING.glob('*.py')):
-        if path.stem == 'completion':
+def cross_imports(wiring_dir: Path) -> list[tuple[str, str]]:
+    bad: list[tuple[str, str]] = []
+    for path in sorted(wiring_dir.glob('*.py')):
+        if path.stem in COMPOSITION_MODULES:
             continue
         tree = ast.parse(path.read_text(encoding='utf-8'))
         for node in ast.walk(tree):
@@ -170,7 +190,62 @@ def test_wiring_modules_do_not_cross_import_subsystems():
                 prefix = mod.split('.')[0]
                 if prefix in SUBSYSTEMS and prefix != OWN_SUBSYSTEM.get(path.stem):
                     bad.append((path.name, mod))
-    assert bad == []
+    return bad
+
+
+def test_wiring_modules_do_not_cross_import_subsystems():
+    assert cross_imports(WIRING) == []
+
+
+def write_wiring_module(directory: Path, name: str, source: str) -> None:
+    (directory / (name + '.py')).write_text(source, encoding='utf-8')
+
+
+def write_expected_wiring(directory: Path) -> None:
+    for module, builder in EXPECTED_BUILDERS.items():
+        write_wiring_module(directory, module, 'def ' + builder + '():\n    return None\n')
+
+
+def test_cross_imports_reports_subsystem_module_importing_other_subsystem(tmp_path):
+    write_wiring_module(tmp_path, 'voice', 'from creative.adapters import memory\n')
+    assert cross_imports(tmp_path) == [('voice.py', 'creative.adapters')]
+
+
+def test_cross_imports_allows_own_subsystem_import(tmp_path):
+    write_wiring_module(tmp_path, 'voice', 'from voice.adapters import memory\n')
+    assert cross_imports(tmp_path) == []
+
+
+def test_cross_imports_ignores_composition_modules(tmp_path):
+    source = (
+        'from creative.worker.activity_handler import handle_activity\n'
+        'from ingestion.application.activity_handler import handle_resolve_activity\n'
+        'from render.worker.activity_handler import handle_activity as render_activity\n'
+        'from source_ingestion.worker.activity_handler import handle_collect_source_activity\n'
+        'from voice.worker.activity_handler import handle_activity as voice_activity\n'
+    )
+    for module in sorted(COMPOSITION_MODULES):
+        write_wiring_module(tmp_path, module, source)
+    assert cross_imports(tmp_path) == []
+
+
+def test_inventory_accepts_expected_builders_and_workflow_builder(tmp_path):
+    write_expected_wiring(tmp_path)
+    assert inventory_errors(builder_inventory(tmp_path)) == []
+    write_wiring_module(tmp_path, 'workflow', 'def build_workflow_services():\n    return None\n')
+    assert inventory_errors(builder_inventory(tmp_path)) == []
+
+
+def test_inventory_rejects_unknown_module_with_builder(tmp_path):
+    write_expected_wiring(tmp_path)
+    write_wiring_module(tmp_path, 'x', 'def build_x_services():\n    return None\n')
+    assert inventory_errors(builder_inventory(tmp_path)) != []
+
+
+def test_inventory_rejects_composition_module_with_wrong_builder_name(tmp_path):
+    write_expected_wiring(tmp_path)
+    write_wiring_module(tmp_path, 'workflow', 'def build_other_services():\n    return None\n')
+    assert inventory_errors(builder_inventory(tmp_path)) != []
 
 
 def leaf_names(node, prefix=''):
