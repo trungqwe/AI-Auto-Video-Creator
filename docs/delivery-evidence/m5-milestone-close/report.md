@@ -253,24 +253,22 @@ Dưới đây là các nhóm gói có bằng chứng tích hợp trong repo như
 
 | Mã cổng | recordHash trong decisions.jsonl | Nguồn |
 | --- | --- | --- |
-| GATE-CP-2D-REGISTRY | CHƯA CÓ recordHash (nguồn nằm ngoài quyền đọc của Worker) | Ngoài quyền đọc (worktree không có tệp decisions.jsonl ở đường dẫn cho phép) |
-| GATE-CP-5-COMPLETION | CHƯA CÓ recordHash (nguồn nằm ngoài quyền đọc của Worker) | Ngoài quyền đọc (worktree không có tệp decisions.jsonl ở đường dẫn cho phép) |
-| GATE-CP-6-WORKFLOW | CHƯA CÓ recordHash (nguồn nằm ngoài quyền đọc của Worker) | Ngoài quyền đọc (worktree không có tệp decisions.jsonl ở đường dẫn cho phép) |
-| GATE-CP-2B-DEPS-PATHS | CHƯA CÓ recordHash (nguồn nằm ngoài quyền đọc của Worker) | Ngoài quyền đọc (worktree không có tệp decisions.jsonl ở đường dẫn cho phép) |
-| GATE-PERSIST-A | CHƯA CÓ recordHash (nguồn nằm ngoài quyền đọc của Worker) | Ngoài quyền đọc (worktree không có tệp decisions.jsonl ở đường dẫn cho phép) |
-| GATE-PERSIST-B | CHƯA CÓ recordHash (nguồn nằm ngoài quyền đọc của Worker) | Ngoài quyền đọc (worktree không có tệp decisions.jsonl ở đường dẫn cho phép) |
-| GATE-PERSIST-C | CHƯA CÓ recordHash (nguồn nằm ngoài quyền đọc của Worker) | Ngoài quyền đọc (worktree không có tệp decisions.jsonl ở đường dẫn cho phép) |
-| GATE-PERSIST-D | CHƯA CÓ recordHash (nguồn nằm ngoài quyền đọc của Worker) | Ngoài quyền đọc (worktree không có tệp decisions.jsonl ở đường dẫn cho phép) |
-| GATE-PERSIST-E | CHƯA CÓ recordHash (nguồn nằm ngoài quyền đọc của Worker) | Ngoài quyền đọc (worktree không có tệp decisions.jsonl ở đường dẫn cho phép) |
-| GATE-PERSIST-F | CHƯA CÓ recordHash (nguồn nằm ngoài quyền đọc của Worker) | Ngoài quyền đọc (worktree không có tệp decisions.jsonl ở đường dẫn cho phép) |
-| GATE-PERSIST-G | CHƯA CÓ recordHash (nguồn nằm ngoài quyền đọc của Worker) | Ngoài quyền đọc (worktree không có tệp decisions.jsonl ở đường dẫn cho phép) |
-| GATE-PERSIST-I | CHƯA CÓ recordHash (nguồn nằm ngoài quyền đọc của Worker) | Ngoài quyền đọc (worktree không có tệp decisions.jsonl ở đường dẫn cho phép) |
-| GATE-PERSIST-J | CHƯA CÓ recordHash (nguồn nằm ngoài quyền đọc của Worker) | Ngoài quyền đọc (worktree không có tệp decisions.jsonl ở đường dẫn cho phép) |
+| GATE-CP-2D-REGISTRY | 00103f0a72d7b9e2f1f5803cc699db79373ac38ed2e47aa206f975da0eab9514 | `portfolio/decisions.jsonl` seq 305, RELEASE, 2026-10-21T12:16:10.174Z |
+| GATE-CP-5-COMPLETION | 3b9e4c9d779043c2f76022541f4524b931ad48cce3cad2e4bc4dfff7cfb54d90 | `portfolio/decisions.jsonl` seq 399, RELEASE, 2026-10-22T07:13:58.746Z |
+| GATE-CP-6-WORKFLOW | 2be7562bea521bede4812d8b5cff124d201b562b93a416b1972baca08d720190 | `portfolio/decisions.jsonl` seq 416, RELEASE, 2026-10-22T10:55:26.470Z |
+| GATE-CP-2B-DEPS-PATHS | 3bd11714d6cb8196cb1c800bc740a76e7a4436b905cb2c98d2a8400fa1d132cf | `portfolio/decisions.jsonl` seq 263, RELEASE, 2026-10-20T17:34:21.947Z |
+| GATE-PERSIST-A | 1ccf6c904ef88886ed1dd7a66b50c2206fd1c12ac5357d926572dbf53135a343 | `portfolio/decisions.jsonl` seq 335, RELEASE, 2026-10-21T20:13:29.689Z |
+| GATE-PERSIST-B | 39f5e7e8bc503704574da52b3605d1a03911b24c29494514c865af229ca35bf4 | `portfolio/decisions.jsonl` seq 380, RELEASE, 2026-10-22T01:39:24.832Z |
+| GATE-PERSIST-C | 5327ae192465197cc63aa6f6e1ebc4670e06c063f6a1fb46a4b7e6a3ce4066f2 | `portfolio/decisions.jsonl` seq 332, RELEASE, 2026-10-21T19:47:35.509Z |
+| GATE-PERSIST-D | 794e8b5634d3adaab3d35154ae2f0d732f2dc86a477ca8faeb2cd10cbd79506f | `portfolio/decisions.jsonl` seq 370, RELEASE, 2026-10-22T00:45:33.895Z |
+| GATE-PERSIST-E | b38673dd8c05bac07daae786cf282bcbae1cb359ea80fcd24b806bf5eab94ae7 | `portfolio/decisions.jsonl` seq 375, RELEASE, 2026-10-22T01:06:00.295Z |
+| GATE-PERSIST-F | 7254c80039939250ee1d2b372b627655b8b60b998372d7c9652b4360042a9055 | `portfolio/decisions.jsonl` seq 355, RELEASE, 2026-10-21T21:48:59.851Z |
+| GATE-PERSIST-G | f71b035ffeface811ea87ccc06ba8a13129922fed922018793672d14d244fe7d | `portfolio/decisions.jsonl` seq 358, RELEASE, 2026-10-21T21:50:30.105Z |
+| GATE-PERSIST-I | b987fc8b60eaddba804f31ce51c78cfc9047db41d42203882ea5fae37c31843e | `portfolio/decisions.jsonl` seq 377, RELEASE, 2026-10-22T01:06:53.623Z |
+| GATE-PERSIST-J | cc9e80f551c0a83996a2ff710c7ce2d8d73517eed0434d4c176e55403d1399de | `portfolio/decisions.jsonl` seq 365, RELEASE, 2026-10-22T00:36:25.636Z |
 
-Số cổng có recordHash: 0/13.
-
-### BLOCKED
-Do tệp `decisions.jsonl` không tồn tại ở các đường dẫn cho phép trong worktree (chỉ có thể nằm dưới `.ai-pm/**`, vốn là đường dẫn cấm đối với Worker), Worker không thể truy xuất được 13 recordHash thật cho các gói cổng. Worker không tự bịa hash theo quy định fail-closed. Control cần cấp 13 recordHash hoặc giao lại lệnh làm việc kèm recordHash đã được kiểm định.
+Số cổng có recordHash: 13/13.
+Nguồn recordHash: bản ghi quyết định point=GATE, decision=RELEASE trong portfolio/decisions.jsonl của Control, do Orchestrator đọc và cấp cho Worker; Worker không đọc tệp này và không chạm .ai-pm/**.
 
 ## 5. Đối chiếu exit gate của M5 (roadmap docs/11-roadmap.md mục 11)
 
@@ -313,7 +311,7 @@ Do tệp `decisions.jsonl` không tồn tại ở các đường dẫn cho phép
 | --- | --- | --- | --- |
 | Lệnh kiểm tra chạy lại | 269 PASS, 5 SKIP, 0 FAIL | 274/274 PASS không SKIP | CHƯA ĐẠT (5 lệnh có test skip) |
 | SHA tích hợp các gói bắt buộc | 134/136 gói | 136/136 gói | CHƯA ĐẠT (M5-D-PLAN, F) |
-| Bản ghi recordHash 13 cổng | 0/13 cổng | 13/13 cổng | CHƯA ĐẠT (nguồn ngoài quyền đọc) |
+| Bản ghi recordHash 13 cổng | 13/13 cổng | 13/13 cổng | ĐẠT (recordHash do Orchestrator cấp từ portfolio/decisions.jsonl) |
 | Kiểm lại 3 điểm của R1 (Mục 2) | 3/3 điểm ĐẠT | 3/3 điểm ĐẠT | ĐẠT |
 | Đối chiếu Exit Gate G1-G6 | Đạt yêu cầu kỹ thuật | Đạt yêu cầu | ĐẠT |
 | Gate chờ người dùng / tài nguyên thật | M5-EG7, M5-REAL | Chỉ 2 gate được phép | ĐẠT (đúng 2 gate trong pending) |
@@ -325,9 +323,9 @@ Do tệp `decisions.jsonl` không tồn tại ở các đường dẫn cho phép
 - Báo cáo không thay đổi trạng thái trong roadmap hay checklist.
 
 ### Kết luận
-**KHÔNG ĐẠT**.
+**KHÔNG ĐẠT** (còn 2 hạng mục mở, nằm ngoài thẩm quyền sửa của Worker).
 Milestone M5 revision 2 chưa đủ điều kiện tuyên bố ĐẠT toàn bộ vì:
-1. 5 lệnh kiểm tra có test bị skip (STT 22, 99, 117, 126, 226).
-2. Thiếu SHA tích hợp cho gói M5-D-PLAN và F (134/136 gói).
-3. Chưa có 13 recordHash cho các gói cổng do `decisions.jsonl` nằm ngoài quyền đọc của Worker (0/13 cổng).
-Theo quy định fail-closed, Worker báo cáo trạng thái BLOCKED và KHÔNG ĐẠT để Control xử lý cấp recordHash.
+1. 5 lệnh kiểm tra có test bị skip (STT 22, 99, 117, 126, 226) do cần hạ tầng sống (PostgreSQL, Docker, Temporal, DPAPI) không chạy trong phiên này; báo cáo không tính SKIP là PASS.
+2. Thiếu SHA tích hợp cho gói M5-D-PLAN và F (134/136 gói): lịch sử git không có commit `integrate(M5-D-PLAN)` hay `integrate(F)`, và Worker không tự bịa SHA.
+Đã xử lý ở lượt này: 13/13 recordHash của các gói cổng đã được ghi ở Mục 4 (nguồn do Orchestrator cấp), không còn trạng thái BLOCKED về recordHash.
+Hai hạng mục còn lại chờ Reviewer và Auditor rủi ro phán quyết (ghi nhận ngoại lệ có lý do hoặc giao gói riêng); báo cáo không tự tuyên bố ĐẠT. Chỉ M5-EG7 và M5-REAL nằm trong pendingUserCheckpoint. Báo cáo không đổi trạng thái roadmap hay checklist.
