@@ -565,6 +565,13 @@ ORCH = ROOT / 'src/controlplane/infrastructure/db/orchestration'
 ADAPTER = ORCH / 'postgres_completion.py'
 WIRING = ROOT / 'src/controlplane/api/wiring/completion.py'
 
+WIRING_REQUIRED = ('__init__.py', 'completion.py')
+
+
+def wiring_problems(wiring_dir: Path) -> list[str]:
+    present = {p.name for p in wiring_dir.glob('*.py')}
+    return [f'thiếu {name}' for name in WIRING_REQUIRED if name not in present]
+
 
 def test_adapter_placement_and_packaging():
     d = tomllib.loads((ROOT / 'src/controlplane/pyproject.toml').read_text(encoding='utf-8'))
@@ -576,7 +583,38 @@ def test_adapter_placement_and_packaging():
     assert sorted(p.name for p in ORCH.glob('*.py')) == [
         '__init__.py', 'allocation.py', 'grants.py', 'postgres_completion.py', 'start_batch.py', 'variants.py'
     ]
-    assert sorted(p.name for p in WIRING.parent.glob('*.py')) == ['__init__.py', 'completion.py']
+    assert wiring_problems(WIRING.parent) == []
+
+
+def make_wiring_dir(directory: Path, names: list[str]) -> Path:
+    for name in names:
+        (directory / name).write_text('', encoding='utf-8')
+    return directory
+
+
+def test_wiring_problems_only_required_modules(tmp_path):
+    make_wiring_dir(tmp_path, ['__init__.py', 'completion.py'])
+    assert wiring_problems(tmp_path) == []
+
+
+def test_wiring_problems_allows_other_modules(tmp_path):
+    make_wiring_dir(
+        tmp_path,
+        ['__init__.py', 'completion.py', 'collection.py', 'workflow.py', 'production.py'],
+    )
+    assert wiring_problems(tmp_path) == []
+
+
+def test_wiring_problems_reports_missing_completion(tmp_path):
+    make_wiring_dir(tmp_path, ['__init__.py', 'collection.py', 'production.py'])
+    problems = wiring_problems(tmp_path)
+    assert problems == ['thiếu completion.py']
+
+
+def test_wiring_problems_reports_missing_init(tmp_path):
+    make_wiring_dir(tmp_path, ['completion.py', 'collection.py', 'workflow.py'])
+    problems = wiring_problems(tmp_path)
+    assert problems == ['thiếu __init__.py']
 
 
 def test_no_delete_command_and_no_ddl():
