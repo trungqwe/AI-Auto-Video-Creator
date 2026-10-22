@@ -37,7 +37,7 @@ FAILED tests/integration/convergence/test_cp5_completion_uow.py::test_failure_at
 - Exit code: 0
 - Dòng tóm tắt:
 ```text
-36 passed in 3.54s
+36 passed in 3.23s
 ```
 
 ### 3.2. Kết quả kiểm thử hồi quy bắt buộc (Bước 17)
@@ -45,7 +45,7 @@ FAILED tests/integration/convergence/test_cp5_completion_uow.py::test_failure_at
 - Exit code: 0
 - Dòng tóm tắt:
 ```text
-2306 passed, 7 skipped, 1184 subtests passed in 5.65s
+2306 passed, 7 skipped, 1184 subtests passed in 3.73s
 ```
 Khẳng định: Không có bất kỳ bài kiểm thử nào của các phân hệ orchestration, storage, catalog, render bị ảnh hưởng hay hồi quy.
 
@@ -117,32 +117,25 @@ Các giả định kỹ thuật được áp dụng trong gói nhiệm vụ này
 
 ## 7. DEPENDENCY_GAP
 
-Báo cáo kết quả kiểm tra thực tế đối với hai bài kiểm thử nằm ngoài owned paths (được ghi nhận theo Bước 19 và Bước 20):
+Báo cáo kết quả kiểm tra thực tế đối với hai bài kiểm thử từng nằm ngoài owned paths và từng ghi nhận DEPENDENCY_GAP:
 
-1. Bước 3 của lệnh làm việc REBASE: Quan sát kiểm thử `tests/integration/convergence/test_cp4_wiring.py`
-   - Lệnh: `python -m pytest tests/integration/convergence/test_cp4_wiring.py -q -p no:cacheprovider`
-   - Dòng tóm tắt kết quả:
-```text
-1 failed, 129 passed, 28 skipped, 1 warning in 2.03s
-```
-   - Tên bài test đỏ: `tests/integration/convergence/test_cp4_wiring.py::test_wiring_package_stays_empty`
-   - Phân tích: Tệp test này thuộc sở hữu của gói `CP-4-WIRING`, chứa assertion khẳng định thư mục `src/controlplane/api/wiring` chỉ có duy nhất tệp `__init__.py`. Khi gói `CP-5-COMPLETION` tạo tệp `completion.py` trong thư mục này theo đúng phân quyền được giao, test trên bị đỏ. Worker tuân thủ kỷ luật không tự ý chỉnh sửa tệp test ngoài owned paths; Control sẽ cập nhật bài test này khi tích hợp. Sau rebase lên ed3bf7a vẫn đỏ; acceptance 2 bắt buộc `api/wiring/completion.py` nên hai yêu cầu mâu thuẫn và chỉ CP-4-WIRING hoặc Control sửa được test này (cho phép thêm `completion.py` vào danh sách tệp mong đợi của `test_wiring_package_stays_empty`). Worker không dời hay xoá `completion.py` để né test.
-
-2. Bước 20: Quan sát kiểm thử `tests/integration/persistence/g/test_persist_g_postgres.py`
+1. Quan sát kiểm thử `tests/integration/persistence/g/test_persist_g_postgres.py`:
    - Lệnh: `python -m pytest tests/integration/persistence/g/test_persist_g_postgres.py -q -p no:cacheprovider`
    - Dòng tóm tắt kết quả:
 ```text
-1 failed, 11 passed in 4.77s
+16 passed in 4.38s
 ```
-   - Tên bài test đỏ: `tests/integration/persistence/g/test_persist_g_postgres.py::test_adapter_source_has_no_ddl_completion_store_or_transaction_control`
-   - Phân tích: Tệp test này thuộc sở hữu của gói `PERSIST-G`, cấm sự xuất hiện của chuỗi token `.commit(` trong các tệp mã nguồn thuộc thư mục `orchestration`. Khi adapter `postgres_completion.py` cài đặt Unit of Work cần gọi `connection.commit()`, test trên bị đỏ. Worker không tự ý sửa đổi tệp test ngoài owned paths; Control sẽ cập nhật phạm vi kiểm tra cho gói PERSIST-G. Test PERSIST-G này không nằm trong lệnh kiểm bắt buộc; ghi nhận để Control xử lý.
+   - Trạng thái: đã hết đỏ sau rebase lên f03fed2f209808f80999643408f4f19a32cde567.
 
-```blocked-manifest
-{"step": 3, "kind": "DEPENDENCY_GAP", "ownerTaskIds": ["CP-4-WIRING"], "paths": ["src/controlplane/api/wiring/completion.py", "tests/integration/convergence/test_cp4_wiring.py"], "ids": ["tests/integration/convergence/test_cp4_wiring.py::test_wiring_package_stays_empty"]}
+2. Quan sát kiểm thử `tests/integration/convergence/test_cp4_wiring.py`:
+   - Lệnh: `python -m pytest tests/integration/convergence/test_cp4_wiring.py -q -p no:cacheprovider`
+   - Dòng tóm tắt kết quả:
+```text
+133 passed, 28 skipped, 1 warning in 1.83s
 ```
-```blocked-manifest
-{"step": 3, "kind": "DEPENDENCY_GAP", "ownerTaskIds": ["PERSIST-G"], "paths": ["src/controlplane/infrastructure/db/orchestration/postgres_completion.py", "tests/integration/persistence/g/test_persist_g_postgres.py"], "ids": ["tests/integration/persistence/g/test_persist_g_postgres.py::test_adapter_source_has_no_ddl_completion_store_or_transaction_control"]}
-```
+   - Trạng thái: đã hết đỏ sau rebase lên f03fed2f209808f80999643408f4f19a32cde567.
+
+Không còn DEPENDENCY_GAP.
 
 ## 8. Giới hạn
 
@@ -153,6 +146,6 @@ Báo cáo kết quả kiểm tra thực tế đối với hai bài kiểm thử 
 
 ## 9. Candidate
 
-- Commit nền (base) của lượt REBASE này: `fa7f453c09e556976f17eb1357b33f02a59a788c`; nhánh đã nằm trên integration head `ed3bf7a48207198201b4c76965557afdc12702c6`.
+- Commit nền (base) của lượt REBASE này: f7b815fbfc67ab9c06ff87753d9d546077af24b2; nhánh đã nằm trên integration head `f03fed2f209808f80999643408f4f19a32cde567` (đã gộp PERSIST-G-FIX1).
 - Candidate SHA là SHA đầy đủ 40 ký tự của commit HEAD sau khi commit bản chỉnh báo cáo này; SHA đó được ghi trong nội dung `worker_done`, không thể tự nhúng vào tệp này vì sẽ làm đổi chính SHA.
 - BL-CV-08, BL-CV-11, BL-CV-06 giữ trạng thái PENDING; G04 và fault suite thật (CP7-G-03) không được đóng; cổng GATE-CP-5-COMPLETION chưa thả.
