@@ -14,6 +14,8 @@ import { OperationsGrid } from './components/OperationsGrid.tsx';
 import { BatchesGrid } from './components/BatchesGrid.tsx';
 import { JobsGrid } from './components/JobsGrid.tsx';
 import { SafeErrorModal } from './components/SafeErrorModal.tsx';
+import { ModuleListScreen } from './screens/ModuleListScreen.tsx';
+import { EditableMetadataScreen } from './screens/EditableMetadataScreen.tsx';
 import { createBoundedEventDeduper, type BoundedEventDeduper } from './features/stream/boundedEventDeduper.ts';
 import { FORBIDDEN_EDITABLE_FIELDS, SCREEN_REGISTRY, screensForMilestone, type Milestone, type ScreenSpec } from './features/screens/screenRegistry.ts';
 
@@ -28,14 +30,47 @@ const BACKEND_STATUS_LABELS: Record<ScreenSpec['backendStatus'], string> = {
 const visibleEditableFields = (screen: ScreenSpec): string[] =>
   screen.editableFields.filter((field) => !(FORBIDDEN_EDITABLE_FIELDS as readonly string[]).includes(field));
 
+const ScreensNavigator: React.FC = () => {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = SCREEN_REGISTRY.find((screen) => screen.id === selectedId) ?? null;
+  const open = selected !== null && selected.backendStatus === 'available' ? selected : null;
+  return (
+    <div data-testid="screens-navigator">
+      <nav className="screen-nav" aria-label="Điều hướng màn hình theo registry">
+        {SCREEN_REGISTRY.map((screen) => {
+          const locked = screen.backendStatus !== 'available';
+          return (
+            <button
+              key={screen.id}
+              type="button"
+              className={`tab-button ${open?.id === screen.id ? 'active' : ''}`}
+              disabled={locked}
+              title={locked ? BACKEND_STATUS_LABELS.pending_module : undefined}
+              onClick={() => setSelectedId(screen.id)}
+              data-testid={`screen-nav-${screen.id}`}
+              data-backend-status={screen.backendStatus}
+            >
+              {screen.titleVi}{locked ? ' (khóa)' : ''}
+            </button>
+          );
+        })}
+      </nav>
+      {open !== null && (open.readOnly || visibleEditableFields(open).length === 0
+        ? <ModuleListScreen key={open.id} screen={open} />
+        : <EditableMetadataScreen key={open.id} screen={open} />)}
+    </div>
+  );
+};
+
 const ScreensPanel: React.FC = () => (
   <div className="panel" data-testid="screens-panel">
     <div className="panel-header">
       <div>
         <h2 className="panel-title">Danh Mục Màn Hình Theo Milestone</h2>
-        <p className="panel-subtitle">Trạng thái backend lấy nguyên từ screenRegistry; tại đây không có ô nhập và không cấp thêm quyền sửa.</p>
+        <p className="panel-subtitle">Trạng thái backend lấy nguyên từ screenRegistry; màn hình chờ phân hệ bị khóa và không gọi API, ô nhập chỉ gồm các trường trong allowlist.</p>
       </div>
     </div>
+    <ScreensNavigator />
     {SCREEN_MILESTONES.map((milestone) => (
       <section key={milestone} data-testid={`screens-milestone-${milestone}`}>
         <h3>{milestone}</h3>

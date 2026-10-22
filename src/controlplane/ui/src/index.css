@@ -350,6 +350,44 @@ body {
   color: #f87171;
 }
 
+/* Screens navigator và form metadata */
+.screen-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.screen-nav .tab-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.screen-error {
+  color: #f87171;
+  margin: 0.5rem 0;
+}
+
+.screen-status {
+  color: #34d399;
+  margin: 0.5rem 0;
+}
+
+.row-selected {
+  background-color: var(--bg-surface);
+}
+
+.metadata-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.metadata-form-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;
