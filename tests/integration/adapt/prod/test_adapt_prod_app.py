@@ -269,7 +269,7 @@ def test_production_profile_builds_app_on_postgres(database, tmp_path, monkeypat
         assert isinstance(built, wiring('production').ProductionApp)
         assert set(built.services) == SERVICE_NAMES
         assert built.services['collection'].mode == 'production'
-        assert set(built.api_app.state.module_services) == {'sources'}
+        assert set(built.api_app.state.module_services) == {'sources', 'hooks'}
         assert built.api_app.state.allowed_origins == {f'https://127.0.0.1:{PORT}', f'https://localhost:{PORT}'}
     finally:
         built.manager.close()
@@ -299,7 +299,9 @@ def test_launch_session_authorizes_v1_requests(app):
     ok = client(app).get('/v1/sources?limit=1', headers=headers)
     assert ok.status_code == 200 and ok.json() == {'items': [], 'next_cursor': None}
     hooks = client(app).get('/v1/hooks?limit=1', headers=headers)
-    assert hooks.status_code == 503 and hooks.json()['code'] == 'CAPABILITY_UNAVAILABLE'
+    assert hooks.status_code == 200 and hooks.json() == {'items': [], 'next_cursor': None}
+    media = client(app).get('/v1/media?limit=1', headers=headers)
+    assert media.status_code == 503 and media.json()['code'] == 'CAPABILITY_UNAVAILABLE'
     assert client(app).get('/v1/secrets/secret-1', headers=headers).status_code in (404, 405)
 
 
@@ -331,6 +333,43 @@ def test_sources_listed_and_updated_through_v1_on_postgres(app, config, database
     assert reused.status_code == 409 and reused.json()['code'] == 'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD'
     assert patch({'notes': 'x'}, 'k-3', 1, '/v1/sources/does-not-exist').status_code == 404
     assert patch({'tier': 'tier_9'}, 'k-4', 2).status_code == 422
+
+
+def test_hooks_listed_and_updated_through_v1_on_postgres(app, manager, database):
+    from catalog.application.hooks import import_hook
+    from catalog.domain.hooks import HookKind
+    from catalog.persistence.hooks import PostgresHookHistory
+    with manager.unit_of_work() as uow:
+        history = PostgresHookHistory(uow.connection, database[1])
+        import_hook(history, hook_id='hook-1', kind=HookKind.VISUAL_HOOK, artifact_version_ref='av-1', tags=('sports',), description='d', note='n')
+        import_hook(history, hook_id='hook-2', kind=HookKind.AUDIO_HOOK, artifact_version_ref='av-2', tags=(), enabled=False)
+    launched = client(app).get(launch_path(app))
+    session, csrf = cookie_value(launched, 'cp_session'), cookie_value(launched, 'csrf_token')
+    base = {'Cookie': f'cp_session={session}; csrf_token={csrf}', 'X-CSRF-Token': csrf, 'Origin': BASE}
+    c = client(app)
+    items = c.get('/v1/hooks', headers=base).json()['items']
+    assert [i['hook_id'] for i in items] == ['hook-1', 'hook-2']
+    assert set(items[0]) == {'hook_id', 'kind', 'tags', 'description', 'enabled', 'notes', 'revision', 'updated_at'}
+    assert items[0]['tags'] == ['sports'] and items[0]['notes'] == 'n' and items[1]['tags'] == [] and items[1]['enabled'] is False
+    assert [i['hook_id'] for i in c.get('/v1/hooks?kind=audio_hook', headers=base).json()['items']] == ['hook-2']
+    assert [i['hook_id'] for i in c.get('/v1/hooks?enabled=true', headers=base).json()['items']] == ['hook-1']
+    assert c.get('/v1/hooks?enabled=maybe', headers=base).status_code == 422
+    path = '/v1/hooks/hook-1'
+    assert c.get(path, headers=base).json() == items[0]
+    assert c.get('/v1/hooks/missing', headers=base).status_code == 404
+    def patch(body, key, rev, target=path):
+        return c.patch(target, json=body, headers={**base, 'Idempotency-Key': key, 'If-Match': str(rev)})
+    done = patch({'tags': ['sports', 'goal'], 'notes': 'x'}, 'k-1', 1)
+    assert done.status_code == 200 and done.json()['revision'] == 2 and done.json()['tags'] == ['sports', 'goal'] and done.json()['notes'] == 'x'
+    replay = patch({'tags': ['sports', 'goal'], 'notes': 'x'}, 'k-1', 1)
+    assert replay.status_code == 409 and replay.json()['code'] == 'REVISION_CONFLICT'
+    assert patch({'notes': 'y'}, 'k-2', 1).status_code == 409
+    assert patch({'notes': 'x'}, 'k-3', 2).status_code == 422
+    assert patch({'enabled': 'yes'}, 'k-4', 2).status_code == 422
+    assert patch({'notes': 'x'}, 'k-5', 1, '/v1/hooks/does-not-exist').status_code == 404
+    assert c.get(path, headers=base).json()['revision'] == 2
+    with psycopg.connect(database[0]) as check:
+        assert check.execute('SELECT count(*) FROM controlplane.cp_hook_revisions WHERE hook_id = %s', ('hook-1',)).fetchone()[0] == 2
 
 
 def test_launch_rejects_foreign_host_without_consuming(app):

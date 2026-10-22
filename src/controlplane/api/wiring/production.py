@@ -2,12 +2,13 @@
 
 Ghép create_app (/v1/) với UI tĩnh trên cổng loopback TLS, đổi capability một lần thành phiên
 và chạy worker Temporal. Mô-đun này không nạp mô-đun test-driver nên mọi đường /test-driver/ trả 404.
-Gắn service nguồn của A vào module_services['sources']; hooks và media chưa gắn nên vẫn trả 503.
+Gắn service nguồn của A vào module_services['sources'] và service hook của C vào module_services['hooks']; media chưa gắn (catalog chưa có metadata media) nên vẫn trả 503.
 """
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta, timezone
 from pathlib import Path
@@ -21,6 +22,9 @@ from starlette.staticfiles import StaticFiles
 from temporalio.worker import Worker
 import uvicorn
 
+from catalog.application.hooks import update_hook_metadata
+from catalog.domain.hooks import HookHead, HookRevision
+from catalog.persistence.hooks import PostgresHookHistory
 from controlplane.api.main import create_app
 from controlplane.api.routes.modules.metadata_update import RevisionConflictError as MetadataRevisionConflictError
 from controlplane.api.wiring.collection import build_collection_services, system_dns_resolver
@@ -135,6 +139,57 @@ def _source_matches(source: Source, filters: Mapping[str, str]) -> bool:
     return 'topic' not in filters or filters['topic'] in source.topics
 
 
+HOOK_FIELDS = frozenset({'tags', 'description', 'enabled', 'notes'})
+
+
+def _hook_row(head: HookHead) -> dict[str, Any]:
+    hook = head.revision
+    return {
+        'hook_id': hook.hook_id,
+        'kind': hook.kind.value,
+        'tags': list(hook.tags),
+        'description': hook.description,
+        'enabled': hook.enabled,
+        'notes': hook.note,
+        'revision': hook.revision,
+        'updated_at': head.updated_at,
+    }
+
+
+def _hook_matches(head: HookHead, filters: Mapping[str, str]) -> bool:
+    hook = head.revision
+    if 'kind' in filters and hook.kind.value != filters['kind']:
+        return False
+    if 'tag' in filters and filters['tag'] not in hook.tags:
+        return False
+    return 'enabled' not in filters or hook.enabled == (filters['enabled'] == 'true')
+
+
+def _hook_update_fields(changes: Mapping[str, Any]) -> dict[str, Any]:
+    unknown = set(changes) - HOOK_FIELDS
+    if unknown:
+        raise ValueError('not an updatable field: ' + ', '.join(sorted(unknown)))
+    fields: dict[str, Any] = {}
+    for name, value in changes.items():
+        if name == 'tags':
+            if not isinstance(value, list) or not all(isinstance(tag, str) for tag in value):
+                raise ValueError('tags must be a list of strings')
+            fields['tags'] = tuple(value)
+        elif name == 'enabled':
+            if not isinstance(value, bool):
+                raise ValueError('enabled must be a bool')
+            fields['enabled'] = value
+        elif not isinstance(value, str):
+            raise ValueError(name + ' must be a string')
+        else:
+            fields['note' if name == 'notes' else name] = value
+    return fields
+
+
+def _hook_unchanged(hook: HookRevision, fields: Mapping[str, Any]) -> bool:
+    return all(getattr(hook, name) == value for name, value in fields.items())
+
+
 class SourceModuleService:
     """Service nguồn của A cho route /v1/sources (H-08, H-09): đọc listing và ghi metadata qua lệnh UpdateSourceMetadata."""
 
@@ -204,6 +259,63 @@ def compose_sources_module(services: Mapping[str, Any], config: Any) -> SourceMo
         resolver=system_dns_resolver,
         recovery_epoch=SOURCES_RECOVERY_EPOCH,
     )
+
+
+class HookModuleService:
+    """Service hook của C cho route /v1/hooks (H-08, H-09): đọc listing và ghi metadata qua update_hook_metadata (UpdateHookMetadata).
+
+    history_scope(workspace_id) trả context manager cho một đối tượng lịch sử hook (head, list_heads, latest, append); mỗi lời gọi mở scope mới, không dùng chung giữa các luồng. Hook không có tên riêng nên sort name nghĩa là sắp theo hook_id. C không có kho idempotency nên Idempotency-Key không được lưu; gửi lại cùng If-Match sau khi đã thành công nhận 409 REVISION_CONFLICT và không tạo revision thứ hai.
+    """
+
+    def __init__(self, *, history_scope: Callable[[str], Any]) -> None:
+        self._history_scope = history_scope
+
+    def fetch_page(self, request: Request, workspace_id: str, query: ListQuery) -> Page:
+        filters = dict(query.filters)
+        if filters.get('enabled', 'true') not in ('true', 'false'):
+            raise ValueError('enabled filter must be true or false')
+        with self._history_scope(workspace_id) as history:
+            heads = history.list_heads()
+        rows = [_hook_row(head) for head in heads if _hook_matches(head, filters)]
+        sort_field = 'updated_at' if query.sort_key == 'updated_at' else 'hook_id'
+        descending = query.direction == 'desc'
+        rows.sort(key=lambda r: (r[sort_field], r['hook_id']), reverse=descending)
+        if query.cursor is not None:
+            after = (query.cursor[0], query.cursor[1])
+            rows = [r for r in rows if ((r[sort_field], r['hook_id']) < after if descending
+                                        else (r[sort_field], r['hook_id']) > after)]
+        return build_page(rows[:query.limit + 1], query=query, sort_field=sort_field, id_field='hook_id')
+
+    def fetch_one(self, request: Request, workspace_id: str, item_id: str) -> dict[str, Any] | None:
+        with self._history_scope(workspace_id) as history:
+            try:
+                head = history.head(item_id)
+            except KeyError:
+                return None
+        return _hook_row(head)
+
+    def apply_update(self, *, request: Request, item_id: str, expected_revision: int,
+                     changes: dict[str, Any], idempotency_key: str | None = None) -> dict[str, Any]:
+        fields = _hook_update_fields(changes)
+        workspace_id = request.state.identity['workspace_id']
+        with self._history_scope(workspace_id) as history:
+            current = history.latest(item_id)
+            if expected_revision == current.revision and _hook_unchanged(current, fields):
+                raise ValueError('update does not change any value')
+            update_hook_metadata(history, item_id, expected_revision, **fields)
+            head = history.head(item_id)
+        return _hook_row(head)
+
+
+def compose_hooks_module(manager: Any) -> HookModuleService:
+    """Dựng scope production: mỗi lời gọi mở một unit of work, commit khi thoát thành công và rollback khi có lỗi theo TransactionManager."""
+
+    @contextmanager
+    def history_scope(workspace_id: str) -> Iterator[PostgresHookHistory]:
+        with manager.unit_of_work() as uow:
+            yield PostgresHookHistory(uow.connection, workspace_id)
+
+    return HookModuleService(history_scope=history_scope)
 
 
 def _problem(status: int, code: str) -> JSONResponse:
@@ -279,6 +391,7 @@ def build_production_app(*, manager: Any, config: WiringConfig, port: int,
     registry = BootstrapCapabilityRegistry()
     api_app = create_app(manager=manager, allowed_origins=origins, bootstrap_registry=registry)
     api_app.state.module_services['sources'] = compose_sources_module(services, config)
+    api_app.state.module_services['hooks'] = compose_hooks_module(manager)
     api_app.state.production_services = services
     web_app = _build_web_app(manager=manager, api_app=api_app, registry=registry, port=port,
                              dist_dir=dist_dir or DEFAULT_DIST_DIR)
@@ -344,10 +457,12 @@ class TemporalWorkerGroup:
 
 __all__ = [
     'DEFAULT_PROFILE_PATH',
+    'HookModuleService',
     'ProductionApp',
     'SourceModuleService',
     'TemporalWorkerGroup',
     'build_production_app',
+    'compose_hooks_module',
     'compose_sources_module',
     'load_wiring_config',
     'loopback_config',
