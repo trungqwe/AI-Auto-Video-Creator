@@ -2,13 +2,14 @@
 
 Ghép create_app (/v1/) với UI tĩnh trên cổng loopback TLS, đổi capability một lần thành phiên
 và chạy worker Temporal. Mô-đun này không nạp mô-đun test-driver nên mọi đường /test-driver/ trả 404.
+Gắn service nguồn của A vào module_services['sources']; hooks và media chưa gắn nên vẫn trả 503.
 """
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import timedelta, timezone
 from pathlib import Path
 import secrets
 from types import MappingProxyType
@@ -21,7 +22,8 @@ from temporalio.worker import Worker
 import uvicorn
 
 from controlplane.api.main import create_app
-from controlplane.api.wiring.collection import build_collection_services
+from controlplane.api.routes.modules.metadata_update import RevisionConflictError as MetadataRevisionConflictError
+from controlplane.api.wiring.collection import build_collection_services, system_dns_resolver
 from controlplane.api.wiring.config_security import build_config_security_services
 from controlplane.api.wiring.creative import build_creative_services
 from controlplane.api.wiring.production_profile import (
@@ -34,8 +36,12 @@ from controlplane.api.wiring.production_profile import (
 from controlplane.api.wiring.render import build_render_services
 from controlplane.api.wiring.storage import build_storage_services
 from controlplane.api.wiring.voice import build_voice_services
+from controlplane.application.projections.list_query import ListQuery, Page, build_page
 from controlplane.application.session_security import BootstrapCapabilityRegistry
 from controlplane.domain.orchestration.workflow_catalog import TaskQueue
+from controlplane.domain.statemachine import ForbiddenTransitionError
+from source_ingestion.application.source_commands import IdempotencyConflictError, SourceCommandHandler, SourceNotFoundError
+from source_ingestion.domain.source import Source, SourcePolicy, SourceStatus
 
 LOOPBACK_HOST = '127.0.0.1'
 LAUNCH_PATH = '/launch'
@@ -83,6 +89,121 @@ def _build_services(manager: Any, config: WiringConfig) -> Mapping[str, Any]:
         'storage': build_storage_services(manager, config),
         'voice': build_voice_services(manager, config),
     })
+
+
+SOURCES_RECOVERY_EPOCH = 'control-api-1'
+IDEMPOTENCY_REUSED = 'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD'
+SOURCE_FIELD_MAP = {'tier': 'tier', 'topic_tags': 'topics', 'notes': 'notes', 'enabled': 'collection_enabled'}
+
+
+def _utc_text(moment: Any) -> str:
+    return moment.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+
+
+def _source_row(source: Source) -> dict[str, Any]:
+    return {
+        'source_id': source.source_id,
+        'name': source.name,
+        'tier': source.tier,
+        'topic_tags': sorted(source.topics),
+        'notes': source.notes,
+        'enabled': source.status is SourceStatus.ACTIVE,
+        'status': source.status.value,
+        'revision': source.revision,
+        'updated_at': _utc_text(source.updated_at),
+    }
+
+
+def _source_policy(config: Any) -> SourcePolicy:
+    profile, _ = config.production_parts()
+    return SourcePolicy(
+        policy_revision='profile-' + str(profile.revision),
+        source_kinds=frozenset(profile.collection.source_kinds),
+        tiers=frozenset(profile.parameters['collection.tiers']),
+        admin_metadata_keys=frozenset(),
+    )
+
+
+def _source_matches(source: Source, filters: Mapping[str, str]) -> bool:
+    wanted = filters.get('status')
+    if source.status is SourceStatus.REMOVED_TOMBSTONE and wanted != SourceStatus.REMOVED_TOMBSTONE.value:
+        return False
+    if wanted is not None and source.status.value != wanted:
+        return False
+    if 'tier' in filters and source.tier != filters['tier']:
+        return False
+    return 'topic' not in filters or filters['topic'] in source.topics
+
+
+class SourceModuleService:
+    """Service nguồn của A cho route /v1/sources (H-08, H-09): đọc listing và ghi metadata qua lệnh UpdateSourceMetadata."""
+
+    def __init__(self, *, uow_factory: Callable[[], Any], policy_provider: Callable[[str], SourcePolicy],
+                 resolver: Callable[[str], Any], recovery_epoch: str) -> None:
+        self._uow_factory = uow_factory
+        self._policy_provider = policy_provider
+        self._resolver = resolver
+        self._recovery_epoch = recovery_epoch
+
+    def fetch_page(self, request: Request, workspace_id: str, query: ListQuery) -> Page:
+        filters = dict(query.filters)
+        with self._uow_factory() as uow:
+            sources = uow.sources.list_sources(workspace_id)
+        visible = [s for s in sources if s.workspace_id == workspace_id and _source_matches(s, filters)]
+        rows = [_source_row(s) for s in visible]
+        descending = query.direction == 'desc'
+        rows.sort(key=lambda r: (r[query.sort_key], r['source_id']), reverse=descending)
+        if query.cursor is not None:
+            after = (query.cursor[0], query.cursor[1])
+            rows = [r for r in rows if ((r[query.sort_key], r['source_id']) < after if descending
+                                        else (r[query.sort_key], r['source_id']) > after)]
+        return build_page(rows[:query.limit + 1], query=query, sort_field=query.sort_key, id_field='source_id')
+
+    def fetch_one(self, request: Request, workspace_id: str, item_id: str) -> dict[str, Any] | None:
+        with self._uow_factory() as uow:
+            source = uow.sources.get(workspace_id, item_id)
+        if source is None or source.workspace_id != workspace_id or source.status is SourceStatus.REMOVED_TOMBSTONE:
+            return None
+        return _source_row(source)
+
+    def apply_update(self, *, request: Request, item_id: str, expected_revision: int,
+                     changes: dict[str, Any], idempotency_key: str | None = None) -> dict[str, Any]:
+        identity = request.state.identity
+        workspace_id = identity['workspace_id']
+        fields: dict[str, Any] = {}
+        for name, value in changes.items():
+            if name not in SOURCE_FIELD_MAP or value is None:
+                raise ValueError(name + ' is not an updatable value')
+            fields[SOURCE_FIELD_MAP[name]] = value
+        if 'topics' in fields and not isinstance(fields['topics'], list):
+            raise ValueError('topic_tags must be a list')
+        handler = SourceCommandHandler(uow=self._uow_factory(), policy_provider=self._policy_provider,
+                                       resolver=self._resolver, recovery_epoch=self._recovery_epoch)
+        try:
+            handler.update_source_metadata(
+                workspace_id=workspace_id, idempotency_key=idempotency_key, actor=identity['actor_id'],
+                correlation_id=request.state.correlation_id, source_id=item_id,
+                expected_revision=expected_revision, **fields)
+        except IdempotencyConflictError:
+            raise ValueError(IDEMPOTENCY_REUSED) from None
+        except ForbiddenTransitionError:
+            raise MetadataRevisionConflictError() from None
+        with self._uow_factory() as uow:
+            source = uow.sources.get(workspace_id, item_id)
+        if source is None:
+            raise SourceNotFoundError(item_id)
+        return _source_row(source)
+
+
+def compose_sources_module(services: Mapping[str, Any], config: Any) -> SourceModuleService:
+    """Ghép service nguồn từ uow_factory của collection và chính sách hồ sơ; không đọc môi trường tiến trình."""
+    policy = _source_policy(config)
+    return SourceModuleService(
+        uow_factory=services['collection'].uow_factory,
+        policy_provider=lambda workspace_id: policy,
+        resolver=system_dns_resolver,
+        recovery_epoch=SOURCES_RECOVERY_EPOCH,
+    )
 
 
 def _problem(status: int, code: str) -> JSONResponse:
@@ -157,6 +278,7 @@ def build_production_app(*, manager: Any, config: WiringConfig, port: int,
     services = _build_services(manager, config)
     registry = BootstrapCapabilityRegistry()
     api_app = create_app(manager=manager, allowed_origins=origins, bootstrap_registry=registry)
+    api_app.state.module_services['sources'] = compose_sources_module(services, config)
     api_app.state.production_services = services
     web_app = _build_web_app(manager=manager, api_app=api_app, registry=registry, port=port,
                              dist_dir=dist_dir or DEFAULT_DIST_DIR)
@@ -223,8 +345,10 @@ class TemporalWorkerGroup:
 __all__ = [
     'DEFAULT_PROFILE_PATH',
     'ProductionApp',
+    'SourceModuleService',
     'TemporalWorkerGroup',
     'build_production_app',
+    'compose_sources_module',
     'load_wiring_config',
     'loopback_config',
     'production_origins',
