@@ -26,6 +26,11 @@ ADAPTER_IMPORT_EXEMPTIONS = {
     'src/voice/adapters/real_ffmpeg_media_tool.py': frozenset({'subprocess'}),
 }
 
+# Miễn trừ theo thư mục theo kế hoạch PERSIST đã duyệt: docs/implementation/persist/plan.md dòng 15 và 40-41.
+# Chỉ tệp dưới src/voice/persistence/ được import hai tiền tố này (adapter PostgreSQL, TransactionManager, outbox controlplane);
+# mọi tiền tố cấm khác vẫn áp cho các tệp đó, và tệp ngoài persistence không đổi.
+PERSISTENCE_IMPORT_PREFIXES = ('psycopg', 'controlplane.infrastructure.db')
+
 
 def _is_forbidden(name: str) -> bool:
     return any(name == prefix or name.startswith(prefix + '.') for prefix in FORBIDDEN_IMPORT_PREFIXES)
@@ -48,12 +53,18 @@ def find_forbidden_imports(source: str, filename: str = '<string>') -> list[str]
     return sorted({name for name in names if _is_forbidden(name)})
 
 
+def _is_persistence_import(name: str) -> bool:
+    return any(name == prefix or name.startswith(prefix + '.') for prefix in PERSISTENCE_IMPORT_PREFIXES)
+
+
 def find_unexempted_imports(source: str, rel_path: str, filename: str = '<string>') -> list[str]:
     allowed = ADAPTER_IMPORT_EXEMPTIONS.get(rel_path, frozenset())
+    in_persistence = rel_path.startswith('src/voice/persistence/')
     return [
         name
         for name in find_forbidden_imports(source, filename)
         if not any(name == prefix or name.startswith(prefix + '.') for prefix in allowed)
+        and not (in_persistence and _is_persistence_import(name))
     ]
 
 
@@ -165,6 +176,55 @@ class AdapterExemptionTests(unittest.TestCase):
             with self.subTest(rel=rel):
                 self.assertEqual(find_unexempted_imports('import subprocess', rel), ['subprocess'])
                 self.assertIn('subprocess', find_unexempted_imports('from subprocess import run', rel))
+
+
+class PersistenceImportTests(unittest.TestCase):
+    PERSISTENCE = 'src/voice/persistence/store.py'
+
+    def test_persistence_constant_is_exact(self) -> None:
+        self.assertEqual(PERSISTENCE_IMPORT_PREFIXES, ('psycopg', 'controlplane.infrastructure.db'))
+
+    def test_persistence_may_import_psycopg_and_controlplane_db(self) -> None:
+        for source in (
+            'import psycopg',
+            'import psycopg.errors',
+            'import psycopg.types.json',
+            'from psycopg.types.json import Json',
+            'import controlplane.infrastructure.db.outbox.postgres',
+            'from controlplane.infrastructure.db.outbox.postgres import PostgresOutboxRepository',
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(find_unexempted_imports(source, self.PERSISTENCE), [])
+
+    def test_persistence_still_rejects_other_forbidden_prefixes(self) -> None:
+        for source, expected in (
+            ('import subprocess', 'subprocess'),
+            ('import socket', 'socket'),
+            ('import controlplane.api.routes', 'controlplane.api.routes'),
+            ('import controlplane.infrastructure.storage', 'controlplane.infrastructure.storage'),
+            ('import controlplane.infrastructure.dbx', 'controlplane.infrastructure.dbx'),
+            ('import temporalio', 'temporalio'),
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(find_unexempted_imports(source, self.PERSISTENCE), [expected])
+        self.assertEqual(find_unexempted_imports('import psycopg\nimport subprocess', self.PERSISTENCE), ['subprocess'])
+
+    def test_files_outside_persistence_still_reject_psycopg_and_controlplane_db(self) -> None:
+        for rel in (
+            'src/voice/adapters/store.py',
+            'src/voice/domain/store.py',
+            'src/voice/application/store.py',
+            'src/voice/domain/persistence/store.py',
+            'src/voice/persistence_extra/store.py',
+            'src/voice/persistence.py',
+        ):
+            for source, expected in (
+                ('import psycopg', 'psycopg'),
+                ('import psycopg.errors', 'psycopg.errors'),
+                ('import controlplane.infrastructure.db.outbox.postgres', 'controlplane.infrastructure.db.outbox.postgres'),
+            ):
+                with self.subTest(rel=rel, source=source):
+                    self.assertEqual(find_unexempted_imports(source, rel), [expected])
 
 
 class PackageLayoutTests(unittest.TestCase):

@@ -29,9 +29,18 @@ ADAPTER_EXEMPTIONS = {
     'adapters/real_ffprobe_probe.py': frozenset({'import:subprocess'}),
 }
 
+# Miễn trừ theo thư mục theo kế hoạch PERSIST đã duyệt: docs/implementation/persist/plan.md dòng 15 và 40-41.
+# Chỉ tệp dưới persistence/ (tính từ src/render) được import hai tiền tố này (adapter PostgreSQL, TransactionManager, outbox controlplane);
+# mọi tiền tố cấm khác, mục 'call:' và 'def:' vẫn bị báo cho các tệp đó, và tệp ngoài persistence không đổi.
+PERSISTENCE_IMPORT_PREFIXES = ('psycopg', 'controlplane.infrastructure.db')
+
 
 def _is_forbidden(name: str) -> bool:
     return any(name == prefix or name.startswith(prefix + '.') for prefix in FORBIDDEN_IMPORT_PREFIXES)
+
+
+def _is_persistence_import(name: str) -> bool:
+    return any(name == prefix or name.startswith(prefix + '.') for prefix in PERSISTENCE_IMPORT_PREFIXES)
 
 
 def find_forbidden_imports(source: str, filename: str = '<string>') -> list[str]:
@@ -88,7 +97,12 @@ def scan_package(
     for path in package_py_files(base):
         source = path.read_text(encoding='utf-8')
         rel = path.relative_to(base).as_posix()
-        found = [f'import:{name}' for name in find_forbidden_imports(source, str(path))]
+        in_persistence = rel.startswith('persistence/')
+        found = [
+            f'import:{name}'
+            for name in find_forbidden_imports(source, str(path))
+            if not (in_persistence and _is_persistence_import(name))
+        ]
         found += [f'call:{name}' for name in find_forbidden_calls(source, str(path))]
         found += [f'def:{name}' for name in find_forbidden_functions(source, str(path))]
         allowed = exemptions.get(rel, frozenset())
@@ -292,6 +306,64 @@ class AdapterExemptionTests(unittest.TestCase):
                 ('import subprocess\n', 'import:subprocess'),
                 ('import os\n', 'import:os'),
                 ('p.unlink()\n', 'call:unlink'),
+            ):
+                with self.subTest(rel=rel, source=source):
+                    self.assertEqual(self._scan({rel: source}), {rel: [expected]})
+
+
+class PersistenceImportTests(unittest.TestCase):
+    def _scan(self, files: dict[str, str]) -> dict[str, list[str]]:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = pathlib.Path(tmp)
+            for rel, text in files.items():
+                target = base / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(text, encoding='utf-8')
+            return scan_package(base)
+
+    def test_persistence_constant_is_exact(self) -> None:
+        self.assertEqual(PERSISTENCE_IMPORT_PREFIXES, ('psycopg', 'controlplane.infrastructure.db'))
+
+    def test_persistence_may_import_psycopg_and_controlplane_db(self) -> None:
+        source = (
+            'import psycopg\n'
+            'import psycopg.errors\n'
+            'import psycopg.types.json\n'
+            'from psycopg.types.json import Json\n'
+            'import controlplane.infrastructure.db.outbox.postgres\n'
+            'from controlplane.infrastructure.db.outbox.postgres import PostgresOutboxRepository\n'
+        )
+        self.assertEqual(self._scan({'persistence/repository.py': source, 'persistence/deep/tables.py': source}), {})
+
+    def test_persistence_still_rejects_other_forbidden_items(self) -> None:
+        for source, expected in (
+            ('import subprocess\n', 'import:subprocess'),
+            ('import os\n', 'import:os'),
+            ('import controlplane.api.routes\n', 'import:controlplane.api.routes'),
+            ('import controlplane.infrastructure.storage\n', 'import:controlplane.infrastructure.storage'),
+            ('import controlplane.infrastructure.dbx\n', 'import:controlplane.infrastructure.dbx'),
+            ('p.unlink()\n', 'call:unlink'),
+            ('def cleanup_x(p):\n    pass\n', 'def:cleanup_x'),
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(
+                    self._scan({'persistence/x.py': 'import psycopg.errors\n' + source}),
+                    {'persistence/x.py': [expected]},
+                )
+
+    def test_files_outside_persistence_still_reject_psycopg_and_controlplane_db(self) -> None:
+        for rel in (
+            'adapters/x.py',
+            'domain/x.py',
+            'application/x.py',
+            'domain/persistence/x.py',
+            'persistence_extra/x.py',
+            'persistence.py',
+        ):
+            for source, expected in (
+                ('import psycopg\n', 'import:psycopg'),
+                ('import psycopg.errors\n', 'import:psycopg.errors'),
+                ('import controlplane.infrastructure.db.outbox.postgres\n', 'import:controlplane.infrastructure.db.outbox.postgres'),
             ):
                 with self.subTest(rel=rel, source=source):
                     self.assertEqual(self._scan({rel: source}), {rel: [expected]})
