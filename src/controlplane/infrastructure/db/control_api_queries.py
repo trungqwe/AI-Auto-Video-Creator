@@ -4,12 +4,47 @@ from __future__ import annotations
 
 from typing import Any
 
+from controlplane.application.control_api.errors import CapabilityUnavailableError
 from controlplane.application.projections.list_query import ListQuery, Page, build_page
 from controlplane.application.projections.operation_view_mapper import map_operation_view
 from controlplane.domain.statemachine import OperationState
-from controlplane.infrastructure.db.projections.list_queries import BATCHES_SPEC, JOBS_SPEC, fetch_page
+from controlplane.infrastructure.db.projections.list_queries import (
+    BATCHES_SPEC,
+    JOBS_SPEC,
+    ListSpec,
+    fetch_page,
+)
 
 _LIST_DIRECTIONS = {"asc": ("ASC", ">"), "desc": ("DESC", "<")}
+
+# started_at is nullable, so the keyset sorts on created_at (NOT NULL); stage_name is exposed as the UI column 'stage'.
+STAGE_RUNS_SPEC = ListSpec(
+    table="controlplane.cp_stage_runs",
+    id_column="stage_run_id",
+    sort_columns=("created_at",),
+    filter_columns=("job_id", "status"),
+    select_columns=(
+        "stage_run_id",
+        "job_id",
+        "stage_name",
+        "status",
+        "started_at",
+        "finished_at",
+        "created_at",
+    ),
+)
+LIST_SPECS: dict[str, ListSpec] = {"stage_runs": STAGE_RUNS_SPEC}
+_FIELD_RENAMES = {"stage_name": "stage"}
+BLOCKED_LIST_RESOURCES: dict[str, tuple[str | None, tuple[str, ...]]] = {
+    "sources": ("controlplane.cp_sources", ("tier", "topic_tags", "notes", "enabled")),
+    "articles": ("controlplane.cp_articles", ("source_id", "title", "published_at", "fetch_evidence_ref")),
+    "events": ("controlplane.cp_events", ("title", "status", "source_id", "fetch_evidence_ref")),
+    "media": ("controlplane.cp_media_assets", ("kind", "tags", "notes")),
+    "hooks": ("controlplane.cp_hooks", ("tags", "description", "notes")),
+    "sessions": ("controlplane.cp_app_sessions", ("job_id",)),
+    "logs": (None, ("log_id", "severity", "message")),
+    "capabilities": (None, ()),
+}
 
 
 def _list_direction(query: ListQuery, *, sort_key: str) -> tuple[str, str]:
@@ -178,3 +213,32 @@ class PostgresControlQueries:
             for row in rows
         ]
         return build_page(items, query=query, sort_field="created_at", id_field="config_revision_id")
+
+    def stage_runs(self, *, workspace_id: str, query: ListQuery) -> Page:
+        page = fetch_page(self._connection, STAGE_RUNS_SPEC, query, workspace_id=workspace_id)
+        items = tuple({_FIELD_RENAMES.get(key, key): value for key, value in item.items()} for item in page.items)
+        return Page(items=items, next_cursor=page.next_cursor)
+
+    def sources(self, *, workspace_id: str, query: ListQuery) -> Page:
+        raise CapabilityUnavailableError("sources")
+
+    def articles(self, *, workspace_id: str, query: ListQuery) -> Page:
+        raise CapabilityUnavailableError("articles")
+
+    def events(self, *, workspace_id: str, query: ListQuery) -> Page:
+        raise CapabilityUnavailableError("events")
+
+    def media(self, *, workspace_id: str, query: ListQuery) -> Page:
+        raise CapabilityUnavailableError("media")
+
+    def hooks(self, *, workspace_id: str, query: ListQuery) -> Page:
+        raise CapabilityUnavailableError("hooks")
+
+    def sessions(self, *, workspace_id: str, query: ListQuery) -> Page:
+        raise CapabilityUnavailableError("sessions")
+
+    def logs(self, *, workspace_id: str, query: ListQuery) -> Page:
+        raise CapabilityUnavailableError("logs")
+
+    def capabilities(self, *, workspace_id: str, query: ListQuery) -> Page:
+        raise CapabilityUnavailableError("capabilities")

@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import urlsplit
 import uuid
 
-from controlplane.api.routes.control import router as control_router
+from controlplane.api.routes.control import build_query_listing_routers, router as control_router
 from controlplane.api.routes.modules.metadata_update import build_metadata_router
 from controlplane.api.routes.modules.read_only_listing import build_listing_router
 from controlplane.api.routes.session import router as session_router
@@ -117,6 +117,8 @@ def _mount_module_routers(app: FastAPI) -> None:
                 apply_update=_update_callback(resource.name),
             )
         )
+    for query_router in build_query_listing_routers():
+        app.include_router(query_router)
 
 def create_app(*, manager: object | None = None,
                allowed_origins: set[str] | None = None,
