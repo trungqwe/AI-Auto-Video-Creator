@@ -3,7 +3,9 @@ import dataclasses
 import inspect
 import json
 import pathlib
+import re
 import unittest
+from datetime import datetime, timedelta, timezone
 
 import catalog.application.hooks as hooks_app
 import catalog.domain.hooks as hooks_domain
@@ -38,6 +40,18 @@ def import_sample(
         enabled=True,
         technical_metadata=(('duration_ms', '3000'),),
     )
+
+
+class FakeClock:
+    """Clock that advances one second per call, starting 2026-10-22T01:00:00.123456Z."""
+
+    def __init__(self) -> None:
+        self._moment = datetime(2026, 10, 22, 1, 0, 0, 123456, tzinfo=timezone.utc)
+
+    def __call__(self) -> datetime:
+        moment = self._moment
+        self._moment += timedelta(seconds=1)
+        return moment
 
 
 class HookKindTests(unittest.TestCase):
@@ -233,3 +247,78 @@ class RevisionErrorReuseTests(unittest.TestCase):
                     if cls.__module__ == module.__name__ and issubclass(cls, BaseException)
                 ]
                 self.assertEqual(defined, [])
+
+
+class HookHeadListingTests(unittest.TestCase):
+    def test_list_heads_is_empty_without_hooks(self) -> None:
+        self.assertEqual(HookHistory().list_heads(), [])
+
+    def test_head_of_unknown_hook_raises_key_error(self) -> None:
+        history = HookHistory()
+        with self.assertRaises(KeyError):
+            history.head('missing')
+        import_sample(history, 'hook-1')
+        with self.assertRaises(KeyError):
+            history.head('missing')
+
+    def test_list_heads_returns_latest_revision_per_hook_sorted_by_hook_id(self) -> None:
+        history = HookHistory(clock=FakeClock())
+        visual = import_sample(history, 'hook-visual-1', HookKind.VISUAL_HOOK)
+        audio = import_sample(history, 'hook-audio-1', HookKind.AUDIO_HOOK)
+        visual2 = update_hook_metadata(history, 'hook-visual-1', 1, enabled=False)
+        heads = history.list_heads()
+        self.assertEqual([h.revision.hook_id for h in heads], ['hook-audio-1', 'hook-visual-1'])
+        self.assertIs(heads[0].revision, audio)
+        self.assertIs(heads[1].revision, visual2)
+        self.assertIsNot(heads[1].revision, visual)
+        self.assertEqual([h.updated_at for h in heads], ['2026-10-22T01:00:01.123456Z', '2026-10-22T01:00:02.123456Z'])
+        for head in heads:
+            self.assertIsInstance(head, hooks_domain.HookHead)
+            self.assertEqual(history.head(head.revision.hook_id), head)
+        self.assertEqual(history.list_heads(), heads)
+
+    def test_failed_append_keeps_updated_at(self) -> None:
+        history = HookHistory(clock=FakeClock())
+        import_sample(history)
+        with self.assertRaises(RevisionConflictError):
+            import_sample(history)
+        self.assertEqual(history.head('hook-visual-1').updated_at, '2026-10-22T01:00:00.123456Z')
+
+    def test_clock_with_offset_is_converted_to_utc(self) -> None:
+        clock = lambda: datetime(2026, 10, 22, 8, 30, 15, 250000, tzinfo=timezone(timedelta(hours=7)))
+        history = HookHistory(clock=clock)
+        import_sample(history)
+        self.assertEqual(history.head('hook-visual-1').updated_at, '2026-10-22T01:30:15.250000Z')
+
+    def test_naive_clock_is_rejected_and_nothing_is_stored(self) -> None:
+        clock = lambda: datetime(2026, 10, 22, 1, 0, 0)
+        history = HookHistory(clock=clock)
+        with self.assertRaises(ValueError):
+            import_sample(history)
+        self.assertEqual(history.list_heads(), [])
+        with self.assertRaises(KeyError):
+            history.latest('hook-visual-1')
+
+    def test_default_history_without_arguments_still_works(self) -> None:
+        history = HookHistory()
+        import_sample(history)
+        update_hook_metadata(history, 'hook-visual-1', 1, note='n')
+        head = history.head('hook-visual-1')
+        assert re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z', head.updated_at)
+        assert head.revision.revision == 2
+
+    def test_hook_head_validates_and_is_frozen(self) -> None:
+        rev = import_sample(HookHistory())
+        valid = hooks_domain.HookHead(revision=rev, updated_at='2026-10-22T01:00:00.000000Z')
+        self.assertIs(valid.revision, rev)
+        self.assertEqual(valid.updated_at, '2026-10-22T01:00:00.000000Z')
+        with self.assertRaises(ValueError):
+            hooks_domain.HookHead(revision='x', updated_at='2026-10-22T01:00:00.000000Z')
+        with self.assertRaises(ValueError):
+            hooks_domain.HookHead(revision=rev, updated_at='')
+        with self.assertRaises(ValueError):
+            hooks_domain.HookHead(revision=rev, updated_at=5)
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            setattr(valid, 'updated_at', '2026-10-22T02:00:00.000000Z')
+        self.assertEqual([f.name for f in dataclasses.fields(hooks_domain.HookHead)], ['revision', 'updated_at'])
+        self.assertEqual({f.name for f in dataclasses.fields(HookRevision)}, EXPECTED_FIELDS)

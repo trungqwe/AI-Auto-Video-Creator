@@ -4,7 +4,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from catalog.domain.hooks import HookKind, HookRevision
+from catalog.domain.hooks import HookHead, HookKind, HookRevision, format_hook_timestamp
 from catalog.domain.identity import ProvenanceRelation
 from catalog.persistence._db import build_search_text, fetch_all, fetch_one, run, search_terms, workspace_uuid
 from controlplane.domain.concurrency import RevisionConflictError
@@ -12,6 +12,11 @@ from controlplane.domain.concurrency import RevisionConflictError
 _REVISION = 'SELECT r.hook_id, r.revision, r.artifact_version_ref, r.payload FROM controlplane.cp_hook_revisions r '
 _HEAD = 'SELECT current_revision, kind FROM controlplane.cp_hooks WHERE workspace_id = %s AND hook_id = %s FOR UPDATE'
 _FTS = '''SELECT hook_id FROM controlplane.cp_hooks WHERE workspace_id = %s AND string_to_array(search_text, ' ') @> %s::text[] AND (is_enabled OR NOT %s::boolean) ORDER BY hook_id'''
+_HEAD_ROWS = (
+    'SELECT r.hook_id, r.revision, r.artifact_version_ref, r.payload, h.updated_at FROM controlplane.cp_hooks h '
+    'JOIN controlplane.cp_hook_revisions r ON r.workspace_id = h.workspace_id AND r.hook_id = h.hook_id AND r.revision = h.current_revision '
+    'WHERE h.workspace_id = %s'
+)
 _INSERT_HOOK = (
     'INSERT INTO controlplane.cp_hooks (workspace_id, hook_id, kind, current_revision, is_enabled, search_text) '
     'VALUES (%s, %s, %s, %s, %s, %s)'
@@ -54,6 +59,10 @@ def _hook(row: tuple) -> HookRevision:
     )
 
 
+def _head(row: tuple) -> HookHead:
+    return HookHead(revision=_hook(row[:4]), updated_at=format_hook_timestamp(row[4]))
+
+
 class PostgresHookHistory:
     '''Runs on the connection of the caller; a stored revision is never replaced.'''
 
@@ -76,6 +85,16 @@ class PostgresHookHistory:
         if row is None:
             raise KeyError(hook_id)
         return _hook(row)
+
+    def head(self, hook_id: str) -> HookHead:
+        row = fetch_one(self._connection, _HEAD_ROWS + ' AND h.hook_id = %s', (self._workspace, hook_id))
+        if row is None:
+            raise KeyError(hook_id)
+        return _head(row)
+
+    def list_heads(self) -> list[HookHead]:
+        rows = fetch_all(self._connection, _HEAD_ROWS + ' ORDER BY h.hook_id', (self._workspace,))
+        return [_head(row) for row in rows]
 
     def append(self, revision: HookRevision) -> None:
         head = fetch_one(self._connection, _HEAD, (self._workspace, revision.hook_id))

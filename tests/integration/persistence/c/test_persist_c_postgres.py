@@ -4,6 +4,7 @@ from __future__ import annotations
 import dataclasses
 import inspect
 import os
+import re
 import subprocess
 import uuid
 from pathlib import Path
@@ -263,6 +264,37 @@ def test_hook_revisions_are_immutable_and_searchable(conn, db):
     assert_rejected(conn, 'DELETE FROM controlplane.cp_hook_revisions')
     assert count(conn, 'cp_hook_revisions') == 3
     assert history.latest('hook-1') == disabled
+
+
+def test_hook_heads_list_latest_revision_isolated_by_workspace(conn, db):
+    history = PostgresHookHistory(conn, db[1])
+    assert history.list_heads() == []
+    with pytest.raises(KeyError):
+        history.head('hook-1')
+    first = import_hook(history, hook_id='hook-1', kind=HookKind.VISUAL_HOOK, artifact_version_ref='av-1', tags=('sports',), description='Late winner')
+    audio = import_hook(history, hook_id='hook-2', kind=HookKind.AUDIO_HOOK, artifact_version_ref='av-2', tags=('crowd',))
+    before = history.head('hook-1')
+    assert before.revision == first
+    second = update_hook_metadata(history, 'hook-1', 1, tags=('sports', 'goal'), enabled=False)
+    conn.commit()
+    heads = history.list_heads()
+    assert [head.revision for head in heads] == [second, audio]
+    assert history.head('hook-1') == heads[0]
+    assert history.head('hook-2') == heads[1]
+    assert heads[0].revision != first
+    for head in heads:
+        assert re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z', head.updated_at)
+    assert heads[0].updated_at >= before.updated_at
+    other = PostgresHookHistory(conn, add_workspace(db[0]))
+    assert other.list_heads() == []
+    with pytest.raises(KeyError):
+        other.head('hook-1')
+    foreign = import_hook(other, hook_id='hook-3', kind=HookKind.VISUAL_HOOK, artifact_version_ref='av-3', tags=('other',))
+    conn.commit()
+    assert [head.revision for head in other.list_heads()] == [foreign]
+    assert [head.revision for head in history.list_heads()] == [second, audio]
+    with psycopg.connect(db[0]) as fresh:
+        assert [head.revision for head in PostgresHookHistory(fresh, db[1]).list_heads()] == [second, audio]
 
 
 def make_usage(asset_id='asset-1', role='hero', kind=UsageKind.production, completion_id='completion-1'):
