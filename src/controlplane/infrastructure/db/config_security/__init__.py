@@ -5,8 +5,10 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from controlplane.application.config_security.bundle_resolution import EffectiveConfigRevision
 from controlplane.domain.config_security import ConfigRevision, ConfigRevisionStatus, SecretHandle
 from controlplane.infrastructure.db.outbox.postgres import PostgresOutboxRepository
+from controlplane.infrastructure.db.config_security.stores import PostgresAccountTestReceiptStore, PostgresAuditSink, PostgresCostLedger, PostgresReservationStore
 
 
 _REVISION_COLUMNS = "config_revision_id::text, workspace_id::text, scope_kind, scope_key, config_revision_number, revision, content_hash, payload, status"
@@ -36,6 +38,14 @@ class PostgresConfigSecurityRepository:
     def get_by_id(self, **kwargs: Any) -> ConfigRevision | None:
         return _revision(self._connection.execute(f"SELECT {_REVISION_COLUMNS} FROM controlplane.cp_config_revisions WHERE config_revision_id=%s", (kwargs["config_revision_id"],)).fetchone())
 
+    def list_effective_revisions(self, **kwargs: Any) -> list[EffectiveConfigRevision]:
+        rows = self._connection.execute(f"SELECT {_REVISION_COLUMNS}, effective_at FROM controlplane.cp_config_revisions WHERE workspace_id=%s ORDER BY scope_kind, scope_key, config_revision_number", (kwargs["workspace_id"],)).fetchall()
+        return [EffectiveConfigRevision(_revision(row[:9]), row[9]) for row in rows]
+
+    def secret_handle_versions(self, **kwargs: Any) -> tuple[int, int] | None:
+        row = self._connection.execute("SELECT credential_version, revocation_version FROM controlplane.cp_secret_handles WHERE workspace_id=%s AND secret_handle_id=%s", (kwargs["workspace_id"], kwargs["secret_handle_id"])).fetchone()
+        return None if row is None else (int(row[0]), int(row[1]))
+
     def transition(self, **kwargs: Any) -> ConfigRevision | None:
         return _revision(self._connection.execute(
             "UPDATE controlplane.cp_config_revisions SET status=%s, revision=revision+1, actor_ref=%s, change_reason=%s, updated_at=CURRENT_TIMESTAMP WHERE workspace_id=%s AND config_revision_id=%s AND revision=%s AND status=%s " + f"RETURNING {_REVISION_COLUMNS}",
@@ -44,8 +54,8 @@ class PostgresConfigSecurityRepository:
 
     def register_secret_handle(self, **kwargs: Any) -> SecretHandle:
         row = self._connection.execute(
-            "INSERT INTO controlplane.cp_secret_handles (secret_handle_id, workspace_id, provider_ref, account_ref, alias_ref, redacted_fingerprint_or_version, validation_status, revoked_at, expires_at, audit_ref) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING secret_handle_id::text, workspace_id::text, provider_ref, account_ref, alias_ref, redacted_fingerprint_or_version, validation_status, revoked_at, expires_at, audit_ref",
-            (kwargs["secret_handle_id"], kwargs["workspace_id"], kwargs["provider_ref"], kwargs["account_ref"], kwargs["alias_ref"], kwargs["redacted_fingerprint_or_version"], kwargs["validation_status"], kwargs.get("revoked_at"), kwargs.get("expires_at"), kwargs["audit_ref"]),
+            "INSERT INTO controlplane.cp_secret_handles (secret_handle_id, workspace_id, provider_ref, account_ref, alias_ref, redacted_fingerprint_or_version, validation_status, revoked_at, expires_at, audit_ref, credential_version, revocation_version) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING secret_handle_id::text, workspace_id::text, provider_ref, account_ref, alias_ref, redacted_fingerprint_or_version, validation_status, revoked_at, expires_at, audit_ref",
+            (kwargs["secret_handle_id"], kwargs["workspace_id"], kwargs["provider_ref"], kwargs["account_ref"], kwargs["alias_ref"], kwargs["redacted_fingerprint_or_version"], kwargs["validation_status"], kwargs.get("revoked_at"), kwargs.get("expires_at"), kwargs["audit_ref"], kwargs.get("credential_version", 0), kwargs.get("revocation_version", 0)),
         ).fetchone()
         if row is None: raise RuntimeError("secret handle insert returned no row")
         return SecretHandle(str(row[0]), str(row[1]), str(row[2]), str(row[3]), str(row[4]), str(row[5]), str(row[6]), row[7].isoformat() if hasattr(row[7], "isoformat") else row[7], row[8].isoformat() if hasattr(row[8], "isoformat") else row[8], str(row[9]))
@@ -57,4 +67,4 @@ class PostgresConfigEventSink:
     def enqueue(self, event: Any) -> str: return self._outbox.enqueue(event)
 
 
-__all__ = ["PostgresConfigEventSink", "PostgresConfigSecurityRepository"]
+__all__ = ["PostgresAccountTestReceiptStore", "PostgresAuditSink", "PostgresConfigEventSink", "PostgresConfigSecurityRepository", "PostgresCostLedger", "PostgresReservationStore"]
