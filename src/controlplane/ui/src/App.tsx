@@ -14,9 +14,57 @@ import { OperationsGrid } from './components/OperationsGrid.tsx';
 import { BatchesGrid } from './components/BatchesGrid.tsx';
 import { JobsGrid } from './components/JobsGrid.tsx';
 import { SafeErrorModal } from './components/SafeErrorModal.tsx';
+import { createBoundedEventDeduper, type BoundedEventDeduper } from './features/stream/boundedEventDeduper.ts';
+import { FORBIDDEN_EDITABLE_FIELDS, SCREEN_REGISTRY, screensForMilestone, type Milestone, type ScreenSpec } from './features/screens/screenRegistry.ts';
+
+const SCREEN_MILESTONES: readonly Milestone[] = ['M2', 'M3', 'M4', 'M5', 'M6', 'M7'];
+
+const BACKEND_STATUS_LABELS: Record<ScreenSpec['backendStatus'], string> = {
+  available: 'Sẵn sàng',
+  pending_module: 'Chờ phân hệ',
+};
+
+// Chỉ hiển thị trường sửa được nằm ngoài danh sách cấm; shell không dựng ô nhập nào.
+const visibleEditableFields = (screen: ScreenSpec): string[] =>
+  screen.editableFields.filter((field) => !(FORBIDDEN_EDITABLE_FIELDS as readonly string[]).includes(field));
+
+const ScreensPanel: React.FC = () => (
+  <div className="panel" data-testid="screens-panel">
+    <div className="panel-header">
+      <div>
+        <h2 className="panel-title">Danh Mục Màn Hình Theo Milestone</h2>
+        <p className="panel-subtitle">Trạng thái backend lấy nguyên từ screenRegistry; tại đây không có ô nhập và không cấp thêm quyền sửa.</p>
+      </div>
+    </div>
+    {SCREEN_MILESTONES.map((milestone) => (
+      <section key={milestone} data-testid={`screens-milestone-${milestone}`}>
+        <h3>{milestone}</h3>
+        <table>
+          <thead>
+            <tr><th>Màn hình</th><th>Phân hệ</th><th>Đường dẫn</th><th>Trạng thái backend</th><th>Trường sửa được</th></tr>
+          </thead>
+          <tbody>
+            {screensForMilestone(milestone).map((screen) => {
+              const editable = visibleEditableFields(screen);
+              return (
+                <tr key={screen.id} data-testid={`screen-row-${screen.id}`} data-backend-status={screen.backendStatus}>
+                  <td>{screen.titleVi}</td>
+                  <td>{screen.module}</td>
+                  <td>{screen.resourcePath}</td>
+                  <td>{BACKEND_STATUS_LABELS[screen.backendStatus]}</td>
+                  <td>{screen.readOnly || editable.length === 0 ? 'Chỉ đọc' : editable.join(', ')}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
+    ))}
+  </div>
+);
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'operations' | 'command' | 'batches' | 'jobs'>('operations');
+  const [activeTab, setActiveTab] = useState<'operations' | 'command' | 'batches' | 'jobs' | 'screens'>('operations');
   const [operations, setOperations] = useState<OperationItem[]>([]);
   const [batches, setBatches] = useState<BatchItem[]>([]);
   const [jobs, setJobs] = useState<JobItem[]>([]);
@@ -26,7 +74,7 @@ export const App: React.FC = () => {
   const [activeError, setActiveError] = useState<ProblemDetail | null>(null);
   const [bootstrapped, setBootstrapped] = useState<boolean>(false);
   const [subscriptionEpoch, setSubscriptionEpoch] = useState<number>(0);
-  const seenStreamEventIdsRef = useRef<Set<string>>(new Set());
+  const eventDeduperRef = useRef<BoundedEventDeduper>(createBoundedEventDeduper());
   const lastCursorRef = useRef<string | null>(null);
 
   // Load API snapshot
@@ -76,11 +124,10 @@ export const App: React.FC = () => {
       onEvent: (event: SSEEventPayload & { stream_event_id?: string | number }) => {
         const streamEventId = String(event.stream_event_id ?? event.cursor ?? '');
         if (streamEventId) {
-          if (seenStreamEventIdsRef.current.has(streamEventId)) {
+          if (eventDeduperRef.current.seenBefore(streamEventId)) {
             // Deduplicate event: drop repeated stream_event_id to prevent redundant reload and overwriting lastCursor
             return;
           }
-          seenStreamEventIdsRef.current.add(streamEventId);
         }
 
         if (event.cursor) {
@@ -111,7 +158,7 @@ export const App: React.FC = () => {
       },
       onResync: (serverCursor: string | null) => {
         // SSE cursor recovery: replace expired cursor with server-provided cursor (or null to reconnect at baseline)
-        seenStreamEventIdsRef.current.clear();
+        eventDeduperRef.current.clear();
         setLastCursor(serverCursor);
         lastCursorRef.current = serverCursor;
         setSubscriptionEpoch((prev) => prev + 1);
@@ -203,6 +250,13 @@ export const App: React.FC = () => {
           >
             Công việc ({jobs.length})
           </button>
+          <button
+            className={`tab-button ${activeTab === 'screens' ? 'active' : ''}`}
+            onClick={() => setActiveTab('screens')}
+            data-testid="tab-screens"
+          >
+            Màn hình ({SCREEN_REGISTRY.length})
+          </button>
         </nav>
 
         <div style={{ display: activeTab === 'operations' ? 'block' : 'none' }}>
@@ -219,6 +273,10 @@ export const App: React.FC = () => {
 
         <div style={{ display: activeTab === 'jobs' ? 'block' : 'none' }}>
           <JobsGrid jobs={jobs} />
+        </div>
+
+        <div style={{ display: activeTab === 'screens' ? 'block' : 'none' }}>
+          <ScreensPanel />
         </div>
       </main>
 
