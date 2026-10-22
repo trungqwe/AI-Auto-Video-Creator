@@ -162,3 +162,59 @@ Cả hai lần cùng tên băm, tên hai tệp assets thật mà dist/index.html
 - BL-CV-13 — BLOCKED (giữ onOpenTestError=, không đụng Header.tsx và /test-driver).
 - BL-CV-07 — PENDING cho bảy đường dẫn đã liệt kê ở mục 5 (src/controlplane/ui/src/index.css, src/controlplane/ui/src/api/client.ts, src/controlplane/ui/src/components/OperationsGrid.tsx, src/controlplane/ui/src/components/BatchesGrid.tsx, src/controlplane/ui/src/components/JobsGrid.tsx, src/controlplane/ui/src/types/api.ts, src/controlplane/ui/src/screens/**).
 - Worker không chạy npm run test:e2e và không tuyên bố PASS e2e.
+
+## 9. Rebase lên a046fa4c6784cd1ea3fcf1900e769b6bee3a9863 và dựng lại dist
+
+- Nhánh đã rebase lên a046fa4c6784cd1ea3fcf1900e769b6bee3a9863, App.tsx không đổi nội dung so với mục 1.
+- Nguyên nhân finding 'lệnh kiểm tạo hoặc sửa tệp trong repo' (tệp dist/assets/index-BGSg0Sqj.js.map): sourcemap nhúng sourcesContent nên khi mã nguồn của integration head đổi, build ghi lại .js/.map; xử lý bằng cách dựng lại dist sau rebase và commit cùng mã nguồn, không dùng .gitignore vì nằm ngoài owned paths.
+- Output nguyên văn của hai lần npm --prefix src/controlplane/ui run build thật vừa chạy ở bước 2 và 3:
+
+Lần 1:
+```
+> controlplane-admin-ui@0.2.0 build
+> tsc && vite build
+
+vite v6.2.0 building for production...
+transforming...
+✓ 39 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.70 kB │ gzip:   0.44 kB
+dist/assets/index-CNmdI0B1.css    231.37 kB │ gzip:  39.04 kB
+dist/assets/index-BGSg0Sqj.js   1,066.64 kB │ gzip: 288.81 kB │ map: 3,494.52 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.31s
+```
+
+Lần 2:
+```
+> controlplane-admin-ui@0.2.0 build
+> tsc && vite build
+
+vite v6.2.0 building for production...
+transforming...
+✓ 39 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.70 kB │ gzip:   0.44 kB
+dist/assets/index-CNmdI0B1.css    231.37 kB │ gzip:  39.04 kB
+dist/assets/index-BGSg0Sqj.js   1,066.64 kB │ gzip: 288.81 kB │ map: 3,494.52 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.24s
+```
+Cả hai lần cùng tên băm, tên hai tệp assets thật mà dist/index.html tham chiếu là `assets/index-CNmdI0B1.css` và `assets/index-BGSg0Sqj.js`, và lệnh kết thúc hoàn toàn không để tiến trình con.
+- Kết quả thật của probe dist, probe App.tsx và pytest tests/unit/control_ui:
+  - Probe dist: Exit code 0 (mọi assets/* trong dist/index.html là tệp thật, không còn index-Dd0WysB0.js hay index-Dd0WysB0.js.map, không có tệp băm mồ côi).
+  - Probe App.tsx: Exit code 0 (có boundedEventDeduper và screenRegistry, không có 'new Set', còn onOpenTestError=).
+  - Pytest tests/unit/control_ui: 651 passed, 1 warning in 1.09s (Exit code 0).
+- BL-CV-13 — BLOCKED (giữ onOpenTestError=, không đụng Header.tsx và /test-driver).
+- BL-CV-07 — PENDING cho bảy đường dẫn đã liệt kê ở mục 5 (src/controlplane/ui/src/index.css, src/controlplane/ui/src/api/client.ts, src/controlplane/ui/src/components/OperationsGrid.tsx, src/controlplane/ui/src/components/BatchesGrid.tsx, src/controlplane/ui/src/components/JobsGrid.tsx, src/controlplane/ui/src/types/api.ts, src/controlplane/ui/src/screens/**).
+- Worker không chạy npm run test:e2e và không tuyên bố PASS e2e.
