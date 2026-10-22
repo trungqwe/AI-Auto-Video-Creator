@@ -116,6 +116,7 @@ Exit code: 0
 - git diff --check: chạy lại sau khi ghi báo cáo, kết quả xem trong worker_done.
 
 ## 5d. F1 BLOCKED: miễn trừ bố cục E-01 nằm ngoài owned paths
+- Trạng thái: ĐÃ GIẢI QUYẾT bằng PERSIST-LAYOUT-RULE gộp vào nhánh tích hợp 0726a84f6ad01e9413219549ebe2e906025a9970; xem mục 5e.
 
 - (a) Kết quả bước 1: dòng FAILED và dòng tổng kết nguyên văn.
   - Dòng FAILED: FAILED tests/unit/voice/test_e01_package_layout.py::PackageLayoutTests::test_package_modules_have_no_forbidden_imports
@@ -124,6 +125,14 @@ Exit code: 0
 - (b) Nguyên nhân: FORBIDDEN_IMPORT_PREFIXES ở tests/unit/voice/test_e01_package_layout.py dòng 15-19 chứa 'psycopg' và 'controlplane.infrastructure'; ADAPTER_IMPORT_EXEMPTIONS ở dòng 25-27 chỉ có src/voice/adapters/real_ffmpeg_media_tool.py.
 - (c) Bản sửa cần có khi Control cấp ownership tệp đó, theo mẫu PERSIST-A-LAYOUT-FIX: thêm hai khoá đường dẫn chính xác vào ADAPTER_IMPORT_EXEMPTIONS là 'src/voice/persistence/outbox.py' với frozenset({'controlplane.infrastructure.db.outbox'}) và 'src/voice/persistence/output_repository.py' với frozenset({'psycopg'}); cập nhật chú thích dẫn docs/implementation/persist/plan.md dòng 15 và 40-41; viết lại test_exemption_table_is_exact_paths_only thành so sánh với đúng ba khoá; thêm test chứng minh hai tệp persistence chỉ được miễn đúng tiền tố liệt kê (import socket, creative, subprocess vẫn bị từ chối) và các module voice khác vẫn bị từ chối psycopg. Kiểm sau sửa: python -m pytest tests/unit/voice -q -p no:cacheprovider phải đạt.
 - (d) F2 (MINOR, fallback DSN m2test) đưa vào backlog, không sửa trong lượt này.
+
+## 5e. Chạy lại sau rebase lên 0726a84f (cấp lại sau thu hồi G2)
+
+- Lý do: Control rebase lên 0726a84f6ad01e9413219549ebe2e906025a9970, mã adapter và test PostgreSQL không đổi trong lượt này.
+- Bước 1 (kiểm tra khoảng trắng): lệnh `git diff --check`, exit code 0.
+- Bước 2 (kiểm tra bố cục gói voice sau khi PERSIST-LAYOUT-RULE đã gộp): lệnh `python -m pytest tests/unit/voice/test_e01_package_layout.py -q -p no:cacheprovider`, exit code 0, dòng tổng kết: `16 passed, 89 subtests passed in 0.20s`.
+- Bước 3 (kiểm thử tích hợp adapter PostgreSQL): lệnh `python -m pytest tests/integration/persistence/e/test_persist_e_postgres.py -q -p no:cacheprovider`, exit code 0, dòng tổng kết: `19 passed in 9.76s`.
+- Bước 4 (quét adapter): lệnh `python -c "import pathlib; fs = list(pathlib.Path('src/voice/persistence').rglob('*.py')); t = ' '.join(f.read_text(encoding='utf-8') for f in fs); assert fs and 'CREATE TABLE' not in t and 'ALTER TABLE' not in t and 'from src.' not in t, 'adapter E'"`, exit code 0 (không có AssertionError).
 
 ## 6. Mục mở
 
