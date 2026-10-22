@@ -1,15 +1,15 @@
 # M4-MILESTONE-CLOSE: danh sách gói và SHA tích hợp (revision 1)
 
 - Candidate SHA đang kiểm định: `cc290f002074514001fa0b03b3eb8c9e00c14db6`
-- Tổng số gói trong danh sách yêu cầu nghiệm thu mục 1: 148 gói (gồm 135 gói công việc và 13 cổng kiểm soát)
-- Số gói/cổng đã tra cứu thành công SHA / recordHash: 147 / 148 (trong đó 134/135 gói công việc có commit integrate 40-hex, 13/13 cổng kiểm soát có recordHash)
-- Số gói thiếu SHA: 1 gói (`M4-CI-PLAN` không có commit integrate riêng trong git log, ghi nhận `KHÔNG TÌM THẤY`)
+- Tổng số gói trong danh sách yêu cầu nghiệm thu mục 1: 135 gói (gồm 122 gói công việc và 13 cổng kiểm soát); danh sách kết thúc ở E-08
+- Số gói/cổng đã tra cứu thành công SHA / recordHash: 129 / 135 (trong đó 116/122 gói công việc có commit integrate 40-hex, 13/13 cổng kiểm soát có recordHash do Control cấp)
+- Số gói thiếu SHA: 6 gói (6 gói sửa lỗi CP-4-WIRING-FIX2, ADAPT-PROD-FIX1, CP-4B-UI-SCREENS-FIX1, PERSIST-C-FIX1, ADAPT-PROD-FIX2, CP-4B-UI-SCREENS-FIX2 không tìm thấy commit integrate trên nhánh candidate; M4-CI-PLAN dùng SHA Control cung cấp, xem bảng)
 
 ## Bảng đối chiếu các gói trong danh sách yêu cầu
 
 | Mã gói | Loại | SHA tích hợp hoặc recordHash | Nguồn tra cứu |
 | --- | --- | --- | --- |
-| M4-CI-PLAN | Gói kế hoạch (Plan) | KHÔNG TÌM THẤY | Không tìm thấy commit integrate trong git log |
+| M4-CI-PLAN | Gói kế hoạch (Plan) | b18dbcff5e5beadb872b0d507b26cb88ffecf01e | SHA do Control cung cấp: gói nghiệm thu ở chuỗi chính trước khi có Portfolio, không có commit integrate; Control đã xác minh receipt Auditor PASS và commit nội dung là tổ tiên của nhánh tích hợp |
 | IMPL-PLAN-A | Gói kế hoạch (Plan) | `fb154e9f0433d45bef1994e292a948231b18d112` (lane lane-impl-plan-a candidate 23c3e3cf22fb) | git log, subject `integrate(IMPL-PLAN-A): ...` |
 | IMPL-PLAN-B | Gói kế hoạch (Plan) | `815bebb15b565c4a750854b4218a3296c7be2904` (lane lane-impl-plan-b candidate 6e139f3b2d3b) | git log, subject `integrate(IMPL-PLAN-B): ...` |
 | IMPL-PLAN-C | Gói kế hoạch (Plan) | `4035610fa62c04ebcd7bc774b4a9e4ed68c5ad1a` (lane lane-impl-plan-c candidate 56dc6fa2a949) | git log, subject `integrate(IMPL-PLAN-C): ...` |
@@ -30,6 +30,12 @@
 | PERSIST-G-FIX1 | Gói sửa lỗi (Fix) | `f03fed2f209808f80999643408f4f19a32cde567` (lane lane-persist-g-fix1 candidate 6f53564a6c56) | git log, subject `integrate(PERSIST-G-FIX1): ...` |
 | CP-5-COMPLETION-FIX1 | Gói sửa lỗi (Fix) | `0ba3801fb9709dd85f7ff15330a877bfd3bf6561` (lane lane-cp-5-completion-fix1 candidate c2eaba9f3460) | git log, subject `integrate(CP-5-COMPLETION-FIX1): ...` |
 | ADAPT-WIRE-FIX1 | Gói sửa lỗi (Fix) | `810c377c112f7ce082ab51564591ade9a519e0b0` (lane lane-adapt-wire-fix1 candidate f42c94477378) | git log, subject `integrate(ADAPT-WIRE-FIX1): ...` |
+| CP-4-WIRING-FIX2 | Gói sửa lỗi (Fix) | KHÔNG TÌM THẤY | Không tìm thấy commit integrate trên nhánh của candidate (commit 759ea0abd830f76b6f6a99232e8183ee50a9f34d trên lane lane-cp-4-wiring-fix2 chưa là tổ tiên của HEAD) |
+| ADAPT-PROD-FIX1 | Gói sửa lỗi (Fix) | KHÔNG TÌM THẤY | Không tìm thấy commit integrate trên nhánh của candidate (commit 6ba0bcde40de3d3adf8405d9df6bd8cae431227a trên lane lane-adapt-prod-fix1 chưa là tổ tiên của HEAD) |
+| CP-4B-UI-SCREENS-FIX1 | Gói sửa lỗi (Fix) | KHÔNG TÌM THẤY | Không tìm thấy commit integrate trên nhánh của candidate (commit adc7634f45a21c2fa174adee662962d7a1b21a57 trên lane lane-cp-4b-ui-screens-fix1 chưa là tổ tiên của HEAD) |
+| PERSIST-C-FIX1 | Gói sửa lỗi (Fix) | KHÔNG TÌM THẤY | Không tìm thấy commit integrate trên nhánh của candidate (commit ab8586d55fc612825888d6a7e26e58ae96d28af6 trên lane lane-persist-c-fix1 chưa là tổ tiên của HEAD) |
+| ADAPT-PROD-FIX2 | Gói sửa lỗi (Fix) | KHÔNG TÌM THẤY | Không tìm thấy commit integrate trên nhánh của candidate (commit fa250e8305aa422ff260f2ce9bb3622a29239740 trên lane lane-adapt-prod-fix2 chưa là tổ tiên của HEAD) |
+| CP-4B-UI-SCREENS-FIX2 | Gói sửa lỗi (Fix) | KHÔNG TÌM THẤY | Không tìm thấy commit integrate trên nhánh của candidate (commit 74c062a29d649ea0e3d1471dee9c739dc33d38fe trên lane lane-cp-4b-ui-screens-fix2 chưa là tổ tiên của HEAD) |
 | A-01 | Lát cắt triển khai (Slice) | `22535f6dcff3dbf2e3187771a9bff1b34c85c838` (lane lane-a-01 candidate b11289d9c406) | git log, subject `integrate(A-01): ...` |
 | A-02 | Lát cắt triển khai (Slice) | `e343a41ee6570c39d0cbeda2bd35a3bf2c15513f` (lane lane-a-02 candidate 0614e8d1934d) | git log, subject `integrate(A-02): ...` |
 | A-03 | Lát cắt triển khai (Slice) | `5e009d1c06ba60052bdd1658f939ffaadc626597` (lane lane-a-03 candidate 6382ebd2cdde) | git log, subject `integrate(A-03): ...` |
@@ -99,19 +105,19 @@
 | CP-3-MIGRATIONS | Gói tích hợp (Integration) | `a3d84e838a0937515eb62eb5c3a35016ab88e7df` (lane lane-cp-3-migrations candidate b33cdd34eb40) | git log, subject `integrate(CP-3-MIGRATIONS): ...` |
 | CP-4-WIRING | Gói tích hợp (Integration) | `750195f1a88ee5bc731893d8986992b7b97c442b` (lane lane-cp-4-wiring candidate 06b6d6b453ca) | git log, subject `integrate(CP-4-WIRING): ...` |
 | CP-4B-UI-SHELL | Gói tích hợp (Integration) | `42c328c98f7c0890d01fb3a590bf43a3f78eb2fb` (lane lane-cp-4b-ui-shell candidate 858d8179ba66) | git log, subject `integrate(CP-4B-UI-SHELL): ...` |
-| GATE-CP-2D-REGISTRY | Cổng kiểm soát (Gate) | `00103f0a72d7b9e2f1f5803cc699db79373ac38ed2e47aa206f975da0eab9514` | `decisions.jsonl` (seq: 305, decision: RELEASE) |
-| GATE-CP-5-COMPLETION | Cổng kiểm soát (Gate) | `3b9e4c9d779043c2f76022541f4524b931ad48cce3cad2e4bc4dfff7cfb54d90` | `decisions.jsonl` (seq: 399, decision: RELEASE) |
-| GATE-CP-6-WORKFLOW | Cổng kiểm soát (Gate) | `2be7562bea521bede4812d8b5cff124d201b562b93a416b1972baca08d720190` | `decisions.jsonl` (seq: 416, decision: RELEASE) |
-| GATE-CP-2B-DEPS-PATHS | Cổng kiểm soát (Gate) | `3bd11714d6cb8196cb1c800bc740a76e7a4436b905cb2c98d2a8400fa1d132cf` | `decisions.jsonl` (seq: 263, decision: RELEASE) |
-| GATE-PERSIST-A | Cổng kiểm soát (Gate) | `1ccf6c904ef88886ed1dd7a66b50c2206fd1c12ac5357d926572dbf53135a343` | `decisions.jsonl` (seq: 335, decision: RELEASE) |
-| GATE-PERSIST-B | Cổng kiểm soát (Gate) | `39f5e7e8bc503704574da52b3605d1a03911b24c29494514c865af229ca35bf4` | `decisions.jsonl` (seq: 380, decision: RELEASE) |
-| GATE-PERSIST-C | Cổng kiểm soát (Gate) | `5327ae192465197cc63aa6f6e1ebc4670e06c063f6a1fb46a4b7e6a3ce4066f2` | `decisions.jsonl` (seq: 332, decision: RELEASE) |
-| GATE-PERSIST-D | Cổng kiểm soát (Gate) | `794e8b5634d3adaab3d35154ae2f0d732f2dc86a477ca8faeb2cd10cbd79506f` | `decisions.jsonl` (seq: 370, decision: RELEASE) |
-| GATE-PERSIST-E | Cổng kiểm soát (Gate) | `b38673dd8c05bac07daae786cf282bcbae1cb359ea80fcd24b806bf5eab94ae7` | `decisions.jsonl` (seq: 375, decision: RELEASE) |
-| GATE-PERSIST-F | Cổng kiểm soát (Gate) | `7254c80039939250ee1d2b372b627655b8b60b998372d7c9652b4360042a9055` | `decisions.jsonl` (seq: 355, decision: RELEASE) |
-| GATE-PERSIST-G | Cổng kiểm soát (Gate) | `f71b035ffeface811ea87ccc06ba8a13129922fed922018793672d14d244fe7d` | `decisions.jsonl` (seq: 358, decision: RELEASE) |
-| GATE-PERSIST-I | Cổng kiểm soát (Gate) | `b987fc8b60eaddba804f31ce51c78cfc9047db41d42203882ea5fae37c31843e` | `decisions.jsonl` (seq: 377, decision: RELEASE) |
-| GATE-PERSIST-J | Cổng kiểm soát (Gate) | `cc9e80f551c0a83996a2ff710c7ce2d8d73517eed0434d4c176e55403d1399de` | `decisions.jsonl` (seq: 365, decision: RELEASE) |
+| GATE-CP-2D-REGISTRY | Cổng kiểm soát (Gate) | `00103f0a72d7b9e2f1f5803cc699db79373ac38ed2e47aa206f975da0eab9514` | recordHash do Control cấp trong yêu cầu nghiệm thu (bản ghi quyết định RELEASE); không đọc sổ quyết định |
+| GATE-CP-5-COMPLETION | Cổng kiểm soát (Gate) | `3b9e4c9d779043c2f76022541f4524b931ad48cce3cad2e4bc4dfff7cfb54d90` | recordHash do Control cấp trong yêu cầu nghiệm thu (bản ghi quyết định RELEASE); không đọc sổ quyết định |
+| GATE-CP-6-WORKFLOW | Cổng kiểm soát (Gate) | `2be7562bea521bede4812d8b5cff124d201b562b93a416b1972baca08d720190` | recordHash do Control cấp trong yêu cầu nghiệm thu (bản ghi quyết định RELEASE); không đọc sổ quyết định |
+| GATE-CP-2B-DEPS-PATHS | Cổng kiểm soát (Gate) | `3bd11714d6cb8196cb1c800bc740a76e7a4436b905cb2c98d2a8400fa1d132cf` | recordHash do Control cấp trong yêu cầu nghiệm thu (bản ghi quyết định RELEASE); không đọc sổ quyết định |
+| GATE-PERSIST-A | Cổng kiểm soát (Gate) | `1ccf6c904ef88886ed1dd7a66b50c2206fd1c12ac5357d926572dbf53135a343` | recordHash do Control cấp trong yêu cầu nghiệm thu (bản ghi quyết định RELEASE); không đọc sổ quyết định |
+| GATE-PERSIST-B | Cổng kiểm soát (Gate) | `39f5e7e8bc503704574da52b3605d1a03911b24c29494514c865af229ca35bf4` | recordHash do Control cấp trong yêu cầu nghiệm thu (bản ghi quyết định RELEASE); không đọc sổ quyết định |
+| GATE-PERSIST-C | Cổng kiểm soát (Gate) | `5327ae192465197cc63aa6f6e1ebc4670e06c063f6a1fb46a4b7e6a3ce4066f2` | recordHash do Control cấp trong yêu cầu nghiệm thu (bản ghi quyết định RELEASE); không đọc sổ quyết định |
+| GATE-PERSIST-D | Cổng kiểm soát (Gate) | `794e8b5634d3adaab3d35154ae2f0d732f2dc86a477ca8faeb2cd10cbd79506f` | recordHash do Control cấp trong yêu cầu nghiệm thu (bản ghi quyết định RELEASE); không đọc sổ quyết định |
+| GATE-PERSIST-E | Cổng kiểm soát (Gate) | `b38673dd8c05bac07daae786cf282bcbae1cb359ea80fcd24b806bf5eab94ae7` | recordHash do Control cấp trong yêu cầu nghiệm thu (bản ghi quyết định RELEASE); không đọc sổ quyết định |
+| GATE-PERSIST-F | Cổng kiểm soát (Gate) | `7254c80039939250ee1d2b372b627655b8b60b998372d7c9652b4360042a9055` | recordHash do Control cấp trong yêu cầu nghiệm thu (bản ghi quyết định RELEASE); không đọc sổ quyết định |
+| GATE-PERSIST-G | Cổng kiểm soát (Gate) | `f71b035ffeface811ea87ccc06ba8a13129922fed922018793672d14d244fe7d` | recordHash do Control cấp trong yêu cầu nghiệm thu (bản ghi quyết định RELEASE); không đọc sổ quyết định |
+| GATE-PERSIST-I | Cổng kiểm soát (Gate) | `b987fc8b60eaddba804f31ce51c78cfc9047db41d42203882ea5fae37c31843e` | recordHash do Control cấp trong yêu cầu nghiệm thu (bản ghi quyết định RELEASE); không đọc sổ quyết định |
+| GATE-PERSIST-J | Cổng kiểm soát (Gate) | `cc9e80f551c0a83996a2ff710c7ce2d8d73517eed0434d4c176e55403d1399de` | recordHash do Control cấp trong yêu cầu nghiệm thu (bản ghi quyết định RELEASE); không đọc sổ quyết định |
 | D-01 | Lát cắt triển khai (Slice) | `1d56b2699f6f6a2c08346da3db1107e435c234eb` (lane lane-d-01 candidate b2a81a892125) | git log, subject `integrate(D-01): ...` |
 | D-02 | Lát cắt triển khai (Slice) | `d525f9275b0a5062b673d0b307b2707f98d26e12` (lane lane-d-02 candidate 9ca090a7b919) | git log, subject `integrate(D-02): ...` |
 | D-03 | Lát cắt triển khai (Slice) | `cf44f24a63971600a198a9afdf7d8a35421fb248` (lane lane-d-03 candidate eaa8dad378e7) | git log, subject `integrate(D-03): ...` |
@@ -158,9 +164,9 @@
 | F-06 | Lát cắt triển khai (Slice) | `7622e01f50b6257f93a5c0b90f84880b5c9bf952` (lane lane-f-06 candidate c28e40d61e92) | git log, subject `integrate(F-06): ...` |
 | F-07 | Lát cắt triển khai (Slice) | `b8dc82489eb61f7e284e02ab8d4e0be7b817fc27` (lane lane-f-07 candidate d70d7c536116) | git log, subject `integrate(F-07): ...` |
 
-## Gói có evidence nhưng ngoài danh sách yêu cầu
+## Gói ngoài danh sách yêu cầu (tiếp): F-08..F-22, G, H, I, J và gói nền tảng
 
-Danh sách gói trong yêu cầu nghiệm thu mục 1 của nhiệm vụ kết thúc tại `F-07, )` (chuỗi văn bản bị cắt giữa chừng). Tuy nhiên, trên thực tế toàn bộ tiến trình phân hệ và kiểm thử Milestone M4 bao gồm đầy đủ các lát cắt tiếp theo: F-08..F-22 (Phân hệ F), G-01..G-14 (Phân hệ G), H-01..H-16 (Phân hệ H), I-01..I-13 (Phân hệ I), J-01..J-18 (Phân hệ J), cùng 3 gói nền tảng kiến trúc CP0-GOVERNANCE, CP1-CONTRACT-BINDING và CP2A-LAYOUT. Bảng dưới đây cung cấp đầy đủ SHA tích hợp của 79 gói ngoài danh sách để Reviewer và Orchestrator có đầy đủ cơ sở đánh giá:
+79 gói F-08..F-22, G-01..G-14, H-01..H-16, I-01..I-13, J-01..J-18, CP0-GOVERNANCE, CP1-CONTRACT-BINDING và CP2A-LAYOUT cũng nằm ngoài danh sách yêu cầu; ghi SHA tích hợp để Reviewer và Orchestrator đối chiếu, không tính vào tổng 135.
 
 | Mã gói | Loại | SHA tích hợp hoặc recordHash | Nguồn tra cứu |
 | --- | --- | --- | --- |
