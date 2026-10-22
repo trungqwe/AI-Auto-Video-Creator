@@ -19,14 +19,67 @@ BASE_STREAM_EVENT_KINDS: tuple[str, ...] = (
     "job.running",
     "job.completed",
     "job.failed",
+    "source.registered",
+    "source.metadata_updated",
+    "source.removed",
+    "source.restored",
+    "source.candidate_discovered",
+    "source.candidate_resolved",
+    "source.collection_run_started",
+    "source.collected_document_available",
+    "source.collection_run_completed",
+    "source.collection_run_failed",
+    "ingestion.article_revision_accepted",
+    "ingestion.duplicate_document_resolved",
+    "ingestion.event_link_resolved",
+    "ingestion.event_update_accepted",
+    "creative.production_snapshot_committed",
+    "creative.story_angles_generated",
+    "creative.script_version_created",
+    "creative.production_plan_created",
+    "creative.variant_validated",
+    "creative.output_metadata_created",
+    "voice.image_safety_assessed",
+    "voice.media_processing_completed",
+    "voice.voice_ready",
+    "voice.word_timing_ready",
+    "render.render_completed",
+    "render.output_quality_checked",
+    "orchestration.batch_started",
+    "orchestration.job_allocated",
+    "orchestration.stage_state_changed",
+    "orchestration.job_waiting",
+    "orchestration.job_failed",
+    "orchestration.video_completed",
+    "orchestration.batch_target_reached",
+    "orchestration.batch_exhausted",
+    "storage.artifact_location_verified",
+    "storage.cleanup_completed",
+    "config.revision_published",
+    "config.credential_changed",
 )
 
 SNAPSHOT_RESOURCES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "operation": ("operations",),
     "production_batch": ("batches",),
     "job": ("jobs",),
+    "source": ("sources",),
+    "ingestion": ("articles", "events"),
+    "orchestration": ("batches", "jobs", "stage-runs"),
 })
-ALL_SNAPSHOT_RESOURCES: tuple[str, ...] = ("operations", "batches", "jobs")
+ALL_SNAPSHOT_RESOURCES: tuple[str, ...] = (
+    "operations",
+    "batches",
+    "jobs",
+    "sources",
+    "articles",
+    "events",
+    "media",
+    "hooks",
+    "stage-runs",
+    "sessions",
+    "logs",
+)
 
 
 def is_valid_event_kind(kind: object) -> bool:
@@ -61,7 +114,19 @@ class StreamKindRegistry:
 
 def default_registry() -> StreamKindRegistry:
     registry = StreamKindRegistry()
-    for prefix in ("operation", "production_batch", "job"):
+    for prefix in (
+        "operation",
+        "production_batch",
+        "job",
+        "source",
+        "ingestion",
+        "creative",
+        "voice",
+        "render",
+        "orchestration",
+        "storage",
+        "config",
+    ):
         registry.register(
             prefix,
             [kind for kind in BASE_STREAM_EVENT_KINDS if kind.startswith(prefix + ".")],

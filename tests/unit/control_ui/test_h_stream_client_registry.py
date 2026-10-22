@@ -17,6 +17,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 UI_SRC = ROOT / 'src' / 'controlplane' / 'ui' / 'src'
 KINDS_PATH = UI_SRC / 'api' / 'streamEventKinds.ts'
 DEDUPER_PATH = UI_SRC / 'features' / 'stream' / 'boundedEventDeduper.ts'
+OLD_TEN_KINDS = ('operation.accepted', 'operation.running', 'operation.succeeded', 'operation.failed', 'operation.changed', 'production_batch.start_accepted', 'job.created', 'job.running', 'job.completed', 'job.failed')
+MODULE_ONLY_RESOURCES = {'media', 'hooks', 'sessions', 'logs'}
 
 
 def _read(path):
@@ -59,7 +61,8 @@ def _client_fallback():
 def test_client_kinds_equal_base_kinds_in_order():
     kinds = _client_kinds()
     assert kinds == BASE_STREAM_EVENT_KINDS
-    assert len(kinds) == len(set(kinds)) == 10
+    assert kinds[:10] == OLD_TEN_KINDS
+    assert len(kinds) == len(set(kinds)) == 48
 
 
 def test_client_kind_type_is_derived_from_const_tuple():
@@ -72,12 +75,18 @@ def test_client_resource_table_equals_python_snapshot_resources():
 
 def test_client_resource_table_keys_are_kind_prefixes():
     table = _client_resource_table()
-    assert set(table) == {kind.partition('.')[0] for kind in _client_kinds()}
-    assert {r for rs in table.values() for r in rs} == set(ALL_SNAPSHOT_RESOURCES)
+    assert set(table) == set(SNAPSHOT_RESOURCES)
+    assert len(table) == 6
+    assert set(table) <= {kind.partition('.')[0] for kind in _client_kinds()}
+    union = {r for rs in table.values() for r in rs}
+    assert union == {r for rs in SNAPSHOT_RESOURCES.values() for r in rs}
+    assert union <= set(ALL_SNAPSHOT_RESOURCES)
+    assert set(ALL_SNAPSHOT_RESOURCES) - union == MODULE_ONLY_RESOURCES
 
 
 def test_client_fallback_equals_python_all_snapshot_resources():
     assert _client_fallback() == ALL_SNAPSHOT_RESOURCES
+    assert len(_client_fallback()) == 11
 
 
 def test_snapshot_resources_for_signature_and_unknown_fallback():

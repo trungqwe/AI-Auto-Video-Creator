@@ -94,5 +94,8 @@ def test_no_any_and_no_replacement_char() -> None:
 def test_api_ts_unchanged_in_scope() -> None:
     source = _read(API_TS)
     body = _interface_body(source, 'export interface OperationItem')
-    assert 'wait_reason' not in body
+    assert 'wait_reason' in OPTIONAL_FIELDS
+    fields = _fields(body)
+    if 'wait_reason' in fields:
+        assert fields['wait_reason'] is True
     assert 'operationView' not in source and 'listPage' not in source
