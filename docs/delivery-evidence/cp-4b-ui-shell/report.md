@@ -11,7 +11,7 @@
   - Dựng lại bản phân phối bằng `npm run build` trên runtime Node/D9 có sẵn.
   - Tệp băm mới sinh ra: `assets/index-BGSg0Sqj.js` và `assets/index-BGSg0Sqj.js.map`.
   - Hai tệp băm cũ đã được bản build dọn sạch: `assets/index-Dd0WysB0.js` và `assets/index-Dd0WysB0.js.map`.
-  - Tệp `assets/index-CNmdI0B1.css` được `vite build` tạo ra khớp với nội dung `index.css` hiện hành; `dist/index.html` tham chiếu đến tệp này cùng `assets/index-BGSg0Sqj.js`.
+  - Tệp `assets/index-CNmdI0B1.css` là tệp băm hiện hành: nội dung `index.css` không đổi nên băm không đổi, `dist/index.html` đang tham chiếu tệp này cùng `assets/index-BGSg0Sqj.js`, do đó giữ lại; xoá tệp này sẽ làm `index.html` trỏ tới tệp không tồn tại. Chỉ hai tệp băm cũ `index-Dd0WysB0.js` và `index-Dd0WysB0.js.map` cần vắng mặt và đã vắng mặt.
 
 ## 2. Lệnh đã chạy và kết quả
 
@@ -30,14 +30,19 @@ computing gzip size...
 dist/index.html                     0.70 kB │ gzip:   0.44 kB
 dist/assets/index-CNmdI0B1.css    231.37 kB │ gzip:  39.04 kB
 dist/assets/index-BGSg0Sqj.js   1,066.64 kB │ gzip: 288.81 kB │ map: 3,494.52 kB
-✓ built in 2.57s
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.06s
 ```
 
 ### Lệnh 2: `python -m pytest tests/unit/control_ui -q -p no:cacheprovider`
 Exit code: 0
 Output:
 ```
-651 passed, 1 warning in 1.00s
+651 passed, 1 warning in 0.99s
 ```
 
 ### Lệnh 3: Probe `src/controlplane/ui/src/App.tsx`
@@ -49,17 +54,12 @@ python -c "import pathlib; t = pathlib.Path('src/controlplane/ui/src/App.tsx').r
 ```
 
 ### Lệnh 4: Probe `src/controlplane/ui/dist`
-Exit code: 1 (gặp mâu thuẫn chỉ tiêu kiểm tra với tệp băm CSS)
+Exit code: 0
 Lệnh:
 ```sh
-python -c "import re, pathlib; d = pathlib.Path('src/controlplane/ui/dist'); h = (d / 'index.html').read_text(encoding='utf-8'); r = re.findall('assets/[A-Za-z0-9_.-]+', h); assert r and all((d / x).is_file() for x in r), r; assert not any((d / 'assets' / x).exists() for x in ['index-CNmdI0B1.css', 'index-Dd0WysB0.js', 'index-Dd0WysB0.js.map']), 'old hashed files must be gone'"
+python -c "import re, pathlib; d = pathlib.Path('src/controlplane/ui/dist'); h = (d / 'index.html').read_text(encoding='utf-8'); r = re.findall('assets/[A-Za-z0-9_.-]+', h); assert r and all((d / x).is_file() for x in r), r; assert not any((d / 'assets' / x).exists() for x in ['index-Dd0WysB0.js', 'index-Dd0WysB0.js.map']), 'old hashed files must be gone'; k = [f.name for f in (d / 'assets').iterdir() if f.is_file() and 'assets/' + f.name not in r and not (f.name.endswith('.map') and 'assets/' + f.name[:-4] in r)]; assert not k, ('orphan hashed files', k)"
 ```
-Output:
-```
-Traceback (most recent call last):
-  File "<string>", line 1, in <module>
-AssertionError: old hashed files must be gone
-```
+Output: không có (probe đạt: mọi assets/* trong index.html là tệp thật, `index-Dd0WysB0.js` và `index-Dd0WysB0.js.map` không còn, không có tệp băm mồ côi)
 
 ### Lệnh 5: `git diff --check`
 Exit code: 0
@@ -71,6 +71,8 @@ Output: Không có cảnh báo khoảng trắng (whitespace clean).
 - `src/controlplane/ui/src/features/screens/screenRegistry.ts` nằm ngoài `ownedPaths` nên được giữ nguyên.
 - Các màn hình chỉ chuyển khỏi `pending_module` khi route tương ứng của CP-4 tồn tại. Hiện tại `control.py` chỉ có GET cho operations, batches, jobs, configs (trạng thái `available`).
 - Đối chiếu sources, articles, events, media, hooks, snapshots, story-angles, scripts, stage-runs, sessions, logs, accounts, cost thuộc về các gói tiếp theo (`CP-4-WIRING`, `CP-4-QUERIES`, `CP-4B-UI-SCREENS`); việc mở rộng registry là follow-up, không tuyên bố đã hoàn thành.
+- Bốn màn hình `available` (operations, batches, jobs, configs) khớp các route GET đang có trong `src/controlplane/api/routes/control.py`; mười bốn màn hình còn lại giữ `pending_module` vì route CP-4 tương ứng chưa tồn tại.
+- Guard H-16 (`tests/unit/control_ui/test_h_ui_source_guard.py`) và `test_h_screen_registry.py` chạy trong Lệnh 2; `FORBIDDEN_EDITABLE_FIELDS` loại `article_body`, `script`, `secret` khỏi cột Trường sửa được, shell không dựng ô nhập.
 
 ## 4. Mục bị chặn (BL-CV-13)
 
