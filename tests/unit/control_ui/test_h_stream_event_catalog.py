@@ -35,6 +35,26 @@ EXPECTED_BASE = (
     'job.completed',
     'job.failed',
 )
+EXPECTED_MODULE = (
+    'source.registered', 'source.metadata_updated', 'source.removed', 'source.restored', 'source.candidate_discovered', 'source.candidate_resolved', 'source.collection_run_started', 'source.collected_document_available', 'source.collection_run_completed', 'source.collection_run_failed',
+    'ingestion.article_revision_accepted', 'ingestion.duplicate_document_resolved', 'ingestion.event_link_resolved', 'ingestion.event_update_accepted',
+    'creative.production_snapshot_committed', 'creative.story_angles_generated', 'creative.script_version_created', 'creative.production_plan_created', 'creative.variant_validated', 'creative.output_metadata_created',
+    'voice.image_safety_assessed', 'voice.media_processing_completed', 'voice.voice_ready', 'voice.word_timing_ready',
+    'render.render_completed', 'render.output_quality_checked',
+    'orchestration.batch_started', 'orchestration.job_allocated', 'orchestration.stage_state_changed', 'orchestration.job_waiting', 'orchestration.job_failed', 'orchestration.video_completed', 'orchestration.batch_target_reached', 'orchestration.batch_exhausted',
+    'storage.artifact_location_verified', 'storage.cleanup_completed',
+    'config.revision_published', 'config.credential_changed',
+)
+EXPECTED_PREFIXES = {'operation', 'production_batch', 'job', 'source', 'ingestion', 'creative', 'voice', 'render', 'orchestration', 'storage', 'config'}
+EXPECTED_SNAPSHOT_RESOURCES = {
+    'operation': ('operations',),
+    'production_batch': ('batches',),
+    'job': ('jobs',),
+    'source': ('sources',),
+    'ingestion': ('articles', 'events'),
+    'orchestration': ('batches', 'jobs', 'stage-runs'),
+}
+EXPECTED_ALL_RESOURCES = ('operations', 'batches', 'jobs', 'sources', 'articles', 'events', 'media', 'hooks', 'stage-runs', 'sessions', 'logs')
 
 
 def _module_tree():
@@ -81,49 +101,76 @@ def test_module_imports_only_stdlib():
 
 
 def test_base_kinds_are_exactly_the_ten_expected():
-    assert BASE_STREAM_EVENT_KINDS == EXPECTED_BASE
-    assert len(BASE_STREAM_EVENT_KINDS) == 10
-    assert len(set(BASE_STREAM_EVENT_KINDS)) == 10
+    assert BASE_STREAM_EVENT_KINDS[:10] == EXPECTED_BASE
+    assert len(set(BASE_STREAM_EVENT_KINDS[:10])) == 10
     assert all(is_valid_event_kind(kind) for kind in BASE_STREAM_EVENT_KINDS)
+
+
+def test_stream_kinds_are_base_followed_by_38_module_kinds():
+    assert len(EXPECTED_MODULE) == 38
+    assert BASE_STREAM_EVENT_KINDS == EXPECTED_BASE + EXPECTED_MODULE
+    assert len(BASE_STREAM_EVENT_KINDS) == len(set(BASE_STREAM_EVENT_KINDS)) == 48
+    assert {kind.partition('.')[0] for kind in EXPECTED_MODULE} == EXPECTED_PREFIXES - {'operation', 'production_batch', 'job'}
 
 
 def test_default_registry_matches_base_set():
     registry = default_registry()
     assert set(registry.all_kinds()) == set(BASE_STREAM_EVENT_KINDS)
-    assert len(registry.all_kinds()) == 10
+    assert len(registry.all_kinds()) == 48
 
 
 def test_default_registry_has_exactly_three_prefixes():
     prefixes = {kind.partition('.')[0] for kind in default_registry().all_kinds()}
-    assert prefixes == {'operation', 'production_batch', 'job'}
+    assert prefixes == EXPECTED_PREFIXES
+    assert len(prefixes) == 11
+
+
+def test_default_registry_kind_count_per_prefix():
+    counts = {}
+    for kind in default_registry().all_kinds():
+        counts[kind.partition('.')[0]] = counts.get(kind.partition('.')[0], 0) + 1
+    assert counts == {'operation': 5, 'production_batch': 1, 'job': 4, 'source': 10, 'ingestion': 4, 'creative': 6, 'voice': 4, 'render': 2, 'orchestration': 8, 'storage': 2, 'config': 2}
 
 
 def test_default_registry_returns_independent_instances():
     first = default_registry()
-    first.register('source', ['source.registered'])
-    assert 'source.registered' not in default_registry().all_kinds()
+    first.register('source', ['source.zz_probe'])
+    assert 'source.zz_probe' not in default_registry().all_kinds()
 
 
 def test_client_event_kinds_are_subset_of_catalog():
     text = CLIENT_PATH.read_text(encoding='utf-8')
     match = re.search(r'const eventKinds = \[(.*?)\];', text, re.S)
-    assert match is not None
-    kinds = re.findall(r"'([^']+)'", match.group(1))
-    assert kinds
-    assert set(kinds) <= set(default_registry().all_kinds())
+    if match is not None:
+        kinds = re.findall(r"'([^']+)'", match.group(1))
+        assert kinds
+        assert set(kinds) <= set(default_registry().all_kinds())
+    else:
+        assert 'STREAM_EVENT_KINDS' in text
+        assert re.search(r"import\s*\{[^}]*\bSTREAM_EVENT_KINDS\b[^}]*\}\s*from\s*'[^']*streamEventKinds(\.ts)?'", text)
 
 
 def test_new_module_kind_under_its_own_prefix_is_accepted():
     registry = default_registry()
-    registry.register('source', ['source.registered'])
     assert 'source.registered' in registry.all_kinds()
-    assert len(registry.all_kinds()) == 11
+    registry.register('source', ['source.zz_probe'])
+    assert 'source.zz_probe' in registry.all_kinds()
+    assert len(registry.all_kinds()) == 49
 
 
 def test_kind_outside_prefix_is_rejected():
     registry = default_registry()
     assert_rejected(registry, 'job', ['source.x'], 'invalid_event_kind')
     assert 'source.x' not in registry.all_kinds()
+
+
+def test_default_registry_rejects_source_x_under_job_prefix_with_invalid_event_kind():
+    registry = default_registry()
+    before = registry.all_kinds()
+    assert len(before) == 48
+    assert_rejected(registry, 'job', ['source.x'], 'invalid_event_kind')
+    assert 'source.x' not in registry.all_kinds()
+    assert registry.all_kinds() == before
 
 
 @pytest.mark.parametrize('kind', ['job.cre ated', 'job.created\n', 'job.x\r\nevent: injected', '', 'job.', 'job', 'job.créé'.replace('créé', 'é')])
@@ -180,14 +227,15 @@ def test_all_kinds_is_sorted_and_independent_of_registration_order():
 
 
 def test_snapshot_resources_cover_exactly_the_base_prefixes():
-    assert dict(SNAPSHOT_RESOURCES) == {
-        'operation': ('operations',),
-        'production_batch': ('batches',),
-        'job': ('jobs',),
-    }
-    assert ALL_SNAPSHOT_RESOURCES == ('operations', 'batches', 'jobs')
-    assert {r for rs in SNAPSHOT_RESOURCES.values() for r in rs} == set(ALL_SNAPSHOT_RESOURCES)
-    assert set(SNAPSHOT_RESOURCES) == {kind.partition('.')[0] for kind in BASE_STREAM_EVENT_KINDS}
+    assert dict(SNAPSHOT_RESOURCES) == EXPECTED_SNAPSHOT_RESOURCES
+    assert len(SNAPSHOT_RESOURCES) == 6
+    assert ALL_SNAPSHOT_RESOURCES == EXPECTED_ALL_RESOURCES
+    assert len(ALL_SNAPSHOT_RESOURCES) == 11
+    assert ALL_SNAPSHOT_RESOURCES[:3] == ('operations', 'batches', 'jobs')
+    union = {r for rs in SNAPSHOT_RESOURCES.values() for r in rs}
+    assert union <= set(ALL_SNAPSHOT_RESOURCES)
+    assert set(ALL_SNAPSHOT_RESOURCES) - union == {'media', 'hooks', 'sessions', 'logs'}
+    assert set(SNAPSHOT_RESOURCES) <= {kind.partition('.')[0] for kind in BASE_STREAM_EVENT_KINDS}
 
 
 def test_snapshot_resources_is_read_only():
@@ -204,6 +252,17 @@ def test_known_resource_type_maps_to_one_resource(resource_type, expected):
     assert snapshot_resources_for(resource_type) == expected
 
 
+@pytest.mark.parametrize('resource_type, expected', [
+    ('source', ('sources',)),
+    ('ingestion', ('articles', 'events')),
+    ('orchestration', ('batches', 'jobs', 'stage-runs')),
+    ('voice', EXPECTED_ALL_RESOURCES),
+    ('config', EXPECTED_ALL_RESOURCES),
+])
+def test_module_resource_type_maps_to_table_or_falls_back_to_all(resource_type, expected):
+    assert snapshot_resources_for(resource_type) == expected
+
+
 @pytest.mark.parametrize('resource_type', ['zzz', '', 'Job', ' job', None, 5, ['job']])
 def test_unknown_resource_type_returns_all_resources(resource_type):
     assert snapshot_resources_for(resource_type) == ALL_SNAPSHOT_RESOURCES
@@ -211,8 +270,8 @@ def test_unknown_resource_type_returns_all_resources(resource_type):
 
 def test_resync_targets_unknown_type_expands_to_all_without_duplicates():
     result = resync_targets(['job', 'zzz'])
-    assert result == ('jobs', 'operations', 'batches')
-    assert len(result) == len(set(result)) == 3
+    assert result == ('jobs', 'operations', 'batches', 'sources', 'articles', 'events', 'media', 'hooks', 'stage-runs', 'sessions', 'logs')
+    assert len(result) == len(set(result)) == 11
     assert set(result) == set(ALL_SNAPSHOT_RESOURCES)
 
 
