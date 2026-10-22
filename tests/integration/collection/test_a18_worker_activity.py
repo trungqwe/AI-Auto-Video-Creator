@@ -1,4 +1,4 @@
-"""A-18: the worker activity handler runs CollectSource for an ActivityRequest with an ExecutionGrant (CT-WF-003, CT-WF-006).
+"""A-18: the worker activity handler runs CollectSource for an ActivityRequest with GrantClaims (YC-HT-G-10) (CT-WF-003, CT-WF-006).
 
 coveredIds: A-RULE-014, A-RULE-016
 """
@@ -12,9 +12,9 @@ import socket
 
 import pytest
 
-from controlplane.domain.orchestration import ExecutionGrant
+from controlplane.domain.orchestration.fencing import GrantClaims
 
-from source_ingestion.adapters.memory import FakeActivityGrantPort, InMemoryUnitOfWork
+from source_ingestion.adapters.memory import InMemoryUnitOfWork
 from source_ingestion.adapters.secure_fetch import fetch_problem
 from source_ingestion.adapters.stdlib_html_extractor import StdlibHtmlExtractor
 from source_ingestion.domain.collection_run import RetryPolicy
@@ -43,9 +43,9 @@ SOURCE_POLICY = SourcePolicy(
 # Test-only policy fixtures; not approved production policies.
 EXTRACTION = ExtractionPolicy(revision='extraction-policy-fixture-r1', title_required_by_source_kind={'rss_feed': False})
 RETRY = RetryPolicy(revision='retry-r1', max_attempts=3)
-GRANT = ExecutionGrant(WORKSPACE, 'op-1', 'job-1', 'stage-1', 3, 1)
+GRANT = GrantClaims('op-1', 'stage-1', 3, '1', 'lease-1', '2026-10-18T07:00:00Z', '2026-10-18T09:00:00Z', 'CollectSource', 'fp-1')
 OLD_GENERATION = dataclasses.replace(GRANT, execution_generation=2)
-OLD_EPOCH = dataclasses.replace(GRANT, recovery_epoch=0)
+OLD_EPOCH = dataclasses.replace(GRANT, recovery_epoch='0')
 RUN_ID = 'run:op-key-1'
 
 
@@ -135,11 +135,19 @@ def clock() -> datetime.datetime:
     return NOW
 
 
+class FakeClaimsCurrencyPort:
+    def __init__(self, current=()):
+        self._current = frozenset(current)
+
+    def is_grant_current(self, grant):
+        return isinstance(grant, GrantClaims) and grant in self._current
+
+
 def make_deps(unit, adapter, current=(GRANT,)) -> CollectActivityDeps:
     return CollectActivityDeps(
-        uow=unit, grants=FakeActivityGrantPort(current), adapter_for=lambda source_id: adapter,
+        uow=unit, grants=FakeClaimsCurrencyPort(current), adapter_for=lambda source_id: adapter,
         extractor=StdlibHtmlExtractor(), retry_policy=RETRY, adapter_revision='adapter-r1',
-        extraction_policy=EXTRACTION,
+        workspace_id=WORKSPACE, extraction_policy=EXTRACTION,
     )
 
 
@@ -325,7 +333,9 @@ INVALID_GRANTS = (
     ('not_an_execution_grant', {'workspace_id': WORKSPACE}, ('wrong_type', 'execution_grant')),
     ('negative_generation', dataclasses.replace(GRANT, execution_generation=-1),
      ('invalid_value', 'execution_grant.execution_generation')),
-    ('blank_workspace', dataclasses.replace(GRANT, workspace_id=' '), ('invalid_value', 'execution_grant.workspace_id')),
+    ('blank_grant_id', dataclasses.replace(GRANT, grant_id=' '), ('invalid_value', 'execution_grant.grant_id')),
+    ('missing_execution_grant', None, ('wrong_type', 'execution_grant')),
+    ('recovery_epoch_as_int', dataclasses.replace(GRANT, recovery_epoch=1), ('invalid_value', 'execution_grant.recovery_epoch')),
 )
 
 
@@ -352,6 +362,9 @@ def test_invalid_grant_raises_validation_error(unit, grant, issue):
     assert raised.value.code == 'VALIDATION_ERROR'
     assert issue in raised.value.issues
     assert adapter.cursors_seen == []
+    assert adapter.fetch_calls == []
+    assert unit.runs.list_by_source(WORKSPACE, 'src-1') == ()
+    assert unit.outbox.records() == ()
 
 
 def imported_modules(path: pathlib.Path) -> set[str]:
@@ -365,10 +378,32 @@ def imported_modules(path: pathlib.Path) -> set[str]:
     return imported
 
 
-def test_handler_uses_the_controlplane_execution_grant_and_defines_no_grant_class():
-    assert ah.ExecutionGrant is ExecutionGrant
+def test_handler_uses_controlplane_grant_claims_and_defines_no_grant_class():
+    assert ah.GrantClaims is GrantClaims
+    assert not hasattr(ah, 'ExecutionGrant')
     defined = [name for name, value in vars(ah).items() if isinstance(value, type) and value.__module__ == ah.__name__]
     assert [name for name in defined if 'Grant' in name] == []
+
+
+def test_collect_source_does_not_run_without_execution_grant(unit, monkeypatch):
+    def boom(*args, **kwargs):
+        raise AssertionError('collect_source must not run')
+
+    monkeypatch.setattr(ah, 'collect_source', boom)
+    adapter = FakeAdapter([locator_of(1)])
+    deps = make_deps(unit, adapter)
+    with pytest.raises(ActivityRequestError) as raised:
+        handle(deps, grant=None)
+    assert raised.value.code == 'VALIDATION_ERROR'
+    assert ('wrong_type', 'execution_grant') in raised.value.issues
+    assert adapter.cursors_seen == []
+    assert adapter.fetch_calls == []
+    assert deps.results.get(WORKSPACE, 'op-key-1') is None
+
+
+def test_deps_require_a_workspace_id(unit):
+    with pytest.raises(ValueError):
+        dataclasses.replace(make_deps(unit, FakeAdapter([])), workspace_id=' ')
 
 
 def test_handler_imports_no_workflow_runtime_ui_render_voice_or_desktop_code():
