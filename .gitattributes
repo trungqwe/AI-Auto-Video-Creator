@@ -10,3 +10,6 @@ docs/milestones/**/evidence/**/*.jsonl -text
 docs/milestones/**/evidence/**/*.xml -text
 docs/milestones/**/evidence/**/*.txt -text
 docs/milestones/**/evidence/**/*.sha256 -text
+
+# Bản dựng UI sinh ra được commit đúng từng byte như npm run build ghi; chuỗi mẫu của thư viện bên thứ ba giữ khoảng trắng cuối dòng.
+src/controlplane/ui/dist/** -whitespace
