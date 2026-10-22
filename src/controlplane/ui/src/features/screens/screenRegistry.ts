@@ -83,7 +83,7 @@ export const SCREEN_REGISTRY: readonly ScreenSpec[] = [
     columns: ['source_id', 'tier', 'topic_tags', 'notes', 'enabled', 'revision'],
     editableFields: ['tier', 'topic_tags', 'notes', 'enabled'],
     readOnly: false,
-    backendStatus: 'pending_module',
+    backendStatus: 'available',
   },
   {
     id: 'articles',

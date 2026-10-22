@@ -11,6 +11,7 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 REGISTRY_PATH = ROOT / 'src' / 'controlplane' / 'ui' / 'src' / 'features' / 'screens' / 'screenRegistry.ts'
 CONTROL_PATH = ROOT / 'src' / 'controlplane' / 'api' / 'routes' / 'control.py'
+ROUTE_CATALOG_PATH = ROOT / 'src' / 'controlplane' / 'application' / 'control_api' / 'route_catalog.py'
 
 MILESTONE_OF = {
     'operations': 'M2', 'batches': 'M2', 'jobs': 'M2', 'configs': 'M2',
@@ -28,9 +29,9 @@ MODULE_OF = {
     'stage-runs': 'G',
     'sessions': 'G', 'logs': 'G', 'accounts': 'J', 'cost': 'J',
 }
-AVAILABLE_IDS = ('operations', 'batches', 'jobs', 'configs', 'stage-runs')
+AVAILABLE_IDS = ('operations', 'batches', 'jobs', 'configs', 'sources', 'stage-runs')
 PENDING_IDS = (
-    'sources', 'articles', 'events', 'media', 'hooks', 'artifacts', 'snapshots',
+    'articles', 'events', 'media', 'hooks', 'artifacts', 'snapshots',
     'story-angles', 'scripts', 'sessions', 'logs', 'accounts', 'cost',
 )
 READ_ONLY_IDS = ('articles', 'events', 'snapshots', 'story-angles', 'scripts')
@@ -92,13 +93,29 @@ def forbidden_overlap(editable_fields):
     return sorted(set(editable_fields) & set(FORBIDDEN_EDITABLE))
 
 
+def catalog_listing_prefixes():
+    text = ROUTE_CATALOG_PATH.read_text(encoding='utf-8')
+    prefixes = set(re.findall(r'ListingResource\(\s*"[a-z0-9-]+",\s*"(/v1/[a-z0-9-]+)"', text))
+    assert prefixes, 'route_catalog.py không có ListingResource nào'
+    return prefixes
+
+
+def catalog_metadata_fields():
+    text = ROUTE_CATALOG_PATH.read_text(encoding='utf-8')
+    found = {}
+    for prefix, fields in re.findall(r'MetadataResource\(\s*"[a-z0-9-]+",\s*"(/v1/[a-z0-9-]+)",\s*frozenset\(\{([^}]*)\}\)', text):
+        found[prefix] = set(re.findall(r'"([a-z_]+)"', fields))
+    assert found, 'route_catalog.py không có MetadataResource nào'
+    return found
+
+
 def router_get_paths():
     text = CONTROL_PATH.read_text(encoding='utf-8')
     prefix = re.search(r'APIRouter\(prefix=.(/[a-z0-9/]*).\)', text)
     assert prefix is not None
     paths = re.findall(r'^@router\.get\(.(/[a-z0-9-]+).\)', text, re.M)
     listings = re.findall(r'^\s*QueryListing\("(/v1/[a-z0-9-]+)"', text, re.M)
-    return {prefix.group(1) + path for path in paths} | set(listings)
+    return {prefix.group(1) + path for path in paths} | set(listings) | catalog_listing_prefixes()
 
 
 SCREENS = parse_screens(_registry_body(_code(REGISTRY_PATH)))
@@ -130,7 +147,7 @@ def test_available_screens_match_get_routes_of_control_router():
 
 def test_every_other_screen_is_pending_module():
     others = [s for s in SCREENS if s['id'] not in AVAILABLE_IDS]
-    assert len(others) == 13
+    assert len(others) == 12
     assert all(s['backendStatus'] == 'pending_module' for s in others)
 
 
@@ -271,6 +288,27 @@ def test_stage_runs_is_available_with_route_and_integration_test_evidence():
     assert BY_ID['stage-runs']['backendStatus'] == 'available'
     assert '/v1/stage-runs' in router_get_paths()
     assert 'stage-runs' in QUERIES_ROUTES_TEST.read_text(encoding='utf-8')
+
+
+SOURCES_MODULE_TEST = ROOT / 'tests' / 'integration' / 'adapt' / 'prod' / 'test_adapt_prod_sources_module.py'
+
+
+def test_sources_is_available_with_route_and_integration_test_evidence():
+    assert BY_ID['sources']['backendStatus'] == 'available'
+    assert '/v1/sources' in router_get_paths()
+    assert SOURCES_MODULE_TEST.is_file()
+    assert 'sources' in SOURCES_MODULE_TEST.read_text(encoding='utf-8')
+
+
+def test_editable_fields_are_accepted_by_metadata_allowlist_of_same_prefix():
+    catalog = catalog_metadata_fields()
+    editable = [s for s in SCREENS if s['editableFields']]
+    assert sorted(s['id'] for s in editable) == ['hooks', 'media', 'sources']
+    for screen in editable:
+        allowed = catalog.get(screen['resourcePath'])
+        assert allowed is not None, screen['id']
+        assert set(screen['editableFields']) <= allowed, screen['id']
+    assert set(BY_ID['sources']['editableFields']) == catalog['/v1/sources'] == {'tier', 'topic_tags', 'notes', 'enabled'}
 
 
 @pytest.mark.parametrize('screen_id', REVISION_COLUMN_IDS)
