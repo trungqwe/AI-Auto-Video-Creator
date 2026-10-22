@@ -1,6 +1,6 @@
 """Worker activity handler of CollectSource for workflow G (A-18; A-RULE-014, A-RULE-016).
 
-Receives an ActivityRequest with a controlplane ExecutionGrant, runs CollectSource and returns an ActivityResult.
+Receives an ActivityRequest with controlplane GrantClaims (YC-HT-G-10), runs CollectSource and returns an ActivityResult.
 Temporal registration belongs to workflow G (CONV-A-06): this module imports no workflow runtime, UI, render, voice
 or desktop code. Results are built from codes and counters only, so no exception text or secret reaches a result.
 """
@@ -12,9 +12,9 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Protocol
 
-from controlplane.domain.orchestration import ExecutionGrant
+from controlplane.domain.orchestration.fencing import GrantClaims
 
 from source_ingestion.application.collect_source import (
     CollectionRunResult,
@@ -26,7 +26,6 @@ from source_ingestion.application.collect_source import (
 from source_ingestion.application.package_builder import HtmlExtractor
 from source_ingestion.domain.collection_run import RetryPolicy, RunStatus
 from source_ingestion.domain.package import ExtractionPolicy
-from source_ingestion.ports.partners import ActivityGrantPort
 from source_ingestion.ports.source_adapter import SourceAdapter
 
 ACTIVITY_NAME = 'CollectSource'
@@ -47,6 +46,13 @@ WAITING = 'waiting'
 OUTCOME_UNKNOWN = 'outcome_unknown'
 STALE = 'stale'
 Issue = tuple[str, str]
+
+
+class ClaimsCurrencyPort(Protocol):
+    """G owns GrantClaims; A asks whether the claims are still current (generation, recovery epoch, expiry) before accepting work."""
+
+    def is_grant_current(self, grant: GrantClaims) -> bool:
+        ...
 
 
 class ActivityRequestError(Exception):
@@ -77,13 +83,18 @@ class InMemoryActivityResultStore:
 @dataclass(frozen=True)
 class CollectActivityDeps:
     uow: CollectionUnitOfWork
-    grants: ActivityGrantPort
+    grants: ClaimsCurrencyPort
     adapter_for: Callable[[str], SourceAdapter]
     extractor: HtmlExtractor
     retry_policy: RetryPolicy
     adapter_revision: str
+    workspace_id: str
     extraction_policy: ExtractionPolicy | None = None
     results: InMemoryActivityResultStore = field(default_factory=InMemoryActivityResultStore)
+
+    def __post_init__(self) -> None:
+        if not _is_text(self.workspace_id):
+            raise ValueError('workspace_id must be a non-empty string')
 
 
 REQUEST_REQUIRED = MappingProxyType({
@@ -131,16 +142,14 @@ def _request_issues(request: object) -> list[Issue]:
 
 
 def _grant_issues(grant: object, stage_run_id: object) -> list[Issue]:
-    if not isinstance(grant, ExecutionGrant):
+    if not isinstance(grant, GrantClaims):
         return [('wrong_type', 'execution_grant')]
     issues: list[Issue] = []
-    for name in ('workspace_id', 'operation_id', 'job_id', 'stage_run_id'):
+    for name in ('grant_id', 'stage_run_id', 'worker_lease_id', 'recovery_epoch', 'allowed_operation', 'input_fingerprint'):
         if not _is_text(getattr(grant, name)):
             issues.append(('invalid_value', f'execution_grant.{name}'))
-    for name in ('execution_generation', 'recovery_epoch'):
-        value = getattr(grant, name)
-        if type(value) is not int or value < 0:
-            issues.append(('invalid_value', f'execution_grant.{name}'))
+    if type(grant.execution_generation) is not int or grant.execution_generation < 0:
+        issues.append(('invalid_value', 'execution_grant.execution_generation'))
     if isinstance(stage_run_id, str) and _is_text(grant.stage_run_id) and grant.stage_run_id != stage_run_id:
         issues.append(('invalid_value', 'execution_grant.stage_run_id'))
     return issues
@@ -167,7 +176,7 @@ def _parse_input_refs(refs: object) -> tuple[str, datetime.date] | None:
 
 
 def validate_collect_request(request: object, grant: object) -> list[Issue]:
-    """Return (code, field) issues of the ActivityRequest binding and of the typed ExecutionGrant; empty means valid."""
+    """Return (code, field) issues of the ActivityRequest binding and of the typed GrantClaims; empty means valid."""
     issues = _request_issues(request)
     if not isinstance(request, Mapping):
         return issues
@@ -209,7 +218,7 @@ def _problem(code: str, message_key: str, *, retryable: bool = False) -> dict[st
 
 
 def _activity_result(
-    grant: ExecutionGrant,
+    grant: GrantClaims,
     disposition: str,
     output_refs: list[dict[str, str]],
     clock: Callable[[], datetime.datetime],
@@ -218,12 +227,12 @@ def _activity_result(
     warnings: list[str] | None = None,
     problem: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """grant_id is ExecutionGrant.operation_id and recovery_epoch is str(ExecutionGrant.recovery_epoch) (CONV-A-06)."""
+    """grant_id is GrantClaims.grant_id and recovery_epoch is GrantClaims.recovery_epoch, a string (YC-HT-G-10)."""
     result: dict[str, Any] = {
         'stage_run_id': grant.stage_run_id,
-        'grant_id': grant.operation_id,
+        'grant_id': grant.grant_id,
         'execution_generation': grant.execution_generation,
-        'recovery_epoch': str(grant.recovery_epoch),
+        'recovery_epoch': grant.recovery_epoch,
         'disposition': disposition,
         'output_refs': output_refs,
         'completed_at': _utc(clock()),
@@ -238,7 +247,7 @@ def _activity_result(
 
 
 def _collection_result(
-    grant: ExecutionGrant, outcome: CollectionRunResult, clock: Callable[[], datetime.datetime]
+    grant: GrantClaims, outcome: CollectionRunResult, clock: Callable[[], datetime.datetime]
 ) -> dict[str, Any]:
     """COMPLETED and COMPLETED_PARTIAL succeed (item errors are warnings); other statuses carry a standard problem."""
     output_refs = [{'ref_type': REF_TYPE_RUN, 'ref_id': outcome.run_id}]
@@ -273,7 +282,7 @@ def _collection_result(
 
 def handle_collect_source_activity(
     request: Mapping[str, Any],
-    grant: ExecutionGrant,
+    grant: GrantClaims,
     deps: CollectActivityDeps,
     clock: Callable[[], datetime.datetime],
 ) -> dict[str, Any]:
@@ -284,6 +293,7 @@ def handle_collect_source_activity(
     'succeeded' result is stored under (workspace_id, operation_key): the same key returns it without collecting again,
     and a different input_refs list under that key is OPERATION_KEY_CONFLICT. execution_generation of the grant is the
     CollectSource execution_generation, so a stale checkpoint write is rejected by the checkpoint repository too.
+    Without a GrantClaims (execution_grant missing) the request is rejected with VALIDATION_ERROR before any lookup, collection or write.
     """
     issues = validate_collect_request(request, grant)
     if issues:
@@ -293,7 +303,7 @@ def handle_collect_source_activity(
     input_key = tuple(sorted((ref['ref_type'], ref['ref_id']) for ref in request['input_refs']))
     if not deps.grants.is_grant_current(grant):
         return _activity_result(grant, STALE, [], clock, problem=_problem(STALE_GRANT, STALE_GRANT))
-    stored = deps.results.get(grant.workspace_id, operation_key)
+    stored = deps.results.get(deps.workspace_id, operation_key)
     if stored is not None:
         if stored[0] != input_key:
             problem = _problem(OPERATION_KEY_CONFLICT, OPERATION_KEY_CONFLICT)
@@ -302,7 +312,7 @@ def handle_collect_source_activity(
     try:
         job = SourceCollectionJob(
             CollectSourceRequest(
-                workspace_id=grant.workspace_id,
+                workspace_id=deps.workspace_id,
                 source_id=source_id,
                 business_date=business_date,
                 run_id=f'run:{operation_key}',
@@ -320,13 +330,14 @@ def handle_collect_source_activity(
         return _activity_result(grant, FAILED, [], clock, problem=problem)
     result = _collection_result(grant, outcome, clock)
     if result['disposition'] == SUCCEEDED:
-        deps.results.put(grant.workspace_id, operation_key, input_key, result)
+        deps.results.put(deps.workspace_id, operation_key, input_key, result)
     return result
 
 
 __all__ = [
     'ACTIVITY_NAME',
     'ActivityRequestError',
+    'ClaimsCurrencyPort',
     'CollectActivityDeps',
     'InMemoryActivityResultStore',
     'handle_collect_source_activity',
