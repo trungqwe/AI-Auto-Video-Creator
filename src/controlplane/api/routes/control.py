@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+import json
+import re
+import uuid
+from typing import Any
+
 from fastapi import APIRouter, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-import uuid
+from starlette.concurrency import run_in_threadpool
+
+from controlplane.api.routes.modules.problem_detail import problem_response
+from controlplane.application.control_api.command_catalog import COMMAND_SPECS, CommandSpec
+from controlplane.application.control_api.errors import CapabilityUnavailableError
+from controlplane.application.control_api.receipts import accepted_receipt
 
 router = APIRouter(prefix="/v1")
 
@@ -134,3 +144,89 @@ def technical_detail(request: Request, detail_ref: str) -> dict[str, object]:
             session_id=identity["session_id"],
             correlation_id=request.state.correlation_id,
         )
+
+_RESOURCE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}")
+_REVISION = re.compile(r"[0-9]{1,18}")
+
+
+def _single_header(request: Request, name: str) -> str | None:
+    values = request.headers.getlist(name)
+    return values[0] if len(values) == 1 and values[0].strip() else None
+
+
+async def _read_body(request: Request, spec: CommandSpec) -> tuple[dict[str, Any], str | None]:
+    if spec.body_mode == "none":
+        return ({}, None)
+    raw = await request.body()
+    if not raw.strip():
+        return ({}, "Phải là JSON object không rỗng.") if spec.body_mode == "required" else ({}, None)
+    try:
+        payload = json.loads(raw)
+    except ValueError:
+        return ({}, "Phải là JSON object.")
+    if not isinstance(payload, dict):
+        return ({}, "Phải là JSON object.")
+    if spec.body_mode == "required" and not payload:
+        return ({}, "Phải là JSON object không rỗng.")
+    return (payload, None)
+
+
+def _register_command(spec: CommandSpec) -> None:
+    async def run_command(request: Request) -> JSONResponse:
+        identity = _identity(request)
+        idempotency_key = _single_header(request, "idempotency-key")
+        if_match = _single_header(request, "if-match")
+        payload, body_error = await _read_body(request, spec)
+        errors: dict[str, str] = {}
+        if idempotency_key is None:
+            errors["Idempotency-Key"] = "Bắt buộc, không rỗng và chỉ gửi một lần."
+        expected_revision = None
+        if spec.requires_if_match:
+            if if_match is None or _REVISION.fullmatch(if_match) is None:
+                errors["If-Match"] = "Bắt buộc, là số revision gồm chữ số ASCII."
+            else:
+                expected_revision = int(if_match)
+        resource_id = request.path_params.get("resource_id")
+        if resource_id is not None and _RESOURCE_ID.fullmatch(resource_id) is None:
+            errors["resource_id"] = "Mã tài nguyên không hợp lệ."
+        if body_error is not None:
+            errors["body"] = body_error
+        else:
+            for name in sorted(spec.required_fields):
+                val = payload.get(name)
+                if not isinstance(val, str) or not val.strip():
+                    errors[name] = "Bắt buộc, là chuỗi không rỗng."
+        if errors:
+            return problem_response(request, "VALIDATION_FAILED", field_errors=errors)
+        offending = {k: "Trường không được phép." for k in payload if k not in spec.allowed_fields}
+        if offending:
+            return problem_response(request, "FORBIDDEN_FIELD", field_errors=offending)
+        gateway = request.app.state.command_gateway
+        if gateway is None:
+            raise CapabilityUnavailableError(spec.name)
+        receipt = await run_in_threadpool(
+            gateway.submit,
+            command_name=spec.name,
+            workspace_id=identity["workspace_id"],
+            actor_id=identity["actor_id"],
+            correlation_id=request.state.correlation_id,
+            idempotency_key=idempotency_key,
+            resource_id=resource_id,
+            expected_revision=expected_revision,
+            payload=payload,
+        )
+        return JSONResponse(jsonable_encoder(accepted_receipt(receipt)), status_code=202)
+
+    run_command.__name__ = "command_" + spec.name
+    router.add_api_route(
+        spec.path,
+        run_command,
+        methods=[spec.method],
+        status_code=202,
+        response_model=None,
+        name=spec.name,
+    )
+
+
+for _spec in COMMAND_SPECS:
+    _register_command(_spec)

@@ -6,15 +6,20 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import traceback
+from typing import Any
 from urllib.parse import urlsplit
 import uuid
 
 from controlplane.api.routes.control import router as control_router
+from controlplane.api.routes.modules.metadata_update import build_metadata_router
+from controlplane.api.routes.modules.read_only_listing import build_listing_router
 from controlplane.api.routes.session import router as session_router
 from controlplane.api.sse.stream import SseStreamPresenter, router as sse_router
 from controlplane.api.security import enforce_csrf, enforce_host
 from controlplane.api.technical_details import record_internal_error
 from controlplane.application.control_api.query_ports import ControlApiQueryService
+from controlplane.application.control_api.errors import CapabilityUnavailableError
+from controlplane.application.control_api.route_catalog import LISTING_RESOURCES, METADATA_RESOURCES
 from controlplane.application.session_security import BootstrapCapabilityRegistry, SessionSecurityService
 from controlplane.application.technical_details import TechnicalDetailService
 from controlplane.domain.concurrency import RevisionConflictError
@@ -59,6 +64,60 @@ def _valid_origin(request: Request, allowed: set[str]) -> bool:
         return False
 
 
+
+def _module_service(request: Request, resource: str) -> Any:
+    service = request.app.state.module_services.get(resource)
+    if service is None:
+        raise CapabilityUnavailableError(resource)
+    return service
+
+
+def _listing_callbacks(name: str, with_detail: bool):
+    def fetch_page(request: Request, workspace_id: str, query: Any):
+        return _module_service(request, name).fetch_page(request, workspace_id, query)
+
+    def fetch_one(request: Request, workspace_id: str, item_id: str):
+        return _module_service(request, name).fetch_one(request, workspace_id, item_id)
+
+    return fetch_page, (fetch_one if with_detail else None)
+
+
+def _update_callback(name: str):
+    def apply_update(*, request: Request, item_id: str, expected_revision: int, changes: dict[str, Any], idempotency_key: str | None = None):
+        return _module_service(request, name).apply_update(
+            request=request,
+            item_id=item_id,
+            expected_revision=expected_revision,
+            changes=changes,
+            idempotency_key=idempotency_key,
+        )
+
+    return apply_update
+
+
+def _mount_module_routers(app: FastAPI) -> None:
+    for resource in LISTING_RESOURCES:
+        fetch_page, fetch_one = _listing_callbacks(resource.name, resource.with_detail)
+        app.include_router(
+            build_listing_router(
+                prefix=resource.prefix,
+                fetch_page=fetch_page,
+                allowed_sorts=resource.allowed_sorts,
+                allowed_filters=resource.allowed_filters,
+                default_limit=resource.default_limit,
+                max_limit=resource.max_limit,
+                fetch_one=fetch_one,
+            )
+        )
+    for resource in METADATA_RESOURCES:
+        app.include_router(
+            build_metadata_router(
+                prefix=resource.prefix,
+                allowed_fields=resource.allowed_fields,
+                apply_update=_update_callback(resource.name),
+            )
+        )
+
 def create_app(*, manager: object | None = None,
                allowed_origins: set[str] | None = None,
                bootstrap_registry: BootstrapCapabilityRegistry | None = None) -> FastAPI:
@@ -72,6 +131,10 @@ def create_app(*, manager: object | None = None,
     app.state.command_service = (
         compose_command_service(manager.unit_of_work) if manager is not None else None
     )
+    app.state.command_gateway = (
+        app.state.command_service.command_gateway() if app.state.command_service is not None else None
+    )
+    app.state.module_services = {}  # handler và service module do phân hệ chủ sở hữu gắn vào đây; chưa gắn thì route trả 503 CAPABILITY_UNAVAILABLE, wiring theo phân hệ là BL-CV-06.
     app.state.sse_presenter = SseStreamPresenter(PostgresSseReader)
 
     @app.middleware("http")
@@ -106,6 +169,9 @@ def create_app(*, manager: object | None = None,
                         if len(matches) != 1 or not matches[0].strip():
                             raise ValueError("If-Match header required")
                 response = await call_next(request)
+        except CapabilityUnavailableError:
+            response = _problem(503, "CAPABILITY_UNAVAILABLE", "dependency", correlation_id,
+                                "Năng lực xử lý yêu cầu chưa được kết nối.")
         except PermissionError:
             response = _problem(403, "POLICY_VIOLATION", "security", correlation_id,
                                 "Yêu cầu không được phép.")
@@ -149,4 +215,5 @@ def create_app(*, manager: object | None = None,
     app.include_router(session_router)
     app.include_router(sse_router)
     app.include_router(control_router)
+    _mount_module_routers(app)
     return app
