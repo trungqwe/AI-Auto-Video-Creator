@@ -110,3 +110,20 @@ Tất cả các lệnh kiểm tra bắt buộc và hồi quy đều đạt exit 
 - Không thêm bất kỳ thư viện hoặc gói phụ thuộc bên ngoài nào.
 - Không chứa câu lệnh DDL (CREATE TABLE, ALTER TABLE, DROP TABLE) trong adapter.
 - Toàn bộ thay đổi nằm trọn vẹn trong các đường dẫn được sở hữu (owned paths).
+
+## 7. Xác nhận sau rebase lên 98d16ee (REBASE)
+
+Rebase lên 98d16ee4bef0955900c356da03a7861423976db7: không xung đột, tests/integration/conftest.py (PG-TEST-DSN-HARNESS) đã có trong worktree.
+
+### Kiểm thử tích hợp PostgreSQL của adapter D sau rebase
+- Lệnh: `python -m pytest tests/integration/persistence/d/test_persist_d_postgres.py -q -p no:cacheprovider`
+- Exit code: `0`
+- Kết quả nguyên văn:
+```
+22 passed in 9.55s
+```
+
+### Quét mã nguồn adapter D cấm DDL và tiền tố 'src.'
+- Lệnh: `python -c "import pathlib; fs = list(pathlib.Path('src/creative/persistence').rglob('*.py')); t = ' '.join(f.read_text(encoding='utf-8') for f in fs); assert fs and 'CREATE TABLE' not in t and 'ALTER TABLE' not in t and 'from src.' not in t, 'adapter D'"`
+- Exit code: `0`
+- Kết quả: Không có lỗi (AssertionError), mã nguồn adapter D sạch hoàn toàn.
