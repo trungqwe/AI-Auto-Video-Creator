@@ -1,6 +1,7 @@
 """Visual and audio hook revisions (CT-HOOK-001, CT-HOOK-002, capability C)."""
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import StrEnum
 
 from catalog.domain.identity import ProvenanceRelation
@@ -50,3 +51,24 @@ class HookRevision:
             raise ValueError("technical_metadata must be a tuple of 2-tuples of strings")
         if self.provenance is not ProvenanceRelation.USER_IMPORTED:
             raise ValueError("hook provenance is always user_imported")
+
+
+def format_hook_timestamp(moment: datetime) -> str:
+    """Format an aware datetime as YYYY-MM-DDTHH:MM:SS.ffffffZ in UTC; naive values are rejected."""
+    if not isinstance(moment, datetime) or moment.utcoffset() is None:
+        raise ValueError("moment must be a timezone-aware datetime")
+    return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+@dataclass(frozen=True, slots=True)
+class HookHead:
+    """Latest revision of one hook with the UTC time of its last write (YYYY-MM-DDTHH:MM:SS.ffffffZ)."""
+
+    revision: HookRevision
+    updated_at: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.revision, HookRevision):
+            raise ValueError("revision must be a HookRevision")
+        if not isinstance(self.updated_at, str) or not self.updated_at:
+            raise ValueError("updated_at must be a non-empty string")
