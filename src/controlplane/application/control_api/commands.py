@@ -7,6 +7,7 @@ from typing import Any, Callable, Protocol
 import uuid
 
 from controlplane.application.idempotency import request_hash
+from controlplane.application.control_api.command_gateway import CommandHandlerPort, ControlCommandGateway
 from controlplane.application.orchestration.start_batch import StartBatchService
 from controlplane.domain.concurrency import RevisionConflictError
 from controlplane.domain.events import DomainEvent
@@ -51,6 +52,15 @@ class ControlApiCommandService:
         self._config_scope_factory = config_scope_factory
         self._config_service = config_service
         self._config_repository = config_repository
+
+    def command_gateway(self, handlers: dict[str, CommandHandlerPort] | None = None) -> ControlCommandGateway:
+        """Dùng lại factory PostgreSQL đã compose để api/ không import repository (test_h28_static_architecture cấm PostgresIdempotencyRepository trong api/)."""
+        return ControlCommandGateway(
+            uow_factory=self._uow_factory,
+            idempotency_factory=self._idempotency_factory,
+            receipt_fields_factory=self._receipt_fields_factory,
+            handlers=handlers,
+        )
 
     @staticmethod
     def _idempotency_check(repo: IdempotencyPort, *, workspace_id: str,
