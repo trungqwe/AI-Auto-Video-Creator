@@ -16,6 +16,7 @@ from controlplane.api.routes.modules.problem_detail import problem_response
 from controlplane.application.control_api.command_catalog import COMMAND_SPECS, CommandSpec
 from controlplane.application.control_api.errors import CapabilityUnavailableError
 from controlplane.application.control_api.receipts import accepted_receipt
+from controlplane.application.projections.list_query import ListQuery, ListQueryError, parse_list_query
 
 router = APIRouter(prefix="/v1")
 
@@ -24,13 +25,29 @@ def _identity(request: Request) -> dict[str, str]:
     return request.state.identity
 
 
+_LIST_DEFAULT_LIMIT = 50
+_LIST_MAX_LIMIT = 100
+
+
+def _list_query(request: Request, *, sort: str, filters: tuple[str, ...]) -> ListQuery:
+    params = {"direction": "desc", **dict(request.query_params)}
+    try:
+        return parse_list_query(
+            params, allowed_sorts=(sort,), allowed_filters=filters,
+            default_limit=_LIST_DEFAULT_LIMIT, max_limit=_LIST_MAX_LIMIT,
+        )
+    except ListQueryError as exc:
+        raise ValueError(str(exc)) from exc
+
+
 @router.get("/operations")
 def operations(request: Request) -> dict[str, object]:
+    query = _list_query(request, sort="accepted_at", filters=())
     with request.app.state.manager.borrow_connection() as connection:
-        items = request.app.state.query_service.operations(
-            connection=connection, workspace_id=_identity(request)["workspace_id"],
+        page = request.app.state.query_service.operations(
+            connection=connection, workspace_id=_identity(request)["workspace_id"], query=query,
         )
-    return {"items": items, "next_cursor": None}
+    return {"items": list(page.items), "next_cursor": page.next_cursor}
 
 
 @router.get("/operations/{operation_id}")
@@ -48,11 +65,12 @@ def operation(request: Request, operation_id: str) -> dict[str, object]:
 
 @router.get("/batches")
 def batches(request: Request) -> dict[str, object]:
+    query = _list_query(request, sort="created_at", filters=("status",))
     with request.app.state.manager.borrow_connection() as connection:
-        items = request.app.state.query_service.batches(
-            connection=connection, workspace_id=_identity(request)["workspace_id"],
+        page = request.app.state.query_service.batches(
+            connection=connection, workspace_id=_identity(request)["workspace_id"], query=query,
         )
-    return {"items": items, "next_cursor": None}
+    return {"items": list(page.items), "next_cursor": page.next_cursor}
 
 
 @router.get("/batches/{batch_id}")
@@ -84,11 +102,12 @@ async def start_batch(request: Request) -> JSONResponse:
 
 @router.get("/jobs")
 def jobs(request: Request) -> dict[str, object]:
+    query = _list_query(request, sort="created_at", filters=("batch_id", "status"))
     with request.app.state.manager.borrow_connection() as connection:
-        items = request.app.state.query_service.jobs(
-            connection=connection, workspace_id=_identity(request)["workspace_id"],
+        page = request.app.state.query_service.jobs(
+            connection=connection, workspace_id=_identity(request)["workspace_id"], query=query,
         )
-    return {"items": items, "next_cursor": None}
+    return {"items": list(page.items), "next_cursor": page.next_cursor}
 
 
 @router.get("/jobs/{job_id}")
@@ -106,11 +125,12 @@ def job(request: Request, job_id: str) -> dict[str, object]:
 
 @router.get("/configs")
 def configs(request: Request) -> dict[str, object]:
+    query = _list_query(request, sort="created_at", filters=())
     with request.app.state.manager.borrow_connection() as connection:
-        items = request.app.state.query_service.configs(
-            connection=connection, workspace_id=_identity(request)["workspace_id"],
+        page = request.app.state.query_service.configs(
+            connection=connection, workspace_id=_identity(request)["workspace_id"], query=query,
         )
-    return {"items": items, "next_cursor": None}
+    return {"items": list(page.items), "next_cursor": page.next_cursor}
 
 
 @router.put("/configs/{scope}")

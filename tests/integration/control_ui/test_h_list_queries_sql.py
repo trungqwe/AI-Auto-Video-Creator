@@ -8,11 +8,15 @@ import ast
 import dataclasses
 import pathlib
 import re
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 import pytest
+from fastapi.testclient import TestClient
 
-from controlplane.application.projections.list_query import ListQuery, decode_cursor
+from controlplane.api.main import create_app
+from controlplane.application.projections.list_query import ListQuery, Page, decode_cursor, encode_cursor
+from controlplane.infrastructure.db.control_api_queries import PostgresControlQueries
 from controlplane.infrastructure.db.projections.list_queries import (
     BATCHES_SPEC,
     JOBS_SPEC,
@@ -24,6 +28,7 @@ from controlplane.infrastructure.db.projections.list_queries import (
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 MODULE_PATH = ROOT / 'src' / 'controlplane' / 'infrastructure' / 'db' / 'projections' / 'list_queries.py'
 QUERIES_PATH = ROOT / 'src' / 'controlplane' / 'infrastructure' / 'db' / 'control_api_queries.py'
+CONTROL_PATH = ROOT / 'src' / 'controlplane' / 'api' / 'routes' / 'control.py'
 WORKSPACE = 'ws-1'
 EVIL = "x'; DROP TABLE controlplane.cp_video_jobs; --"
 CURSOR = ('2026-01-01T00:00:00+00:00', 'job-09')
@@ -265,29 +270,42 @@ def test_module_has_no_database_driver_and_no_offset():
     assert imported <= allowed
 
 
-def select_statements():
+def _method_def(name):
     tree = ast.parse(QUERIES_PATH.read_text(encoding='utf-8'))
-    found = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name in ('batches', 'jobs'):
-            literals = [c.value for c in ast.walk(node) if isinstance(c, ast.Constant) and isinstance(c.value, str)]
-            found[node.name] = next(value for value in literals if value.startswith('SELECT '))
-    return found
+    cls = next(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == 'PostgresControlQueries')
+    return next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == name)
 
 
-@pytest.mark.parametrize('name, spec', [('batches', BATCHES_SPEC), ('jobs', JOBS_SPEC)])
-def test_specs_match_control_api_queries(name, spec):
-    statement = select_statements()[name]
-    pattern = (
-        r'SELECT (?P<cols>.+?) FROM (?P<table>\S+) WHERE workspace_id = %s '
-        r'ORDER BY (?P<sort>\w+) DESC, (?P<id>\w+) DESC LIMIT 100'
-    )
-    match = re.fullmatch(pattern, statement)
-    assert match is not None
-    assert match['table'] == spec.table
-    assert tuple(column.strip() for column in match['cols'].split(',')) == spec.select_columns
-    assert match['id'] == spec.id_column
-    assert match['sort'] in spec.sort_columns
+@pytest.mark.parametrize('name, spec_name', [('batches', 'BATCHES_SPEC'), ('jobs', 'JOBS_SPEC')])
+def test_specs_match_control_api_queries(name, spec_name):
+    method = _method_def(name)
+    spec_args = [
+        arg.id
+        for call in ast.walk(method)
+        if isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == 'fetch_page'
+        for arg in call.args
+        if isinstance(arg, ast.Name)
+    ]
+    assert spec_name in spec_args
+    literals = [c.value for c in ast.walk(method) if isinstance(c, ast.Constant) and isinstance(c.value, str)]
+    assert not any(value.lstrip().startswith('SELECT ') for value in literals)
+
+
+def test_control_api_queries_imports_fetch_page_and_specs_from_projection_module():
+    tree = ast.parse(QUERIES_PATH.read_text(encoding='utf-8'))
+    imported = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == 'controlplane.infrastructure.db.projections.list_queries'
+        for alias in node.names
+    }
+    assert {'fetch_page', 'BATCHES_SPEC', 'JOBS_SPEC'} <= imported
+
+
+def test_control_api_queries_has_no_limit_100_and_no_offset():
+    text = QUERIES_PATH.read_text(encoding='utf-8')
+    assert 'LIMIT 100' not in text
+    assert re.search(r'\bOFFSET\b', text, re.IGNORECASE) is None
 
 
 def test_qr_perf_005_page_fetch_is_single_bounded_keyset_query():
@@ -304,3 +322,223 @@ def test_qr_perf_005_page_fetch_is_single_bounded_keyset_query():
     assert '(created_at, job_id) < (%s, %s)' in deep.calls[0][0]
     assert '(created_at, job_id)' not in first.calls[0][0]
     assert first.calls[0][0].split(' ORDER BY ')[1] == deep.calls[0][0].split(' ORDER BY ')[1]
+
+def operation_row(index):
+    return (f'10000000-0000-0000-0000-{index:012d}', f'cmd-{index:02d}', f'20000000-0000-0000-0000-{index:012d}', 'accepted', None, f'2026-01-01T00:00:{index:02d}+00:00', None, None, None)
+
+
+def config_row(index):
+    return (f'30000000-0000-0000-0000-{index:012d}', 'workspace', 'ws-1', index + 1, 1, 'a' * 64, 'PUBLISHED', f'2026-01-01T00:00:{index:02d}+00:00')
+
+
+LIST_CASES = {
+    'operations': {'sort': 'accepted_at', 'row': operation_row, 'id_field': 'receipt_id', 'id_index': 2, 'keyset': '(r.accepted_at, r.receipt_id)', 'order': 'r.accepted_at {d}, r.receipt_id {d}'},
+    'configs': {'sort': 'created_at', 'row': config_row, 'id_field': 'config_revision_id', 'id_index': 0, 'keyset': '(c.created_at, c.config_revision_id)', 'order': 'c.created_at {d}, c.config_revision_id {d}'},
+}
+
+
+def run_list(name, query, rows=()):
+    connection = FakeConnection(rows)
+    page = getattr(PostgresControlQueries(connection), name)(workspace_id=WORKSPACE, query=query)
+    sql, params = connection.calls[0]
+    return page, ' '.join(sql.split()), params
+
+
+@pytest.mark.parametrize('name', ['operations', 'configs'])
+@pytest.mark.parametrize('direction', ['asc', 'desc'])
+@pytest.mark.parametrize('cursor', [None, CURSOR])
+def test_operations_configs_sql_is_parameterized_keyset(name, direction, cursor):
+    case = LIST_CASES[name]
+    query = make_query(sort_key=case['sort'], direction=direction, cursor=cursor)
+    _, sql, params = run_list(name, query)
+    operator = '>' if direction == 'asc' else '<'
+    assert sql.endswith('ORDER BY ' + case['order'].format(d=direction.upper()) + ' LIMIT %s')
+    assert 'LIMIT 100' not in sql and 'OFFSET' not in sql.upper()
+    assert sql.count('%s') == len(params) and sql.count('%') == sql.count('%s')
+    if cursor is None:
+        assert params == (WORKSPACE, 51)
+        assert '(%s, %s)' not in sql
+    else:
+        assert f"{case['keyset']} {operator} (%s, %s) ORDER BY" in sql
+        assert params == (WORKSPACE, *CURSOR, 51)
+
+
+@pytest.mark.parametrize('name', ['operations', 'configs'])
+def test_operations_configs_cursor_values_only_travel_in_params(name):
+    query = make_query(sort_key=LIST_CASES[name]['sort'], cursor=(EVIL, EVIL))
+    _, sql, params = run_list(name, query)
+    assert 'DROP' not in sql and EVIL not in sql
+    assert params == (WORKSPACE, EVIL, EVIL, 51)
+
+
+@pytest.mark.parametrize('name', ['operations', 'configs'])
+@pytest.mark.parametrize('overrides, code', [
+    ({'sort_key': 'status'}, 'column_not_allowed'),
+    ({'filters': (('status', 'x'),)}, 'column_not_allowed'),
+    ({'direction': 'DESC'}, 'direction_invalid'),
+    ({'limit': 0}, 'limit_invalid'),
+    ({'limit': True}, 'limit_invalid'),
+])
+def test_operations_configs_reject_bad_query_before_touching_connection(name, overrides, code):
+    connection = FakeConnection()
+    query = make_query(**{'sort_key': LIST_CASES[name]['sort'], **overrides})
+    with pytest.raises(ValueError, match='^' + code + '$'):
+        getattr(PostgresControlQueries(connection), name)(workspace_id=WORKSPACE, query=query)
+    assert connection.calls == []
+
+
+@pytest.mark.parametrize('name', ['operations', 'configs'])
+def test_operations_configs_next_cursor_only_with_extra_row(name):
+    case = LIST_CASES[name]
+    rows = [case['row'](i) for i in range(3)]
+    page, _, params = run_list(name, make_query(sort_key=case['sort'], limit=2), rows)
+    assert params[-1] == 3 and len(page.items) == 2
+    assert page.items[1][case['id_field']] == rows[1][case['id_index']]
+    assert decode_cursor(page.next_cursor) == ('2026-01-01T00:00:01+00:00', rows[1][case['id_index']])
+    full, _, _ = run_list(name, make_query(sort_key=case['sort'], limit=3), rows)
+    assert len(full.items) == 3 and full.next_cursor is None
+    empty, _, _ = run_list(name, make_query(sort_key=case['sort']), [])
+    assert empty.items == () and empty.next_cursor is None
+
+
+def test_batches_and_jobs_delegate_to_fetch_page_with_specs():
+    jobs_connection = FakeConnection([job_row(i) for i in range(3)])
+    jobs_page = PostgresControlQueries(jobs_connection).jobs(workspace_id=WORKSPACE, query=make_query())
+    assert jobs_connection.calls == [build_list_sql(JOBS_SPEC, make_query(), workspace_id=WORKSPACE)]
+    assert len(jobs_page.items) == 3 and jobs_page.next_cursor is None
+    rows = [(f'b-{i}', 'CREATED', 5, f'2026-01-01T00:00:0{i}+00:00') for i in range(3)]
+    batches_connection = FakeConnection(rows)
+    batches_page = PostgresControlQueries(batches_connection).batches(workspace_id=WORKSPACE, query=make_query(limit=2))
+    assert batches_connection.calls == [build_list_sql(BATCHES_SPEC, make_query(limit=2), workspace_id=WORKSPACE)]
+    assert len(batches_page.items) == 2 and batches_page.next_cursor is not None
+
+
+ORIGIN = 'https://localhost:8443'
+READ_HEADERS = {'Cookie': 'cp_session=valid'}
+IDENTITY = {'workspace_id': WORKSPACE, 'actor_id': 'actor-1', 'session_id': 'session-1'}
+LIST_ROUTES = {
+    '/v1/operations': ('operations', 'accepted_at'),
+    '/v1/batches': ('batches', 'created_at'),
+    '/v1/jobs': ('jobs', 'created_at'),
+    '/v1/configs': ('configs', 'created_at'),
+}
+
+
+class FakeManager:
+    @contextmanager
+    def borrow_connection(self):
+        yield object()
+
+    def unit_of_work(self):
+        raise RuntimeError('kh\u00f4ng d\u00f9ng trong test danh s\u00e1ch')
+
+
+class FakeSessions:
+    def resolve(self, *, connection, token):
+        if token == 'valid':
+            return IDENTITY
+        raise PermissionError('invalid session token')
+
+
+class RecordingQueries:
+    def __init__(self, page):
+        self.page = page
+        self.calls = []
+
+    def _list(self, name, workspace_id, query):
+        self.calls.append((name, workspace_id, query))
+        return self.page
+
+    def operations(self, *, connection, workspace_id, query):
+        return self._list('operations', workspace_id, query)
+
+    def batches(self, *, connection, workspace_id, query):
+        return self._list('batches', workspace_id, query)
+
+    def jobs(self, *, connection, workspace_id, query):
+        return self._list('jobs', workspace_id, query)
+
+    def configs(self, *, connection, workspace_id, query):
+        return self._list('configs', workspace_id, query)
+
+
+def make_client(page=None):
+    app = create_app(manager=FakeManager(), allowed_origins={ORIGIN})
+    app.state.session_service = FakeSessions()
+    queries = RecordingQueries(page if page is not None else Page(items=(), next_cursor=None))
+    app.state.query_service = queries
+    return TestClient(app, base_url=ORIGIN, raise_server_exceptions=False), queries
+
+
+@pytest.mark.parametrize('path', list(LIST_ROUTES))
+def test_list_route_defaults_to_newest_first_limit_50_and_empty_page_shape(path):
+    client, queries = make_client()
+    response = client.get(path, headers=READ_HEADERS)
+    assert response.status_code == 200
+    assert response.json() == {'items': [], 'next_cursor': None}
+    name, sort = LIST_ROUTES[path]
+    assert queries.calls == [(name, WORKSPACE, make_query(limit=50, sort_key=sort, direction='desc'))]
+
+
+@pytest.mark.parametrize('path', list(LIST_ROUTES))
+def test_list_route_returns_next_cursor_from_page(path):
+    client, _ = make_client(Page(items=({'k': 1},), next_cursor='abc'))
+    assert client.get(path, headers=READ_HEADERS).json() == {'items': [{'k': 1}], 'next_cursor': 'abc'}
+
+
+@pytest.mark.parametrize('path', list(LIST_ROUTES))
+def test_list_route_forwards_limit_direction_and_cursor(path):
+    client, queries = make_client()
+    params = {'limit': '25', 'direction': 'asc', 'cursor': encode_cursor(*CURSOR)}
+    assert client.get(path, params=params, headers=READ_HEADERS).status_code == 200
+    name, sort = LIST_ROUTES[path]
+    assert queries.calls == [(name, WORKSPACE, make_query(limit=25, sort_key=sort, direction='asc', cursor=CURSOR))]
+
+
+BAD_PARAMS = [
+    {'cursor': '***'}, {'limit': '0'}, {'limit': '101'}, {'limit': 'abc'},
+    {'direction': 'up'}, {'sort': 'status'}, {'workspace_id': 'other'},
+]
+
+
+@pytest.mark.parametrize('params', BAD_PARAMS)
+@pytest.mark.parametrize('path', list(LIST_ROUTES))
+def test_list_route_rejects_bad_params_with_422(path, params):
+    client, queries = make_client()
+    response = client.get(path, params=params, headers=READ_HEADERS)
+    assert response.status_code == 422
+    assert queries.calls == []
+
+
+@pytest.mark.parametrize('path', list(LIST_ROUTES))
+def test_list_route_accepts_limit_100(path):
+    client, queries = make_client()
+    assert client.get(path, params={'limit': '100'}, headers=READ_HEADERS).status_code == 200
+    assert queries.calls[0][2].limit == 100
+
+
+@pytest.mark.parametrize('path, params, filters', [
+    ('/v1/jobs', {'status': 'RUNNING', 'batch_id': 'b-1'}, (('batch_id', 'b-1'), ('status', 'RUNNING'))),
+    ('/v1/batches', {'status': 'CREATED'}, (('status', 'CREATED'),)),
+])
+def test_list_route_forwards_allowed_filters(path, params, filters):
+    client, queries = make_client()
+    assert client.get(path, params=params, headers=READ_HEADERS).status_code == 200
+    assert queries.calls[0][2].filters == filters
+
+
+@pytest.mark.parametrize('path, params', [
+    ('/v1/operations', {'status': 'x'}),
+    ('/v1/configs', {'status': 'x'}),
+    ('/v1/batches', {'batch_id': 'b-1'}),
+])
+def test_list_route_rejects_unlisted_filter_with_422(path, params):
+    client, queries = make_client()
+    assert client.get(path, params=params, headers=READ_HEADERS).status_code == 422
+    assert queries.calls == []
+
+
+def test_control_route_source_has_no_literal_next_cursor_none():
+    text = CONTROL_PATH.read_text(encoding='utf-8')
+    assert '"next_cursor": None' not in text and "'next_cursor': None" not in text
+    assert 'parse_list_query' in text

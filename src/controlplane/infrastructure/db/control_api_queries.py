@@ -4,17 +4,38 @@ from __future__ import annotations
 
 from typing import Any
 
+from controlplane.application.projections.list_query import ListQuery, Page, build_page
 from controlplane.application.projections.operation_view_mapper import map_operation_view
 from controlplane.domain.statemachine import OperationState
+from controlplane.infrastructure.db.projections.list_queries import BATCHES_SPEC, JOBS_SPEC, fetch_page
+
+_LIST_DIRECTIONS = {"asc": ("ASC", ">"), "desc": ("DESC", "<")}
+
+
+def _list_direction(query: ListQuery, *, sort_key: str) -> tuple[str, str]:
+    if query.sort_key != sort_key or query.filters:
+        raise ValueError("column_not_allowed")
+    if query.direction not in _LIST_DIRECTIONS:
+        raise ValueError("direction_invalid")
+    if type(query.limit) is not int or query.limit < 1:
+        raise ValueError("limit_invalid")
+    return _LIST_DIRECTIONS[query.direction]
 
 
 class PostgresControlQueries:
     def __init__(self, connection: Any) -> None:
         self._connection = connection
 
-    def operations(self, *, workspace_id: str) -> list[dict[str, object]]:
+    def operations(self, *, workspace_id: str, query: ListQuery) -> Page:
+        direction, operator = _list_direction(query, sort_key="accepted_at")
+        conditions = "r.workspace_id = %s AND r.operation_id IS NOT NULL"
+        params: list[object] = [workspace_id]
+        if query.cursor is not None:
+            conditions += f" AND (r.accepted_at, r.receipt_id) {operator} (%s, %s)"
+            params.extend(query.cursor)
+        params.append(query.limit + 1)
         rows = self._connection.execute(
-            """SELECT r.operation_id::text, r.command_id, r.receipt_id::text, r.disposition,
+            f"""SELECT r.operation_id::text, r.command_id, r.receipt_id::text, r.disposition,
                       r.resource_ref, r.accepted_at, p.event_kind, p.summary, b.status AS batch_status
                FROM controlplane.cp_command_receipts r
                LEFT JOIN LATERAL (
@@ -28,12 +49,13 @@ class PostgresControlQueries:
                    ON b.workspace_id = r.workspace_id
                    AND r.resource_ref->>'kind' = 'production_batch'
                    AND b.batch_id = r.resource_ref->>'batch_id'
-               WHERE r.workspace_id = %s AND r.operation_id IS NOT NULL
-               ORDER BY r.accepted_at DESC, r.receipt_id DESC
-               LIMIT 100""",
-            (workspace_id,),
+               WHERE {conditions}
+               ORDER BY r.accepted_at {direction}, r.receipt_id {direction}
+               LIMIT %s""",
+            tuple(params),
         ).fetchall()
-        return [self._operation_row(row) for row in rows]
+        items = [self._operation_row(row) for row in rows]
+        return build_page(items, query=query, sort_field="accepted_at", id_field="receipt_id")
 
     def operation(self, *, workspace_id: str, operation_id: str) -> dict[str, object] | None:
         row = self._connection.execute(
@@ -85,14 +107,8 @@ class PostgresControlQueries:
             "latest_safe_summary": row[7],
         }
 
-    def batches(self, *, workspace_id: str) -> list[dict[str, object]]:
-        rows = self._connection.execute(
-            "SELECT batch_id, status, target_count, created_at "
-            "FROM controlplane.cp_production_batches WHERE workspace_id = %s "
-            "ORDER BY created_at DESC, batch_id DESC LIMIT 100",
-            (workspace_id,),
-        ).fetchall()
-        return [self._batch_row(row) for row in rows]
+    def batches(self, *, workspace_id: str, query: ListQuery) -> Page:
+        return fetch_page(self._connection, BATCHES_SPEC, query, workspace_id=workspace_id)
 
     def batch(self, *, workspace_id: str, batch_id: str) -> dict[str, object] | None:
         row = self._connection.execute(
@@ -111,14 +127,8 @@ class PostgresControlQueries:
             "created_at": row[3].isoformat() if hasattr(row[3], "isoformat") else row[3],
         }
 
-    def jobs(self, *, workspace_id: str) -> list[dict[str, object]]:
-        rows = self._connection.execute(
-            "SELECT job_id, batch_id, status, snapshot_ref, revision, created_at "
-            "FROM controlplane.cp_video_jobs WHERE workspace_id = %s "
-            "ORDER BY created_at DESC, job_id DESC LIMIT 100",
-            (workspace_id,),
-        ).fetchall()
-        return [self._job_row(row) for row in rows]
+    def jobs(self, *, workspace_id: str, query: ListQuery) -> Page:
+        return fetch_page(self._connection, JOBS_SPEC, query, workspace_id=workspace_id)
 
     def job(self, *, workspace_id: str, job_id: str) -> dict[str, object] | None:
         row = self._connection.execute(
@@ -139,15 +149,22 @@ class PostgresControlQueries:
             "created_at": row[5].isoformat() if hasattr(row[5], "isoformat") else row[5],
         }
 
-    def configs(self, *, workspace_id: str) -> list[dict[str, object]]:
+    def configs(self, *, workspace_id: str, query: ListQuery) -> Page:
+        direction, operator = _list_direction(query, sort_key="created_at")
+        conditions = "c.workspace_id = %s"
+        params: list[object] = [workspace_id]
+        if query.cursor is not None:
+            conditions += f" AND (c.created_at, c.config_revision_id) {operator} (%s, %s)"
+            params.extend(query.cursor)
+        params.append(query.limit + 1)
         rows = self._connection.execute(
             "SELECT config_revision_id::text, scope_kind, scope_key, config_revision_number, "
             "       revision, content_hash, status, created_at "
-            "FROM controlplane.cp_config_revisions WHERE workspace_id = %s "
-            "ORDER BY created_at DESC, config_revision_id DESC LIMIT 100",
-            (workspace_id,),
+            f"FROM controlplane.cp_config_revisions c WHERE {conditions} "
+            f"ORDER BY c.created_at {direction}, c.config_revision_id {direction} LIMIT %s",
+            tuple(params),
         ).fetchall()
-        return [
+        items = [
             {
                 "config_revision_id": row[0],
                 "scope_kind": row[1],
@@ -160,3 +177,4 @@ class PostgresControlQueries:
             }
             for row in rows
         ]
+        return build_page(items, query=query, sort_field="created_at", id_field="config_revision_id")
