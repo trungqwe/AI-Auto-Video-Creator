@@ -6,6 +6,8 @@ Revision 1 M6-MILESTONE-CLOSE đã đóng mà không tích hợp; Control 20/10/
 
 Lượt trước của lane R2 (HEAD cc290f002074) bị Control thu hồi grant DELEGATED-AI_PM_DELEGATED_AUTHORITY_20261009-LANE-M6-MILESTONE-CLOSE-R2-G1 với lý do CLOSURE_BASE_STALE vì nhánh chưa chứa các gói đã tích hợp sau đó; lane đã rebase lên integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe, mọi lệnh kiểm và báo cáo viết lại trên mã đó, kết quả lượt trước không còn dùng.
 
+Lượt R2 kế tiếp (HEAD fb9c16f) bị Control thu hồi grant DELEGATED-AI_PM_DELEGATED_AUTHORITY_20261009-LANE-M6-MILESTONE-CLOSE-R2-G2 khi rebase lên 74c062a29d649ea0e3d1471dee9c739dc33d38fe với lý do INTEGRATION_CHECK_FAILED: lệnh python -m pytest tests/integration/convergence/test_cp3_migration_sequence.py -q -p no:cacheprovider thoát với exit 1, test_postgres_up_down_up_and_constraints lỗi psycopg.errors.ConnectionTimeout (1 failed, 7 passed trong 130.49s). Đây là lỗi kết nối PostgreSQL của môi trường lúc kiểm, không phải lỗi mã: mã không đổi giữa hai lần chạy (lane chỉ khác integration head bằng các tệp docs/delivery-evidence/m6-milestone-close/). Lane đã rebase lại lên 74c062a (no-op) và chạy lại đúng lệnh trên: exit 0, 8 passed in 1.33s.
+
 ## 2. Candidate được kiểm
 
 Mã được kiểm là integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe; HEAD của lane sau rebase là a8f3ec4d1aa91e01fee732fc0c47d3675f932e60 (nhánh trungqwe/lane-m6-milestone-close-r2), chỉ thêm tệp dưới docs/delivery-evidence/m6-milestone-close/ so với integration head. Mọi lệnh kiểm chạy trên đúng mã này bằng interpreter khoá của lane; kết quả từng lệnh ở command-results.md.
@@ -238,6 +240,8 @@ Toàn bộ 288 đoạn lệnh kiểm của milestone M6 đã được thực thi
 - Chuỗi 14: 22/22 đoạn exit 0 (persistence PostgreSQL A..J, probe adapter, probe trace, AST boundary)
 
 Tổng hợp: **288/288** đoạn lệnh kiểm exit 0.
+
+Chạy lại ở lượt R2-G3: đoạn Chuỗi 4 hàng 1 (test_cp3_migration_sequence.py) exit 0 sau lỗi ConnectionTimeout của Control; 287 đoạn còn lại không chạy lại vì mã không đổi và kết quả trước vẫn exit 0.
 
 *Lưu ý quan trọng:*
 1. Lệnh kiểm `test_h36_m1_regression` được hoãn sang CP7 theo quyết định của user ngày 21/10/2026 nên các lệnh liên quan mang cờ `--deselect`, không phải là lỗi kiểm thử.

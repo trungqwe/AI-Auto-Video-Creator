@@ -37,7 +37,7 @@ Các lệnh kiểm của milestone được chạy theo 14 chuỗi nối bằng 
 
 | Thứ tự | Lệnh (80 ký tự đầu) | Exit code | Dòng tóm tắt | Ghi chú |
 | --- | --- | --- | --- | --- |
-| 1 | python -m pytest tests/integration/convergence/test_cp3_migration_sequence.py -q | 0 | 8 passed in 3.43s |  |
+| 1 | python -m pytest tests/integration/convergence/test_cp3_migration_sequence.py -q | 0 | 8 passed in 1.33s | Chạy lại ở lượt R2-G3 với -p no:cacheprovider sau lỗi ConnectionTimeout do Control ghi nhận ở lượt trước (PostgreSQL chưa kết nối được lúc đó); lượt này exit 0 |
 | 2 | python -m pytest tests/m2/test_p9_m2_exit_gate.py -q -p no:cacheprovider | 0 | 6 passed in 4.19s |  |
 | 3 | python -m pytest tests/unit/collection tests/unit/ingestion tests/unit/catalog t | 0 | 5190 passed, 1 warning, 2237 subtests passed in 14.03s |  |
 | 4 | python -c "import pathlib; t = ' '.join(pathlib.Path('src/controlplane/infrastru | 0 | không có đầu ra |  |
