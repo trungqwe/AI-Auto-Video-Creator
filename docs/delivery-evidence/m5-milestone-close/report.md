@@ -1,12 +1,14 @@
 # Báo cáo đóng milestone M5 (revision 2)
 
-Task: M5-MILESTONE-CLOSE-R2; candidate: HEAD worktree 315ebffceb1a7f1c482d90b50bd02220b3c41dc7 (cây mã nguồn trùng cc290f002074514001fa0b03b3eb8c9e00c14db6, commit integrate(ADAPT-LAUNCH); ba commit sau đó d7fc16b, 4771ccb, 315ebff chỉ thêm/sửa báo cáo docs(m5) trong docs/delivery-evidence/m5-milestone-close/); kết quả từng lệnh ở command-results.md cùng thư mục
+Task: M5-MILESTONE-CLOSE-R2; candidate: HEAD 436527e12849af0ece97a6f4a7fdc545d7374a55 (đọc bằng git rev-parse HEAD trước khi commit báo cáo) sau rebase lên 74c062a29d649ea0e3d1471dee9c739dc33d38fe; cây mã nguồn trùng 74c062a, các commit docs(m5) của lane chỉ chạm docs/delivery-evidence/m5-milestone-close/; kết quả từng lệnh ở command-results.md cùng thư mục
 
 ## 1. Phạm vi và lý do đóng ở revision 2
 
 Milestone M5 được đóng đúng một lần ở revision 2 (R2) với đầy đủ phạm vi hội tụ và tích hợp theo chính sách hiện hành. Revision trước là M5-MILESTONE-CLOSE (revision 1) đã được đóng mà không tích hợp vào nhánh chính (theo quyết định của Control ngày 20/10/2026: policy v1 bổ sung bốn dòng kế hoạch gồm IMPL-PLAN-CONVERGENCE-EXT, IMPL-PLAN-CONVERGENCE-EXT-UI, IMPL-PLAN-PERSIST, và IMPL-PLAN-ADAPT vào phạm vi đóng M5). Revision 1 đóng băng theo phạm vi cũ và chưa được giao cho Worker nào, do đó dù có chạy xong thì vẫn phải đóng lại ở R2. Control quyết định retire revision 1 theo phương pháp chấm điểm chi phí và đường găng: bớt một lượt đóng milestone thừa, hoàn trả suất thực thi cho các gói kế hoạch mở rộng.
 
 Báo cáo này là bằng chứng kỹ thuật đóng milestone nội bộ, hoàn toàn không thay đổi trạng thái trong docs/11-roadmap.md hay docs/12-pre-code-checklist.md và không tự ý tuyên bố người dùng (user) đã duyệt M5. Các vai trò thẩm định trong quy trình này được ghi nhận chuẩn mực là Reviewer (Sonnet 5.5) và Auditor rủi ro (Opus 5.5).
+
+Grant G1 của lane bị Control thu hồi với lý do CLOSURE_BASE_STALE (lane mở lại trên HEAD cc290f002074 chưa chứa các gói được phủ tích hợp sau đó). Báo cáo này viết lại trên candidate sau rebase; kết quả lần mở trước (279/288 lệnh exit 0) không còn dùng.
 
 ## 2. Kiểm lại các điểm của R1
 
@@ -45,12 +47,12 @@ Thực hiện kiểm tra thực tế trên lịch sử git và phạm vi gói c�
 | PERSIST-G-FIX1 | f03fed2f209808f80999643408f4f19a32cde567 | 6f53564a6c56 | `git log` (integrate(PERSIST-G-FIX1): lane lane-persist-g-fix1 candidate 6f53564a6c56) |
 | CP-5-COMPLETION-FIX1 | 0ba3801fb9709dd85f7ff15330a877bfd3bf6561 | c2eaba9f3460 | `git log` (integrate(CP-5-COMPLETION-FIX1): lane lane-cp-5-completion-fix1 candidate c2eaba9f3460) |
 | ADAPT-WIRE-FIX1 | 810c377c112f7ce082ab51564591ade9a519e0b0 | f42c94477378 | `git log` (integrate(ADAPT-WIRE-FIX1): lane lane-adapt-wire-fix1 candidate f42c94477378) |
-| CP-4-WIRING-FIX2 | KHÔNG TÌM THẤY | - | `git log --grep=CP-4-WIRING-FIX2` cho 0 commit integrate; không bịa SHA |
-| ADAPT-PROD-FIX1 | KHÔNG TÌM THẤY | - | `git log --grep=ADAPT-PROD-FIX1` cho 0 commit integrate; không bịa SHA |
-| CP-4B-UI-SCREENS-FIX1 | KHÔNG TÌM THẤY | - | `git log --grep=CP-4B-UI-SCREENS-FIX1` cho 0 commit integrate; không bịa SHA |
-| PERSIST-C-FIX1 | KHÔNG TÌM THẤY | - | `git log --grep=PERSIST-C-FIX1` cho 0 commit integrate; không bịa SHA |
-| ADAPT-PROD-FIX2 | KHÔNG TÌM THẤY | - | `git log --grep=ADAPT-PROD-FIX2` cho 0 commit integrate; không bịa SHA |
-| CP-4B-UI-SCREENS-FIX2 | KHÔNG TÌM THẤY | - | `git log --grep=CP-4B-UI-SCREENS-FIX2` cho 0 commit integrate; không bịa SHA |
+| CP-4-WIRING-FIX2 | 759ea0abd830f76b6f6a99232e8183ee50a9f34d | 5aed9712848f | `git log` (integrate(CP-4-WIRING-FIX2): lane lane-cp-4-wiring-fix2 candidate 5aed9712848f) |
+| ADAPT-PROD-FIX1 | 6ba0bcde40de3d3adf8405d9df6bd8cae431227a | d588d9c0e8b0 | `git log` (integrate(ADAPT-PROD-FIX1): lane lane-adapt-prod-fix1 candidate d588d9c0e8b0) |
+| CP-4B-UI-SCREENS-FIX1 | adc7634f45a21c2fa174adee662962d7a1b21a57 | 2760ee3ca0f9 | `git log` (integrate(CP-4B-UI-SCREENS-FIX1): lane lane-cp-4b-ui-screens-fix1 candidate 2760ee3ca0f9) |
+| PERSIST-C-FIX1 | ab8586d55fc612825888d6a7e26e58ae96d28af6 | 2327dcf8e326 | `git log` (integrate(PERSIST-C-FIX1): lane lane-persist-c-fix1 candidate 2327dcf8e326) |
+| ADAPT-PROD-FIX2 | fa250e8305aa422ff260f2ce9bb3622a29239740 | e1cc7f40b25b | `git log` (integrate(ADAPT-PROD-FIX2): lane lane-adapt-prod-fix2 candidate e1cc7f40b25b) |
+| CP-4B-UI-SCREENS-FIX2 | 74c062a29d649ea0e3d1471dee9c739dc33d38fe | 1c85775dea49 | `git log` (integrate(CP-4B-UI-SCREENS-FIX2): lane lane-cp-4b-ui-screens-fix2 candidate 1c85775dea49) |
 | A-01 | 22535f6dcff3dbf2e3187771a9bff1b34c85c838 | b11289d9c406 | `git log` (integrate(A-01): lane lane-a-01 candidate b11289d9c406) |
 | A-02 | e343a41ee6570c39d0cbeda2bd35a3bf2c15513f | 0614e8d1934d | `git log` (integrate(A-02): lane lane-a-02 candidate 0614e8d1934d) |
 | A-03 | 5e009d1c06ba60052bdd1658f939ffaadc626597 | 6382ebd2cdde | `git log` (integrate(A-03): lane lane-a-03 candidate 6382ebd2cdde) |
@@ -148,11 +150,11 @@ Thực hiện kiểm tra thực tế trên lịch sử git và phạm vi gói c�
 | E-08 | 1bfb8b02dc928a2455330afa45edc768226a63e5 | 8dfaedb513d4 | `git log` (integrate(E-08): lane lane-e-08 candidate 8dfaedb513d4) |
 | E | KHÔNG TÌM THẤY | - | Tra cứu integrate(E): cho 0 kết quả; E là định danh phân hệ/nhóm, không có commit integrate riêng; các lát cắt E-01..E-20 đều có SHA tích hợp |
 
-Số hàng có SHA tích hợp: 116/123 hàng bắt buộc (thiếu 7 hàng: 6 gói FIX gồm CP-4-WIRING-FIX2, ADAPT-PROD-FIX1, CP-4B-UI-SCREENS-FIX1, PERSIST-C-FIX1, ADAPT-PROD-FIX2, CP-4B-UI-SCREENS-FIX2 và mã E).
+Số hàng có SHA tích hợp: 122/123 hàng bắt buộc (đủ 122 gói có commit integrate hoặc commit tổ tiên được Control xác minh; 1 hàng còn lại là mã phân hệ E không có commit integrate riêng mà được bao phủ bởi 20 lát cắt E-01..E-20 đã tích hợp).
 
 ### Ngoài danh sách nghiệm thu
 
-Dưới đây là các nhóm gói có bằng chứng tích hợp trong repo nhưng không nằm trong danh sách nghiệm thu bắt buộc (nhóm này chỉ để Control tham khảo, không thay thế danh sách bắt buộc và không tính vào 116/123 của mục 3):
+Dưới đây là các nhóm gói có bằng chứng tích hợp trong repo nhưng không nằm trong danh sách nghiệm thu bắt buộc (nhóm này chỉ để Control tham khảo, không thay thế danh sách bắt buộc và không tính vào 122/123 của mục 3). Khoảng cc290f002074514001fa0b03b3eb8c9e00c14db6..74c062a29d649ea0e3d1471dee9c739dc33d38fe không có thêm gói nào ngoài danh sách bắt buộc (toàn bộ 6 commit integrate mới đều thuộc danh sách bắt buộc):
 
 | Mã gói | SHA tích hợp (40 hex) | SHA candidate (12 hex) | Nguồn |
 | --- | --- | --- | --- |
@@ -312,7 +314,7 @@ Theo quyết định của người dùng ngày 22/10/2026 ghi nhận trong sổ
 Đối chiếu thực tế cho thấy các điểm roadmap rộng hơn kế hoạch đã duyệt bao gồm:
 1. Tiêu chí G6 («chưa tuyên bố toàn G06 nếu E/F chưa đạt»): Các gói lát cắt của phân hệ E và F đã được hoàn thành và tích hợp đầy đủ (E-01..E-20 và F-01..F-22 đều có SHA tích hợp), tuy nhiên kiểm thử toàn diện end-to-end cho G06 toàn phần sẽ do mốc M6/M7 thực hiện.
 2. Các mục mở (open items) trong roadmap docs/11-roadmap.md: TEST-OPEN-001, ngưỡng deduplication/event-link, thuật toán proxy hot/trending, việc tinh chỉnh provider/model/prompt theo benchmark đều là các open items được thiết kế cho các mốc tiếp theo hoặc gói CP7, không cấu thành điều kiện FAIL kỹ thuật của mốc M5 và không yêu cầu can thiệp từ người dùng.
-3. Các kiểm thử mới chưa đạt trong nhóm G2 (STT 29, 30, 33, 39, 41, 44, 45, 46, 47) là do các gói sửa (CP-4-WIRING-FIX2, ADAPT-PROD-FIX1, CP-4B-UI-SCREENS-FIX1, PERSIST-C-FIX1, ADAPT-PROD-FIX2, CP-4B-UI-SCREENS-FIX2) chưa được nối tích hợp; theo đúng quyết định của người dùng, việc này thuộc trách nhiệm tự lập gói sửa của Control, Worker ghi nhận trung thực kết quả chạy lệnh và không tự ý sửa code ngoài phạm vi.
+3. Chín lệnh đỏ của lần mở trước (STT 29, 30, 33, 39, 41, 44, 45, 46, 47) nay đạt exit 0 trên candidate mới vì các gói sửa FIX đã tích hợp trong khoảng cc290f0..74c062a: CP-4-WIRING-FIX2 (759ea0abd830f76b6f6a99232e8183ee50a9f34d), ADAPT-PROD-FIX1 (6ba0bcde40de3d3adf8405d9df6bd8cae431227a), CP-4B-UI-SCREENS-FIX1 (adc7634f45a21c2fa174adee662962d7a1b21a57), PERSIST-C-FIX1 (ab8586d55fc612825888d6a7e26e58ae96d28af6), ADAPT-PROD-FIX2 (fa250e8305aa422ff260f2ce9bb3622a29239740), CP-4B-UI-SCREENS-FIX2 (74c062a29d649ea0e3d1471dee9c739dc33d38fe).
 
 ## 6. pendingUserCheckpoint
 
@@ -325,8 +327,8 @@ Theo quyết định của người dùng ngày 22/10/2026 ghi nhận trong sổ
 
 | Hạng mục kiểm tra | Đạt được | Mục tiêu bắt buộc | Kết luận |
 | --- | --- | --- | --- |
-| Lệnh kiểm tra chạy lại | 279/288 exit 0, 9 FAIL (STT 29, 30, 33, 39, 41, 44, 45, 46, 47; 5 lệnh có test skip theo thiết kế tham số hoá hoặc đặc quyền symlink Windows) | 288/288 exit 0 | CHƯA ĐẠT (9 lệnh đỏ ở nhóm G2 chờ gói sửa FIX) |
-| SHA tích hợp các gói bắt buộc | 116/123 gói (M5-D-PLAN có SHA do Control cấp; thiếu 6 gói FIX và mã E) | 123/123 gói | CHƯA ĐẠT (thiếu 7 gói chưa có commit integrate) |
+| Lệnh kiểm tra chạy lại | 288/288 exit 0 (0 FAIL; 5 lệnh có test skip theo thiết kế tham số hoá hoặc đặc quyền symlink Windows) | 288/288 exit 0 | ĐẠT |
+| SHA tích hợp các gói bắt buộc | 122/123 gói (M5-D-PLAN có SHA do Control cấp; 121 gói có commit integrate; 1 hàng là mã phân hệ E được bao phủ bởi E-01..E-20) | 123/123 gói | CHƯA ĐẠT (thiếu commit integrate riêng cho mã E) |
 | Bản ghi recordHash 13 cổng | 13/13 cổng | 13/13 cổng | ĐẠT (recordHash do Control cấp trong lệnh làm việc) |
 | Kiểm lại 3 điểm của R1 (Mục 2) | 3/3 điểm ĐẠT | 3/3 điểm ĐẠT | ĐẠT |
 | Đối chiếu Exit Gate G1-G6 | Đạt yêu cầu kỹ thuật | Đạt yêu cầu | ĐẠT |
@@ -335,7 +337,7 @@ Theo quyết định của người dùng ngày 22/10/2026 ghi nhận trong sổ
 ### Ghi chú bổ sung
 - Lệnh `npm --prefix src/controlplane/ui run build` (STT 35) đã chạy thành công và **không làm thay đổi** bất kỳ tệp nào trong `src/controlplane/ui/dist`.
 - Nguyên nhân 5 lệnh có test skip (STT 22, 118, 133, 142, 241), đã đối chiếu mã test; không test nào skip vì thiếu hạ tầng sống:
-  - STT 22 (`tests/integration/convergence/test_cp4_wiring.py`, 28 skip): các test tham số hoá theo danh mục lệnh `COMMANDS` tự gọi `pytest.skip` khi lệnh không áp dụng: dòng 275 và 294 ("Lệnh không yêu cầu If-Match"), dòng 342 ("cannot vary payload for empty body without resource id"), dòng 363 ("Lệnh không có body để kiểm tra trường lạ"). Đây là thiết kế tham số hoá của test.
+  - STT 22 (`tests/integration/convergence/test_cp4_wiring.py`, 28 skip): các test tham số hoá theo danh mục lệnh `COMMANDS` tự gọi `pytest.skip` khi lệnh không áp dụng: dòng 283 và 302 ("Lệnh không yêu cầu If-Match"), dòng 350 ("cannot vary payload for empty body without resource id"), dòng 371 ("Lệnh không có body để kiểm tra trường lạ"). Đây là thiết kế tham số hoá của test.
   - STT 241 (`tests/integration/storage/test_storage_staging_paths.py`, 7 skip): hàm `make_symlink` (dòng 81) gọi `pytest.skip` khi `os.symlink` không tạo được symlink; tài khoản chạy trên Windows không có đặc quyền tạo symlink. Biến thể junction (dòng 86) chỉ skip ngoài Windows nên không skip ở đây.
   - STT 118 và STT 142 (35 skip mỗi lệnh) là 28 skip của test_cp4_wiring cộng 7 skip của test_storage_staging_paths; STT 133 (7 skip) chỉ gồm 7 skip của test_storage_staging_paths. Không còn nguồn skip nào khác.
   - Hai mô-đun DPAPI (`tests/integration/adapt/j/test_adapt_j_oauth.py` dòng 26, `tests/integration/config/test_j_dpapi_secret_store.py` dòng 17) chỉ skip khi nền tảng không phải win32 nên không skip trong lần chạy này.
@@ -344,8 +346,8 @@ Theo quyết định của người dùng ngày 22/10/2026 ghi nhận trong sổ
 - Báo cáo không thay đổi trạng thái trong roadmap hay checklist.
 
 ### Kết luận
-**KHÔNG ĐẠT** (về mặt kỹ thuật tự động hóa toàn bộ, còn 2 hạng mục mở thuộc thẩm quyền của Control):
-1. Kết quả chạy lại lệnh kiểm: 279/288 lệnh exit 0, còn 9 lệnh FAIL (STT 29, 30, 33, 39, 41, 44, 45, 46, 47) do thiếu các thành phần mã nguồn của 6 gói sửa FIX. 5 lệnh (STT 22, 118, 133, 142, 241) có test skip do thiết kế tham số hoá và thiếu đặc quyền symlink trên Windows.
-2. SHA tích hợp các gói bắt buộc: đạt 116/123 gói. M5-D-PLAN có SHA 3b00c35e1ad888e99ae76fe83e28c0bc44db69ee do Control cấp và đã kiểm chứng là tổ tiên hợp lệ của HEAD. Thiếu SHA tích hợp cho 6 gói FIX (CP-4-WIRING-FIX2, ADAPT-PROD-FIX1, CP-4B-UI-SCREENS-FIX1, PERSIST-C-FIX1, ADAPT-PROD-FIX2, CP-4B-UI-SCREENS-FIX2) và mã E (do chưa có commit `integrate(...)` tương ứng trên git).
+**KHÔNG ĐẠT** (theo tiêu chuẩn nghiêm ngặt 123/123 hàng bắt buộc phải có commit integrate riêng; còn 1 hạng mục mở thuộc thẩm quyền của Control):
+1. Kết quả chạy lại lệnh kiểm: 288/288 lệnh exit 0, 0 FAIL. Toàn bộ 9 lệnh đỏ của lần mở trước nay đều đạt exit 0 trên candidate mới sau rebase. 5 lệnh (STT 22, 118, 133, 142, 241) có test skip do thiết kế tham số hoá chuẩn và thiếu đặc quyền symlink trên Windows.
+2. SHA tích hợp các gói bắt buộc: đạt 122/123 gói. M5-D-PLAN có SHA 3b00c35e1ad888e99ae76fe83e28c0bc44db69ee do Control cấp và đã kiểm chứng là tổ tiên hợp lệ của HEAD (exit 0). Cả 6 gói sửa FIX đều đã có SHA tích hợp đầy đủ. Chỉ còn thiếu commit integrate riêng cho mã E (do E là định danh phân hệ/nhóm, trong lịch sử git không có commit `integrate(E)`, nhưng toàn bộ 20 lát cắt E-01..E-20 đều đã tích hợp đầy đủ).
 3. Đã xử lý đầy đủ: 13/13 recordHash của các gói cổng ở Mục 4 (nguồn do Control cấp trong lệnh làm việc).
-Các hạng mục còn mở trên chờ Reviewer (Sonnet 5.5) và Auditor rủi ro (Opus 5.5) phán quyết. Chỉ M5-EG7 và M5-REAL nằm trong pendingUserCheckpoint. Báo cáo không đổi trạng thái roadmap hay checklist.
+Hạng mục còn mở về mã phân hệ E chờ Reviewer (Sonnet 5.5) và Auditor rủi ro (Opus 5.5) phán quyết. Chỉ M5-EG7 và M5-REAL nằm trong pendingUserCheckpoint. Báo cáo không đổi trạng thái roadmap hay checklist.
