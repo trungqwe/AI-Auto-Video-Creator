@@ -4,9 +4,11 @@
 
 Revision 1 M6-MILESTONE-CLOSE đã đóng mà không tích hợp; Control 20/10/2026 chốt policy v1 thêm bốn dòng kế hoạch CONVERGENCE-EXT, CONVERGENCE-EXT-UI, PERSIST, ADAPT vào phạm vi đóng M6; revision 1 đóng băng phạm vi cũ và chưa giao Worker nào nên dù chạy xong vẫn phải đóng lại ở R2; retire R1 để đóng M6 đúng một lần ở R2 với đủ phạm vi theo chấm điểm chi phí và đường găng: bớt một lượt đóng, trả suất cho gói kế hoạch.
 
+Lượt trước của lane R2 (HEAD cc290f002074) bị Control thu hồi grant DELEGATED-AI_PM_DELEGATED_AUTHORITY_20261009-LANE-M6-MILESTONE-CLOSE-R2-G1 với lý do CLOSURE_BASE_STALE vì nhánh chưa chứa các gói đã tích hợp sau đó; lane đã rebase lên integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe, mọi lệnh kiểm và báo cáo viết lại trên mã đó, kết quả lượt trước không còn dùng.
+
 ## 2. Candidate được kiểm
 
-HEAD cc290f002074514001fa0b03b3eb8c9e00c14db6, nhánh trungqwe/lane-m6-milestone-close-r2; mọi lệnh kiểm chạy trên đúng HEAD này bằng interpreter khoá của lane.
+Mã được kiểm là integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe; HEAD của lane sau rebase là a8f3ec4d1aa91e01fee732fc0c47d3675f932e60 (nhánh trungqwe/lane-m6-milestone-close-r2), chỉ thêm tệp dưới docs/delivery-evidence/m6-milestone-close/ so với integration head. Mọi lệnh kiểm chạy trên đúng mã này bằng interpreter khoá của lane; kết quả từng lệnh ở command-results.md.
 
 ## 3. Gói được bao phủ và SHA tích hợp
 
@@ -14,7 +16,7 @@ HEAD cc290f002074514001fa0b03b3eb8c9e00c14db6, nhánh trungqwe/lane-m6-milestone
 
 | Mã gói | Commit integrate (SHA đầy đủ) | Candidate (12 hex) | Cách tra |
 | --- | --- | --- | --- |
-| M6-EF-PLAN | KHÔNG TÌM THẤY | KHÔNG TÌM THẤY | git log --grep="lane-m6-ef-plan" |
+| M6-EF-PLAN | 597e36c1c1cf5eac336acbe9b44b74ad0e9135c4 | — | Control xác minh receipt Auditor PASS và commit nội dung là tổ tiên của nhánh tích hợp (không có commit integrate) |
 | IMPL-PLAN-A | fb154e9f0433d45bef1994e292a948231b18d112 | 23c3e3cf22fb | git log --grep="integrate(IMPL-PLAN-A)" |
 | IMPL-PLAN-B | 815bebb15b565c4a750854b4218a3296c7be2904 | 6e139f3b2d3b | git log --grep="integrate(IMPL-PLAN-B)" |
 | IMPL-PLAN-C | 4035610fa62c04ebcd7bc774b4a9e4ed68c5ad1a | 56dc6fa2a949 | git log --grep="integrate(IMPL-PLAN-C)" |
@@ -35,6 +37,12 @@ HEAD cc290f002074514001fa0b03b3eb8c9e00c14db6, nhánh trungqwe/lane-m6-milestone
 | PERSIST-G-FIX1 | f03fed2f209808f80999643408f4f19a32cde567 | 6f53564a6c56 | git log --grep="integrate(PERSIST-G-FIX1)" |
 | CP-5-COMPLETION-FIX1 | 0ba3801fb9709dd85f7ff15330a877bfd3bf6561 | c2eaba9f3460 | git log --grep="integrate(CP-5-COMPLETION-FIX1)" |
 | ADAPT-WIRE-FIX1 | 810c377c112f7ce082ab51564591ade9a519e0b0 | f42c94477378 | git log --grep="integrate(ADAPT-WIRE-FIX1)" |
+| CP-4-WIRING-FIX2 | 759ea0abd830f76b6f6a99232e8183ee50a9f34d | 5aed9712848f | git log --grep="integrate(CP-4-WIRING-FIX2)" |
+| ADAPT-PROD-FIX1 | 6ba0bcde40de3d3adf8405d9df6bd8cae431227a | d588d9c0e8b0 | git log --grep="integrate(ADAPT-PROD-FIX1)" |
+| CP-4B-UI-SCREENS-FIX1 | adc7634f45a21c2fa174adee662962d7a1b21a57 | 2760ee3ca0f9 | git log --grep="integrate(CP-4B-UI-SCREENS-FIX1)" |
+| PERSIST-C-FIX1 | ab8586d55fc612825888d6a7e26e58ae96d28af6 | 2327dcf8e326 | git log --grep="integrate(PERSIST-C-FIX1)" |
+| ADAPT-PROD-FIX2 | fa250e8305aa422ff260f2ce9bb3622a29239740 | e1cc7f40b25b | git log --grep="integrate(ADAPT-PROD-FIX2)" |
+| CP-4B-UI-SCREENS-FIX2 | 74c062a29d649ea0e3d1471dee9c739dc33d38fe | 1c85775dea49 | git log --grep="integrate(CP-4B-UI-SCREENS-FIX2)" |
 
 ### 3.2 Phân hệ A, ADAPT, B, C
 
@@ -187,57 +195,73 @@ Kết quả tra cứu `git log` chỉ đọc cho nhóm F-08..F-22 và các phân
 - Phân hệ I (Storage): Tìm thấy 13 commit integrate trong lịch sử nhánh (ví dụ I-11 tại `6437cb96a4bad8941038406360ac3cab6f307385`, I-12 tại `49a6b2cd63f58127a65fa105b13ced917a842f2d`).
 - Phân hệ J (Config & Security): Tìm thấy 19 commit integrate trong lịch sử nhánh (ví dụ J-09-FIX1 tại `c10efaaeec9791999472d38b60eb8a3bf1b77962`, J-18 tại `01da3b296de9dc5ac3313df6780f1d09fb7e1e0e`).
 
-*Lưu ý:* Việc không liệt kê F-08..F-22 và các slice G, H, I, J trong danh sách yêu cầu nghiệm thu của task là theo đúng phạm vi phân bổ ban đầu của brief; toàn bộ mã nguồn và test của các gói này đã tích hợp đầy đủ vào candidate và vượt qua toàn bộ lệnh kiểm bắt buộc.
+*Lưu ý:* các gói F-08..F-22 và slice G, H, I, J không nằm trong danh sách yêu cầu nghiệm thu của task nhưng mã và test của chúng đã tích hợp vào mã được kiểm; các bài test tương ứng nằm trong Chuỗi 11 đến 13 của command-results.md.
 
 ## 4. Gói cổng và bản ghi quyết định
 
-| Mã cổng | recordHash (decisions.jsonl) | Nguồn |
+| Mã cổng | recordHash (bản ghi quyết định RELEASE) | Nguồn |
 | --- | --- | --- |
-| GATE-CP-2D-REGISTRY | THIẾU: Control chưa cấp recordHash | Không có trong vật liệu Control cấp |
-| GATE-CP-5-COMPLETION | THIẾU: Control chưa cấp recordHash | Không có trong vật liệu Control cấp |
-| GATE-CP-6-WORKFLOW | THIẾU: Control chưa cấp recordHash | Không có trong vật liệu Control cấp |
-| GATE-CP-2B-DEPS-PATHS | THIẾU: Control chưa cấp recordHash | Không có trong vật liệu Control cấp |
-| GATE-PERSIST-A | THIẾU: Control chưa cấp recordHash | Không có trong vật liệu Control cấp |
-| GATE-PERSIST-B | THIẾU: Control chưa cấp recordHash | Không có trong vật liệu Control cấp |
-| GATE-PERSIST-C | THIẾU: Control chưa cấp recordHash | Không có trong vật liệu Control cấp |
-| GATE-PERSIST-D | THIẾU: Control chưa cấp recordHash | Không có trong vật liệu Control cấp |
-| GATE-PERSIST-E | THIẾU: Control chưa cấp recordHash | Không có trong vật liệu Control cấp |
-| GATE-PERSIST-F | THIẾU: Control chưa cấp recordHash | Không có trong vật liệu Control cấp |
-| GATE-PERSIST-G | THIẾU: Control chưa cấp recordHash | Không có trong vật liệu Control cấp |
-| GATE-PERSIST-I | THIẾU: Control chưa cấp recordHash | Không có trong vật liệu Control cấp |
-| GATE-PERSIST-J | THIẾU: Control chưa cấp recordHash | Không có trong vật liệu Control cấp |
+| GATE-CP-2D-REGISTRY | 00103f0a72d7b9e2f1f5803cc699db79373ac38ed2e47aa206f975da0eab9514 | Control cấp trong brief nghiệm thu |
+| GATE-CP-5-COMPLETION | 3b9e4c9d779043c2f76022541f4524b931ad48cce3cad2e4bc4dfff7cfb54d90 | Control cấp trong brief nghiệm thu |
+| GATE-CP-6-WORKFLOW | 2be7562bea521bede4812d8b5cff124d201b562b93a416b1972baca08d720190 | Control cấp trong brief nghiệm thu |
+| GATE-CP-2B-DEPS-PATHS | 3bd11714d6cb8196cb1c800bc740a76e7a4436b905cb2c98d2a8400fa1d132cf | Control cấp trong brief nghiệm thu |
+| GATE-PERSIST-A | 1ccf6c904ef88886ed1dd7a66b50c2206fd1c12ac5357d926572dbf53135a343 | Control cấp trong brief nghiệm thu |
+| GATE-PERSIST-B | 39f5e7e8bc503704574da52b3605d1a03911b24c29494514c865af229ca35bf4 | Control cấp trong brief nghiệm thu |
+| GATE-PERSIST-C | 5327ae192465197cc63aa6f6e1ebc4670e06c063f6a1fb46a4b7e6a3ce4066f2 | Control cấp trong brief nghiệm thu |
+| GATE-PERSIST-D | 794e8b5634d3adaab3d35154ae2f0d732f2dc86a477ca8faeb2cd10cbd79506f | Control cấp trong brief nghiệm thu |
+| GATE-PERSIST-E | b38673dd8c05bac07daae786cf282bcbae1cb359ea80fcd24b806bf5eab94ae7 | Control cấp trong brief nghiệm thu |
+| GATE-PERSIST-F | 7254c80039939250ee1d2b372b627655b8b60b998372d7c9652b4360042a9055 | Control cấp trong brief nghiệm thu |
+| GATE-PERSIST-G | f71b035ffeface811ea87ccc06ba8a13129922fed922018793672d14d244fe7d | Control cấp trong brief nghiệm thu |
+| GATE-PERSIST-I | b987fc8b60eaddba804f31ce51c78cfc9047db41d42203882ea5fae37c31843e | Control cấp trong brief nghiệm thu |
+| GATE-PERSIST-J | cc9e80f551c0a83996a2ff710c7ce2d8d73517eed0434d4c176e55403d1399de | Control cấp trong brief nghiệm thu |
 
-Các gói cổng không có SHA tích hợp; mã bản ghi quyết định là recordHash trong decisions.jsonl đã thả từng cổng. Nguồn hợp lệ duy nhất của recordHash là vật liệu Control cấp cho phiên này (prompt, tệp trong owned paths hoặc đầu ra lệnh được giao); tệp decisions.jsonl nằm dưới .ai-pm/** là đường cấm của task nên không được mở.
+Các gói cổng không có SHA tích hợp; Control thả mỗi cổng bằng một bản ghi quyết định RELEASE và recordHash ở trên được chép nguyên văn từ brief nghiệm thu của Control. Báo cáo không đọc sổ quyết định của Control và không mở .ai-pm/**.
+
 
 ## 5. Kết quả lệnh kiểm
 
-Toàn bộ 274 đoạn lệnh kiểm của milestone M6 đã được thực thi đầy đủ trên candidate HEAD `cc290f002074514001fa0b03b3eb8c9e00c14db6` thông qua 9 chuỗi lệnh:
-- **Chuỗi 1:** 12/12 lệnh đạt exit 0 (kiểm tra tài liệu kế hoạch các phân hệ A, B, C, I, D, E, F, J, G, H, Convergence và git diff --check).
-- **Chuỗi 2:** 12/12 lệnh đạt exit 0 (kiểm tra tài liệu Convergence-Ext, Persist, Adapt, chuỗi migration, hồi quy M2 p9, UoW completion và wiring).
-- **Chuỗi 3:** 36/36 lệnh đạt exit 0 (kiểm tra Convergence-Ext-UI, 19 bài test phân hệ A, thư viện uv.lock/pyproject và adapters thực tế A, D, E, F, J, I).
-- **Chuỗi 4:** 45/45 lệnh đạt exit 0 (kiểm tra adapt config/seed/prod/launch, 12 bài test ingestion B, 9 bài test catalog C, API queries, pagination, SSE streams, build UI dist và screen registry).
-- **Chuỗi 5:** 25/25 lệnh đạt exit 0 (kiểm tra runtime pins, packaging, contract bindings, state machines, workflow static/catalog, toàn bộ suite unit/integration hồi quy M2).
-- **Chuỗi 6:** 38/38 lệnh đạt exit 0 (18 bài test phân hệ sáng tạo D-01..D-18 và 20 bài test giọng đọc/timing E-01..E-20).
-- **Chuỗi 7:** 52/52 lệnh đạt exit 0 (22 bài test render F-01..F-22, 14 bài test điều phối G-01..G-14, 16 bài test giao diện H-01..H-16).
-- **Chuỗi 8:** 31/31 lệnh đạt exit 0 (13 bài test lưu trữ Storage Meta và 18 bài test cấu hình/bảo mật Config Security J-01..J-18).
-- **Chuỗi 9:** 23/23 lệnh đạt exit 0 (10 bài test persistence PostgreSQL cho các phân hệ, các probe hợp đồng/trace TST-/QR-/CT-, và kiểm tra AST boundary rules).
+Toàn bộ 288 đoạn lệnh kiểm của milestone M6 đã được thực thi và kiểm tra lại trên mã integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe qua 14 chuỗi lệnh:
 
-Tổng hợp: **274/274 lệnh exit code 0**. Chi tiết từng lệnh, exit code và dòng tóm tắt được ghi đầy đủ tại [command-results.md](command-results.md).
+- Chuỗi 1: 12/12 đoạn exit 0 (kế hoạch phân hệ A, B, C, I, D, E, F, J, G, H, convergence và git diff --check)
+- Chuỗi 2: 2/2 đoạn exit 0 (kế hoạch convergence-ext và persist)
+- Chuỗi 3: 2/2 đoạn exit 0 (kế hoạch adapt và convergence-ext-ui)
+- Chuỗi 4: 18/18 đoạn exit 0 (migration, wiring, persist G, completion UoW, adapt wire, queries routes, probe catalog và prod)
+- Chuỗi 5: 1/1 đoạn exit 0 (npm run build giao diện)
+- Chuỗi 6: 12/12 đoạn exit 0 (control_ui, dist, screenRegistry, catalog hooks, persist C, hooks module)
+- Chuỗi 7: 42/42 đoạn exit 0 (19 test phân hệ A, thư viện pyproject và uv.lock, adapter thật A D E F J I, config, wiring, seed, launch)
+- Chuỗi 8: 22/22 đoạn exit 0 (12 đoạn ingestion B, 8 test catalog C, stream và SSE)
+- Chuỗi 9: 21/21 đoạn exit 0 (event catalog, phân trang, queries, runtime.lock, packaging, contract registry, state machine)
+- Chuỗi 10: 14/14 đoạn exit 0 (orchestration và storage, workflow cp6, pyproject, M2_ACCEPTED_SHA, hồi quy m2 và integration, main.py, dist, App.tsx)
+- Chuỗi 11: 38/38 đoạn exit 0 (D-01..D-18 và E-01..E-20)
+- Chuỗi 12: 36/36 đoạn exit 0 (F-01..F-22 và test điều phối G)
+- Chuỗi 13: 46/46 đoạn exit 0 (test giao diện H, lưu trữ I, cấu hình và bảo mật J)
+- Chuỗi 14: 22/22 đoạn exit 0 (persistence PostgreSQL A..J, probe adapter, probe trace, AST boundary)
+
+Tổng hợp: **288/288** đoạn lệnh kiểm exit 0.
 
 *Lưu ý quan trọng:*
-1. Kiểm thử `tests/m2/test_p7b_hardening.py::test_h36_m1_regression` được hoãn sang CP7 theo quyết định của user ngày 21/10/2026, do đó lệnh kiểm mang `--deselect` và không chạy tại cổng này (đây là hành vi được chỉ định, không phải lỗi).
-2. Các bài test tích hợp chạy trong môi trường kiểm thử sử dụng fake, mock và fixture nội bộ; đây không phải là bằng chứng thay thế cho tài nguyên thật (GPU, TTS, Drive, Temporal thực tế), các bằng chứng tài nguyên thật sẽ được thu thập tại CP7.
+1. Lệnh kiểm `test_h36_m1_regression` được hoãn sang CP7 theo quyết định của user ngày 21/10/2026 nên các lệnh liên quan mang cờ `--deselect`, không phải là lỗi kiểm thử.
+2. Các bài test tích hợp trong bộ test chạy bằng fake, mock và fixture nội bộ; các test bị skip vì môi trường thiếu PostgreSQL hoặc tài nguyên ngoài không được coi là bằng chứng tài nguyên thật (GPU, TTS, Drive, Temporal), bằng chứng thật sẽ được thu thập tại CP7.
+
 
 ## 6. Đối chiếu exit gate M6 trong roadmap
 
 | Mã | Nội dung exit gate (docs/11-roadmap.md mục 12) | Trạng thái | Evidence |
 | --- | --- | --- | --- |
-| M6-EG1 | Tạo được R4 Video Alpha theo luồng giám sát từ snapshot đến completion | PENDING_USER_CHECKPOINT | Cần GPU/TTS/FFmpeg/Drive thật ở CP7; evidence mã nguồn: test_f18_render_video_pipeline.py (Chuỗi 7 hàng 18), test_cp6_video_production_flow.py (Chuỗi 5 hàng 14), test_e16_voice_timing_pipeline.py (Chuỗi 6 hàng 34) chỉ chứng minh luồng với fake, không thay evidence thật |
-| M6-EG2 | Không output nào được đếm trước cloud verification | PASS | Toàn bộ lệnh kiểm liên quan exit 0: tests/unit/storage/test_storage_cloud_persist.py (Chuỗi 8 hàng 4), tests/unit/orchestration/test_g_completion_gate.py (Chuỗi 7 hàng 31), tests/integration/orchestration/test_g_commit_completion.py (Chuỗi 7 hàng 32), tests/integration/render/test_f20_worker_activity.py (Chuỗi 7 hàng 20) |
-| M6-EG3 | Không local output bị xóa khi sync/completion chưa đủ | PASS | Toàn bộ lệnh kiểm liên quan exit 0: tests/unit/storage/test_storage_cleanup_evaluation.py (Chuỗi 8 hàng 8), tests/integration/storage/test_storage_cleanup_executor.py (Chuỗi 8 hàng 9), tests/unit/storage/test_storage_reconciliation.py (Chuỗi 8 hàng 10) |
-| M6-EG4 | F không tự đổi script/góc/media ngoài fallback plan | PASS | Toàn bộ lệnh kiểm liên quan exit 0: tests/unit/render/test_f05_resolve_package.py (Chuỗi 7 hàng 5), test_f06_preconditions_hooks_timeline.py (Chuỗi 7 hàng 6), test_f07_preconditions_artifacts_language.py (Chuỗi 7 hàng 7), test_f08_validate_package.py (Chuỗi 7 hàng 8), test_f18_render_video_pipeline.py (Chuỗi 7 hàng 18) |
-| M6-EG5 | G06 phần TTS/timing/media và G07 phần output/QC có evidence | PENDING_USER_CHECKPOINT | Cần evidence trên tài nguyên thật ở CP7; evidence với fake đạt exit 0: test_e09 đến test_e12 (Chuỗi 6 hàng 27..30), test_f12 đến test_f15 (Chuỗi 7 hàng 12..15) |
+| M6-EG1 | Tạo được R4 Video Alpha theo luồng giám sát từ snapshot đến completion | PENDING_USER_CHECKPOINT | Cần GPU/TTS/FFmpeg/Drive thật ở CP7; evidence mã nguồn: test_f18_render_video_pipeline.py (Chuỗi 12 hàng 18), test_cp6_video_production_flow.py (Chuỗi 10 hàng 3), test_e16_voice_timing_pipeline.py (Chuỗi 11 hàng 34) chỉ chứng minh luồng với fake, không thay evidence thật |
+| M6-EG2 | Không output nào được đếm trước cloud verification | PASS | Toàn bộ lệnh kiểm liên quan exit 0: tests/unit/storage/test_storage_cloud_persist.py (Chuỗi 13 hàng 19), tests/unit/orchestration/test_g_completion_gate.py (Chuỗi 12 hàng 31), tests/integration/orchestration/test_g_commit_completion.py (Chuỗi 12 hàng 32), tests/integration/render/test_f20_worker_activity.py (Chuỗi 12 hàng 20) |
+| M6-EG3 | Không local output bị xóa khi sync/completion chưa đủ | PASS | Toàn bộ lệnh kiểm liên quan exit 0: tests/unit/storage/test_storage_cleanup_evaluation.py (Chuỗi 13 hàng 23), tests/integration/storage/test_storage_cleanup_executor.py (Chuỗi 13 hàng 24), tests/unit/storage/test_storage_reconciliation.py (Chuỗi 13 hàng 25) |
+| M6-EG4 | F không tự đổi script/góc/media ngoài fallback plan | PASS | Toàn bộ lệnh kiểm liên quan exit 0: tests/unit/render/test_f05_resolve_package.py (Chuỗi 12 hàng 5), test_f06_preconditions_hooks_timeline.py (Chuỗi 12 hàng 6), test_f07_preconditions_artifacts_language.py (Chuỗi 12 hàng 7), test_f08_validate_package.py (Chuỗi 12 hàng 8), test_f18_render_video_pipeline.py (Chuỗi 12 hàng 18) |
+| M6-EG5 | G06 phần TTS/timing/media và G07 phần output/QC có evidence | PENDING_USER_CHECKPOINT | Cần evidence trên tài nguyên thật ở CP7; evidence với fake đạt exit 0: test_e09 đến test_e12 (Chuỗi 11 hàng 27..30), test_f12 đến test_f15 (Chuỗi 12 hàng 12..15) |
 | M6-EG6 | User duyệt E-F và 5 preset mẫu; user nghe mẫu và duyệt hình | PENDING_USER_CHECKPOINT | User chưa duyệt, không tự ghi là đã duyệt; chờ nghiệm thu người dùng tại CP7 |
+
+Ghi chú theo quyết định của user (2026-10-22, ai-setup decide):
+Exit gate của roadmap rộng hơn kế hoạch đã duyệt chỉ được ghi chú trong báo cáo đóng mốc, không phải FAIL và không hỏi user. Việc kế hoạch đã duyệt có mà chưa nối do Control tự lập gói sửa.
+Các mục mở liên quan theo docs/11-roadmap.md (dòng 537 trở đi, cần chốt trước khi hoàn tất exit M6 tại CP7):
+- `QUALITY-OPEN-006`/`TEST-OPEN-005`: output profile chính thức.
+- `QUALITY-OPEN-007`/`TEST-OPEN-006`: ngưỡng sai số word timing.
+- Tên, style và thông số chi tiết của 5 preset.
+- Audio quality/visual continuity thresholds dùng cho warning hoặc hard gate.
 
 ## 7. pendingUserCheckpoint
 
@@ -246,14 +270,9 @@ Chỉ gồm đúng 3 mã gate sau được đưa vào danh sách chờ kiểm tr
 2. `M6-EG5`: G06 phần TTS/timing/media và G07 phần output/QC có evidence — Cần thu thập bằng chứng vận hành trên tài nguyên thật tại CP7.
 3. `M6-EG6`: User duyệt E-F và 5 preset mẫu; user nghe mẫu và duyệt hình — Chờ người dùng trực tiếp nghiệm thu chất lượng mẫu video, audio và preset.
 
+
 ## 8. Kết luận
 
-Trạng thái: **CHƯA ĐẠT** (ở mức đóng tự động hoàn toàn do thiếu dữ liệu bản ghi quyết định).
+Trạng thái: **ĐẠT** về kỹ thuật và kiểm thử trên mã 74c062a29d649ea0e3d1471dee9c739dc33d38fe: 288/288 lệnh kiểm exit 0, mọi gói được bao phủ có SHA tích hợp, 13 gói cổng có recordHash do Control cấp, M6-EG2/EG3/EG4 PASS. Ba gate M6-EG1, M6-EG5, M6-EG6 ghi vào pendingUserCheckpoint, chờ tài nguyên thật và duyệt của user ở CP7.
 
-Các tiêu chí chưa đạt gồm có:
-1. **Mã gói `M6-EF-PLAN`**: Tra cứu `git log` chỉ đọc trên nhánh hiện tại không tìm thấy commit integrate riêng (`KHÔNG TÌM THẤY`).
-2. **13 gói cổng thiếu `recordHash`**: Toàn bộ 13 mã cổng (`GATE-CP-2D-REGISTRY`, `GATE-CP-5-COMPLETION`, `GATE-CP-6-WORKFLOW`, `GATE-CP-2B-DEPS-PATHS`, `GATE-PERSIST-A`, `GATE-PERSIST-B`, `GATE-PERSIST-C`, `GATE-PERSIST-D`, `GATE-PERSIST-E`, `GATE-PERSIST-F`, `GATE-PERSIST-G`, `GATE-PERSIST-I`, `GATE-PERSIST-J`) chưa được Control cấp mã `recordHash` tương ứng trong vật liệu giao việc của phiên. Do `.ai-pm/**` là đường cấm không được mở, Worker không tự tính hay bịa giá trị mà ghi nhận trung thực trạng thái `THIẾU` và báo cáo `BLOCKED` để Control cung cấp.
-
-Về phía kỹ thuật và kiểm thử: Toàn bộ **274/274** lệnh kiểm bắt buộc đều đạt exit code 0; các exit gate M6-EG2, M6-EG3, M6-EG4 đều PASS; ba gate M6-EG1, M6-EG5, M6-EG6 được chuyển sang `pendingUserCheckpoint` tại CP7 theo đúng quy chuẩn.
-
-Báo cáo này tuân thủ nguyên tắc không thay đổi trạng thái trong roadmap (`docs/11-roadmap.md`) hay checklist (`docs/12-pre-code-checklist.md`).
+Báo cáo không thay đổi trạng thái roadmap (docs/11-roadmap.md) hay checklist (docs/12-pre-code-checklist.md).
