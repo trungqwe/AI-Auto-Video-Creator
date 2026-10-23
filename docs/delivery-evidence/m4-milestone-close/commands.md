@@ -5,6 +5,7 @@
 - Ngày chạy: 23/10/2026
 - Tổng số lệnh kiểm bắt buộc: 288, chia thành 10 nhóm theo cột «Nhóm bước»; mỗi lệnh một tiến trình riêng.
 - Lần chạy này thay thế hoàn toàn kết quả trên candidate 5fd27218759bdfb463f9efc7af34caabd8debe13 (CLOSURE_BASE_STALE: nhánh cũ chưa chứa các gói sửa lỗi tích hợp sau ADAPT-LAUNCH).
+- Lượt cấp lại sau thu hồi grant G1 (INTEGRATION_CHECK_FAILED): sau `git rebase 74c062a29d649ea0e3d1471dee9c739dc33d38fe` (không đổi mã), chạy lại STT 17, 21 và 23 trên cùng interpreter khoá; lần chạy lỗi trước đó của STT 17 là `psycopg.errors.ConnectionTimeout` khi kết nối PostgreSQL, không phải lỗi mã; kết quả mới nằm trong bảng bên dưới.
 
 | STT | Nhóm bước | Lệnh | Exit code | Tóm tắt nguyên văn |
 | --- | --- | --- | --- | --- |
@@ -24,13 +25,13 @@
 | 14 | 2 | `python -c "import re, pathlib, unicodedata; d = pathlib.Path('docs/implementation/persist'); p = unicodedata.normalize('NFC', (d / 'plan.md'...` | 0 | exit 0 |
 | 15 | 2 | `python -c "import re, pathlib, unicodedata; d = pathlib.Path('docs/implementation/adapt'); p = unicodedata.normalize('NFC', (d / 'plan.md')....` | 0 | exit 0 |
 | 16 | 2 | `python -c "import re, pathlib, unicodedata; d = pathlib.Path('docs/implementation/convergence-ext-ui'); p = unicodedata.normalize('NFC', (d ...` | 0 | exit 0 |
-| 17 | 3 | `python -m pytest tests/integration/convergence/test_cp3_migration_sequence.py -q -p no:cacheprovider` | 0 | 8 passed in 1.69s |
+| 17 | 3 | `python -m pytest tests/integration/convergence/test_cp3_migration_sequence.py -q -p no:cacheprovider` | 0 | 8 passed in 1.38s |
 | 18 | 3 | `python -m pytest tests/m2/test_p9_m2_exit_gate.py -q -p no:cacheprovider` | 0 | 6 passed in 9.23s |
 | 19 | 3 | `python -m pytest tests/unit/collection tests/unit/ingestion tests/unit/catalog tests/unit/creative tests/unit/voice tests/unit/render tests/...` | 0 | 5190 passed, 1 warning, 2237 subtests passed in 13.75s |
 | 20 | 3 | `python -c "import pathlib; t = ' '.join(pathlib.Path('src/controlplane/infrastructure/db/migrations/0013_ingestion.sql').read_text(encoding=...` | 0 | exit 0 |
-| 21 | 3 | `python -B -m pytest tests/integration/convergence/test_cp3_migration_sequence.py::test_pinned_migrations_and_runner_untouched -q -p no:cache...` | 0 | 1 passed in 0.32s |
+| 21 | 3 | `python -B -m pytest tests/integration/convergence/test_cp3_migration_sequence.py::test_pinned_migrations_and_runner_untouched -q -p no:cache...` | 0 | 1 passed in 0.24s |
 | 22 | 3 | `python -m pytest tests/integration/convergence/test_cp4_wiring.py -q -p no:cacheprovider` | 0 | 137 passed, 28 skipped, 1 warning in 3.00s |
-| 23 | 3 | `python -m pytest tests/integration/persistence/g/test_persist_g_postgres.py -q -p no:cacheprovider` | 0 | 16 passed in 6.17s |
+| 23 | 3 | `python -m pytest tests/integration/persistence/g/test_persist_g_postgres.py -q -p no:cacheprovider` | 0 | 16 passed in 5.32s |
 | 24 | 3 | `python -m pytest tests/integration/convergence/test_cp5_completion_uow.py -q -p no:cacheprovider` | 0 | 40 passed in 4.02s |
 | 25 | 3 | `python -m pytest tests/integration/adapt/wire/test_adapt_wire_services.py -q -p no:cacheprovider` | 0 | 111 passed in 10.50s |
 | 26 | 3 | `python -m pytest tests/integration/convergence/test_cp4_queries_routes.py -q -p no:cacheprovider` | 0 | 21 passed, 1 warning in 0.97s |
