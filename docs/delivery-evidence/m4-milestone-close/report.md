@@ -3,34 +3,41 @@
 ## 1. Phạm vi và candidate
 
 - **Mã nhiệm vụ (Task ID):** `M4-MILESTONE-CLOSE`
-- **Candidate SHA kiểm định:** `5fd27218759bdfb463f9efc7af34caabd8debe13` (HEAD của worktree khi chạy lệnh kiểm; con trực tiếp của `cc290f002074514001fa0b03b3eb8c9e00c14db6`, commit integrate của ADAPT-LAUNCH)
+- **Candidate SHA kiểm định:** `5c57b7261a8b10b8ab9bdbe5e30b0019dabe9361` (HEAD sau rebase, dựng trên integration head `74c062a29d649ea0e3d1471dee9c739dc33d38fe`; tiêu đề commit 74c062a: `integrate(CP-4B-UI-SCREENS-FIX2): lane lane-cp-4b-ui-screens-fix2 candidate 1c85775dea49`)
+- **Lần chạy này:** Thay thế hoàn toàn kết quả trên candidate 5fd27218759bdfb463f9efc7af34caabd8debe13 (CLOSURE_BASE_STALE: nhánh cũ chưa chứa các gói sửa lỗi tích hợp sau ADAPT-LAUNCH).
 - **Python interpreter đã khóa:** `C:/Users/Admin/orca/workspaces/AI-Auto-Video-Creator/.local-tools/runtime/33f06a7a/venv/Scripts/python.exe` (Python 3.13.15, đồng bộ hoàn toàn với `tools/runtime/runtime.lock.json`)
 - **Thời điểm thực thi:** Ngày 23/10/2026
-- **Phạm vi kiểm tra:** Toàn bộ 288 lệnh kiểm bắt buộc của Milestone M4 theo 12 nhóm bước, 135 gói và cổng trong danh sách yêu cầu nghiệm thu (122 gói công việc và 13 cổng GATE-*) và 6 exit gate trong roadmap.
+- **Phạm vi kiểm tra:** Toàn bộ 288 lệnh kiểm bắt buộc của Milestone M4 theo 10 nhóm bước, 135 gói và cổng trong danh sách yêu cầu nghiệm thu (122 gói công việc và 13 cổng GATE-*) và 6 exit gate trong roadmap.
 
 ## 2. Kết luận
 
-Kết luận kỹ thuật: KHÔNG ĐẠT
+Kết luận kỹ thuật: ĐẠT
 
 **Chi tiết đánh giá từng tiêu chí:**
-- **Lệnh kiểm:** KHÔNG ĐẠT — 279/288 lệnh kiểm chạy lại trên candidate đạt exit code 0; 9 lệnh thất bại (STT 29, 30, 33, 39, 41, 44, 45, 46, 47 do 6 gói sửa lỗi chưa được tích hợp vào candidate 5fd27218759bdfb463f9efc7af34caabd8debe13).
+- **Lệnh kiểm:** ĐẠT — 288/288 lệnh kiểm chạy lại trên candidate đạt exit code 0; 0 lệnh thất bại.
 - **Exit gate kỹ thuật:** ĐẠT — M4-EG1..M4-EG4 PASS, bằng chứng tại exit-gates.md.
 - **Exit gate chờ người dùng:** ĐẠT quy chuẩn — M4-EG5 và M4-EG6 ghi PENDING_USER vì cần tài khoản Drive thật và checkpoint duyệt của user; không gate nào khác bị ghi pending.
-- **Bao phủ gói:** KHÔNG ĐẠT — 129/135 gói và cổng có SHA tích hợp hoặc recordHash; M4-CI-PLAN ghi SHA `b18dbcff5e5beadb872b0d507b26cb88ffecf01e` do Control xác minh; 6 gói sửa lỗi mới (CP-4-WIRING-FIX2, ADAPT-PROD-FIX1, CP-4B-UI-SCREENS-FIX1, PERSIST-C-FIX1, ADAPT-PROD-FIX2, CP-4B-UI-SCREENS-FIX2) ghi nhận KHÔNG TÌM THẤY trên nhánh candidate.
+- **Bao phủ gói:** ĐẠT — 135/135 gói và cổng có SHA tích hợp hoặc recordHash; M4-CI-PLAN ghi SHA `b18dbcff5e5beadb872b0d507b26cb88ffecf01e` do Control xác minh; 6 gói sửa lỗi tích hợp sau ADAPT-LAUNCH đều có commit integrate 40-hex hợp lệ là tổ tiên của HEAD.
 
 ## 3. Gói được bao phủ
 
 - Tổng số gói trong danh sách yêu cầu nghiệm thu mục 1: **135 gói** (122 gói công việc và 13 cổng kiểm soát GATE-*); danh sách kết thúc ở E-08.
-- Số gói công việc có SHA tích hợp 40-hex hợp lệ: **116 / 122**. M4-CI-PLAN ghi SHA `b18dbcff5e5beadb872b0d507b26cb88ffecf01e` do Control cung cấp (gói nghiệm thu ở chuỗi chính trước khi có Portfolio, không có commit integrate; Control đã xác minh receipt Auditor PASS và commit nội dung là tổ tiên của nhánh tích hợp).
+- Số gói công việc có SHA tích hợp 40-hex hợp lệ: **122 / 122**. M4-CI-PLAN ghi SHA `b18dbcff5e5beadb872b0d507b26cb88ffecf01e` do Control cung cấp (gói nghiệm thu ở chuỗi chính trước khi có Portfolio, không có commit integrate; Control đã xác minh receipt Auditor PASS và commit nội dung là tổ tiên của nhánh tích hợp).
 - Số cổng kiểm soát có `recordHash` khớp mã Control cấp trong yêu cầu nghiệm thu: **13 / 13** (báo cáo chép mã, không đọc sổ quyết định của Control).
-- Số gói thiếu SHA: **6** (6 gói sửa lỗi CP-4-WIRING-FIX2, ADAPT-PROD-FIX1, CP-4B-UI-SCREENS-FIX1, PERSIST-C-FIX1, ADAPT-PROD-FIX2, CP-4B-UI-SCREENS-FIX2 không tìm thấy commit integrate trên nhánh candidate).
-- Sáu gói sửa lỗi có trong danh sách (CP-4-WIRING-FIX2, ADAPT-PROD-FIX1, CP-4B-UI-SCREENS-FIX1, PERSIST-C-FIX1, ADAPT-PROD-FIX2, CP-4B-UI-SCREENS-FIX2) đã tra SHA tích hợp từ lịch sử git: các commit integrate tồn tại ở các lane nhánh riêng nhưng chưa được hợp nhất vào candidate 5fd27218759bdfb463f9efc7af34caabd8debe13, ghi nhận KHÔNG TÌM THẤY tại packages.md.
+- Số gói thiếu SHA: **0**.
+- Sáu gói sửa lỗi tích hợp sau ADAPT-LAUNCH đều có commit integrate hợp lệ là tổ tiên của CANDIDATE_HEAD `5c57b7261a8b10b8ab9bdbe5e30b0019dabe9361`:
+  - `CP-4-WIRING-FIX2`: `759ea0abd830f76b6f6a99232e8183ee50a9f34d` (lane lane-cp-4-wiring-fix2 candidate 5aed9712848f)
+  - `ADAPT-PROD-FIX1`: `6ba0bcde40de3d3adf8405d9df6bd8cae431227a` (lane lane-adapt-prod-fix1 candidate d588d9c0e8b0)
+  - `CP-4B-UI-SCREENS-FIX1`: `adc7634f45a21c2fa174adee662962d7a1b21a57` (lane lane-cp-4b-ui-screens-fix1 candidate 2760ee3ca0f9)
+  - `PERSIST-C-FIX1`: `ab8586d55fc612825888d6a7e26e58ae96d28af6` (lane lane-persist-c-fix1 candidate 2327dcf8e326)
+  - `ADAPT-PROD-FIX2`: `fa250e8305aa422ff260f2ce9bb3622a29239740` (lane lane-adapt-prod-fix2 candidate e1cc7f40b25b)
+  - `CP-4B-UI-SCREENS-FIX2`: `74c062a29d649ea0e3d1471dee9c739dc33d38fe` (lane lane-cp-4b-ui-screens-fix2 candidate 1c85775dea49)
 - Chi tiết đối chiếu từng gói: [packages.md](packages.md). Phụ lục cùng tệp liệt kê thêm 98 gói nằm ngoài danh sách yêu cầu (E-09..E-20, F-01..F-22, G-01..G-14, H-01..H-16, I-01..I-13, J-01..J-18, CP0-GOVERNANCE, CP1-CONTRACT-BINDING, CP2A-LAYOUT) chỉ để tham khảo, không tính vào tổng 135 và không dùng để suy ra FAIL.
 
 ## 4. Lệnh kiểm
 
-- Toàn bộ **288 / 288 lệnh kiểm** bắt buộc đã chạy lại trên candidate 5fd27218759bdfb463f9efc7af34caabd8debe13, mỗi lệnh một tiến trình riêng.
-- Số lệnh exit code 0: **279 / 288** (9 lệnh thất bại: STT 29, 30, 33, 39, 41, 44, 45, 46, 47 do các gói sửa lỗi chưa được tích hợp vào candidate).
+- Toàn bộ **288 / 288 lệnh kiểm** bắt buộc đã chạy lại trên candidate `5c57b7261a8b10b8ab9bdbe5e30b0019dabe9361`, mỗi lệnh một tiến trình riêng, chia thành 10 nhóm theo cột «Nhóm bước» của commands.md.
+- Số lệnh exit code 0: **288 / 288** (0 lệnh thất bại).
 - Lệnh có test skipped: STT 22, 118, 133, 142, 241 (test PostgreSQL tự bỏ qua khi không có dịch vụ thật theo D5).
 - Hai lệnh mang cờ --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression: STT 115 và STT 142; hoãn sang CP7 theo quyết định của user ngày 21/10/2026, test h36 không được chạy.
 - Chi tiết kết quả, mã thoát và tóm tắt nguyên văn từng lệnh: [commands.md](commands.md).
@@ -59,7 +66,7 @@ pendingUserCheckpoint: M4-EG5, M4-EG6
 
 ## 7. Tác dụng phụ
 
-Tại nhóm bước 4 (lệnh kiểm STT 35), lệnh `npm --prefix src/controlplane/ui run build` chạy bằng `node_modules` Control cấp sẵn, không chạy `npm install` hay `npm ci`. Lệnh exit code 0. Sau khi chạy, git status cho thấy không có tệp theo dõi nào ngoài owned paths bị đổi so với HEAD `5fd27218759bdfb463f9efc7af34caabd8debe13`, không phát sinh tác dụng phụ.
+Tại nhóm bước 3 (lệnh kiểm STT 35), lệnh `npm --prefix src/controlplane/ui run build` chạy bằng `node_modules` Control cấp sẵn, không chạy `npm install` hay `npm ci`. Lệnh exit code 0. Sau khi chạy, `git status --porcelain` cho thấy không có tệp theo dõi nào ngoài owned paths bị đổi so với CANDIDATE_HEAD `5c57b7261a8b10b8ab9bdbe5e30b0019dabe9361`, không phát sinh tác dụng phụ.
 
 ## 8. GIẢ ĐỊNH và giới hạn
 

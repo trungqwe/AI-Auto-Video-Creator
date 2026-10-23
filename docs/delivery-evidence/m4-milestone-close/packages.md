@@ -1,9 +1,9 @@
 # M4-MILESTONE-CLOSE: danh sách gói và SHA tích hợp (revision 1)
 
-- Candidate SHA đang kiểm định: `cc290f002074514001fa0b03b3eb8c9e00c14db6`
+- Candidate SHA đang kiểm định: `5c57b7261a8b10b8ab9bdbe5e30b0019dabe9361` (dựng trên integration head `74c062a29d649ea0e3d1471dee9c739dc33d38fe`)
 - Tổng số gói trong danh sách yêu cầu nghiệm thu mục 1: 135 gói (gồm 122 gói công việc và 13 cổng kiểm soát); danh sách kết thúc ở E-08
-- Số gói/cổng đã tra cứu thành công SHA / recordHash: 129 / 135 (trong đó 116/122 gói công việc có commit integrate 40-hex, 13/13 cổng kiểm soát có recordHash do Control cấp)
-- Số gói thiếu SHA: 6 gói (6 gói sửa lỗi CP-4-WIRING-FIX2, ADAPT-PROD-FIX1, CP-4B-UI-SCREENS-FIX1, PERSIST-C-FIX1, ADAPT-PROD-FIX2, CP-4B-UI-SCREENS-FIX2 không tìm thấy commit integrate trên nhánh candidate; M4-CI-PLAN dùng SHA Control cung cấp, xem bảng)
+- Số gói/cổng đã tra cứu thành công SHA / recordHash: 135 / 135 (trong đó 122/122 gói công việc có commit integrate 40-hex, 13/13 cổng kiểm soát có recordHash do Control cấp)
+- Số gói thiếu SHA: 0
 
 ## Bảng đối chiếu các gói trong danh sách yêu cầu
 
@@ -30,12 +30,12 @@
 | PERSIST-G-FIX1 | Gói sửa lỗi (Fix) | `f03fed2f209808f80999643408f4f19a32cde567` (lane lane-persist-g-fix1 candidate 6f53564a6c56) | git log, subject `integrate(PERSIST-G-FIX1): ...` |
 | CP-5-COMPLETION-FIX1 | Gói sửa lỗi (Fix) | `0ba3801fb9709dd85f7ff15330a877bfd3bf6561` (lane lane-cp-5-completion-fix1 candidate c2eaba9f3460) | git log, subject `integrate(CP-5-COMPLETION-FIX1): ...` |
 | ADAPT-WIRE-FIX1 | Gói sửa lỗi (Fix) | `810c377c112f7ce082ab51564591ade9a519e0b0` (lane lane-adapt-wire-fix1 candidate f42c94477378) | git log, subject `integrate(ADAPT-WIRE-FIX1): ...` |
-| CP-4-WIRING-FIX2 | Gói sửa lỗi (Fix) | KHÔNG TÌM THẤY | Không tìm thấy commit integrate trên nhánh của candidate (commit 759ea0abd830f76b6f6a99232e8183ee50a9f34d trên lane lane-cp-4-wiring-fix2 chưa là tổ tiên của HEAD) |
-| ADAPT-PROD-FIX1 | Gói sửa lỗi (Fix) | KHÔNG TÌM THẤY | Không tìm thấy commit integrate trên nhánh của candidate (commit 6ba0bcde40de3d3adf8405d9df6bd8cae431227a trên lane lane-adapt-prod-fix1 chưa là tổ tiên của HEAD) |
-| CP-4B-UI-SCREENS-FIX1 | Gói sửa lỗi (Fix) | KHÔNG TÌM THẤY | Không tìm thấy commit integrate trên nhánh của candidate (commit adc7634f45a21c2fa174adee662962d7a1b21a57 trên lane lane-cp-4b-ui-screens-fix1 chưa là tổ tiên của HEAD) |
-| PERSIST-C-FIX1 | Gói sửa lỗi (Fix) | KHÔNG TÌM THẤY | Không tìm thấy commit integrate trên nhánh của candidate (commit ab8586d55fc612825888d6a7e26e58ae96d28af6 trên lane lane-persist-c-fix1 chưa là tổ tiên của HEAD) |
-| ADAPT-PROD-FIX2 | Gói sửa lỗi (Fix) | KHÔNG TÌM THẤY | Không tìm thấy commit integrate trên nhánh của candidate (commit fa250e8305aa422ff260f2ce9bb3622a29239740 trên lane lane-adapt-prod-fix2 chưa là tổ tiên của HEAD) |
-| CP-4B-UI-SCREENS-FIX2 | Gói sửa lỗi (Fix) | KHÔNG TÌM THẤY | Không tìm thấy commit integrate trên nhánh của candidate (commit 74c062a29d649ea0e3d1471dee9c739dc33d38fe trên lane lane-cp-4b-ui-screens-fix2 chưa là tổ tiên của HEAD) |
+| CP-4-WIRING-FIX2 | Gói sửa lỗi (Fix) | `759ea0abd830f76b6f6a99232e8183ee50a9f34d` (lane lane-cp-4-wiring-fix2 candidate 5aed9712848f) | git log, subject `integrate(CP-4-WIRING-FIX2): ...` |
+| ADAPT-PROD-FIX1 | Gói sửa lỗi (Fix) | `6ba0bcde40de3d3adf8405d9df6bd8cae431227a` (lane lane-adapt-prod-fix1 candidate d588d9c0e8b0) | git log, subject `integrate(ADAPT-PROD-FIX1): ...` |
+| CP-4B-UI-SCREENS-FIX1 | Gói sửa lỗi (Fix) | `adc7634f45a21c2fa174adee662962d7a1b21a57` (lane lane-cp-4b-ui-screens-fix1 candidate 2760ee3ca0f9) | git log, subject `integrate(CP-4B-UI-SCREENS-FIX1): ...` |
+| PERSIST-C-FIX1 | Gói sửa lỗi (Fix) | `ab8586d55fc612825888d6a7e26e58ae96d28af6` (lane lane-persist-c-fix1 candidate 2327dcf8e326) | git log, subject `integrate(PERSIST-C-FIX1): ...` |
+| ADAPT-PROD-FIX2 | Gói sửa lỗi (Fix) | `fa250e8305aa422ff260f2ce9bb3622a29239740` (lane lane-adapt-prod-fix2 candidate e1cc7f40b25b) | git log, subject `integrate(ADAPT-PROD-FIX2): ...` |
+| CP-4B-UI-SCREENS-FIX2 | Gói sửa lỗi (Fix) | `74c062a29d649ea0e3d1471dee9c739dc33d38fe` (lane lane-cp-4b-ui-screens-fix2 candidate 1c85775dea49) | git log, subject `integrate(CP-4B-UI-SCREENS-FIX2): ...` |
 | A-01 | Lát cắt triển khai (Slice) | `22535f6dcff3dbf2e3187771a9bff1b34c85c838` (lane lane-a-01 candidate b11289d9c406) | git log, subject `integrate(A-01): ...` |
 | A-02 | Lát cắt triển khai (Slice) | `e343a41ee6570c39d0cbeda2bd35a3bf2c15513f` (lane lane-a-02 candidate 0614e8d1934d) | git log, subject `integrate(A-02): ...` |
 | A-03 | Lát cắt triển khai (Slice) | `5e009d1c06ba60052bdd1658f939ffaadc626597` (lane lane-a-03 candidate 6382ebd2cdde) | git log, subject `integrate(A-03): ...` |
@@ -144,6 +144,13 @@
 | E-06 | Lát cắt triển khai (Slice) | `d3887fa6a224395ad1e37e00e866a8e7def930e0` (lane lane-e-06 candidate da1e6a7ba167) | git log, subject `integrate(E-06): ...` |
 | E-07 | Lát cắt triển khai (Slice) | `2e7c6b1ca42d83ed16dac720ca98388b1bd06ecc` (lane lane-e-07 candidate a8abf025014b) | git log, subject `integrate(E-07): ...` |
 | E-08 | Lát cắt triển khai (Slice) | `1bfb8b02dc928a2455330afa45edc768226a63e5` (lane lane-e-08 candidate 8dfaedb513d4) | git log, subject `integrate(E-08): ...` |
+
+## Gói ngoài danh sách yêu cầu: E-09..E-20 và F-01..F-07
+
+19 gói E-09..E-20 và F-01..F-07 nằm ngoài danh sách yêu cầu nghiệm thu (danh sách kết thúc ở E-08); ghi SHA tích hợp chỉ để tham khảo, không tính vào tổng 135.
+
+| Mã gói | Loại | SHA tích hợp hoặc recordHash | Nguồn tra cứu |
+| --- | --- | --- | --- |
 | E-09 | Lát cắt triển khai (Slice) | `c695121600c8d1b73e9153cbd26dab92cf2f6b18` (lane lane-e-09 candidate 8c4ed2542c25) | git log, subject `integrate(E-09): ...` |
 | E-10 | Lát cắt triển khai (Slice) | `af9306a233fc2bed399d696fb87918f5c8e7dfe0` (lane lane-e-10 candidate 237353be4524) | git log, subject `integrate(E-10): ...` |
 | E-11 | Lát cắt triển khai (Slice) | `6945c76b1b309084663e2e0a6b2b668bebad88fc` (lane lane-e-11 candidate 37b5acbde850) | git log, subject `integrate(E-11): ...` |
