@@ -1,6 +1,6 @@
 # Báo cáo đóng milestone M5 (revision 2)
 
-Task: M5-MILESTONE-CLOSE-R2; candidate: HEAD 436527e12849af0ece97a6f4a7fdc545d7374a55 (đọc bằng git rev-parse HEAD trước khi commit báo cáo) sau rebase lên 74c062a29d649ea0e3d1471dee9c739dc33d38fe; cây mã nguồn trùng 74c062a, các commit docs(m5) của lane chỉ chạm docs/delivery-evidence/m5-milestone-close/; kết quả từng lệnh ở command-results.md cùng thư mục
+Task: M5-MILESTONE-CLOSE-R2; candidate: HEAD 02353535e1b5029cb770048f1be09d58d26e98f1 (đọc bằng git rev-parse HEAD trước khi commit báo cáo), nhánh đã rebase lên 74c062a29d649ea0e3d1471dee9c739dc33d38fe; cây mã nguồn trùng 74c062a, các commit docs(m5) của lane chỉ chạm docs/delivery-evidence/m5-milestone-close/; kết quả từng lệnh ở command-results.md cùng thư mục
 
 ## 1. Phạm vi và lý do đóng ở revision 2
 
@@ -8,7 +8,7 @@ Milestone M5 được đóng đúng một lần ở revision 2 (R2) với đầy
 
 Báo cáo này là bằng chứng kỹ thuật đóng milestone nội bộ, hoàn toàn không thay đổi trạng thái trong docs/11-roadmap.md hay docs/12-pre-code-checklist.md và không tự ý tuyên bố người dùng (user) đã duyệt M5. Các vai trò thẩm định trong quy trình này được ghi nhận chuẩn mực là Reviewer (Sonnet 5.5) và Auditor rủi ro (Opus 5.5).
 
-Grant G1 của lane bị Control thu hồi với lý do CLOSURE_BASE_STALE (lane mở lại trên HEAD cc290f002074 chưa chứa các gói được phủ tích hợp sau đó). Báo cáo này viết lại trên candidate sau rebase; kết quả lần mở trước (279/288 lệnh exit 0) không còn dùng.
+Grant G1 của lane bị Control thu hồi với lý do CLOSURE_BASE_STALE (lane mở lại trên HEAD cc290f002074 chưa chứa các gói được phủ tích hợp sau đó). Báo cáo này viết lại trên candidate sau rebase; kết quả các lần chạy trước trên 436527e và cc290f0 không còn dùng; toàn bộ 288 lệnh được chạy lại trên candidate nêu ở dòng 3.
 
 ## 2. Kiểm lại các điểm của R1
 
