@@ -3,9 +3,9 @@
 ## Môi trường
 
 - **Interpreter khóa của lane**: `C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\33f06a7a\venv\Scripts\python.exe`
-- **HEAD candidate đã kiểm**: `5bfe232073852a89558a5cad1e88a5e9caf3a15c` (tệp báo cáo này là tài liệu thêm sau candidate).
+- **HEAD candidate đã kiểm**: 6b0e2e51daac6187070f77c530f415ae8517d154 (tệp báo cáo này là tài liệu thêm sau candidate). Nhánh đã rebase lên integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe; kết quả của lần mở trước (HEAD bf52905b3b85 và 5bfe232) không còn dùng được.
 - **Trạng thái worktree**: Trước khi chạy lệnh cây làm việc hoàn toàn sạch (clean); sau khi chạy toàn bộ 219 lệnh kiểm bắt buộc (bao gồm lệnh build UI `npm --prefix src/controlplane/ui run build`), cây làm việc vẫn sạch, không có tệp nào bị thay đổi ngoài thư mục `docs/delivery-evidence/m3-milestone-close/`.
-- **Số lệnh kiểm bắt buộc đã chạy lại**: 219/219 lệnh; 215 lệnh exit 0, 4 lệnh exit khác 0 (STT 30 exit 1, STT 31 exit 4, STT 34 exit 1, STT 40 exit 1). Lệnh `tests/m2/test_p7b_hardening.py::test_h36_m1_regression` bị `--deselect` theo quyết định của user ngày 21/10/2026 (hoãn sang CP7), không tự chạy.
+- **Số lệnh kiểm bắt buộc đã chạy lại**: 219/219 lệnh; tất cả exit 0. Lệnh 	ests/m2/test_p7b_hardening.py::test_h36_m1_regression bị --deselect theo quyết định của user ngày 21/10/2026 (hoãn sang CP7), không tự chạy.
 - **Nguồn quyền**: User duyệt Phần B ngày 18/10/2026 (D0–D10 theo đề xuất); các milestone M3–M7 chạy theo ủy quyền AI_SETUP (`AI_PM_DELEGATED_AUTHORITY_RULES.md`).
 
 ## Gói được bao phủ
@@ -196,6 +196,7 @@
 | F-20-FIX1 | `e6d42ba2e1d55065b51625f83f6e35c85f02c370` | Tích hợp từ lane-f-20-fix1 (candidate 23112383740c) |
 | H-04-FIX1 | `bf23e4aea5cae41f0017184fe5a48ef7cd2e7fcc` | Tích hợp từ lane-h-04-fix1 (candidate 7dc0e2f5dbaf) |
 | H-12-FIX1 | `202e0d1fd3e643f985e17c3f2c909116807b2a95` | Tích hợp từ lane-h-12-fix1 (candidate cf79ae22efec) |
+| J-09-FIX1 | c10efaaeec9791999472d38b60eb8a3bf1b77962 | Tích hợp từ lane-j-09-fix1 (candidate 277383c9e99f) |
 | CP-2B-DEPS | `b10dc7c86fc396f9aee9c3a03586c1d883cdc661` | Tích hợp từ lane-cp-2b-deps (candidate 8cda6c756f76) |
 | CP-2C-M2-REGRESSION | `0e54a54e8700855d095ebac8267b1474ab878455` | Tích hợp từ lane-cp-2c-m2-regression (candidate 302b16965aec) |
 | CP-3B-STATE-MACHINE | `0adb2bbd0ee4140dd8cf3650ea9b7ffb6ca4b450` | Tích hợp từ lane-cp-3b-state-machine (candidate b3a040ffd687) |
@@ -203,11 +204,11 @@
 | CP-3-MIGRATIONS-FIX1 | `836de0d664d3bcbc2dc5ff53013cb8b9c5a94cf0` | Tích hợp từ lane-cp-3-migrations-fix1 (candidate a8a6cf78f104) |
 | CP-4-WIRING | `750195f1a88ee5bc731893d8986992b7b97c442b` | Tích hợp từ lane-cp-4-wiring (candidate 06b6d6b453ca) |
 | CP-4-WIRING-FIX1 | `06d6c84d8b798f693eab635ab44007ebc23df263` | Tích hợp từ lane-cp-4-wiring-fix1 (candidate 2309b3ab4898) |
-| CP-4-WIRING-FIX2 | `KHÔNG TÌM THẤY` | Chưa có commit tích hợp trên nhánh HEAD |
+| CP-4-WIRING-FIX2 | 759ea0abd830f76b6f6a99232e8183ee50a9f34d | Tích hợp từ lane-cp-4-wiring-fix2 (candidate 5aed9712848f) |
 | CP-4B-UI-SHELL | `42c328c98f7c0890d01fb3a590bf43a3f78eb2fb` | Tích hợp từ lane-cp-4b-ui-shell (candidate 858d8179ba66) |
 | CP-4B-UI-SCREENS | `a8533a71456b3ce573fcb8bbe68b2a21729e863d` | Tích hợp từ lane-cp-4b-ui-screens (candidate 3aa670cd9779) |
-| CP-4B-UI-SCREENS-FIX1 | `KHÔNG TÌM THẤY` | Chưa có commit tích hợp trên nhánh HEAD |
-| ADAPT-PROD-FIX1 | `KHÔNG TÌM THẤY` | Chưa có commit tích hợp trên nhánh HEAD |
+| CP-4B-UI-SCREENS-FIX1 | dc7634f45a21c2fa174adee662962d7a1b21a57 | Tích hợp từ lane-cp-4b-ui-screens-fix1 (candidate 2760ee3ca0f9) |
+| ADAPT-PROD-FIX1 | 6ba0bcde40de3d3adf8405d9df6bd8cae431227a | Tích hợp từ lane-adapt-prod-fix1 (candidate d588d9c0e8b0) |
 | GATE-CP-2D-REGISTRY | `00103f0a72d7b9e2f1f5803cc699db79373ac38ed2e47aa206f975da0eab9514` | Cổng, Control thả bằng bản ghi quyết định RELEASE |
 | GATE-CP-5-COMPLETION | `3b9e4c9d779043c2f76022541f4524b931ad48cce3cad2e4bc4dfff7cfb54d90` | Cổng, Control thả bằng bản ghi quyết định RELEASE |
 | GATE-CP-6-WORKFLOW | `2be7562bea521bede4812d8b5cff124d201b562b93a416b1972baca08d720190` | Cổng, Control thả bằng bản ghi quyết định RELEASE |
@@ -222,9 +223,9 @@
 | GATE-PERSIST-I | `b987fc8b60eaddba804f31ce51c78cfc9047db41d42203882ea5fae37c31843e` | Cổng, Control thả bằng bản ghi quyết định RELEASE |
 | GATE-PERSIST-J | `cc9e80f551c0a83996a2ff710c7ce2d8d73517eed0434d4c176e55403d1399de` | Cổng, Control thả bằng bản ghi quyết định RELEASE |
 
-**Tổng số gói**: 209 (193 gói có SHA tích hợp tra được trên HEAD, 3 gói chưa có commit tích hợp trên HEAD ghi KHÔNG TÌM THẤY, 13 gói cổng được Control giải phóng bằng recordHash).
+**Tổng số gói**: 210 gói (197 gói có SHA tích hợp tra được trên HEAD, 0 gói KHÔNG TÌM THẤY, 13 gói cổng được Control giải phóng bằng recordHash).
 
-**Ghi chú về các gói bổ sung**: Toàn bộ các gói phụ thuộc và hội tụ (CP-2B-DEPS, CP-2C-M2-REGRESSION, CP-3B-STATE-MACHINE, CP-3-MIGRATIONS, CP-3-MIGRATIONS-FIX1, CP-4-WIRING, CP-4-WIRING-FIX1, CP-4B-UI-SHELL, CP-4B-UI-SCREENS) đã được đưa vào bảng kiểm định chính thức kèm commit tích hợp thật trên HEAD. Ba gói FIX còn thiếu trên nhánh HEAD hiện tại (CP-4-WIRING-FIX2, CP-4B-UI-SCREENS-FIX1, ADAPT-PROD-FIX1) được ghi nhận trung thực là KHÔNG TÌM THẤY.
+**Ghi chú về các gói bổ sung**: Toàn bộ các gói phụ thuộc và hội tụ (CP-2B-DEPS, CP-2C-M2-REGRESSION, CP-3B-STATE-MACHINE, CP-3-MIGRATIONS, CP-3-MIGRATIONS-FIX1, CP-4-WIRING, CP-4-WIRING-FIX1, CP-4-WIRING-FIX2, CP-4B-UI-SHELL, CP-4B-UI-SCREENS, CP-4B-UI-SCREENS-FIX1, ADAPT-PROD-FIX1, J-09-FIX1) đã được đưa vào bảng kiểm định chính thức kèm commit tích hợp thật trên HEAD; không còn gói nào bị thiếu.
 
 ## Kết quả lệnh kiểm
 
@@ -233,13 +234,13 @@ Toàn bộ 219 lệnh kiểm bắt buộc của milestone M3 đã được chạ
 | STT | Lệnh | Exit code | Kết quả nguyên văn |
 | :---: | :--- | :---: | :--- |
 | 1 | `git diff --check` | 0 | Đạt (exit 0, assertion đạt) |
-| 2 | `python -m pytest docs/parallel-delivery/tests -q -p no:cacheprovider` | 0 | 21 passed in 0.54s |
+| 2 | `python -m pytest docs/parallel-delivery/tests -q -p no:cacheprovider` | 0 | 21 passed in 5.13s |
 | 3 | `python -c "import re, pathlib, unicodedata; f = ['AGENTS.md', 'README.md', 'HANDOFF.md', 'docs/12-pre-code-checklist.md', 'docs/11-roadmap.md']; t = dict((n, unicodedata.normalize('NFC', pathlib.Path(n).read_text(encoding='utf-8'))) for n in f); lock = re.compile('NOT AUTHORIZED|kh\u00f3a ch\u1eb7t|kho\u00e1 ch\u1eb7t|B\u1eca KH\u00d3A|B\u1eca KHO\u00c1'); bad = [n + ': ' + l.strip()[:90] for n in f for l in t[n].splitlines() if 'M3' in l and lock.search(l)]; assert not bad, bad; assert not re.search('push l\u00ean .origin. \u0111\u1ec3 sao l\u01b0u', t['AGENTS.md']), 'AGENTS.md still requires a push'; assert not re.search('push l\u00ean repository n\u00e0y', t['README.md']), 'README.md still requires a push'; assert all('18/10/2026' in t[n] for n in ['AGENTS.md', 'README.md', 'HANDOFF.md']), 'authority of 18/10/2026 missing'"` | 0 | Đạt (exit 0, assertion đạt) |
 | 4 | `python -c "import re, pathlib; t = pathlib.Path('docs/parallel-delivery/ownership-and-locks.yaml').read_text(encoding='utf-8'); ids = re.findall(r'(?m)^\s*- id: ([A-Za-z0-9_.-]+)', t); dup = sorted(set(i for i in ids if ids.count(i) > 1)); assert not dup, dup; need = ['PATH-DELIVERY-EVIDENCE', 'PATH-IMPLEMENTATION-PLANS', 'LOCK-M2-REGRESSION', 'LOCK-UI-SHELL', 'LOCK-CONTROL-API', 'LOCK-CONVERGENCE'] + ['LOCK-IMPL-PLAN-' + x for x in 'A B C D E F G H I J CONVERGENCE'.split()]; miss = [i for i in need if i not in ids]; assert not miss, miss; assert 'src/storage/**' not in t and 'src/controlplane/orchestration/**' not in t, 'paths of G and I do not follow D1'; want = ['src/controlplane/domain/storage_meta/**', 'src/controlplane/domain/orchestration/**', 'docs/delivery-evidence/**', 'docs/implementation/**']; gone = [p for p in want if p not in t]; assert not gone, gone"` | 0 | Đạt (exit 0, assertion đạt) |
 | 5 | `python -c "import re, pathlib; m = pathlib.Path('docs/parallel-delivery/acceptance-matrix.yaml').read_text(encoding='utf-8'); assert not re.search(r'docs/milestones/m[3-7]', m), 'acceptance-matrix still points M3+ evidence at docs/milestones'; o = pathlib.Path('docs/parallel-delivery/overlay-and-evidence.md').read_text(encoding='utf-8'); assert 'docs/delivery-evidence/' in o, 'the D4 location is not documented'; r = pathlib.Path('docs/delivery-evidence/cp0-governance/ownership-recheck.md').read_text(encoding='utf-8'); assert all(c in r for c in ['0a3f707', '98bd27e', 'ebf3d58']), 'the recheck must name the commits'; assert re.search(r'\b[0-9a-f]{64}\b', r), 'the recheck must bind the sha256 of the diff'"` | 0 | Đạt (exit 0, assertion đạt) |
-| 6 | `python -m pytest tests/unit -q -p no:cacheprovider` | 0 | 7452 passed, 1 warning, 2544 subtests passed in 10.88s |
+| 6 | `python -m pytest tests/unit -q -p no:cacheprovider` | 0 | 7464 passed, 1 warning, 2544 subtests passed in 16.10s |
 | 7 | `python -c "import pathlib, re, tomllib; root = pathlib.Path('src/controlplane'); keys = set(tomllib.loads((root / 'pyproject.toml').read_text(encoding='utf-8'))['tool']['setuptools']['package-dir']); pk = set('.'.join(('controlplane',) + q.parent.relative_to(root).parts) for q in root.rglob('*.py') if q.stem.strip('_') == 'init' and 'node_modules' not in q.parts); miss = sorted(pk - keys); assert not miss, miss; ini = tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8'))['tool']['pytest']['ini_options']; assert 'src' in ini.get('pythonpath', []), 'pytest pythonpath must include src'; bad = [str(q) for d in ['src', 'tests'] for q in pathlib.Path(d).rglob('*.py') if 'node_modules' not in q.parts and re.search(r'(?m)^\s*(from|import)\s+src\.', q.read_text(encoding='utf-8', errors='replace'))]; assert not bad, bad"` | 0 | Đạt (exit 0, assertion đạt) |
-| 8 | `python -m pytest tests/contract -q -p no:cacheprovider` | 0 | 293 passed in 0.39s |
+| 8 | `python -m pytest tests/contract -q -p no:cacheprovider` | 0 | 293 passed in 0.57s |
 | 9 | `python -c "import json, pathlib, re; b = pathlib.Path('docs/parallel-delivery/bindings'); mans = sorted(b.glob('*.json')); assert (b / 'README.md').is_file() and len(mans) >= 6, 'bindings/README.md and at least six seam manifests are required'; data = [json.loads(m.read_text(encoding='utf-8')) for m in mans]; assert all(d.get('seam') and d.get('source', {}).get('path', '').startswith('docs/09-contracts/') and re.fullmatch(r'[0-9a-f]{64}', d.get('source', {}).get('sha256', '')) for d in data), 'each manifest names its contract source and its sha256'; fx = pathlib.Path('tests/fixtures/contracts'); assert all((fx / d['seam']).is_dir() for d in data), 'each seam has a fixture folder'; e = pathlib.Path('docs/parallel-delivery/errata'); assert all((e / n).is_file() for n in ['m3-a.md', 'm4-ci.md', 'm5-d.md', 'm6-ef.md', 'm7-integration.md']), 'errata for the five plan families'"` | 0 | Đạt (exit 0, assertion đạt) |
 | 10 | `python -c "import re, pathlib, unicodedata; d = pathlib.Path('docs/implementation/a'); p = unicodedata.normalize('NFC', (d / 'plan.md').read_text(encoding='utf-8')); s = unicodedata.normalize('NFC', (d / 'slices.md').read_text(encoding='utf-8')); ids = re.findall(r'(?m)^### (A-[0-9A-Z][0-9A-Z-]*)', s); assert ids and len(ids) == len(set(ids)), ids; assert all(s.count(k) >= len(ids) for k in ['ownedPaths', 'dependsOn', 'bindingRefs', 'testCommands', 'acceptance']), 'each slice needs ownedPaths, dependsOn, bindingRefs, testCommands and acceptance'; assert re.search('[\u1ea0-\u1ef9]', p) and chr(65533) not in p + s, 'Vietnamese text with diacritics, no replacement characters'"` | 0 | Đạt (exit 0, assertion đạt) |
 | 11 | `python -c "import re, pathlib, unicodedata; d = pathlib.Path('docs/implementation/b'); p = unicodedata.normalize('NFC', (d / 'plan.md').read_text(encoding='utf-8')); s = unicodedata.normalize('NFC', (d / 'slices.md').read_text(encoding='utf-8')); ids = re.findall(r'(?m)^### (B-[0-9A-Z][0-9A-Z-]*)', s); assert ids and len(ids) == len(set(ids)), ids; assert all(s.count(k) >= len(ids) for k in ['ownedPaths', 'dependsOn', 'bindingRefs', 'testCommands', 'acceptance']), 'each slice needs ownedPaths, dependsOn, bindingRefs, testCommands and acceptance'; assert re.search('[\u1ea0-\u1ef9]', p) and chr(65533) not in p + s, 'Vietnamese text with diacritics, no replacement characters'"` | 0 | Đạt (exit 0, assertion đạt) |
@@ -252,225 +253,221 @@ Toàn bộ 219 lệnh kiểm bắt buộc của milestone M3 đã được chạ
 | 18 | `python -c "import re, pathlib, unicodedata; d = pathlib.Path('docs/implementation/g'); p = unicodedata.normalize('NFC', (d / 'plan.md').read_text(encoding='utf-8')); s = unicodedata.normalize('NFC', (d / 'slices.md').read_text(encoding='utf-8')); ids = re.findall(r'(?m)^### (G-[0-9A-Z][0-9A-Z-]*)', s); assert ids and len(ids) == len(set(ids)), ids; assert all(s.count(k) >= len(ids) for k in ['ownedPaths', 'dependsOn', 'bindingRefs', 'testCommands', 'acceptance']), 'each slice needs ownedPaths, dependsOn, bindingRefs, testCommands and acceptance'; assert re.search('[\u1ea0-\u1ef9]', p) and chr(65533) not in p + s, 'Vietnamese text with diacritics, no replacement characters'"` | 0 | Đạt (exit 0, assertion đạt) |
 | 19 | `python -c "import re, pathlib, unicodedata; d = pathlib.Path('docs/implementation/h'); p = unicodedata.normalize('NFC', (d / 'plan.md').read_text(encoding='utf-8')); s = unicodedata.normalize('NFC', (d / 'slices.md').read_text(encoding='utf-8')); ids = re.findall(r'(?m)^### (H-[0-9A-Z][0-9A-Z-]*)', s); assert ids and len(ids) == len(set(ids)), ids; assert all(s.count(k) >= len(ids) for k in ['ownedPaths', 'dependsOn', 'bindingRefs', 'testCommands', 'acceptance']), 'each slice needs ownedPaths, dependsOn, bindingRefs, testCommands and acceptance'; assert re.search('[\u1ea0-\u1ef9]', p) and chr(65533) not in p + s, 'Vietnamese text with diacritics, no replacement characters'"` | 0 | Đạt (exit 0, assertion đạt) |
 | 20 | `python -c "import re, pathlib, unicodedata; d = pathlib.Path('docs/implementation/convergence'); p = unicodedata.normalize('NFC', (d / 'plan.md').read_text(encoding='utf-8')); s = unicodedata.normalize('NFC', (d / 'slices.md').read_text(encoding='utf-8')); ids = re.findall(r'(?m)^### (CP-[0-9A-Z][0-9A-Z-]*)', s); assert ids and len(ids) == len(set(ids)), ids; assert all(s.count(k) >= len(ids) for k in ['ownedPaths', 'dependsOn', 'bindingRefs', 'testCommands', 'acceptance']), 'each slice needs ownedPaths, dependsOn, bindingRefs, testCommands and acceptance'; assert re.search('[\u1ea0-\u1ef9]', p) and chr(65533) not in p + s, 'Vietnamese text with diacritics, no replacement characters'; assert len(ids) >= 5, 'CP-2b, CP-3, CP-4, CP-5 and CP-6 at least'; assert 'USER-CKPT-D9-D10' in s, 'the dependency slice waits for USER-CKPT-D9-D10'; assert all(k in p for k in ['D2', 'D9', 'D10']), 'plan.md covers D2, D9 and D10'"` | 0 | Đạt (exit 0, assertion đạt) |
-| 21 | `python -m pytest tests/integration/convergence/test_cp3_migration_sequence.py -q -p no:cacheprovider` | 0 | 8 passed in 1.76s |
-| 22 | `python -m pytest tests/m2/test_p9_m2_exit_gate.py -q -p no:cacheprovider` | 0 | 6 passed in 3.32s |
-| 23 | `python -m pytest tests/unit/collection tests/unit/ingestion tests/unit/catalog tests/unit/creative tests/unit/voice tests/unit/render tests/unit/storage tests/unit/security tests/integration/orchestration tests/integration/control_ui -q -p no:cacheprovider` | 0 | 5182 passed, 1 warning, 2237 subtests passed in 9.80s |
+| 21 | `python -m pytest tests/integration/convergence/test_cp3_migration_sequence.py -q -p no:cacheprovider` | 0 | 8 passed in 1.63s |
+| 22 | `python -m pytest tests/m2/test_p9_m2_exit_gate.py -q -p no:cacheprovider` | 0 | 6 passed in 3.98s |
+| 23 | `python -m pytest tests/unit/collection tests/unit/ingestion tests/unit/catalog tests/unit/creative tests/unit/voice tests/unit/render tests/unit/storage tests/unit/security tests/integration/orchestration tests/integration/control_ui -q -p no:cacheprovider` | 0 | 5190 passed, 1 warning, 2237 subtests passed in 11.42s |
 | 24 | `python -c "import pathlib; t = ' '.join(pathlib.Path('src/controlplane/infrastructure/db/migrations/0013_ingestion.sql').read_text(encoding='utf-8').split()); assert t.count('dedup_policy_revision TEXT NOT NULL') == 2 and 'dedup_policy_revision BIGINT' not in t, 'src/controlplane/infrastructure/db/migrations/0013_ingestion.sql'"` | 0 | Đạt (exit 0, assertion đạt) |
-| 25 | `python -B -m pytest tests/integration/convergence/test_cp3_migration_sequence.py::test_pinned_migrations_and_runner_untouched -q -p no:cacheprovider` | 0 | 1 passed in 0.28s |
-| 26 | `python -m pytest tests/integration/convergence/test_cp4_wiring.py -q -p no:cacheprovider` | 0 | 133 passed, 28 skipped, 1 warning in 2.37s |
-| 27 | `python -m pytest tests/integration/convergence/test_cp4_queries_routes.py -q -p no:cacheprovider` | 0 | 21 passed, 1 warning in 0.90s |
-| 28 | `python -m pytest tests/unit/control_ui/test_h_metadata_update.py -q -p no:cacheprovider` | 0 | 83 passed, 1 warning in 0.63s |
-| 29 | `python -m pytest tests/m2/test_p7a_hardening.py::test_h28_static_architecture -q -p no:cacheprovider` | 0 | 1 passed, 1 warning in 0.80s |
-| 30 | `python -c "import ast, pathlib; d = pathlib.Path('src/controlplane/application/control_api'); r = (d / 'route_catalog.py').read_text(encoding='utf-8'); c = (d / 'command_catalog.py').read_text(encoding='utf-8'); m = r.split('METADATA_RESOURCES', 1)[-1]; assert 'sources' in m and 'topic_tags' in m, 'sources metadata resource missing'; names = [e.args[0].value for n in ast.walk(ast.parse(c)) if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id == 'COMMAND_SPECS' for e in n.value.elts]; assert len(names) == 14 and 'UpdateSourceMetadata' not in names, names; assert 'METADATA_ROUTED_COMMANDS' in c, 'metadata routed names not kept'"` | 1 | AssertionError: sources metadata resource missing |
-| 31 | `python -m pytest tests/integration/adapt/prod/test_adapt_prod_sources_module.py -q -p no:cacheprovider` | 4 | ERROR: file or directory not found: tests/integration/adapt/prod/test_adapt_prod_sources_module.py |
-| 32 | `python -m pytest tests/integration/adapt/prod/test_adapt_prod_app.py -q -p no:cacheprovider` | 0 | 23 passed, 1 warning in 7.69s |
-| 33 | `python -m pytest tests/integration/adapt/wire/test_adapt_wire_services.py::test_wiring_builder_inventory tests/integration/adapt/wire/test_adapt_wire_services.py::test_wiring_sources_have_no_forbidden_text tests/integration/adapt/wire/test_adapt_wire_services.py::test_wiring_modules_do_not_cross_import_subsystems -q -p no:cacheprovider` | 0 | 3 passed in 1.28s |
-| 34 | `python -c "import re, pathlib; api = ''.join(p.read_text(encoding='utf-8') for p in pathlib.Path('src/controlplane/api').rglob('*.py')); assert re.search('module_services.{0,40}sources', api, re.S), 'sources service not attached to module_services'"` | 1 | AssertionError: sources service not attached to module_services |
+| 25 | `python -B -m pytest tests/integration/convergence/test_cp3_migration_sequence.py::test_pinned_migrations_and_runner_untouched -q -p no:cacheprovider` | 0 | 1 passed in 0.38s |
+| 26 | `python -m pytest tests/integration/convergence/test_cp4_wiring.py -q -p no:cacheprovider` | 0 | 137 passed, 28 skipped, 1 warning in 2.50s |
+| 27 | `python -m pytest tests/integration/convergence/test_cp4_queries_routes.py -q -p no:cacheprovider` | 0 | 21 passed, 1 warning in 1.01s |
+| 28 | `python -m pytest tests/unit/control_ui/test_h_metadata_update.py -q -p no:cacheprovider` | 0 | 83 passed, 1 warning in 0.64s |
+| 29 | `python -m pytest tests/m2/test_p7a_hardening.py::test_h28_static_architecture -q -p no:cacheprovider` | 0 | 1 passed, 1 warning in 0.73s |
+| 30 | `python -c "import ast, pathlib; d = pathlib.Path('src/controlplane/application/control_api'); r = (d / 'route_catalog.py').read_text(encoding='utf-8'); c = (d / 'command_catalog.py').read_text(encoding='utf-8'); m = r.split('METADATA_RESOURCES', 1)[-1]; assert 'sources' in m and 'topic_tags' in m, 'sources metadata resource missing'; names = [e.args[0].value for n in ast.walk(ast.parse(c)) if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id == 'COMMAND_SPECS' for e in n.value.elts]; assert len(names) == 14 and 'UpdateSourceMetadata' not in names, names; assert 'METADATA_ROUTED_COMMANDS' in c, 'metadata routed names not kept'"` | 0 | Đạt (exit 0, assertion đạt) |
+| 31 | `python -m pytest tests/integration/adapt/prod/test_adapt_prod_sources_module.py -q -p no:cacheprovider` | 0 | 9 passed in 5.01s |
+| 32 | `python -m pytest tests/integration/adapt/prod/test_adapt_prod_app.py -q -p no:cacheprovider` | 0 | 25 passed, 1 warning in 9.66s |
+| 33 | `python -m pytest tests/integration/adapt/wire/test_adapt_wire_services.py::test_wiring_builder_inventory tests/integration/adapt/wire/test_adapt_wire_services.py::test_wiring_sources_have_no_forbidden_text tests/integration/adapt/wire/test_adapt_wire_services.py::test_wiring_modules_do_not_cross_import_subsystems -q -p no:cacheprovider` | 0 | 3 passed in 1.36s |
+| 34 | `python -c "import re, pathlib; api = ''.join(p.read_text(encoding='utf-8') for p in pathlib.Path('src/controlplane/api').rglob('*.py')); assert re.search('module_services.{0,40}sources', api, re.S), 'sources service not attached to module_services'"` | 0 | Đạt (exit 0, assertion đạt) |
 | 35 | `python -c "import pathlib; t = ' '.join(pathlib.Path(p).read_text(encoding='utf-8') for p in ['src/main.py', 'src/controlplane/api/wiring/production.py']); assert 'controlplane.application.test_driver' not in t and '/launch' in t and '127.0.0.1' in t and '0.0.0.0' not in t and 'from src.' not in t, 'prod'"` | 0 | Đạt (exit 0, assertion đạt) |
-| 36 | `npm --prefix src/controlplane/ui run build` | 0 | built in 2.82s |
-| 37 | `python -m pytest tests/unit/control_ui -q -p no:cacheprovider` | 0 | 661 passed, 1 warning in 1.02s |
+| 36 | `npm --prefix src/controlplane/ui run build` | 0 | Đạt (exit 0, assertion đạt) |
+| 37 | `python -m pytest tests/unit/control_ui -q -p no:cacheprovider` | 0 | 665 passed, 1 warning in 1.31s |
 | 38 | `python -c "import re, pathlib; d = pathlib.Path('src/controlplane/ui/dist'); h = (d / 'index.html').read_text(encoding='utf-8'); r = re.findall('assets/([A-Za-z0-9_.-]+)', h); assert r and all((d / 'assets' / x).is_file() for x in r), r; k = [f.name for f in (d / 'assets').iterdir() if f.is_file() and f.name not in r and not (f.name.endswith('.map') and f.name[:-4] in r)]; assert not k, ('orphan hashed files', k)"` | 0 | Đạt (exit 0, assertion đạt) |
 | 39 | `python -c "import pathlib; d = pathlib.Path('src/controlplane/ui/dist'); n = [f.name for f in d.rglob('*') if f.is_file()]; assert len(n) == 4, n"` | 0 | Đạt (exit 0, assertion đạt) |
-| 40 | `python -c "import re, pathlib; r = pathlib.Path('src/controlplane/ui/src/features/screens/screenRegistry.ts').read_text(encoding='utf-8'); s = dict(re.findall('id: ' + chr(39) + '([a-z-]+)' + chr(39) + '.*?backendStatus: ' + chr(39) + '([a-z_]+)' + chr(39), r, re.S)); assert len(s) == 18, s; assert s['sources'] == 'available', 'sources screen still pending_module'; assert all(s[i] == 'pending_module' for i in ['artifacts', 'snapshots', 'story-angles', 'scripts', 'accounts', 'cost']), s"` | 1 | AssertionError: sources screen still pending_module |
-| 41 | `python -m pytest tests/unit/collection/test_a01_package_layout.py -q -p no:cacheprovider` | 0 | 13 passed, 62 subtests passed in 0.16s |
+| 40 | `python -c "import re, pathlib; r = pathlib.Path('src/controlplane/ui/src/features/screens/screenRegistry.ts').read_text(encoding='utf-8'); s = dict(re.findall('id: ' + chr(39) + '([a-z-]+)' + chr(39) + '.*?backendStatus: ' + chr(39) + '([a-z_]+)' + chr(39), r, re.S)); assert len(s) == 18, s; assert s['sources'] == 'available', 'sources screen still pending_module'; assert all(s[i] == 'pending_module' for i in ['artifacts', 'snapshots', 'story-angles', 'scripts', 'accounts', 'cost']), s"` | 0 | Đạt (exit 0, assertion đạt) |
+| 41 | `python -m pytest tests/unit/collection/test_a01_package_layout.py -q -p no:cacheprovider` | 0 | 13 passed, 62 subtests passed in 0.15s |
 | 42 | `python -m pytest tests/unit/collection/test_a02_collected_document_package.py -q -p no:cacheprovider` | 0 | 27 passed, 99 subtests passed in 0.07s |
-| 43 | `python -m pytest tests/unit/collection/test_a03_source_lifecycle.py -q -p no:cacheprovider` | 0 | 17 passed, 50 subtests passed in 0.04s |
-| 44 | `python -m pytest tests/unit/collection/test_a04_locator_ssrf.py -q -p no:cacheprovider` | 0 | 74 passed in 0.08s |
-| 45 | `python -m pytest tests/unit/collection/test_a05_collection_run_states.py -q -p no:cacheprovider` | 0 | 40 passed, 20 subtests passed in 0.05s |
+| 43 | `python -m pytest tests/unit/collection/test_a03_source_lifecycle.py -q -p no:cacheprovider` | 0 | 17 passed, 50 subtests passed in 0.05s |
+| 44 | `python -m pytest tests/unit/collection/test_a04_locator_ssrf.py -q -p no:cacheprovider` | 0 | 74 passed in 0.10s |
+| 45 | `python -m pytest tests/unit/collection/test_a05_collection_run_states.py -q -p no:cacheprovider` | 0 | 40 passed, 20 subtests passed in 0.06s |
 | 46 | `python -m pytest tests/unit/collection/test_a06_checkpoint.py -q -p no:cacheprovider` | 0 | 15 passed, 22 subtests passed in 0.04s |
-| 47 | `python -m pytest tests/unit/collection/test_a07_source_candidate.py -q -p no:cacheprovider` | 0 | 14 passed, 44 subtests passed in 0.05s |
-| 48 | `python -m pytest tests/unit/collection/test_a08_ports_memory.py -q -p no:cacheprovider` | 0 | 32 passed, 3 subtests passed in 0.08s |
-| 49 | `python -m pytest tests/integration/collection/test_a09_source_commands.py -q -p no:cacheprovider` | 0 | 28 passed, 11 subtests passed in 0.11s |
-| 50 | `python -m pytest tests/integration/collection/test_a10_candidate_registration.py -q -p no:cacheprovider` | 0 | 23 passed, 14 subtests passed in 0.10s |
-| 51 | `python -m pytest tests/integration/collection/test_a11_collect_source.py -q -p no:cacheprovider` | 0 | 18 passed in 0.10s |
+| 47 | `python -m pytest tests/unit/collection/test_a07_source_candidate.py -q -p no:cacheprovider` | 0 | 14 passed, 44 subtests passed in 0.04s |
+| 48 | `python -m pytest tests/unit/collection/test_a08_ports_memory.py -q -p no:cacheprovider` | 0 | 32 passed, 3 subtests passed in 0.12s |
+| 49 | `python -m pytest tests/integration/collection/test_a09_source_commands.py -q -p no:cacheprovider` | 0 | 28 passed, 11 subtests passed in 0.12s |
+| 50 | `python -m pytest tests/integration/collection/test_a10_candidate_registration.py -q -p no:cacheprovider` | 0 | 23 passed, 14 subtests passed in 0.14s |
+| 51 | `python -m pytest tests/integration/collection/test_a11_collect_source.py -q -p no:cacheprovider` | 0 | 18 passed in 0.14s |
 | 52 | `python -m pytest tests/unit/collection/test_a12_secure_fetch.py -q -p no:cacheprovider` | 0 | 59 passed in 0.09s |
-| 53 | `python -m pytest tests/unit/collection/test_a13_package_builder.py -q -p no:cacheprovider` | 0 | 49 passed in 0.08s |
-| 54 | `python -m pytest tests/integration/collection/test_a14_artifact_handoff.py -q -p no:cacheprovider` | 0 | 19 passed in 0.09s |
-| 55 | `python -m pytest tests/unit/collection/test_a15_source_eligibility.py -q -p no:cacheprovider` | 0 | 20 passed, 49 subtests passed in 0.06s |
-| 56 | `python -m pytest tests/integration/collection/test_a16_supplemental.py -q -p no:cacheprovider` | 0 | 25 passed in 0.11s |
-| 57 | `python -m pytest tests/unit/collection/test_a17_projections.py -q -p no:cacheprovider` | 0 | 33 passed, 29 subtests passed in 0.10s |
-| 58 | `python -m pytest tests/integration/collection/test_a18_worker_activity.py -q -p no:cacheprovider` | 0 | 32 passed in 0.12s |
-| 59 | `python -m pytest tests/unit/collection/test_a19_rule_catalog.py -q -p no:cacheprovider` | 0 | 62 passed in 0.12s |
+| 53 | `python -m pytest tests/unit/collection/test_a13_package_builder.py -q -p no:cacheprovider` | 0 | 49 passed in 0.11s |
+| 54 | `python -m pytest tests/integration/collection/test_a14_artifact_handoff.py -q -p no:cacheprovider` | 0 | 19 passed in 0.10s |
+| 55 | `python -m pytest tests/unit/collection/test_a15_source_eligibility.py -q -p no:cacheprovider` | 0 | 20 passed, 49 subtests passed in 0.07s |
+| 56 | `python -m pytest tests/integration/collection/test_a16_supplemental.py -q -p no:cacheprovider` | 0 | 25 passed in 0.14s |
+| 57 | `python -m pytest tests/unit/collection/test_a17_projections.py -q -p no:cacheprovider` | 0 | 33 passed, 29 subtests passed in 0.11s |
+| 58 | `python -m pytest tests/integration/collection/test_a18_worker_activity.py -q -p no:cacheprovider` | 0 | 32 passed in 0.15s |
+| 59 | `python -m pytest tests/unit/collection/test_a19_rule_catalog.py -q -p no:cacheprovider` | 0 | 62 passed in 0.14s |
 | 60 | `python -m pytest tests/unit/ingestion/test_ingestion_package_validation.py -q -p no:cacheprovider` | 0 | 39 passed in 0.06s |
-| 61 | `python -m pytest tests/unit/ingestion/test_ingestion_normalization.py tests/unit/ingestion/test_ingestion_fingerprint.py -q -p no:cacheprovider` | 0 | 30 passed in 0.05s |
-| 62 | `python -m pytest tests/unit/ingestion/test_ingestion_article_aggregate.py tests/unit/ingestion/test_ingestion_memory_unit_of_work.py -q -p no:cacheprovider` | 0 | 19 passed in 0.04s |
-| 63 | `python -m pytest tests/unit/ingestion/test_ingestion_domain_events.py -q -p no:cacheprovider` | 0 | 64 passed in 0.06s |
-| 64 | `python -m pytest tests/unit/ingestion/test_ingestion_representative.py -q -p no:cacheprovider` | 0 | 27 passed in 0.03s |
-| 65 | `python -m pytest tests/unit/ingestion/test_ingestion_resolve_document.py -q -p no:cacheprovider` | 0 | 31 passed in 0.08s |
+| 61 | `python -m pytest tests/unit/ingestion/test_ingestion_normalization.py tests/unit/ingestion/test_ingestion_fingerprint.py -q -p no:cacheprovider` | 0 | 30 passed in 0.06s |
+| 62 | `python -m pytest tests/unit/ingestion/test_ingestion_article_aggregate.py tests/unit/ingestion/test_ingestion_memory_unit_of_work.py -q -p no:cacheprovider` | 0 | 19 passed in 0.06s |
+| 63 | `python -m pytest tests/unit/ingestion/test_ingestion_domain_events.py -q -p no:cacheprovider` | 0 | 64 passed in 0.08s |
+| 64 | `python -m pytest tests/unit/ingestion/test_ingestion_representative.py -q -p no:cacheprovider` | 0 | 27 passed in 0.05s |
+| 65 | `python -m pytest tests/unit/ingestion/test_ingestion_resolve_document.py -q -p no:cacheprovider` | 0 | 31 passed in 0.09s |
 | 66 | `python -m pytest tests/unit/ingestion/test_ingestion_event_link.py -q -p no:cacheprovider` | 0 | 45 passed in 0.07s |
-| 67 | `python -m pytest tests/unit/ingestion/test_ingestion_event_update.py -q -p no:cacheprovider` | 0 | 61 passed in 0.07s |
-| 68 | `python -m pytest tests/unit/ingestion/test_ingestion_source_set.py -q -p no:cacheprovider` | 0 | 39 passed in 0.06s |
-| 69 | `python -m pytest tests/unit/ingestion/test_ingestion_queries.py -q -p no:cacheprovider` | 0 | 55 passed in 0.06s |
-| 70 | `python -m pytest tests/unit/ingestion/test_ingestion_activity_handler.py -q -p no:cacheprovider` | 0 | 67 passed in 0.10s |
-| 71 | `python -m pytest tests/integration/ingestion/test_ingestion_flow_integration.py -q -p no:cacheprovider` | 0 | 15 passed in 0.08s |
-| 72 | `python -m pytest tests/unit/catalog/test_catalog_identity.py -q -p no:cacheprovider` | 0 | 20 passed, 37 subtests passed in 0.06s |
+| 67 | `python -m pytest tests/unit/ingestion/test_ingestion_event_update.py -q -p no:cacheprovider` | 0 | 61 passed in 0.08s |
+| 68 | `python -m pytest tests/unit/ingestion/test_ingestion_source_set.py -q -p no:cacheprovider` | 0 | 39 passed in 0.08s |
+| 69 | `python -m pytest tests/unit/ingestion/test_ingestion_queries.py -q -p no:cacheprovider` | 0 | 55 passed in 0.08s |
+| 70 | `python -m pytest tests/unit/ingestion/test_ingestion_activity_handler.py -q -p no:cacheprovider` | 0 | 67 passed in 0.12s |
+| 71 | `python -m pytest tests/integration/ingestion/test_ingestion_flow_integration.py -q -p no:cacheprovider` | 0 | 15 passed in 0.10s |
+| 72 | `python -m pytest tests/unit/catalog/test_catalog_identity.py -q -p no:cacheprovider` | 0 | 20 passed, 37 subtests passed in 0.07s |
 | 73 | `python -m pytest tests/unit/catalog/test_catalog_states.py -q -p no:cacheprovider` | 0 | 20 passed, 45 subtests passed in 0.04s |
-| 74 | `python -m pytest tests/unit/catalog/test_catalog_discovery.py -q -p no:cacheprovider` | 0 | 11 passed, 11 subtests passed in 0.03s |
-| 75 | `python -m pytest tests/unit/catalog/test_catalog_renditions.py -q -p no:cacheprovider` | 0 | 20 passed, 33 subtests passed in 0.05s |
-| 76 | `python -m pytest tests/unit/catalog/test_catalog_hooks.py -q -p no:cacheprovider` | 0 | 18 passed, 31 subtests passed in 0.04s |
-| 77 | `python -m pytest tests/unit/catalog/test_catalog_candidate_query.py -q -p no:cacheprovider` | 0 | 27 passed, 19 subtests passed in 0.04s |
-| 78 | `python -m pytest tests/unit/catalog/test_catalog_asset_view.py -q -p no:cacheprovider` | 0 | 31 passed, 189 subtests passed in 0.07s |
+| 74 | `python -m pytest tests/unit/catalog/test_catalog_discovery.py -q -p no:cacheprovider` | 0 | 11 passed, 11 subtests passed in 0.04s |
+| 75 | `python -m pytest tests/unit/catalog/test_catalog_renditions.py -q -p no:cacheprovider` | 0 | 20 passed, 33 subtests passed in 0.04s |
+| 76 | `python -m pytest tests/unit/catalog/test_catalog_hooks.py -q -p no:cacheprovider` | 0 | 26 passed, 31 subtests passed in 0.06s |
+| 77 | `python -m pytest tests/unit/catalog/test_catalog_candidate_query.py -q -p no:cacheprovider` | 0 | 27 passed, 19 subtests passed in 0.06s |
+| 78 | `python -m pytest tests/unit/catalog/test_catalog_asset_view.py -q -p no:cacheprovider` | 0 | 31 passed, 189 subtests passed in 0.09s |
 | 79 | `python -m pytest tests/unit/catalog/test_catalog_renderable.py -q -p no:cacheprovider` | 0 | 20 passed, 87 subtests passed in 0.06s |
-| 80 | `python -m pytest tests/unit/catalog/test_catalog_usage.py -q -p no:cacheprovider` | 0 | 27 passed, 11 subtests passed in 0.04s |
-| 81 | `python -m pytest tests/m2/test_p0_packaging.py -q -p no:cacheprovider` | 0 | 9 passed in 15.51s |
+| 80 | `python -m pytest tests/unit/catalog/test_catalog_usage.py -q -p no:cacheprovider` | 0 | 27 passed, 11 subtests passed in 0.07s |
+| 81 | `python -m pytest tests/m2/test_p0_packaging.py -q -p no:cacheprovider` | 0 | 9 passed in 14.86s |
 | 82 | `python -c "import tomllib, pathlib; d = tomllib.loads(pathlib.Path('src/controlplane/pyproject.toml').read_text(encoding='utf-8')); x = d['project']['dependencies']; assert x and all('==' in i for i in x), x"` | 0 | Đạt (exit 0, assertion đạt) |
 | 83 | `python -c "import json, pathlib; p = json.loads(pathlib.Path('src/controlplane/ui/package.json').read_text(encoding='utf-8')); v = list(p['dependencies'].values()) + list(p['devDependencies'].values()); assert v and all(i[0].isdigit() for i in v), v"` | 0 | Đạt (exit 0, assertion đạt) |
 | 84 | `python -c "import tomllib, pathlib; d = tomllib.loads(pathlib.Path('src/controlplane/pyproject.toml').read_text(encoding='utf-8')); s = d['tool']['setuptools']; n = ['controlplane.api.routes.modules', 'controlplane.infrastructure.storage']; u = chr(95) * 2 + 'init' + chr(95) * 2 + '.py'; assert all(k in s['packages'] and k in s['package-dir'] for k in n), n; assert all(pathlib.Path('src/controlplane', s['package-dir'][k], u).is_file() for k in n), n"` | 0 | Đạt (exit 0, assertion đạt) |
-| 85 | `python -m pytest tests/m2 -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression` | 0 | 179 passed, 1 deselected, 2 warnings in 211.31s (0:03:31) |
+| 85 | `python -m pytest tests/m2 -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression` | 0 | 179 passed, 1 deselected, 2 warnings in 228.12s (0:03:48) |
 | 86 | `python -c "import re, pathlib; t = pathlib.Path('tests/m2/test_p9_m2_exit_gate.py').read_text(encoding='utf-8'); assert re.search('M2_ACCEPTED_SHA = [^0-9a-f]*[0-9a-f]{40}', t), 'pin M2_ACCEPTED_SHA'"` | 0 | Đạt (exit 0, assertion đạt) |
-| 87 | `python -m pytest tests/integration/convergence/test_cp3b_catalog_graphs.py tests/integration/convergence/test_cp3b_source_parity.py -q -p no:cacheprovider` | 0 | 25 passed in 0.09s |
-| 88 | `python -m pytest tests/unit/collection tests/unit/catalog tests/m2/test_p4_statemachines.py -q -p no:cacheprovider` | 0 | 658 passed, 841 subtests passed in 4.65s |
-| 89 | `python -m pytest tests/m2 tests/integration -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression` | 0 | 2247 passed, 35 skipped, 1 deselected, 2 warnings, 25 subtests passed in 364.40s (0:06:04) |
-| 90 | `python -m pytest tests/unit/collection tests/unit/ingestion tests/unit/catalog tests/unit/creative tests/unit/voice tests/unit/render tests/unit/security tests/unit/control_ui -q -p no:cacheprovider` | 0 | 5250 passed, 1 warning, 1998 subtests passed in 10.63s |
+| 87 | `python -m pytest tests/integration/convergence/test_cp3b_catalog_graphs.py tests/integration/convergence/test_cp3b_source_parity.py -q -p no:cacheprovider` | 0 | 25 passed in 0.08s |
+| 88 | `python -m pytest tests/unit/collection tests/unit/catalog tests/m2/test_p4_statemachines.py -q -p no:cacheprovider` | 0 | 666 passed, 841 subtests passed in 1.10s |
+| 89 | `python -m pytest tests/m2 tests/integration -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression` | 0 | 2306 passed, 35 skipped, 1 deselected, 2 warnings, 25 subtests passed in 427.52s (0:07:07) |
+| 90 | `python -m pytest tests/unit/collection tests/unit/ingestion tests/unit/catalog tests/unit/creative tests/unit/voice tests/unit/render tests/unit/security tests/unit/control_ui -q -p no:cacheprovider` | 0 | 5262 passed, 1 warning, 1998 subtests passed in 10.60s |
 | 91 | `python -c "import pathlib; t = pathlib.Path('src/main.py').read_text(encoding='utf-8'); assert 'create_app' in t, 'src/main.py must call create_app'; assert 'from src.' not in t and 'import src.' not in t, 'no src. prefix'"` | 0 | Đạt (exit 0, assertion đạt) |
 | 92 | `python -c "import re, pathlib; d = pathlib.Path('src/controlplane/ui/dist'); h = (d / 'index.html').read_text(encoding='utf-8'); r = re.findall('assets/[A-Za-z0-9_.-]+', h); assert r and all((d / x).is_file() for x in r), r; assert not any((d / 'assets' / x).exists() for x in ['index-Dd0WysB0.js', 'index-Dd0WysB0.js.map']), 'old hashed files must be gone'; k = [f.name for f in (d / 'assets').iterdir() if f.is_file() and 'assets/' + f.name not in r and not (f.name.endswith('.map') and 'assets/' + f.name[:-4] in r)]; assert not k, ('orphan hashed files', k)"` | 0 | Đạt (exit 0, assertion đạt) |
 | 93 | `python -c "import pathlib; t = pathlib.Path('src/controlplane/ui/src/App.tsx').read_text(encoding='utf-8'); assert 'boundedEventDeduper' in t and 'screenRegistry' in t, 'App.tsx must wire deduper and screen registry'; assert 'new Set' not in t, 'App.tsx must not keep its own Set'; assert 'onOpenTestError=' in t, 'BL-CV-13: keep test button wiring'"` | 0 | Đạt (exit 0, assertion đạt) |
-| 94 | `python -m pytest tests/unit/creative/test_d01_package_layout.py -q -p no:cacheprovider` | 0 | 12 passed, 58 subtests passed in 0.10s |
-| 95 | `python -m pytest tests/unit/creative/test_d02_production_snapshot.py -q -p no:cacheprovider` | 0 | 68 passed in 0.09s |
-| 96 | `python -m pytest tests/unit/creative/test_d03_untrusted_boundary.py -q -p no:cacheprovider` | 0 | 11 passed, 13 subtests passed in 0.03s |
-| 97 | `python -m pytest tests/unit/creative/test_d04_ai_route_invocation.py -q -p no:cacheprovider` | 0 | 87 passed in 0.12s |
+| 94 | `python -m pytest tests/unit/creative/test_d01_package_layout.py -q -p no:cacheprovider` | 0 | 12 passed, 58 subtests passed in 0.11s |
+| 95 | `python -m pytest tests/unit/creative/test_d02_production_snapshot.py -q -p no:cacheprovider` | 0 | 68 passed in 0.08s |
+| 96 | `python -m pytest tests/unit/creative/test_d03_untrusted_boundary.py -q -p no:cacheprovider` | 0 | 11 passed, 13 subtests passed in 0.04s |
+| 97 | `python -m pytest tests/unit/creative/test_d04_ai_route_invocation.py -q -p no:cacheprovider` | 0 | 87 passed in 0.13s |
 | 98 | `python -m pytest tests/unit/creative/test_d05_content_analysis.py -q -p no:cacheprovider` | 0 | 20 passed, 79 subtests passed in 0.07s |
-| 99 | `python -m pytest tests/unit/creative/test_d06_story_angles.py -q -p no:cacheprovider` | 0 | 60 passed in 0.09s |
-| 100 | `python -m pytest tests/unit/creative/test_d07_timeline_authorization.py -q -p no:cacheprovider` | 0 | 32 passed in 0.05s |
-| 101 | `python -m pytest tests/unit/creative/test_d08_script_version.py -q -p no:cacheprovider` | 0 | 62 passed in 0.08s |
-| 102 | `python -m pytest tests/unit/creative/test_d09_asset_selection.py -q -p no:cacheprovider` | 0 | 110 passed in 0.15s |
-| 103 | `python -m pytest tests/unit/creative/test_d10_production_plan.py -q -p no:cacheprovider` | 0 | 94 passed in 0.15s |
-| 104 | `python -m pytest tests/unit/creative/test_d11_variant_validation.py -q -p no:cacheprovider` | 0 | 62 passed in 0.14s |
-| 105 | `python -m pytest tests/unit/creative/test_d12_output_metadata.py -q -p no:cacheprovider` | 0 | 19 passed, 38 subtests passed in 0.04s |
-| 106 | `python -m pytest tests/unit/creative/test_d13_ports_memory.py -q -p no:cacheprovider` | 0 | 65 passed in 0.12s |
-| 107 | `python -m pytest tests/integration/creative/test_d14_creative_pipeline.py -q -p no:cacheprovider` | 0 | 18 passed in 0.12s |
-| 108 | `python -m pytest tests/integration/creative/test_d15_provider_failure.py -q -p no:cacheprovider` | 0 | 27 passed in 0.11s |
-| 109 | `python -m pytest tests/integration/creative/test_d16_worker_activity.py -q -p no:cacheprovider` | 0 | 52 passed in 0.15s |
-| 110 | `python -m pytest tests/unit/creative/test_d17_trace_projection.py -q -p no:cacheprovider` | 0 | 22 passed in 0.11s |
-| 111 | `python -m pytest tests/unit/creative/test_d18_coverage_catalog.py -q -p no:cacheprovider` | 0 | 8 passed in 0.27s |
-| 112 | `python -m pytest tests/unit/voice/test_e01_package_layout.py -q -p no:cacheprovider` | 0 | 16 passed, 89 subtests passed in 0.14s |
+| 99 | `python -m pytest tests/unit/creative/test_d06_story_angles.py -q -p no:cacheprovider` | 0 | 60 passed in 0.10s |
+| 100 | `python -m pytest tests/unit/creative/test_d07_timeline_authorization.py -q -p no:cacheprovider` | 0 | 32 passed in 0.06s |
+| 101 | `python -m pytest tests/unit/creative/test_d08_script_version.py -q -p no:cacheprovider` | 0 | 62 passed in 0.09s |
+| 102 | `python -m pytest tests/unit/creative/test_d09_asset_selection.py -q -p no:cacheprovider` | 0 | 110 passed in 0.18s |
+| 103 | `python -m pytest tests/unit/creative/test_d10_production_plan.py -q -p no:cacheprovider` | 0 | 94 passed in 0.18s |
+| 104 | `python -m pytest tests/unit/creative/test_d11_variant_validation.py -q -p no:cacheprovider` | 0 | 62 passed in 0.16s |
+| 105 | `python -m pytest tests/unit/creative/test_d12_output_metadata.py -q -p no:cacheprovider` | 0 | 19 passed, 38 subtests passed in 0.05s |
+| 106 | `python -m pytest tests/unit/creative/test_d13_ports_memory.py -q -p no:cacheprovider` | 0 | 65 passed in 0.16s |
+| 107 | `python -m pytest tests/integration/creative/test_d14_creative_pipeline.py -q -p no:cacheprovider` | 0 | 18 passed in 0.17s |
+| 108 | `python -m pytest tests/integration/creative/test_d15_provider_failure.py -q -p no:cacheprovider` | 0 | 27 passed in 0.12s |
+| 109 | `python -m pytest tests/integration/creative/test_d16_worker_activity.py -q -p no:cacheprovider` | 0 | 52 passed in 0.17s |
+| 110 | `python -m pytest tests/unit/creative/test_d17_trace_projection.py -q -p no:cacheprovider` | 0 | 22 passed in 0.12s |
+| 111 | `python -m pytest tests/unit/creative/test_d18_coverage_catalog.py -q -p no:cacheprovider` | 0 | 8 passed in 0.35s |
+| 112 | `python -m pytest tests/unit/voice/test_e01_package_layout.py -q -p no:cacheprovider` | 0 | 16 passed, 89 subtests passed in 0.16s |
 | 113 | `python -m pytest tests/unit/voice/test_e02_processing_contract.py -q -p no:cacheprovider` | 0 | 65 passed in 0.08s |
 | 114 | `python -m pytest tests/unit/voice/test_e03_probe_media.py -q -p no:cacheprovider` | 0 | 144 passed in 0.13s |
-| 115 | `python -m pytest tests/unit/voice/test_e04_media_analysis.py -q -p no:cacheprovider` | 0 | 86 passed in 0.08s |
+| 115 | `python -m pytest tests/unit/voice/test_e04_media_analysis.py -q -p no:cacheprovider` | 0 | 86 passed in 0.10s |
 | 116 | `python -m pytest tests/unit/voice/test_e05_image_safety.py -q -p no:cacheprovider` | 0 | 50 passed in 0.06s |
-| 117 | `python -m pytest tests/unit/voice/test_e06_image_transform.py -q -p no:cacheprovider` | 0 | 75 passed in 0.08s |
-| 118 | `python -m pytest tests/unit/voice/test_e07_normalize_media.py -q -p no:cacheprovider` | 0 | 106 passed in 0.11s |
+| 117 | `python -m pytest tests/unit/voice/test_e06_image_transform.py -q -p no:cacheprovider` | 0 | 75 passed in 0.12s |
+| 118 | `python -m pytest tests/unit/voice/test_e07_normalize_media.py -q -p no:cacheprovider` | 0 | 106 passed in 0.14s |
 | 119 | `python -m pytest tests/unit/voice/test_e08_voice_track.py -q -p no:cacheprovider` | 0 | 63 passed in 0.09s |
 | 120 | `python -m pytest tests/unit/voice/test_e09_word_timing.py -q -p no:cacheprovider` | 0 | 114 passed in 0.12s |
 | 121 | `python -m pytest tests/unit/voice/test_e10_timing_coverage.py -q -p no:cacheprovider` | 0 | 51 passed in 0.06s |
 | 122 | `python -m pytest tests/unit/voice/test_e11_timing_binding.py -q -p no:cacheprovider` | 0 | 21 passed in 0.05s |
-| 123 | `python -m pytest tests/unit/voice/test_e12_language_evidence.py -q -p no:cacheprovider` | 0 | 35 passed in 0.08s |
-| 124 | `python -m pytest tests/unit/voice/test_e13_audio_bed.py -q -p no:cacheprovider` | 0 | 63 passed in 0.07s |
-| 125 | `python -m pytest tests/unit/voice/test_e14_tts_route_invocation.py -q -p no:cacheprovider` | 0 | 79 passed in 0.12s |
-| 126 | `python -m pytest tests/unit/voice/test_e15_ports_memory.py -q -p no:cacheprovider` | 0 | 47 passed in 0.08s |
-| 127 | `python -m pytest tests/integration/voice/test_e16_voice_timing_pipeline.py -q -p no:cacheprovider` | 0 | 23 passed in 0.10s |
-| 128 | `python -m pytest tests/integration/voice/test_e17_media_processing_pipeline.py -q -p no:cacheprovider` | 0 | 45 passed in 0.11s |
-| 129 | `python -m pytest tests/integration/voice/test_e18_worker_activity.py -q -p no:cacheprovider` | 0 | 44 passed in 0.17s |
-| 130 | `python -m pytest tests/unit/voice/test_e19_trace_projection.py -q -p no:cacheprovider` | 0 | 35 passed in 0.08s |
-| 131 | `python -m pytest tests/unit/voice/test_e20_coverage_catalog.py -q -p no:cacheprovider` | 0 | 25 passed in 2.07s |
-| 132 | `python -m pytest tests/unit/render/test_f01_package_layout.py -q -p no:cacheprovider` | 0 | 20 passed, 120 subtests passed in 0.35s |
-| 133 | `python -m pytest tests/unit/render/test_f02_preset_revision.py -q -p no:cacheprovider` | 0 | 26 passed, 67 subtests passed in 0.09s |
-| 134 | `python -m pytest tests/unit/render/test_f03_render_package_contract.py -q -p no:cacheprovider` | 0 | 169 passed in 0.18s |
-| 135 | `python -m pytest tests/unit/render/test_f04_package_fingerprint.py -q -p no:cacheprovider` | 0 | 58 passed in 0.10s |
-| 136 | `python -m pytest tests/unit/render/test_f05_resolve_package.py -q -p no:cacheprovider` | 0 | 62 passed in 0.09s |
-| 137 | `python -m pytest tests/unit/render/test_f06_preconditions_hooks_timeline.py -q -p no:cacheprovider` | 0 | 104 passed in 0.11s |
-| 138 | `python -m pytest tests/unit/render/test_f07_preconditions_artifacts_language.py -q -p no:cacheprovider` | 0 | 97 passed in 0.12s |
-| 139 | `python -m pytest tests/unit/render/test_f08_validate_package.py -q -p no:cacheprovider` | 0 | 55 passed in 0.12s |
-| 140 | `python -m pytest tests/unit/render/test_f09_karaoke_plan.py -q -p no:cacheprovider` | 0 | 118 passed in 0.11s |
-| 141 | `python -m pytest tests/unit/render/test_f10_render_command_spec.py -q -p no:cacheprovider` | 0 | 154 passed in 0.17s |
-| 142 | `python -m pytest tests/unit/render/test_f11_render_attempt.py -q -p no:cacheprovider` | 0 | 97 passed in 0.11s |
-| 143 | `python -m pytest tests/unit/render/test_f12_quality_report.py -q -p no:cacheprovider` | 0 | 45 passed, 129 subtests passed in 0.10s |
-| 144 | `python -m pytest tests/unit/render/test_f13_technical_gates.py -q -p no:cacheprovider` | 0 | 38 passed, 99 subtests passed in 0.08s |
-| 145 | `python -m pytest tests/unit/render/test_f14_content_gates.py -q -p no:cacheprovider` | 0 | 52 passed, 67 subtests passed in 0.10s |
-| 146 | `python -m pytest tests/unit/render/test_f15_output_ready.py -q -p no:cacheprovider` | 0 | 73 passed in 0.12s |
+| 123 | `python -m pytest tests/unit/voice/test_e12_language_evidence.py -q -p no:cacheprovider` | 0 | 35 passed in 0.11s |
+| 124 | `python -m pytest tests/unit/voice/test_e13_audio_bed.py -q -p no:cacheprovider` | 0 | 63 passed in 0.10s |
+| 125 | `python -m pytest tests/unit/voice/test_e14_tts_route_invocation.py -q -p no:cacheprovider` | 0 | 79 passed in 0.17s |
+| 126 | `python -m pytest tests/unit/voice/test_e15_ports_memory.py -q -p no:cacheprovider` | 0 | 47 passed in 0.11s |
+| 127 | `python -m pytest tests/integration/voice/test_e16_voice_timing_pipeline.py -q -p no:cacheprovider` | 0 | 23 passed in 0.12s |
+| 128 | `python -m pytest tests/integration/voice/test_e17_media_processing_pipeline.py -q -p no:cacheprovider` | 0 | 45 passed in 0.13s |
+| 129 | `python -m pytest tests/integration/voice/test_e18_worker_activity.py -q -p no:cacheprovider` | 0 | 44 passed in 0.22s |
+| 130 | `python -m pytest tests/unit/voice/test_e19_trace_projection.py -q -p no:cacheprovider` | 0 | 35 passed in 0.09s |
+| 131 | `python -m pytest tests/unit/voice/test_e20_coverage_catalog.py -q -p no:cacheprovider` | 0 | 25 passed in 2.47s |
+| 132 | `python -m pytest tests/unit/render/test_f01_package_layout.py -q -p no:cacheprovider` | 0 | 20 passed, 120 subtests passed in 0.44s |
+| 133 | `python -m pytest tests/unit/render/test_f02_preset_revision.py -q -p no:cacheprovider` | 0 | 26 passed, 67 subtests passed in 0.10s |
+| 134 | `python -m pytest tests/unit/render/test_f03_render_package_contract.py -q -p no:cacheprovider` | 0 | 169 passed in 0.19s |
+| 135 | `python -m pytest tests/unit/render/test_f04_package_fingerprint.py -q -p no:cacheprovider` | 0 | 58 passed in 0.12s |
+| 136 | `python -m pytest tests/unit/render/test_f05_resolve_package.py -q -p no:cacheprovider` | 0 | 62 passed in 0.12s |
+| 137 | `python -m pytest tests/unit/render/test_f06_preconditions_hooks_timeline.py -q -p no:cacheprovider` | 0 | 104 passed in 0.14s |
+| 138 | `python -m pytest tests/unit/render/test_f07_preconditions_artifacts_language.py -q -p no:cacheprovider` | 0 | 97 passed in 0.15s |
+| 139 | `python -m pytest tests/unit/render/test_f08_validate_package.py -q -p no:cacheprovider` | 0 | 55 passed in 0.13s |
+| 140 | `python -m pytest tests/unit/render/test_f09_karaoke_plan.py -q -p no:cacheprovider` | 0 | 118 passed in 0.13s |
+| 141 | `python -m pytest tests/unit/render/test_f10_render_command_spec.py -q -p no:cacheprovider` | 0 | 154 passed in 0.21s |
+| 142 | `python -m pytest tests/unit/render/test_f11_render_attempt.py -q -p no:cacheprovider` | 0 | 97 passed in 0.13s |
+| 143 | `python -m pytest tests/unit/render/test_f12_quality_report.py -q -p no:cacheprovider` | 0 | 45 passed, 129 subtests passed in 0.14s |
+| 144 | `python -m pytest tests/unit/render/test_f13_technical_gates.py -q -p no:cacheprovider` | 0 | 38 passed, 99 subtests passed in 0.09s |
+| 145 | `python -m pytest tests/unit/render/test_f14_content_gates.py -q -p no:cacheprovider` | 0 | 52 passed, 67 subtests passed in 0.09s |
+| 146 | `python -m pytest tests/unit/render/test_f15_output_ready.py -q -p no:cacheprovider` | 0 | 73 passed in 0.13s |
 | 147 | `python -m pytest tests/unit/render/test_f16_ports_memory_events.py -q -p no:cacheprovider` | 0 | 39 passed in 0.11s |
-| 148 | `python -m pytest tests/integration/render/test_f17_resolve_validate_pipeline.py -q -p no:cacheprovider` | 0 | 36 passed in 0.14s |
-| 149 | `python -m pytest tests/integration/render/test_f18_render_video_pipeline.py -q -p no:cacheprovider` | 0 | 28 passed in 0.15s |
-| 150 | `python -m pytest tests/integration/render/test_f19_inspect_output_pipeline.py -q -p no:cacheprovider` | 0 | 35 passed in 0.25s |
-| 151 | `python -m pytest tests/integration/render/test_f20_worker_activity.py -q -p no:cacheprovider` | 0 | 53 passed in 0.23s |
+| 148 | `python -m pytest tests/integration/render/test_f17_resolve_validate_pipeline.py -q -p no:cacheprovider` | 0 | 36 passed in 0.18s |
+| 149 | `python -m pytest tests/integration/render/test_f18_render_video_pipeline.py -q -p no:cacheprovider` | 0 | 28 passed in 0.17s |
+| 150 | `python -m pytest tests/integration/render/test_f19_inspect_output_pipeline.py -q -p no:cacheprovider` | 0 | 35 passed in 0.26s |
+| 151 | `python -m pytest tests/integration/render/test_f20_worker_activity.py -q -p no:cacheprovider` | 0 | 53 passed in 0.24s |
 | 152 | `python -m pytest tests/unit/render/test_f21_trace_projection.py -q -p no:cacheprovider` | 0 | 17 passed in 0.12s |
 | 153 | `python -m pytest tests/unit/render/test_f22_coverage_catalog.py -q -p no:cacheprovider` | 0 | 55 passed in 0.12s |
-| 154 | `python -m pytest tests/unit/orchestration/test_g_activity_binding.py -q -p no:cacheprovider` | 0 | 43 passed in 0.06s |
-| 155 | `python -m pytest tests/unit/orchestration/test_g_completion_binding.py -q -p no:cacheprovider` | 0 | 22 passed, 307 subtests passed in 0.07s |
-| 156 | `python -m pytest tests/unit/orchestration/test_g_fencing.py -q -p no:cacheprovider` | 0 | 45 passed in 0.06s |
-| 157 | `python -m pytest tests/unit/orchestration/test_g_grant_issuance.py -q -p no:cacheprovider` | 0 | 45 passed in 0.06s |
-| 158 | `python -m pytest tests/unit/orchestration/test_g_operation_receipt.py -q -p no:cacheprovider` | 0 | 55 passed in 0.06s |
-| 159 | `python -m pytest tests/unit/orchestration/test_g_stage_run_plan.py tests/unit/orchestration/test_g_job_waiting.py -q -p no:cacheprovider` | 0 | 147 passed in 0.12s |
-| 160 | `python -m pytest tests/unit/orchestration/test_g_allocation_policy.py tests/unit/orchestration/test_g_job_allocation.py -q -p no:cacheprovider` | 0 | 88 passed in 0.27s |
-| 161 | `python -m pytest tests/unit/orchestration/test_g_variant_reservation_flow.py -q -p no:cacheprovider` | 0 | 47 passed in 0.07s |
-| 162 | `python -m pytest tests/unit/orchestration/test_g_completion_gate.py -q -p no:cacheprovider` | 0 | 86 passed in 0.08s |
-| 163 | `python -m pytest tests/integration/orchestration/test_g_commit_completion.py -q -p no:cacheprovider` | 0 | 62 passed in 0.09s |
-| 164 | `python -m pytest tests/unit/orchestration/test_g_command_semantics.py tests/unit/orchestration/test_g_retry_policy.py -q -p no:cacheprovider` | 0 | 110 passed in 0.12s |
-| 165 | `python -m pytest tests/unit/orchestration/test_g_workflow_catalog.py tests/unit/orchestration/test_g_resource_admission.py -q -p no:cacheprovider` | 0 | 82 passed in 0.09s |
-| 166 | `python -m pytest tests/unit/orchestration/test_g_event_payloads.py tests/unit/orchestration/test_g_consistency_audit.py -q -p no:cacheprovider` | 0 | 175 passed in 0.15s |
+| 154 | `python -m pytest tests/unit/orchestration/test_g_activity_binding.py -q -p no:cacheprovider` | 0 | 43 passed in 0.07s |
+| 155 | `python -m pytest tests/unit/orchestration/test_g_completion_binding.py -q -p no:cacheprovider` | 0 | 22 passed, 307 subtests passed in 0.08s |
+| 156 | `python -m pytest tests/unit/orchestration/test_g_fencing.py -q -p no:cacheprovider` | 0 | 45 passed in 0.08s |
+| 157 | `python -m pytest tests/unit/orchestration/test_g_grant_issuance.py -q -p no:cacheprovider` | 0 | 45 passed in 0.08s |
+| 158 | `python -m pytest tests/unit/orchestration/test_g_operation_receipt.py -q -p no:cacheprovider` | 0 | 55 passed in 0.08s |
+| 159 | `python -m pytest tests/unit/orchestration/test_g_stage_run_plan.py tests/unit/orchestration/test_g_job_waiting.py -q -p no:cacheprovider` | 0 | 147 passed in 0.14s |
+| 160 | `python -m pytest tests/unit/orchestration/test_g_allocation_policy.py tests/unit/orchestration/test_g_job_allocation.py -q -p no:cacheprovider` | 0 | 88 passed in 0.23s |
+| 161 | `python -m pytest tests/unit/orchestration/test_g_variant_reservation_flow.py -q -p no:cacheprovider` | 0 | 47 passed in 0.08s |
+| 162 | `python -m pytest tests/unit/orchestration/test_g_completion_gate.py -q -p no:cacheprovider` | 0 | 86 passed in 0.12s |
+| 163 | `python -m pytest tests/integration/orchestration/test_g_commit_completion.py -q -p no:cacheprovider` | 0 | 62 passed in 0.11s |
+| 164 | `python -m pytest tests/unit/orchestration/test_g_command_semantics.py tests/unit/orchestration/test_g_retry_policy.py -q -p no:cacheprovider` | 0 | 110 passed in 0.11s |
+| 165 | `python -m pytest tests/unit/orchestration/test_g_workflow_catalog.py tests/unit/orchestration/test_g_resource_admission.py -q -p no:cacheprovider` | 0 | 82 passed in 0.10s |
+| 166 | `python -m pytest tests/unit/orchestration/test_g_event_payloads.py tests/unit/orchestration/test_g_consistency_audit.py -q -p no:cacheprovider` | 0 | 175 passed in 0.19s |
 | 167 | `python -m pytest tests/unit/orchestration/test_g_recovery_scan.py tests/unit/orchestration/test_g_batch_outcome.py tests/unit/orchestration/test_g_app_session.py -q -p no:cacheprovider` | 0 | 157 passed in 0.17s |
-| 168 | `python -m pytest tests/unit/control_ui/test_h_operation_view_model.py -q -p no:cacheprovider` | 0 | 55 passed in 0.07s |
-| 169 | `python -m pytest tests/unit/control_ui/test_h_list_query.py -q -p no:cacheprovider` | 0 | 115 passed in 0.14s |
-| 170 | `python -m pytest tests/unit/control_ui/test_h_stream_event_catalog.py -q -p no:cacheprovider` | 0 | 70 passed in 0.07s |
-| 171 | `python -m pytest tests/integration/control_ui/test_h_list_queries_sql.py -q -p no:cacheprovider` | 0 | 175 passed, 1 warning in 1.22s |
-| 172 | `python -m pytest tests/unit/control_ui/test_h_ops_read_models.py -q -p no:cacheprovider` | 0 | 31 passed in 0.04s |
-| 173 | `python -m pytest tests/unit/control_ui/test_h_config_account_views.py -q -p no:cacheprovider` | 0 | 91 passed in 0.08s |
-| 174 | `python -m pytest tests/unit/control_ui/test_h_problem_detail.py -q -p no:cacheprovider` | 0 | 37 passed in 0.30s |
-| 175 | `python -m pytest tests/unit/control_ui/test_h_read_only_listing.py -q -p no:cacheprovider` | 0 | 43 passed, 1 warning in 0.54s |
-| 176 | `python -m pytest tests/unit/control_ui/test_h_ts_contract_types.py -q -p no:cacheprovider` | 0 | 10 passed in 0.03s |
-| 177 | `python -m pytest tests/unit/control_ui/test_h_status_presentation.py -q -p no:cacheprovider` | 0 | 9 passed in 0.03s |
-| 178 | `python -m pytest tests/unit/control_ui/test_h_status_pill.py -q -p no:cacheprovider` | 0 | 22 passed in 0.03s |
-| 179 | `python -m pytest tests/unit/control_ui/test_h_error_hover_detail.py -q -p no:cacheprovider` | 0 | 24 passed in 0.04s |
-| 180 | `python -m pytest tests/unit/control_ui/test_h_stream_client_registry.py -q -p no:cacheprovider` | 0 | 14 passed in 0.03s |
-| 181 | `python -m pytest tests/unit/control_ui/test_h_screen_registry.py -q -p no:cacheprovider` | 0 | 31 passed in 0.04s |
-| 182 | `python -m pytest tests/unit/control_ui/test_h_ui_source_guard.py -q -p no:cacheprovider` | 0 | 26 passed in 0.05s |
-| 183 | `python -m pytest tests/unit/storage/test_storage_declaration.py -q -p no:cacheprovider` | 0 | 65 passed in 0.07s |
+| 168 | `python -m pytest tests/unit/control_ui/test_h_operation_view_model.py -q -p no:cacheprovider` | 0 | 55 passed in 0.08s |
+| 169 | `python -m pytest tests/unit/control_ui/test_h_list_query.py -q -p no:cacheprovider` | 0 | 115 passed in 0.10s |
+| 170 | `python -m pytest tests/unit/control_ui/test_h_stream_event_catalog.py -q -p no:cacheprovider` | 0 | 70 passed in 0.08s |
+| 171 | `python -m pytest tests/integration/control_ui/test_h_list_queries_sql.py -q -p no:cacheprovider` | 0 | 175 passed, 1 warning in 1.31s |
+| 172 | `python -m pytest tests/unit/control_ui/test_h_ops_read_models.py -q -p no:cacheprovider` | 0 | 31 passed in 0.06s |
+| 173 | `python -m pytest tests/unit/control_ui/test_h_config_account_views.py -q -p no:cacheprovider` | 0 | 91 passed in 0.10s |
+| 174 | `python -m pytest tests/unit/control_ui/test_h_problem_detail.py -q -p no:cacheprovider` | 0 | 37 passed in 0.35s |
+| 175 | `python -m pytest tests/unit/control_ui/test_h_read_only_listing.py -q -p no:cacheprovider` | 0 | 43 passed, 1 warning in 0.58s |
+| 176 | `python -m pytest tests/unit/control_ui/test_h_ts_contract_types.py -q -p no:cacheprovider` | 0 | 10 passed in 0.04s |
+| 177 | `python -m pytest tests/unit/control_ui/test_h_status_presentation.py -q -p no:cacheprovider` | 0 | 9 passed in 0.04s |
+| 178 | `python -m pytest tests/unit/control_ui/test_h_status_pill.py -q -p no:cacheprovider` | 0 | 22 passed in 0.04s |
+| 179 | `python -m pytest tests/unit/control_ui/test_h_error_hover_detail.py -q -p no:cacheprovider` | 0 | 24 passed in 0.06s |
+| 180 | `python -m pytest tests/unit/control_ui/test_h_stream_client_registry.py -q -p no:cacheprovider` | 0 | 14 passed in 0.04s |
+| 181 | `python -m pytest tests/unit/control_ui/test_h_screen_registry.py -q -p no:cacheprovider` | 0 | 35 passed in 0.06s |
+| 182 | `python -m pytest tests/unit/control_ui/test_h_ui_source_guard.py -q -p no:cacheprovider` | 0 | 26 passed in 0.07s |
+| 183 | `python -m pytest tests/unit/storage/test_storage_declaration.py -q -p no:cacheprovider` | 0 | 65 passed in 0.09s |
 | 184 | `python -m pytest tests/unit/storage/test_storage_declare_version.py -q -p no:cacheprovider` | 0 | 24 passed in 0.06s |
-| 185 | `python -m pytest tests/unit/storage/test_storage_verification.py -q -p no:cacheprovider` | 0 | 11 passed, 85 subtests passed in 0.06s |
-| 186 | `python -m pytest tests/unit/storage/test_storage_cloud_persist.py -q -p no:cacheprovider` | 0 | 22 passed, 21 subtests passed in 0.05s |
-| 187 | `python -m pytest tests/integration/storage/test_storage_local_journal.py -q -p no:cacheprovider` | 0 | 21 passed in 0.57s |
-| 188 | `python -m pytest tests/integration/storage/test_storage_staging_paths.py -q -p no:cacheprovider` | 0 | 373 passed, 7 skipped in 0.92s |
-| 189 | `python -m pytest tests/unit/storage/test_storage_materialization.py -q -p no:cacheprovider` | 0 | 25 passed, 26 subtests passed in 0.05s |
-| 190 | `python -m pytest tests/unit/storage/test_storage_cleanup_evaluation.py -q -p no:cacheprovider` | 0 | 67 passed in 0.08s |
-| 191 | `python -m pytest tests/integration/storage/test_storage_cleanup_executor.py -q -p no:cacheprovider` | 0 | 21 passed in 0.17s |
+| 185 | `python -m pytest tests/unit/storage/test_storage_verification.py -q -p no:cacheprovider` | 0 | 11 passed, 85 subtests passed in 0.05s |
+| 186 | `python -m pytest tests/unit/storage/test_storage_cloud_persist.py -q -p no:cacheprovider` | 0 | 22 passed, 21 subtests passed in 0.08s |
+| 187 | `python -m pytest tests/integration/storage/test_storage_local_journal.py -q -p no:cacheprovider` | 0 | 21 passed in 0.67s |
+| 188 | `python -m pytest tests/integration/storage/test_storage_staging_paths.py -q -p no:cacheprovider` | 0 | 373 passed, 7 skipped in 1.89s |
+| 189 | `python -m pytest tests/unit/storage/test_storage_materialization.py -q -p no:cacheprovider` | 0 | 25 passed, 26 subtests passed in 0.07s |
+| 190 | `python -m pytest tests/unit/storage/test_storage_cleanup_evaluation.py -q -p no:cacheprovider` | 0 | 67 passed in 0.09s |
+| 191 | `python -m pytest tests/integration/storage/test_storage_cleanup_executor.py -q -p no:cacheprovider` | 0 | 21 passed in 0.29s |
 | 192 | `python -m pytest tests/unit/storage/test_storage_reconciliation.py -q -p no:cacheprovider` | 0 | 13 passed, 10 subtests passed in 0.04s |
 | 193 | `python -m pytest tests/unit/storage/test_storage_output_naming.py -q -p no:cacheprovider` | 0 | 32 passed, 97 subtests passed in 0.06s |
-| 194 | `python -m pytest tests/unit/storage/test_storage_placement.py -q -p no:cacheprovider` | 0 | 56 passed in 0.06s |
-| 195 | `python -m pytest tests/unit/storage/test_storage_availability.py -q -p no:cacheprovider` | 0 | 41 passed in 0.05s |
-| 196 | `python -m pytest tests/unit/config/test_j_route_binding.py -q -p no:cacheprovider` | 0 | 50 passed in 0.06s |
+| 194 | `python -m pytest tests/unit/storage/test_storage_placement.py -q -p no:cacheprovider` | 0 | 56 passed in 0.09s |
+| 195 | `python -m pytest tests/unit/storage/test_storage_availability.py -q -p no:cacheprovider` | 0 | 41 passed in 0.06s |
+| 196 | `python -m pytest tests/unit/config/test_j_route_binding.py -q -p no:cacheprovider` | 0 | 50 passed in 0.07s |
 | 197 | `python -m pytest tests/unit/security/test_j_secret_redaction.py -q -p no:cacheprovider` | 0 | 55 passed in 0.06s |
-| 198 | `python -m pytest tests/unit/config/test_j_publish_plan.py -q -p no:cacheprovider` | 0 | 60 passed in 0.08s |
-| 199 | `python -m pytest tests/unit/config/test_j_status_graph.py -q -p no:cacheprovider` | 0 | 118 passed in 0.11s |
-| 200 | `python -m pytest tests/unit/config/test_j_bundle_resolution.py -q -p no:cacheprovider` | 0 | 49 passed in 0.07s |
-| 201 | `python -m pytest tests/unit/config/test_j_external_account.py -q -p no:cacheprovider` | 0 | 40 passed in 0.05s |
-| 202 | `python -m pytest tests/unit/config/test_j_capacity_snapshot.py -q -p no:cacheprovider` | 0 | 104 passed in 0.09s |
-| 203 | `python -m pytest tests/unit/config/test_j_incremental_cost.py -q -p no:cacheprovider` | 0 | 131 passed in 0.11s |
-| 204 | `python -m pytest tests/unit/security/test_j_audit_record.py -q -p no:cacheprovider` | 0 | 104 passed in 0.09s |
-| 205 | `python -m pytest tests/unit/security/test_j_secret_update.py -q -p no:cacheprovider` | 0 | 63 passed in 0.09s |
-| 206 | `python -m pytest tests/unit/security/test_j_credential_issuance.py -q -p no:cacheprovider` | 0 | 51 passed in 0.08s |
+| 198 | `python -m pytest tests/unit/config/test_j_publish_plan.py -q -p no:cacheprovider` | 0 | 60 passed in 0.09s |
+| 199 | `python -m pytest tests/unit/config/test_j_status_graph.py -q -p no:cacheprovider` | 0 | 118 passed in 0.18s |
+| 200 | `python -m pytest tests/unit/config/test_j_bundle_resolution.py -q -p no:cacheprovider` | 0 | 49 passed in 0.10s |
+| 201 | `python -m pytest tests/unit/config/test_j_external_account.py -q -p no:cacheprovider` | 0 | 40 passed in 0.06s |
+| 202 | `python -m pytest tests/unit/config/test_j_capacity_snapshot.py -q -p no:cacheprovider` | 0 | 104 passed in 0.11s |
+| 203 | `python -m pytest tests/unit/config/test_j_incremental_cost.py -q -p no:cacheprovider` | 0 | 131 passed in 0.12s |
+| 204 | `python -m pytest tests/unit/security/test_j_audit_record.py -q -p no:cacheprovider` | 0 | 104 passed in 0.10s |
+| 205 | `python -m pytest tests/unit/security/test_j_secret_update.py -q -p no:cacheprovider` | 0 | 63 passed in 0.11s |
+| 206 | `python -m pytest tests/unit/security/test_j_credential_issuance.py -q -p no:cacheprovider` | 0 | 51 passed in 0.09s |
 | 207 | `python -m pytest tests/unit/config/test_j_capacity_reservation.py -q -p no:cacheprovider` | 0 | 66 passed in 0.08s |
-| 208 | `python -m pytest tests/unit/config/test_j_route_resolver.py -q -p no:cacheprovider` | 0 | 50 passed in 0.10s |
-| 209 | `python -m pytest tests/unit/config/test_j_fallback_policy.py -q -p no:cacheprovider` | 0 | 41 passed in 0.07s |
-| 210 | `python -m pytest tests/unit/security/test_j_account_test.py -q -p no:cacheprovider` | 0 | 47 passed in 0.07s |
-| 211 | `python -m pytest tests/unit/config/test_j_capability_health.py -q -p no:cacheprovider` | 0 | 35 passed in 0.07s |
-| 212 | `python -m pytest tests/integration/config/test_j_dpapi_secret_store.py -q -p no:cacheprovider` | 0 | 35 passed in 0.42s |
-| 213 | `python -m pytest tests/integration/config/test_j_routed_invocation.py -q -p no:cacheprovider` | 0 | 33 passed in 0.09s |
+| 208 | `python -m pytest tests/unit/config/test_j_route_resolver.py -q -p no:cacheprovider` | 0 | 50 passed in 0.13s |
+| 209 | `python -m pytest tests/unit/config/test_j_fallback_policy.py -q -p no:cacheprovider` | 0 | 41 passed in 0.09s |
+| 210 | `python -m pytest tests/unit/security/test_j_account_test.py -q -p no:cacheprovider` | 0 | 47 passed in 0.09s |
+| 211 | `python -m pytest tests/unit/config/test_j_capability_health.py -q -p no:cacheprovider` | 0 | 35 passed in 0.09s |
+| 212 | `python -m pytest tests/integration/config/test_j_dpapi_secret_store.py -q -p no:cacheprovider` | 0 | 35 passed in 0.53s |
+| 213 | `python -m pytest tests/integration/config/test_j_routed_invocation.py -q -p no:cacheprovider` | 0 | 33 passed in 0.12s |
 | 214 | `python -c "import pathlib; t = pathlib.Path('tests/integration/voice/test_e16_voice_timing_pipeline.py').read_text(encoding='utf-8'); assert all(i in t for i in ['TST-E2E-001']), 'tests/integration/voice/test_e16_voice_timing_pipeline.py'"` | 0 | Đạt (exit 0, assertion đạt) |
 | 215 | `python -c "import pathlib; t = pathlib.Path('tests/unit/render/test_f16_ports_memory_events.py').read_text(encoding='utf-8'); assert all(i in t for i in ['TST-CTR-INV-002']), 'tests/unit/render/test_f16_ports_memory_events.py'"` | 0 | Đạt (exit 0, assertion đạt) |
 | 216 | `python -c "import pathlib; t = pathlib.Path('tests/integration/render/test_f20_worker_activity.py').read_text(encoding='utf-8'); assert all(i in t for i in ['TST-WF-INV-003']), 'tests/integration/render/test_f20_worker_activity.py'"` | 0 | Đạt (exit 0, assertion đạt) |
 | 217 | `python -c "import pathlib; t = pathlib.Path('tests/integration/control_ui/test_h_list_queries_sql.py').read_text(encoding='utf-8'); assert all(i in t for i in ['QR-PERF-005']), 'tests/integration/control_ui/test_h_list_queries_sql.py'"` | 0 | Đạt (exit 0, assertion đạt) |
 | 218 | `python -c "import pathlib; t = pathlib.Path('tests/unit/control_ui/test_h_status_pill.py').read_text(encoding='utf-8'); assert all(i in t for i in ['CT-API-010', 'QR-UX-003']), 'tests/unit/control_ui/test_h_status_pill.py'"` | 0 | Đạt (exit 0, assertion đạt) |
-| 219 | `python -B -m pytest tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_ast_boundary_rules_clean_codebase -q -p no:cacheprovider` | 0 | 1 passed in 0.29s |
+| 219 | `python -B -m pytest tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_ast_boundary_rules_clean_codebase -q -p no:cacheprovider` | 0 | 1 passed in 0.47s |
 
-**Tổng kết lệnh kiểm**: 219 lệnh đã chạy lại trên candidate HEAD; 215 lệnh exit 0, 4 lệnh exit khác 0 (STT 30 exit 1, STT 31 exit 4, STT 34 exit 1, STT 40 exit 1).
+**Tổng kết lệnh kiểm**: 219/219 lệnh exit 0 (tất cả 219 lệnh exit 0).
 
 ## Đối chiếu exit gate M3 (docs/11-roadmap.md §9)
 
 | STT | Exit gate | Trạng thái | Bằng chứng kiểm thử |
 | :---: | :--- | :---: | :--- |
-| 1 | User có thể thêm nguồn và theo dõi từng lượt/stage/error trên UI | FAIL | Áp quyết định của user (2026-10-22, user (ai-setup decide)): «Không cần thêm nguồn trên UI. Theo kế hoạch đã duyệt (EXT-UI mục 6), nguồn được thêm qua seed import; màn Nguồn tin trên UI liệt kê và sửa nguồn. Exit gate này đạt khi thêm được nguồn bằng seed import và theo dõi được từng lượt, stage, lỗi trên UI.» Đường seed import thêm nguồn đã có trong mã nguồn và test tại `tools/launcher/prod/seed/import_seed.py:84` (`_import_sources`) và `tests/integration/adapt/seed/test_adapt_seed_import.py:270` (`test_sources_registered_with_tier_and_https`). Các test theo dõi lượt/stage/lỗi trên UI và backend nguồn tin đều exit 0: STT 27 (tests/integration/convergence/test_cp4_queries_routes.py), STT 28 (tests/unit/control_ui/test_h_metadata_update.py sửa metadata nguồn), STT 171 (tests/integration/control_ui/test_h_list_queries_sql.py), STT 168 (tests/unit/control_ui/test_h_operation_view_model.py), STT 181 (tests/unit/control_ui/test_h_screen_registry.py), STT 49 (tests/integration/collection/test_a09_source_commands.py) và STT 71 (tests/integration/ingestion/test_ingestion_flow_integration.py). Tuy nhiên, gate này FAIL vì candidate HEAD hiện tại chưa tích hợp các gói sửa nguồn tin và UI: (i) STT 40 probe screenRegistry.ts exit 1 (AssertionError: sources screen still pending_module tại `src/controlplane/ui/src/features/screens/screenRegistry.ts:86`, gói chủ CP-4B-UI-SCREENS-FIX1); (ii) STT 30 probe route_catalog.py exit 1 (AssertionError: sources metadata resource missing, gói chủ CP-4-WIRING-FIX2); (iii) STT 31 test_adapt_prod_sources_module.py exit 4 (file not found, gói chủ ADAPT-PROD-FIX1); (iv) STT 34 probe module_services exit 1 (AssertionError: sources service not attached to module_services, gói chủ ADAPT-PROD-FIX1). |
-| 2 | Article/Event truy ngược được source, fetch evidence và revision | PASS | STT 8 (tests/contract, 293 passed in 0.39s), STT 62 (tests/unit/ingestion/test_ingestion_article_aggregate.py và tests/unit/ingestion/test_ingestion_memory_unit_of_work.py, 19 passed in 0.04s), STT 65 (tests/unit/ingestion/test_ingestion_resolve_document.py, 31 passed in 0.08s), STT 68 (tests/unit/ingestion/test_ingestion_source_set.py, 39 passed in 0.06s), STT 69 (tests/unit/ingestion/test_ingestion_queries.py, 55 passed in 0.06s), STT 71 (tests/integration/ingestion/test_ingestion_flow_integration.py, 15 passed in 0.08s) |
-| 3 | Bài repost không tạo article/script candidate mới | PASS | STT 61 (tests/unit/ingestion/test_ingestion_normalization.py và tests/unit/ingestion/test_ingestion_fingerprint.py, 30 passed in 0.05s), STT 64 (tests/unit/ingestion/test_ingestion_representative.py, 27 passed in 0.03s), STT 65 (tests/unit/ingestion/test_ingestion_resolve_document.py, 31 passed in 0.08s), STT 71 (tests/integration/ingestion/test_ingestion_flow_integration.py, 15 passed in 0.08s) |
-| 4 | Event update không bị đồng nhất với nguồn đăng lại | PASS | STT 63 (tests/unit/ingestion/test_ingestion_domain_events.py, 64 passed in 0.06s), STT 66 (tests/unit/ingestion/test_ingestion_event_link.py, 45 passed in 0.07s), STT 67 (tests/unit/ingestion/test_ingestion_event_update.py, 61 passed in 0.07s), STT 71 (tests/integration/ingestion/test_ingestion_flow_integration.py, 15 passed in 0.08s) |
-| 5 | Một nguồn lỗi không dừng cycle còn lại | PASS | STT 45 (tests/unit/collection/test_a05_collection_run_states.py, 40 passed in 0.05s), STT 46 (tests/unit/collection/test_a06_checkpoint.py, 15 passed in 0.04s), STT 51 (tests/integration/collection/test_a11_collect_source.py, 18 passed in 0.10s), STT 56 (tests/integration/collection/test_a16_supplemental.py, 25 passed in 0.11s), STT 58 (tests/integration/collection/test_a18_worker_activity.py, 32 passed in 0.12s) |
-| 6 | A-B contract, integration, failure và security tests đạt | PASS | STT 8 (tests/contract, 293 passed in 0.39s), STT 41–59 (toàn bộ phân hệ A: A-01..A-19, gồm riêng STT 44 tests/unit/collection/test_a04_locator_ssrf.py và STT 52 tests/unit/collection/test_a12_secure_fetch.py cho security), STT 60–71 (toàn bộ phân hệ B) |
+| 1 | User có thể thêm nguồn và theo dõi từng lượt/stage/error trên UI | PASS | Áp quyết định của user (2026-10-22, user (ai-setup decide)): «Không cần thêm nguồn trên UI. Theo kế hoạch đã duyệt (EXT-UI mục 6), nguồn được thêm qua seed import; màn Nguồn tin trên UI liệt kê và sửa nguồn. Exit gate này đạt khi thêm được nguồn bằng seed import và theo dõi được từng lượt, stage, lỗi trên UI.» Đường seed import thêm nguồn đã có trong mã nguồn và test tại 	ools/launcher/prod/seed/import_seed.py:102 (_import_sources) và 	ests/integration/adapt/seed/test_adapt_seed_import.py:270 (	est_sources_registered_with_tier_and_https). Toàn bộ các test theo dõi lượt/stage/lỗi trên UI, backend nguồn tin và probe metadata/service đều exit 0: STT 27 (tests/integration/convergence/test_cp4_queries_routes.py: exit 0), STT 28 (tests/unit/control_ui/test_h_metadata_update.py sửa metadata nguồn: exit 0), STT 30 (probe route_catalog.py metadata resources sources: exit 0), STT 31 (tests/integration/adapt/prod/test_adapt_prod_sources_module.py: exit 0), STT 34 (probe module_services sources: exit 0), STT 40 (probe screenRegistry.ts sources available: exit 0), STT 49 (tests/integration/collection/test_a09_source_commands.py: exit 0), STT 71 (tests/integration/ingestion/test_ingestion_flow_integration.py: exit 0), STT 168 (tests/unit/control_ui/test_h_operation_view_model.py: exit 0), STT 171 (tests/integration/control_ui/test_h_list_queries_sql.py: exit 0), STT 181 (tests/unit/control_ui/test_h_screen_registry.py: exit 0). |
+| 2 | Article/Event truy ngược được source, fetch evidence và revision | PASS | STT 8 (tests/contract, 293 passed in 0.57s), STT 62 (tests/unit/ingestion/test_ingestion_article_aggregate.py và tests/unit/ingestion/test_ingestion_memory_unit_of_work.py, 19 passed in 0.06s), STT 65 (tests/unit/ingestion/test_ingestion_resolve_document.py, 31 passed in 0.09s), STT 68 (tests/unit/ingestion/test_ingestion_source_set.py, 39 passed in 0.08s), STT 69 (tests/unit/ingestion/test_ingestion_queries.py, 55 passed in 0.08s), STT 71 (tests/integration/ingestion/test_ingestion_flow_integration.py, 15 passed in 0.10s) |
+| 3 | Bài repost không tạo article/script candidate mới | PASS | STT 61 (tests/unit/ingestion/test_ingestion_normalization.py và tests/unit/ingestion/test_ingestion_fingerprint.py, 30 passed in 0.06s), STT 64 (tests/unit/ingestion/test_ingestion_representative.py, 27 passed in 0.05s), STT 65 (tests/unit/ingestion/test_ingestion_resolve_document.py, 31 passed in 0.09s), STT 71 (tests/integration/ingestion/test_ingestion_flow_integration.py, 15 passed in 0.10s) |
+| 4 | Event update không bị đồng nhất với nguồn đăng lại | PASS | STT 63 (tests/unit/ingestion/test_ingestion_domain_events.py, 64 passed in 0.08s), STT 66 (tests/unit/ingestion/test_ingestion_event_link.py, 45 passed in 0.07s), STT 67 (tests/unit/ingestion/test_ingestion_event_update.py, 61 passed in 0.08s), STT 71 (tests/integration/ingestion/test_ingestion_flow_integration.py, 15 passed in 0.10s) |
+| 5 | Một nguồn lỗi không dừng cycle còn lại | PASS | STT 45 (tests/unit/collection/test_a05_collection_run_states.py, 40 passed, 20 subtests passed in 0.06s), STT 46 (tests/unit/collection/test_a06_checkpoint.py, 15 passed, 22 subtests passed in 0.04s), STT 51 (tests/integration/collection/test_a11_collect_source.py, 18 passed in 0.14s), STT 56 (tests/integration/collection/test_a16_supplemental.py, 25 passed in 0.14s), STT 58 (tests/integration/collection/test_a18_worker_activity.py, 32 passed in 0.15s) |
+| 6 | A-B contract, integration, failure và security tests đạt | PASS | STT 8 (tests/contract, 293 passed in 0.57s), STT 41–59 (toàn bộ phân hệ A: A-01..A-19, gồm riêng STT 44 tests/unit/collection/test_a04_locator_ssrf.py và STT 52 tests/unit/collection/test_a12_secure_fetch.py cho security), STT 60–71 (toàn bộ phân hệ B) |
 | 7 | User duyệt phân hệ A-B và R1 Content Alpha | PENDING | Gate M3-EG7, chờ checkpoint nghiệm thu của người dùng |
 
-**Finding F1 (MAJOR, NOT_FIXED trên candidate 5bfe232073852a89558a5cad1e88a5e9caf3a15c)**: Gate M3-EG1 (STT 1) là FAIL vì candidate HEAD hiện tại chưa tích hợp 3 gói sửa ngoài owned paths:
-- `src/controlplane/ui/src/features/screens/screenRegistry.ts:86` vẫn đặt `backendStatus: 'pending_module'` cho màn hình nguồn `id: 'sources'` khiến lệnh probe STT 40 exit 1 với lỗi `AssertionError: sources screen still pending_module`. Gói chủ giải quyết: `CP-4B-UI-SCREENS-FIX1`.
-- `src/controlplane/application/control_api/route_catalog.py` chưa khai báo `sources` trong `METADATA_RESOURCES` khiến probe STT 30 exit 1 với lỗi `AssertionError: sources metadata resource missing`. Gói chủ giải quyết: `CP-4-WIRING-FIX2`.
-- `src/controlplane/api` chưa gắn dịch vụ nguồn vào `module_services` và thiếu tệp kiểm thử `tests/integration/adapt/prod/test_adapt_prod_sources_module.py` khiến probe STT 34 exit 1 và STT 31 exit 4. Gói chủ giải quyết: `ADAPT-PROD-FIX1`.
-Báo cáo này tuân thủ ranh giới chỉ đọc mã nguồn, không tự sửa mã ngoài owned paths.
+Finding F1 của lượt trước (lane mở trên nhánh cũ, thiếu gói FIX): FIXED sau rebase lên 74c062a29d649ea0e3d1471dee9c739dc33d38fe, STT 30, 31, 34, 40 exit 0.
 
 **Ghi chú về phạm vi Exit Gate theo quyết định của user**: Theo quyết định của user ngày 22/10/2026 (user ai-setup decide): «Exit gate của roadmap rộng hơn kế hoạch đã duyệt chỉ được ghi chú trong báo cáo đóng mốc, không phải FAIL và không hỏi user. Việc kế hoạch đã duyệt có mà chưa nối do Control tự lập gói sửa.» Cụ thể, roadmap §9 Năng lực A mục 1 ("Thêm, sửa metadata, bật/tắt, remove và restore nguồn trên UI") rộng hơn kế hoạch đã duyệt (EXT-UI mục 6: nguồn được thêm qua seed import, màn Nguồn tin trên UI chỉ liệt kê và sửa metadata); khác biệt này được ghi nhận như một ghi chú đóng mốc theo quyết định của user.
 
@@ -490,14 +487,10 @@ Mọi tiêu chí kỹ thuật và lệnh kiểm chưa đạt đều được ghi
 
 ## Kết luận
 
-Trạng thái nghiệm thu milestone M3: **FAIL về kỹ thuật ở gate M3-EG1 (do thiếu 3 gói sửa CP-4B-UI-SCREENS-FIX1, ADAPT-PROD-FIX1, CP-4-WIRING-FIX2 trên nhánh HEAD); ngoài ra còn hai mục chờ user hoặc tài nguyên thật: M3-EG7 và M3-REAL**.
+Trạng thái nghiệm thu milestone M3: **Đạt về kỹ thuật cho các gate M3-EG1 đến M3-EG6 trên candidate 6b0e2e51daac6187070f77c530f415ae8517d154; còn hai mục chờ user hoặc tài nguyên thật: M3-EG7 và M3-REAL**.
 
-Chi tiết kết quả nghiệm thu trên candidate HEAD `5bfe232073852a89558a5cad1e88a5e9caf3a15c`:
-- **Số gói được bao phủ**: 209 gói (193 gói có SHA tích hợp tra được trên HEAD, 3 gói chưa có commit tích hợp trên HEAD ghi KHÔNG TÌM THẤY: CP-4-WIRING-FIX2, CP-4B-UI-SCREENS-FIX1, ADAPT-PROD-FIX1; 13 gói cổng được Control giải phóng bằng recordHash).
-- **Số lệnh kiểm bắt buộc**: 219 lệnh đã chạy lại nguyên văn bằng interpreter khóa 33f06a7a trên candidate HEAD; 215/219 lệnh exit 0, 4 lệnh exit khác 0 gồm:
-  + STT 30 (`python -c "...route_catalog.py..."`): exit 1 (`AssertionError: sources metadata resource missing`) — gói chủ: `CP-4-WIRING-FIX2`.
-  + STT 31 (`python -m pytest tests/integration/adapt/prod/test_adapt_prod_sources_module.py`): exit 4 (`ERROR: file or directory not found: tests/integration/adapt/prod/test_adapt_prod_sources_module.py`) — gói chủ: `ADAPT-PROD-FIX1`.
-  + STT 34 (`python -c "...module_services.{0,40}sources..."`): exit 1 (`AssertionError: sources service not attached to module_services`) — gói chủ: `ADAPT-PROD-FIX1`.
-  + STT 40 (`python -c "...screenRegistry.ts..."`): exit 1 (`AssertionError: sources screen still pending_module` tại `src/controlplane/ui/src/features/screens/screenRegistry.ts:86`) — gói chủ: `CP-4B-UI-SCREENS-FIX1` (Finding F1).
-- **Đối chiếu exit gate**: Trong 6 exit gate kỹ thuật của M3 theo roadmap (docs/11-roadmap.md §9), 5 gate đạt PASS (Gate 2 đến 6), 1 gate FAIL (Gate 1 M3-EG1, Finding F1). Gate 7 (M3-EG7) và gate bổ sung M3-REAL ở trạng thái PENDING thuộc pendingUserCheckpoint.
-- Báo cáo này không đổi trạng thái roadmap hay checklist, không đóng M3 thay Control. Báo cáo tuân thủ nghiêm ngặt ranh giới tác vụ, không chỉnh sửa bất kỳ tệp nào ngoài owned paths (`docs/delivery-evidence/m3-milestone-close/**`).
+Chi tiết kết quả nghiệm thu trên candidate HEAD 6b0e2e51daac6187070f77c530f415ae8517d154:
+- **Số gói được bao phủ**: 210 gói (197 gói có SHA tích hợp tra được trên HEAD, 0 gói KHÔNG TÌM THẤY, 13 gói cổng được Control giải phóng bằng recordHash).
+- **Số lệnh kiểm bắt buộc**: 219 lệnh đã chạy lại nguyên văn bằng interpreter khóa 33f06a7a trên candidate HEAD; 219/219 lệnh exit 0 (tất cả 219 lệnh exit 0). Lệnh 	ests/m2/test_p7b_hardening.py::test_h36_m1_regression bị --deselect theo quyết định của user ngày 21/10/2026 (hoãn sang CP7), không tự chạy.
+- **Đối chiếu exit gate**: Toàn bộ 6 exit gate kỹ thuật của M3 theo roadmap (docs/11-roadmap.md §9) đều đạt PASS (Gate 1 đến Gate 6, trong đó Gate 1 đạt theo quyết định của user ngày 22/10/2026 và kết quả kiểm thử sau rebase). Gate 7 (M3-EG7) và gate bổ sung M3-REAL ở trạng thái PENDING thuộc pendingUserCheckpoint.
+- Báo cáo này không đổi trạng thái roadmap hay checklist, không đóng M3 thay Control. Báo cáo tuân thủ nghiêm ngặt ranh giới tác vụ, không chỉnh sửa bất kỳ tệp nào ngoài owned paths (docs/delivery-evidence/m3-milestone-close/**).
