@@ -41,7 +41,7 @@ Quy ước STT 1..N: theo thứ tự danh sách spec. Số lượng lệnh thự
 | 32 | `pytest tests/integration/adapt/wire/test_adapt_wire_services.py::test_wiring_builder_inventory tests/integration/adapt/wire/test_adapt_wire_services.py::test_wiring_sources_have_no_forbidden_text tests/integration/adapt/wire/test_adapt_wire_services.py::test_wiring_modules_do_not_cross_import_subsystems -q -p no:cacheprovider` | 0 | 3 passed in 1.02s |
 | 33 | `python probe: src/controlplane/api` | 0 | (no output) |
 | 34 | `python probe: p` | 0 | (no output) |
-| 35 | `npm --prefix src/controlplane/ui run build` | 0 | ? built in 4.03s (src/controlplane/ui/dist kh?ng ??i) |
+| 35 | `npm --prefix src/controlplane/ui run build` | 0 | built in 4.03s (src/controlplane/ui/dist không đổi) |
 | 36 | `python -m pytest tests/unit/control_ui -q -p no:cacheprovider` | 0 | 665 passed, 1 warning in 1.21s |
 | 37 | `python probe: src/controlplane/ui/dist` | 0 | (no output) |
 | 38 | `python probe: src/controlplane/ui/dist` | 0 | (no output) |
