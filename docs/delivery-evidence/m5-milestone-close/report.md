@@ -10,6 +10,8 @@ Báo cáo này là bằng chứng kỹ thuật đóng milestone nội bộ, hoà
 
 Grant G1 của lane bị Control thu hồi với lý do CLOSURE_BASE_STALE (lane mở lại trên HEAD cc290f002074 chưa chứa các gói được phủ tích hợp sau đó). Báo cáo này viết lại trên candidate sau rebase; kết quả các lần chạy trước trên 436527e và cc290f0 không còn dùng; toàn bộ 288 lệnh được chạy lại trên candidate nêu ở dòng 3.
 
+Grant G1 của lane lại bị Control thu hồi khi rebase lên 74c062a29d649ea0e3d1471dee9c739dc33d38fe với lý do INTEGRATION_CHECK_FAILED: lệnh STT 17 (`tests/integration/convergence/test_cp3_migration_sequence.py`) đỏ ở `test_postgres_up_down_up_and_constraints` với `psycopg.errors.ConnectionTimeout` (1 failed, 7 passed in 130.46s). Đây là lỗi hạ tầng kết nối PostgreSQL 127.0.0.1, không phải lỗi mã nguồn hay migration; cây mã nguồn không đổi so với 74c062a. Sau `git rebase 74c062a29d649ea0e3d1471dee9c739dc33d38fe` Worker chạy lại trên HEAD: STT 17 → 8 passed in 1.61s; STT 23 → 16 passed in 9.72s; STT 42 → 15 passed in 9.52s; test_cp4_pagination_postgres → 16 passed in 11.82s; test_cp4_queries_routes cùng test_cp4_queries_postgres → 30 passed, 1 warning in 5.39s; tất cả exit 0.
+
 ## 2. Kiểm lại các điểm của R1
 
 Thực hiện kiểm tra thực tế trên lịch sử git và phạm vi gói của kho lưu trữ:

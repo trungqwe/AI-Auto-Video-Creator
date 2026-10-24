@@ -23,7 +23,7 @@ Quy ước STT 1..N: theo thứ tự danh sách spec. Số lượng lệnh thự
 | 14 | `python probe: docs/implementation/persist` | 0 | (no output) |
 | 15 | `python probe: docs/implementation/adapt` | 0 | (no output) |
 | 16 | `python probe: docs/implementation/convergence-ext-ui` | 0 | (no output) |
-| 17 | `pytest tests/integration/convergence/test_cp3_migration_sequence.py -q -p no:cacheprovider` | 0 | 8 passed in 1.67s |
+| 17 | `pytest tests/integration/convergence/test_cp3_migration_sequence.py -q -p no:cacheprovider` | 0 | 8 passed in 1.61s (chạy lại trên HEAD sau git rebase 74c062a; lần trước ConnectionTimeout do PostgreSQL không kết nối được) |
 | 18 | `python -m pytest tests/m2/test_p9_m2_exit_gate.py -q -p no:cacheprovider` | 0 | 6 passed in 4.92s |
 | 19 | `pytest tests/unit/collection tests/unit/ingestion tests/unit/catalog tests/unit/creative tests/unit/voice tests/unit/render tests/unit/storage tests/unit/security tests/integration/orchestration tests/integration/control_ui -q -p no:cacheprovider` | 0 | 5190 passed, 1 warning, 2237 subtests passed in 10.86s |
 | 20 | `python probe: src/controlplane/infrastructure/db/migrations/0013_ingestion.sql` | 0 | (no output) |
