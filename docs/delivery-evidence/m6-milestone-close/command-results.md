@@ -1,6 +1,6 @@
 # Nhật ký kết quả lệnh kiểm M6 (revision 2)
 
-Các lệnh kiểm của milestone được chạy theo 14 chuỗi nối bằng && (Chuỗi 1..14, tương ứng bước 2,3,4,5,6,7,8,9,10,11,12,13,14,15 của lệnh làm việc) trên integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe cộng commit docs của lane (HEAD trước commit của lượt R2-G4: 034d4dab8bbb0668c4af21f63c1ca7c0158ada2c); mỗi chuỗi là một mục có bảng 5 cột | Thứ tự | Lệnh (80 ký tự đầu) | Exit code | Dòng tóm tắt | Ghi chú |.
+Các lệnh kiểm của milestone được chạy theo 14 chuỗi nối bằng && (Chuỗi 1..14, tương ứng bước 2,3,4,5,6,7,8,9,10,11,12,13,14,15 của lệnh làm việc) trên integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe cộng commit docs của lane (HEAD trước commit của lượt R2-G5: 632848e78a9017ca2d9e094e6b10a267bc278b81); mỗi chuỗi là một mục có bảng 5 cột | Thứ tự | Lệnh (80 ký tự đầu) | Exit code | Dòng tóm tắt | Ghi chú |.
 
 ## Chuỗi 1
 
@@ -37,8 +37,8 @@ Các lệnh kiểm của milestone được chạy theo 14 chuỗi nối bằng 
 
 | Thứ tự | Lệnh (80 ký tự đầu) | Exit code | Dòng tóm tắt | Ghi chú |
 | --- | --- | --- | --- | --- |
-| 1 | python -m pytest tests/integration/convergence/test_cp3_migration_sequence.py -q | 0 | 8 passed in 1.22s | Chạy lại ở lượt R2-G4 với -p no:cacheprovider sau khi Control ghi nhận ConnectionTimeout ở lượt R2-G3 (1 failed, 7 passed trong 130.44s; PostgreSQL môi trường chưa kết nối được lúc Control kiểm); lượt này exit 0 |
-| 2 | python -m pytest tests/m2/test_p9_m2_exit_gate.py -q -p no:cacheprovider | 0 | 6 passed in 4.19s |  |
+| 1 | python -m pytest tests/integration/convergence/test_cp3_migration_sequence.py -q | 0 | 8 passed in 1.22s | Chạy lại ở lượt R2-G4 với -p no:cacheprovider sau khi Control ghi nhận ConnectionTimeout ở lượt R2-G3 (1 failed, 7 passed trong 130.44s; PostgreSQL môi trường chưa kết nối được lúc Control kiểm); lượt này exit 0; chạy lại ở lượt R2-G5: exit 0, 8 passed in 1.46s |
+| 2 | python -m pytest tests/m2/test_p9_m2_exit_gate.py -q -p no:cacheprovider | 0 | 6 passed in 5.50s | Chạy lại ở lượt R2-G5 sau khi Control ghi nhận PermissionError [WinError 5] trên thư mục tạm pytest-current ở lượt R2-G4 (lỗi môi trường lúc Control kiểm, mã không đổi); lượt này exit 0 |
 | 3 | python -m pytest tests/unit/collection tests/unit/ingestion tests/unit/catalog t | 0 | 5190 passed, 1 warning, 2237 subtests passed in 14.03s |  |
 | 4 | python -c "import pathlib; t = ' '.join(pathlib.Path('src/controlplane/infrastru | 0 | không có đầu ra |  |
 | 5 | python -B -m pytest tests/integration/convergence/test_cp3_migration_sequence.py | 0 | 1 passed in 0.45s |  |
@@ -365,4 +365,4 @@ Các lệnh kiểm của milestone được chạy theo 14 chuỗi nối bằng 
 - Tổng số đoạn lệnh đã chạy: 288 (đếm thật qua 14 bảng).
 - Số đoạn exit 0: 288.
 - Số đoạn lỗi: 0.
-- Trạng thái: toàn bộ 288/288 đoạn lệnh đạt exit code 0 trên mã integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe (HEAD lane trước commit của lượt R2-G4: 034d4dab8bbb0668c4af21f63c1ca7c0158ada2c).
+- Trạng thái: toàn bộ 288/288 đoạn lệnh đạt exit code 0 trên mã integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe (HEAD lane trước commit của lượt R2-G5: 632848e78a9017ca2d9e094e6b10a267bc278b81).

@@ -10,9 +10,11 @@ Lượt R2 kế tiếp (HEAD fb9c16f) bị Control thu hồi grant DELEGATED-AI_
 
 Lượt R2-G3 (HEAD 034d4dab8bbb0668c4af21f63c1ca7c0158ada2c) bị Control thu hồi grant DELEGATED-AI_PM_DELEGATED_AUTHORITY_20261009-LANE-M6-MILESTONE-CLOSE-R2-G3 khi rebase lên integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe với lý do INTEGRATION_CHECK_FAILED: lệnh python -m pytest tests/integration/convergence/test_cp3_migration_sequence.py -q -p no:cacheprovider thoát với exit 1, test_postgres_up_down_up_and_constraints lỗi psycopg.errors.ConnectionTimeout: connection timeout expired (1 failed, 7 passed trong 130.44s). Đây là lỗi kết nối PostgreSQL của môi trường lúc Control kiểm, không phải lỗi mã: lane không đổi tệp mã nào so với integration head 74c062a (chỉ thêm tệp dưới docs/delivery-evidence/m6-milestone-close/), và test này chỉ phụ thuộc PostgreSQL qua M2_TEST_PG_DSN. Lượt R2-G4 rebase lại lên 74c062a (no-op) và chạy lại đúng lệnh trên: exit 0, 8 passed in 1.22s.
 
+Lượt R2-G4 (HEAD 632848e78a9017ca2d9e094e6b10a267bc278b81) bị Control thu hồi grant DELEGATED-AI_PM_DELEGATED_AUTHORITY_20261009-LANE-M6-MILESTONE-CLOSE-R2-G4 khi rebase lên integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe với lý do INTEGRATION_CHECK_FAILED: lệnh python -m pytest tests/m2/test_p9_m2_exit_gate.py -q -p no:cacheprovider thoát với exit 1, lỗi PermissionError: [WinError 5] Access is denied trên C:\Users\Admin\AppData\Local\Temp\pytest_runner\pytest-of-Admin\pytest-current (pathlib stat). Đây là lỗi quyền truy cập thư mục tạm pytest của môi trường lúc Control kiểm, không phải lỗi mã: lane không đổi tệp mã nào so với integration head 74c062a (chỉ thêm tệp dưới docs/delivery-evidence/m6-milestone-close/) và trước đó cùng lệnh đã exit 0 (6 passed in 4.19s). Lượt R2-G5 rebase lại lên 74c062a (no-op) và chạy lại đúng lệnh trên: exit 0, 6 passed in 5.50s.
+
 ## 2. Candidate được kiểm
 
-Mã được kiểm là integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe; HEAD của lane trước commit của lượt R2-G4 là 034d4dab8bbb0668c4af21f63c1ca7c0158ada2c (nhánh trungqwe/lane-m6-milestone-close-r2), chỉ thêm tệp dưới docs/delivery-evidence/m6-milestone-close/ so với integration head. Mọi lệnh kiểm chạy trên đúng mã này bằng interpreter khoá của lane; kết quả từng lệnh ở command-results.md.
+Mã được kiểm là integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe; HEAD của lane trước commit của lượt R2-G5 là 632848e78a9017ca2d9e094e6b10a267bc278b81 (nhánh trungqwe/lane-m6-milestone-close-r2), chỉ thêm tệp dưới docs/delivery-evidence/m6-milestone-close/ so với integration head. Mọi lệnh kiểm chạy trên đúng mã này bằng interpreter khoá của lane; kết quả từng lệnh ở command-results.md.
 
 ## 3. Gói được bao phủ và SHA tích hợp
 
@@ -244,6 +246,8 @@ Toàn bộ 288 đoạn lệnh kiểm của milestone M6 đã được thực thi
 Tổng hợp: **288/288** đoạn lệnh kiểm exit 0.
 
 Chạy lại ở lượt R2-G4: đoạn Chuỗi 4 hàng 1 (test_cp3_migration_sequence.py) exit 0 (8 passed in 1.22s) sau lỗi ConnectionTimeout của PostgreSQL môi trường Control ghi nhận ở lượt R2-G3; 287 đoạn còn lại không chạy lại vì mã không đổi (lane không sửa tệp mã nào so với integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe) và kết quả trước vẫn exit 0.
+
+Chạy lại ở lượt R2-G5: đoạn Chuỗi 1 hàng 2 (tests/m2/test_p9_m2_exit_gate.py) exit 0 (6 passed in 5.50s) sau lỗi PermissionError thư mục tạm pytest của môi trường Control ghi nhận ở lượt R2-G4; đoạn Chuỗi 4 hàng 1 (test_cp3_migration_sequence.py) exit 0 (8 passed in 1.46s); 286 đoạn còn lại không chạy lại vì mã không đổi (lane không sửa tệp mã nào so với integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe) và kết quả trước vẫn exit 0.
 
 *Lưu ý quan trọng:*
 1. Lệnh kiểm `test_h36_m1_regression` được hoãn sang CP7 theo quyết định của user ngày 21/10/2026 nên các lệnh liên quan mang cờ `--deselect`, không phải là lỗi kiểm thử.
