@@ -7,6 +7,7 @@
 - Lần chạy này thay thế hoàn toàn kết quả trên candidate 5fd27218759bdfb463f9efc7af34caabd8debe13 (CLOSURE_BASE_STALE: nhánh cũ chưa chứa các gói sửa lỗi tích hợp sau ADAPT-LAUNCH).
 - Lượt cấp lại sau thu hồi grant G1 (INTEGRATION_CHECK_FAILED): sau `git rebase 74c062a29d649ea0e3d1471dee9c739dc33d38fe` (không đổi mã), chạy lại STT 17, 21 và 23 trên cùng interpreter khoá; lần chạy lỗi trước đó của STT 17 là `psycopg.errors.ConnectionTimeout` khi kết nối PostgreSQL, không phải lỗi mã; kết quả mới nằm trong bảng bên dưới.
 - Lượt cấp lại thứ hai sau thu hồi grant G2 (INTEGRATION_CHECK_FAILED, `psycopg.errors.ConnectionTimeout` ở `test_postgres_up_down_up_and_constraints` khi Control chạy STT 17): sau `git rebase 74c062a29d649ea0e3d1471dee9c739dc33d38fe` (không đổi mã), chạy lại STT 17, 21 và 23 trên cùng interpreter khoá; kết quả mới ghi trong bảng bên dưới; ConnectionTimeout là lỗi kết nối PostgreSQL 127.0.0.1 của môi trường, không phải lỗi mã.
+- Lượt cấp lại thứ ba sau thu hồi grant G3 (INTEGRATION_CHECK_FAILED, `PermissionError: [WinError 5] Access is denied` ở thư mục tạm `pytest-of-Admin\pytest-current` khi Control chạy STT 18): sau `git rebase 74c062a29d649ea0e3d1471dee9c739dc33d38fe` (không đổi mã), chạy lại STT 18 trên cùng interpreter khoá; kết quả mới ghi ở dòng STT 18 trong bảng bên dưới (exit code và tóm tắt thật); PermissionError là lỗi quyền truy cập thư mục tạm của pytest trong môi trường, không phải lỗi mã.
 
 | STT | Nhóm bước | Lệnh | Exit code | Tóm tắt nguyên văn |
 | --- | --- | --- | --- | --- |
@@ -27,7 +28,7 @@
 | 15 | 2 | `python -c "import re, pathlib, unicodedata; d = pathlib.Path('docs/implementation/adapt'); p = unicodedata.normalize('NFC', (d / 'plan.md')....` | 0 | exit 0 |
 | 16 | 2 | `python -c "import re, pathlib, unicodedata; d = pathlib.Path('docs/implementation/convergence-ext-ui'); p = unicodedata.normalize('NFC', (d ...` | 0 | exit 0 |
 | 17 | 3 | `python -m pytest tests/integration/convergence/test_cp3_migration_sequence.py -q -p no:cacheprovider` | 0 | 8 passed in 1.78s |
-| 18 | 3 | `python -m pytest tests/m2/test_p9_m2_exit_gate.py -q -p no:cacheprovider` | 0 | 6 passed in 9.23s |
+| 18 | 3 | `python -m pytest tests/m2/test_p9_m2_exit_gate.py -q -p no:cacheprovider` | 0 | 6 passed in 10.94s |
 | 19 | 3 | `python -m pytest tests/unit/collection tests/unit/ingestion tests/unit/catalog tests/unit/creative tests/unit/voice tests/unit/render tests/...` | 0 | 5190 passed, 1 warning, 2237 subtests passed in 13.75s |
 | 20 | 3 | `python -c "import pathlib; t = ' '.join(pathlib.Path('src/controlplane/infrastructure/db/migrations/0013_ingestion.sql').read_text(encoding=...` | 0 | exit 0 |
 | 21 | 3 | `python -B -m pytest tests/integration/convergence/test_cp3_migration_sequence.py::test_pinned_migrations_and_runner_untouched -q -p no:cache...` | 0 | 1 passed in 0.24s |

@@ -43,6 +43,7 @@ Kết luận kỹ thuật: ĐẠT
 - Chi tiết kết quả, mã thoát và tóm tắt nguyên văn từng lệnh: [commands.md](commands.md).
 - Cấp lại sau thu hồi grant G1 (INTEGRATION_CHECK_FAILED, `psycopg.errors.ConnectionTimeout` ở `test_postgres_up_down_up_and_constraints`): đã `git rebase 74c062a29d649ea0e3d1471dee9c739dc33d38fe` (không đổi mã), chạy lại STT 17, 21 và 23 trên interpreter khoá, cả ba exit code 0; nguyên nhân lần lỗi trước là kết nối PostgreSQL 127.0.0.1 hết hạn, không phải lỗi mã. Kết quả thật xem commands.md.
 - Cấp lại lần hai sau thu hồi grant G2 (INTEGRATION_CHECK_FAILED, `psycopg.errors.ConnectionTimeout` ở `test_postgres_up_down_up_and_constraints`): đã `git rebase 74c062a29d649ea0e3d1471dee9c739dc33d38fe` (không đổi mã), chạy lại STT 17, 21 và 23 trên interpreter khoá, cả ba exit code 0 (số passed và thời gian thật xem commands.md); nguyên nhân lần lỗi là kết nối PostgreSQL 127.0.0.1 hết hạn của môi trường, không phải lỗi mã.
+- Cấp lại lần ba sau thu hồi grant G3 (INTEGRATION_CHECK_FAILED, `PermissionError: [WinError 5] Access is denied` ở thư mục tạm `pytest-of-Admin\pytest-current` khi Control chạy `tests/m2/test_p9_m2_exit_gate.py`): đã `git rebase 74c062a29d649ea0e3d1471dee9c739dc33d38fe` (không đổi mã), chạy lại STT 18 trên interpreter khoá, exit code 0 (số passed và thời gian thật xem commands.md); nguyên nhân lần lỗi trước là quyền truy cập thư mục tạm của pytest trong môi trường, không phải lỗi mã.
 
 ## 5. Exit gate
 
