@@ -1,20 +1,16 @@
-# Báo cáo đóng M6 (revision 2): M6-MILESTONE-CLOSE-R2
+# Báo cáo đóng M6 (revision 3): M6-MILESTONE-CLOSE-R3
 
-## 1. Phạm vi và lý do R2
+## 1. Phạm vi và lý do R3
 
-Revision 1 M6-MILESTONE-CLOSE đã đóng mà không tích hợp; Control 20/10/2026 chốt policy v1 thêm bốn dòng kế hoạch CONVERGENCE-EXT, CONVERGENCE-EXT-UI, PERSIST, ADAPT vào phạm vi đóng M6; revision 1 đóng băng phạm vi cũ và chưa giao Worker nào nên dù chạy xong vẫn phải đóng lại ở R2; retire R1 để đóng M6 đúng một lần ở R2 với đủ phạm vi theo chấm điểm chi phí và đường găng: bớt một lượt đóng, trả suất cho gói kế hoạch.
+Revision 1 M6-MILESTONE-CLOSE đã đóng mà không tích hợp; Control 20/10/2026: policy v1 thêm bốn dòng kế hoạch (CONVERGENCE-EXT, EXT-UI, PERSIST, ADAPT) vào phạm vi đóng M6; revision 1 đóng băng phạm vi cũ và chưa giao Worker nào, nên dù chạy xong vẫn phải đóng lại ở R2; retire để đóng M6 đúng một lần ở R2 với đủ phạm vi (chấm điểm chi phí và đường găng: bớt một lượt đóng, trả suất cho gói kế hoạch).
 
-Lượt trước của lane R2 (HEAD cc290f002074) bị Control thu hồi grant DELEGATED-AI_PM_DELEGATED_AUTHORITY_20261009-LANE-M6-MILESTONE-CLOSE-R2-G1 với lý do CLOSURE_BASE_STALE vì nhánh chưa chứa các gói đã tích hợp sau đó; lane đã rebase lên integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe, mọi lệnh kiểm và báo cáo viết lại trên mã đó, kết quả lượt trước không còn dùng.
+Bản R2 (candidate 74c062a29d649ea0e3d1471dee9c739dc33d38fe) được thay bằng R3 vì candidate nay là HEAD 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1 và phạm vi R3 thêm gói ADAPT-LAUNCH-FIX1 (commit integrate 21d99fc, candidate 9bcb10e680dc) chưa có trong báo cáo R2; mọi lệnh kiểm chạy lại trên candidate mới, kết quả R2 không còn dùng.
 
-Lượt R2 kế tiếp (HEAD fb9c16f) bị Control thu hồi grant DELEGATED-AI_PM_DELEGATED_AUTHORITY_20261009-LANE-M6-MILESTONE-CLOSE-R2-G2 khi rebase lên 74c062a29d649ea0e3d1471dee9c739dc33d38fe với lý do INTEGRATION_CHECK_FAILED: lệnh python -m pytest tests/integration/convergence/test_cp3_migration_sequence.py -q -p no:cacheprovider thoát với exit 1, test_postgres_up_down_up_and_constraints lỗi psycopg.errors.ConnectionTimeout (1 failed, 7 passed trong 130.49s). Đây là lỗi kết nối PostgreSQL của môi trường lúc kiểm, không phải lỗi mã: mã không đổi giữa hai lần chạy (lane chỉ khác integration head bằng các tệp docs/delivery-evidence/m6-milestone-close/). Lane đã rebase lại lên 74c062a (no-op) và chạy lại đúng lệnh trên: exit 0, 8 passed in 1.33s.
-
-Lượt R2-G3 (HEAD 034d4dab8bbb0668c4af21f63c1ca7c0158ada2c) bị Control thu hồi grant DELEGATED-AI_PM_DELEGATED_AUTHORITY_20261009-LANE-M6-MILESTONE-CLOSE-R2-G3 khi rebase lên integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe với lý do INTEGRATION_CHECK_FAILED: lệnh python -m pytest tests/integration/convergence/test_cp3_migration_sequence.py -q -p no:cacheprovider thoát với exit 1, test_postgres_up_down_up_and_constraints lỗi psycopg.errors.ConnectionTimeout: connection timeout expired (1 failed, 7 passed trong 130.44s). Đây là lỗi kết nối PostgreSQL của môi trường lúc Control kiểm, không phải lỗi mã: lane không đổi tệp mã nào so với integration head 74c062a (chỉ thêm tệp dưới docs/delivery-evidence/m6-milestone-close/), và test này chỉ phụ thuộc PostgreSQL qua M2_TEST_PG_DSN. Lượt R2-G4 rebase lại lên 74c062a (no-op) và chạy lại đúng lệnh trên: exit 0, 8 passed in 1.22s.
-
-Lượt R2-G4 (HEAD 632848e78a9017ca2d9e094e6b10a267bc278b81) bị Control thu hồi grant DELEGATED-AI_PM_DELEGATED_AUTHORITY_20261009-LANE-M6-MILESTONE-CLOSE-R2-G4 khi rebase lên integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe với lý do INTEGRATION_CHECK_FAILED: lệnh python -m pytest tests/m2/test_p9_m2_exit_gate.py -q -p no:cacheprovider thoát với exit 1, lỗi PermissionError: [WinError 5] Access is denied trên C:\Users\Admin\AppData\Local\Temp\pytest_runner\pytest-of-Admin\pytest-current (pathlib stat). Đây là lỗi quyền truy cập thư mục tạm pytest của môi trường lúc Control kiểm, không phải lỗi mã: lane không đổi tệp mã nào so với integration head 74c062a (chỉ thêm tệp dưới docs/delivery-evidence/m6-milestone-close/) và trước đó cùng lệnh đã exit 0 (6 passed in 4.19s). Lượt R2-G5 rebase lại lên 74c062a (no-op) và chạy lại đúng lệnh trên: exit 0, 6 passed in 5.50s.
+Ghi nhận minh bạch: HEAD còn chứa các commit integrate CP7-REAL-RESOURCES (4b11dd0) và IMPL-PLAN-PROD-PORTS (8167d4c, kèm commit nội dung 42a501f) nằm ngoài danh sách phạm vi đóng M6, không tính vào bảng gói.
 
 ## 2. Candidate được kiểm
 
-Mã được kiểm là integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe; HEAD của lane trước commit của lượt R2-G5 là 632848e78a9017ca2d9e094e6b10a267bc278b81 (nhánh trungqwe/lane-m6-milestone-close-r2), chỉ thêm tệp dưới docs/delivery-evidence/m6-milestone-close/ so với integration head. Mọi lệnh kiểm chạy trên đúng mã này bằng interpreter khoá của lane; kết quả từng lệnh ở command-results.md.
+Candidate là HEAD 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1 của nhánh trungqwe/lane-m6-milestone-close-r3 trước commit của lượt này; mọi lệnh kiểm chạy bằng interpreter khoá của lane; kết quả từng lệnh ở command-results.md.
 
 ## 3. Gói được bao phủ và SHA tích hợp
 
@@ -49,6 +45,7 @@ Mã được kiểm là integration head 74c062a29d649ea0e3d1471dee9c739dc33d38f
 | PERSIST-C-FIX1 | ab8586d55fc612825888d6a7e26e58ae96d28af6 | 2327dcf8e326 | git log --grep="integrate(PERSIST-C-FIX1)" |
 | ADAPT-PROD-FIX2 | fa250e8305aa422ff260f2ce9bb3622a29239740 | e1cc7f40b25b | git log --grep="integrate(ADAPT-PROD-FIX2)" |
 | CP-4B-UI-SCREENS-FIX2 | 74c062a29d649ea0e3d1471dee9c739dc33d38fe | 1c85775dea49 | git log --grep="integrate(CP-4B-UI-SCREENS-FIX2)" |
+| ADAPT-LAUNCH-FIX1 | 21d99fc89eb076a036b4d62f026b057a61d96135 | 9bcb10e680dc | git log --grep="integrate(ADAPT-LAUNCH-FIX1)" |
 
 ### 3.2 Phân hệ A, ADAPT, B, C
 
@@ -109,6 +106,9 @@ Mã được kiểm là integration head 74c062a29d649ea0e3d1471dee9c739dc33d38f
 | C-09 | a800f8790e9eee9937165c13b020d33b39739dc2 | 8831823a18f2 | git log --grep="integrate(C-09)" |
 
 ### 3.3 Gói hội tụ, D, E, F
+
+Danh sách gói của brief R3 kết thúc ở E-05 (dấu phẩy cuối cho thấy danh sách bị cắt); các hàng E-06..E-20 và F-01..F-07 dưới đây là bổ sung giữ từ bản R2, không thuộc danh sách yêu cầu.
+
 
 | Mã gói | Commit integrate (SHA đầy đủ) | Candidate (12 hex) | Cách tra |
 | --- | --- | --- | --- |
@@ -176,7 +176,7 @@ Mã được kiểm là integration head 74c062a29d649ea0e3d1471dee9c739dc33d38f
 
 ### 3.4 Gói có lệnh kiểm nhưng không nằm trong danh sách liệt kê
 
-Danh sách gói của brief kết thúc ở F-07 và không liệt kê tường minh các gói F-08..F-22 cùng các slice thuộc phân hệ G, H, I, J; tuy nhiên toàn bộ lệnh kiểm của milestone M6 vẫn chạy đầy đủ các bài test tương ứng của chúng (`tests/unit/render/test_f08..f22`, `tests/unit/orchestration/test_g_*`, `tests/unit/control_ui/test_h_*`, `tests/unit/storage/test_storage_*`, `tests/unit/config/test_j_*`).
+Brief R3 không liệt kê tường minh các gói E-06..E-20, F-01..F-22 cùng các slice thuộc phân hệ G, H, I, J; tuy nhiên toàn bộ lệnh kiểm của milestone M6 vẫn chạy đầy đủ các bài test tương ứng của chúng (`tests/unit/render/test_f08..f22`, `tests/unit/orchestration/test_g_*`, `tests/unit/control_ui/test_h_*`, `tests/unit/storage/test_storage_*`, `tests/unit/config/test_j_*`).
 
 Kết quả tra cứu `git log` chỉ đọc cho nhóm F-08..F-22 và các phân hệ G, H, I, J trên nhánh hiện tại như sau:
 
@@ -223,10 +223,9 @@ Kết quả tra cứu `git log` chỉ đọc cho nhóm F-08..F-22 và các phân
 
 Các gói cổng không có SHA tích hợp; Control thả mỗi cổng bằng một bản ghi quyết định RELEASE và recordHash ở trên được chép nguyên văn từ brief nghiệm thu của Control. Báo cáo không đọc sổ quyết định của Control và không mở .ai-pm/**.
 
-
 ## 5. Kết quả lệnh kiểm
 
-Toàn bộ 288 đoạn lệnh kiểm của milestone M6 đã được thực thi và kiểm tra lại trên mã integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe qua 14 chuỗi lệnh:
+Toàn bộ 288 đoạn lệnh kiểm của milestone M6 đã được thực thi và kiểm tra lại trên candidate HEAD 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1 qua 14 chuỗi lệnh:
 
 - Chuỗi 1: 12/12 đoạn exit 0 (kế hoạch phân hệ A, B, C, I, D, E, F, J, G, H, convergence và git diff --check)
 - Chuỗi 2: 2/2 đoạn exit 0 (kế hoạch convergence-ext và persist)
@@ -245,14 +244,9 @@ Toàn bộ 288 đoạn lệnh kiểm của milestone M6 đã được thực thi
 
 Tổng hợp: **288/288** đoạn lệnh kiểm exit 0.
 
-Chạy lại ở lượt R2-G4: đoạn Chuỗi 4 hàng 1 (test_cp3_migration_sequence.py) exit 0 (8 passed in 1.22s) sau lỗi ConnectionTimeout của PostgreSQL môi trường Control ghi nhận ở lượt R2-G3; 287 đoạn còn lại không chạy lại vì mã không đổi (lane không sửa tệp mã nào so với integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe) và kết quả trước vẫn exit 0.
-
-Chạy lại ở lượt R2-G5: đoạn Chuỗi 1 hàng 2 (tests/m2/test_p9_m2_exit_gate.py) exit 0 (6 passed in 5.50s) sau lỗi PermissionError thư mục tạm pytest của môi trường Control ghi nhận ở lượt R2-G4; đoạn Chuỗi 4 hàng 1 (test_cp3_migration_sequence.py) exit 0 (8 passed in 1.46s); 286 đoạn còn lại không chạy lại vì mã không đổi (lane không sửa tệp mã nào so với integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe) và kết quả trước vẫn exit 0.
-
 *Lưu ý quan trọng:*
-1. Lệnh kiểm `test_h36_m1_regression` được hoãn sang CP7 theo quyết định của user ngày 21/10/2026 nên các lệnh liên quan mang cờ `--deselect`, không phải là lỗi kiểm thử.
+1. Lệnh kiểm test_h36_m1_regression được hoãn sang CP7 theo quyết định của user ngày 21/10/2026 nên các lệnh liên quan mang cờ --deselect, không phải là lỗi kiểm thử.
 2. Các bài test tích hợp trong bộ test chạy bằng fake, mock và fixture nội bộ; các test bị skip vì môi trường thiếu PostgreSQL hoặc tài nguyên ngoài không được coi là bằng chứng tài nguyên thật (GPU, TTS, Drive, Temporal), bằng chứng thật sẽ được thu thập tại CP7.
-
 
 ## 6. Đối chiếu exit gate M6 trong roadmap
 
@@ -265,24 +259,27 @@ Chạy lại ở lượt R2-G5: đoạn Chuỗi 1 hàng 2 (tests/m2/test_p9_m2_e
 | M6-EG5 | G06 phần TTS/timing/media và G07 phần output/QC có evidence | PENDING_USER_CHECKPOINT | Cần evidence trên tài nguyên thật ở CP7; evidence với fake đạt exit 0: test_e09 đến test_e12 (Chuỗi 11 hàng 27..30), test_f12 đến test_f15 (Chuỗi 12 hàng 12..15) |
 | M6-EG6 | User duyệt E-F và 5 preset mẫu; user nghe mẫu và duyệt hình | PENDING_USER_CHECKPOINT | User chưa duyệt, không tự ghi là đã duyệt; chờ nghiệm thu người dùng tại CP7 |
 
+Ánh xạ CP7: docs/implementation/cp7/plan.md dòng 41..43 gán M6-EG1 cho RG-09, M6-EG5 cho RG-05, RG-06, RG-07, M6-EG6 cho R4 (user duyệt); bảng đó ghi mã gói M6-MILESTONE-CLOSE-R2, mã gate không đổi ở R3.
+
 Ghi chú theo quyết định của user (2026-10-22, ai-setup decide):
 Exit gate của roadmap rộng hơn kế hoạch đã duyệt chỉ được ghi chú trong báo cáo đóng mốc, không phải FAIL và không hỏi user. Việc kế hoạch đã duyệt có mà chưa nối do Control tự lập gói sửa.
-Các mục mở liên quan theo docs/11-roadmap.md (dòng 537 trở đi, cần chốt trước khi hoàn tất exit M6 tại CP7):
-- `QUALITY-OPEN-006`/`TEST-OPEN-005`: output profile chính thức.
-- `QUALITY-OPEN-007`/`TEST-OPEN-006`: ngưỡng sai số word timing.
+Các mục mở liên quan theo docs/11-roadmap.md (dòng 528..542, cần chốt trước khi hoàn tất exit M6 tại CP7):
+- QUALITY-OPEN-006/TEST-OPEN-005: output profile chính thức.
+- QUALITY-OPEN-007/TEST-OPEN-006: ngưỡng sai số word timing.
 - Tên, style và thông số chi tiết của 5 preset.
 - Audio quality/visual continuity thresholds dùng cho warning hoặc hard gate.
+
+Roadmap có sáu exit gate, kế hoạch đã duyệt chưa chứng minh gate nào ngoài sáu gate này nên không có gate nào phải ghi chú là rộng hơn kế hoạch.
 
 ## 7. pendingUserCheckpoint
 
 Chỉ gồm đúng 3 mã gate sau được đưa vào danh sách chờ kiểm tra/nghiệm thu người dùng theo đúng quy định:
-1. `M6-EG1`: Tạo được R4 Video Alpha theo luồng giám sát từ snapshot đến completion — Cần chạy trên tài nguyên thật (GPU/TTS/FFmpeg/Drive) tại CP7.
-2. `M6-EG5`: G06 phần TTS/timing/media và G07 phần output/QC có evidence — Cần thu thập bằng chứng vận hành trên tài nguyên thật tại CP7.
-3. `M6-EG6`: User duyệt E-F và 5 preset mẫu; user nghe mẫu và duyệt hình — Chờ người dùng trực tiếp nghiệm thu chất lượng mẫu video, audio và preset.
-
+1. M6-EG1: Tạo được R4 Video Alpha theo luồng giám sát từ snapshot đến completion — Cần chạy trên tài nguyên thật (GPU/TTS/FFmpeg/Drive) tại CP7.
+2. M6-EG5: G06 phần TTS/timing/media và G07 phần output/QC có evidence — Cần thu thập bằng chứng vận hành trên tài nguyên thật tại CP7.
+3. M6-EG6: User duyệt E-F và 5 preset mẫu; user nghe mẫu và duyệt hình — Chờ người dùng trực tiếp nghiệm thu chất lượng mẫu video, audio và preset.
 
 ## 8. Kết luận
 
-Trạng thái: **ĐẠT** về kỹ thuật và kiểm thử trên mã 74c062a29d649ea0e3d1471dee9c739dc33d38fe: 288/288 lệnh kiểm exit 0, mọi gói được bao phủ có SHA tích hợp, 13 gói cổng có recordHash do Control cấp, M6-EG2/EG3/EG4 PASS. Ba gate M6-EG1, M6-EG5, M6-EG6 ghi vào pendingUserCheckpoint, chờ tài nguyên thật và duyệt của user ở CP7.
+Trạng thái: **ĐẠT** về kỹ thuật và kiểm thử trên mã 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1: 288/288 lệnh kiểm exit 0, mọi gói được bao phủ có SHA tích hợp, 13 gói cổng có recordHash do Control cấp, M6-EG2/EG3/EG4 PASS. Ba gate M6-EG1, M6-EG5, M6-EG6 ghi vào pendingUserCheckpoint, chờ tài nguyên thật và duyệt của user ở CP7.
 
 Báo cáo không thay đổi trạng thái roadmap (docs/11-roadmap.md) hay checklist (docs/12-pre-code-checklist.md).
