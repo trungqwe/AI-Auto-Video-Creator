@@ -336,11 +336,17 @@ def test_rg01_router_port(emit):
     _pass(emit, 'router_port', 'tcp=127.0.0.1:20128 open')
 
 
+PORTS_CONFIG = REPO / 'tools' / 'launcher' / 'prod' / 'ports.json'
+
+
 def test_rg01_secret_scan(emit):
     from controlplane.infrastructure.security.dpapi_secret_store import DpapiSecretStore
     from controlplane.infrastructure.security.oauth_google_loopback import SECRET_REF
-    version = DpapiSecretStore(_data_root() / 'vault').current_version(SECRET_REF)
-    assert version is not None, 'DPAPI vault lacks the required alias'
+    # Các alias production cần: token Drive (OAuth) và khóa 9Router (PP-2, tools/launcher/prod/ports.json); chỉ kiểm tồn tại.
+    router_ref = json.loads(PORTS_CONFIG.read_text(encoding='utf-8'))['router']['secret_ref']
+    store = DpapiSecretStore(_data_root() / 'vault')
+    missing = [alias for alias in (SECRET_REF, router_ref) if store.current_version(alias) is None]
+    assert not missing, f'DPAPI vault lacks required aliases: {missing}'
     report = REPORT.read_text(encoding='utf-8') if REPORT.is_file() else ''
     assert c.scan_secrets(report) == [], 'report.md contains secret patterns'
-    _pass(emit, 'secret_scan', f'dpapi_alias={SECRET_REF} present (existence only) report_matches=0')
+    _pass(emit, 'secret_scan', f'dpapi_aliases={SECRET_REF},{router_ref} present (existence only) report_matches=0')
