@@ -59,6 +59,7 @@ Migration nằm ở `src/controlplane/infrastructure/db/migrations/`. Số dòng
 - `tests/unit/control_ui/test_h_screen_registry.py`: `AVAILABLE_IDS` dòng 32 (bảy màn) và `PENDING_IDS` 33-35; `REVISION_COLUMN_IDS` 38 (có `media`); `EDITABLE_ALLOWLIST` 39-43 (có `media`); `router_get_paths` 112-118 (gom `ListingResource` từ `route_catalog.py` bằng regex, nên mục mới phải giữ dạng `ListingResource("tên", "/v1/tên", ...)`); `test_every_other_screen_is_pending_module` 148-151 (đúng 11 màn); dòng 222 và 324 (ba màn sửa được `hooks`, `media`, `sources`); 280-284 (phân hoạch); `test_media_stays_pending_module_until_backend_has_media_metadata` 314-318 (đọc chuỗi `media.status_code == 503` trong `test_adapt_prod_app.py`).
 - `tests/integration/adapt/prod/test_adapt_prod_app.py`: dòng 272 (`module_services` đúng `{'sources', 'hooks'}`), 303-304 (`/v1/media` trả 503), 249 (`create_app` trần có `module_services == {}`, không đổi), 401 (dist được phục vụ nguyên byte).
 - `tests/integration/convergence/test_cp4_wiring.py`: 656-662 ghim `METADATA_RESOURCES` đúng ba tên `sources`, `hooks`, `media`. Vì vậy KHÔNG xóa mục metadata của `media`; PATCH `/v1/media` giữ 503 bằng cách service `media` ném `CapabilityUnavailableError` trong `apply_update`.
+- `tests/integration/convergence/test_cp4_queries_routes.py`: `test_route_inventory` 188-207 ghim VẮNG route: vòng `for name in ('articles', 'events', 'sessions', 'logs', 'capabilities')` ở dòng 205 và `assert matching == []` ở dòng 207. `create_app` gắn router GET cho mọi `LISTING_RESOURCES` (`main.py:98-111`), nên khi CP-4-WIRING-FIX3 thêm `articles`, `events`, `sessions` vào catalog thì test này đỏ (đã tái hiện bằng probe trong bộ nhớ: `test_route_inventory` ném AssertionError). Vì vậy CP-4-WIRING-FIX3 phải đổi test này TRONG CÙNG GÓI (mục 7.1): `logs` và `capabilities` vẫn phải vắng, chín tài nguyên mới phải có đúng một route GET danh sách và một route GET chi tiết. Lệnh tìm đủ vị trí ghim vắng route: `rg -n "/v1/(articles|events|media|artifacts|snapshots|story-angles|scripts|sessions|logs|accounts|cost)" tests` cùng tìm tuple tên tài nguyên cùng dạng; kết quả duy nhất ghim vắng route là dòng 205 (`test_h_metadata_update.py:17` dùng FastAPI riêng, không bị ảnh hưởng).
 - `tests/m2/test_p9_m2_exit_gate.py:27`: `BASELINE_PREFIXES` so hash `ui/dist` với blob git tại `M2_ACCEPTED_SHA`, không so với worktree, nên dựng lại `ui/dist` không làm đỏ test này.
 - Probe đóng mốc `docs/delivery-evidence/m3-milestone-close/report.md:275` (bước 40) khẳng định `artifacts`, `snapshots`, `story-angles`, `scripts`, `accounts`, `cost` là `pending_module`. Đây là bản ghi lịch sử, không phải test chạy lại; sau khi các màn chuyển `available` mọi lệnh đóng mốc mới sao chép dòng này sẽ đỏ. Probe tương tự ở `docs/delivery-evidence/m5-milestone-close/command-results.md` (dòng 49, 57, 131, tức bước 39, 47, 121) và nhắc ở `docs/delivery-evidence/m6-milestone-close/report.md:235`. Không sửa bằng chứng lịch sử; gói CP-4B-UI-SCREENS-FIX3 ghi chú và Control không dùng các lệnh này cho lệnh đóng mốc mới. Lệnh tìm đủ vị trí: `rg -n "pending_module|screenRegistry" docs/delivery-evidence` (cấm sửa `docs/milestones/**/evidence/**`).
 
@@ -167,7 +168,7 @@ Các chỗ sau nằm trong tệp đã có chủ, KHÔNG thuộc slice RS nào. C
 
 ### 7.1. CP-4-WIRING-FIX3 — `route_catalog.py`
 
-- Tệp: `src/controlplane/application/control_api/route_catalog.py`; test mới `tests/integration/convergence/test_cp4_wiring_fix3.py`.
+- Tệp: `src/controlplane/application/control_api/route_catalog.py`; test mới `tests/integration/convergence/test_cp4_wiring_fix3.py`; test đã nghiệm thu phải nới trong cùng gói: `tests/integration/convergence/test_cp4_queries_routes.py:205-207` (hàm `test_route_inventory`, dòng 205-207).
 - Thay đổi chính xác: (1) sau mục `hooks` (dòng 41-49) thêm chín `ListingResource` theo bảng dưới, giữ nguyên dạng literal `ListingResource("tên", "/v1/tên", (sắp), frozenset({lọc}), 50, 100, True)` để regex của `test_h_screen_registry.py:98` còn bắt được; (2) mục `media` (50-58): đổi lọc từ `frozenset({"kind", "tag", "availability"})` thành `frozenset({"kind", "status"})`, giữ sắp và chi tiết; (3) KHÔNG đổi `METADATA_RESOURCES` (`test_cp4_wiring.py:656-662`); (4) cập nhật docstring dòng 1-6; (5) không sửa `main.py`, `control.py`, `control_api_queries.py`.
 
 | Tài nguyên | Sắp | Lọc |
@@ -183,9 +184,9 @@ Các chỗ sau nằm trong tệp đã có chủ, KHÔNG thuộc slice RS nào. C
 | `accounts` | `updated_at` | `provider`, `status` |
 | `cost` | `recorded_at` | `provider`, `job_id` |
 
-- Lệnh kiểm của CP-4-WIRING-FIX3: `git diff --check`; `python -m pytest tests/integration/convergence/test_cp4_wiring.py tests/integration/convergence/test_cp4_wiring_fix3.py tests/unit/control_ui/test_h_screen_registry.py -q`. Test mới dùng service giả như `make_app` (`test_cp4_wiring.py:169-176`): mười tài nguyên có service thì list và detail trả 200 (detail không có thì 404), không có service thì 503 `CAPABILITY_UNAVAILABLE`.
-- Phụ thuộc: `RS-12` (khóa tên tài nguyên trùng khóa của bộ ghép). Sau gói này mà chưa có ADAPT-PROD-FIX3, mười route trả 503 thay vì 404; đã rà `tests/` không có test nào ghim 404 của các route này.
-- Test đang ghim cần đổi: không có (không test nào đọc số lượng `LISTING_RESOURCES`; `test_cp4_wiring.py:658` chỉ ghim `METADATA_RESOURCES`).
+- Lệnh kiểm của CP-4-WIRING-FIX3: `git diff --check`; `python -m pytest tests/integration/convergence/test_cp4_wiring.py tests/integration/convergence/test_cp4_wiring_fix3.py tests/integration/convergence/test_cp4_queries_routes.py tests/unit/control_ui/test_h_screen_registry.py -q`. Test mới dùng service giả như `make_app` (`test_cp4_wiring.py:169-176`): mười tài nguyên có service thì list và detail trả 200 (detail không có thì 404), không có service thì 503 `CAPABILITY_UNAVAILABLE`.
+- Phụ thuộc: `RS-12` (khóa tên tài nguyên trùng khóa của bộ ghép). Sau gói này mà chưa có ADAPT-PROD-FIX3, mười route trả 503 thay vì 404; đã rà `tests/` bằng lệnh tìm ở mục 3.4: không có test nào ghim mã 404 của các route này, nhưng CÓ một test ghim vắng route là `test_route_inventory` (mục 3.4), được nới trong chính gói này.
+- Test đang ghim cần đổi: `tests/integration/convergence/test_cp4_queries_routes.py::test_route_inventory` (dòng 188-207; vòng ghim vắng ở dòng 205, `assert matching == []` ở dòng 207). Đổi chính xác: (a) dòng 205 thành `for name in ('logs', 'capabilities'):` (giữ dòng 206-207 để `logs` và `capabilities` vẫn vắng); (b) sau vòng đó thêm vòng `for name in ('articles', 'events', 'media', 'artifacts', 'snapshots', 'story-angles', 'scripts', 'sessions', 'accounts', 'cost'):` khẳng định `route_pairs.count(('GET', f'/v1/{name}')) == 1` và `route_pairs.count(('GET', f'/v1/{name}/{{item_id}}')) == 1`; (c) giữ nguyên dòng 199-203 (stage-runs đúng một route GET; `sources`, `hooks`, `media`, `stage-runs` đúng một route GET danh sách). Không đổi `test_blocked_prefixes_mounted_by_wiring_stay_503` (210-215, chỉ gồm `sources`, `hooks`, `media` trên ứng dụng không có service) và `test_registry_accounts_for_nine_resources` (239-241, ghim `BLOCKED_LIST_RESOURCES` của `control_api_queries.py`, tệp này không sửa). `test_cp4_wiring.py:658` chỉ ghim `METADATA_RESOURCES` nên không đổi. Gói phải chạy test này trong lệnh kiểm (dòng 'Lệnh kiểm' ở trên) để test đã nghiệm thu không đỏ mà không bị phát hiện.
 
 ### 7.2. ADAPT-PROD-FIX3 — `production.py` gắn `module_services`
 
@@ -216,13 +217,13 @@ Chia hai bước để không có thời điểm nào test đã nghiệm thu b�
 2. `RS-2` đến `RS-11` (độc lập, không chung tệp; chạy tuần tự trong lane hoặc song song).
 3. `RS-12` (bộ ghép; phụ thuộc `RS-2` đến `RS-11`).
 4. CP-4B-UI-SCREENS-FIX3 bước 1 (chỉ nới test; làm được bất cứ lúc nào trước bước 6).
-5. CP-4-WIRING-FIX3 (route trả 503 khi chưa gắn service).
+5. CP-4-WIRING-FIX3 (route trả 503 khi chưa gắn service; cùng gói nới `test_route_inventory` trong `test_cp4_queries_routes.py` để test đã nghiệm thu không đỏ).
 6. ADAPT-PROD-FIX3 (gắn service; `/v1/media` chuyển từ 503 sang 200).
 7. `RS-13` (kiểm đầu cuối trên `build_production_app`).
 8. CP-4B-UI-SCREENS-FIX3 bước 2 (chuyển `available`, dựng lại `ui/dist`).
 9. Chạy lại toàn bộ test ghim ở mục 3.4 trước khi đóng.
 
-Lý do thứ tự: registry chỉ đổi sau khi route và service đã gộp và có test (bước 8 sau bước 7); test đọc chuỗi 503 được nới (bước 4) trước khi hành vi đổi (bước 6); route thêm (bước 5) không làm đỏ test vì chưa có test ghim 404.
+Lý do thứ tự: registry chỉ đổi sau khi route và service đã gộp và có test (bước 8 sau bước 7); test đọc chuỗi 503 được nới (bước 4) trước khi hành vi đổi (bước 6); route thêm (bước 5) không làm đỏ test vì test duy nhất ghim vắng route (`test_route_inventory`, `test_cp4_queries_routes.py:205-207`) được nới trong chính gói ở bước 5 và nằm trong lệnh kiểm của gói; không test nào ghim 404.
 
 ## 9. Màn hình phục vụ bước nghiệm thu R của CP7
 
@@ -257,7 +258,7 @@ Mỗi màn đã nối phải đạt: `GET /v1/<tài nguyên>` trả 200 với d�
 - Service trả `payload` thô hoặc lộ trường cấm: bị chặn bằng ánh xạ khóa tường minh (mục 4), canary trong test và probe văn bản của từng slice.
 - Route lộ dữ liệu workspace khác: mọi SQL có điều kiện `workspace_id`; test cô lập hai workspace ở từng slice và ở RS-13.
 - Registry chuyển `available` khi route chưa có: chỉ làm ở bước 8 sau RS-13 (mục 8).
-- Test đã nghiệm thu bị đỏ giữa chừng: các test ghim ở mục 3.4 được đổi theo đúng thứ tự mục 8.
+- Test đã nghiệm thu bị đỏ giữa chừng: các test ghim ở mục 3.4 được đổi theo đúng thứ tự mục 8; riêng `test_route_inventory` (`test_cp4_queries_routes.py:205-207`) bị đỏ nếu thêm route mà không nới, nên được đổi và chạy ngay trong CP-4-WIRING-FIX3 (mục 7.1).
 - Migration hoặc đổi schema: không có; `logs` giữ `pending_module` thay vì thêm bảng.
 - Bịa dữ liệu cho cột không có nguồn: cột bị bỏ khỏi `columns` hoặc trả `null` có lý do (mục 5).
 - Đổi hợp đồng bảy màn đã `available`: không sửa `control_api_queries.py`, `control.py`, `SourceModuleService`, `HookModuleService`.
