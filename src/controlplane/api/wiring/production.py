@@ -48,6 +48,8 @@ from source_ingestion.application.source_commands import IdempotencyConflictErro
 from source_ingestion.domain.source import Source, SourcePolicy, SourceStatus
 
 LOOPBACK_HOST = '127.0.0.1'
+# Sau yêu cầu dừng, kết nối còn mở quá chừng này giây thì bị huỷ (loopback_config).
+GRACEFUL_SHUTDOWN_SECONDS = 10
 LAUNCH_PATH = '/launch'
 SESSION_COOKIE = 'cp_session'
 CSRF_COOKIE = 'csrf_token'
@@ -402,8 +404,11 @@ def build_production_app(*, manager: Any, config: WiringConfig, port: int,
 def loopback_config(app: Any, *, port: int, certfile: Path | str, keyfile: Path | str) -> uvicorn.Config:
     """Chỉ bind 127.0.0.1; chứng chỉ tự ký do launcher tạo ngoài cây Git."""
     _check_port(port)
+    # Tắt êm có hạn: một kết nối không tự đóng (luồng SSE của tab giao diện đang mở) không được giữ tiến trình mãi,
+    # nếu không `launcher.py stop` treo mỗi khi còn tab mở (ổn định hoá 25/10/2026, S4).
     return uvicorn.Config(app, host=LOOPBACK_HOST, port=port, ssl_certfile=str(certfile),
-                          ssl_keyfile=str(keyfile), log_level='warning', access_log=False)
+                          ssl_keyfile=str(keyfile), log_level='warning', access_log=False,
+                          timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS)
 
 
 def serve_production_tls(app: Any, *, port: int, certfile: Path | str, keyfile: Path | str) -> None:

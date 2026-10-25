@@ -432,9 +432,76 @@ def test_loopback_config_binds_127_0_0_1_only(app, tmp_path):
     cfg = production.loopback_config(app, port=PORT, certfile=cert, keyfile=key)
     assert cfg.host == '127.0.0.1' and cfg.port == PORT
     assert cfg.ssl_certfile == str(cert) and cfg.ssl_keyfile == str(key)
+    assert cfg.timeout_graceful_shutdown == production.GRACEFUL_SHUTDOWN_SECONDS > 0
     for bad in (0, 65536, -1):
         with pytest.raises(ValueError):
             production.loopback_config(app, port=bad, certfile=cert, keyfile=key)
+
+
+def _self_signed(tmp_path):
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+    import ipaddress
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, '127.0.0.1')])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+            .serial_number(x509.random_serial_number()).not_valid_before(now - datetime.timedelta(minutes=1))
+            .not_valid_after(now + datetime.timedelta(hours=1))
+            .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address('127.0.0.1'))]), critical=False)
+            .sign(key, hashes.SHA256()))
+    cert_path, key_path = tmp_path / 'stream-cert.pem', tmp_path / 'stream-key.pem'
+    cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    return cert_path, key_path
+
+
+def test_loopback_server_stops_while_a_stream_stays_open(tmp_path):
+    """Ổn định hoá 25/10/2026 (S4): tab giao diện giữ một luồng SSE; yêu cầu dừng vẫn kết thúc tiến trình trong hạn tắt êm."""
+    import socket
+    import ssl
+    import threading
+    import uvicorn
+    production = wiring('production')
+
+    async def streaming_app(scope, receive, send):
+        if scope['type'] == 'lifespan':
+            while True:
+                message = await receive()
+                if message['type'] == 'lifespan.startup':
+                    await send({'type': 'lifespan.startup.complete'})
+                elif message['type'] == 'lifespan.shutdown':
+                    await send({'type': 'lifespan.shutdown.complete'})
+                    return
+        await send({'type': 'http.response.start', 'status': 200, 'headers': [(b'content-type', b'text/event-stream')]})
+        while True:
+            await send({'type': 'http.response.body', 'body': b': ping\n\n', 'more_body': True})
+            await asyncio.sleep(0.2)
+
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        port = probe.getsockname()[1]
+    cert, key = _self_signed(tmp_path)
+    server = uvicorn.Server(production.loopback_config(streaming_app, port=port, certfile=cert, keyfile=key))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 15
+    while not server.started and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert server.started
+    client = ssl._create_unverified_context().wrap_socket(socket.create_connection(('127.0.0.1', port), timeout=10))
+    try:
+        client.sendall(b'GET /v1/stream HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n')
+        assert b'200' in client.recv(4096)
+        stop_at = time.monotonic()
+        server.should_exit = True
+        thread.join(timeout=production.GRACEFUL_SHUTDOWN_SECONDS + 15)
+        assert not thread.is_alive(), 'server still waiting for the open stream'
+        assert time.monotonic() - stop_at <= production.GRACEFUL_SHUTDOWN_SECONDS + 10
+    finally:
+        client.close()
 
 
 def profile_parameters() -> dict[str, Any]:
