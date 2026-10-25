@@ -1,8 +1,8 @@
-# M4-MILESTONE-CLOSE: danh sách gói và SHA tích hợp (revision 1)
+# M4-MILESTONE-CLOSE-R2: danh sách gói và SHA tích hợp (revision 2)
 
-- Candidate SHA đang kiểm định: `5c57b7261a8b10b8ab9bdbe5e30b0019dabe9361` (dựng trên integration head `74c062a29d649ea0e3d1471dee9c739dc33d38fe`)
-- Tổng số gói trong danh sách yêu cầu nghiệm thu mục 1: 135 gói (gồm 122 gói công việc và 13 cổng kiểm soát); danh sách kết thúc ở E-08
-- Số gói/cổng đã tra cứu thành công SHA / recordHash: 135 / 135 (trong đó 122/122 gói công việc có commit integrate 40-hex, 13/13 cổng kiểm soát có recordHash do Control cấp)
+- Candidate SHA đang kiểm định: `21d99fc89eb076a036b4d62f026b057a61d96135` (integration head, tiêu đề `integrate(ADAPT-LAUNCH-FIX1): lane lane-adapt-launch-fix1 candidate 9bcb10e680dc)
+- Tổng số gói trong danh sách yêu cầu nghiệm thu mục 1: 133 gói (gồm 120 gói công việc và 13 cổng kiểm soát); danh sách kết thúc ở E-05
+- Số gói/cổng đã tra cứu thành công SHA / recordHash: 133 / 133 (trong đó 119/119 gói công việc có commit integrate 40-hex, M4-CI-PLAN có SHA do Control cung cấp, 13/13 cổng kiểm soát có recordHash do Control cấp)
 - Số gói thiếu SHA: 0
 
 ## Bảng đối chiếu các gói trong danh sách yêu cầu
@@ -36,6 +36,7 @@
 | PERSIST-C-FIX1 | Gói sửa lỗi (Fix) | `ab8586d55fc612825888d6a7e26e58ae96d28af6` (lane lane-persist-c-fix1 candidate 2327dcf8e326) | git log, subject `integrate(PERSIST-C-FIX1): ...` |
 | ADAPT-PROD-FIX2 | Gói sửa lỗi (Fix) | `fa250e8305aa422ff260f2ce9bb3622a29239740` (lane lane-adapt-prod-fix2 candidate e1cc7f40b25b) | git log, subject `integrate(ADAPT-PROD-FIX2): ...` |
 | CP-4B-UI-SCREENS-FIX2 | Gói sửa lỗi (Fix) | `74c062a29d649ea0e3d1471dee9c739dc33d38fe` (lane lane-cp-4b-ui-screens-fix2 candidate 1c85775dea49) | git log, subject `integrate(CP-4B-UI-SCREENS-FIX2): ...` |
+| ADAPT-LAUNCH-FIX1 | Gói sửa lỗi (Fix) | `21d99fc89eb076a036b4d62f026b057a61d96135` (lane lane-adapt-launch-fix1 candidate 9bcb10e680dc) | git log, subject `integrate(ADAPT-LAUNCH-FIX1): ...` |
 | A-01 | Lát cắt triển khai (Slice) | `22535f6dcff3dbf2e3187771a9bff1b34c85c838` (lane lane-a-01 candidate b11289d9c406) | git log, subject `integrate(A-01): ...` |
 | A-02 | Lát cắt triển khai (Slice) | `e343a41ee6570c39d0cbeda2bd35a3bf2c15513f` (lane lane-a-02 candidate 0614e8d1934d) | git log, subject `integrate(A-02): ...` |
 | A-03 | Lát cắt triển khai (Slice) | `5e009d1c06ba60052bdd1658f939ffaadc626597` (lane lane-a-03 candidate 6382ebd2cdde) | git log, subject `integrate(A-03): ...` |
@@ -141,16 +142,16 @@
 | E-03 | Lát cắt triển khai (Slice) | `3f89da586c1ffc46c04d3a3f2793f0c0921d24fd` (lane lane-e-03 candidate c426045eb0f9) | git log, subject `integrate(E-03): ...` |
 | E-04 | Lát cắt triển khai (Slice) | `f54199a752a19475f567738a7c70eb108d583316` (lane lane-e-04 candidate 7a2fb4c4fc40) | git log, subject `integrate(E-04): ...` |
 | E-05 | Lát cắt triển khai (Slice) | `3f026bb8ba5c01a566dde9fffcc0480c727dcdf3` (lane lane-e-05 candidate 880bb810bb04) | git log, subject `integrate(E-05): ...` |
-| E-06 | Lát cắt triển khai (Slice) | `d3887fa6a224395ad1e37e00e866a8e7def930e0` (lane lane-e-06 candidate da1e6a7ba167) | git log, subject `integrate(E-06): ...` |
-| E-07 | Lát cắt triển khai (Slice) | `2e7c6b1ca42d83ed16dac720ca98388b1bd06ecc` (lane lane-e-07 candidate a8abf025014b) | git log, subject `integrate(E-07): ...` |
-| E-08 | Lát cắt triển khai (Slice) | `1bfb8b02dc928a2455330afa45edc768226a63e5` (lane lane-e-08 candidate 8dfaedb513d4) | git log, subject `integrate(E-08): ...` |
 
-## Gói ngoài danh sách yêu cầu: E-09..E-20 và F-01..F-07
+## Gói ngoài danh sách yêu cầu: E-06..E-20 và F-01..F-07
 
-19 gói E-09..E-20 và F-01..F-07 nằm ngoài danh sách yêu cầu nghiệm thu (danh sách kết thúc ở E-08); ghi SHA tích hợp chỉ để tham khảo, không tính vào tổng 135.
+22 gói E-06..E-20 và F-01..F-07 nằm ngoài danh sách yêu cầu nghiệm thu (danh sách kết thúc ở E-05); ghi SHA tích hợp chỉ để tham khảo, không tính vào tổng 133.
 
 | Mã gói | Loại | SHA tích hợp hoặc recordHash | Nguồn tra cứu |
 | --- | --- | --- | --- |
+| E-06 | Lát cắt triển khai (Slice) | d3887fa6a224395ad1e37e00e866a8e7def930e0 (lane lane-e-06 candidate da1e6a7ba167) | git log, subject integrate(E-06): ... |
+| E-07 | Lát cắt triển khai (Slice) | 2e7c6b1ca42d83ed16dac720ca98388b1bd06ecc (lane lane-e-07 candidate a8abf025014b) | git log, subject integrate(E-07): ... |
+| E-08 | Lát cắt triển khai (Slice) | 1bfb8b02dc928a2455330afa45edc768226a63e5 (lane lane-e-08 candidate 8dfaedb513d4) | git log, subject integrate(E-08): ... |
 | E-09 | Lát cắt triển khai (Slice) | `c695121600c8d1b73e9153cbd26dab92cf2f6b18` (lane lane-e-09 candidate 8c4ed2542c25) | git log, subject `integrate(E-09): ...` |
 | E-10 | Lát cắt triển khai (Slice) | `af9306a233fc2bed399d696fb87918f5c8e7dfe0` (lane lane-e-10 candidate 237353be4524) | git log, subject `integrate(E-10): ...` |
 | E-11 | Lát cắt triển khai (Slice) | `6945c76b1b309084663e2e0a6b2b668bebad88fc` (lane lane-e-11 candidate 37b5acbde850) | git log, subject `integrate(E-11): ...` |
@@ -173,7 +174,7 @@
 
 ## Gói ngoài danh sách yêu cầu (tiếp): F-08..F-22, G, H, I, J và gói nền tảng
 
-79 gói F-08..F-22, G-01..G-14, H-01..H-16, I-01..I-13, J-01..J-18, CP0-GOVERNANCE, CP1-CONTRACT-BINDING và CP2A-LAYOUT cũng nằm ngoài danh sách yêu cầu; ghi SHA tích hợp để Reviewer và Orchestrator đối chiếu, không tính vào tổng 135.
+79 gói F-08..F-22, G-01..G-14, H-01..H-16, I-01..I-13, J-01..J-18, CP0-GOVERNANCE, CP1-CONTRACT-BINDING và CP2A-LAYOUT cũng nằm ngoài danh sách yêu cầu; ghi SHA tích hợp để Reviewer và Orchestrator đối chiếu, không tính vào tổng 133.
 
 | Mã gói | Loại | SHA tích hợp hoặc recordHash | Nguồn tra cứu |
 | --- | --- | --- | --- |

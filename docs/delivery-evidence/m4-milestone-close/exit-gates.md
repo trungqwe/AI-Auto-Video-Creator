@@ -1,4 +1,4 @@
-# M4-MILESTONE-CLOSE: đối chiếu exit gate Milestone M4 (revision 1)
+# M4-MILESTONE-CLOSE-R2: đối chiếu exit gate Milestone M4 (revision 2)
 
 Đối chiếu sáu exit gate của Milestone M4 theo tài liệu chuẩn `docs/11-roadmap.md` mục 10, phần `### Exit gate` (dòng 409-416).
 
@@ -22,4 +22,4 @@ Căn cứ tài liệu `docs/parallel-delivery/M4-CI-execution-package.md` mục 
 
 ## Ghi chú theo quyết định của user (2026-10-22)
 
-Exit gate của roadmap rộng hơn kế hoạch đã duyệt chỉ được ghi chú trong báo cáo đóng mốc, không phải FAIL và không hỏi user (quyết định của user, ghi trong sổ quyết định của user, 2026-10-22, ai-setup decide). Sáu exit gate M4-EG1..M4-EG6 trong docs/11-roadmap.md mục 10 đã được đối chiếu ở trên: M4-EG1..M4-EG4 PASS bằng test chạy lại trên candidate 5c57b7261a8b10b8ab9bdbe5e30b0019dabe9361 (dựng trên integration head 74c062a29d649ea0e3d1471dee9c739dc33d38fe); M4-EG5 và M4-EG6 ghi PENDING_USER vì cần tài khoản Drive thật (CP7) và checkpoint duyệt của user; không gate nào khác được ghi vào pendingUserCheckpoint.
+Exit gate của roadmap rộng hơn kế hoạch đã duyệt chỉ được ghi chú trong báo cáo đóng mốc, không phải FAIL và không hỏi user (quyết định của user, ghi trong sổ quyết định của user, 2026-10-22, ai-setup decide). Sáu exit gate M4-EG1..M4-EG6 trong docs/11-roadmap.md mục 10 đã được đối chiếu ở trên: M4-EG1..M4-EG4 PASS bằng test chạy lại trên candidate 21d99fc89eb076a036b4d62f026b057a61d96135 (integration head sau gói sửa lỗi ADAPT-LAUNCH-FIX1); M4-EG5 và M4-EG6 ghi PENDING_USER vì cần tài khoản Drive thật (CP7) và checkpoint duyệt của user; không gate nào khác được ghi vào pendingUserCheckpoint.
