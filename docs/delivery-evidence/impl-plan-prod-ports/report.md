@@ -28,8 +28,9 @@ Gói chỉ lập kế hoạch; không sửa `src/**`, `tools/**`, `tests/**`; kh
 
 ## Sửa lần 1 (IMPL-PLAN-PROD-PORTS-FIX1)
 
-- Finding: PLAN_ACTIVATION_CONFLICT — `PP-8` (`tools/launcher/launcher.py`) chồng đường dẫn với `ADAPT-LAUNCH` của kế hoạch impl-adapt-r1.
-- Cách giải: `PP-8` khai `dependsOn` thêm `ADAPT-LAUNCH` và giữ thêm `LOCK-COMPOSITION-ROOT` (cùng khóa của `ADAPT-LAUNCH`) bên cạnh `LOCK-PROD-PORTS` và `LOCK-CONVERGENCE`; `PP-8` chạy sau `ADAPT-LAUNCH` (gói sửa ADAPT-LAUNCH-FIX1 đã tích hợp tại `21d99fc`) và là writer duy nhất của `launcher.py` trong kế hoạch này.
-- Tệp đã sửa: `docs/implementation/prod-ports/slices.md` (dòng mở đầu và mục `PP-8`), `docs/implementation/prod-ports/plan.md` (mục 1 điểm 4, mục 5, mục 8 điểm 2), báo cáo này.
-- Không đổi phạm vi mã nguồn của `PP-8`, không đổi `PP-1` đến `PP-7`, không đổi mục mở OI-PP-01 đến OI-PP-07.
-- Lệnh đã chạy: `git diff --check` và probe bắt buộc của task, cả hai mã thoát 0 (Worker xác nhận lại khi báo cáo).
+- Finding: F1 (MAJOR), PLAN_ACTIVATION_CONFLICT — `PP-8` vẫn sở hữu `tools/launcher/launcher.py` (trùng `ADAPT-LAUNCH` của impl-adapt-r1) và khai khóa ngoài phong bì; `dependsOn` và khóa không được kiểm tra chồng đường dẫn nên xung đột còn nguyên.
+- Cách giải (bỏ quyền sở hữu thay vì xin khóa): `PP-8` không còn sở hữu `tools/launcher/launcher.py`; `ownedPaths` của `PP-8` là `assembly.py`, `test_pp_8_assembly.py`, `docs/delivery-evidence/pp-8/report.md`; `resourceLocks` của `PP-8` chỉ còn `LOCK-PROD-PORTS`; `dependsOn` của `PP-8` là `PP-1` đến `PP-7`; `PP-8` đổi từ `convergence_slice` sang `work_package_slice`.
+- Đấu nối launcher chuyển thành bàn giao: plan.md mục 5.1 mô tả gói đấu nối launcher do Control lập sau `PP-8` (GIẢ ĐỊNH mã `WIRE-LAUNCHER-PROD-PORTS`, giữ `LOCK-COMPOSITION-ROOT`, phụ thuộc `PP-8` và `ADAPT-LAUNCH`); thêm OI-PP-08; CP7-1 chỉ chạy lại sau gói đó.
+- Tệp đã sửa: `docs/implementation/prod-ports/slices.md` (dòng mở đầu và mục `PP-8`), `docs/implementation/prod-ports/plan.md` (mục 1 điểm 3 và 4, mục 5 và mới 5.1, mục 6, mục 7 OI-PP-08, mục 8 điểm 2 và 6), báo cáo này.
+- Không đổi `PP-1` đến `PP-7`, không đổi OI-PP-01 đến OI-PP-07, không đổi phạm vi adapter của `PP-8` (`build_production_ports`, `describe_runtime_ports`).
+- Lệnh đã chạy: `git diff --check`, probe bắt buộc của task và probe kiểm F1 của Orchestrator; Worker ghi mã thoát từng lệnh khi báo cáo.

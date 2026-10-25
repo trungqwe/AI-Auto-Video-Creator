@@ -10,8 +10,8 @@
 
 1. Mục tiêu: `python tools/launcher/launcher.py start` mở được ứng dụng ở `127.0.0.1:8443` bằng hồ sơ `production` trên tài nguyên thật của máy này: PostgreSQL `aiavc-postgres` (`127.0.0.1:57028`), Temporal (`7233`), 9Router `http://127.0.0.1:20128/v1` tuyến Gemini, một tài khoản Google Drive (phạm vi `drive.file`), GPU RTX 4070 SUPER 12 GB, FFmpeg đã ghim.
 2. Điều đang chặn: sáu cổng của `ProductionRuntime` (`route_catalog`, `provider_credentials`, `vision_route`, `artifact_source`, `drive_token_broker`, `gpu_lease`) cùng `drive_placement` và `drive_fallback_parent_id` chưa có adapter thật. CP7-1 (cổng 57028, 7233, 8443) và mọi gói CP7 sau nó đứng vì lý do này.
-3. Phạm vi sửa: adapter thật ở `src/controlplane/infrastructure/production_ports/**` (thư mục mới), test ở `tests/integration/prod_ports/**`, bằng chứng ở `docs/delivery-evidence/pp-*/**`; slice cuối thêm `tools/launcher/launcher.py` (thân `_load_runtime_ports`, `build_runtime`, `cmd_status`) và cấu hình mới ở `tools/launcher/prod/**`.
-4. Ngoài phạm vi (không đổi): hợp đồng `ProductionRuntime`, mọi Protocol (`DriveTokenBrokerPort`, `ArtifactSourcePort`, `GpuLeasePort`, `RouteCatalogPort`, `VisionRoutePort`, `CredentialSourcePort`), `tools/launcher/docker-compose.yml` (thuộc `ADAPT-LAUNCH`; gói sửa ADAPT-LAUNCH-FIX1 đã tích hợp tại `21d99fc`), `profile.json`, migration, state machine, main và backup.
+3. Phạm vi sửa: adapter thật ở `src/controlplane/infrastructure/production_ports/**` (thư mục mới), test ở `tests/integration/prod_ports/**`, bằng chứng ở `docs/delivery-evidence/pp-*/**`; `PP-2` thêm cấu hình mới ở `tools/launcher/prod/**`; `PP-8` chỉ thêm `assembly.py`. Kế hoạch này không sửa `tools/launcher/launcher.py` (thuộc `ADAPT-LAUNCH`); đấu nối launcher bàn giao cho gói riêng (mục 5.1).
+4. Ngoài phạm vi (không đổi): hợp đồng `ProductionRuntime`, mọi Protocol (`DriveTokenBrokerPort`, `ArtifactSourcePort`, `GpuLeasePort`, `RouteCatalogPort`, `VisionRoutePort`, `CredentialSourcePort`), `tools/launcher/launcher.py` và `tools/launcher/docker-compose.yml` (thuộc `ADAPT-LAUNCH`; gói sửa ADAPT-LAUNCH-FIX1 đã tích hợp tại `21d99fc`), `profile.json`, migration, state machine, main và backup.
 5. Không thêm thư viện (D10): chỉ dùng stdlib cùng `google-auth`, `google-api-python-client`, `httplib2` đã khóa trong `pyproject.toml`.
 6. Adapter production không có nhánh giả: không `fake`, `mock`, `memory`, không đọc bí mật từ biến môi trường hay tệp văn bản; bí mật chỉ qua kho DPAPI (`DpapiSecretStore`). Phần thay thế duy nhất cho test là tham số tiêm (ví dụ `http_factory`, `clock`) nằm sẵn trong chữ ký, giống `DriveObjectStore.__init__` (`drive_object_store.py:151-167`); máy chủ giả cục bộ chỉ nằm trong `tests/`.
 
@@ -129,16 +129,23 @@ Tên alias và tên tài khoản không phải bí mật; đặt trong `tools/la
 | `PP-5` | `drive_placement`, `drive_fallback_parent_id` | `drive_placement.py` | `PP-3` |
 | `PP-6` | `route_catalog` | `route_catalog.py` | `PP-2` |
 | `PP-7` | `vision_route` | `vision_route.py` | `PP-2` |
-| `PP-8` | đấu nối launcher | `assembly.py`, sửa `tools/launcher/launcher.py` | `PP-1` đến `PP-7`, `ADAPT-LAUNCH` |
+| `PP-8` | lắp ráp tám giá trị cổng và mô tả trạng thái cổng | `assembly.py` | `PP-1` đến `PP-7` |
 
-Thứ tự chạy tuần tự `PP-1` → `PP-8` trong một lane (khóa `LOCK-PROD-PORTS`, GIẢ ĐỊNH Control đăng ký). Mỗi slice có test ở `tests/integration/prod_ports/test_pp_<số>_*.py` và bằng chứng ở `docs/delivery-evidence/pp-<số>/report.md`. `PP-8` là slice duy nhất của kế hoạch này sửa `tools/launcher/launcher.py` nên giữ một owner (quy tắc single-writer cho tài nguyên chung). Tệp này cũng nằm trong `ownedPaths` của `ADAPT-LAUNCH` (kế hoạch impl-adapt-r1, khóa `LOCK-COMPOSITION-ROOT`); để hai kế hoạch không chồng đường dẫn, `PP-8` khai `dependsOn` `ADAPT-LAUNCH` (chạy sau khi `ADAPT-LAUNCH` và gói sửa ADAPT-LAUNCH-FIX1 đã tích hợp, hiện ở `21d99fc`) và giữ thêm `LOCK-COMPOSITION-ROOT` cùng `LOCK-CONVERGENCE`, nên mỗi lúc chỉ một writer sửa `launcher.py`. `PP-8` chỉ thay thân ba hàm `_load_runtime_ports`, `build_runtime`, `cmd_status`.
+Thứ tự chạy tuần tự `PP-1` → `PP-8` trong một lane (khóa `LOCK-PROD-PORTS`, GIẢ ĐỊNH Control đăng ký). Mỗi slice có test ở `tests/integration/prod_ports/test_pp_<số>_*.py` và bằng chứng ở `docs/delivery-evidence/pp-<số>/report.md`. `tools/launcher/launcher.py` nằm trong `ownedPaths` của `ADAPT-LAUNCH` (kế hoạch impl-adapt-r1, khóa `LOCK-COMPOSITION-ROOT`), nên không slice PP nào sở hữu hay sửa tệp này và mọi slice PP chỉ khai khóa `LOCK-PROD-PORTS`; hai kế hoạch không chồng đường dẫn. `PP-8` chỉ thêm `assembly.py` (hàm `build_production_ports` và `describe_runtime_ports`) cùng test; việc thay thân `_load_runtime_ports`, `build_runtime`, `cmd_status` trong `launcher.py` là của gói đấu nối launcher ở mục 5.1.
+
+### 5.1. Bàn giao đấu nối launcher (gói riêng, ngoài kế hoạch này)
+
+- Chủ sở hữu `tools/launcher/launcher.py` là `ADAPT-LAUNCH` (gói sửa ADAPT-LAUNCH-FIX1 đã tích hợp tại `21d99fc`). Không slice `PP-1` đến `PP-8` sửa tệp này.
+- Control lập một gói đấu nối launcher (mã do Control đặt, GIẢ ĐỊNH `WIRE-LAUNCHER-PROD-PORTS`) sau khi `PP-8` được nghiệm thu và `ADAPT-LAUNCH` đã nằm trong HEAD cơ sở. Gói này giữ `LOCK-COMPOSITION-ROOT`, `dependsOn` `PP-8` và `ADAPT-LAUNCH`, và là writer duy nhất của `tools/launcher/launcher.py`.
+- Nội dung đấu nối (chỉ thay thân ba hàm): `_load_runtime_ports(profile, layout, environ, *, http_factory=None)` import `production_ports` trong thân hàm sau `ensure_src_on_path()` (`launcher.py:378-381`), tải `tools/launcher/prod/ports.json`, gọi `build_production_ports`, đổi mọi lỗi cổng (`DrivePlacementError`, `DriveTokenError`, `ProviderCredentialError`, `ValueError`) thành `LauncherError` bắt đầu `BLOCKED:` bằng tiếng Việt, không chứa bí mật; `build_runtime` gọi `_load_runtime_ports(profile, layout, environ)`; `cmd_status` thêm sau ba dòng cổng (`launcher.py:747-749`) các dòng `Cổng runtime <tên>: sẵn sàng` hoặc `Cổng runtime <tên>: thiếu (<lý do an toàn>)` lấy từ `describe_runtime_ports`, lỗi khi mô tả thì in `không xác định`. Không đổi `COMMANDS`, `docker-compose.yml` hay hàm khác; `test_adapt_launch_cli.py` (kể cả `test_commands_are_the_seven` và kiểm import đầu tệp) vẫn xanh nguyên vẹn.
+- Chưa có gói này thì `start` vẫn chặn ở `_load_runtime_ports` (OI-PP-08) và CP7-1 chưa chạy lại được.
 
 ## 6. Kiểm thật cuối (CP7-1 khi chạy lại)
 
-Không slice PP nào gọi dịch vụ thật (D4, D5). Sau `PP-8`, Control chạy lại CP7-1 với điều kiện:
+Không slice PP nào gọi dịch vụ thật (D4, D5). Sau `PP-8` và gói đấu nối launcher (mục 5.1), Control chạy lại CP7-1 với điều kiện:
 
 1. `python tools/launcher/launcher.py start`: docker compose dựng `aiavc-postgres` cổng 57028 và Temporal cổng 7233, migration chạy, `_serve` dựng đủ sáu cổng (lần đầu tạo thư mục Drive và ghi `state/drive-placement.json`), cổng `127.0.0.1:8443` mở (`wait_tcp`, `launcher.py:666`) và in `Đã khởi động`.
-2. `python tools/launcher/launcher.py status` in `Cổng 57028 (PostgreSQL): Mở`, `Cổng 7233 (Temporal): Mở`, `Cổng 8443 (Application): Mở` (`launcher.py:747-749`) và sáu dòng `Cổng runtime <tên>: sẵn sàng` cho `route_catalog`, `provider_credentials`, `vision_route`, `artifact_source`, `drive_token_broker`, `gpu_lease` cùng một dòng cho `drive_placement` (PP-8 thêm các dòng này).
+2. `python tools/launcher/launcher.py status` in `Cổng 57028 (PostgreSQL): Mở`, `Cổng 7233 (Temporal): Mở`, `Cổng 8443 (Application): Mở` (`launcher.py:747-749`) và sáu dòng `Cổng runtime <tên>: sẵn sàng` cho `route_catalog`, `provider_credentials`, `vision_route`, `artifact_source`, `drive_token_broker`, `gpu_lease` cùng một dòng cho `drive_placement` (gói đấu nối launcher ở mục 5.1 thêm các dòng này).
 3. Điều kiện của user: alias `drive-primary-oauth` đã có trong kho (D5, đã làm); alias `router-primary-api-key` do user nhập một lần bằng `python tools/launcher/prod/set_router_key.py` nếu 9Router đòi khóa. Thiếu khóa thì `route_catalog` loại tuyến với `ACCOUNT_NOT_ELIGIBLE`: ứng dụng vẫn mở 8443 nhưng lời gọi AI chờ.
 4. Quét bí mật của CP7-1 trên `serve.log` và `report.md`: 0 lần khớp.
 
@@ -155,15 +162,16 @@ Nếu `start` vẫn chặn thì báo BLOCKED kèm dòng `serve.log` đã che bí
 | OI-PP-05 | Yêu cầu «đúng một GPU» và profile `gpu.slots: 2` (`profile.json:457-465`) | Một khóa `LOCK-DESKTOP-GPU`, số slot đọc từ profile; muốn tuần tự tuyệt đối thì Control đổi profile sang `slots: 1` bằng revision mới | Control |
 | OI-PP-06 | Dựng `drive_placement` cần Drive ở mỗi lần `start` (xác minh ID đã lưu bằng `files.get`) | Fail-closed: mất mạng hoặc thiếu token thì `start` không mở 8443 và báo thông điệp tiếng Việt an toàn | Control chấp nhận; dựng lazy cần đổi hợp đồng `ProductionRuntime` nên bị cấm |
 | OI-PP-07 | `src/controlplane/pyproject.toml` chưa khai gói `controlplane.infrastructure.production_ports` | Test và launcher chạy từ cây nguồn (`pythonpath = ['src']`, `ensure_src_on_path`) nên không chặn PP-1 đến PP-7; Control khai (bảng `package-dir` và `packages`) trước khi đóng gói và trước PP-8 | Control (dependency slice) |
+| OI-PP-08 | `tools/launcher/launcher.py` thuộc `ADAPT-LAUNCH` nên không slice PP nào sửa được; chưa đấu nối thì `start` vẫn chặn ở `_load_runtime_ports` | Control lập gói đấu nối launcher (mục 5.1) sau `PP-8`; CP7-1 chỉ chạy lại sau gói đó | Control |
 
 ## 8. Đối chiếu counterexample của gói
 
 1. Bỏ sót một cổng hay `drive_placement`: mục 3.1 liệt kê đủ sáu cổng cùng `drive_placement` và `drive_fallback_parent_id`; mục 5 gán từng cổng cho đúng một slice.
-2. Slice sở hữu đường dẫn ngoài phong bì: mọi `ownedPaths` nằm trong `src/controlplane/infrastructure/production_ports/**`, `tests/integration/prod_ports/**`, `docs/delivery-evidence/pp-*/**`, `tools/launcher/prod/**`; riêng `PP-8` thêm `tools/launcher/launcher.py` (chồng đường dẫn với `ADAPT-LAUNCH` được giải bằng `dependsOn` `ADAPT-LAUNCH` và khóa `LOCK-COMPOSITION-ROOT`, xem mục 5). Không có `src/**` ngoài thư mục mới, không migration, không `docker-compose.yml`.
+2. Slice sở hữu đường dẫn ngoài phong bì: mọi `ownedPaths` nằm trong `src/controlplane/infrastructure/production_ports/**`, `tests/integration/prod_ports/**`, `docs/delivery-evidence/pp-*/**`, `tools/launcher/prod/**`; không slice nào sở hữu `tools/launcher/launcher.py` (tệp của `ADAPT-LAUNCH`, không chồng đường dẫn; việc đấu nối bàn giao ở mục 5.1) và mọi slice chỉ khai khóa `LOCK-PROD-PORTS`. Không có `src/**` ngoài thư mục mới, không migration, không `docker-compose.yml`.
 3. Adapter có nhánh giả hay đọc biến môi trường thay cho kho DPAPI: khóa và token chỉ qua `DpapiSecretStore`; mỗi slice có probe cấm `mock`, `fake`, `os.environ` trong tệp adapter.
 4. Slice không có test thật: mỗi slice có tệp `test_pp_<số>_*.py` với oracle riêng; Google và 9Router thay bằng máy chủ loopback trong `tests/`.
 5. Cần thư viện mới: không; chỉ stdlib và các gói đã khóa (`google-auth`, `google-api-python-client`, `httplib2`, `pytest`).
-6. Đổi hợp đồng `ProductionRuntime` hay Protocol: không; adapter cài đúng chữ ký, và `PP-8` dựng `ProductionRuntime` nguyên trạng bằng tám giá trị cổng.
+6. Đổi hợp đồng `ProductionRuntime` hay Protocol: không; adapter cài đúng chữ ký, và `PP-8` cung cấp tám giá trị cổng để dựng `ProductionRuntime` nguyên trạng.
 
 ## 9. Giới hạn
 
