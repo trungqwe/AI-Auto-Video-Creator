@@ -69,3 +69,11 @@ Triển khai đúng 3 tệp thuộc owned paths:
 (b) Bài không có dòng revision sẽ không hiển thị vì sử dụng nối trong (INNER JOIN), phù hợp với kế hoạch mục 5.1;
 (c) Bộ lọc ngoài `source_id` ném `ValueError` thay vì bỏ qua im lặng;
 (d) Tuyệt đối không ghi DSN, mật khẩu hay bất kỳ thông tin bí mật nào trong báo cáo, test hoặc mã nguồn.
+
+## Rebase lên integration head 24833dbb
+
+- Cấp lại sau thu hồi grant G1 (BINDING_DRIFT): rebase nhánh lane lên `24833dbb52f5872416f369a2ee4517e536017e70` bằng `git rebase 24833dbb52f5872416f369a2ee4517e536017e70`, giữ nguyên các commit của lane.
+- Ràng buộc đã đổi nằm ở `src/controlplane/api/wiring/production.py` (ngoài owned paths của RS-2). Kết quả probe đọc tệp ở bước 2: []. Kết luận: không có dòng nào nhắc tới ArticleModuleService/read_screens nên mã RS-2 không cần đổi.
+- `python -m pytest tests/integration/read_screens/test_rs_2_articles.py -q -p no:cacheprovider`: mã thoát 0, dòng tổng kết nguyên văn `30 passed in 1.48s`.
+- Quét `articles.py` tìm chuỗi cấm: mã thoát 0.
+- `git diff --check`: mã thoát 0.
