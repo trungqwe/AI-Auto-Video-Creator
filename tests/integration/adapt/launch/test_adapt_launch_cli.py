@@ -584,6 +584,47 @@ def test_serve_blocked_ports_message(launcher, tmp_path):
     assert not any(ev[0] == "start_worker" for ev in fx.events)
     assert not any(ev[0] == "browser" for ev in fx.events)
 
+
+def test_load_runtime_ports_wires_build_production_ports(launcher, tmp_path, monkeypatch):
+    launcher.ensure_src_on_path()
+    import controlplane.infrastructure.production_ports.assembly as assembly
+    from controlplane.infrastructure.production_ports.ports_config import load_ports_config
+    layout = launcher.resolve_layout({"AIAVC_DATA_DIR": str(tmp_path / "data")})
+    profile = SimpleNamespace(name="profile-canary")
+    sentinel = {"route_catalog": object()}
+    calls = []
+    def fake_build(*args, **kwargs):
+        calls.append((args, kwargs))
+        return sentinel
+    monkeypatch.setattr(assembly, "build_production_ports", fake_build)
+    result = launcher._load_runtime_ports(layout, profile)
+    assert result is sentinel
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args == (profile,)
+    assert args[0] is profile
+    assert kwargs["vault_dir"] == layout.vault_dir
+    assert kwargs["staging_dir"] == layout.staging_dir
+    assert kwargs["state_dir"] == layout.state_dir
+    assert kwargs["oauth_client_secrets_path"] == layout.secrets_dir / "oauth-client.json"
+    assert kwargs["ports_config"] == load_ports_config(ROOT / "tools" / "launcher" / "prod" / "ports.json")
+    assert set(kwargs) == {"vault_dir", "staging_dir", "state_dir", "oauth_client_secrets_path", "ports_config"}
+
+
+def test_load_runtime_ports_wraps_exception_as_blocked(launcher, tmp_path, monkeypatch):
+    launcher.ensure_src_on_path()
+    import controlplane.infrastructure.production_ports.assembly as assembly
+    layout = launcher.resolve_layout({"AIAVC_DATA_DIR": str(tmp_path / "data")})
+    def boom(*args, **kwargs):
+        raise RuntimeError("x")
+    monkeypatch.setattr(assembly, "build_production_ports", boom)
+    with pytest.raises(launcher.LauncherError) as exc:
+        launcher._load_runtime_ports(layout, SimpleNamespace(name="profile-canary"))
+    message = str(exc.value)
+    assert message.startswith("BLOCKED:")
+    assert "RuntimeError" in message
+
+
 def test_make_self_signed_cert_has_loopback_san(launcher, tmp_path):
     cert_p = tmp_path / "cert.pem"
     key_p = tmp_path / "key.pem"

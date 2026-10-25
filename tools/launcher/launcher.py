@@ -413,18 +413,27 @@ def run_consent(client_secrets_path: Path, vault_dir: Path, timeout_seconds: int
     return adapt_j_run_consent(cfg, DpapiSecretStore(vault_dir), present_url)
 
 
-def _load_runtime_ports(layout: Layout) -> dict[str, typing.Any]:
-    raise LauncherError(
-        'BLOCKED: thiếu adapter thật cho sáu cổng ProductionRuntime '
-        '(route_catalog, provider_credentials, vision_route, artifact_source, drive_token_broker, gpu_lease) '
-        'và Drive placement; việc của gói J, G, I hoặc CP7'
-    )
+def _load_runtime_ports(layout: Layout, profile: typing.Any) -> dict[str, typing.Any]:
+    try:
+        ensure_src_on_path()
+        from controlplane.infrastructure.production_ports.assembly import build_production_ports
+        from controlplane.infrastructure.production_ports.ports_config import load_ports_config
+        return build_production_ports(
+            profile,
+            vault_dir=layout.vault_dir,
+            staging_dir=layout.staging_dir,
+            state_dir=layout.state_dir,
+            oauth_client_secrets_path=layout.secrets_dir / 'oauth-client.json',
+            ports_config=load_ports_config(ROOT / 'tools' / 'launcher' / 'prod' / 'ports.json'),
+        )
+    except Exception as exc:
+        raise LauncherError(f'BLOCKED: cổng production chưa sẵn: {type(exc).__name__}: {exc}') from None
 
 
 def build_runtime(profile: typing.Any, layout: Layout, environ: typing.Mapping[str, str]) -> typing.Any:
     from decimal import Decimal
     from controlplane.api.wiring.production import ProductionRuntime
-    ports = _load_runtime_ports(layout)
+    ports = _load_runtime_ports(layout, profile)
     return ProductionRuntime(
         ffmpeg_path=Path(environ.get('AIAVC_FFMPEG_PATH', r'C:\ffmpeg\bin\ffmpeg.exe')),
         ffprobe_path=Path(environ.get('AIAVC_FFPROBE_PATH', r'C:\ffmpeg\bin\ffprobe.exe')),
