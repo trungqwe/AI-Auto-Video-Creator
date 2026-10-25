@@ -1,11 +1,13 @@
 # Slice nối dây chuyền production — IMPL-PLAN-PROD-WIRING
 
-Nguồn: `docs/implementation/prod-wiring/plan.md` và `docs/implementation/prod-wiring/inventory.md`. Ba mươi hai slice `PW-*`, tất cả là `work_package_slice`; `PW-E2E` phụ thuộc mọi slice còn lại. CP7-10 và CP7-11 chạy sau `PW-E2E` PASS (chiều phụ thuộc đó thuộc kế hoạch CP7, không ghi trong dependsOn của slice PW).
+Nguồn: `docs/implementation/prod-wiring/plan.md` và `docs/implementation/prod-wiring/inventory.md`. Ba mươi hai slice `PW-*`: năm slice chạm composition root hoặc migration (`PW-SCHEMA`, `PW-G1`, `PW-G3`, `PW-W1`, `PW-W2`) là `convergence_slice`, hai mươi bảy slice còn lại là `work_package_slice`; `PW-E2E` phụ thuộc mọi slice còn lại. CP7-10 và CP7-11 chạy sau `PW-E2E` PASS (chiều phụ thuộc đó thuộc kế hoạch CP7, không ghi trong dependsOn của slice PW).
 
 ## Quy tắc chung cho mọi slice
 
 - Chỉ sửa tệp trong `ownedPaths`; không sửa `docs/milestones/**/evidence/**`, `ui/dist`, `tests/m1`, `tests/m2`, `docs/09-contracts/**`, lockfile. Không thêm thư viện (D10). Không import tiền tố `src.`.
 - Khoá lấy từ `docs/parallel-delivery/ownership-and-locks.yaml`; hai slice cùng khoá chạy tuần tự. GIẢ ĐỊNH (D8): `tools/launcher/launcher.py` thuộc `LOCK-COMPOSITION-ROOT`.
+- Loại slice (ghi chú Control về tài nguyên dùng chung: migration và composition root chỉ gói hội tụ hoặc gói phụ thuộc được sửa, mỗi lúc một owner): slice có `ownedPaths` chứa `src/controlplane/api/wiring/**`, `tools/launcher/launcher.py` hoặc `src/**/migrations/**` là `convergence_slice`, khoá `LOCK-COMPOSITION-ROOT` hoặc `LOCK-MIGRATION-SEQUENCE`; các slice khác là `work_package_slice`. Hiện có năm `convergence_slice`: `PW-SCHEMA`, `PW-G1`, `PW-G3`, `PW-W1`, `PW-W2`.
+- Tránh xung đột với `ADAPT-PROD-FIX3` trên `src/controlplane/api/wiring/production.py` (`docs/implementation/read-screens/plan.md` mục 7.2; `convergence_slice`, `LOCK-COMPOSITION-ROOT`; sửa import `compose_read_screens`, dòng gán `api_app.state.module_services` trong `build_production_app` và docstring đầu tệp; test `tests/integration/adapt/prod/test_adapt_prod_app.py`): (1) hai gói cùng `LOCK-COMPOSITION-ROOT` nên chạy tuần tự, không bao giờ song song; Control giao gói sau trên HEAD đã gồm gói trước, Worker đọc lại tệp ở HEAD và neo theo tên symbol, không theo số dòng ghi trong tài liệu; (2) không thêm `dependsOn` cứng giữa `PW-W2` và `ADAPT-PROD-FIX3` để lô PW không chờ kế hoạch read-screens; (3) vùng sửa của `PW-W2` trong `production.py` chỉ gồm `_build_services` cùng import đi kèm (và `TemporalWorkerGroup` nếu cần); cấm sửa khối gán `api_app.state.module_services[...]` trong `build_production_app`, docstring đầu tệp, `SourceModuleService`, `HookModuleService` và mọi phần khác; `PW-W2` không sửa `tests/integration/adapt/prod/test_adapt_prod_app.py`; (4) lệnh kiểm của `PW-W2` chạy `test_adapt_prod_app.py` để bản sửa không làm đỏ test đã nghiệm thu.
 - Mọi slice có test thật trên PostgreSQL thử (`M2_TEST_PG_DSN`; thiếu thì `pytest.fail('BLOCKED_EXTERNAL: ...')`, không skip). Slice chạm workflow dùng server test của temporalio. 9Router, Drive, GPU, Kokoro, faster-whisper chỉ được thay bằng adapter giả nằm trong `tests/integration/prod_wiring/`; không giả PostgreSQL, Temporal, FFmpeg đã ghim (sha256 `f845a09b5467cf11651385e0be0dd4df6f70519264f8af2115e3acd6ab7f9480`).
 - Test-first: thấy RED do assertion đúng oracle (thiếu import, binary hay setup không phải RED hợp lệ) rồi mới implement. `tests/integration/prod_wiring/` không có `__init__.py`; tên tệp test duy nhất `test_pw_<mã>_<tên>.py`; mã test `PW-<mã>-NN` trong coveredIds ứng với hàm `test_pw_<mã>_NN_<tên>`.
 - Mỗi `counterexample` phải bị ít nhất một test bắt: cài counterexample vào mà test vẫn xanh thì slice chưa đóng.
@@ -34,7 +36,7 @@ Nguồn: `docs/implementation/prod-wiring/plan.md` và `docs/implementation/prod
 
 ### PW-SCHEMA: Migration 0019 cho nối dây
 
-- kind: work_package_slice
+- kind: convergence_slice
 - ownedPaths:
   - `src/controlplane/infrastructure/db/migrations/0019_prod_wiring.sql`
   - `src/controlplane/infrastructure/db/migrations/0019_prod_wiring.rollback.sql`
@@ -56,7 +58,7 @@ Nguồn: `docs/implementation/prod-wiring/plan.md` và `docs/implementation/prod
 
 ### PW-G1: AppSession và recovery epoch thập phân
 
-- kind: work_package_slice
+- kind: convergence_slice
 - ownedPaths:
   - `src/controlplane/infrastructure/db/orchestration/app_session.py`
   - `tools/launcher/launcher.py`
@@ -98,7 +100,7 @@ Nguồn: `docs/implementation/prod-wiring/plan.md` và `docs/implementation/prod
 
 ### PW-G3: grant_issuer thật, thu hồi sau kết quả, adapter hiệu lực
 
-- kind: work_package_slice
+- kind: convergence_slice
 - ownedPaths:
   - `src/controlplane/application/orchestration/grant_runtime.py`
   - `src/controlplane/api/wiring/workflow.py`
@@ -643,7 +645,7 @@ Nguồn: `docs/implementation/prod-wiring/plan.md` và `docs/implementation/prod
 
 ### PW-W1: Nối G, A, B, C, I vào launcher
 
-- kind: work_package_slice
+- kind: convergence_slice
 - ownedPaths:
   - `tools/launcher/launcher.py`
   - `src/controlplane/api/wiring/workflow.py`
@@ -668,7 +670,7 @@ Nguồn: `docs/implementation/prod-wiring/plan.md` và `docs/implementation/prod
 
 ### PW-W2: Nối D, E, F và kiểm không còn activity unbound
 
-- kind: work_package_slice
+- kind: convergence_slice
 - ownedPaths:
   - `tools/launcher/launcher.py`
   - `src/controlplane/api/wiring/creative.py`
@@ -679,15 +681,16 @@ Nguồn: `docs/implementation/prod-wiring/plan.md` và `docs/implementation/prod
   - `docs/delivery-evidence/pw-w2/report.md`
 - dependsOn: `PW-W1`, `PW-D3`, `PW-E4`, `PW-F4`
 - resourceLocks: `LOCK-COMPOSITION-ROOT`, `LOCK-POSTGRES-TEST-DB`
-- bindingRefs: `src/controlplane/api/wiring/creative.py:142-172`; `src/controlplane/api/wiring/voice.py:88-108`; `src/controlplane/api/wiring/render.py:37-42`; `src/controlplane/api/wiring/workflow.py:64-100`; `src/controlplane/application/orchestration/workflows/activities.py:123-130`
+- bindingRefs: `src/controlplane/api/wiring/creative.py:142-172`; `src/controlplane/api/wiring/voice.py:88-108`; `src/controlplane/api/wiring/render.py:37-42`; `src/controlplane/api/wiring/workflow.py:64-100`; `src/controlplane/application/orchestration/workflows/activities.py:123-130`; `src/controlplane/api/wiring/production.py` (`_build_services` dòng 88-96; chỉ đọc khối gán `module_services` trong `build_production_app` dòng 394-395); `tests/integration/adapt/prod/test_adapt_prod_app.py` (chỉ chạy, không sửa); `docs/implementation/read-screens/plan.md` mục 7.2 (ADAPT-PROD-FIX3)
 - acceptance:
-  - requirement: (1) Ráp deps production cho D (`PW-D1`..`PW-D3`), E (`PW-E1`..`PW-E4`, root WAV và aligner khớp tên của `PW-E2`), F (`PW-F1`..`PW-F4`, một `LocalGpuLease`) và đăng ký qua `creative_handler`, `voice_handler`, `render_handler` với `ExecutionGrantCurrency` của `PW-G3`. (2) Quét tĩnh: mọi activity trong `STAGE_ACTIVITIES_BY_WORKFLOW` của sáu workflow có handler khác `unbound_handler` trong composition dựng từ hồ sơ `production`. (3) Quét AST `src/controlplane/api/wiring` và `tools/launcher`: 0 lớp hay adapter tên `Fake*`, `InMemory*`, `Memory*` trong đường production.
-    instrument: `test_pw_w2_launcher_def.py` dựng composition production với dịch vụ ngoài là adapter giả của test, kiểm danh sách activity không `unbound` và quét AST; một handler cố ý gỡ thì test đỏ.
-    counterexample: activity còn `ACTIVITY_SERVICE_UNBOUND`; `InMemory` trong composition production; hai lần `acquire` GPU; aligner mở sai root.
+  - requirement: (1) Ráp deps production cho D (`PW-D1`..`PW-D3`), E (`PW-E1`..`PW-E4`, root WAV và aligner khớp tên của `PW-E2`), F (`PW-F1`..`PW-F4`, một `LocalGpuLease`) và đăng ký qua `creative_handler`, `voice_handler`, `render_handler` với `ExecutionGrantCurrency` của `PW-G3`. (2) Quét tĩnh: mọi activity trong `STAGE_ACTIVITIES_BY_WORKFLOW` của sáu workflow có handler khác `unbound_handler` trong composition dựng từ hồ sơ `production`. (3) Quét AST `src/controlplane/api/wiring` và `tools/launcher`: 0 lớp hay adapter tên `Fake*`, `InMemory*`, `Memory*` trong đường production. (4) Ràng buộc với `ADAPT-PROD-FIX3` (cùng `LOCK-COMPOSITION-ROOT`, chạy tuần tự, không `dependsOn` cứng): trong `production.py` chỉ sửa `_build_services` (và `TemporalWorkerGroup` nếu cần) cùng import tương ứng, neo theo tên symbol sau khi đọc lại tệp ở HEAD; giữ nguyên khối gán `api_app.state.module_services[...]` trong `build_production_app`, docstring đầu tệp, `SourceModuleService`, `HookModuleService` và mọi phần khác; không sửa `tests/integration/adapt/prod/test_adapt_prod_app.py`.
+    instrument: `test_pw_w2_launcher_def.py` dựng composition production với dịch vụ ngoài là adapter giả của test, kiểm danh sách activity không `unbound` và quét AST; một handler cố ý gỡ thì test đỏ. Quét AST `production.py` cho thấy hai dòng gán `module_services['sources']` và `module_services['hooks']` trong `build_production_app` còn nguyên; `test_adapt_prod_app.py` vẫn xanh.
+    counterexample: activity còn `ACTIVITY_SERVICE_UNBOUND`; `InMemory` trong composition production; hai lần `acquire` GPU; aligner mở sai root; `PW-W2` sửa khối `module_services`, docstring đầu tệp hay `test_adapt_prod_app.py` của `ADAPT-PROD-FIX3`; hai gói cùng sửa `production.py` song song.
 - testCommands:
   - `git diff --check`
-  - `python -m pytest tests/integration/prod_wiring/test_pw_w2_launcher_def.py -q -p no:cacheprovider`
+  - `python -m pytest tests/integration/prod_wiring/test_pw_w2_launcher_def.py tests/integration/adapt/prod/test_adapt_prod_app.py -q -p no:cacheprovider`
   - `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/creative.py').read_text(encoding='utf-8'); assert 'InMemory' not in t and 'from src.' not in t, 'PW-W2'"`
+  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/production.py').read_text(encoding='utf-8'); assert 'compose_sources_module(services, config)' in t and 'compose_hooks_module(manager)' in t, 'PW-W2 module_services'"`
 - coveredIds: PW-W2-01..04, CT-WF-004, CT-WF-006
 
 ### PW-E2E: Một lô qua POST /v1/batches thành video tới completion
