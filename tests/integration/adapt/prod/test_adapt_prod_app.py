@@ -438,6 +438,22 @@ def test_loopback_config_binds_127_0_0_1_only(app, tmp_path):
             production.loopback_config(app, port=bad, certfile=cert, keyfile=key)
 
 
+def test_every_uvicorn_config_bounds_graceful_shutdown():
+    """Ổn định hoá 25/10/2026 (S4, cả lớp): mọi máy chủ uvicorn trong src có hạn tắt êm, để không tiến trình nào treo vì kết nối mở."""
+    calls = []
+    for path in sorted((ROOT / 'src').rglob('*.py')):
+        tree = ast.parse(path.read_text(encoding='utf-8'))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'Config' \
+                    and isinstance(node.func.value, ast.Name) and node.func.value.id == 'uvicorn':
+                calls.append((path.relative_to(ROOT).as_posix(), node.lineno, {k.arg for k in node.keywords}))
+    assert calls, 'no uvicorn.Config call found'
+    missing = [(f, line) for f, line, keys in calls if 'timeout_graceful_shutdown' not in keys]
+    assert not missing, missing
+    tls = importlib.import_module('controlplane.api.tls')
+    assert wiring('production').GRACEFUL_SHUTDOWN_SECONDS == tls.GRACEFUL_SHUTDOWN_SECONDS > 0
+
+
 def _self_signed(tmp_path):
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization

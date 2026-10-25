@@ -27,6 +27,7 @@ from catalog.domain.hooks import HookHead, HookRevision
 from catalog.persistence.hooks import PostgresHookHistory
 from controlplane.api.main import create_app
 from controlplane.api.routes.modules.metadata_update import RevisionConflictError as MetadataRevisionConflictError
+from controlplane.api.tls import GRACEFUL_SHUTDOWN_SECONDS
 from controlplane.api.wiring.collection import build_collection_services, system_dns_resolver
 from controlplane.api.wiring.config_security import build_config_security_services
 from controlplane.api.wiring.creative import build_creative_services
@@ -48,8 +49,6 @@ from source_ingestion.application.source_commands import IdempotencyConflictErro
 from source_ingestion.domain.source import Source, SourcePolicy, SourceStatus
 
 LOOPBACK_HOST = '127.0.0.1'
-# Sau yêu cầu dừng, kết nối còn mở quá chừng này giây thì bị huỷ (loopback_config).
-GRACEFUL_SHUTDOWN_SECONDS = 10
 LAUNCH_PATH = '/launch'
 SESSION_COOKIE = 'cp_session'
 CSRF_COOKIE = 'csrf_token'

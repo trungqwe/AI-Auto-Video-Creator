@@ -15,6 +15,10 @@ from controlplane.infrastructure.security.loopback_certificate import (
     LoopbackCertificate, provision_loopback_certificate,
 )
 
+# Tắt êm có hạn cho mọi máy chủ loopback: sau yêu cầu dừng, kết nối còn mở quá chừng này giây thì bị huỷ, để một
+# kết nối không tự đóng (luồng SSE của tab giao diện) không giữ tiến trình mãi (ổn định hoá 25/10/2026, S4).
+GRACEFUL_SHUTDOWN_SECONDS = 10
+
 
 @dataclass(frozen=True)
 class LoopbackTlsEndpoint:
@@ -31,6 +35,7 @@ def _configuration(*, manager: object | None, certificate: LoopbackCertificate,
         ssl_certfile=certificate.certificate_path,
         ssl_keyfile=certificate.private_key_path,
         log_level="warning", access_log=False,
+        timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
     )
 
 

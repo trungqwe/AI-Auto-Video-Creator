@@ -26,6 +26,7 @@ from psycopg import sql
 import uvicorn
 
 from controlplane.api.main import create_app
+from controlplane.api.tls import GRACEFUL_SHUTDOWN_SECONDS
 from controlplane.application.session_security import (
     BootstrapCapabilityRegistry,
 )
@@ -483,6 +484,7 @@ def run_server(
             ssl_keyfile=cert.private_key_path,
             log_level="warning",
             access_log=False,
+            timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
         )
         server = uvicorn.Server(config)
         print(f"Test server running on https://localhost:{port} (PID: {os.getpid()})")
