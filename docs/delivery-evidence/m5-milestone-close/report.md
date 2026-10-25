@@ -1,28 +1,26 @@
-# Báo cáo đóng milestone M5 (revision 2)
+# Báo cáo đóng milestone M5 (revision 3)
 
-Task: M5-MILESTONE-CLOSE-R2; candidate: HEAD 02353535e1b5029cb770048f1be09d58d26e98f1 (đọc bằng git rev-parse HEAD trước khi commit báo cáo), nhánh đã rebase lên 74c062a29d649ea0e3d1471dee9c739dc33d38fe; cây mã nguồn trùng 74c062a, các commit docs(m5) của lane chỉ chạm docs/delivery-evidence/m5-milestone-close/; kết quả từng lệnh ở command-results.md cùng thư mục
+Task: M5-MILESTONE-CLOSE-R3; candidate: HEAD 21d99fc89eb076a036b4d62f026b057a61d96135 (cây mã nguồn của lane; các commit docs(m5) của lane chỉ chạm docs/delivery-evidence/m5-milestone-close/); kết quả từng lệnh ở command-results.md cùng thư mục
 
-## 1. Phạm vi và lý do đóng ở revision 2
+## 1. Phạm vi và lý do đóng ở revision 3
 
-Milestone M5 được đóng đúng một lần ở revision 2 (R2) với đầy đủ phạm vi hội tụ và tích hợp theo chính sách hiện hành. Revision trước là M5-MILESTONE-CLOSE (revision 1) đã được đóng mà không tích hợp vào nhánh chính (theo quyết định của Control ngày 20/10/2026: policy v1 bổ sung bốn dòng kế hoạch gồm IMPL-PLAN-CONVERGENCE-EXT, IMPL-PLAN-CONVERGENCE-EXT-UI, IMPL-PLAN-PERSIST, và IMPL-PLAN-ADAPT vào phạm vi đóng M5). Revision 1 đóng băng theo phạm vi cũ và chưa được giao cho Worker nào, do đó dù có chạy xong thì vẫn phải đóng lại ở R2. Control quyết định retire revision 1 theo phương pháp chấm điểm chi phí và đường găng: bớt một lượt đóng milestone thừa, hoàn trả suất thực thi cho các gói kế hoạch mở rộng.
+Milestone M5 được đóng đúng một lần ở revision 3 (R3) với đầy đủ phạm vi hội tụ và tích hợp theo chính sách hiện hành, gồm cả bốn dòng kế hoạch IMPL-PLAN-CONVERGENCE-EXT, IMPL-PLAN-CONVERGENCE-EXT-UI, IMPL-PLAN-PERSIST, IMPL-PLAN-ADAPT và gói sửa ADAPT-LAUNCH-FIX1. Revision trước là M5-MILESTONE-CLOSE (revision 1) đã được đóng mà không tích hợp vào nhánh chính (theo quyết định của Control ngày 20/10/2026: policy v1 bổ sung bốn dòng kế hoạch gồm IMPL-PLAN-CONVERGENCE-EXT, IMPL-PLAN-CONVERGENCE-EXT-UI, IMPL-PLAN-PERSIST, và IMPL-PLAN-ADAPT vào phạm vi đóng M5). Revision 1 đóng băng theo phạm vi cũ và chưa được giao cho Worker nào, do đó dù có chạy xong thì vẫn phải đóng lại ở R2. Control quyết định retire revision 1 theo phương pháp chấm điểm chi phí và đường găng: bớt một lượt đóng milestone thừa, hoàn trả suất thực thi cho các gói kế hoạch mở rộng.
 
 Báo cáo này là bằng chứng kỹ thuật đóng milestone nội bộ, hoàn toàn không thay đổi trạng thái trong docs/11-roadmap.md hay docs/12-pre-code-checklist.md và không tự ý tuyên bố người dùng (user) đã duyệt M5. Các vai trò thẩm định trong quy trình này được ghi nhận chuẩn mực là Reviewer (Sonnet 5.5) và Auditor rủi ro (Opus 5.5).
 
-Grant G1 của lane bị Control thu hồi với lý do CLOSURE_BASE_STALE (lane mở lại trên HEAD cc290f002074 chưa chứa các gói được phủ tích hợp sau đó). Báo cáo này viết lại trên candidate sau rebase; kết quả các lần chạy trước trên 436527e và cc290f0 không còn dùng; toàn bộ 288 lệnh được chạy lại trên candidate nêu ở dòng 3.
-
-Grant G1 của lane lại bị Control thu hồi khi rebase lên 74c062a29d649ea0e3d1471dee9c739dc33d38fe với lý do INTEGRATION_CHECK_FAILED: lệnh STT 17 (`tests/integration/convergence/test_cp3_migration_sequence.py`) đỏ ở `test_postgres_up_down_up_and_constraints` với `psycopg.errors.ConnectionTimeout` (1 failed, 7 passed in 130.46s). Đây là lỗi hạ tầng kết nối PostgreSQL 127.0.0.1, không phải lỗi mã nguồn hay migration; cây mã nguồn không đổi so với 74c062a. Sau `git rebase 74c062a29d649ea0e3d1471dee9c739dc33d38fe` Worker chạy lại trên HEAD: STT 17 → 8 passed in 1.61s; STT 23 → 16 passed in 9.72s; STT 42 → 15 passed in 9.52s; test_cp4_pagination_postgres → 16 passed in 11.82s; test_cp4_queries_routes cùng test_cp4_queries_postgres → 30 passed, 1 warning in 5.39s; tất cả exit 0.
+Revision 2 (M5-MILESTONE-CLOSE-R2) chạy trên candidate cây mã nguồn 74c062a29d649ea0e3d1471dee9c739dc33d38fe và không còn là cơ sở; R3 chạy lại toàn bộ 288 lệnh kiểm trên HEAD 21d99fc89eb076a036b4d62f026b057a61d96135, không dùng lại kết quả cũ. Khác R2: gói sửa ADAPT-LAUNCH-FIX1 (integrate 21d99fc89eb076a036b4d62f026b057a61d96135, candidate 9bcb10e680dc, lệnh temporal-schema của launcher chạy dưới dạng một chuỗi sh -c) đã tích hợp, và hai lệnh ADAPT-LAUNCH nằm ở STT 48-49. Toàn bộ 288/288 lệnh kiểm tra đã đạt exit 0 trên candidate 21d99fc89eb076a036b4d62f026b057a61d96135.
 
 ## 2. Kiểm lại các điểm của R1
 
 Thực hiện kiểm tra thực tế trên lịch sử git và phạm vi gói của kho lưu trữ:
 
-1. **Commit integrate của M5-MILESTONE-CLOSE (R1)**: `ĐẠT`. Kiểm tra qua lệnh `git log --format="%H%x09%s" '--grep=^integrate(M5-MILESTONE-CLOSE:'` cho kết quả rỗng (không có commit tích hợp nào của revision 1 tồn tại trên lịch sử git).
-2. **SHA tích hợp của bốn dòng kế hoạch bổ sung**: `ĐẠT`. Cả bốn dòng kế hoạch đều đã có commit tích hợp hợp lệ trong git:
-   - `IMPL-PLAN-CONVERGENCE-EXT`: `3204b3ee38a76646bd6c05322eccd4f643ffab56`
-   - `IMPL-PLAN-CONVERGENCE-EXT-UI`: `cd33459cd73cbb41accec6725e7c932da154198e`
-   - `IMPL-PLAN-PERSIST`: `d9d23586d3af1fa6b2f2b6b741f3bd77e2178ab7`
-   - `IMPL-PLAN-ADAPT`: `7823cf907f8c7ce056479b5fd09c502fbf570237`
-3. **Phạm vi R2 chứa đủ bốn dòng kế hoạch**: `ĐẠT`. Danh sách các gói nghiệm thu của M5-MILESTONE-CLOSE-R2 bao gồm đầy đủ cả bốn dòng kế hoạch nói trên cùng các gói thành phần phái sinh tại Mục 3.
+1. **Commit integrate của M5-MILESTONE-CLOSE (R1)**: `ĐẠT`. Kiểm tra qua lệnh `git log --format="%H%x09%s" "--grep=^integrate(M5-MILESTONE-CLOSE:"` cho kết quả rỗng (không có commit tích hợp nào của revision 1 tồn tại trên lịch sử git; lệnh `git log --format="%H%x09%s" "--grep=^integrate(M5-MILESTONE-CLOSE"` chỉ ghi nhận commit integrate của revision 2: `e0ecb0330702aa7146d036907b932c41677e33b1 integrate(M5-MILESTONE-CLOSE-R2): lane lane-m5-milestone-close-r2 candidate 12ce370abe0e`).
+2. **SHA tích hợp của bốn dòng kế hoạch bổ sung**: `ĐẠT`. Cả bốn dòng kế hoạch đều đã có commit tích hợp hợp lệ trong git và là tổ tiên hợp lệ của HEAD (`git merge-base --is-ancestor <sha> HEAD` đều exit 0):
+   - IMPL-PLAN-CONVERGENCE-EXT: 3204b3ee38a76646bd6c05322eccd4f643ffab56
+   - IMPL-PLAN-CONVERGENCE-EXT-UI: cd33459cd73cbb41accec6725e7c932da154198e
+   - IMPL-PLAN-PERSIST: d9d23586d3af1fa6b2f2b6b741f3bd77e2178ab7
+   - IMPL-PLAN-ADAPT: 7823cf907f8c7ce056479b5fd09c502fbf570237
+3. **Phạm vi R3 chứa đủ bốn dòng kế hoạch**: `ĐẠT`. Danh sách các gói nghiệm thu của M5-MILESTONE-CLOSE-R3 bao gồm đầy đủ cả bốn dòng kế hoạch nói trên cùng các gói thành phần phái sinh và gói sửa ADAPT-LAUNCH-FIX1 tại Mục 3.
 
 ## 3. Gói được bao phủ và SHA tích hợp
 
@@ -55,6 +53,7 @@ Thực hiện kiểm tra thực tế trên lịch sử git và phạm vi gói c�
 | PERSIST-C-FIX1 | ab8586d55fc612825888d6a7e26e58ae96d28af6 | 2327dcf8e326 | `git log` (integrate(PERSIST-C-FIX1): lane lane-persist-c-fix1 candidate 2327dcf8e326) |
 | ADAPT-PROD-FIX2 | fa250e8305aa422ff260f2ce9bb3622a29239740 | e1cc7f40b25b | `git log` (integrate(ADAPT-PROD-FIX2): lane lane-adapt-prod-fix2 candidate e1cc7f40b25b) |
 | CP-4B-UI-SCREENS-FIX2 | 74c062a29d649ea0e3d1471dee9c739dc33d38fe | 1c85775dea49 | `git log` (integrate(CP-4B-UI-SCREENS-FIX2): lane lane-cp-4b-ui-screens-fix2 candidate 1c85775dea49) |
+| ADAPT-LAUNCH-FIX1 | 21d99fc89eb076a036b4d62f026b057a61d96135 | 9bcb10e680dc | `git log` (integrate(ADAPT-LAUNCH-FIX1): lane lane-adapt-launch-fix1 candidate 9bcb10e680dc) |
 | A-01 | 22535f6dcff3dbf2e3187771a9bff1b34c85c838 | b11289d9c406 | `git log` (integrate(A-01): lane lane-a-01 candidate b11289d9c406) |
 | A-02 | e343a41ee6570c39d0cbeda2bd35a3bf2c15513f | 0614e8d1934d | `git log` (integrate(A-02): lane lane-a-02 candidate 0614e8d1934d) |
 | A-03 | 5e009d1c06ba60052bdd1658f939ffaadc626597 | 6382ebd2cdde | `git log` (integrate(A-03): lane lane-a-03 candidate 6382ebd2cdde) |
@@ -150,11 +149,11 @@ Thực hiện kiểm tra thực tế trên lịch sử git và phạm vi gói c�
 | E-06 | d3887fa6a224395ad1e37e00e866a8e7def930e0 | da1e6a7ba167 | `git log` (integrate(E-06): lane lane-e-06 candidate da1e6a7ba167) |
 | E-07 | 2e7c6b1ca42d83ed16dac720ca98388b1bd06ecc | a8abf025014b | `git log` (integrate(E-07): lane lane-e-07 candidate a8abf025014b) |
 | E-08 | 1bfb8b02dc928a2455330afa45edc768226a63e5 | 8dfaedb513d4 | `git log` (integrate(E-08): lane lane-e-08 candidate 8dfaedb513d4) |
-Bảng này có 122 hàng, mỗi hàng đều có SHA tích hợp 40 hex (M5-D-PLAN do Control cấp; 121 hàng còn lại có commit integrate trong git log). Danh sách nghiệm thu nối tiếp ở bảng liền sau, từ E-09. Mã E ở cuối danh sách trích trong lệnh làm việc là phần bị cắt cụt của E-09, không có gói nào tên E và không có lane lane-e.
+Bảng này có 123 hàng, mỗi hàng đều có SHA tích hợp 40 hex (M5-D-PLAN do Control cấp; 122 hàng còn lại có commit integrate trong git log). Danh sách nghiệm thu nối tiếp ở bảng liền sau, từ E-09. Mã E ở cuối danh sách trích trong lệnh làm việc là phần bị cắt cụt của E-09, không có gói nào tên E và không có lane lane-e.
 
 ### Danh sách nghiệm thu (tiếp theo): từ E-09
 
-Bảng này nối tiếp bảng ở trên và thuộc cùng danh sách nghiệm thu bắt buộc: E-09..E-20, F, G, H, I, J, PERSIST-A..PERSIST-J và các gói còn lại. Ba hàng CP0-GOVERNANCE, CP1-CONTRACT-BINDING, CP2A-LAYOUT là gói nền đã tích hợp, giữ làm bằng chứng bổ sung. Khoảng cc290f002074514001fa0b03b3eb8c9e00c14db6..74c062a29d649ea0e3d1471dee9c739dc33d38fe không có thêm gói nào ngoài danh sách (toàn bộ 6 commit integrate mới đều thuộc danh sách bắt buộc):
+Bảng này nối tiếp bảng ở trên và thuộc cùng danh sách nghiệm thu bắt buộc: E-09..E-20, F, G, H, I, J, PERSIST-A..PERSIST-J và các gói còn lại. Ba hàng CP0-GOVERNANCE, CP1-CONTRACT-BINDING, CP2A-LAYOUT là gói nền đã tích hợp, giữ làm bằng chứng bổ sung. Khoảng 74c062a29d649ea0e3d1471dee9c739dc33d38fe..HEAD có các commit integrate: 21d99fc89eb076a036b4d62f026b057a61d96135 integrate(ADAPT-LAUNCH-FIX1) (thuộc danh sách bắt buộc M5), và các commit còn lại thuộc các gói ngoài danh sách bắt buộc M5 (gồm CP7-REAL-RESOURCES 4b11dd042f70, M7-MILESTONE-CLOSE a9cb0d0a1fbe, PG-TEST-DSN-HARNESS-FIX1 51fdc0440160, M5-MILESTONE-CLOSE-R2 e0ecb0330702, M6-MILESTONE-CLOSE-R2 540f2c68a0ab, M3-MILESTONE-CLOSE 6f930371bc38, M4-MILESTONE-CLOSE 4c1cbbe8f04c):
 
 | Mã gói | SHA tích hợp (40 hex) | SHA candidate (12 hex) | Nguồn |
 | --- | --- | --- | --- |
@@ -276,7 +275,7 @@ Bảng này nối tiếp bảng ở trên và thuộc cùng danh sách nghiệm 
 | J-09-FIX1 | c10efaaeec9791999472d38b60eb8a3bf1b77962 | 277383c9e99f | `git log` (integrate(J-09-FIX1): lane lane-j-09-fix1 candidate 277383c9e99f) |
 | IMPL-PLAN-ADAPT-FIX1 | 258b993e9766c5686581dd0698b9539fd9894bf6 | 24b9289b7298 | `git log` (integrate(IMPL-PLAN-ADAPT-FIX1): lane lane-impl-plan-adapt-fix1 candidate 24b9289b7298) |
 
-Số hàng của bảng này: 117 (98 hàng đã có cộng 19 hàng bổ sung). Tổng số hàng bắt buộc có SHA tích hợp ở Mục 3: 239/239 (239 = 122 + 117; M5-D-PLAN do Control cấp, các hàng còn lại có commit integrate). Gói cổng ở Mục 4 tính riêng: 13/13 recordHash.
+Số hàng của bảng này: 117 (98 hàng đã có cộng 19 hàng bổ sung). Tổng số hàng bắt buộc có SHA tích hợp ở Mục 3: 240/240 (240 = 123 + 117; 239 hàng có commit integrate trong git log cộng 1 hàng M5-D-PLAN do Control cấp). Gói cổng ở Mục 4 tính riêng: 13/13 recordHash.
 
 ## 4. Gói cổng và bản ghi quyết định (recordHash)
 
@@ -335,7 +334,7 @@ Theo quyết định của người dùng ngày 22/10/2026 ghi nhận trong sổ
 Đối chiếu thực tế cho thấy các điểm roadmap rộng hơn kế hoạch đã duyệt bao gồm:
 1. Tiêu chí G6 («chưa tuyên bố toàn G06 nếu E/F chưa đạt»): Các gói lát cắt của phân hệ E và F đã được hoàn thành và tích hợp đầy đủ (E-01..E-20 và F-01..F-22 đều có SHA tích hợp), tuy nhiên kiểm thử toàn diện end-to-end cho G06 toàn phần sẽ do mốc M6/M7 thực hiện.
 2. Các mục mở (open items) trong roadmap docs/11-roadmap.md: TEST-OPEN-001, ngưỡng deduplication/event-link, thuật toán proxy hot/trending, việc tinh chỉnh provider/model/prompt theo benchmark đều là các open items được thiết kế cho các mốc tiếp theo hoặc gói CP7, không cấu thành điều kiện FAIL kỹ thuật của mốc M5 và không yêu cầu can thiệp từ người dùng.
-3. Chín lệnh đỏ của lần mở trước (STT 29, 30, 33, 39, 41, 44, 45, 46, 47) nay đạt exit 0 trên candidate mới vì các gói sửa FIX đã tích hợp trong khoảng cc290f0..74c062a: CP-4-WIRING-FIX2 (759ea0abd830f76b6f6a99232e8183ee50a9f34d), ADAPT-PROD-FIX1 (6ba0bcde40de3d3adf8405d9df6bd8cae431227a), CP-4B-UI-SCREENS-FIX1 (adc7634f45a21c2fa174adee662962d7a1b21a57), PERSIST-C-FIX1 (ab8586d55fc612825888d6a7e26e58ae96d28af6), ADAPT-PROD-FIX2 (fa250e8305aa422ff260f2ce9bb3622a29239740), CP-4B-UI-SCREENS-FIX2 (74c062a29d649ea0e3d1471dee9c739dc33d38fe).
+3. Các lệnh đỏ ở các lần mở trước nay đạt exit 0 trên candidate R3 vì các gói sửa FIX đã tích hợp: CP-4-WIRING-FIX2 759ea0abd830f76b6f6a99232e8183ee50a9f34d, ADAPT-PROD-FIX1 6ba0bcde40de3d3adf8405d9df6bd8cae431227a, CP-4B-UI-SCREENS-FIX1 adc7634f45a21c2fa174adee662962d7a1b21a57, PERSIST-C-FIX1 ab8586d55fc612825888d6a7e26e58ae96d28af6, ADAPT-PROD-FIX2 fa250e8305aa422ff260f2ce9bb3622a29239740, CP-4B-UI-SCREENS-FIX2 74c062a29d649ea0e3d1471dee9c739dc33d38fe, ADAPT-LAUNCH-FIX1 21d99fc89eb076a036b4d62f026b057a61d96135.
 
 ## 6. pendingUserCheckpoint
 
@@ -349,7 +348,7 @@ Theo quyết định của người dùng ngày 22/10/2026 ghi nhận trong sổ
 | Hạng mục kiểm tra | Đạt được | Mục tiêu bắt buộc | Kết luận |
 | --- | --- | --- | --- |
 | Lệnh kiểm tra chạy lại | 288/288 exit 0 (0 FAIL; 5 lệnh có test skip theo thiết kế tham số hoá hoặc đặc quyền symlink Windows) | 288/288 exit 0 | ĐẠT |
-| SHA tích hợp các gói bắt buộc | 239/239 hàng (M5-D-PLAN có SHA do Control cấp; các hàng còn lại có commit integrate trong git log) | 239/239 hàng | ĐẠT |
+| SHA tích hợp các gói bắt buộc | 240/240 hàng (M5-D-PLAN có SHA do Control cấp; các hàng còn lại có commit integrate trong git log) | 240/240 hàng | ĐẠT |
 | Bản ghi recordHash 13 cổng | 13/13 cổng | 13/13 cổng | ĐẠT (recordHash do Control cấp trong lệnh làm việc) |
 | Kiểm lại 3 điểm của R1 (Mục 2) | 3/3 điểm ĐẠT | 3/3 điểm ĐẠT | ĐẠT |
 | Đối chiếu Exit Gate G1-G6 | Đạt yêu cầu kỹ thuật | Đạt yêu cầu | ĐẠT |
@@ -363,15 +362,16 @@ Theo quyết định của người dùng ngày 22/10/2026 ghi nhận trong sổ
   - STT 118 và STT 142 (35 skip mỗi lệnh) là 28 skip của test_cp4_wiring cộng 7 skip của test_storage_staging_paths; STT 133 (7 skip) chỉ gồm 7 skip của test_storage_staging_paths. Không còn nguồn skip nào khác.
   - Hai mô-đun DPAPI (`tests/integration/adapt/j/test_adapt_j_oauth.py` dòng 26, `tests/integration/config/test_j_dpapi_secret_store.py` dòng 17) chỉ skip khi nền tảng không phải win32 nên không skip trong lần chạy này.
   - Test bị skip không được tính là test đã chạy; báo cáo chỉ ghi exit 0 của lệnh và số skip.
+- Gói sửa ADAPT-LAUNCH-FIX1 (integrate 21d99fc89eb076a036b4d62f026b057a61d96135, candidate 9bcb10e680dc) đã được kiểm chứng ở STT 48-49 với 30 passed in 0.42s và probe docker-compose.yml exit 0.
 - Kiểm thử `tests/m2/test_p7b_hardening.py::test_h36_m1_regression` được hoãn sang gói CP7 theo đúng quyết định của người dùng ngày 21/10/2026 (mang cờ `--deselect`, không chạy).
 - Báo cáo không thay đổi trạng thái trong roadmap hay checklist.
 
 ### Kết luận
 **ĐẠT** về kỹ thuật; chờ phán quyết của Reviewer (Sonnet 5.5) và Auditor rủi ro (Opus 5.5).
 
-1. Kết quả chạy lại lệnh kiểm: 288/288 lệnh exit 0, 0 FAIL. Toàn bộ 9 lệnh đỏ của lần mở trước nay đều đạt exit 0 trên candidate mới sau rebase. 5 lệnh (STT 22, 118, 133, 142, 241) có test skip do thiết kế tham số hoá chuẩn và thiếu đặc quyền symlink trên Windows.
+1. Kết quả chạy lại lệnh kiểm: 288/288 lệnh exit 0, 0 FAIL. Toàn bộ 288 lệnh kiểm tra của milestone M5 đã được chạy lại và đạt exit 0 trên candidate 21d99fc89eb076a036b4d62f026b057a61d96135. 5 lệnh (STT 22, 118, 133, 142, 241) có test skip do thiết kế tham số hoá chuẩn và thiếu đặc quyền symlink trên Windows.
 
-2. SHA tích hợp các gói bắt buộc: 239/239 hàng ở Mục 3. M5-D-PLAN có SHA 3b00c35e1ad888e99ae76fe83e28c0bc44db69ee do Control cấp và đã kiểm chứng là tổ tiên hợp lệ của HEAD (exit 0). Mọi gói còn lại, kể cả 11 gói sửa FIX, E-09..E-20, F, G, H, I, J và PERSIST-A..PERSIST-J, đều có commit integrate. Mã E ở cuối danh sách trong lệnh làm việc là phần cắt cụt của E-09, không phải gói thiếu.
+2. SHA tích hợp các gói bắt buộc: 240/240 hàng ở Mục 3. M5-D-PLAN có SHA 3b00c35e1ad888e99ae76fe83e28c0bc44db69ee do Control cấp và đã kiểm chứng là tổ tiên hợp lệ của HEAD (exit 0). Mọi gói còn lại, kể cả 12 gói sửa FIX (gồm cả ADAPT-LAUNCH-FIX1), E-09..E-20, F, G, H, I, J và PERSIST-A..PERSIST-J, đều có commit integrate. Mã E ở cuối danh sách trong lệnh làm việc là phần cắt cụt của E-09, không phải gói thiếu.
 
 3. Đã xử lý đầy đủ: 13/13 recordHash của các gói cổng ở Mục 4 (nguồn do Control cấp trong lệnh làm việc).
 

@@ -1,9 +1,9 @@
-# Kết quả chạy lại lệnh kiểm của milestone M5 (revision 2)
+# Kết quả chạy lại lệnh kiểm của milestone M5 (revision 3)
 
-Candidate: HEAD 02353535e1b5029cb770048f1be09d58d26e98f1 (đọc bằng git rev-parse HEAD trước khi commit báo cáo; cây mã nguồn trùng 74c062a29d649ea0e3d1471dee9c739dc33d38fe, đã xác nhận bằng lệnh đọc git diff --name-only 74c062a29d649ea0e3d1471dee9c739dc33d38fe HEAD chỉ liệt kê tệp dưới docs/delivery-evidence/m5-milestone-close/); các commit docs(m5) của lane chỉ chạm docs/delivery-evidence/m5-milestone-close/
+Candidate: HEAD 21d99fc89eb076a036b4d62f026b057a61d96135 (cây mã nguồn của lane; các commit docs(m5) của lane chỉ chạm docs/delivery-evidence/m5-milestone-close/; xác nhận bằng lệnh đọc git diff --name-only 21d99fc89eb076a036b4d62f026b057a61d96135 HEAD)
 Interpreter khoá của lane: C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\33f06a7a\venv\Scripts\python.exe
 
-Quy ước STT 1..N: theo thứ tự danh sách spec. Số lượng lệnh thực tế Worker ghi nhận và thực thi là N = 288 (trong lệnh làm việc Orchestrator ước tính N = 289 do cách phân nhóm; sự chênh lệch 1 lệnh là do điểm nối giữa nhóm G4 và G5 tại test_d01_package_layout.py).
+Quy ước STT 1..N: theo thứ tự danh sách lệnh kiểm của spec R3. N = 288. Khác R2: hai lệnh ADAPT-LAUNCH (pytest test_adapt_launch_cli.py và probe docker-compose.yml) nằm ở STT 48-49 thay vì 88-89, nên STT 50-89 của R3 bằng STT của R2 cộng 2 đối với nhóm A-01.. đến seed; từ STT 90 trở đi số thứ tự không đổi.
 
 | STT | Lệnh (rút gọn) | Exit | Tóm tắt kết quả (nguyên văn dòng cuối) |
 | --- | --- | --- | --- |
@@ -54,48 +54,48 @@ Quy ước STT 1..N: theo thứ tự danh sách spec. Số lượng lệnh thự
 | 45 | `pytest tests/integration/adapt/prod/test_adapt_prod_hooks_module.py -q -p no:cacheprovider` | 0 | 9 passed in 1.62s |
 | 46 | `python probe: src/controlplane/api` | 0 | (no output) |
 | 47 | `python probe: src/controlplane/ui/src/features/screens/screenRegistry.ts` | 0 | (no output) |
-| 48 | `pytest tests/unit/collection/test_a01_package_layout.py -q -p no:cacheprovider` | 0 | 13 passed, 62 subtests passed in 0.14s |
-| 49 | `pytest tests/unit/collection/test_a02_collected_document_package.py -q -p no:cacheprovider` | 0 | 27 passed, 99 subtests passed in 0.07s |
-| 50 | `pytest tests/unit/collection/test_a03_source_lifecycle.py -q -p no:cacheprovider` | 0 | 17 passed, 50 subtests passed in 0.05s |
-| 51 | `pytest tests/unit/collection/test_a04_locator_ssrf.py -q -p no:cacheprovider` | 0 | 74 passed in 0.09s |
-| 52 | `pytest tests/unit/collection/test_a05_collection_run_states.py -q -p no:cacheprovider` | 0 | 40 passed, 20 subtests passed in 0.07s |
-| 53 | `python -m pytest tests/unit/collection/test_a06_checkpoint.py -q -p no:cacheprovider` | 0 | 15 passed, 22 subtests passed in 0.05s |
-| 54 | `pytest tests/unit/collection/test_a07_source_candidate.py -q -p no:cacheprovider` | 0 | 14 passed, 44 subtests passed in 0.04s |
-| 55 | `pytest tests/unit/collection/test_a08_ports_memory.py -q -p no:cacheprovider` | 0 | 32 passed, 3 subtests passed in 0.09s |
-| 56 | `pytest tests/integration/collection/test_a09_source_commands.py -q -p no:cacheprovider` | 0 | 28 passed, 11 subtests passed in 0.11s |
-| 57 | `pytest tests/integration/collection/test_a10_candidate_registration.py -q -p no:cacheprovider` | 0 | 23 passed, 14 subtests passed in 0.12s |
-| 58 | `pytest tests/integration/collection/test_a11_collect_source.py -q -p no:cacheprovider` | 0 | 18 passed in 0.11s |
-| 59 | `pytest tests/unit/collection/test_a12_secure_fetch.py -q -p no:cacheprovider` | 0 | 59 passed in 0.09s |
-| 60 | `pytest tests/unit/collection/test_a13_package_builder.py -q -p no:cacheprovider` | 0 | 49 passed in 0.10s |
-| 61 | `pytest tests/integration/collection/test_a14_artifact_handoff.py -q -p no:cacheprovider` | 0 | 19 passed in 0.10s |
-| 62 | `pytest tests/unit/collection/test_a15_source_eligibility.py -q -p no:cacheprovider` | 0 | 20 passed, 49 subtests passed in 0.06s |
-| 63 | `pytest tests/integration/collection/test_a16_supplemental.py -q -p no:cacheprovider` | 0 | 25 passed in 0.12s |
-| 64 | `python -m pytest tests/unit/collection/test_a17_projections.py -q -p no:cacheprovider` | 0 | 33 passed, 29 subtests passed in 0.09s |
-| 65 | `pytest tests/integration/collection/test_a18_worker_activity.py -q -p no:cacheprovider` | 0 | 32 passed in 0.12s |
-| 66 | `pytest tests/unit/collection/test_a19_rule_catalog.py -q -p no:cacheprovider` | 0 | 62 passed in 0.14s |
-| 67 | `python probe: pyproject.toml` | 0 | (no output) |
-| 68 | `python probe: uv.lock` | 0 | (no output) |
-| 69 | `pytest tests/integration/adapt/a/test_adapt_a_adapters.py -q -p no:cacheprovider` | 0 | 27 passed in 5.65s |
-| 70 | `python probe: src/source_ingestion/adapters` | 0 | (no output) |
-| 71 | `pytest tests/integration/adapt/d/test_adapt_d_ai.py tests/unit/security/test_http_router_adapter.py -q -p no:cacheprovider` | 0 | 20 passed in 0.16s |
-| 72 | `python probe: p` | 0 | (no output) |
-| 73 | `pytest tests/integration/adapt/e/test_adapt_e_tts_aligner.py -q -p no:cacheprovider` | 0 | 34 passed in 0.40s |
-| 74 | `python probe: src/voice/adapters` | 0 | (no output) |
-| 75 | `pytest tests/integration/adapt/e_media/test_adapt_e_media_tools.py -q -p no:cacheprovider` | 0 | 41 passed in 0.22s |
+| 48 | `pytest tests/integration/adapt/launch/test_adapt_launch_cli.py -q -p no:cacheprovider` | 0 | 30 passed in 0.42s (kiểm bản sửa ADAPT-LAUNCH-FIX1 (9bcb10e680dc): lệnh temporal-schema chạy dưới dạng một chuỗi sh -c) |
+| 49 | `python probe: tools/launcher/docker-compose.yml` | 0 | (no output) |
+| 50 | `pytest tests/unit/collection/test_a01_package_layout.py -q -p no:cacheprovider` | 0 | 13 passed, 62 subtests passed in 0.14s |
+| 51 | `pytest tests/unit/collection/test_a02_collected_document_package.py -q -p no:cacheprovider` | 0 | 27 passed, 99 subtests passed in 0.07s |
+| 52 | `pytest tests/unit/collection/test_a03_source_lifecycle.py -q -p no:cacheprovider` | 0 | 17 passed, 50 subtests passed in 0.05s |
+| 53 | `pytest tests/unit/collection/test_a04_locator_ssrf.py -q -p no:cacheprovider` | 0 | 74 passed in 0.09s |
+| 54 | `pytest tests/unit/collection/test_a05_collection_run_states.py -q -p no:cacheprovider` | 0 | 40 passed, 20 subtests passed in 0.07s |
+| 55 | `python -m pytest tests/unit/collection/test_a06_checkpoint.py -q -p no:cacheprovider` | 0 | 15 passed, 22 subtests passed in 0.05s |
+| 56 | `pytest tests/unit/collection/test_a07_source_candidate.py -q -p no:cacheprovider` | 0 | 14 passed, 44 subtests passed in 0.04s |
+| 57 | `pytest tests/unit/collection/test_a08_ports_memory.py -q -p no:cacheprovider` | 0 | 32 passed, 3 subtests passed in 0.09s |
+| 58 | `pytest tests/integration/collection/test_a09_source_commands.py -q -p no:cacheprovider` | 0 | 28 passed, 11 subtests passed in 0.11s |
+| 59 | `pytest tests/integration/collection/test_a10_candidate_registration.py -q -p no:cacheprovider` | 0 | 23 passed, 14 subtests passed in 0.12s |
+| 60 | `pytest tests/integration/collection/test_a11_collect_source.py -q -p no:cacheprovider` | 0 | 18 passed in 0.11s |
+| 61 | `pytest tests/unit/collection/test_a12_secure_fetch.py -q -p no:cacheprovider` | 0 | 59 passed in 0.09s |
+| 62 | `pytest tests/unit/collection/test_a13_package_builder.py -q -p no:cacheprovider` | 0 | 49 passed in 0.10s |
+| 63 | `pytest tests/integration/collection/test_a14_artifact_handoff.py -q -p no:cacheprovider` | 0 | 19 passed in 0.10s |
+| 64 | `pytest tests/unit/collection/test_a15_source_eligibility.py -q -p no:cacheprovider` | 0 | 20 passed, 49 subtests passed in 0.06s |
+| 65 | `pytest tests/integration/collection/test_a16_supplemental.py -q -p no:cacheprovider` | 0 | 25 passed in 0.12s |
+| 66 | `python -m pytest tests/unit/collection/test_a17_projections.py -q -p no:cacheprovider` | 0 | 33 passed, 29 subtests passed in 0.09s |
+| 67 | `pytest tests/integration/collection/test_a18_worker_activity.py -q -p no:cacheprovider` | 0 | 32 passed in 0.12s |
+| 68 | `pytest tests/unit/collection/test_a19_rule_catalog.py -q -p no:cacheprovider` | 0 | 62 passed in 0.14s |
+| 69 | `python probe: pyproject.toml` | 0 | (no output) |
+| 70 | `python probe: uv.lock` | 0 | (no output) |
+| 71 | `pytest tests/integration/adapt/a/test_adapt_a_adapters.py -q -p no:cacheprovider` | 0 | 27 passed in 5.65s |
+| 72 | `python probe: src/source_ingestion/adapters` | 0 | (no output) |
+| 73 | `pytest tests/integration/adapt/d/test_adapt_d_ai.py tests/unit/security/test_http_router_adapter.py -q -p no:cacheprovider` | 0 | 20 passed in 0.16s |
+| 74 | `python probe: p` | 0 | (no output) |
+| 75 | `pytest tests/integration/adapt/e/test_adapt_e_tts_aligner.py -q -p no:cacheprovider` | 0 | 34 passed in 0.40s |
 | 76 | `python probe: src/voice/adapters` | 0 | (no output) |
-| 77 | `pytest tests/integration/adapt/f/test_adapt_f_render.py -q -p no:cacheprovider` | 0 | 53 passed in 3.71s |
-| 78 | `python probe: src/render/adapters` | 0 | (no output) |
-| 79 | `pytest tests/integration/adapt/j/test_adapt_j_oauth.py -q -p no:cacheprovider` | 0 | 22 passed in 12.72s |
-| 80 | `python probe: src/controlplane/infrastructure/security` | 0 | (no output) |
-| 81 | `pytest tests/integration/adapt/i/test_adapt_i_drive.py -q -p no:cacheprovider` | 0 | 32 passed in 1.17s |
-| 82 | `python probe: src/controlplane/infrastructure/storage/drive_object_store.py` | 0 | (no output) |
-| 83 | `pytest tests/integration/adapt/config/test_adapt_config_profile.py -q -p no:cacheprovider` | 0 | 11 passed in 0.05s |
-| 84 | `python probe: tools/launcher/prod` | 0 | (no output) |
-| 85 | `python probe: src/controlplane/api/wiring` | 0 | (no output) |
-| 86 | `pytest tests/integration/adapt/seed/test_adapt_seed_import.py -q -p no:cacheprovider` | 0 | 13 passed in 37.54s |
-| 87 | `python probe: tools/launcher/prod/seed/import_seed.py` | 0 | (no output) |
-| 88 | `pytest tests/integration/adapt/launch/test_adapt_launch_cli.py -q -p no:cacheprovider` | 0 | 29 passed in 0.35s |
-| 89 | `python probe: tools/launcher/docker-compose.yml` | 0 | (no output) |
+| 77 | `pytest tests/integration/adapt/e_media/test_adapt_e_media_tools.py -q -p no:cacheprovider` | 0 | 41 passed in 0.22s |
+| 78 | `python probe: src/voice/adapters` | 0 | (no output) |
+| 79 | `pytest tests/integration/adapt/f/test_adapt_f_render.py -q -p no:cacheprovider` | 0 | 53 passed in 3.71s |
+| 80 | `python probe: src/render/adapters` | 0 | (no output) |
+| 81 | `pytest tests/integration/adapt/j/test_adapt_j_oauth.py -q -p no:cacheprovider` | 0 | 22 passed in 12.72s |
+| 82 | `python probe: src/controlplane/infrastructure/security` | 0 | (no output) |
+| 83 | `pytest tests/integration/adapt/i/test_adapt_i_drive.py -q -p no:cacheprovider` | 0 | 32 passed in 1.17s |
+| 84 | `python probe: src/controlplane/infrastructure/storage/drive_object_store.py` | 0 | (no output) |
+| 85 | `pytest tests/integration/adapt/config/test_adapt_config_profile.py -q -p no:cacheprovider` | 0 | 11 passed in 0.05s |
+| 86 | `python probe: tools/launcher/prod` | 0 | (no output) |
+| 87 | `python probe: src/controlplane/api/wiring` | 0 | (no output) |
+| 88 | `pytest tests/integration/adapt/seed/test_adapt_seed_import.py -q -p no:cacheprovider` | 0 | 13 passed in 37.54s |
+| 89 | `python probe: tools/launcher/prod/seed/import_seed.py` | 0 | (no output) |
 | 90 | `pytest tests/unit/ingestion/test_ingestion_package_validation.py -q -p no:cacheprovider` | 0 | 39 passed in 0.07s |
 | 91 | `pytest tests/unit/ingestion/test_ingestion_normalization.py tests/unit/ingestion/test_ingestion_fingerprint.py -q -p no:cacheprovider` | 0 | 30 passed in 0.06s |
 | 92 | `pytest tests/unit/ingestion/test_ingestion_article_aggregate.py tests/unit/ingestion/test_ingestion_memory_unit_of_work.py -q -p no:cacheprovider` | 0 | 19 passed in 0.05s |
@@ -121,10 +121,10 @@ Quy ước STT 1..N: theo thứ tự danh sách spec. Số lượng lệnh thự
 | 112 | `python probe: src/controlplane/application/sse/event_catalog.py` | 0 | (no output) |
 | 113 | `pytest tests/integration/convergence/test_cp4_pagination_postgres.py -q -p no:cacheprovider` | 0 | 16 passed in 10.41s |
 | 114 | `pytest tests/integration/control_ui tests/unit/control_ui -q -p no:cacheprovider` | 0 | 840 passed, 1 warning in 1.88s |
-| 115 | `pytest tests/m2 -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression` | 0 | 179 passed, 1 deselected, 2 warnings in 218.60s (0:03:38) |
+| 115 | `pytest tests/m2 -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression` | 0 | 179 passed, 1 deselected, 2 warnings in 219.63s |
 | 116 | `python probe: src/controlplane/infrastructure/db/control_api_queries.py` | 0 | (no output) |
 | 117 | `pytest tests/integration/convergence/test_cp4_queries_routes.py tests/integration/convergence/test_cp4_queries_postgres.py -q -p no:cacheprovider` | 0 | 30 passed, 1 warning in 4.72s |
-| 118 | `python -m pytest tests/integration tests/unit/control_ui -q -p no:cacheprovider` (SKIP) | 0 | 2792 passed, 35 skipped, 1 warning, 25 subtests passed in 175.37s (0:02:55) |
+| 118 | `python -m pytest tests/integration tests/unit/control_ui -q -p no:cacheprovider` (SKIP) | 0 | 2799 passed, 35 skipped, 1 warning, 25 subtests passed in 154.50s |
 | 119 | `python probe: src/controlplane/application/control_api/query_ports.py` | 0 | (no output) |
 | 120 | `python probe: src/controlplane/ui/src` | 0 | (no output) |
 | 121 | `python probe: src/controlplane/ui/src/features/screens/screenRegistry.ts` | 0 | (no output) |
@@ -148,7 +148,7 @@ Quy ước STT 1..N: theo thứ tự danh sách spec. Số lượng lệnh thự
 | 139 | `python probe: tests/m2/test_p9_m2_exit_gate.py` | 0 | (no output) |
 | 140 | `pytest tests/integration/convergence/test_cp3b_catalog_graphs.py tests/integration/convergence/test_cp3b_source_parity.py -q -p no:cacheprovider` | 0 | 25 passed in 0.07s |
 | 141 | `pytest tests/unit/collection tests/unit/catalog tests/m2/test_p4_statemachines.py -q -p no:cacheprovider` | 0 | 666 passed, 841 subtests passed in 0.98s |
-| 142 | `pytest tests/m2 tests/integration -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression` (SKIP) | 0 | 2306 passed, 35 skipped, 1 deselected, 2 warnings, 25 subtests passed in 382.90s (0:06:22) |
+| 142 | `pytest tests/m2 tests/integration -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression` (SKIP) | 0 | 2313 passed, 35 skipped, 1 deselected, 2 warnings, 25 subtests passed in 382.26s |
 | 143 | `pytest tests/unit/collection tests/unit/ingestion tests/unit/catalog tests/unit/creative tests/unit/voice tests/unit/render tests/unit/security tests/unit/control_ui -q -p no:cacheprovider` | 0 | 5262 passed, 1 warning, 1998 subtests passed in 9.81s |
 | 144 | `python probe: src/main.py` | 0 | (no output) |
 | 145 | `python probe: src/controlplane/ui/dist` | 0 | (no output) |
@@ -247,7 +247,7 @@ Quy ước STT 1..N: theo thứ tự danh sách spec. Số lượng lệnh thự
 | 238 | `pytest tests/unit/storage/test_storage_verification.py -q -p no:cacheprovider` | 0 | 11 passed, 85 subtests passed in 0.04s |
 | 239 | `pytest tests/unit/storage/test_storage_cloud_persist.py -q -p no:cacheprovider` | 0 | 22 passed, 21 subtests passed in 0.05s |
 | 240 | `pytest tests/integration/storage/test_storage_local_journal.py -q -p no:cacheprovider` | 0 | 21 passed in 0.62s |
-| 241 | `pytest tests/integration/storage/test_storage_staging_paths.py -q -p no:cacheprovider` (SKIP) | 0 | 373 passed, 7 skipped in 0.98s |
+| 241 | `pytest tests/integration/storage/test_storage_staging_paths.py -q -p no:cacheprovider` (SKIP) | 0 | 373 passed, 7 skipped in 0.97s |
 | 242 | `pytest tests/unit/storage/test_storage_materialization.py -q -p no:cacheprovider` | 0 | 25 passed, 26 subtests passed in 0.06s |
 | 243 | `pytest tests/unit/storage/test_storage_cleanup_evaluation.py -q -p no:cacheprovider` | 0 | 67 passed in 0.07s |
 | 244 | `pytest tests/integration/storage/test_storage_cleanup_executor.py -q -p no:cacheprovider` | 0 | 21 passed in 0.12s |
@@ -294,13 +294,13 @@ Quy ước STT 1..N: theo thứ tự danh sách spec. Số lượng lệnh thự
 | 285 | `python probe: tests/integration/render/test_f20_worker_activity.py` | 0 | (no output) |
 | 286 | `python probe: tests/integration/control_ui/test_h_list_queries_sql.py` | 0 | (no output) |
 | 287 | `python probe: tests/unit/control_ui/test_h_status_pill.py` | 0 | (no output) |
-| 288 | `pytest tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_ast_boundary_rules_clean_codebase -q -p no:cacheprovider` | 0 | 1 passed in 0.33s |
+| 288 | `pytest tests/m2/test_p0_architecture_rules.py::test_tst_m2_p0_001_ast_boundary_rules_clean_codebase -q -p no:cacheprovider` | 0 | 1 passed in 0.28s |
 ## Tổng kết kết quả thực thi
 
-- **Tổng số lệnh**: 288/288 lệnh đã chạy trên đúng candidate 02353535e1b5029cb770048f1be09d58d26e98f1 sau rebase lên 74c062a29d649ea0e3d1471dee9c739dc33d38fe.
-- **Kết quả**: 288/288 lệnh exit 0, 0 FAIL. Chín lệnh đỏ của lần mở trước (STT 29, 30, 33, 39, 41, 44, 45, 46, 47) nay đều đạt exit 0 trên candidate mới vì các gói sửa FIX (CP-4-WIRING-FIX2 759ea0a, ADAPT-PROD-FIX1 6ba0bcd, CP-4B-UI-SCREENS-FIX1 adc7634, PERSIST-C-FIX1 ab8586d, ADAPT-PROD-FIX2 fa250e8, CP-4B-UI-SCREENS-FIX2 74c062a) đã được tích hợp đầy đủ.
+- **Tổng số lệnh**: 288/288 lệnh đã chạy trên đúng candidate 21d99fc89eb076a036b4d62f026b057a61d96135.
+- **Kết quả**: 288/288 lệnh exit 0, 0 FAIL. STT 48-49 kiểm bản sửa ADAPT-LAUNCH-FIX1 (integrate 21d99fc89eb076a036b4d62f026b057a61d96135, candidate 9bcb10e680dc).
 - **5 lệnh có test skip** (STT 22, 118, 133, 142, 241), nguyên nhân đã đối chiếu trực tiếp từ mã nguồn kiểm thử:
-  - STT 22 (`tests/integration/convergence/test_cp4_wiring.py`, 28 skipped): Các test tham số hoá theo danh mục lệnh `COMMANDS` tự gọi `pytest.skip` khi lệnh không áp dụng trong ngữ cảnh kịch bản: dòng 275 và 294 ("Lệnh không yêu cầu If-Match"), dòng 342 ("cannot vary payload for empty body without resource id"), dòng 363 ("Lệnh không có body để kiểm tra trường lạ"). Đây là thiết kế tham số hoá chuẩn của bộ test.
+  - STT 22 (`tests/integration/convergence/test_cp4_wiring.py`, 28 skipped): Các test tham số hoá theo danh mục lệnh `COMMANDS` tự gọi `pytest.skip` khi lệnh không áp dụng trong ngữ cảnh kịch bản: dòng 283 và 302 ("Lệnh không yêu cầu If-Match"), dòng 350 ("cannot vary payload for empty body without resource id"), dòng 371 ("Lệnh không có body để kiểm tra trường lạ"). Đây là thiết kế tham số hoá chuẩn của bộ test.
   - STT 241 (`tests/integration/storage/test_storage_staging_paths.py`, 7 skipped): Hàm `make_symlink` (dòng 81) gọi `pytest.skip` khi `os.symlink` không tạo được symlink do tài khoản người dùng chạy trên môi trường Windows không có đặc quyền cấp cao SeCreateSymbolicLinkPrivilege. Biến thể junction (dòng 86) chỉ skip ngoài Windows nên chạy bình thường ở đây.
   - STT 118 (`tests/integration tests/unit/control_ui`, 35 skipped) và STT 142 (`tests/m2 tests/integration`, 35 skipped, 1 deselected): Đúng bằng tổng 28 test skip của `test_cp4_wiring` cộng với 7 test skip của `test_storage_staging_paths`. Hoàn toàn không phát sinh thêm bất kỳ skip nào khác.
   - STT 133 (`tests/integration/orchestration tests/integration/storage ...`, 7 skipped): Bao gồm đúng 7 test skip của `test_storage_staging_paths` do thiếu đặc quyền symlink Windows.
