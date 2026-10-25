@@ -44,6 +44,11 @@ TEMPORAL_WAIT_SECONDS = 180
 APP_WAIT_SECONDS = 120
 STOP_GRACE_SECONDS = 60
 OAUTH_CONSENT_TIMEOUT_SECONDS = 300
+# Namespace mà Temporal worker dùng; image temporalio/server không tự đăng ký nó như image auto-setup cũ (ổn định hoá 25/10/2026, S5).
+TEMPORAL_NAMESPACE = 'default'
+# Lịch sử workflow đã đóng giữ 7 ngày: đủ cho đối soát và diễn tập khôi phục.
+TEMPORAL_RETENTION_SECONDS = 7 * 24 * 3600
+NAMESPACE_WAIT_SECONDS = 60
 
 COMMANDS = ('start', 'stop', 'down', 'status', 'backup', 'restore', 'oauth')
 
@@ -155,6 +160,8 @@ class Deps:
     start_worker: typing.Callable[..., typing.Any]
     serve_tls: typing.Callable[..., None]
     now: typing.Callable[[], datetime.datetime]
+    # (host, port) -> 'EXISTS' | 'REGISTERED'; None bỏ qua bước này (chỉ khi không có Temporal thật).
+    ensure_namespace: typing.Callable[[str, int], str] | None = None
 
 
 def resolve_layout(environ: typing.Mapping[str, str], root: Path = ROOT) -> Layout:
@@ -336,6 +343,65 @@ def wait_for_tcp(host: str, port: int, timeout_seconds: float) -> bool:
         except OSError:
             time.sleep(1.0)
     return False
+
+
+def ensure_temporal_namespace(host: str, port: int, namespace: str = TEMPORAL_NAMESPACE,
+                              timeout_seconds: float = NAMESPACE_WAIT_SECONDS) -> str:
+    """Bảo đảm namespace của worker có trên Temporal: 'EXISTS' nếu đã có, 'REGISTERED' nếu vừa đăng ký.
+
+    Thiếu namespace thì mọi lượt poll của worker hỏng và không workflow nào chạy; không bảo đảm được thì LauncherError.
+    """
+    ensure_src_on_path()
+    import asyncio
+
+    async def _ensure() -> str:
+        from temporalio.api.workflowservice.v1 import DescribeNamespaceRequest, RegisterNamespaceRequest
+        from temporalio.client import Client
+        from temporalio.service import RPCError, RPCStatusCode
+
+        deadline = time.monotonic() + timeout_seconds
+        client = None
+        while client is None:
+            try:
+                client = await Client.connect(f'{host}:{port}', namespace=namespace)
+            except Exception as exc:
+                if time.monotonic() >= deadline:
+                    raise LauncherError(f'Không kết nối được Temporal để kiểm namespace {namespace} ({type(exc).__name__}).') from None
+                await asyncio.sleep(1.0)
+        service = client.workflow_service
+
+        async def exists() -> bool:
+            try:
+                await service.describe_namespace(DescribeNamespaceRequest(namespace=namespace))
+                return True
+            except RPCError as exc:
+                if exc.status == RPCStatusCode.NOT_FOUND:
+                    return False
+                raise
+
+        if await exists():
+            return 'EXISTS'
+        request = RegisterNamespaceRequest(namespace=namespace)
+        request.workflow_execution_retention_period.seconds = TEMPORAL_RETENTION_SECONDS
+        try:
+            await service.register_namespace(request)
+        except RPCError as exc:
+            if exc.status != RPCStatusCode.ALREADY_EXISTS:
+                raise
+        while time.monotonic() < deadline:
+            if await exists():
+                return 'REGISTERED'
+            await asyncio.sleep(1.0)
+        raise LauncherError(f'Namespace Temporal {namespace} chưa sẵn sàng sau {int(timeout_seconds)} giây.')
+
+    try:
+        return asyncio.run(_ensure())
+    except LauncherError:
+        raise
+    except Exception as exc:
+        raise LauncherError(f'Không bảo đảm được namespace Temporal {namespace} ({type(exc).__name__}).') from None
+
+
 def make_self_signed_cert(cert_file: Path, key_file: Path) -> None:
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
@@ -588,6 +654,7 @@ def default_deps(environ: typing.Mapping[str, str] | None = None) -> Deps:
         start_worker=start_worker,
         serve_tls=serve_tls,
         now=lambda: datetime.datetime.now(datetime.timezone.utc),
+        ensure_namespace=ensure_temporal_namespace,
     )
 def cmd_start(deps: Deps, args: argparse.Namespace) -> int:
     layout = resolve_layout(deps.environ)
@@ -628,6 +695,9 @@ def cmd_start(deps: Deps, args: argparse.Namespace) -> int:
 
     if not deps.wait_tcp(LOOPBACK, TEMPORAL_PORT, TEMPORAL_WAIT_SECONDS):
         raise LauncherError('Temporal server chưa sẵn sàng trên cổng 7233 sau thời gian chờ.')
+    if deps.ensure_namespace is not None:
+        state = deps.ensure_namespace(LOOPBACK, TEMPORAL_PORT)
+        deps.out(f'Namespace Temporal {TEMPORAL_NAMESPACE}: {"đã có" if state == "EXISTS" else "vừa đăng ký"}.')
 
     dsn = build_dsn(password, active_db_name(layout))
     deps.migrate(dsn)

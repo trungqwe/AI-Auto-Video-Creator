@@ -133,6 +133,10 @@ def make_fx(launcher: typing.Any, tmp_path: Path, **over: typing.Any) -> Fx:
     def fake_now() -> datetime.datetime:
         return datetime.datetime(2026, 10, 22, 3, 4, 5, tzinfo=datetime.timezone.utc)
 
+    def fake_ensure_namespace(host: str, port: int) -> str:
+        events.append(("namespace", host, port))
+        return "REGISTERED"
+
     deps = launcher.Deps(
         environ=environ,
         run=fake_run,
@@ -151,6 +155,7 @@ def make_fx(launcher: typing.Any, tmp_path: Path, **over: typing.Any) -> Fx:
         start_worker=fake_start_worker,
         serve_tls=fake_serve_tls,
         now=fake_now,
+        ensure_namespace=fake_ensure_namespace,
     )
     if over:
         deps = dataclasses.replace(deps, **over)
@@ -327,9 +332,12 @@ def test_start_orders_steps_and_hides_secret(launcher, tmp_path):
             ev_names.append(f"wait_tcp_{ev[1]}")
         else:
             ev_names.append(ev[0])
-    expected_order = ["wait_tcp_7233", "migrate", "identity", "cert", "spawn", "wait_tcp_8443"]
+    expected_order = ["wait_tcp_7233", "namespace", "migrate", "identity", "cert", "spawn", "wait_tcp_8443"]
     sub_evs = [e for e in ev_names if e in expected_order]
     assert sub_evs == expected_order
+    namespace_ev = [ev for ev in fx.events if ev[0] == "namespace"][0]
+    assert namespace_ev[1:] == ("127.0.0.1", 7233)
+    assert any("Namespace Temporal default" in line for line in fx.out)
     migrate_ev = [ev for ev in fx.events if ev[0] == "migrate"][0]
     assert ":57028/" in migrate_ev[1]
     spawn_ev = [ev for ev in fx.events if ev[0] == "spawn"][0]
@@ -361,6 +369,24 @@ def test_start_fails_closed_when_compose_fails(launcher, tmp_path):
         launcher.cmd_start(fx.deps, SimpleNamespace())
     assert not any(ev[0] == "migrate" for ev in fx.events)
     assert not any(ev[0] == "spawn" for ev in fx.events)
+
+def test_start_fails_closed_when_temporal_namespace_cannot_be_ensured(launcher, tmp_path):
+    # Ổn định hoá 25/10/2026 (S5): image temporalio/server không tự đăng ký namespace default; thiếu nó thì không workflow nào chạy.
+    def failing_namespace(host: str, port: int) -> str:
+        raise launcher.LauncherError("Namespace Temporal default chưa sẵn sàng sau 60 giây.")
+    fx = make_fx(launcher, tmp_path, ensure_namespace=failing_namespace)
+    with pytest.raises(launcher.LauncherError):
+        launcher.cmd_start(fx.deps, SimpleNamespace())
+    assert not any(ev[0] == "migrate" for ev in fx.events)
+    assert not any(ev[0] == "spawn" for ev in fx.events)
+
+
+def test_default_deps_ensure_the_temporal_namespace(launcher):
+    deps = launcher.default_deps({})
+    assert deps.ensure_namespace is launcher.ensure_temporal_namespace
+    assert launcher.TEMPORAL_NAMESPACE == "default"
+    assert launcher.TEMPORAL_RETENTION_SECONDS > 0
+
 
 def test_start_is_noop_when_worker_running(launcher, tmp_path):
     fx = make_fx(launcher, tmp_path)
