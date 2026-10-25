@@ -21,7 +21,7 @@ services:
       retries: 30
 
   temporal-schema:
-    image: temporalio/server:1.31.2@sha256:b5ecdb8282bededae2a10c36e8d862e27d0bc2d247fc73c5416025997ab4a1da
+    image: temporalio/admin-tools:1.31.2@sha256:dbc5fcd6ee8f0f4d808bf765af9a87dea9d8a283abfdcfbd2fc148496ba66107
     container_name: aiavc-temporal-schema
     restart: "no"
     depends_on:
@@ -59,9 +59,11 @@ services:
       POSTGRES_SEEDS: postgres
       DBNAME: temporal
       VISIBILITY_DBNAME: temporal_visibility
-      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/docker.yaml
+      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/config/dynamicconfig/docker.yaml
     ports:
       - "127.0.0.1:7233:7233"
+    volumes:
+      - "./temporal-dynamicconfig.yaml:/etc/temporal/config/dynamicconfig/docker.yaml:ro"
 
 volumes:
   aiavc_pgdata:

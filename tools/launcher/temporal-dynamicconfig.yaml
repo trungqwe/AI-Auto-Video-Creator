@@ -1,0 +1,2 @@
+# Cấu hình động Temporal: để trống có chủ đích (không đặt khoá nào); image server 1.31.2 không có sẵn tệp này nên launcher gắn chỉ đọc vào /etc/temporal/config/dynamicconfig/docker.yaml
+{}
