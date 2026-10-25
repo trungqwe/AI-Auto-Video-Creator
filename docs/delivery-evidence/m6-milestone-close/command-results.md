@@ -1,6 +1,6 @@
-# Nhật ký kết quả lệnh kiểm M6 (revision 3)
+# Nhật ký kết quả lệnh kiểm M6 (revision 4)
 
-Các lệnh kiểm của milestone được chạy theo 14 chuỗi nối bằng && (Chuỗi 1..14, tương ứng bước 1..14 của lệnh làm việc) trên candidate HEAD 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1 bằng interpreter khoá của lane; mỗi chuỗi là một mục có bảng 5 cột | Thứ tự | Lệnh (80 ký tự đầu) | Exit code | Dòng tóm tắt | Ghi chú |.
+Các lệnh kiểm của milestone được chạy theo 14 chuỗi nối bằng && (Chuỗi 1..14, tương ứng bước 1..14 của lệnh làm việc) trên candidate HEAD 6042d7a626d3d523881cc86d1b0ac674986bcafa bằng interpreter khoá của lane; mỗi chuỗi là một mục có bảng 5 cột | Thứ tự | Lệnh (80 ký tự đầu) | Exit code | Dòng tóm tắt | Ghi chú |.
 
 ## Chuỗi 1
 
@@ -125,6 +125,7 @@ Các lệnh kiểm của milestone được chạy theo 14 chuỗi nối bằng 
 | 40 | python -c "import pathlib; t = pathlib.Path('tools/launcher/prod/seed/import_see | 0 | không có đầu ra |  |
 | 41 | python -m pytest tests/integration/adapt/launch/test_adapt_launch_cli.py -q -p n | 0 | 30 passed in 0.39s |  |
 | 42 | python -c "import pathlib; c = pathlib.Path('tools/launcher/docker-compose.yml') | 0 | không có đầu ra |  |
+| 43 | python -c "import pathlib; t = pathlib.Path('tools/launcher/launcher.py').read_t | 0 | không có đầu ra |  |
 
 ## Chuỗi 8
 
@@ -160,10 +161,10 @@ Các lệnh kiểm của milestone được chạy theo 14 chuỗi nối bằng 
 | 1 | python -c "import pathlib, re; c = pathlib.Path('src/controlplane/application/ss | 0 | không có đầu ra |  |
 | 2 | python -m pytest tests/integration/convergence/test_cp4_pagination_postgres.py - | 0 | 16 passed in 11.05s |  |
 | 3 | python -m pytest tests/integration/control_ui tests/unit/control_ui -q -p no:cac | 0 | 840 passed, 1 warning in 1.84s |  |
-| 4 | python -m pytest tests/m2 -q -p no:cacheprovider --deselect tests/m2/test_p7b_ha | 0 | 179 passed, 1 deselected, 2 warnings in 213.67s (0:03:33) | 1 deselected (h36 hoãn sang CP7 theo quyết định user 21/10/2026) |
+| 4 | python -m pytest tests/m2 -q -p no:cacheprovider --deselect tests/m2/test_p7b_ha | 0 | 179 passed, 1 deselected, 2 warnings in 224.76s (0:03:44) | 1 deselected (h36 hoãn sang CP7 theo quyết định user 21/10/2026) |
 | 5 | python -c "import pathlib; q = pathlib.Path('src/controlplane/infrastructure/db/ | 0 | không có đầu ra |  |
 | 6 | python -m pytest tests/integration/convergence/test_cp4_queries_routes.py tests/ | 0 | 30 passed, 1 warning in 7.43s |  |
-| 7 | python -m pytest tests/integration tests/unit/control_ui -q -p no:cacheprovider | 0 | 2799 passed, 35 skipped, 1 warning, 25 subtests passed in 178.17s (0:02:58) | 35 skipped (thiếu PostgreSQL/tài nguyên, không coi là PASS tài nguyên thật) |
+| 7 | python -m pytest tests/integration tests/unit/control_ui -q -p no:cacheprovider | 0 | 3178 passed, 36 skipped, 1 warning, 25 subtests passed in 269.61s (0:04:29) | 36 skipped (thiếu PostgreSQL/tài nguyên, không coi là PASS tài nguyên thật) |
 | 8 | python -c "import pathlib; p = pathlib.Path('src/controlplane/application/contro | 0 | không có đầu ra |  |
 | 9 | python -c "import pathlib; u = pathlib.Path('src/controlplane/ui/src'); a = (u / | 0 | không có đầu ra |  |
 | 10 | python -c "import re, pathlib; r = pathlib.Path('src/controlplane/ui/src/feature | 0 | không có đầu ra |  |
@@ -192,7 +193,7 @@ Các lệnh kiểm của milestone được chạy theo 14 chuỗi nối bằng 
 | 7 | python -c "import re, pathlib; t = pathlib.Path('tests/m2/test_p9_m2_exit_gate.p | 0 | không có đầu ra |  |
 | 8 | python -m pytest tests/integration/convergence/test_cp3b_catalog_graphs.py tests | 0 | 25 passed in 0.07s |  |
 | 9 | python -m pytest tests/unit/collection tests/unit/catalog tests/m2/test_p4_state | 0 | 666 passed, 841 subtests passed in 1.02s |  |
-| 10 | python -m pytest tests/m2 tests/integration -q -p no:cacheprovider --deselect te | 0 | 2313 passed, 35 skipped, 1 deselected, 2 warnings, 25 subtests passed in 342.65s (0:05:42) | 35 skipped (thiếu PostgreSQL/tài nguyên, không coi là PASS tài nguyên thật); 1 deselected (h36 hoãn sang CP7 theo quyết định user 21/10/2026) |
+| 10 | python -m pytest tests/m2 tests/integration -q -p no:cacheprovider --deselect te | 0 | 2692 passed, 36 skipped, 1 deselected, 2 warnings, 25 subtests passed in 530.77s (0:08:50) | 36 skipped (thiếu PostgreSQL/tài nguyên, không coi là PASS tài nguyên thật); 1 deselected (h36 hoãn sang CP7 theo quyết định user 21/10/2026) |
 | 11 | python -m pytest tests/unit/collection tests/unit/ingestion tests/unit/catalog t | 0 | 5262 passed, 1 warning, 1998 subtests passed in 9.76s |  |
 | 12 | python -c "import pathlib; t = pathlib.Path('src/main.py').read_text(encoding='u | 0 | không có đầu ra |  |
 | 13 | python -c "import re, pathlib; d = pathlib.Path('src/controlplane/ui/dist'); h = | 0 | không có đầu ra |  |
@@ -362,7 +363,7 @@ Các lệnh kiểm của milestone được chạy theo 14 chuỗi nối bằng 
 
 ## Tổng hợp
 
-- Tổng số đoạn lệnh đã chạy: 288 (đếm thật qua 14 bảng).
-- Số đoạn exit 0: 288.
+- Tổng số đoạn lệnh đã chạy: 289 (đếm thật qua 14 bảng).
+- Số đoạn exit 0: 289.
 - Số đoạn lỗi: 0.
-- Trạng thái: toàn bộ 288/288 đoạn lệnh đạt exit code 0 trên candidate HEAD 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1.
+- Trạng thái: toàn bộ 289/289 đoạn lệnh đạt exit code 0 trên candidate HEAD 6042d7a626d3d523881cc86d1b0ac674986bcafa.
