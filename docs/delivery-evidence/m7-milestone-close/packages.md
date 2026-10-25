@@ -1,6 +1,6 @@
-# Gói được bao phủ và SHA tích hợp của M7
+# Gói được bao phủ và SHA tích hợp của M7 (revision 2)
 
-Bảng dưới đây liệt kê đúng 108 gói công việc của danh sách yêu cầu nghiệm thu Milestone M7 theo đúng thứ tự trong danh sách (đối chiếu theo brief M7-MILESTONE-CLOSE, không thêm các gói slice phân hệ D/E/F/G/H/I/J, không thêm M6-EF-PLAN). Mọi commit integrate đều được kiểm tra xác nhận là tổ tiên hợp lệ của candidate 51fdc0440160d06db296e5db8e60a7d62628b59c.
+Bảng dưới đây liệt kê đúng 110 gói theo thứ tự trong danh sách yêu cầu nghiệm thu của M7-MILESTONE-CLOSE-R2 (108 gói của revision 1 cộng ADAPT-LAUNCH-FIX1 và IMPL-PLAN-PROD-PORTS), candidate kiểm định là integration head `df46dfdb85b0bc5f2216cdf29daced518af4d5a3` (tiêu đề `integrate(IMPL-PLAN-PROD-PORTS-FIX1): lane lane-impl-plan-prod-ports-fix1 candidate 2092f7b2c54d`), và mọi commit integrate là tổ tiên của candidate này.
 
 | Mã gói | Commit integrate (SHA đầy đủ) | Candidate (12 hex) | Cách tra |
 | --- | --- | --- | --- |
@@ -43,6 +43,8 @@ Bảng dưới đây liệt kê đúng 108 gói công việc của danh sách y�
 | ADAPT-PROD-FIX2 | fa250e8305aa422ff260f2ce9bb3622a29239740 | e1cc7f40b25b | git log --grep="integrate(ADAPT-PROD-FIX2)" |
 | CP-4B-UI-SCREENS-FIX2 | 74c062a29d649ea0e3d1471dee9c739dc33d38fe | 1c85775dea49 | git log --grep="integrate(CP-4B-UI-SCREENS-FIX2)" |
 | PG-TEST-DSN-HARNESS-FIX1 | 51fdc0440160d06db296e5db8e60a7d62628b59c | 71aff7b4a405 | git log --grep="integrate(PG-TEST-DSN-HARNESS-FIX1)" |
+| ADAPT-LAUNCH-FIX1 | 21d99fc89eb076a036b4d62f026b057a61d96135 | 9bcb10e680dc | git log --grep="integrate(ADAPT-LAUNCH-FIX1)" |
+| IMPL-PLAN-PROD-PORTS | 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1 | 42a501fd0791 | git log --grep="integrate(IMPL-PLAN-PROD-PORTS)" |
 | A-01 | 22535f6dcff3dbf2e3187771a9bff1b34c85c838 | b11289d9c406 | git log --grep="integrate(A-01)" |
 | A-02 | e343a41ee6570c39d0cbeda2bd35a3bf2c15513f | 0614e8d1934d | git log --grep="integrate(A-02)" |
 | A-03 | 5e009d1c06ba60052bdd1658f939ffaadc626597 | 6382ebd2cdde | git log --grep="integrate(A-03)" |
@@ -112,3 +114,8 @@ Bảng dưới đây liệt kê đúng 108 gói công việc của danh sách y�
 | CP-3-MIGRATIONS | a3d84e838a0937515eb62eb5c3a35016ab88e7df | b33cdd34eb40 | git log --grep="integrate(CP-3-MIGRATIONS)" |
 | CP-4-WIRING | 750195f1a88ee5bc731893d8986992b7b97c442b | 06b6d6b453ca | git log --grep="integrate(CP-4-WIRING)" |
 | CP-4B-UI-SHELL | 42c328c98f7c0890d01fb3a590bf43a3f78eb2fb | 858d8179ba66 | git log --grep="integrate(CP-4B-UI-SHELL)" |
+
+## Ghi chú
+
+- Các commit integrate `IMPL-PLAN-PROD-PORTS-FIX1` (SHA: `df46dfdb85b0bc5f2216cdf29daced518af4d5a3`, tiêu đề `integrate(IMPL-PLAN-PROD-PORTS-FIX1): lane lane-impl-plan-prod-ports-fix1 candidate 2092f7b2c54d`) và `M4-MILESTONE-CLOSE-R2` (SHA: `561fdad88d2f0a31e59d3d31a6216e0e9933f5eb`, tiêu đề `integrate(M4-MILESTONE-CLOSE-R2): lane lane-m4-milestone-close-r2 candidate 14c19da831dc`) nằm trong lịch sử nhưng không thuộc danh sách gói nghiệm thu nên chỉ ghi chú tại đây.
+- Gói `IMPL-PLAN-PROD-PORTS` chỉ là gói kế hoạch (`docs/implementation/prod-ports/plan.md` và `slices.md`), slice PP-1..PP-8 chưa triển khai.
