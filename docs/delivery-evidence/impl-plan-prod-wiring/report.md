@@ -39,6 +39,24 @@ Ngày thực hiện: 26/10/2026. Task: IMPL-PLAN-PROD-WIRING.
      - Mã thoát: 0
      - Kết quả: Mã thoát 0, xác nhận ADAPT-PROD-FIX3 có mặt ở quy tắc chung, PW-W2 và plan.md; PW-W2 có test_adapt_prod_app.py; plan.md có mục 10.
 
+## Vòng AUDIT_FAIL (F1 của Auditor)
+
+- Danh sách thay đổi:
+  - F1 (MAJOR): kế hoạch bỏ sót cổng cứng có điều kiện `INFERENCE_DISCLOSURE_PRESENT`; đã sửa ở `plan.md` (DQ-17), `slices.md` (PW-F1, PW-F3, PW-F4, PW-E2E: requirement, instrument, counterexample, bindingRefs, coveredIds).
+  - Phạm vi: chỉ sửa F1 theo Convergence Freeze; MINOR M1 (PW-CAT1 sửa test đã nghiệm thu CP-6 chưa nêu ở mục 10 của plan.md), M2 (DQ-05 thiếu ba bảng mới của PW-SCHEMA), M3 (tên trạng thái lô lệch CT-ORC-010), M4 (không có cạnh CREATED/SNAPSHOTTED sang FAILED_FINAL; PW-G4 nên chuyển ACTIVE trước stage đầu), M5 (plan mục 2 nói handler D/E/F cần đổi epoch int nhưng handler đã ép kiểu), M6 (cân nhắc continue-as-new cho waiting dài), M7 (PW-E4 đo sha256 qua mạng sát ranh giới D5) không sửa trong vòng này, đưa vào backlog để làm bằng slice riêng.
+  - Xác nhận đã đọc lại các tệp `.md` đã sửa và chữ có dấu còn nguyên.
+
+- Bảng lệnh đã chạy ở bước 11-13:
+  1. `git diff --check`
+     - Mã thoát: 0
+     - Kết quả: Không có lỗi khoảng trắng cuối dòng hoặc xung đột git.
+  2. `python -c "import pathlib; s = pathlib.Path('docs/implementation/prod-wiring/slices.md').read_text(encoding='utf-8'); p = pathlib.Path('docs/implementation/prod-wiring/plan.md').read_text(encoding='utf-8'); sec = lambda k: s.split('### ' + k + ': ', 1)[1].split(chr(10) + '### ', 1)[0]; assert 'INFERENCE_DISCLOSURE_PRESENT' in p and all('INFERENCE_DISCLOSURE_PRESENT' in sec(k) for k in ['PW-F1', 'PW-F4', 'PW-E2E']) and 'disclosure' in sec('PW-F3'), 'F1'"`
+     - Mã thoát: 0
+     - Kết quả: Mã thoát 0, xác nhận PW-F1, PW-F4, PW-E2E và plan.md có INFERENCE_DISCLOSURE_PRESENT, PW-F3 có disclosure.
+  3. `python -c "import re, pathlib, unicodedata; d = pathlib.Path('docs/implementation/prod-wiring'); p = unicodedata.normalize('NFC', (d / 'plan.md').read_text(encoding='utf-8')); s = unicodedata.normalize('NFC', (d / 'slices.md').read_text(encoding='utf-8')); ids = re.findall('(?m)^### (PW-[0-9A-Z][0-9A-Z-]*): ', s); assert ids and len(ids) == len(set(ids)) and 'PW-E2E' in ids, ids; assert all(s.count('- ' + k + ':') >= len(ids) for k in ['ownedPaths', 'dependsOn', 'resourceLocks', 'bindingRefs', 'testCommands', 'acceptance', 'coveredIds']), 'each slice needs ownedPaths, dependsOn, resourceLocks, bindingRefs, testCommands, acceptance and coveredIds'; deps = re.findall('(?m)^- dependsOn:(.*)', s); bad = [x for x in deps if re.search('CP7-|M7-MILESTONE-CLOSE|GATE-|RS-13|CP-4B-UI-SCREENS-FIX4', x)]; assert not bad, ('forbidden dependency', bad); e = s.split('### PW-E2E: ', 1)[1].split(chr(10) + '### ', 1)[0]; ed = re.findall('(?m)^- dependsOn:(.*)', e); assert ed and all(i in ed[0] for i in ids if i != 'PW-E2E'), 'PW-E2E must depend on every other PW slice'; miss = [k for k in ['AppSession','cp_stage_runs','grant','outbox','ValidateVariant','ReserveVariant','waiting','media_select','ConfigRevision','Kokoro','inspector','PersistVideoOutput','credential_unavailable','PlanCollectionCycle','RegisterMediaDiscovery','launcher','Temporal','PW-E2E','OI-ADAPT-10','FR-AUD-007'] if k not in p]; assert not miss, ('plan.md must cover', miss); assert re.search('[Ạ-ỹ]', p) and chr(65533) not in p + s, 'Vietnamese text with diacritics, no replacement characters'"`
+     - Mã thoát: 0
+     - Kết quả: Mã thoát 0, toàn bộ kiểm tra cấu trúc đạt: 32 slice ID duy nhất, đủ 7 trường bắt buộc mỗi slice, không phụ thuộc cấm, PW-E2E phụ thuộc đủ 31 slice còn lại trên một dòng, plan.md đủ từ khoá bắt buộc, tiếng Việt đủ dấu và 0 ký tự thay thế U+FFFD.
+
 ## Mục mở
 
 - OI-PW-01: OI-CP7-03 (bỏ scheduler cloud theo U1) vẫn chờ user ghi nhận ở R1; không chặn kế hoạch.
