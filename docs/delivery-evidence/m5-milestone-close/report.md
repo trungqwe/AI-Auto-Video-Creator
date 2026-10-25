@@ -1,6 +1,6 @@
 # Báo cáo đóng milestone M5 (revision 3)
 
-Task: M5-MILESTONE-CLOSE-R3; candidate: HEAD 21d99fc89eb076a036b4d62f026b057a61d96135 (cây mã nguồn của lane; các commit docs(m5) của lane chỉ chạm docs/delivery-evidence/m5-milestone-close/); kết quả từng lệnh ở command-results.md cùng thư mục
+Task: M5-MILESTONE-CLOSE-R3; candidate: cây mã nguồn tại 21d99fc89eb076a036b4d62f026b057a61d96135 (HEAD của lane là c7c66ff84704737d81066423842274e904a045b7; các commit docs(m5) của lane chỉ chạm docs/delivery-evidence/m5-milestone-close/); kết quả từng lệnh ở command-results.md cùng thư mục
 
 ## 1. Phạm vi và lý do đóng ở revision 3
 
@@ -8,7 +8,7 @@ Milestone M5 được đóng đúng một lần ở revision 3 (R3) với đầy
 
 Báo cáo này là bằng chứng kỹ thuật đóng milestone nội bộ, hoàn toàn không thay đổi trạng thái trong docs/11-roadmap.md hay docs/12-pre-code-checklist.md và không tự ý tuyên bố người dùng (user) đã duyệt M5. Các vai trò thẩm định trong quy trình này được ghi nhận chuẩn mực là Reviewer (Sonnet 5.5) và Auditor rủi ro (Opus 5.5).
 
-Revision 2 (M5-MILESTONE-CLOSE-R2) chạy trên candidate cây mã nguồn 74c062a29d649ea0e3d1471dee9c739dc33d38fe và không còn là cơ sở; R3 chạy lại toàn bộ 288 lệnh kiểm trên HEAD 21d99fc89eb076a036b4d62f026b057a61d96135, không dùng lại kết quả cũ. Khác R2: gói sửa ADAPT-LAUNCH-FIX1 (integrate 21d99fc89eb076a036b4d62f026b057a61d96135, candidate 9bcb10e680dc, lệnh temporal-schema của launcher chạy dưới dạng một chuỗi sh -c) đã tích hợp, và hai lệnh ADAPT-LAUNCH nằm ở STT 48-49. Toàn bộ 288/288 lệnh kiểm tra đã đạt exit 0 trên candidate 21d99fc89eb076a036b4d62f026b057a61d96135.
+Revision 2 (M5-MILESTONE-CLOSE-R2) chạy trên candidate cây mã nguồn 74c062a29d649ea0e3d1471dee9c739dc33d38fe và không còn là cơ sở; R3 chạy lại toàn bộ 288 lệnh kiểm trên cây mã nguồn tại 21d99fc89eb076a036b4d62f026b057a61d96135 trong phiên R3 này (giờ chạy từng nhóm ở các dòng RERUN-LOG của command-results.md). Bản chứng cứ đã commit ở c7c66ff có output sao chép từ R2 (phát hiện F1 của Auditor) và đã bị thay hoàn toàn bằng output chạy lại. Khác R2: gói sửa ADAPT-LAUNCH-FIX1 (integrate 21d99fc89eb076a036b4d62f026b057a61d96135, candidate 9bcb10e680dc, lệnh temporal-schema của launcher chạy dưới dạng một chuỗi sh -c) đã tích hợp, và hai lệnh ADAPT-LAUNCH nằm ở STT 48-49. Toàn bộ 288/288 lệnh kiểm tra đã đạt exit 0 trên candidate 21d99fc89eb076a036b4d62f026b057a61d96135.
 
 ## 2. Kiểm lại các điểm của R1
 
@@ -362,7 +362,7 @@ Theo quyết định của người dùng ngày 22/10/2026 ghi nhận trong sổ
   - STT 118 và STT 142 (35 skip mỗi lệnh) là 28 skip của test_cp4_wiring cộng 7 skip của test_storage_staging_paths; STT 133 (7 skip) chỉ gồm 7 skip của test_storage_staging_paths. Không còn nguồn skip nào khác.
   - Hai mô-đun DPAPI (`tests/integration/adapt/j/test_adapt_j_oauth.py` dòng 26, `tests/integration/config/test_j_dpapi_secret_store.py` dòng 17) chỉ skip khi nền tảng không phải win32 nên không skip trong lần chạy này.
   - Test bị skip không được tính là test đã chạy; báo cáo chỉ ghi exit 0 của lệnh và số skip.
-- Gói sửa ADAPT-LAUNCH-FIX1 (integrate 21d99fc89eb076a036b4d62f026b057a61d96135, candidate 9bcb10e680dc) đã được kiểm chứng ở STT 48-49 với 30 passed in 0.42s và probe docker-compose.yml exit 0.
+- Gói sửa ADAPT-LAUNCH-FIX1 (integrate 21d99fc89eb076a036b4d62f026b057a61d96135, candidate 9bcb10e680dc) đã được kiểm chứng ở STT 48-49 với 30 passed in 0.43s và probe docker-compose.yml exit 0.
 - Kiểm thử `tests/m2/test_p7b_hardening.py::test_h36_m1_regression` được hoãn sang gói CP7 theo đúng quyết định của người dùng ngày 21/10/2026 (mang cờ `--deselect`, không chạy).
 - Báo cáo không thay đổi trạng thái trong roadmap hay checklist.
 
