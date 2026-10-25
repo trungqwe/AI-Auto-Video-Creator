@@ -564,3 +564,10 @@ def test_source_is_clean_and_uses_required_calls():
         if isinstance(node, ast.ImportFrom):
             for alias in node.names:
                 assert not alias.name.startswith('_'), f'Importing private name: {alias.name}'
+
+
+def test_default_http_is_the_drive_client_that_keeps_308(tmp_path):
+    bootstrap = DrivePlacementBootstrap(StaticBroker(), tmp_path / 'state' / 'drive-placement.json', ROOT_NAME, NAMESPACES,
+                                        retry_max_attempts=3, backoff_base_seconds=0.5, backoff_cap_seconds=2.0, timeout_seconds=5.0)
+    http = bootstrap._http_factory(5.0)
+    assert isinstance(http, httplib2.Http) and 308 not in http.redirect_codes

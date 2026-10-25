@@ -20,7 +20,7 @@ from googleapiclient.errors import HttpError
 
 from controlplane.application.config_security.route_resolver import CREDENTIAL_METHOD
 from controlplane.infrastructure.security.oauth_google_loopback import ACCOUNT_REF
-from controlplane.infrastructure.storage.drive_object_store import DriveTokenBrokerPort
+from controlplane.infrastructure.storage.drive_object_store import DriveTokenBrokerPort, drive_http
 
 _FOLDER_MIME = 'application/vnd.google-apps.folder'
 _RETRYABLE_STATUS = frozenset({408, 429})
@@ -160,7 +160,7 @@ class DrivePlacementBootstrap:
         self._backoff_base = backoff_base_seconds
         self._backoff_cap = backoff_cap_seconds
         self._timeout = timeout_seconds
-        self._http_factory = http_factory or (lambda timeout: httplib2.Http(timeout=timeout))
+        self._http_factory = http_factory or drive_http
         self._sleep = sleep
 
     def _open_service(self) -> object:

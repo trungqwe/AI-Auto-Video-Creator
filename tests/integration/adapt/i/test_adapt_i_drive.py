@@ -736,3 +736,33 @@ def test_adapter_holds_no_refresh_token_and_no_src_import(tmp_path: Path) -> Non
     for k, v in vars(env.store).items():
         assert 'refresh' not in k.lower()
         assert 'token' not in k.lower()
+
+
+def test_default_http_keeps_308_as_resume_incomplete_instead_of_a_redirect(tmp_path: Path) -> None:
+    """Drive answers every non-final resumable chunk with 308 and no Location; the store's default client must return it."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class ResumeIncomplete(BaseHTTPRequestHandler):
+        def do_PUT(self) -> None:
+            self.rfile.read(int(self.headers.get('Content-Length', '0')))
+            self.send_response(308)
+            self.send_header('Range', 'bytes=0-3')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), ResumeIncomplete)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        url = f'http://127.0.0.1:{server.server_address[1]}/upload/drive/v3/files?upload_id=x'
+        with pytest.raises(httplib2.RedirectMissingLocation):
+            httplib2.Http(timeout=5).request(url, method='PUT', body=b'data')
+        store = DriveObjectStore(make_config(), FakeBroker(), FakeSource(tmp_path))
+        response, _ = store._http_factory(5).request(url, method='PUT', body=b'data')
+        assert response.status == 308
+    finally:
+        server.shutdown()
+        server.server_close()

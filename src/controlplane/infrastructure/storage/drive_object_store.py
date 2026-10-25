@@ -26,6 +26,16 @@ _OCTET_STREAM = 'application/octet-stream'
 _RETRYABLE_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 _RATE_LIMIT_REASONS = frozenset({'rateLimitExceeded', 'userRateLimitExceeded'})
 _HEX = frozenset('0123456789abcdef')
+_RESUME_INCOMPLETE = 308
+
+
+def drive_http(timeout: float) -> httplib2.Http:
+    """httplib2 client for Google Drive. Drive answers every non-final resumable chunk with 308 Resume Incomplete and no Location;
+    httplib2 treats 308 as a redirect by default and raises RedirectMissingLocation, so 308 is removed from the redirect codes
+    exactly as googleapiclient.http.build_http does."""
+    http = httplib2.Http(timeout=timeout)
+    http.redirect_codes = http.redirect_codes - {_RESUME_INCOMPLETE}
+    return http
 
 
 class DriveObjectStoreError(Exception):
@@ -161,7 +171,7 @@ class DriveObjectStore(CloudObjectPort):
         self._config = config
         self._broker = broker
         self._source = source
-        self._http_factory = http_factory or (lambda timeout: httplib2.Http(timeout=timeout))
+        self._http_factory = http_factory or drive_http
         self._sleep = sleep
         self._clock = clock
         self._parents: dict[str, str] = {}
@@ -372,4 +382,5 @@ __all__ = [
     'DriveQuotaError',
     'DriveStoreConfig',
     'DriveTokenBrokerPort',
+    'drive_http',
 ]
