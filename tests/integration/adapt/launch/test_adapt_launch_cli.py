@@ -165,12 +165,14 @@ def test_compose_images_pinned_by_lock_digest():
         assert re.match(pattern, img), f"Invalid image format: {img}"
         assert "latest" not in img
     lock = json.loads(LOCK_PATH.read_text(encoding="utf-8"))
-    expected_digests = {
-        "sha256:" + lock["pins"]["postgresql_image"]["sha256"],
-        "sha256:" + lock["pins"]["temporal_server_binary"]["sha256"],
-    }
-    actual_digests = {img.split("@")[1] for img in images}
-    assert actual_digests == expected_digests
+    postgres_digest = "sha256:" + lock["pins"]["postgresql_image"]["sha256"]
+    temporal_digest = "sha256:" + lock["pins"]["temporal_server_binary"]["sha256"]
+    admin_tools_image = "temporalio/admin-tools:1.31.2@sha256:dbc5fcd6ee8f0f4d808bf765af9a87dea9d8a283abfdcfbd2fc148496ba66107"
+    assert images[0].split("@")[1] == postgres_digest
+    assert images[2].split("@")[1] == temporal_digest
+    assert images[1] == admin_tools_image
+    assert images[1].startswith("temporalio/admin-tools:" + lock["versions"]["temporal_server"] + "@")
+    assert images[2].startswith("temporalio/server:")
     assert lock["versions"]["postgresql"] in images[0]
     assert lock["versions"]["temporal_server"] in images[1]
     assert lock["versions"]["temporal_server"] in images[2]
@@ -231,6 +233,29 @@ def test_compose_named_volume_and_no_secret():
             assert not line.strip().startswith("- ./") and ":\\" not in line
         if any(k in line for k in ["POSTGRES_PASSWORD:", "POSTGRES_PWD:", "SQL_PASSWORD:"]):
             assert "${AIAVC_PG_PASSWORD" in line
+
+
+def test_compose_temporal_dynamic_config_mounted_readonly():
+    text = COMPOSE_PATH.read_text(encoding="utf-8")
+    block_match = re.search(r"^  temporal:\r?\n(.*?)(?=^  \S|^\S|\Z)", text, re.M | re.S)
+    assert block_match, "Thiếu service temporal"
+    block = block_match.group(1)
+    mount = "./temporal-dynamicconfig.yaml:/etc/temporal/config/dynamicconfig/docker.yaml:ro"
+    vol_match = re.search(r"^    volumes:[ \t]*\r?\n((?:      - .*(?:\r?\n|\Z))+)", block, re.M)
+    assert vol_match, "service temporal thiếu khoá volumes"
+    volumes = [ln.strip()[2:].strip().strip('"\'') for ln in vol_match.group(1).splitlines() if ln.strip()]
+    assert mount in volumes
+    env_match = re.search(r"^      DYNAMIC_CONFIG_FILE_PATH:[ \t]*\"?([^\"\s]+)\"?[ \t]*$", block, re.M)
+    assert env_match, "Thiếu DYNAMIC_CONFIG_FILE_PATH"
+    assert env_match.group(1) == "/etc/temporal/config/dynamicconfig/docker.yaml"
+    config_path = ROOT / "tools" / "launcher" / "temporal-dynamicconfig.yaml"
+    assert config_path.is_file()
+    lines = [ln.strip() for ln in config_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    comments = [ln for ln in lines if ln.startswith("#")]
+    body = [ln for ln in lines if not ln.startswith("#")]
+    assert len(comments) == 1
+    assert body == ["{}"]
+
 
 def test_launcher_top_level_imports_stdlib_only():
     text = LAUNCHER_PATH.read_text(encoding="utf-8")
