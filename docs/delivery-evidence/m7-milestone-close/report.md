@@ -1,22 +1,24 @@
-# Báo cáo đóng M7 (revision 1): M7-MILESTONE-CLOSE
+# Báo cáo đóng M7 (revision 2): M7-MILESTONE-CLOSE-R2
 
 ## 1. Phạm vi và candidate
 
-- Task: `M7-MILESTONE-CLOSE` (đóng milestone M7, revision 1).
-- Candidate: `51fdc0440160d06db296e5db8e60a7d62628b59c` (tiêu đề: `integrate(PG-TEST-DSN-HARNESS-FIX1): lane lane-pg-test-dsn-harness-fix1 candidate 71aff7b4a405`), là integration head của nhánh.
+- Task: `M7-MILESTONE-CLOSE-R2` (đóng milestone M7, revision 2).
+- Candidate: `df46dfdb85b0bc5f2216cdf29daced518af4d5a3` (tiêu đề: `integrate(IMPL-PLAN-PROD-PORTS-FIX1): lane lane-impl-plan-prod-ports-fix1 candidate 2092f7b2c54d`), là integration head của nhánh.
+- Revision 2 thay thế revision 1 (trước đó chạy trên commit `51fdc0440160d06db296e5db8e60a7d62628b59c`, chưa tích hợp gói `ADAPT-LAUNCH-FIX1` và `IMPL-PLAN-PROD-PORTS`).
 - Interpreter khoá của lane: `C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\33f06a7a\venv\Scripts\python.exe`.
 - Ngày thực thi: `2026-10-25`.
-- Phạm vi thực hiện: Lane chỉ thêm tệp dưới `docs/delivery-evidence/m7-milestone-close/`, tuyệt đối không chạm mã nguồn sản phẩm, không đổi roadmap hay checklist.
+- Phạm vi thực hiện: Lane chỉ thêm/sửa tệp dưới `docs/delivery-evidence/m7-milestone-close/`, tuyệt đối không chạm mã nguồn sản phẩm, không đổi roadmap hay checklist.
 
 ## 2. Kết luận
 
-Toàn bộ 308/308 đoạn lệnh kiểm bắt buộc thuộc 16 chuỗi của milestone đã được chạy lại trên candidate và đều đạt exit code 0. Đủ 108 gói công việc được xác thực commit integrate tổ tiên hợp lệ. Đủ 13 gói cổng được đối chiếu recordHash RELEASE chuẩn xác từ Control. Hai gate cần tài nguyên thật và phiên chạy đêm (M7-R5-EG1, M7-R6) được chuyển vào pendingUserCheckpoint chờ người dùng nghiệm thu tại CP7 theo đúng phê duyệt. Kết luận nghiệm thu: **ĐẠT**.
+Toàn bộ 309/309 đoạn lệnh kiểm bắt buộc thuộc 16 chuỗi của milestone đã được chạy lại trên candidate và đều đạt exit code 0. Đủ 110 gói công việc được xác thực commit integrate tổ tiên hợp lệ. Đủ 13 gói cổng được đối chiếu recordHash RELEASE chuẩn xác từ Control. Hai gate cần tài nguyên thật và phiên chạy đêm (M7-R5-EG1, M7-R6) được chuyển vào pendingUserCheckpoint chờ người dùng nghiệm thu tại CP7 theo đúng phê duyệt. Kết luận nghiệm thu: **ĐẠT**.
 
 ## 3. Gói được bao phủ và SHA tích hợp
 
-Danh sách đầy đủ 108 gói kèm commit integrate 40 hex và candidate được trình bày chi tiết tại [packages.md](packages.md).
+Danh sách đầy đủ 110 gói kèm commit integrate 40 hex và candidate được trình bày chi tiết tại [packages.md](packages.md).
 - Gói `M7-INTEGRATION-PLAN`: SHA `0a3f707ffa08b3a5737be6fa30769933d2cf475d` do Control xác minh receipt Auditor PASS và commit nội dung là tổ tiên của nhánh tích hợp (không có commit integrate).
-- Gói `PG-TEST-DSN-HARNESS-FIX1`: SHA `51fdc0440160d06db296e5db8e60a7d62628b59c`, candidate `71aff7b4a405`.
+- Gói `ADAPT-LAUNCH-FIX1`: SHA `21d99fc89eb076a036b4d62f026b057a61d96135`, candidate `9bcb10e680dc`.
+- Gói `IMPL-PLAN-PROD-PORTS`: SHA `8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1`, candidate `42a501fd0791`. Gói này chỉ là gói lập kế hoạch (`docs/implementation/prod-ports/plan.md` và `slices.md`), các slice `PP-1` đến `PP-8` chưa triển khai.
 - Các test phân hệ D, E, F, G, H, I, J vẫn được chạy đầy đủ ở Chuỗi 13..15 dù các gói slice của chúng không nằm trong danh sách yêu cầu nghiệm thu của brief M7.
 
 ## 4. Gói cổng và bản ghi quyết định
@@ -36,12 +38,13 @@ Danh sách đầy đủ 108 gói kèm commit integrate 40 hex và candidate đư
 | GATE-PERSIST-G | f71b035ffeface811ea87ccc06ba8a13129922fed922018793672d14d244fe7d |
 | GATE-PERSIST-I | b987fc8b60eaddba804f31ce51c78cfc9047db41d42203882ea5fae37c31843e |
 | GATE-PERSIST-J | cc9e80f551c0a83996a2ff710c7ce2d8d73517eed0434d4c176e55403d1399de |
+
 Các cổng không có SHA tích hợp, recordHash chép nguyên văn từ yêu cầu nghiệm thu, báo cáo không đọc sổ quyết định của Control và không mở .ai-pm/**.
 
 ## 5. Kết quả lệnh kiểm
 
 - Tổng số chuỗi lệnh: 16 chuỗi.
-- Tổng số đoạn lệnh kiểm đã chạy: 308 đoạn; toàn bộ 308/308 đều đạt exit code 0.
+- Tổng số đoạn lệnh kiểm đã chạy: 309 đoạn; toàn bộ 309/309 đều đạt exit code 0.
 - Các lệnh có test skipped do thiếu PostgreSQL/dịch vụ ngoài trên môi trường test:
   - Chuỗi 5 STT 10 (`tests/integration/convergence/test_cp4_wiring.py`): 28 skipped.
   - Chuỗi 11 STT 7 (`tests/integration tests/unit/control_ui`): 35 skipped.
@@ -62,10 +65,11 @@ Bảng tóm tắt đối chiếu 6 exit gate Milestone M7 (chi tiết tại [exi
 | M7-R5-EG2 | Một video/nguồn/provider lỗi không làm dừng việc độc lập | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Test exit 0: `test_g_batch_outcome.py`, `test_d15_provider_failure.py`. |
 | M7-R5-EG3 | Không job biến mất không trạng thái/log | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Test exit 0: `test_g_consistency_audit.py`, `test_g_recovery_scan.py`. |
 | M7-R5-EG4 | Resume, retry, reconcile và cleanup qua fault suite | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Test exit 0: `test_g_retry_policy.py`, `test_storage_reconciliation.py`, `test_storage_cleanup_executor.py`, `test_cp5_completion_uow.py`. |
-| M7-R5-EG5 | Không P0/P1 mở và không hard-gate/INV test bị quarantine | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Không có registry P0/P1 trong kế hoạch; 308 lệnh kiểm exit 0. |
+| M7-R5-EG5 | Không P0/P1 mở và không hard-gate/INV test bị quarantine | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Không có registry P0/P1 trong kế hoạch; 309 lệnh kiểm exit 0. |
 | M7-R6 | Mọi exit gate R6 Operational Baseline: G01–G07, 100 video trong 12 giờ, ≥95% hoàn thành, ngưỡng hiệu năng và chất lượng, chi phí dưới 50 USD/tháng, runbook/rollback, user nghiệm thu (CP7) | PENDING_USER_CHECKPOINT | CP7 chạy đêm 100 video/12 giờ, 10 mẫu Dashboard. Bằng chứng giả lập exit 0: `test_j_incremental_cost.py`, `test_j_capacity_snapshot.py`, `docs/runbook/runbook-v1.md`. |
 
 Quyết định của user (2026-10-22): «Exit gate của roadmap rộng hơn kế hoạch đã duyệt chỉ được ghi chú trong báo cáo đóng mốc, không phải FAIL và không hỏi user. Việc kế hoạch đã duyệt có mà chưa nối do Control tự lập gói sửa.»
+Chi tiết đối chiếu và ghi chú bổ sung về kế hoạch PROD-PORTS (PP-1..PP-8 chưa nối, chỉ ghi chú) được trình bày tại [exit-gates.md](exit-gates.md) mục "Ghi chú bổ sung revision 2".
 
 ## 7. pendingUserCheckpoint
 
