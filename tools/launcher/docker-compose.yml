@@ -34,14 +34,15 @@ services:
       SQL_USER: controlplane
       SQL_PASSWORD: "${AIAVC_PG_PASSWORD:?thiếu mật khẩu do launcher cấp}"
     entrypoint: ["/bin/sh", "-c"]
-    command: >-
-      set -e;
-      temporal-sql-tool --db temporal create || true;
-      temporal-sql-tool --db temporal setup-schema -v 0.0 || true;
-      temporal-sql-tool --db temporal update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned;
-      temporal-sql-tool --db temporal_visibility create || true;
-      temporal-sql-tool --db temporal_visibility setup-schema -v 0.0 || true;
-      temporal-sql-tool --db temporal_visibility update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
+    command:
+      - >-
+        set -e;
+        temporal-sql-tool --db temporal create || true;
+        temporal-sql-tool --db temporal setup-schema -v 0.0 || true;
+        temporal-sql-tool --db temporal update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned;
+        temporal-sql-tool --db temporal_visibility create || true;
+        temporal-sql-tool --db temporal_visibility setup-schema -v 0.0 || true;
+        temporal-sql-tool --db temporal_visibility update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
 
   temporal:
     image: temporalio/server:1.31.2@sha256:b5ecdb8282bededae2a10c36e8d862e27d0bc2d247fc73c5416025997ab4a1da

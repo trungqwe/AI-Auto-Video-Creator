@@ -194,6 +194,34 @@ def test_compose_ports_loopback_only():
     assert "0.0.0.0" not in text
     assert "8233" not in text and "7243" not in text
 
+def test_compose_temporal_schema_command_single_shell_string():
+    text = COMPOSE_PATH.read_text(encoding="utf-8")
+    block_match = re.search(r"^  temporal-schema:\n(.*?)(?=^  \S|^\S|\Z)", text, re.M | re.S)
+    assert block_match, "Thiếu service temporal-schema"
+    block = block_match.group(1)
+    assert re.search(r'^    entrypoint: \["/bin/sh", "-c"\]\s*$', block, re.M)
+    cmd_match = re.search(r"^    command:[ \t]*\r?\n((?:      .*(?:\r?\n|\Z))+)", block, re.M)
+    assert cmd_match, "command phải là danh sách YAML (khoá command: rồi các dòng '- ' thụt vào)"
+    lines = [ln for ln in cmd_match.group(1).splitlines() if ln.strip()]
+    items = [ln for ln in lines if re.match(r"^      - ", ln)]
+    assert len(items) == 1, "command phải có đúng một phần tử"
+    assert lines[0].strip() == "- >-"
+    assert all(ln.startswith("        ") for ln in lines[1:]), "thân chuỗi gấp dòng phải thụt sâu hơn phần tử"
+    command = " ".join(ln.strip() for ln in lines[1:])
+    assert command.startswith("set -e;")
+    assert command.count("temporal-sql-tool") == 6
+    calls = re.findall(r"temporal-sql-tool\s+--db\s+(temporal(?:_visibility)?)\s+(create|setup-schema|update-schema)\b", command)
+    assert calls == [
+        ("temporal", "create"),
+        ("temporal", "setup-schema"),
+        ("temporal", "update-schema"),
+        ("temporal_visibility", "create"),
+        ("temporal_visibility", "setup-schema"),
+        ("temporal_visibility", "update-schema"),
+    ]
+    assert "-d /etc/temporal/schema/postgresql/v12/temporal/versioned" in command
+    assert "-d /etc/temporal/schema/postgresql/v12/visibility/versioned" in command
+
 def test_compose_named_volume_and_no_secret():
     text = COMPOSE_PATH.read_text(encoding="utf-8")
     assert "aiavc_pgdata:/var/lib/postgresql" in text
