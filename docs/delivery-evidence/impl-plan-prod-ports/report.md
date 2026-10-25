@@ -25,3 +25,11 @@ OI-PP-01 đến OI-PP-07 theo plan.md mục 7; không mục nào được ghi l�
 ## Giới hạn
 
 Gói chỉ lập kế hoạch; không sửa `src/**`, `tools/**`, `tests/**`; không gọi dịch vụ thật, không đọc bí mật. Nội dung do Worker (Gemini 3.8 Flash) viết, Auditor rủi ro (Opus 5.5) duyệt trước khi biên dịch.
+
+## Sửa lần 1 (IMPL-PLAN-PROD-PORTS-FIX1)
+
+- Finding: PLAN_ACTIVATION_CONFLICT — `PP-8` (`tools/launcher/launcher.py`) chồng đường dẫn với `ADAPT-LAUNCH` của kế hoạch impl-adapt-r1.
+- Cách giải: `PP-8` khai `dependsOn` thêm `ADAPT-LAUNCH` và giữ thêm `LOCK-COMPOSITION-ROOT` (cùng khóa của `ADAPT-LAUNCH`) bên cạnh `LOCK-PROD-PORTS` và `LOCK-CONVERGENCE`; `PP-8` chạy sau `ADAPT-LAUNCH` (gói sửa ADAPT-LAUNCH-FIX1 đã tích hợp tại `21d99fc`) và là writer duy nhất của `launcher.py` trong kế hoạch này.
+- Tệp đã sửa: `docs/implementation/prod-ports/slices.md` (dòng mở đầu và mục `PP-8`), `docs/implementation/prod-ports/plan.md` (mục 1 điểm 4, mục 5, mục 8 điểm 2), báo cáo này.
+- Không đổi phạm vi mã nguồn của `PP-8`, không đổi `PP-1` đến `PP-7`, không đổi mục mở OI-PP-01 đến OI-PP-07.
+- Lệnh đã chạy: `git diff --check` và probe bắt buộc của task, cả hai mã thoát 0 (Worker xác nhận lại khi báo cáo).
