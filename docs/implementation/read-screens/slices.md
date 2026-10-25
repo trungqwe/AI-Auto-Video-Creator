@@ -1,12 +1,12 @@
 # Slice nối route chỉ đọc cho các màn hình Dashboard — IMPL-PLAN-READ-SCREENS
 
-Nguồn: `docs/implementation/read-screens/plan.md`. Mười ba slice `RS-1` đến `RS-13`, tất cả là `work_package_slice`. Mỗi slice chỉ sở hữu tệp MỚI: service đọc ở `src/controlplane/api/wiring/read_screens/**`, test ở `tests/integration/read_screens/**`, bằng chứng ở `docs/delivery-evidence/rs-*/**`. Chỗ phải sửa trong tệp đã có chủ nằm ở mục «Gói sửa của chủ sở hữu» của plan.md (CP-4-WIRING-FIX3, ADAPT-PROD-FIX3, CP-4B-UI-SCREENS-FIX3), không nằm ở đây. Chạy tuần tự trong một lane; mọi slice khai khóa `LOCK-READ-SCREENS` (GIẢ ĐỊNH: Control đăng ký khóa này).
+Nguồn: `docs/implementation/read-screens/plan.md`. Mười ba slice `RS-1` đến `RS-13`, tất cả là `work_package_slice`. Mỗi slice chỉ sở hữu tệp MỚI: service đọc ở `src/controlplane/infrastructure/read_screens/**`, test ở `tests/integration/read_screens/**`, bằng chứng ở `docs/delivery-evidence/rs-*/**`. Chỗ phải sửa trong tệp đã có chủ nằm ở mục «Gói sửa của chủ sở hữu» của plan.md (CP-4-WIRING-FIX3, ADAPT-PROD-FIX3, CP-4B-UI-SCREENS-FIX3), không nằm ở đây. `src/controlplane/api/wiring/**` là COMPOSITION-ROOT nên không slice nào đặt tệp ở đó. Chạy tuần tự trong một lane; mọi slice khai khóa `LOCK-READ-SCREENS` (GIẢ ĐỊNH: Control đăng ký khóa này).
 
 ## Quy tắc chung cho mọi slice
 
-- Chỉ tạo tệp trong `ownedPaths`; không sửa tệp đã có (kể cả `production.py`, `route_catalog.py`, `screenRegistry.ts`, migration, `tests/m1`, `tests/m2`, `tests/integration/adapt/**`, `tests/integration/convergence/**`, `tests/unit/control_ui/**`, `ui/dist`, `docs/milestones/**/evidence/**`). Không thêm thư viện, không migration, không đổi domain hay repository của phân hệ, không đụng `tools/launcher/**` và `src/controlplane/infrastructure/production_ports/**`.
+- Chỉ tạo tệp trong `ownedPaths`; không sửa tệp đã có (kể cả mọi tệp dưới `src/controlplane/api/wiring/**` là COMPOSITION-ROOT, `production.py`, `route_catalog.py`, `screenRegistry.ts`, migration, `tests/m1`, `tests/m2`, `tests/integration/adapt/**`, `tests/integration/convergence/**`, `tests/unit/control_ui/**`, `ui/dist`, `docs/milestones/**/evidence/**`). Không thêm thư viện, không migration, không đổi domain hay repository của phân hệ, không đụng `tools/launcher/**` và `src/controlplane/infrastructure/production_ports/**`.
 - Import theo gốc `src/` (không tiền tố `src.`). Không `os.environ` trong mã service; không `mock` hay `fake` trong mã service.
-- Test chạy trên PostgreSQL thử: biến `M2_TEST_PG_DSN`, CSDL tạm tạo và xóa theo mẫu `tests/integration/adapt/prod/test_adapt_prod_app.py:114-135` (`MigrationRunner.migrate_up`, seed `cp_workspaces`). Thiếu DSN thì `pytest.fail('BLOCKED_EXTERNAL: thiếu M2_TEST_PG_DSN')`, không skip. Dữ liệu tạo bằng repository hoặc dịch vụ ứng dụng của phân hệ; chỉ RS-9 và RS-10 được INSERT SQL tối thiểu vì `src/` chưa có hàm ghi (ghi rõ trong test).
+- Test chạy trên PostgreSQL thử: biến `M2_TEST_PG_DSN`, CSDL tạm tạo và xóa theo mẫu `tests/integration/adapt/prod/test_adapt_prod_app.py:114-135`; `docs/parallel-delivery/ownership-and-locks.yaml:221-222` (`MigrationRunner.migrate_up`, seed `cp_workspaces`). Thiếu DSN thì `pytest.fail('BLOCKED_EXTERNAL: thiếu M2_TEST_PG_DSN')`, không skip. Dữ liệu tạo bằng repository hoặc dịch vụ ứng dụng của phân hệ; chỉ RS-9 và RS-10 được INSERT SQL tối thiểu vì `src/` chưa có hàm ghi (ghi rõ trong test).
 - Mỗi test của slice kiểm: (a) `fetch_page` trả dữ liệu thật vừa tạo đúng tập khóa của dòng; (b) phân trang cursor từ hai trang trở lên, không trùng không sót, cả `asc` và `desc`, hướng mặc định `desc`; (c) `fetch_one` có, không có, và id của workspace khác trả `None`; (d) cô lập workspace; (e) canary trong payload hoặc cột cấm không xuất hiện trong `json.dumps(dòng)`; (f) từng bộ lọc của catalog, giá trị lạ trả rỗng; (g) chỉ đọc: số hàng bảng nguồn không đổi; (h) cursor không phải thời điểm hợp lệ ném `ValueError`.
 - Tên test duy nhất `test_rs_<số>_<tên>.py`; `tests/integration/read_screens/` không có `__init__.py` và không có `conftest.py`; mô-đun hỗ trợ duy nhất là `rs_support.py` (RS-1).
 - Test-first: thấy RED do assertion đúng oracle (thiếu hành vi), không phải lỗi import hay thiếu binary, rồi mới implement tới GREEN; ghi vào báo cáo.
@@ -16,8 +16,8 @@ Nguồn: `docs/implementation/read-screens/plan.md`. Mười ba slice `RS-1` đ�
 
 - kind: work_package_slice
 - ownedPaths:
-  - `src/controlplane/api/wiring/read_screens/__init__.py`
-  - `src/controlplane/api/wiring/read_screens/common.py`
+  - `src/controlplane/infrastructure/read_screens/__init__.py`
+  - `src/controlplane/infrastructure/read_screens/common.py`
   - `tests/integration/read_screens/rs_support.py`
   - `tests/integration/read_screens/test_rs_1_common.py`
   - `docs/delivery-evidence/rs-1/report.md`
@@ -31,13 +31,13 @@ Nguồn: `docs/implementation/read-screens/plan.md`. Mười ba slice `RS-1` đ�
 - testCommands:
   - `git diff --check`
   - `python -m pytest tests/integration/read_screens/test_rs_1_common.py -q -p no:cacheprovider`
-  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/read_screens/common.py').read_text(encoding='utf-8').lower(); assert 'os.environ' not in t and 'from src.' not in t and 'production' not in t and 'insert into' not in t, 'RS-1'"`
+  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/infrastructure/read_screens/common.py').read_text(encoding='utf-8').lower(); assert 'os.environ' not in t and 'from src.' not in t and 'production' not in t and 'insert into' not in t, 'RS-1'"`
 
 ### RS-2: Service articles (module B)
 
 - kind: work_package_slice
 - ownedPaths:
-  - `src/controlplane/api/wiring/read_screens/articles.py`
+  - `src/controlplane/infrastructure/read_screens/articles.py`
   - `tests/integration/read_screens/test_rs_2_articles.py`
   - `docs/delivery-evidence/rs-2/report.md`
 - dependsOn: `RS-1`
@@ -50,13 +50,13 @@ Nguồn: `docs/implementation/read-screens/plan.md`. Mười ba slice `RS-1` đ�
 - testCommands:
   - `git diff --check`
   - `python -m pytest tests/integration/read_screens/test_rs_2_articles.py -q -p no:cacheprovider`
-  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/read_screens/articles.py').read_text(encoding='utf-8').lower(); assert 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'from src.' not in t and 'os.environ' not in t and 'normalized_text' not in t, 'RS-2'"`
+  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/infrastructure/read_screens/articles.py').read_text(encoding='utf-8').lower(); assert 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'from src.' not in t and 'os.environ' not in t and 'normalized_text' not in t, 'RS-2'"`
 
 ### RS-3: Service events (module B)
 
 - kind: work_package_slice
 - ownedPaths:
-  - `src/controlplane/api/wiring/read_screens/events.py`
+  - `src/controlplane/infrastructure/read_screens/events.py`
   - `tests/integration/read_screens/test_rs_3_events.py`
   - `docs/delivery-evidence/rs-3/report.md`
 - dependsOn: `RS-1`
@@ -69,13 +69,13 @@ Nguồn: `docs/implementation/read-screens/plan.md`. Mười ba slice `RS-1` đ�
 - testCommands:
   - `git diff --check`
   - `python -m pytest tests/integration/read_screens/test_rs_3_events.py -q -p no:cacheprovider`
-  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/read_screens/events.py').read_text(encoding='utf-8').lower(); assert 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'from src.' not in t and 'os.environ' not in t and 'normalized_text' not in t, 'RS-3'"`
+  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/infrastructure/read_screens/events.py').read_text(encoding='utf-8').lower(); assert 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'from src.' not in t and 'os.environ' not in t and 'normalized_text' not in t, 'RS-3'"`
 
 ### RS-4: Service media chỉ đọc (module C)
 
 - kind: work_package_slice
 - ownedPaths:
-  - `src/controlplane/api/wiring/read_screens/media.py`
+  - `src/controlplane/infrastructure/read_screens/media.py`
   - `tests/integration/read_screens/test_rs_4_media.py`
   - `docs/delivery-evidence/rs-4/report.md`
 - dependsOn: `RS-1`
@@ -88,13 +88,13 @@ Nguồn: `docs/implementation/read-screens/plan.md`. Mười ba slice `RS-1` đ�
 - testCommands:
   - `git diff --check`
   - `python -m pytest tests/integration/read_screens/test_rs_4_media.py -q -p no:cacheprovider`
-  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/read_screens/media.py').read_text(encoding='utf-8').lower(); assert 'capabilityunavailableerror' in t and 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'from src.' not in t and 'os.environ' not in t and 'original_locator' not in t, 'RS-4'"`
+  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/infrastructure/read_screens/media.py').read_text(encoding='utf-8').lower(); assert 'capabilityunavailableerror' in t and 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'from src.' not in t and 'os.environ' not in t and 'original_locator' not in t, 'RS-4'"`
 
 ### RS-5: Service artifacts (module I)
 
 - kind: work_package_slice
 - ownedPaths:
-  - `src/controlplane/api/wiring/read_screens/artifacts.py`
+  - `src/controlplane/infrastructure/read_screens/artifacts.py`
   - `tests/integration/read_screens/test_rs_5_artifacts.py`
   - `docs/delivery-evidence/rs-5/report.md`
 - dependsOn: `RS-1`
@@ -107,13 +107,13 @@ Nguồn: `docs/implementation/read-screens/plan.md`. Mười ba slice `RS-1` đ�
 - testCommands:
   - `git diff --check`
   - `python -m pytest tests/integration/read_screens/test_rs_5_artifacts.py -q -p no:cacheprovider`
-  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/read_screens/artifacts.py').read_text(encoding='utf-8').lower(); assert 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'from src.' not in t and 'os.environ' not in t and 'provider_object_ref' not in t and 'logical_locator' not in t, 'RS-5'"`
+  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/infrastructure/read_screens/artifacts.py').read_text(encoding='utf-8').lower(); assert 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'from src.' not in t and 'os.environ' not in t and 'provider_object_ref' not in t and 'logical_locator' not in t, 'RS-5'"`
 
 ### RS-6: Service snapshots (module D)
 
 - kind: work_package_slice
 - ownedPaths:
-  - `src/controlplane/api/wiring/read_screens/snapshots.py`
+  - `src/controlplane/infrastructure/read_screens/snapshots.py`
   - `tests/integration/read_screens/test_rs_6_snapshots.py`
   - `docs/delivery-evidence/rs-6/report.md`
 - dependsOn: `RS-1`
@@ -126,13 +126,13 @@ Nguồn: `docs/implementation/read-screens/plan.md`. Mười ba slice `RS-1` đ�
 - testCommands:
   - `git diff --check`
   - `python -m pytest tests/integration/read_screens/test_rs_6_snapshots.py -q -p no:cacheprovider`
-  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/read_screens/snapshots.py').read_text(encoding='utf-8').lower(); assert 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'from src.' not in t and 'os.environ' not in t and 'source_refs' not in t, 'RS-6'"`
+  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/infrastructure/read_screens/snapshots.py').read_text(encoding='utf-8').lower(); assert 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'from src.' not in t and 'os.environ' not in t and 'source_refs' not in t, 'RS-6'"`
 
 ### RS-7: Service story-angles (module D)
 
 - kind: work_package_slice
 - ownedPaths:
-  - `src/controlplane/api/wiring/read_screens/story_angles.py`
+  - `src/controlplane/infrastructure/read_screens/story_angles.py`
   - `tests/integration/read_screens/test_rs_7_story_angles.py`
   - `docs/delivery-evidence/rs-7/report.md`
 - dependsOn: `RS-1`
@@ -145,13 +145,13 @@ Nguồn: `docs/implementation/read-screens/plan.md`. Mười ba slice `RS-1` đ�
 - testCommands:
   - `git diff --check`
   - `python -m pytest tests/integration/read_screens/test_rs_7_story_angles.py -q -p no:cacheprovider`
-  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/read_screens/story_angles.py').read_text(encoding='utf-8').lower(); assert 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'from src.' not in t and 'os.environ' not in t and 'evidence_refs' not in t, 'RS-7'"`
+  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/infrastructure/read_screens/story_angles.py').read_text(encoding='utf-8').lower(); assert 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'from src.' not in t and 'os.environ' not in t and 'evidence_refs' not in t, 'RS-7'"`
 
 ### RS-8: Service scripts (module D)
 
 - kind: work_package_slice
 - ownedPaths:
-  - `src/controlplane/api/wiring/read_screens/scripts.py`
+  - `src/controlplane/infrastructure/read_screens/scripts.py`
   - `tests/integration/read_screens/test_rs_8_scripts.py`
   - `docs/delivery-evidence/rs-8/report.md`
 - dependsOn: `RS-1`
@@ -164,13 +164,13 @@ Nguồn: `docs/implementation/read-screens/plan.md`. Mười ba slice `RS-1` đ�
 - testCommands:
   - `git diff --check`
   - `python -m pytest tests/integration/read_screens/test_rs_8_scripts.py -q -p no:cacheprovider`
-  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/read_screens/scripts.py').read_text(encoding='utf-8').lower(); assert 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'from src.' not in t and 'os.environ' not in t and 'segments' not in t and 'snapshot_id' not in t, 'RS-8'"`
+  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/infrastructure/read_screens/scripts.py').read_text(encoding='utf-8').lower(); assert 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'from src.' not in t and 'os.environ' not in t and 'segments' not in t and 'snapshot_id' not in t, 'RS-8'"`
 
 ### RS-9: Service sessions (module G)
 
 - kind: work_package_slice
 - ownedPaths:
-  - `src/controlplane/api/wiring/read_screens/sessions.py`
+  - `src/controlplane/infrastructure/read_screens/sessions.py`
   - `tests/integration/read_screens/test_rs_9_sessions.py`
   - `docs/delivery-evidence/rs-9/report.md`
 - dependsOn: `RS-1`
@@ -183,13 +183,13 @@ Nguồn: `docs/implementation/read-screens/plan.md`. Mười ba slice `RS-1` đ�
 - testCommands:
   - `git diff --check`
   - `python -m pytest tests/integration/read_screens/test_rs_9_sessions.py -q -p no:cacheprovider`
-  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/read_screens/sessions.py').read_text(encoding='utf-8').lower(); assert 'cp_auth_sessions' not in t and 'token_hash' not in t and 'recovery_epoch' not in t and 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'os.environ' not in t, 'RS-9'"`
+  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/infrastructure/read_screens/sessions.py').read_text(encoding='utf-8').lower(); assert 'cp_auth_sessions' not in t and 'token_hash' not in t and 'recovery_epoch' not in t and 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'os.environ' not in t, 'RS-9'"`
 
 ### RS-10: Service accounts (module J)
 
 - kind: work_package_slice
 - ownedPaths:
-  - `src/controlplane/api/wiring/read_screens/accounts.py`
+  - `src/controlplane/infrastructure/read_screens/accounts.py`
   - `tests/integration/read_screens/test_rs_10_accounts.py`
   - `docs/delivery-evidence/rs-10/report.md`
 - dependsOn: `RS-1`
@@ -202,13 +202,13 @@ Nguồn: `docs/implementation/read-screens/plan.md`. Mười ba slice `RS-1` đ�
 - testCommands:
   - `git diff --check`
   - `python -m pytest tests/integration/read_screens/test_rs_10_accounts.py -q -p no:cacheprovider`
-  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/read_screens/accounts.py').read_text(encoding='utf-8').lower(); assert 'capabilities_json' not in t and 'credential_' not in t and 'project_ref' not in t and 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'os.environ' not in t, 'RS-10'"`
+  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/infrastructure/read_screens/accounts.py').read_text(encoding='utf-8').lower(); assert 'capabilities_json' not in t and 'credential_' not in t and 'project_ref' not in t and 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'os.environ' not in t, 'RS-10'"`
 
 ### RS-11: Service cost (module J)
 
 - kind: work_package_slice
 - ownedPaths:
-  - `src/controlplane/api/wiring/read_screens/cost.py`
+  - `src/controlplane/infrastructure/read_screens/cost.py`
   - `tests/integration/read_screens/test_rs_11_cost.py`
   - `docs/delivery-evidence/rs-11/report.md`
 - dependsOn: `RS-1`
@@ -221,26 +221,26 @@ Nguồn: `docs/implementation/read-screens/plan.md`. Mười ba slice `RS-1` đ�
 - testCommands:
   - `git diff --check`
   - `python -m pytest tests/integration/read_screens/test_rs_11_cost.py -q -p no:cacheprovider`
-  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/read_screens/cost.py').read_text(encoding='utf-8').lower(); assert 'float(' not in t and 'operation_ref' not in t and 'batch_ref' not in t and 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'os.environ' not in t, 'RS-11'"`
+  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/infrastructure/read_screens/cost.py').read_text(encoding='utf-8').lower(); assert 'float(' not in t and 'operation_ref' not in t and 'batch_ref' not in t and 'insert into' not in t and 'update controlplane' not in t and 'delete from' not in t and 'os.environ' not in t, 'RS-11'"`
 
 ### RS-12: Bộ ghép compose_read_screens
 
 - kind: work_package_slice
 - ownedPaths:
-  - `src/controlplane/api/wiring/read_screens/compose.py`
+  - `src/controlplane/infrastructure/read_screens/compose.py`
   - `tests/integration/read_screens/test_rs_12_compose.py`
   - `docs/delivery-evidence/rs-12/report.md`
 - dependsOn: `RS-2`, `RS-3`, `RS-4`, `RS-5`, `RS-6`, `RS-7`, `RS-8`, `RS-9`, `RS-10`, `RS-11`
 - resourceLocks: `LOCK-READ-SCREENS`
-- bindingRefs: `src/controlplane/api/wiring/production.py:310-318,385-398`; `src/controlplane/infrastructure/db/uow.py:93-97`; `src/controlplane/api/main.py:68-72`
+- bindingRefs: `src/controlplane/api/wiring/production.py:310-318,385-398`; `src/controlplane/infrastructure/db/uow.py:93-97`; `src/controlplane/api/main.py:68-72`; `docs/parallel-delivery/ownership-and-locks.yaml:221-222`
 - acceptance:
-  - requirement: (1) `compose_read_screens(manager)` trả dict có đúng mười khóa `articles`, `events`, `media`, `artifacts`, `snapshots`, `story-angles`, `scripts`, `sessions`, `accounts`, `cost`; mỗi service dựng với `connection_scope=manager.borrow_connection`. (2) Mọi service có `fetch_page` và `fetch_one`; chỉ `media` có `apply_update` (ném `CapabilityUnavailableError`). (3) `compose.py` chỉ import từ các mô-đun anh em của `read_screens`; không import `production` (tránh vòng); không mở kết nối khi dựng.
+  - requirement: (1) `compose_read_screens(manager)` trả dict có đúng mười khóa `articles`, `events`, `media`, `artifacts`, `snapshots`, `story-angles`, `scripts`, `sessions`, `accounts`, `cost`; mỗi service dựng với `connection_scope=manager.borrow_connection`. (2) Mọi service có `fetch_page` và `fetch_one`; chỉ `media` có `apply_update` (ném `CapabilityUnavailableError`). (3) `compose.py` chỉ import từ các mô-đun anh em của `read_screens`; không import `production` (tránh vòng) và không import bất cứ gì từ `controlplane.api`; không mở kết nối khi dựng.
     instrument: test PostgreSQL với `temp_database`: dựng bộ ghép, gọi `fetch_page` của từng service trên CSDL rỗng nhận `Page` không có phần tử và `next_cursor` là `None`; `fetch_one` id lạ trả `None`; kiểm tập khóa đúng mười; `ast.parse` `compose.py` xác nhận danh sách import; dựng bộ ghép không gọi `borrow_connection` (đếm lời gọi).
     counterexample: thiếu hoặc thừa khóa; tên khóa lệch tên trong catalog (`story-angles` viết `story_angles`); import vòng với `production.py`; mở kết nối lúc dựng.
 - testCommands:
   - `git diff --check`
   - `python -m pytest tests/integration/read_screens/test_rs_12_compose.py -q -p no:cacheprovider`
-  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/read_screens/compose.py').read_text(encoding='utf-8').lower(); assert 'story-angles' in t and 'wiring.production' not in t and 'from src.' not in t and 'os.environ' not in t, 'RS-12'"`
+  - `python -c "import pathlib; t = pathlib.Path('src/controlplane/infrastructure/read_screens/compose.py').read_text(encoding='utf-8').lower(); assert 'story-angles' in t and 'wiring.production' not in t and 'controlplane.api' not in t and 'from src.' not in t and 'os.environ' not in t, 'RS-12'"`
 
 ### RS-13: Kiểm đầu cuối trên ứng dụng production
 

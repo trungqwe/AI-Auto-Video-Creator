@@ -19,7 +19,7 @@ Nguồn: task `IMPL-PLAN-READ-SCREENS` (planning_package). Slice chi tiết ở 
 - `GET /v1/articles`, `events`, `artifacts`, `snapshots`, `story-angles`, `scripts`, `sessions`, `logs`, `accounts`, `cost` trả 404 vì không có route.
 - CP-4-QUERIES (`docs/delivery-evidence/cp-4-queries/report.md` mục 4) ghi BLOCKED vì «thiếu cột». Khảo sát mục 3.3 cho thấy dữ liệu có trong cột `payload` JSONB hoặc bảng liên quan. `sources` và `hooks` đã nối bằng service của phân hệ (`SourceModuleService` `production.py:193-250`, `HookModuleService` `production.py:264-307`) mà không cần migration; kế hoạch này làm cùng cách.
 
-## 3. Khảo sát (tệp:dòng, HEAD 2f7f8d9)
+## 3. Khảo sát (tệp:dòng, đo lại sau rebase lên 6042d7a626d3d523881cc86d1b0ac674986bcafa)
 
 ### 3.1. Route và wiring Control API
 
@@ -65,7 +65,7 @@ Migration nằm ở `src/controlplane/infrastructure/db/migrations/`. Số dòng
 
 ## 4. Thiết kế chung của service đọc
 
-Mọi service nằm ở `src/controlplane/api/wiring/read_screens/` (slice RS-1 đến RS-12), mỗi tài nguyên một mô-đun, cùng chữ ký với `HookModuleService`:
+Mọi service nằm ở `src/controlplane/infrastructure/read_screens/` (slice RS-1 đến RS-12), mỗi tài nguyên một mô-đun, cùng chữ ký với `HookModuleService`. Đường dẫn `src/controlplane/api/wiring/**` là COMPOSITION-ROOT (`docs/parallel-delivery/ownership-and-locks.yaml:221-222`, `docs/implementation/adapt/plan.md:88`), chỉ convergence_slice được sở hữu, nên không slice RS nào đặt tệp dưới đó; việc gắn service vào `module_services` thuộc gói sửa ADAPT-PROD-FIX3 (mục 7.2). Gói `read_screens` chỉ import từ `controlplane.application` và `controlplane.domain`, không import `controlplane.api` (cùng chiều phụ thuộc với `src/controlplane/infrastructure/db/control_api_queries.py:7-11`):
 
 - `fetch_page(request, workspace_id, query) -> Page` và `fetch_one(request, workspace_id, item_id) -> dict | None`. Service nhận `connection_scope` (hàm không đối số trả context manager của một kết nối; production truyền `manager.borrow_connection`), không tự mở pool, không đọc môi trường.
 - Mọi câu SQL có `WHERE workspace_id = %s::uuid` với `workspace_id` do router lấy từ `request.state.identity`; `fetch_one` của id thuộc workspace khác trả `None` (404). Không bao giờ đọc `cp_auth_sessions` (có `token_hash`).
@@ -144,7 +144,7 @@ Kết luận: chưa có nguồn đọc thật cho `log_id`, `severity`, `message
 
 ## 6. Chia slice (chi tiết ở `slices.md`)
 
-Mỗi slice chỉ sở hữu tệp MỚI; mọi slice khai khóa `LOCK-READ-SCREENS` (GIẢ ĐỊNH: Control đăng ký khóa này). Test thật trên PostgreSQL thử (`M2_TEST_PG_DSN`, CSDL tạm tạo và xóa), dữ liệu tạo bằng repository của phân hệ; chỉ `sessions` và `accounts` phải INSERT SQL tối thiểu vì `src/` chưa có hàm ghi.
+Mỗi slice chỉ sở hữu tệp MỚI; mọi slice khai khóa `LOCK-READ-SCREENS` (GIẢ ĐỊNH: Control đăng ký khóa này). Service đọc ở `src/controlplane/infrastructure/read_screens/**` (không thuộc COMPOSITION-ROOT), test ở `tests/integration/read_screens/**`, bằng chứng ở `docs/delivery-evidence/rs-*/**`; không slice nào đặt tệp dưới `src/controlplane/api/wiring/**`. Test thật trên PostgreSQL thử (`M2_TEST_PG_DSN`, CSDL tạm tạo và xóa), dữ liệu tạo bằng repository của phân hệ; chỉ `sessions` và `accounts` phải INSERT SQL tối thiểu vì `src/` chưa có hàm ghi.
 
 | Slice | Nội dung | Phân hệ | Phục vụ |
 | --- | --- | --- | --- |
@@ -159,16 +159,16 @@ Mỗi slice chỉ sở hữu tệp MỚI; mọi slice khai khóa `LOCK-READ-SCRE
 | `RS-9` | `sessions` | G | phụ trợ (RG-08) |
 | `RS-10` | `accounts` | J | phụ trợ (OAuth Drive) |
 | `RS-11` | `cost` | J | R6 (G03) |
-| `RS-12` | Bộ ghép `compose_read_screens` | — | cho ADAPT-PROD-FIX3 |
+| `RS-12` | Bộ ghép `compose_read_screens` (`infrastructure/read_screens/compose.py`, không import `controlplane.api`) | — | cho ADAPT-PROD-FIX3 (convergence_slice) |
 | `RS-13` | Kiểm đầu cuối trên ứng dụng production | — | R1, R2, R3, R6 |
 
 ## 7. Gói sửa của chủ sở hữu
 
-Các chỗ sau nằm trong tệp đã có chủ, KHÔNG thuộc slice RS nào. Control lập các gói này sau khi kế hoạch được Auditor rủi ro duyệt. Khóa tài nguyên theo các kế hoạch hội tụ: `LOCK-CONVERGENCE` cho cả ba; `CP-4B-UI-SCREENS-FIX3` thêm `LOCK-UI-SHELL`, `LOCK-SRC-CONTROL-UI`, `LOCK-M2-REGRESSION` (`docs/implementation/convergence-ext-ui/plan.md:43`).
+Các chỗ sau nằm trong tệp đã có chủ, KHÔNG thuộc slice RS nào. Control lập các gói này sau khi kế hoạch được Auditor rủi ro duyệt. ADAPT-PROD-FIX3 là convergence_slice; hai gói còn lại là gói sửa của chủ tệp tương ứng. Khóa tài nguyên theo các kế hoạch hội tụ: `LOCK-CONVERGENCE` cho cả ba; `CP-4B-UI-SCREENS-FIX3` thêm `LOCK-UI-SHELL`, `LOCK-SRC-CONTROL-UI`, `LOCK-M2-REGRESSION` (`docs/implementation/convergence-ext-ui/plan.md:43`).
 
 ### 7.1. CP-4-WIRING-FIX3 — `route_catalog.py`
 
-- Tệp: `src/controlplane/application/control_api/route_catalog.py`; test mới `tests/integration/convergence/test_cp4_wiring_fix3.py`; test đã nghiệm thu phải nới trong cùng gói: `tests/integration/convergence/test_cp4_queries_routes.py:205-207` (hàm `test_route_inventory`, dòng 205-207).
+- Tệp: `src/controlplane/application/control_api/route_catalog.py`; test mới `tests/integration/convergence/test_cp4_wiring_fix3.py`; test đã nghiệm thu phải nới trong cùng gói: `tests/integration/convergence/test_cp4_queries_routes.py:205-207` (hàm `test_route_inventory`, dòng 205-207). Chủ gốc của `test_cp4_queries_routes.py` là gói `CP-4-QUERIES` (`docs/implementation/convergence-ext-ui/plan.md:42`, cột «hai test mới»); CP-4-WIRING-FIX3 nhận quyền sửa đúng hàm `test_route_inventory` dưới `LOCK-CONVERGENCE`, và lệnh kiểm của gói phải chạy tệp test này.
 - Thay đổi chính xác: (1) sau mục `hooks` (dòng 41-49) thêm chín `ListingResource` theo bảng dưới, giữ nguyên dạng literal `ListingResource("tên", "/v1/tên", (sắp), frozenset({lọc}), 50, 100, True)` để regex của `test_h_screen_registry.py:98` còn bắt được; (2) mục `media` (50-58): đổi lọc từ `frozenset({"kind", "tag", "availability"})` thành `frozenset({"kind", "status"})`, giữ sắp và chi tiết; (3) KHÔNG đổi `METADATA_RESOURCES` (`test_cp4_wiring.py:656-662`); (4) cập nhật docstring dòng 1-6; (5) không sửa `main.py`, `control.py`, `control_api_queries.py`.
 
 | Tài nguyên | Sắp | Lọc |
@@ -190,8 +190,9 @@ Các chỗ sau nằm trong tệp đã có chủ, KHÔNG thuộc slice RS nào. C
 
 ### 7.2. ADAPT-PROD-FIX3 — `production.py` gắn `module_services`
 
+- Loại gói: `convergence_slice`, khóa `LOCK-COMPOSITION-ROOT` (`docs/implementation/adapt/plan.md:88-90`; chủ gốc của `production.py` là gói ADAPT-PROD). Không slice RS nào được sửa tệp này.
 - Tệp: `src/controlplane/api/wiring/production.py`; test `tests/integration/adapt/prod/test_adapt_prod_app.py`.
-- Thay đổi chính xác: (1) thêm `from controlplane.api.wiring.read_screens.compose import compose_read_screens`; (2) ngay sau dòng 394 (`api_app.state.module_services['hooks'] = compose_hooks_module(manager)`) thêm `api_app.state.module_services.update(compose_read_screens(manager))`; (3) sửa docstring dòng 5: bỏ câu «media chưa gắn … vẫn trả 503», nêu mười service đọc; (4) không sửa `_build_services`, `SourceModuleService`, `HookModuleService`, `__all__`.
+- Thay đổi chính xác: (1) thêm `from controlplane.infrastructure.read_screens.compose import compose_read_screens`; (2) ngay sau dòng 394 (`api_app.state.module_services['hooks'] = compose_hooks_module(manager)`) thêm `api_app.state.module_services.update(compose_read_screens(manager))`; (3) sửa docstring dòng 5: bỏ câu «media chưa gắn … vẫn trả 503», nêu mười service đọc; (4) không sửa `_build_services`, `SourceModuleService`, `HookModuleService`, `__all__`.
 - Test đổi trong `test_adapt_prod_app.py`: dòng 272 thành tập `{'sources', 'hooks'}` hợp mười tên; dòng 303-304 `/v1/media?limit=1` trả 200 với `{'items': [], 'next_cursor': None}`; thêm `PATCH /v1/media/x` trả 503 `CAPABILITY_UNAVAILABLE` và chín tài nguyên còn lại trả 200 rỗng; giữ dòng 249 và 401.
 - Lệnh kiểm: `git diff --check`; `python -m pytest tests/integration/adapt/prod/test_adapt_prod_app.py tests/integration/adapt/prod/test_adapt_prod_sources_module.py tests/integration/adapt/prod/test_adapt_prod_hooks_module.py -q` (cần `M2_TEST_PG_DSN`).
 - Phụ thuộc: `RS-12` và `CP-4-WIRING-FIX3`. Test ghim: `test_h_screen_registry.py:314-318` đọc chuỗi `media.status_code == 503` trong tệp này, nên bước 1 của CP-4B-UI-SCREENS-FIX3 phải gộp TRƯỚC gói này (mục 8).
@@ -264,7 +265,8 @@ Mỗi màn đã nối phải đạt: `GET /v1/<tài nguyên>` trả 200 với d�
 - Đổi hợp đồng bảy màn đã `available`: không sửa `control_api_queries.py`, `control.py`, `SourceModuleService`, `HookModuleService`.
 - `PATCH /v1/media` thành 500 vì thiếu `apply_update`: service `media` ném `CapabilityUnavailableError` nên giữ 503.
 - Slice sửa tệp đã có chủ: ownedPaths của mọi slice chỉ gồm tệp mới; chỗ cần sửa nằm ở mục 7.
+- Slice đặt tệp dưới COMPOSITION-ROOT: service đọc nằm ở `src/controlplane/infrastructure/read_screens/**`; không ownedPaths nào bắt đầu bằng `src/controlplane/api/wiring/`; việc gắn `module_services` là gói ADAPT-PROD-FIX3 kiểu convergence_slice (mục 7.2).
 
 ## 12. Giới hạn
 
-Kế hoạch dựa trên mã tại HEAD `2f7f8d9`. Chưa chạy test hay dựng ứng dụng trong task này; số liệu hiện trạng ở mục 2 là phép đo của Control ngày 25/10/2026. Mọi kết luận về kiểm thật nằm ở RS-13 và CP7.
+Kế hoạch dựa trên mã sau rebase lên `6042d7a626d3d523881cc86d1b0ac674986bcafa`. Chưa chạy test hay dựng ứng dụng trong task này; số liệu hiện trạng ở mục 2 là phép đo của Control ngày 25/10/2026. Mọi kết luận về kiểm thật nằm ở RS-13 và CP7.

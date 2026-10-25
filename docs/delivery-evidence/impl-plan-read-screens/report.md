@@ -59,6 +59,28 @@
 | `git diff --check && python -c "import pathlib, re, unicodedata; p = unicodedata.normalize('NFC', pathlib.Path('docs/implementation/read-screens/plan.md').read_text(encoding='utf-8')); s = p.split('### 7.1.')[1].split('### 7.2.')[0]; assert 'test_route_inventory' in s and 'test_cp4_queries_routes.py:20' in s, 'F1 pin'; assert re.search('pytest[^' + chr(10) + ']*test_cp4_queries_routes[.]py', s), 'F1 cmd'; assert 'ghim cần đổi: không có' not in s, 'F1 claim'; assert 'không có test nào ghim 404' not in p and 'chưa có test ghim 404' not in p, 'F1 stale 404 claim'"` | 0 | Đạt: git diff không lỗi khoảng trắng; mục 7.1 nêu test_route_inventory, test_cp4_queries_routes.py:205-207; lệnh pytest có test_cp4_queries_routes.py; không còn câu sai 'ghim cần đổi: không có' hay 'không có test nào ghim 404'. |
 | `python -c "import re, pathlib, unicodedata; d = pathlib.Path('docs/implementation/read-screens'); p = unicodedata.normalize('NFC', (d / 'plan.md').read_text(encoding='utf-8')); s = unicodedata.normalize('NFC', (d / 'slices.md').read_text(encoding='utf-8')); ids = re.findall(r'(?m)^### (RS-[0-9A-Z][0-9A-Z-]*)', s); assert ids and len(ids) == len(set(ids)), ids; assert all(s.count(k) >= len(ids) for k in ['ownedPaths', 'dependsOn', 'bindingRefs', 'testCommands', 'acceptance']), 'each slice needs ownedPaths, dependsOn, bindingRefs, testCommands and acceptance'; assert all(k in p for k in ['articles', 'events', 'media', 'artifacts', 'snapshots', 'story-angles', 'scripts', 'sessions', 'accounts', 'cost', 'logs']), 'plan covers every screen'; assert all(k in p for k in ['CP-4-WIRING', 'ADAPT-PROD', 'CP-4B-UI-SCREENS']), 'plan names the owner fix packages'; assert re.search('[Ạ-ỹ]', p) and chr(65533) not in p + s, 'Vietnamese text with diacritics, no replacement characters'"` | 0 | Đạt: 13 slice RS-1..RS-13 duy nhất, đầy đủ các thuộc tính bắt buộc, plan bao phủ 11 màn và 3 gói sửa, tiếng Việt đủ dấu, không có ký tự thay thế U+FFFD. |
 
+## Cấp lại sau thu hồi (REBASE lên 6042d7a626d3d523881cc86d1b0ac674986bcafa)
+
+- **Lý do**: Control thu hồi grant G1, policy đã sửa định nghĩa gói (POLICY_CORRECTION).
+- **Việc đã làm**:
+  - Bước 1 rebase thành công lên `6042d7a626d3d523881cc86d1b0ac674986bcafa`.
+  - Chuyển đường dẫn service đọc từ `src/controlplane/api/wiring/read_screens/` sang `src/controlplane/infrastructure/read_screens/` vì `src/controlplane/api/wiring/**` là COMPOSITION-ROOT chỉ convergence_slice sở hữu.
+  - Ghi ADAPT-PROD-FIX3 là convergence_slice khóa `LOCK-COMPOSITION-ROOT`.
+  - Nêu chủ gốc `CP-4-QUERIES` của `test_route_inventory`.
+  - Cấm RS-12 import `controlplane.api`.
+  - Cập nhật mốc HEAD thành 6042d7a.
+- **Kết quả đối chiếu số dòng ở bước 3**: không lệch.
+- **Bảng lệnh đã chạy**:
+
+| Lệnh | Mã thoát | Kết quả |
+| --- | --- | --- |
+| Probe xác nhận tệp trích dẫn và thư mục đích (bước 2) | 0 | Đạt: LISTING_RESOURCES, test_route_inventory, compose_hooks_module, AVAILABLE_IDS đều tồn tại; hai thư mục service mới và cũ đều chưa tồn tại. |
+| Probe kiểm đường dẫn và quy tắc mới (bước 11) | 0 | Đạt: không còn đường dẫn cũ api/wiring/read_screens; slices.md có 26 đường dẫn mới (>= 24); plan.md có import mới, LOCK-COMPOSITION-ROOT, CP-4-QUERIES; không còn SHA 2f7f8d9; RS-12 cấm controlplane.api. |
+| Lệnh kiểm bắt buộc thứ hai của task (bước 12) | 0 | Đạt: 13 id RS duy nhất; mỗi slice đủ ownedPaths, dependsOn, bindingRefs, testCommands, acceptance; plan bao phủ 11 màn hình và 3 gói sửa; tiếng Việt có dấu đầy đủ, không có ký tự thay thế U+FFFD. |
+| Kiểm khoảng trắng `git diff --check` (bước 13) | 0 | Đạt: git diff --check không có lỗi khoảng trắng thừa. |
+
+- **Xác nhận đọc lại**: Đã đọc lại bằng công cụ Read cả `plan.md`, `slices.md` và `report.md`: chữ có dấu còn nguyên, UTF-8 không BOM, không có `?` thay chữ. Không ghi bí mật. Giữ nguyên mọi mục cũ khác của báo cáo.
+
 ## Giới hạn
 
 - Đây là tài liệu kế hoạch, chưa chạy test PostgreSQL, chưa sửa `src/**`, `tests/**` hay `ui/dist`.
