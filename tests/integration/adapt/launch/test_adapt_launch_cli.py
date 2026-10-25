@@ -381,6 +381,52 @@ def test_start_fails_closed_when_temporal_namespace_cannot_be_ensured(launcher, 
     assert not any(ev[0] == "spawn" for ev in fx.events)
 
 
+def test_worker_stop_waits_for_the_worker_thread_not_a_lost_future(launcher, monkeypatch):
+    # Ổn định hoá 25/10/2026 (S6): khi các worker dừng, group.run() xong và loop của luồng worker dừng trước khi task
+    # group.stop() hoàn tất; stop() từng chờ future đó đủ STOP_GRACE_SECONDS (60 giây) dù worker đã dừng.
+    import asyncio
+    import time as _time
+    launcher.ensure_src_on_path()
+    import temporalio.client
+    import controlplane.api.wiring.workflow as workflow_wiring
+    import controlplane.api.wiring.production as production_wiring
+    import controlplane.api.wiring.production_profile as profile_wiring
+    seen = {}
+
+    class FakeClient:
+        @staticmethod
+        async def connect(target, namespace="default", **kw):
+            seen["connect"] = (target, namespace)
+            return SimpleNamespace()
+
+    class FakeGroup:
+        def __init__(self, client, registration, *, graceful_shutdown_seconds):
+            self.done = None
+
+        async def run(self):
+            self.done = asyncio.Event()
+            await self.done.wait()
+
+        async def stop(self):
+            seen["stopped"] = True
+            self.done.set()
+            await asyncio.sleep(0.2)
+
+    monkeypatch.setattr(temporalio.client, "Client", FakeClient)
+    monkeypatch.setattr(workflow_wiring, "build_workflow_services", lambda **kw: SimpleNamespace())
+    monkeypatch.setattr(workflow_wiring, "build_temporal_registration", lambda services, **kw: SimpleNamespace())
+    monkeypatch.setattr(production_wiring, "TemporalWorkerGroup", FakeGroup)
+    monkeypatch.setattr(profile_wiring, "load_production_profile", lambda path: SimpleNamespace(parameters={}))
+    monkeypatch.setattr(launcher, "STOP_GRACE_SECONDS", 5)
+    handle = launcher.start_worker(SimpleNamespace(), None)
+    _time.sleep(0.3)
+    started = _time.monotonic()
+    handle.stop()
+    assert seen.get("stopped") is True
+    assert _time.monotonic() - started < 2, "stop waited for a future the stopped loop never resolves"
+    assert seen["connect"] == ("127.0.0.1:7233", "default")
+
+
 def test_default_deps_ensure_the_temporal_namespace(launcher):
     deps = launcher.default_deps({})
     assert deps.ensure_namespace is launcher.ensure_temporal_namespace

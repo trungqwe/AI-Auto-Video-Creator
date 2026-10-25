@@ -566,7 +566,7 @@ def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
 
     async def _runner() -> None:
         try:
-            client = await Client.connect(f'{LOOPBACK}:{TEMPORAL_PORT}')
+            client = await Client.connect(f'{LOOPBACK}:{TEMPORAL_PORT}', namespace=TEMPORAL_NAMESPACE)
             heartbeat_sec = float(profile.parameters.get('workflow.heartbeat_seconds', 30.0))
             group = TemporalWorkerGroup(client, registration, graceful_shutdown_seconds=heartbeat_sec)
             group_box.append(group)
@@ -575,6 +575,8 @@ def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
         except Exception as e:
             init_err.append(e)
             ready_evt.set()
+            # Sau khi đã sẵn sàng, lỗi của worker không được im lặng: ghi vào serve.log (stderr của tiến trình _serve).
+            print(f'Temporal worker dừng vì lỗi: {type(e).__name__}: {e}', file=sys.stderr, flush=True)
 
     def _thread_target() -> None:
         asyncio.set_event_loop(loop)
@@ -588,11 +590,13 @@ def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
 
     class WorkerHandle:
         def stop(self) -> None:
-            if group_box:
+            # Chờ luồng worker kết thúc, không chờ future của group.stop(): khi các worker dừng thì group.run() xong và
+            # run_until_complete dừng loop trước khi task group.stop() kịp hoàn tất, nên future đó không bao giờ có kết quả
+            # và stop từng chờ đủ STOP_GRACE_SECONDS (ổn định hoá 25/10/2026, S6).
+            if group_box and t.is_alive():
                 try:
-                    fut = asyncio.run_coroutine_threadsafe(group_box[0].stop(), loop)
-                    fut.result(timeout=STOP_GRACE_SECONDS)
-                except Exception:
+                    asyncio.run_coroutine_threadsafe(group_box[0].stop(), loop)
+                except RuntimeError:
                     pass
             t.join(timeout=STOP_GRACE_SECONDS)
 
