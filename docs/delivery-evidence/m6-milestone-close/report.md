@@ -244,6 +244,8 @@ Toàn bộ 288 đoạn lệnh kiểm của milestone M6 đã được thực thi
 
 Tổng hợp: **288/288** đoạn lệnh kiểm exit 0.
 
+Hiệu đính vòng R3 theo finding F1: cột Dòng tóm tắt của command-results.md ở bản trước chép trùng một dòng cho nhiều đoạn pytest khác nhau (144/259 hàng lệch so với output thật). Cột này nay được chép lại từ output thật của từng đoạn pytest, chạy riêng từng đoạn trên mã 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1 bằng interpreter khoá của lane. Hai đoạn nặng giữ kết quả cũ đã được Auditor (Opus 5.5) đối chiếu đúng: Chuỗi 9 hàng 4 (tests/m2: 179 passed, 1 deselected) và Chuỗi 10 hàng 10 (tests/m2 cùng tests/integration: 2313 passed, 35 skipped, 1 deselected). HEAD hiện tại b71fde02bd102bed9cc40e5c697e5e7bcd43bf0d chỉ khác 8167d4c ở hai tệp .md trong docs/delivery-evidence/m6-milestone-close nên mã và test không đổi; số exit 0 vẫn là 288/288.
+
 *Lưu ý quan trọng:*
 1. Lệnh kiểm test_h36_m1_regression được hoãn sang CP7 theo quyết định của user ngày 21/10/2026 nên các lệnh liên quan mang cờ --deselect, không phải là lỗi kiểm thử.
 2. Các bài test tích hợp trong bộ test chạy bằng fake, mock và fixture nội bộ; các test bị skip vì môi trường thiếu PostgreSQL hoặc tài nguyên ngoài không được coi là bằng chứng tài nguyên thật (GPU, TTS, Drive, Temporal), bằng chứng thật sẽ được thu thập tại CP7.
