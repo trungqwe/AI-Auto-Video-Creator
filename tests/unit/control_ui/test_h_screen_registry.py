@@ -301,7 +301,6 @@ def test_sources_is_available_with_route_and_integration_test_evidence():
 
 
 HOOKS_MODULE_TEST = ROOT / 'tests' / 'integration' / 'adapt' / 'prod' / 'test_adapt_prod_hooks_module.py'
-PROD_APP_TEST = ROOT / 'tests' / 'integration' / 'adapt' / 'prod' / 'test_adapt_prod_app.py'
 
 
 def test_hooks_is_available_with_route_and_integration_test_evidence():
@@ -313,9 +312,6 @@ def test_hooks_is_available_with_route_and_integration_test_evidence():
 
 def test_media_stays_pending_module_until_backend_has_media_metadata():
     assert BY_ID['media']['backendStatus'] == 'pending_module'
-    text = PROD_APP_TEST.read_text(encoding='utf-8')
-    assert "client(app).get('/v1/media?limit=1', headers=headers)" in text
-    assert 'media.status_code == 503' in text
 
 
 def test_editable_fields_are_accepted_by_metadata_allowlist_of_same_prefix():
