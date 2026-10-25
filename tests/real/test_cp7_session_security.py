@@ -107,6 +107,10 @@ def real(tmp_path_factory):
         bodies.append(body)
         expiry = status
         second = _start_capturing(work, 'second')
+        # Host lạ với capability thật chưa dùng: phải 403 mà không tiêu thụ capability; probe ngay sau với Host đúng vẫn vào được,
+        # nên 403 này chỉ có thể do Host.
+        launch_evil_status, body = _request('GET', _path_of(second), host_header=f'{EVIL}:{PORT}')
+        bodies.append(body)
         out_dir = work / 'probe'
         probe = subprocess.run(['node', str(PROBE), '--url-file', str(second), '--out', str(out_dir)], cwd=str(REPO),
                                capture_output=True, text=True, encoding='utf-8', errors='replace',
@@ -114,7 +118,7 @@ def real(tmp_path_factory):
         result = json.loads(probe.stdout.strip().splitlines()[-1])
         assert probe.returncode == 0 and result['ok'], f'browser probe failed: {result}'
         yield {'work': work, 'first': first, 'second': second, 'probe': result, 'out': out_dir, 'canary': canary,
-               'expiry_status': expiry, 'bodies': bodies,
+               'expiry_status': expiry, 'launch_evil_status': launch_evil_status, 'bodies': bodies,
                'cookies': json.loads((out_dir / 'cookies.json').read_text(encoding='utf-8'))}
     finally:
         try:
@@ -176,12 +180,13 @@ def test_rg01_test_driver_404(real, emit):
 
 
 def test_rg01_host_rejected(real, emit):
-    launch_status, body = _request('GET', '/launch?cap=x', host_header=f'{EVIL}:{PORT}')
-    real['bodies'].append(body)
+    launch_status = real['launch_evil_status']
     api_status, body = _request('GET', '/v1/jobs', host_header=EVIL, headers=_session_headers(real, origin=None))
     real['bodies'].append(body)
     assert launch_status == 403 and api_status == 403, (launch_status, api_status)
-    _pass(emit, 'host_rejected', f'/launch status={launch_status} /v1/jobs status={api_status} host={EVIL}')
+    assert real['probe']['finalPath'] == '/', 'capability was consumed by the foreign-Host request'
+    _pass(emit, 'host_rejected', f'/launch (capability thật, chưa dùng) status={launch_status}, sau đó Host đúng vẫn vào được; '
+          f'/v1/jobs status={api_status} host={EVIL}')
 
 
 def test_rg01_origin_rejected(real, emit):
@@ -216,10 +221,40 @@ def _texts(real):
         yield f'log:{log.name}', log.read_text(encoding='utf-8', errors='replace')
 
 
+def _real_secret_hits(texts):
+    """Đếm số lần các bí mật thật mà ứng dụng đã giải mã xuất hiện trên các bề mặt.
+
+    Canary nằm trong một alias mà ứng dụng không đọc, nên nó chỉ chứng minh kho không bị đổ ra ngoài. Refresh token Drive (ứng dụng
+    giải mã khi dựng placement lúc start) và khoá 9Router là bí mật ứng dụng thật sự cầm. Giá trị lấy qua CredentialBroker, chỉ ở
+    trong hàm này; kết quả chỉ gồm tên và số đếm.
+    """
+    from controlplane.infrastructure.security.dpapi_secret_store import DpapiSecretStore
+    from controlplane.infrastructure.security.oauth_google_loopback import SECRET_REF as DRIVE_SECRET_REF
+    from controlplane.security.broker import CredentialBroker
+    ports = json.loads((REPO / 'tools' / 'launcher' / 'prod' / 'ports.json').read_text(encoding='utf-8'))
+    aliases = {'drive_refresh_token': DRIVE_SECRET_REF, 'router_api_key': ports['router']['secret_ref']}
+    broker = CredentialBroker(DpapiSecretStore(_data_root() / 'vault').export_vault(list(aliases.values())))
+    hits, short = {}, []
+    for name, alias in aliases.items():
+        with broker.acquire_secret(alias) as handle:
+            value = handle.get_secret_value()
+            if len(value) < 16:
+                short.append(name)
+                continue
+            for surface, text in texts.items():
+                hits[f'{name}@{surface}'] = text.count(value)
+    return hits, short
+
+
 def test_rg01_canary_zero_hits(real, emit):
-    hits = {name: text.count(real['canary']) for name, text in _texts(real)}
+    texts = dict(_texts(real))
+    hits = {name: text.count(real['canary']) for name, text in texts.items()}
     assert sum(hits.values()) == 0, {k: v for k, v in hits.items() if v}
-    _pass(emit, 'canary_zero_hits', f'surfaces={len(hits)} (dom, har, response bodies, data-dir logs) hits=0')
+    real_hits, short = _real_secret_hits(texts)
+    assert not short, f'secret too short to search reliably: {short}'
+    assert sum(real_hits.values()) == 0, {k: v for k, v in real_hits.items() if v}
+    _pass(emit, 'canary_zero_hits', f'surfaces={len(texts)} (dom, har, response bodies, data-dir logs) canary_hits=0 '
+          'real_secret_hits=0 (drive refresh token, 9Router key; giá trị chỉ trong bộ nhớ của test)')
 
 
 def test_rg01_secret_scan(real, emit):
