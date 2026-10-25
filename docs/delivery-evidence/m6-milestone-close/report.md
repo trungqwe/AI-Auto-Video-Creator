@@ -1,16 +1,16 @@
-# Báo cáo đóng M6 (revision 3): M6-MILESTONE-CLOSE-R3
+# Báo cáo đóng M6 (revision 4): M6-MILESTONE-CLOSE-R4
 
-## 1. Phạm vi và lý do R3
+## 1. Phạm vi và lý do R4
 
 Revision 1 M6-MILESTONE-CLOSE đã đóng mà không tích hợp; Control 20/10/2026: policy v1 thêm bốn dòng kế hoạch (CONVERGENCE-EXT, EXT-UI, PERSIST, ADAPT) vào phạm vi đóng M6; revision 1 đóng băng phạm vi cũ và chưa giao Worker nào, nên dù chạy xong vẫn phải đóng lại ở R2; retire để đóng M6 đúng một lần ở R2 với đủ phạm vi (chấm điểm chi phí và đường găng: bớt một lượt đóng, trả suất cho gói kế hoạch).
 
-Bản R2 (candidate 74c062a29d649ea0e3d1471dee9c739dc33d38fe) được thay bằng R3 vì candidate nay là HEAD 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1 và phạm vi R3 thêm gói ADAPT-LAUNCH-FIX1 (commit integrate 21d99fc, candidate 9bcb10e680dc) chưa có trong báo cáo R2; mọi lệnh kiểm chạy lại trên candidate mới, kết quả R2 không còn dùng.
+Bản R3 (candidate 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1) được thay bằng R4 vì candidate nay là HEAD 6042d7a626d3d523881cc86d1b0ac674986bcafa và phạm vi R4 thêm gói ADAPT-LAUNCH-FIX2 (commit integrate 6042d7a626d3d523881cc86d1b0ac674986bcafa, candidate 903393a717cb) chưa có trong báo cáo R3; mọi lệnh kiểm chạy lại trên candidate mới, kể cả hai đoạn nặng chạy tests/m2, kết quả R3 không còn dùng.
 
-Ghi nhận minh bạch: HEAD còn chứa các commit integrate CP7-REAL-RESOURCES (4b11dd0) và IMPL-PLAN-PROD-PORTS (8167d4c, kèm commit nội dung 42a501f) nằm ngoài danh sách phạm vi đóng M6, không tính vào bảng gói.
+Ghi nhận minh bạch: HEAD còn chứa các commit integrate nằm ngoài danh sách phạm vi đóng M6, không tính vào bảng gói: CP7-REAL-RESOURCES (4b11dd0) và các gói PP-* của IMPL-PLAN-PROD-PORTS (commit integrate 8167d4c, PP-7 019f653, PP-8 dea6425, kèm các commit nội dung).
 
 ## 2. Candidate được kiểm
 
-Candidate là HEAD 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1 của nhánh trungqwe/lane-m6-milestone-close-r3 trước commit của lượt này; mọi lệnh kiểm chạy bằng interpreter khoá của lane; kết quả từng lệnh ở command-results.md.
+Candidate là HEAD 6042d7a626d3d523881cc86d1b0ac674986bcafa của nhánh trungqwe/lane-m6-milestone-close-r4 trước commit của lượt này; mọi lệnh kiểm chạy bằng interpreter khoá của lane; kết quả từng lệnh ở command-results.md.
 
 ## 3. Gói được bao phủ và SHA tích hợp
 
@@ -46,6 +46,7 @@ Candidate là HEAD 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1 của nhánh trungqw
 | ADAPT-PROD-FIX2 | fa250e8305aa422ff260f2ce9bb3622a29239740 | e1cc7f40b25b | git log --grep="integrate(ADAPT-PROD-FIX2)" |
 | CP-4B-UI-SCREENS-FIX2 | 74c062a29d649ea0e3d1471dee9c739dc33d38fe | 1c85775dea49 | git log --grep="integrate(CP-4B-UI-SCREENS-FIX2)" |
 | ADAPT-LAUNCH-FIX1 | 21d99fc89eb076a036b4d62f026b057a61d96135 | 9bcb10e680dc | git log --grep="integrate(ADAPT-LAUNCH-FIX1)" |
+| ADAPT-LAUNCH-FIX2 | 6042d7a626d3d523881cc86d1b0ac674986bcafa | 903393a717cb | git log --grep="integrate(ADAPT-LAUNCH-FIX2)" |
 
 ### 3.2 Phân hệ A, ADAPT, B, C
 
@@ -107,7 +108,7 @@ Candidate là HEAD 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1 của nhánh trungqw
 
 ### 3.3 Gói hội tụ, D, E, F
 
-Danh sách gói của brief R3 kết thúc ở E-05 (dấu phẩy cuối cho thấy danh sách bị cắt); các hàng E-06..E-20 và F-01..F-07 dưới đây là bổ sung giữ từ bản R2, không thuộc danh sách yêu cầu.
+Danh sách gói của brief R4 kết thúc ở E-02; các hàng E-03..E-20 và F-01..F-07 dưới đây là bổ sung giữ từ bản R3, không thuộc danh sách yêu cầu.
 
 
 | Mã gói | Commit integrate (SHA đầy đủ) | Candidate (12 hex) | Cách tra |
@@ -176,7 +177,7 @@ Danh sách gói của brief R3 kết thúc ở E-05 (dấu phẩy cuối cho th�
 
 ### 3.4 Gói có lệnh kiểm nhưng không nằm trong danh sách liệt kê
 
-Brief R3 không liệt kê tường minh các gói E-06..E-20, F-01..F-22 cùng các slice thuộc phân hệ G, H, I, J; tuy nhiên toàn bộ lệnh kiểm của milestone M6 vẫn chạy đầy đủ các bài test tương ứng của chúng (`tests/unit/render/test_f08..f22`, `tests/unit/orchestration/test_g_*`, `tests/unit/control_ui/test_h_*`, `tests/unit/storage/test_storage_*`, `tests/unit/config/test_j_*`).
+Brief R4 không liệt kê tường minh các gói E-03..E-20, F-01..F-22 cùng các slice thuộc phân hệ G, H, I, J; tuy nhiên toàn bộ lệnh kiểm của milestone M6 vẫn chạy đầy đủ các bài test tương ứng của chúng (`tests/unit/render/test_f08..f22`, `tests/unit/orchestration/test_g_*`, `tests/unit/control_ui/test_h_*`, `tests/unit/storage/test_storage_*`, `tests/unit/config/test_j_*`).
 
 Kết quả tra cứu `git log` chỉ đọc cho nhóm F-08..F-22 và các phân hệ G, H, I, J trên nhánh hiện tại như sau:
 
@@ -225,7 +226,7 @@ Các gói cổng không có SHA tích hợp; Control thả mỗi cổng bằng m
 
 ## 5. Kết quả lệnh kiểm
 
-Toàn bộ 288 đoạn lệnh kiểm của milestone M6 đã được thực thi và kiểm tra lại trên candidate HEAD 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1 qua 14 chuỗi lệnh:
+Toàn bộ 289 đoạn lệnh kiểm của milestone M6 đã được thực thi và kiểm tra lại trên candidate HEAD 6042d7a626d3d523881cc86d1b0ac674986bcafa qua 14 chuỗi lệnh:
 
 - Chuỗi 1: 12/12 đoạn exit 0 (kế hoạch phân hệ A, B, C, I, D, E, F, J, G, H, convergence và git diff --check)
 - Chuỗi 2: 2/2 đoạn exit 0 (kế hoạch convergence-ext và persist)
@@ -233,7 +234,7 @@ Toàn bộ 288 đoạn lệnh kiểm của milestone M6 đã được thực thi
 - Chuỗi 4: 18/18 đoạn exit 0 (migration, wiring, persist G, completion UoW, adapt wire, queries routes, probe catalog và prod)
 - Chuỗi 5: 1/1 đoạn exit 0 (npm run build giao diện)
 - Chuỗi 6: 12/12 đoạn exit 0 (control_ui, dist, screenRegistry, catalog hooks, persist C, hooks module)
-- Chuỗi 7: 42/42 đoạn exit 0 (19 test phân hệ A, thư viện pyproject và uv.lock, adapter thật A D E F J I, config, wiring, seed, launch)
+- Chuỗi 7: 43/43 đoạn exit 0 (19 test phân hệ A, thư viện pyproject và uv.lock, adapter thật A D E F J I, config, wiring, seed, launch, probe launch-fix2)
 - Chuỗi 8: 22/22 đoạn exit 0 (12 đoạn ingestion B, 8 test catalog C, stream và SSE)
 - Chuỗi 9: 21/21 đoạn exit 0 (event catalog, phân trang, queries, runtime.lock, packaging, contract registry, state machine)
 - Chuỗi 10: 14/14 đoạn exit 0 (orchestration và storage, workflow cp6, pyproject, M2_ACCEPTED_SHA, hồi quy m2 và integration, main.py, dist, App.tsx)
@@ -242,9 +243,9 @@ Toàn bộ 288 đoạn lệnh kiểm của milestone M6 đã được thực thi
 - Chuỗi 13: 46/46 đoạn exit 0 (test giao diện H, lưu trữ I, cấu hình và bảo mật J)
 - Chuỗi 14: 22/22 đoạn exit 0 (persistence PostgreSQL A..J, probe adapter, probe trace, AST boundary)
 
-Tổng hợp: **288/288** đoạn lệnh kiểm exit 0.
+Tổng hợp: **289/289** đoạn lệnh kiểm exit 0.
 
-Hiệu đính vòng R3 theo finding F1: cột Dòng tóm tắt của command-results.md ở bản trước chép trùng một dòng cho nhiều đoạn pytest khác nhau (144/259 hàng lệch so với output thật). Cột này nay được chép lại từ output thật của từng đoạn pytest, chạy riêng từng đoạn trên mã 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1 bằng interpreter khoá của lane. Hai đoạn nặng giữ kết quả cũ đã được Auditor (Opus 5.5) đối chiếu đúng: Chuỗi 9 hàng 4 (tests/m2: 179 passed, 1 deselected) và Chuỗi 10 hàng 10 (tests/m2 cùng tests/integration: 2313 passed, 35 skipped, 1 deselected). HEAD hiện tại b71fde02bd102bed9cc40e5c697e5e7bcd43bf0d chỉ khác 8167d4c ở hai tệp .md trong docs/delivery-evidence/m6-milestone-close nên mã và test không đổi; số exit 0 vẫn là 288/288.
+Hiệu đính R4: toàn bộ 289 đoạn, kể cả hai đoạn nặng Chuỗi 9 hàng 4 (tests/m2) và Chuỗi 10 hàng 10 (tests/m2 cùng tests/integration), được chạy lại trên mã 6042d7a626d3d523881cc86d1b0ac674986bcafa bằng interpreter khoá của lane; không giữ kết quả cũ của R3. Cột Dòng tóm tắt của command-results.md chép từ output thật của từng đoạn.
 
 *Lưu ý quan trọng:*
 1. Lệnh kiểm test_h36_m1_regression được hoãn sang CP7 theo quyết định của user ngày 21/10/2026 nên các lệnh liên quan mang cờ --deselect, không phải là lỗi kiểm thử.
@@ -261,7 +262,7 @@ Hiệu đính vòng R3 theo finding F1: cột Dòng tóm tắt của command-res
 | M6-EG5 | G06 phần TTS/timing/media và G07 phần output/QC có evidence | PENDING_USER_CHECKPOINT | Cần evidence trên tài nguyên thật ở CP7; evidence với fake đạt exit 0: test_e09 đến test_e12 (Chuỗi 11 hàng 27..30), test_f12 đến test_f15 (Chuỗi 12 hàng 12..15) |
 | M6-EG6 | User duyệt E-F và 5 preset mẫu; user nghe mẫu và duyệt hình | PENDING_USER_CHECKPOINT | User chưa duyệt, không tự ghi là đã duyệt; chờ nghiệm thu người dùng tại CP7 |
 
-Ánh xạ CP7: docs/implementation/cp7/plan.md dòng 41..43 gán M6-EG1 cho RG-09, M6-EG5 cho RG-05, RG-06, RG-07, M6-EG6 cho R4 (user duyệt); bảng đó ghi mã gói M6-MILESTONE-CLOSE-R2, mã gate không đổi ở R3.
+Ánh xạ CP7: docs/implementation/cp7/plan.md dòng 41..43 gán M6-EG1 cho RG-09, M6-EG5 cho RG-05, RG-06, RG-07, M6-EG6 cho R4 (user duyệt); bảng đó ghi mã gói M6-MILESTONE-CLOSE-R2, mã gate không đổi ở R4; việc đổi mã gói trong bảng CP7 nằm ngoài owned paths của gói này.
 
 Ghi chú theo quyết định của user (2026-10-22, ai-setup decide):
 Exit gate của roadmap rộng hơn kế hoạch đã duyệt chỉ được ghi chú trong báo cáo đóng mốc, không phải FAIL và không hỏi user. Việc kế hoạch đã duyệt có mà chưa nối do Control tự lập gói sửa.
@@ -282,6 +283,6 @@ Chỉ gồm đúng 3 mã gate sau được đưa vào danh sách chờ kiểm tr
 
 ## 8. Kết luận
 
-Trạng thái: **ĐẠT** về kỹ thuật và kiểm thử trên mã 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1: 288/288 lệnh kiểm exit 0, mọi gói được bao phủ có SHA tích hợp, 13 gói cổng có recordHash do Control cấp, M6-EG2/EG3/EG4 PASS. Ba gate M6-EG1, M6-EG5, M6-EG6 ghi vào pendingUserCheckpoint, chờ tài nguyên thật và duyệt của user ở CP7.
+Trạng thái: **ĐẠT** về kỹ thuật và kiểm thử trên mã 6042d7a626d3d523881cc86d1b0ac674986bcafa: 289/289 lệnh kiểm exit 0, mọi gói được bao phủ có SHA tích hợp, 13 gói cổng có recordHash do Control cấp, M6-EG2/EG3/EG4 PASS. Ba gate M6-EG1, M6-EG5, M6-EG6 ghi vào pendingUserCheckpoint, chờ tài nguyên thật và duyệt của user ở CP7.
 
 Báo cáo không thay đổi trạng thái roadmap (docs/11-roadmap.md) hay checklist (docs/12-pre-code-checklist.md).
