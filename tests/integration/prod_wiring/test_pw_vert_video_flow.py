@@ -213,6 +213,7 @@ async def test_a_capability_drop_during_an_activity_marks_the_job_waiting_then_i
     assert await v.relay().run_once() == 1
     job_id = f'{batch_id}:job:1'
     await wait_until(lambda: job_row(pw_database, job_id) == ('WAITING', 'desktop_offline'), what='job WAITING')
+    await wait_until(lambda: v.job_trace.history.get(job_id, [])[-1:] == ['WAITING'], what='job trace records WAITING')
 
     runs = {r[0]: r for r in stage_runs(pw_database, job_id)}
     assert runs['tts'][1] == 'RUNNING'
