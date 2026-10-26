@@ -6,12 +6,13 @@ Tạo mới `tests/integration/prod_wiring/conftest.py`, `tests/integration/prod
 ## 2. Thiết kế
 - `pw_database`: tạo CSDL tạm `pw_<hex8>` từ `M2_TEST_PG_DSN`, chạy `MigrationRunner(..., is_test_env=True, expected_database_name=...)`, seed một workspace và một actor, `DROP DATABASE ... WITH (FORCE)` trong `finally`. Thiếu DSN hoặc DSN không phải loopback thì `pytest.fail('BLOCKED_EXTERNAL: ...')`, không skip.
 - `pw_temporal`: bọc `WorkflowEnvironment.start_time_skipping()` và trả client; test chạy workflow echo ngủ 1 giờ và xong trong vài giây.
+- CT-WF-001: test đối chiếu `WORKFLOW_CATALOG` và `WORKFLOW_NAMES` với sáu workflow logic trong `docs/09-contracts/03-workflow-and-execution.md`, rồi chạy sáu workflow echo trên `pw_temporal` theo đúng tên catalog. Sáu class echo khai báo ở cấp module vì temporalio từ chối class cục bộ (`@workflow.run` trên class trong hàm). Docstring test khai báo `coveredIds: PW-H0-01, CT-WF-001`.
 - `pw_support.py`: `FakeRouter`, `FakeDrive`, `FakeKokoro`, `FakeAligner`, `FakeGpu` ghi lại mọi lời gọi (kể cả lời gọi lỗi); `assert_no_support_import(root)` quét AST, fail-closed.
 
 ## 3. Lệnh đã chạy
 | Lệnh | Exit code | Kết quả |
 | --- | --- | --- |
-| `python -m pytest tests/integration/prod_wiring/test_pw_h0_harness.py -q -p no:cacheprovider` | 0 | 31 passed in 2.52s |
+| `python -m pytest tests/integration/prod_wiring/test_pw_h0_harness.py -q -p no:cacheprovider` | 0 | 34 passed in 2.50s |
 | probe conftest (`BLOCKED_EXTERNAL` có, `pytest.skip` không) | 0 | PASS: conftest.py chứa BLOCKED_EXTERNAL và không chứa pytest.skip |
 | probe không tệp src nào nhắc `pw_support` | 0 | PASS: không có tệp nào dưới src/ chứa tham chiếu pw_support |
 | `git diff --check` | 0 | PASS: không phát hiện lỗi khoảng trắng |

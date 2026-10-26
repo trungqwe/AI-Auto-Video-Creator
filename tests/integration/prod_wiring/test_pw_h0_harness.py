@@ -1,4 +1,7 @@
-"""PW-H0: the prod_wiring harness itself (temporary databases, time-skipping Temporal, recording fakes, import guard)."""
+"""PW-H0: the prod_wiring harness itself (temporary databases, time-skipping Temporal, recording fakes, import guard).
+
+coveredIds: PW-H0-01, CT-WF-001
+"""
 from __future__ import annotations
 
 import ast
@@ -18,6 +21,7 @@ from temporalio.client import Client
 from temporalio.worker import UnsandboxedWorkflowRunner, Worker
 
 import pw_support
+from controlplane.domain.orchestration.workflow_catalog import WORKFLOW_CATALOG, WORKFLOW_NAMES
 from render.ports.lease import GpuLeaseUnavailable
 
 HERE = Path(__file__).resolve().parent
@@ -133,6 +137,85 @@ async def test_pw_temporal_runs_echo_workflow_on_time_skipping_server(pw_tempora
         )
     assert result == 'pw-echo'
     assert time.monotonic() - started < 300
+
+
+@workflow.defn(name='DailyCollectionWorkflow')
+class PwDailyCollectionEchoWorkflow:
+    @workflow.run
+    async def run(self, text: str) -> str:
+        return 'DailyCollectionWorkflow:' + text
+
+
+@workflow.defn(name='ContentEnrichmentWorkflow')
+class PwContentEnrichmentEchoWorkflow:
+    @workflow.run
+    async def run(self, text: str) -> str:
+        return 'ContentEnrichmentWorkflow:' + text
+
+
+@workflow.defn(name='ProductionBatchWorkflow')
+class PwProductionBatchEchoWorkflow:
+    @workflow.run
+    async def run(self, text: str) -> str:
+        return 'ProductionBatchWorkflow:' + text
+
+
+@workflow.defn(name='VideoProductionWorkflow')
+class PwVideoProductionEchoWorkflow:
+    @workflow.run
+    async def run(self, text: str) -> str:
+        return 'VideoProductionWorkflow:' + text
+
+
+@workflow.defn(name='DebugStageWorkflow')
+class PwDebugStageEchoWorkflow:
+    @workflow.run
+    async def run(self, text: str) -> str:
+        return 'DebugStageWorkflow:' + text
+
+
+@workflow.defn(name='MaintenanceWorkflow')
+class PwMaintenanceEchoWorkflow:
+    @workflow.run
+    async def run(self, text: str) -> str:
+        return 'MaintenanceWorkflow:' + text
+
+
+PW_ECHO_WORKFLOWS = {
+    'DailyCollectionWorkflow': PwDailyCollectionEchoWorkflow,
+    'ContentEnrichmentWorkflow': PwContentEnrichmentEchoWorkflow,
+    'ProductionBatchWorkflow': PwProductionBatchEchoWorkflow,
+    'VideoProductionWorkflow': PwVideoProductionEchoWorkflow,
+    'DebugStageWorkflow': PwDebugStageEchoWorkflow,
+    'MaintenanceWorkflow': PwMaintenanceEchoWorkflow,
+}
+
+
+def test_ct_wf_001_catalog_matches_the_six_logical_workflows_of_the_contract():
+    contract = (ROOT / 'docs' / '09-contracts' / '03-workflow-and-execution.md').read_text(encoding='utf-8')
+    section = contract.split('### CT-WF-001', 1)[1].split('### CT-WF-002', 1)[0]
+    documented = re.findall(r'^\| `(\w+Workflow)` \|', section, flags=re.MULTILINE)
+    assert len(documented) == 6
+    assert set(documented) == set(WORKFLOW_NAMES)
+    assert sorted(spec.name for spec in WORKFLOW_CATALOG) == sorted(documented)
+
+
+@pytest.mark.asyncio
+async def test_pw_temporal_hosts_every_ct_wf_001_workflow_by_catalog_name(pw_temporal):
+    assert set(PW_ECHO_WORKFLOWS) == set(WORKFLOW_NAMES)
+    classes = [PW_ECHO_WORKFLOWS[spec.name] for spec in WORKFLOW_CATALOG]
+    task_queue = 'pw-h0-' + uuid.uuid4().hex[:8]
+    async with Worker(pw_temporal, task_queue=task_queue, workflows=classes, workflow_runner=UnsandboxedWorkflowRunner()):
+        for spec in WORKFLOW_CATALOG:
+            result = await asyncio.wait_for(
+                pw_temporal.execute_workflow(spec.name, 'ct-wf-001', id='pw-h0-' + spec.name + '-' + uuid.uuid4().hex[:8], task_queue=task_queue),
+                timeout=300,
+            )
+            assert result == spec.name + ':ct-wf-001'
+
+
+def test_module_docstring_declares_the_covered_ids():
+    assert 'coveredIds: PW-H0-01, CT-WF-001' in (__doc__ or '')
 
 
 def test_fake_router_counts_every_call_and_keeps_requests():
