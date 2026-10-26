@@ -15,6 +15,7 @@ from typing import Any
 
 from controlplane.application.idempotency.canonicalization import request_hash
 from controlplane.domain.interfaces.uow import IUnitOfWork
+from creative.application.roles import AI_ROLES, ROLE_ANALYSIS, ROLE_ANGLES, ROLE_METADATA, ROLE_PLAN, ROLE_SCRIPT, ROLE_SELECTION, route_key
 from creative.domain.analysis import parse_content_analysis
 from creative.domain.angles import StoryAngle, build_story_angle_set
 from creative.domain.asset_selection import CreativeAssetSelection, select_creative_assets
@@ -47,14 +48,6 @@ AI_INVOCATION_FAILED = 'ai_invocation_failed'
 IDEMPOTENCY_CONFLICT_CODE = 'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD'
 PROMPT_CONFIG_REF_TYPE = 'prompt'
 DATA_SENSITIVITY = 'internal'
-ROLE_ANALYSIS = 'content_analysis'
-ROLE_ANGLES = 'story_angles'
-ROLE_SCRIPT = 'script_generation'
-ROLE_SELECTION = 'asset_selection'
-ROLE_PLAN = 'production_plan'
-ROLE_METADATA = 'output_metadata'
-AI_ROLES = (ROLE_ANALYSIS, ROLE_ANGLES, ROLE_SCRIPT, ROLE_SELECTION, ROLE_PLAN, ROLE_METADATA)
-
 
 
 class PipelineRejected(Exception):
@@ -221,7 +214,7 @@ class CreativePipeline:
         text = json.dumps(_plain(payload), sort_keys=True, ensure_ascii=False)
         envelope = PromptEnvelope(prompt_ref=prompt_ref, instructions=instructions, data=(UntrustedText(text, provenance),))
         decision = self._route.resolve({
-            'ai_role': role,
+            'ai_role': route_key(role),
             'job_ref': snapshot.video_job_ref or snapshot.snapshot_id,
             'snapshot_ref': snapshot.snapshot_id,
             'config_refs': ['{ref_type}:{ref_id}@{revision_id}'.format(**ref) for ref in snapshot.configuration_revision_refs],
