@@ -142,9 +142,9 @@ def test_synthesize_writes_mono_pcm_wav_with_configured_parameters(tts_env):
         assert (wav.getnchannels(), wav.getsampwidth(), wav.getframerate(), wav.getnframes()) == (1, 2, 24000, 2400)
         pcm = np.frombuffer(wav.readframes(2400), dtype='<i2')
     assert int(pcm[0]) == -32767 and int(pcm[-1]) == 32767
-    staged = list(tts_env.staging.glob('*.wav'))
-    assert len(staged) == 1 and staged[0].read_bytes() == result.audio_bytes
-    assert list(tts_env.staging.glob('*.part')) == []
+    staged = list((tts_env.staging / 'tmp').glob('*.wav'))
+    assert len(staged) == 1 and staged[0].read_bytes() == result.audio_bytes and staged[0].name == sha(result.audio_bytes) + '.wav'
+    assert list((tts_env.staging / 'tmp').glob('*.part')) == [] and list(tts_env.staging.glob('*.wav')) == []
     weights = tts_env.weights
     assert factory.calls == [(str(weights / 'kokoro-v1.0.onnx'), str(weights / 'voices-v1.0.bin'))]
     assert factory.model.calls == [{'text': 'Hello world.', 'voice': 'af_heart', 'speed': 1.1, 'lang': 'en-us'}]
@@ -176,7 +176,7 @@ def test_sha256_mismatch_is_rejected_before_loading(tts_env, name):
     engine, factory = make_tts(tts_env)
     expect_tts_error(engine, 'weights_sha256_mismatch')
     assert factory.calls == []
-    assert list(tts_env.staging.iterdir()) == []
+    assert list(tts_env.staging.iterdir()) == [tts_env.staging / 'tmp'] and list((tts_env.staging / 'tmp').iterdir()) == []
 
 
 @pytest.mark.parametrize('name', sorted(WEIGHT_FILES))
@@ -222,7 +222,7 @@ def test_model_factory_failure_is_runtime_error(tts_env):
 def test_sample_rate_mismatch_and_empty_audio_are_rejected(tts_env):
     expect_tts_error(make_tts(tts_env, FakeKokoroModel(rate=22050))[0], 'sample_rate_mismatch')
     expect_tts_error(make_tts(tts_env, FakeKokoroModel(samples=np.zeros(0, dtype=np.float32)))[0], 'empty_audio')
-    assert list(tts_env.staging.iterdir()) == []
+    assert list(tts_env.staging.iterdir()) == [tts_env.staging / 'tmp'] and list((tts_env.staging / 'tmp').iterdir()) == []
 
 
 def test_missing_staging_directory_is_rejected(tts_env):
