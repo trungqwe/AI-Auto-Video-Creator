@@ -24,6 +24,7 @@ class ReservationAction(StrEnum):
 class AllocationCandidate:
     candidate_ref: str
     angle_slot: str
+    source_set_ref: str | None = None
 
 
 def _require_count(name: str, value: object) -> int:

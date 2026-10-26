@@ -610,6 +610,8 @@ def test_batch_isolation():
     class FakeBatchGateway:
         def __init__(self):
             self.calls = []
+            self.grants = []
+            self.executed = []
 
         async def run_child(self, workflow_name: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
             self.calls.append((workflow_name, payload))
@@ -619,6 +621,16 @@ def test_batch_isolation():
             if ':video:' in child_id:
                 return {'status': STATUS_COMPLETED}
             return {'status': STATUS_STAGE_OBSERVED}
+
+        async def issue_grant(
+            self, stage_run_id: str, allowed_operation: str, input_fingerprint: str, worker_lease_id: str
+        ) -> Mapping[str, Any]:
+            self.grants.append((stage_run_id, allowed_operation))
+            return {'grant_id': 'grant-' + stage_run_id, 'stage_run_id': stage_run_id}
+
+        async def execute(self, activity_name: str, request: Mapping[str, Any]) -> Mapping[str, Any]:
+            self.executed.append((activity_name, dict(request)))
+            return {'stage_run_id': request['stage_run_id'], 'disposition': 'succeeded', 'output_refs': []}
 
     settings = settings_from_parameters(profile_parameters())
     params = BatchParams(
@@ -637,6 +649,8 @@ def test_batch_isolation():
     assert res['status'] == BATCH_TARGET_REACHED
     assert res['completed'] == 1
     assert res['failed'] == 1
+    assert gateway.grants == [('batch-1:run_videos:r1', 'FinalizeBatch')]
+    assert [name for name, _ in gateway.executed] == ['FinalizeBatch']
 
     # Test exhausted when jobs run out
     params_exhaust = BatchParams(

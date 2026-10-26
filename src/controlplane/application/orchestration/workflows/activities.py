@@ -68,6 +68,8 @@ ACTIVITY_BINDINGS: tuple[ActivityBinding, ...] = (
     _b('inspect_output', 'F', 'qc', True),
     _b('prepare_output_ready', 'F', 'qc', True),
     _b('CommitVideoCompletion', 'G', 'complete', True),
+    _b('AllocateJob', 'G', 'allocate', True),
+    _b('FinalizeBatch', 'G', 'run_videos', True),
     _b('MaterializeArtifactSet', 'I', 'render', True),
     _b('PersistVideoOutput', 'I', 'sync', True),
     _b('RequestCleanupEvaluation', 'I', 'cleanup', True),
@@ -113,8 +115,8 @@ ENRICHMENT_STAGE_ACTIVITIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
 })
 
 BATCH_STAGE_ACTIVITIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
-    'allocate': (),
-    'run_videos': (),
+    'allocate': ('AllocateJob',),
+    'run_videos': ('FinalizeBatch',),
 })
 
 MAINTENANCE_STAGE_ACTIVITIES: Mapping[str, tuple[str, ...]] = MappingProxyType({

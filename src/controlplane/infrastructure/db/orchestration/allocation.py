@@ -69,11 +69,31 @@ class PostgresAllocationStore:
         angle_slot = snap[len(_ANGLE_PREFIX):] if snap.startswith(_ANGLE_PREFIX) else ''
         return JobReservation(str(row[1]), str(row[2]), str(row[0]), angle_slot)
 
+    def find_candidate(self, job_id: str) -> AllocationCandidate | None:
+        row = self._connection.execute(
+            'SELECT k.candidate_ref, j.snapshot_ref, k.source_set_ref '
+            'FROM controlplane.cp_job_candidates k '
+            'JOIN controlplane.cp_video_jobs j '
+            'ON j.workspace_id = k.workspace_id AND j.job_id = k.job_id '
+            'WHERE k.workspace_id = %s AND k.job_id = %s',
+            (self._workspace_id, job_id),
+        ).fetchone()
+        if row is None:
+            return None
+        snap = str(row[1]) if row[1] is not None else ''
+        angle_slot = snap[len(_ANGLE_PREFIX):] if snap.startswith(_ANGLE_PREFIX) else ''
+        return AllocationCandidate(str(row[0]), angle_slot, None if row[2] is None else str(row[2]))
+
     def create_job_and_reservation(
         self, batch_id: str, job_id: str, candidate: AllocationCandidate
     ) -> JobReservation:
         if not isinstance(candidate.angle_slot, str) or not candidate.angle_slot.strip():
             raise ValueError('angle_slot must be a non-empty string')
+        if not isinstance(candidate.candidate_ref, str) or not candidate.candidate_ref.strip():
+            raise ValueError('candidate_ref must be a non-empty string')
+        source_set_ref = candidate.source_set_ref
+        if source_set_ref is not None and (not isinstance(source_set_ref, str) or not source_set_ref.strip()):
+            raise ValueError('source_set_ref must be None or a non-empty string')
         snapshot_ref = _ANGLE_PREFIX + candidate.angle_slot
         self._connection.execute(
             "INSERT INTO controlplane.cp_video_jobs "
@@ -87,6 +107,12 @@ class PostgresAllocationStore:
             "(reservation_id, workspace_id, batch_id, job_id, state) "
             "VALUES (%s, %s, %s, %s, 'ACTIVE')",
             (reservation_id, self._workspace_id, batch_id, job_id),
+        )
+        self._connection.execute(
+            'INSERT INTO controlplane.cp_job_candidates '
+            '(workspace_id, job_id, batch_id, candidate_ref, source_set_ref) '
+            'VALUES (%s, %s, %s, %s, %s)',
+            (self._workspace_id, job_id, batch_id, candidate.candidate_ref, source_set_ref),
         )
         return JobReservation(batch_id, job_id, reservation_id, candidate.angle_slot)
 
