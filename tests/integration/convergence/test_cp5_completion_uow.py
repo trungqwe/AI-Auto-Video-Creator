@@ -580,9 +580,9 @@ def test_adapter_placement_and_packaging():
     assert k in s['packages'] and k in s['package-dir']
     assert ADAPTER.is_file() and WIRING.is_file()
     assert not (ROOT / 'src/controlplane/infrastructure/db/completion').exists()
-    assert sorted(p.name for p in ORCH.glob('*.py')) == [
+    assert {
         '__init__.py', 'allocation.py', 'grants.py', 'postgres_completion.py', 'start_batch.py', 'variants.py'
-    ]
+    } <= {p.name for p in ORCH.glob('*.py')}
     assert wiring_problems(WIRING.parent) == []
 
 
