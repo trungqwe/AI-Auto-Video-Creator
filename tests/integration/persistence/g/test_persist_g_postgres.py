@@ -1,4 +1,7 @@
-"""PERSIST-G: kiem tra cac kho PostgreSQL cua orchestration tren PostgreSQL 18.6."""
+"""PERSIST-G: kiem tra cac kho PostgreSQL cua orchestration tren PostgreSQL 18.6.
+
+coveredIds: PW-G6-01
+"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -41,6 +44,10 @@ ORCH_DIR = REPO_ROOT / 'src' / 'controlplane' / 'infrastructure' / 'db' / 'orche
 # Kế hoạch IMPL-PLAN-CONVERGENCE-EXT đã duyệt (docs/implementation/convergence-ext/slices.md, dòng 122-137)
 # giao CP-5-COMPLETION tạo adapter này trong đúng thư mục orchestration; chỉ tệp này được miễn quét token cấm.
 EXT_COMPLETION_ADAPTER = 'postgres_completion.py'
+# Kế hoạch IMPL-PLAN-PROD-WIRING-V4 đã duyệt (docs/implementation/prod-wiring/slices.md, mục PW-G6) giao outbox_relay.py tự commit và rollback;
+# tệp này chỉ được miễn đúng hai token trong EXT_RELAY_ALLOWED_TOKENS, mọi token cấm khác vẫn bị báo.
+EXT_RELAY_ADAPTER = 'outbox_relay.py'
+EXT_RELAY_ALLOWED_TOKENS = ('.commit(', '.rollback(')
 BANNED_ADAPTER_TOKENS = (
     'CREATE TABLE', 'ALTER TABLE', 'CREATE INDEX',
     'CompletionStorePort', 'connect(', 'ConnectionPool',
@@ -703,8 +710,11 @@ def banned_tokens_in(orch_dir: Path) -> list[tuple[str, str]]:
         name = source.relative_to(orch_dir).as_posix()
         if name == EXT_COMPLETION_ADAPTER:
             continue
+        allowed = EXT_RELAY_ALLOWED_TOKENS if name == EXT_RELAY_ADAPTER else ()
         text = source.read_text(encoding='utf-8')
         for banned in BANNED_ADAPTER_TOKENS:
+            if banned in allowed:
+                continue
             if banned in text:
                 found.append((name, banned))
     return found
@@ -760,3 +770,34 @@ def test_banned_tokens_in_flags_transaction_manager_in_new_file(tmp_path):
         EXT_COMPLETION_ADAPTER: 'x = 1\n',
     })
     assert banned_tokens_in(tmp_path) == [('extra.py', 'TransactionManager')]
+
+
+def test_banned_tokens_in_allows_commit_and_rollback_only_in_outbox_relay(tmp_path):
+    write_orch_files(tmp_path, {EXT_RELAY_ADAPTER: 'connection.commit()\nconnection.rollback()\n'})
+    assert banned_tokens_in(tmp_path) == []
+
+
+@pytest.mark.parametrize('token_line, token', [
+    ('connection = psycopg.connect(dsn)\n', 'connect('),
+    ('from controlplane.infrastructure.db.uow import TransactionManager\n', 'TransactionManager'),
+    ("SQL = 'CREATE TABLE t (id int)'\n", 'CREATE TABLE'),
+    ('from src.controlplane import x\n', 'from src.'),
+])
+def test_banned_tokens_in_still_flags_other_tokens_in_outbox_relay(tmp_path, token_line, token):
+    write_orch_files(tmp_path, {EXT_RELAY_ADAPTER: 'connection.commit()\nconnection.rollback()\n' + token_line})
+    assert banned_tokens_in(tmp_path) == [(EXT_RELAY_ADAPTER, token)]
+
+
+def test_banned_tokens_in_still_flags_commit_in_other_files_next_to_outbox_relay(tmp_path):
+    write_orch_files(tmp_path, {
+        'grants.py': 'connection.commit()\n',
+        'collection_scheduler.py': 'connection.commit()\n',
+        EXT_RELAY_ADAPTER: 'connection.commit()\nconnection.rollback()\n',
+    })
+    assert banned_tokens_in(tmp_path) == [('collection_scheduler.py', '.commit('), ('grants.py', '.commit(')]
+
+
+def test_relay_exemption_is_exactly_commit_and_rollback():
+    assert EXT_RELAY_ADAPTER == 'outbox_relay.py'
+    assert EXT_RELAY_ALLOWED_TOKENS == ('.commit(', '.rollback(')
+    assert set(EXT_RELAY_ALLOWED_TOKENS) <= set(BANNED_ADAPTER_TOKENS)
