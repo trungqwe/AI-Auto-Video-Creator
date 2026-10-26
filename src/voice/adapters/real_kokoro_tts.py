@@ -1,6 +1,8 @@
 """Real TtsEnginePort: local Kokoro ONNX speech synthesis (CT-TTS-001).
 
 Weights stay outside the Git tree and their sha256 is checked against tools/launcher/prod/model-weights.lock.json before loading; nothing is downloaded and no network is used.
+
+DQ-13: this adapter writes the WAV only as <voice root>/tmp/<sha256 of the WAV bytes>.wav; VoicePipeline names the final file voice-artifact-<sha256> through VoiceArtifactPlacer and the aligner opens that exact name.
 """
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ from voice.ports.script_text import ScriptText
 MODEL_FILE = 'kokoro-v1.0.onnx'
 VOICES_FILE = 'voices-v1.0.bin'
 WEIGHTS_GROUP = 'kokoro-onnx'
+TEMP_DIR_NAME = 'tmp'
 ERROR_WEIGHTS_UNPINNED = 'weights_unpinned'
 ERROR_WEIGHTS_MISSING = 'weights_missing'
 ERROR_WEIGHTS_SHA256_MISMATCH = 'weights_sha256_mismatch'
@@ -30,6 +33,7 @@ ERROR_SAMPLE_RATE_MISMATCH = 'sample_rate_mismatch'
 ERROR_EMPTY_AUDIO = 'empty_audio'
 ERROR_RUNTIME = 'tts_runtime_error'
 _SHA256_RE = re.compile(r'[0-9a-f]{64}')
+ARTIFACT_NAME_RE = re.compile(r'voice-artifact-([0-9a-f]{64})')
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -169,20 +173,19 @@ class RealKokoroTts:
         return self._model
 
     def _write_wav(self, pcm: bytes) -> bytes:
-        config = self._config
-        digest = hashlib.sha256(pcm).hexdigest()[:32]
-        part = config.staging_dir / f'tts-{digest}.part'
-        final = config.staging_dir / f'tts-{digest}.wav'
+        temp_dir = self._config.staging_dir / TEMP_DIR_NAME
+        part = temp_dir / f'{hashlib.sha256(pcm).hexdigest()[:32]}.part'
         try:
             with wave.open(str(part), 'wb') as wav:
                 wav.setnchannels(1)
                 wav.setsampwidth(2)
-                wav.setframerate(config.sample_rate)
+                wav.setframerate(self._config.sample_rate)
                 wav.writeframes(pcm)
-            part.replace(final)
+            wav_bytes = part.read_bytes()
+            part.replace(temp_dir / f'{hashlib.sha256(wav_bytes).hexdigest()}.wav')
         finally:
             part.unlink(missing_ok=True)
-        return final.read_bytes()
+        return wav_bytes
 
     def synthesize(self, decision: ProviderRouteDecision, script_text: ScriptText, request: Mapping[str, object]) -> TtsSynthesis:
         if not isinstance(decision, ProviderRouteDecision):
@@ -195,6 +198,10 @@ class RealKokoroTts:
         config = self._config
         if not config.staging_dir.is_dir():
             raise _fail(ERROR_STAGING_MISSING, 'staging directory missing')
+        try:
+            (config.staging_dir / TEMP_DIR_NAME).mkdir(exist_ok=True)
+        except OSError:
+            raise _fail(ERROR_STAGING_MISSING, 'staging temp directory unavailable') from None
         model = self._load()
         started = time.perf_counter()
         try:
@@ -217,4 +224,35 @@ class RealKokoroTts:
         )
 
 
-__all__ = ('KokoroConfig', 'RealKokoroTts')
+class VoiceArtifactPlacer:
+    """DQ-13: the single place that names a voice WAV. VoicePipeline calls it with voice-artifact-<sha256> and the WAV bytes before it commits."""
+
+    def __init__(self, voice_root: Path) -> None:
+        if not isinstance(voice_root, Path) or not voice_root.is_absolute():
+            raise ValueError('voice_root must be an absolute Path')
+        self._root = voice_root
+
+    def __call__(self, artifact_ref: str, audio_bytes: bytes) -> Path:
+        match = ARTIFACT_NAME_RE.fullmatch(artifact_ref) if isinstance(artifact_ref, str) else None
+        if match is None or not isinstance(audio_bytes, bytes) or hashlib.sha256(audio_bytes).hexdigest() != match.group(1):
+            raise ValueError('artifact_ref must be voice-artifact-<sha256 of the WAV bytes>')
+        digest = match.group(1)
+        final = self._root / artifact_ref
+        if final.is_file() and _file_sha256(final) == digest:
+            return final
+        temp_dir = self._root / TEMP_DIR_NAME
+        temp_dir.mkdir(exist_ok=True)
+        source = temp_dir / f'{digest}.wav'
+        if source.is_file() and _file_sha256(source) == digest:
+            source.replace(final)
+            return final
+        part = temp_dir / f'{digest}.placing'
+        try:
+            part.write_bytes(audio_bytes)
+            part.replace(final)
+        finally:
+            part.unlink(missing_ok=True)
+        return final
+
+
+__all__ = ('KokoroConfig', 'RealKokoroTts', 'VoiceArtifactPlacer')

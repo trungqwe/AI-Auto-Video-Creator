@@ -31,13 +31,15 @@ ERROR_NO_ALIGNED_WORDS = 'no_aligned_words'
 ERROR_UNMATCHED_RATIO_EXCEEDED = 'alignment_unmatched_ratio_exceeded'
 ERROR_RUNTIME = 'aligner_runtime_error'
 _SHA256_RE = re.compile(r'[0-9a-f]{64}')
+ARTIFACT_REF_RE = re.compile(r'voice-artifact-[0-9a-f]{64}')
 
 
 @dataclass(frozen=True, kw_only=True)
 class WhisperAlignerConfig:
     model_dir: Path
     lock_path: Path
-    resolve_audio: Callable[[str], Path]
+    resolve_audio: Callable[[str], Path] | None = None
+    voice_root: Path | None = None
     tokenization_policy: TokenizationPolicy
     max_unmatched_word_ratio: float
     language: str = 'en'
@@ -51,8 +53,12 @@ class WhisperAlignerConfig:
             value = getattr(self, name)
             if not isinstance(value, Path) or not value.is_absolute():
                 raise ValueError(f'{name} must be an absolute Path')
-        if not callable(self.resolve_audio):
+        if (self.resolve_audio is None) == (self.voice_root is None):
+            raise ValueError('exactly one of resolve_audio and voice_root is required')
+        if self.resolve_audio is not None and not callable(self.resolve_audio):
             raise ValueError('resolve_audio must be callable')
+        if self.voice_root is not None and (not isinstance(self.voice_root, Path) or not self.voice_root.is_absolute()):
+            raise ValueError('voice_root must be an absolute Path')
         for name in ('language', 'device', 'compute_type', 'model_group', 'model_hash_file'):
             value = getattr(self, name)
             if not isinstance(value, str) or not value:
@@ -113,6 +119,13 @@ def _ms(seconds: object) -> int:
     if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not math.isfinite(seconds):
         raise _fail(ERROR_MODEL_OUTPUT_INVALID, 'model returned a non-finite or non-numeric time')
     return int(round(seconds * 1000))
+
+
+def _voice_artifact_path(voice_root: Path, ref: str) -> Path:
+    """DQ-13: open exactly <voice root>/voice-artifact-<sha256>; any other name is refused."""
+    if not isinstance(ref, str) or ARTIFACT_REF_RE.fullmatch(ref) is None:
+        raise ValueError('voice artifact ref is not voice-artifact-<sha256>')
+    return voice_root / ref
 
 
 @dataclass(frozen=True)
@@ -236,7 +249,8 @@ class RealWhisperAligner:
 
     def _verify_voice(self, request: AlignmentRequest) -> Path:
         try:
-            path = Path(self._config.resolve_audio(request.voice_artifact_ref))
+            config = self._config
+            path = Path(config.resolve_audio(request.voice_artifact_ref)) if config.resolve_audio is not None else _voice_artifact_path(config.voice_root, request.voice_artifact_ref)
             actual = _file_sha256(path)
         except Exception:
             raise _fail(ERROR_VOICE_UNAVAILABLE, 'voice artifact unavailable') from None

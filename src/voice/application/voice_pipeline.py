@@ -1,6 +1,7 @@
 """E-16: CreateVoiceTrack and CreateWordTiming command handlers (CT-TTS-001, CT-SUB-001, CT-RND-002, CT-EVT-002).
 
 Application layer: only domain, ports and controlplane types; no I/O, no clock, no adapter import.
+The WAV file is named by the injected place_artifact(artifact_ref, wav_bytes) callable (DQ-13: voice-artifact-<sha256 of the WAV bytes>); this module does no file I/O.
 Each command writes outputs, receipt and outbox event in one unit of work: all commit together or none does.
 """
 from __future__ import annotations
@@ -190,6 +191,7 @@ class VoicePipeline:
         tts_engine: TtsEnginePort,
         aligner: AlignerPort,
         measure_duration_ms: Callable[[bytes], int],
+        place_artifact: Callable[[str, bytes], object] | None = None,
     ) -> None:
         self._uow = uow
         self._script_port = script_port
@@ -197,6 +199,7 @@ class VoicePipeline:
         self._tts_engine = tts_engine
         self._aligner = aligner
         self._measure_duration_ms = measure_duration_ms
+        self._place_artifact = place_artifact
 
     def _replay(self, workspace_id: str, command: str, operation_key: str, digest: str) -> PipelineReceipt | None:
         stored = self._uow.outputs.latest(KIND_RECEIPT, _receipt_key(workspace_id, command, operation_key))
@@ -253,9 +256,12 @@ class VoicePipeline:
             self._commit_invocations(command.track_key, records)
             raise VoiceDurationRejected(finding)
         voice_hash = compute_voice_hash(audio)
+        artifact_ref = f'voice-artifact-{voice_hash}'
+        if self._place_artifact is not None:
+            self._place_artifact(artifact_ref, audio)  # DQ-13: the file gets this exact name before anything is committed
         receipt_ref = f'receipt-{digest[:32]}'
         voice = VoiceTrack(
-            voice_artifact_ref=f'voice-artifact-{voice_hash}',
+            voice_artifact_ref=artifact_ref,
             script_version_id=request['script_version_id'],
             script_fingerprint=request['script_fingerprint'],
             voice_hash=voice_hash,
