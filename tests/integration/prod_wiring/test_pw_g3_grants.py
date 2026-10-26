@@ -1,6 +1,6 @@
 """PW-G3: grant_issuer PostgreSQL, GrantRevokingDispatcher và ExecutionGrantCurrency trên PostgreSQL thử.
 
-coveredIds: PW-G3-01..05, CT-WF-004
+coveredIds: PW-G3-01..05, CT-WF-004, INV-003, INV-016
 """
 from __future__ import annotations
 
@@ -397,6 +397,29 @@ def test_old_epoch_is_rejected(pw_database):
     claims = issue_one(pw_database)
     begin_session(pw_database, 'ses-2', '6')
     assert currency_for(pw_database).is_grant_current(execution_grant(pw_database, claims)) is False
+
+
+def test_inv003_older_generation_grant_is_not_current_once_a_newer_one_is_issued(pw_database):
+    first = issue_one(pw_database)
+    build_dispatcher(pw_database, lambda request, c: result_for(request, 'succeeded')).dispatch(request_for(first))
+    second = issuer_for(pw_database)(SID, 'NormalizeMedia', 'fp-1', 'lease-1')
+    currency = currency_for(pw_database)
+    assert (first.execution_generation, second.execution_generation) == (1, 2)
+    assert currency.is_grant_current(execution_grant(pw_database, first)) is False
+    assert currency.is_grant_current(execution_grant(pw_database, second)) is True
+    assert currency.is_grant_current(execution_grant(pw_database, second, execution_generation=1)) is False
+
+
+def test_inv016_grant_from_an_old_recovery_epoch_is_rejected_and_reissued_under_the_new_one(pw_database):
+    first = issue_one(pw_database)
+    begin_session(pw_database, 'ses-2', '6')
+    currency = currency_for(pw_database)
+    assert currency.is_grant_current(execution_grant(pw_database, first)) is False
+    second = issuer_for(pw_database)(SID, 'ProbeMedia', 'fp-1', 'lease-1')
+    assert (second.execution_generation, second.recovery_epoch) == (2, '6')
+    assert currency.is_grant_current(execution_grant(pw_database, second)) is True
+    assert currency.is_grant_current(execution_grant(pw_database, second, recovery_epoch=5)) is False
+    assert currency.is_grant_current(execution_grant(pw_database, first)) is False
 
 
 def test_no_active_session_means_not_current(pw_database):

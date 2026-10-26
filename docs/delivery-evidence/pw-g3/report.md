@@ -38,8 +38,8 @@ Gói công việc PW-G3 hoàn thành việc triển khai cơ chế cấp quyền
 
 | Bước | Lệnh kiểm thử | Mã thoát | Kết quả xác minh |
 | --- | --- | --- | --- |
-| Bước 14 | `python -m pytest tests/integration/prod_wiring/test_pw_g3_grants.py -q -p no:cacheprovider` | 0 | `39 passed in 14.40s` (toàn bộ 39 test PW-G3 xanh) |
-| Bước 15 | `python -m pytest tests/integration/prod_wiring/test_pw_g3_grants.py tests/integration/convergence/test_cp6_workflow_catalog.py -q -p no:cacheprovider` | 0 | `50 passed in 14.55s` (39 test PW-G3 + 11 test catalog CP6 đạt hoàn toàn) |
+| Bước 14 | `python -m pytest tests/integration/prod_wiring/test_pw_g3_grants.py -q -p no:cacheprovider` | 0 | `41 passed in 14.67s` (toàn bộ 41 test PW-G3 xanh) |
+| Bước 15 | `python -m pytest tests/integration/prod_wiring/test_pw_g3_grants.py tests/integration/convergence/test_cp6_workflow_catalog.py -q -p no:cacheprovider` | 0 | `52 passed in 14.98s` (41 test PW-G3 + 11 test catalog CP6 đạt hoàn toàn) |
 | Bước 16 | `python -c "import pathlib; t = pathlib.Path('src/controlplane/application/orchestration/grant_runtime.py').read_text(encoding='utf-8').lower(); assert 'grantissuer' in t and 'inmemory' not in t and 'from src.' not in t, 'PW-G3'"` | 0 | Đạt yêu cầu quét mã nguồn: có `GrantIssuer`, không có `inmemory` hay `from src.`. |
 | Bước 18 | `git diff --check` | 0 | Sạch, không có khoảng trắng thừa hay lỗi định dạng dòng. |
 
@@ -71,6 +71,10 @@ Gói công việc PW-G3 hoàn thành việc triển khai cơ chế cấp quyền
    Lớp `StoreBackedClaimsCurrency` tiếp tục được lưu giữ trong `workflow.py` kèm chú thích định hướng sản xuất nhằm đảm bảo tương thích ngược cho bộ kiểm thử `test_cp6_workflow_catalog.py` (vốn nằm ngoài phạm vi owned paths).
 6. **Ranh giới tích hợp Composition Root**:
    Việc tích hợp `build_grant_issuer` và `ExecutionGrantCurrency` vào composition root (`launcher.py` hoặc `main.py`) thuộc trách nhiệm của các work package phân phối tiếp theo; gói PW-G3 chỉ bàn giao các thành phần sẵn sàng tại tầng application và wiring.
+
+7. **Bao phủ INV-003 và INV-016**:
+   - INV-003 (fencing generation đơn điệu): `test_inv003_older_generation_grant_is_not_current_once_a_newer_one_is_issued` chứng minh grant generation 1 không còn hiệu lực khi generation 2 được cấp và grant generation 2 bị từ chối nếu mang generation 1.
+   - INV-016 (epoch cũ bị từ chối): `test_inv016_grant_from_an_old_recovery_epoch_is_rejected_and_reissued_under_the_new_one` chứng minh grant epoch '5' bị từ chối sau khi phiên mới epoch '6' bắt đầu, grant cấp lại mang epoch '6' hợp lệ và epoch cũ vẫn bị từ chối.
 
 ## 6. Khoảng hở và Open Items
 
