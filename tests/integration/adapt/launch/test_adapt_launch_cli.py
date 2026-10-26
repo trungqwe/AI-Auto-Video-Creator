@@ -137,6 +137,16 @@ def make_fx(launcher: typing.Any, tmp_path: Path, **over: typing.Any) -> Fx:
         events.append(("namespace", host, port))
         return "REGISTERED"
 
+    def fake_begin_session(dsn: str, ws: str, ref: str, epoch: str) -> None:
+        events.append(("begin_session", dsn, ws, ref, epoch))
+
+    def fake_end_session(dsn: str, ws: str, ref: str) -> None:
+        events.append(("end_session", dsn, ws, ref))
+
+    def fake_max_session_epoch(dsn: str, ws: str) -> int:
+        events.append(("max_session_epoch", dsn, ws))
+        return 0
+
     deps = launcher.Deps(
         environ=environ,
         run=fake_run,
@@ -148,6 +158,9 @@ def make_fx(launcher: typing.Any, tmp_path: Path, **over: typing.Any) -> Fx:
         pid_alive=fake_pid_alive,
         migrate=fake_migrate,
         ensure_identity=fake_ensure_identity,
+        begin_session=fake_begin_session,
+        end_session=fake_end_session,
+        max_session_epoch=fake_max_session_epoch,
         make_cert=fake_make_cert,
         open_browser=fake_open_browser,
         run_consent=fake_run_consent,
@@ -545,7 +558,7 @@ def test_restore_creates_new_database_and_new_recovery_epoch(launcher, tmp_path)
     assert fx.layout.active_db_file.read_text(encoding="utf-8").strip() == "controlplane_20261022030405"
     epoch_data = json.loads(fx.layout.epoch_file.read_text(encoding="utf-8"))
     last_hist = epoch_data["history"][-1]
-    assert last_hist["epoch"].startswith("rec-20261022030405-")
+    assert last_hist["epoch"] == "1"
     assert last_hist["database"] == "controlplane_20261022030405"
     assert last_hist["source_sha256"] == hashlib.sha256(b"PGDMP-fake").hexdigest()
     t2 = datetime.datetime(2026, 10, 22, 3, 4, 6, tzinfo=datetime.timezone.utc)
@@ -555,6 +568,7 @@ def test_restore_creates_new_database_and_new_recovery_epoch(launcher, tmp_path)
     epoch_data2 = json.loads(fx.layout.epoch_file.read_text(encoding="utf-8"))
     assert len(epoch_data2["history"]) == 2
     assert epoch_data2["history"][-1]["epoch"] != last_hist["epoch"]
+    assert epoch_data2["history"][-1]["epoch"] == "2"
     assert launcher.active_db_name(fx.layout) == "controlplane_20261022030406"
 
 def test_restore_refuses_bad_inputs(launcher, tmp_path):

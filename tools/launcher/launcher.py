@@ -153,6 +153,10 @@ class Deps:
     pid_alive: typing.Callable[[int], bool]
     migrate: typing.Callable[[str], None]
     ensure_identity: typing.Callable[[str, str, str], None]
+    # begin_session(dsn, workspace_id, session_ref, recovery_epoch) ghi AppSession ACTIVE; end_session(dsn, workspace_id, session_ref) đóng phiên; max_session_epoch(dsn, workspace_id) trả epoch số lớn nhất trong cp_app_sessions (0 nếu chưa có).
+    begin_session: typing.Callable[[str, str, str, str], None]
+    end_session: typing.Callable[[str, str, str], None]
+    max_session_epoch: typing.Callable[[str, str], int]
     make_cert: typing.Callable[[Path, Path], None]
     open_browser: typing.Callable[[str], bool]
     run_consent: typing.Callable[..., typing.Any]
@@ -292,6 +296,31 @@ def atomic_write_text(path: Path, text: str) -> None:
     tmp_path = path.with_name(f'{path.name}.tmp-{os.getpid()}-{time.time_ns()}')
     tmp_path.write_text(text, encoding='utf-8')
     os.replace(tmp_path, path)
+
+
+DECIMAL_EPOCH = re.compile(r'[0-9]+')
+
+
+def read_epoch_history(layout: Layout) -> list[dict[str, typing.Any]]:
+    if not layout.epoch_file.exists():
+        return []
+    try:
+        history = json.loads(layout.epoch_file.read_text(encoding='utf-8'))['history']
+        if not isinstance(history, list) or not all(isinstance(item, dict) for item in history):
+            raise ValueError('history phải là danh sách đối tượng')
+    except Exception as exc:
+        raise LauncherError(f'Tệp recovery-epoch.json bị hỏng: {type(exc).__name__}') from exc
+    return [dict(item) for item in history]
+
+
+def current_epoch(history: list[dict[str, typing.Any]], legacy_max: typing.Callable[[], int]) -> str | None:
+    # None: chưa có epoch nào. Epoch thập phân giữ nguyên. Giá trị cũ rec-<stamp>-<hex> được đọc là (epoch số lớn nhất trong cp_app_sessions) cộng 1.
+    if not history:
+        return None
+    value = str(history[-1].get('epoch', ''))
+    if DECIMAL_EPOCH.fullmatch(value):
+        return value
+    return str(legacy_max() + 1)
 
 
 def read_pid(layout: Layout) -> int | None:
@@ -466,6 +495,33 @@ def ensure_identity(dsn: str, workspace_id: str, actor_id: str) -> None:
                 "INSERT INTO controlplane.cp_actors (actor_id, workspace_id, actor_type, display_name, status) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (actor_id) DO NOTHING",
                 (actor_id, workspace_id, 'user', 'Người vận hành', 'ACTIVE'),
             )
+
+
+def begin_session(dsn: str, workspace_id: str, session_ref: str, recovery_epoch: str) -> None:
+    ensure_src_on_path()
+    import psycopg
+    from controlplane.infrastructure.db.orchestration.app_session import PostgresAppSessions
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        PostgresAppSessions(conn, workspace_id).begin(session_ref, recovery_epoch)
+
+
+def end_session(dsn: str, workspace_id: str, session_ref: str) -> None:
+    ensure_src_on_path()
+    import psycopg
+    from controlplane.infrastructure.db.orchestration.app_session import PostgresAppSessions
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        PostgresAppSessions(conn, workspace_id).end(session_ref)
+
+
+def max_session_epoch(dsn: str, workspace_id: str) -> int:
+    import psycopg
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        row = conn.execute(
+            "SELECT MAX(CASE WHEN recovery_epoch ~ '^[0-9]+$' THEN recovery_epoch::numeric END) "
+            "FROM controlplane.cp_app_sessions WHERE workspace_id = %s",
+            (workspace_id,),
+        ).fetchone()
+    return int(row[0]) if row is not None and row[0] is not None else 0
 
 
 def run_consent(client_secrets_path: Path, vault_dir: Path, timeout_seconds: int, present_url: typing.Callable[[str], None]) -> typing.Any:
@@ -651,6 +707,9 @@ def default_deps(environ: typing.Mapping[str, str] | None = None) -> Deps:
         pid_alive=pid_alive,
         migrate=run_migrations,
         ensure_identity=ensure_identity,
+        begin_session=begin_session,
+        end_session=end_session,
+        max_session_epoch=max_session_epoch,
         make_cert=make_self_signed_cert,
         open_browser=webbrowser.open,
         run_consent=run_consent,
@@ -709,6 +768,18 @@ def cmd_start(deps: Deps, args: argparse.Namespace) -> int:
     identity = load_or_create_identity(layout)
     deps.ensure_identity(dsn, identity['workspace_id'], identity['actor_id'])
 
+    history = read_epoch_history(layout)
+    epoch = current_epoch(history, lambda: deps.max_session_epoch(dsn, identity['workspace_id']))
+    if epoch is None:
+        epoch = '1'
+        history = [{'epoch': epoch, 'started_at': deps.now().isoformat(), 'database': active_db_name(layout)}]
+        atomic_write_text(layout.epoch_file, json.dumps({'history': history}, indent=2))
+    elif epoch != str(history[-1].get('epoch', '')):
+        history[-1] = {**history[-1], 'epoch': epoch, 'legacy_epoch': history[-1].get('epoch')}
+        atomic_write_text(layout.epoch_file, json.dumps({'history': history}, indent=2))
+    session_ref = f'ses-{uuid.uuid4().hex}'
+    deps.begin_session(dsn, identity['workspace_id'], session_ref, epoch)
+
     if not layout.cert_file.exists() or not layout.key_file.exists():
         deps.make_cert(layout.cert_file, layout.key_file)
 
@@ -726,14 +797,8 @@ def cmd_start(deps: Deps, args: argparse.Namespace) -> int:
     child_env['AIAVC_ACTOR_ID'] = identity['actor_id']
     child_env['AIAVC_DATA_DIR'] = str(layout.data_dir)
     child_env['PYTHONUTF8'] = '1'
-    if layout.epoch_file.exists():
-        try:
-            epoch_data = json.loads(layout.epoch_file.read_text(encoding='utf-8'))
-            history = epoch_data.get('history', [])
-            if history:
-                child_env['AIAVC_RECOVERY_EPOCH'] = history[-1]['epoch']
-        except Exception:
-            pass
+    child_env['AIAVC_RECOVERY_EPOCH'] = epoch
+    child_env['AIAVC_SESSION_REF'] = session_ref
 
     with open(layout.serve_log, 'ab') as logfile:
         proc = deps.spawn(
@@ -911,7 +976,15 @@ def cmd_restore(deps: Deps, args: argparse.Namespace) -> int:
     t = deps.now()
     stamp = t.strftime('%Y%m%d%H%M%S')
     new_db = f'controlplane_{stamp}'
-    epoch = f'rec-{stamp}-{secrets.token_hex(4)}'
+    history = read_epoch_history(layout)
+    previous_epoch = current_epoch(
+        history,
+        lambda: deps.max_session_epoch(
+            build_dsn(load_or_create_password(layout), active_db_name(layout)),
+            load_or_create_identity(layout)['workspace_id'],
+        ),
+    )
+    epoch = '1' if previous_epoch is None else str(int(previous_epoch) + 1)
 
     res_create = deps.run(
         ['docker', 'exec', POSTGRES_CONTAINER, 'createdb', '-U', DB_USER, new_db],
@@ -935,13 +1008,6 @@ def cmd_restore(deps: Deps, args: argparse.Namespace) -> int:
         )
         raise LauncherError(f'pg_restore vào {new_db} thất bại; đã loại bỏ CSDL tạm.')
 
-    history = []
-    if layout.epoch_file.exists():
-        try:
-            data = json.loads(layout.epoch_file.read_text(encoding='utf-8'))
-            history = list(data.get('history', []))
-        except Exception:
-            pass
     history.append({
         'epoch': epoch,
         'restored_at': t.isoformat(),
@@ -1009,6 +1075,7 @@ def cmd_serve(deps: Deps, args: argparse.Namespace) -> int:
         return 1
 
     atomic_write_text(layout.pid_file, str(os.getpid()))
+    serve_ended = False
     try:
         url = app.launch_url(actor_id=identity['actor_id'], ttl_seconds=60)
         deps.serve_tls(
@@ -1019,6 +1086,7 @@ def cmd_serve(deps: Deps, args: argparse.Namespace) -> int:
             on_ready=lambda: deps.open_browser(url),
             should_stop=lambda: layout.stop_file.exists(),
         )
+        serve_ended = True
     finally:
         worker.stop()
         try:
@@ -1029,6 +1097,16 @@ def cmd_serve(deps: Deps, args: argparse.Namespace) -> int:
             layout.stop_file.unlink(missing_ok=True)
         except Exception:
             pass
+    session_ref = deps.environ.get('AIAVC_SESSION_REF')
+    if serve_ended and session_ref:
+        try:
+            deps.end_session(
+                deps.environ['CONTROLPLANE_DSN'],
+                deps.environ['CONTROLPLANE_WORKSPACE_ID'],
+                session_ref,
+            )
+        except Exception as exc:
+            deps.out(f'Không đóng được AppSession {session_ref} ({type(exc).__name__}); lần start sau sẽ chuyển nó sang ABANDONED.')
     return 0
 
 
