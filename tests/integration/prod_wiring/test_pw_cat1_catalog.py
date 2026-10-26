@@ -1,4 +1,7 @@
-"""PW-CAT1: thứ tự stage v2, binding ReserveVariant và pha ValidateVariant."""
+"""PW-CAT1: thứ tự stage v2, binding ReserveVariant và pha ValidateVariant.
+
+coveredIds: PW-CAT1-01, CT-ORC-012, CT-AI-008
+"""
 from __future__ import annotations
 
 import dataclasses

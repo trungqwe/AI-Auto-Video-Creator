@@ -1,6 +1,6 @@
 """CP-6-WORKFLOW in-process video production flow integration tests.
 
-coveredIds: CP-6-WORKFLOW-FLOW
+coveredIds: CP-6-WORKFLOW-FLOW, PW-CAT1-01, CT-ORC-012, CT-AI-008
 """
 from __future__ import annotations
 
@@ -433,6 +433,23 @@ def test_happy_path():
 def get_stage_activities(stage_type: str) -> tuple[str, ...]:
     from controlplane.application.orchestration.workflows.activities import VIDEO_STAGE_ACTIVITIES
     return VIDEO_STAGE_ACTIVITIES[stage_type]
+
+
+def test_variant_validation_runs_in_plan_and_qc_phases_and_reservation_precedes_render():
+    world, gateway, settings, params, log = setup_video_environment()
+    video_spec = get_workflow('VideoProductionWorkflow')
+    stage_acts = {s.stage_type: get_stage_activities(s.stage_type) for s in video_spec.stages}
+    flow = StageGraphFlow(video_spec, stage_acts, params, settings, gateway, [], chain_outputs=True)
+    assert asyncio.run(flow.advance()) == STATUS_COMPLETED
+    names = [call[0] for call in gateway.calls]
+    validate_at = [i for i, name in enumerate(names) if name == 'ValidateVariant']
+    assert len(validate_at) == 2
+    assert names.index('SelectCreativeAssets') < names.index('BuildProductionPlan') < validate_at[0] < names.index('ReserveVariant')
+    assert names.index('ReserveVariant') < names.index('render_video') < names.index('inspect_output') < validate_at[1]
+    assert validate_at[1] < names.index('prepare_output_ready') < names.index('PersistVideoOutput')
+    phases = [r['stage_run_id'].rsplit(':', 2)[1] for r in gateway.requests if r['activity_name'] == 'ValidateVariant']
+    assert phases == ['plan', 'qc']
+    assert {queue for name, queue in gateway.calls if name == 'ValidateVariant'} == {TaskQueue.DESKTOP_CPU}
 
 
 def test_waiting_capability():

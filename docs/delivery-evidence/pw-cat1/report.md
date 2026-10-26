@@ -55,6 +55,7 @@ Gói công việc PW-CAT1 hoàn thành việc cấu hình lại thứ tự stage
 | Bước 14 | `python -m pytest tests/unit/orchestration/test_g_workflow_catalog.py tests/integration/convergence/test_cp6_workflow_catalog.py tests/integration/convergence/test_cp6_video_production_flow.py tests/integration/prod_wiring/test_pw_cat1_catalog.py -q -p no:cacheprovider` | 0 | `79 passed in 0.36s` (toàn bộ 79 test của 4 bộ test đều đạt) |
 | Bước 16 | `git diff --check` | 0 | Sạch hoàn toàn, không có khoảng trắng thừa hay lỗi xuống dòng. |
 | Bước 17 | `python -c "import re, pathlib; t = pathlib.Path('src/controlplane/domain/orchestration/workflow_catalog.py').read_text(encoding='utf-8'); assert re.search('VideoProductionWorkflow.{1,3}2,', t) and re.search('media_select.{1,8}script.{1,40}plan.{1,8}media_select', t, re.S), 'PW-CAT1'"` | 0 | Quét regex catalog đạt: `workflow_version` 2 và `media_select` đứng trước `plan`. |
+| Bước bổ sung | `python -m pytest tests/unit/orchestration/test_g_workflow_catalog.py tests/integration/convergence/test_cp6_workflow_catalog.py tests/integration/convergence/test_cp6_video_production_flow.py tests/integration/prod_wiring/test_pw_cat1_catalog.py -q -p no:cacheprovider` | 0 | `84 passed in 0.46s` (toàn bộ 84 test của 4 bộ test đều đạt sau khi bổ sung coveredIds và 5 test mới) |
 
 ## 5. Assertion đã đổi kèm lý do
 
@@ -76,6 +77,14 @@ Gói công việc PW-CAT1 hoàn thành việc cấu hình lại thứ tự stage
      Lý do: Xác nhận thứ tự thực thi mới trong luồng sản xuất thực tế.
    - Dòng 480 (`test_debug_stage`): Đổi assertion kiểm tra danh sách activity của stage `plan` từ `['BuildProductionPlan']` thành `['BuildProductionPlan', 'ValidateVariant', 'ReserveVariant', 'GenerateOutputMetadata']`. Lý do: Stage `plan` nay bao gồm đầy đủ 4 activities.
    - Dòng 484 (`test_debug_stage`): Đổi `assert len(gateway.calls) == 1` thành `assert len(gateway.calls) == 4`. Lý do: Khi quan sát debug stage `plan`, gateway ghi nhận đủ 4 cuộc gọi activity tương ứng.
+
+4. Bổ sung coveredIds sau finding PW-CAT1-content-coverage-missing-0ee92217:
+   - Bốn tệp test đã thêm `PW-CAT1-01, CT-ORC-012, CT-AI-008` vào dòng `coveredIds:` của docstring (không bỏ mã cũ);
+   - `test_g_workflow_catalog.py` thêm `test_v1_to_v2_plan_before_media_select_is_a_breaking_change`, `test_reserve_variant_runs_in_plan_stage_before_render`, `test_validate_variant_runs_in_plan_phase_and_qc_output_phase`;
+   - `test_cp6_workflow_catalog.py` thêm `test_video_catalog_v2_reserve_variant_before_render_and_two_phase_validate_variant`;
+   - `test_cp6_video_production_flow.py` thêm `test_variant_validation_runs_in_plan_and_qc_phases_and_reservation_precedes_render`;
+   - `test_pw_cat1_catalog.py` chỉ thêm dòng coveredIds vì đã có test bao phủ.
+   Lý do: Gói sau cần các mã này trong test của gói PW-CAT1; chỉ ghi mã khi test thật bao phủ. Không assertion cũ nào bị đổi.
 
 ## 6. Quyết định thiết kế và rủi ro còn lại
 

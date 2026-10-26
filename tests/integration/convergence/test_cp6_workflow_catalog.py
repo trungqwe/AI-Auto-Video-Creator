@@ -1,6 +1,6 @@
 """CP-6-WORKFLOW catalog integration tests.
 
-coveredIds: CP-6-WORKFLOW-CATALOG
+coveredIds: CP-6-WORKFLOW-CATALOG, PW-CAT1-01, CT-ORC-012, CT-AI-008
 """
 from __future__ import annotations
 
@@ -162,6 +162,23 @@ def test_bindings_follow_the_catalog():
 
     video_spec = get_workflow('VideoProductionWorkflow')
     assert set(VIDEO_STAGE_ACTIVITIES.keys()) == {s.stage_type for s in video_spec.stages}
+
+
+def test_video_catalog_v2_reserve_variant_before_render_and_two_phase_validate_variant():
+    video_spec = get_workflow('VideoProductionWorkflow')
+    order = [s.stage_type for s in video_spec.stages]
+    assert video_spec.workflow_version == 2
+    assert order == ['analyze', 'script', 'media_select', 'plan', 'tts', 'align', 'process', 'render', 'qc', 'sync', 'complete']
+    assert [st for st, names in VIDEO_STAGE_ACTIVITIES.items() if 'ReserveVariant' in names] == ['plan']
+    assert order.index('plan') < order.index('render')
+    plan = VIDEO_STAGE_ACTIVITIES['plan']
+    assert plan.index('ValidateVariant') < plan.index('ReserveVariant')
+    assert BINDINGS_BY_NAME['ReserveVariant'].owner == 'G'
+    assert [st for st, names in VIDEO_STAGE_ACTIVITIES.items() if 'ValidateVariant' in names] == ['plan', 'qc']
+    assert order.index('render') < order.index('qc')
+    qc = VIDEO_STAGE_ACTIVITIES['qc']
+    assert qc.index('inspect_output') < qc.index('ValidateVariant')
+    assert BINDINGS_BY_NAME['ValidateVariant'].queue == route_stage('plan') == TaskQueue.DESKTOP_CPU
 
 
 def test_binding_names_match_real_handlers():

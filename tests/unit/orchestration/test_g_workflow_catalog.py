@@ -1,6 +1,6 @@
 """G-12: workflow catalog, task queue và versioning (CT-WF-001, CT-WF-002, CT-WF-009; R18).
 
-coveredIds: CT-WF-001, CT-WF-002, CT-WF-009
+coveredIds: CT-WF-001, CT-WF-002, CT-WF-009, PW-CAT1-01, CT-ORC-012, CT-AI-008
 """
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import pathlib
 
 import pytest
 
+from controlplane.application.orchestration.workflows.activities import BINDINGS_BY_NAME, VIDEO_STAGE_ACTIVITIES
 from controlplane.domain.orchestration.workflow_catalog import (
     STAGE_QUEUES, WORKFLOW_CATALOG, CatalogError, CompletionInvariant, RetrySemantics, StageSpec, TaskQueue, WorkflowSpec,
     get_workflow, is_breaking_change, route_stage, validate_catalog,
@@ -223,3 +224,34 @@ def test_module_imports_only_stdlib_and_controlplane_domain():
                 internal.add(node.module)
     assert roots <= {'__future__', 'collections', 'dataclasses', 'enum', 'types', 'controlplane'}
     assert internal == {'controlplane.domain.orchestration.job_waiting'}
+
+
+def test_v1_to_v2_plan_before_media_select_is_a_breaking_change():
+    video = get_workflow('VideoProductionWorkflow')
+    v1_stages = (
+        StageSpec('analyze'), StageSpec('script', ('analyze',)), StageSpec('plan', ('script',)), StageSpec('media_select', ('plan',)),
+        StageSpec('tts', ('script',)), StageSpec('align', ('tts',)), StageSpec('process', ('media_select', 'align')),
+        StageSpec('render', ('process',)), StageSpec('qc', ('render',)), StageSpec('sync', ('qc',)), StageSpec('complete', ('sync',)),
+    )
+    assert is_breaking_change(_video(workflow_version=1, stages=v1_stages), video) is True
+    names = [stage.stage_type for stage in video.stages]
+    assert video.workflow_version == 2 and names.index('media_select') < names.index('plan')
+    assert validate_catalog() is None
+
+
+def test_reserve_variant_runs_in_plan_stage_before_render():
+    order = [stage.stage_type for stage in get_workflow('VideoProductionWorkflow').stages]
+    assert [st for st, names in VIDEO_STAGE_ACTIVITIES.items() if 'ReserveVariant' in names] == ['plan']
+    assert order.index('plan') < order.index('render')
+    plan = VIDEO_STAGE_ACTIVITIES['plan']
+    assert plan.index('ValidateVariant') < plan.index('ReserveVariant')
+    assert BINDINGS_BY_NAME['ReserveVariant'].owner == 'G'
+
+
+def test_validate_variant_runs_in_plan_phase_and_qc_output_phase():
+    order = [stage.stage_type for stage in get_workflow('VideoProductionWorkflow').stages]
+    assert [st for st, names in VIDEO_STAGE_ACTIVITIES.items() if 'ValidateVariant' in names] == ['plan', 'qc']
+    assert order.index('render') < order.index('qc')
+    binding = BINDINGS_BY_NAME['ValidateVariant']
+    assert (binding.stage_type, binding.extra_stage_types) == ('plan', ('qc',))
+    assert binding.queue == route_stage('plan') == TaskQueue.DESKTOP_CPU
