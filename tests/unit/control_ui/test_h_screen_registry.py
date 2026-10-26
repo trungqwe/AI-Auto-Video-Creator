@@ -29,17 +29,17 @@ MODULE_OF = {
     'stage-runs': 'G',
     'sessions': 'G', 'logs': 'G', 'accounts': 'J', 'cost': 'J',
 }
-AVAILABLE_IDS = ('operations', 'batches', 'jobs', 'configs', 'sources', 'hooks', 'stage-runs')
-PENDING_IDS = (
-    'articles', 'events', 'media', 'artifacts', 'snapshots',
-    'story-angles', 'scripts', 'sessions', 'logs', 'accounts', 'cost',
+AVAILABLE_IDS = (
+    'operations', 'batches', 'jobs', 'configs', 'sources', 'articles',
+    'events', 'media', 'hooks', 'artifacts', 'snapshots', 'story-angles',
+    'scripts', 'stage-runs', 'sessions', 'accounts', 'cost',
 )
-READ_ONLY_IDS = ('articles', 'events', 'snapshots', 'story-angles', 'scripts')
-REVISION_COLUMN_IDS = ('sources', 'media', 'hooks')
+PENDING_IDS = ('logs',)
+READ_ONLY_IDS = ('articles', 'events', 'media', 'snapshots', 'story-angles', 'scripts')
+REVISION_COLUMN_IDS = ('sources', 'hooks')
 EDITABLE_ALLOWLIST = {
     'sources': ('tier', 'topic_tags', 'notes', 'enabled'),
     'hooks': ('tags', 'description', 'enabled', 'notes'),
-    'media': ('tags', 'notes'),
 }
 FORBIDDEN_EDITABLE = (
     'article_body', 'body', 'script', 'script_text',
@@ -147,7 +147,7 @@ def test_available_screens_match_get_routes_of_control_router():
 
 def test_every_other_screen_is_pending_module():
     others = [s for s in SCREENS if s['id'] not in AVAILABLE_IDS]
-    assert len(others) == 11
+    assert [s['id'] for s in others] == ['logs']
     assert all(s['backendStatus'] == 'pending_module' for s in others)
 
 
@@ -219,7 +219,7 @@ def test_read_only_flag_is_consistent_and_only_three_screens_editable():
     assert SCREENS
     for screen in SCREENS:
         assert screen['readOnly'] == (not screen['editableFields']), screen['id']
-    assert sorted(s['id'] for s in SCREENS if not s['readOnly']) == ['hooks', 'media', 'sources']
+    assert sorted(s['id'] for s in SCREENS if not s['readOnly']) == ['hooks', 'sources']
 
 
 def _has_vietnamese_mark(text):
@@ -310,14 +310,48 @@ def test_hooks_is_available_with_route_and_integration_test_evidence():
     assert 'hooks' in HOOKS_MODULE_TEST.read_text(encoding='utf-8')
 
 
-def test_media_stays_pending_module_until_backend_has_media_metadata():
-    assert BY_ID['media']['backendStatus'] == 'pending_module'
+RS_13_E2E_TEST = ROOT / 'tests' / 'integration' / 'read_screens' / 'test_rs_13_prod_e2e.py'
+
+
+def test_media_is_available_read_only_with_rs_13_evidence():
+    media = BY_ID['media']
+    assert media['backendStatus'] == 'available'
+    assert media['readOnly'] is True
+    assert media['editableFields'] == ()
+    assert RS_13_E2E_TEST.is_file()
+
+
+READ_SCREENS_DIR = ROOT / 'tests' / 'integration' / 'read_screens'
+READ_SCREEN_TESTS = {
+    'articles': 'test_rs_2_articles.py',
+    'events': 'test_rs_3_events.py',
+    'media': 'test_rs_4_media.py',
+    'artifacts': 'test_rs_5_artifacts.py',
+    'snapshots': 'test_rs_6_snapshots.py',
+    'story-angles': 'test_rs_7_story_angles.py',
+    'scripts': 'test_rs_8_scripts.py',
+    'sessions': 'test_rs_9_sessions.py',
+    'accounts': 'test_rs_10_accounts.py',
+    'cost': 'test_rs_11_cost.py',
+}
+
+
+@pytest.mark.parametrize('screen_id,test_file', sorted(READ_SCREEN_TESTS.items()))
+def test_read_screen_is_available_with_route_and_integration_test_evidence(screen_id, test_file):
+    assert BY_ID[screen_id]['backendStatus'] == 'available'
+    assert '/v1/' + screen_id in router_get_paths()
+    assert (READ_SCREENS_DIR / test_file).is_file()
+
+
+def test_logs_stays_pending_module_without_get_route():
+    assert BY_ID['logs']['backendStatus'] == 'pending_module'
+    assert '/v1/logs' not in router_get_paths()
 
 
 def test_editable_fields_are_accepted_by_metadata_allowlist_of_same_prefix():
     catalog = catalog_metadata_fields()
     editable = [s for s in SCREENS if s['editableFields']]
-    assert sorted(s['id'] for s in editable) == ['hooks', 'media', 'sources']
+    assert sorted(s['id'] for s in editable) == ['hooks', 'sources']
     for screen in editable:
         allowed = catalog.get(screen['resourcePath'])
         assert allowed is not None, screen['id']
