@@ -96,10 +96,10 @@ WORKFLOW_CATALOG: tuple[WorkflowSpec, ...] = (
         child_workflows=('VideoProductionWorkflow',),
     ),
     WorkflowSpec(
-        'VideoProductionWorkflow', 1,
+        'VideoProductionWorkflow', 2,
         (
-            _stage('analyze'), _stage('script', 'analyze'), _stage('plan', 'script'), _stage('media_select', 'plan'),
-            _stage('tts', 'script'), _stage('align', 'tts'), _stage('process', 'media_select', 'align'),
+            _stage('analyze'), _stage('script', 'analyze'), _stage('media_select', 'script'), _stage('plan', 'media_select'),
+            _stage('tts', 'script'), _stage('align', 'tts'), _stage('process', 'plan', 'align'),
             _stage('render', 'process'), _stage('qc', 'render'), _stage('sync', 'qc'), _stage('complete', 'sync'),
         ),
         _RETRY, _CI.ALL_STAGES_OWNER_COMMITTED, isolated_child=True,

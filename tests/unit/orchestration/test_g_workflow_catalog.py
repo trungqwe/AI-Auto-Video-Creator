@@ -19,7 +19,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 MODULE_PATH = ROOT / 'src' / 'controlplane' / 'domain' / 'orchestration' / 'workflow_catalog.py'
 SIX = ['DailyCollectionWorkflow', 'ContentEnrichmentWorkflow', 'ProductionBatchWorkflow', 'VideoProductionWorkflow', 'DebugStageWorkflow', 'MaintenanceWorkflow']
 QUEUES = ['control-workflows', 'cloud-io', 'cloud-ai', 'desktop-cpu', 'desktop-gpu', 'desktop-render']
-VIDEO_STAGES = ['analyze', 'script', 'plan', 'media_select', 'tts', 'align', 'process', 'render', 'qc', 'sync', 'complete']
+VIDEO_STAGES = ['analyze', 'script', 'media_select', 'plan', 'tts', 'align', 'process', 'render', 'qc', 'sync', 'complete']
 R18_STAGES = ['script', 'plan', 'tts']
 Q = TaskQueue
 
@@ -73,8 +73,10 @@ def test_video_production_stage_order_and_dependencies():
     video = get_workflow('VideoProductionWorkflow')
     assert [stage.stage_type for stage in video.stages] == VIDEO_STAGES
     deps = {stage.stage_type: stage.depends_on for stage in video.stages}
-    assert deps['analyze'] == () and deps['script'] == ('analyze',) and deps['plan'] == ('script',)
-    assert deps['process'] == ('media_select', 'align') and deps['complete'] == ('sync',)
+    assert video.workflow_version == 2
+    assert deps['analyze'] == () and deps['script'] == ('analyze',) and deps['media_select'] == ('script',) and deps['plan'] == ('media_select',)
+    assert deps['tts'] == ('script',) and deps['align'] == ('tts',) and deps['process'] == ('plan', 'align')
+    assert deps['render'] == ('process',) and deps['qc'] == ('render',) and deps['sync'] == ('qc',) and deps['complete'] == ('sync',)
 
 
 def test_get_workflow_unknown_name_is_rejected():
@@ -181,7 +183,7 @@ def test_unchanged_workflow_and_version_bump_are_not_breaking():
 
 def test_dependency_listing_order_is_not_breaking():
     video = get_workflow('VideoProductionWorkflow')
-    stages = tuple(StageSpec('process', ('align', 'media_select')) if s.stage_type == 'process' else s for s in video.stages)
+    stages = tuple(StageSpec('process', ('align', 'plan')) if s.stage_type == 'process' else s for s in video.stages)
     assert is_breaking_change(video, _video(stages=stages)) is False
 
 

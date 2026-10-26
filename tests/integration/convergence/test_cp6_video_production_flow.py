@@ -416,6 +416,9 @@ def test_happy_path():
     call_names = [call[0] for call in gateway.calls]
     assert call_names.index('AnalyzeContent') < call_names.index('GenerateStoryAngles')
     assert call_names.index('GenerateScript') < call_names.index('BuildProductionPlan')
+    assert call_names.index('SelectCreativeAssets') < call_names.index('BuildProductionPlan')
+    assert call_names.index('ReserveVariant') < call_names.index('render_video')
+    assert call_names.index('reconcile_render') < call_names.index('render_video')
     assert call_names.index('CreateVoiceTrack') < call_names.index('CreateWordTiming')
     assert call_names.index('render_video') < call_names.index('inspect_output')
     assert call_names.index('GenerateOutputMetadata') < call_names.index('PersistVideoOutput')
@@ -474,11 +477,11 @@ def test_debug_stage():
     status = asyncio.run(flow.advance())
     assert status == STATUS_STAGE_OBSERVED
     call_names = [c[0] for c in gateway.calls]
-    assert call_names == ['BuildProductionPlan']
+    assert call_names == ['BuildProductionPlan', 'ValidateVariant', 'ReserveVariant', 'GenerateOutputMetadata']
 
     status2 = asyncio.run(flow.advance())
     assert status2 == STATUS_STAGE_OBSERVED
-    assert len(gateway.calls) == 1
+    assert len(gateway.calls) == 4
 
     bad_params1 = FlowParams(
         workflow_id='wf-dbg', workflow_run_id='run-dbg', input_fingerprint='fp-1', worker_lease_id='lease-1',

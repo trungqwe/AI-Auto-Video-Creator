@@ -155,7 +155,10 @@ def test_bindings_follow_the_catalog():
                 assert name in BINDINGS_BY_NAME
                 binding = BINDINGS_BY_NAME[name]
                 if wf_name != 'DebugStageWorkflow':
-                    assert binding.stage_type == stage_name
+                    assert stage_name in (binding.stage_type, *binding.extra_stage_types)
+
+    assert {b.name for b in ACTIVITY_BINDINGS if b.extra_stage_types} == {'ValidateVariant'}
+    assert BINDINGS_BY_NAME['ValidateVariant'].extra_stage_types == ('qc',)
 
     video_spec = get_workflow('VideoProductionWorkflow')
     assert set(VIDEO_STAGE_ACTIVITIES.keys()) == {s.stage_type for s in video_spec.stages}
