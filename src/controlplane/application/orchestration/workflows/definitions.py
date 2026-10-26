@@ -220,8 +220,9 @@ class ProductionBatchWorkflow:
     @workflow.run
     async def run(self, payload: dict[str, Any]) -> dict[str, Any]:
         settings = WorkflowSettings.from_payload(payload['settings'])
+        info = workflow.info()
         params = BatchParams.from_payload(
-            {**payload, 'batch_id': workflow.info().workflow_id}
+            {**payload, 'batch_id': info.workflow_id, 'workflow_run_id': info.run_id}
         )
         flow = ProductionBatchFlow(
             get_workflow('ProductionBatchWorkflow'),
