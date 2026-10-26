@@ -1,4 +1,4 @@
-'''CP-3-MIGRATIONS: kiểm chuỗi migration 0009..0018 (tĩnh và trên PostgreSQL 18.6 dùng một lần).'''
+'''CP-3-MIGRATIONS: kiểm chuỗi migration 0009..0019 (tĩnh và trên PostgreSQL 18.6 dùng một lần).'''
 from __future__ import annotations
 
 import datetime
@@ -19,7 +19,7 @@ MIGRATIONS_REL = 'src/controlplane/infrastructure/db/migrations'
 MIGRATIONS_DIR = REPO_ROOT / MIGRATIONS_REL
 RUNNER_REL = 'src/controlplane/infrastructure/db/migration_runner.py'
 BASE_SHA = '2d8a9686da7c7261d67a406c153a912d3f4de36d'
-NAMES = {9: '0009_config_security_extensions', 10: '0010_storage_meta_extensions', 11: '0011_orchestration_extensions', 12: '0012_source_ingestion', 13: '0013_ingestion', 14: '0014_catalog', 15: '0015_creative', 16: '0016_voice', 17: '0017_render', 18: '0018_control_ui_indexes'}
+NAMES = {9: '0009_config_security_extensions', 10: '0010_storage_meta_extensions', 11: '0011_orchestration_extensions', 12: '0012_source_ingestion', 13: '0013_ingestion', 14: '0014_catalog', 15: '0015_creative', 16: '0016_voice', 17: '0017_render', 18: '0018_control_ui_indexes', 19: '0019_prod_wiring'}
 PATTERN = ('record_key', 'revision', 'payload')
 RECEIPT = ('idempotency_key', 'request_hash', 'aggregate_ref', 'aggregate_revision')
 EXPECTED: dict[int, dict[str, tuple[str, ...]]] = {}
@@ -155,11 +155,11 @@ def git(*args):
 
 def test_sequence_and_pairs():
     forward = [p.name for p in MIGRATIONS_DIR.iterdir() if re.fullmatch('[0-9]{4}_[a-z0-9_]+[.]sql', p.name)]
-    assert sorted(int(name[:4]) for name in forward) == list(range(1, 19))
+    assert sorted(int(name[:4]) for name in forward) == list(range(1, 20))
     for number, stem in NAMES.items():
         found = sorted(p.name for p in MIGRATIONS_DIR.glob(f'{number:04d}_*.sql'))
         assert found == sorted([f'{stem}.sql', f'{stem}.rollback.sql']), (number, found)
-    assert len(list(MIGRATIONS_DIR.glob('*.rollback.sql'))) == 18
+    assert len(list(MIGRATIONS_DIR.glob('*.rollback.sql'))) == 19
 
 
 def test_expected_tables_and_columns_in_sql():
@@ -327,13 +327,13 @@ def test_postgres_up_down_up_and_constraints():
         dsn = PG_DSN.rsplit('/', 1)[0] + f'/{name}'
         runner = MigrationRunner(dsn, MIGRATIONS_DIR, is_test_env=True, expected_database_name=name)
         runner.migrate_up()
-        assert_versions(dsn, 18)
+        assert_versions(dsn, 19)
         assert_schema(dsn)
         runner.migrate_down()
         with psycopg.connect(dsn) as connection:
             assert connection.execute('SELECT to_regclass(%s)', ('controlplane.cp_schema_migrations',)).fetchone()[0] is None
         runner.migrate_up()
-        assert_versions(dsn, 18)
+        assert_versions(dsn, 19)
     finally:
         admin.execute(f'DROP DATABASE IF EXISTS {name} WITH (FORCE)')
         admin.close()

@@ -93,7 +93,7 @@ def migrated_db(disposable_db: Db) -> Db:
     MigrationRunner(disposable_db.dsn, MIGRATIONS, is_test_env=True, expected_database_name=disposable_db.name).migrate_up()
     with disposable_db.connect() as connection:
         versions = [row[0] for row in connection.execute('SELECT version FROM controlplane.cp_schema_migrations ORDER BY version').fetchall()]
-        assert versions == list(range(1, 19))
+        assert versions == list(range(1, 20))
         connection.execute("INSERT INTO controlplane.cp_workspaces (workspace_id, name, status) VALUES (%s, 'persist-e', 'ACTIVE')", (WORKSPACE_ID,))
     return disposable_db
 

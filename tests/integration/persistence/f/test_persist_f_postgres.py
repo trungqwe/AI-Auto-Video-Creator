@@ -65,7 +65,7 @@ def db():
         dsn = PG_DSN.rsplit('/', 1)[0] + f'/{name}'
         MigrationRunner(dsn, MIGRATIONS_DIR, is_test_env=True, expected_database_name=name).migrate_up()
         with psycopg.connect(dsn, autocommit=True) as connection:
-            assert [r[0] for r in connection.execute('SELECT version FROM controlplane.cp_schema_migrations ORDER BY version').fetchall()] == list(range(1, 19))
+            assert [r[0] for r in connection.execute('SELECT version FROM controlplane.cp_schema_migrations ORDER BY version').fetchall()] == list(range(1, 20))
         yield dsn, add_workspace(dsn)
     finally:
         admin.execute(f'DROP DATABASE IF EXISTS {name} WITH (FORCE)')
