@@ -4,10 +4,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from controlplane.application.orchestration.workflows.activities import BINDINGS_BY_NAME
+from controlplane.application.orchestration.workflows.activities import BINDINGS_BY_NAME, FAN_OUT_FROM_OUTPUT
 from controlplane.application.orchestration.workflows.settings import WorkflowSettings
 from controlplane.domain.orchestration.job_waiting import (
     Wait,
+    WaitReason,
     evaluate_wait,
     stage_requires_desktop,
 )
@@ -22,6 +23,10 @@ STATUS_STAGE_OBSERVED = 'STAGE_OBSERVED'
 SIGNAL_RETRY = 'retry_stage'
 SIGNAL_REGENERATE = 'regenerate_from_stage'
 DEBUG_STAGE_NOT_ALLOWED = 'DEBUG_STAGE_NOT_ALLOWED'
+OUTCOME_SUCCEEDED = 'succeeded'
+OUTCOME_FAILED = 'failed'
+OUTCOME_WAITING = 'waiting'
+WAIT_REASON_VALUES = frozenset(reason.value for reason in WaitReason)
 
 
 class FlowGateway(Protocol):
@@ -125,6 +130,8 @@ class StageGraphFlow:
         self.output_refs: dict[str, list[dict[str, str]]] = {}
         self.last_problem: dict[str, Any] | None = None
         self.rejected_signals: list[dict[str, Any]] = []
+        self._succeeded: set[tuple[str, str, int, int]] = set()
+        self._input_refs: dict[tuple[str, str, int, int], list[dict[str, str]]] = {}
 
     def signal_retry_stage(self, stage_type: str) -> None:
         self._inbox.append((SIGNAL_RETRY, stage_type))
@@ -162,6 +169,39 @@ class StageGraphFlow:
                     seen.add(key)
                     merged.append(dict(ref))
         return merged
+
+    def _wait_reason_for(self, code: object) -> str:
+        if isinstance(code, str) and code in WAIT_REASON_VALUES:
+            return code
+        return WaitReason.DEPENDENCY_WAIT.value
+
+    def _items_for(self, activity_name: str) -> Sequence[Sequence[Mapping[str, str]]]:
+        provided = self._params.item_refs.get(activity_name)
+        if provided:
+            return provided
+        source = FAN_OUT_FROM_OUTPUT.get(activity_name)
+        if source is None:
+            return ((),)
+        previous_stage, ref_type = source
+        if previous_stage not in self.output_refs:
+            return ((),)
+        return tuple(
+            (dict(ref),) for ref in self.output_refs[previous_stage] if ref.get('ref_type') == ref_type
+        )
+
+    def _frozen_input_refs(
+        self, key: tuple[str, str, int, int], refs: Sequence[Mapping[str, str]]
+    ) -> list[dict[str, str]]:
+        if key not in self._input_refs:
+            merged: list[dict[str, str]] = []
+            seen: set[tuple[str | None, str | None]] = set()
+            for ref in (*self._params.input_refs, *refs, *self._prior_refs()):
+                identity = (ref.get('ref_type'), ref.get('ref_id'))
+                if identity not in seen:
+                    seen.add(identity)
+                    merged.append(dict(ref))
+            self._input_refs[key] = merged
+        return [dict(ref) for ref in self._input_refs[key]]
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -226,10 +266,17 @@ class StageGraphFlow:
                     self.waiting_stage = stage
                     self.wait_reason = decision.reason.value
                     return self.status
-                self.status = STATUS_RUNNING
-                self.waiting_stage = None
-                self.wait_reason = None
-            if not await self._run_stage(stage):
+            self.status = STATUS_RUNNING
+            self.waiting_stage = None
+            self.wait_reason = None
+            outcome = await self._run_stage(stage)
+            if outcome == OUTCOME_WAITING:
+                self.status = STATUS_WAITING_CAPABILITY
+                self.waiting_stage = stage
+                code = (self.last_problem or {}).get('code')
+                self.wait_reason = self._wait_reason_for(code)
+                return self.status
+            if outcome != OUTCOME_SUCCEEDED:
                 self.failed_stage = stage
                 self.status = STATUS_FAILED
                 return self.status
@@ -238,19 +285,20 @@ class StageGraphFlow:
                 self.status = STATUS_STAGE_OBSERVED
                 return self.status
 
-    async def _run_stage(self, stage: str) -> bool:
+    async def _run_stage(self, stage: str) -> str:
         names = self._stage_activities[stage]
         if not names:
             if stage not in self.unbound:
                 self.unbound.append(stage)
-            return True
+            return OUTCOME_SUCCEEDED
         for name in names:
-            item_runs = self._params.item_refs.get(name) or ((),)
-            for index, refs in enumerate(item_runs):
-                ok = await self._run_activity(stage, BINDINGS_BY_NAME[name], index, refs)
-                if not ok:
-                    return False
-        return True
+            for index, refs in enumerate(self._items_for(name)):
+                if (stage, name, index, self.revision) in self._succeeded:
+                    continue
+                outcome = await self._run_activity(stage, BINDINGS_BY_NAME[name], index, refs)
+                if outcome != OUTCOME_SUCCEEDED:
+                    return outcome
+        return OUTCOME_SUCCEEDED
 
     async def _run_activity(
         self,
@@ -258,11 +306,12 @@ class StageGraphFlow:
         binding: Any,
         index: int,
         refs: Sequence[Mapping[str, str]],
-    ) -> bool:
+    ) -> str:
         owner = self._params.video_job_id or self._params.workflow_id
         stage_run_id = f'{owner}:{stage}:r{self.revision}'
         operation_key = f'{self._params.workflow_id}:{stage}:{binding.name}:{index}:r{self.revision}'
-        input_refs = [dict(r) for r in (*self._params.input_refs, *refs)] + self._prior_refs()
+        key = (stage, binding.name, index, self.revision)
+        input_refs = self._frozen_input_refs(key, refs)
         attempt = 1
         while True:
             self.attempts[stage] = self.attempts.get(stage, 0) + 1
@@ -272,7 +321,7 @@ class StageGraphFlow:
                 'stage_run_id': stage_run_id,
                 'activity_name': binding.name,
                 'activity_version': '1',
-                'input_refs': input_refs,
+                'input_refs': [dict(r) for r in input_refs],
                 'operation_key': operation_key,
                 'capability_requirements': {'task_queue': binding.queue.value},
                 'retry_policy_ref': self._settings.retry_policy_ref,
@@ -292,15 +341,16 @@ class StageGraphFlow:
                     'disposition': 'exception',
                     'code': type(exc).__name__,
                 }
-                return False
+                return OUTCOME_FAILED
 
             disposition = result.get('disposition')
             if disposition == 'succeeded':
                 self.output_refs.setdefault(stage, []).extend(
                     dict(r) for r in result.get('output_refs', ())
                 )
+                self._succeeded.add(key)
                 self.last_problem = None
-                return True
+                return OUTCOME_SUCCEEDED
 
             problem = result.get('problem') or {}
             self.last_problem = {
@@ -308,9 +358,11 @@ class StageGraphFlow:
                 'disposition': disposition,
                 'code': problem.get('code'),
             }
+            if disposition == 'waiting':
+                return OUTCOME_WAITING
             retryable = disposition == 'stale' or problem.get('retryable') is True
             if disposition == 'outcome_unknown' or not retryable or not should_retry(attempt, True, self._settings.retry):
-                return False
+                return OUTCOME_FAILED
             if disposition != 'stale':
                 await self._gateway.sleep(next_delay(attempt, self._settings.retry))
             attempt += 1
