@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from typing import Any
 
@@ -111,7 +112,13 @@ async def _drive(
                 break
             await workflow.wait_condition(lambda: bool(inbox))
         else:
-            await gateway.sleep(settings.capability_poll_seconds)
+            try:
+                await workflow.wait_condition(
+                    lambda: bool(inbox),
+                    timeout=timedelta(seconds=settings.capability_poll_seconds),
+                )
+            except asyncio.TimeoutError:
+                pass
     return flow.snapshot()
 
 
