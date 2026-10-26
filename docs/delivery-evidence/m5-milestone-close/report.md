@@ -1,20 +1,21 @@
-# Báo cáo đóng milestone M5 (revision 4)
+# Báo cáo đóng milestone M5 (revision 5)
 
-Task: M5-MILESTONE-CLOSE-R4; candidate: cây mã nguồn tại 6042d7a626d3d523881cc86d1b0ac674986bcafa (HEAD của lane khi bắt đầu; các commit docs(m5) của lane chỉ chạm docs/delivery-evidence/m5-milestone-close/); kết quả từng lệnh ở command-results.md cùng thư mục
+Task: M5-MILESTONE-CLOSE-R5; candidate: cây mã nguồn tại a3a7d39f23ae5be6c4debf6ffcc7762a0b5fc278 (HEAD của lane khi bắt đầu, cây sạch; các commit docs(m5) của lane chỉ chạm docs/delivery-evidence/m5-milestone-close/); kết quả từng lệnh ở command-results.md cùng thư mục
 
-## 1. Phạm vi và lý do đóng ở revision 4
+## 1. Phạm vi và lý do đóng ở revision 5
 
-Milestone M5 được đóng ở revision 4 (R4) với đầy đủ phạm vi hội tụ và tích hợp theo chính sách hiện hành, gồm cả bốn dòng kế hoạch IMPL-PLAN-CONVERGENCE-EXT, IMPL-PLAN-CONVERGENCE-EXT-UI, IMPL-PLAN-PERSIST, IMPL-PLAN-ADAPT và hai gói sửa ADAPT-LAUNCH-FIX1, ADAPT-LAUNCH-FIX2. R4 là bản chạy lại toàn bộ lệnh kiểm sau khi gói sửa ADAPT-LAUNCH-FIX2 tích hợp (integrate 6042d7a626d3d523881cc86d1b0ac674986bcafa, candidate 903393a717cb: launcher nối _load_runtime_ports với build_production_ports). Revision đã đóng mà không tích hợp là M5-MILESTONE-CLOSE (revision 1): theo quyết định của Control ngày 20/10/2026, policy v1 thêm bốn dòng kế hoạch vào phạm vi đóng M5; revision 1 đóng băng phạm vi cũ và chưa giao Worker nào, nên dù chạy xong vẫn phải đóng lại ở R2. Control cho retire R1 để đóng đúng một lần ở R2 với đủ phạm vi, tiết kiệm chi phí và hoàn trả suất thực thi cho các gói kế hoạch.
+Milestone M5 được đóng ở revision 5 (R5) với đầy đủ phạm vi hội tụ và tích hợp theo chính sách hiện hành, gồm cả bốn dòng kế hoạch IMPL-PLAN-CONVERGENCE-EXT, IMPL-PLAN-CONVERGENCE-EXT-UI, IMPL-PLAN-PERSIST, IMPL-PLAN-ADAPT và các gói sửa đã tích hợp ở Mục 3 (xem thêm Mục 3b cho các commit phát sinh sau R4). R5 là bản chạy lại toàn bộ lệnh kiểm trên HEAD a3a7d39f23ae5be6c4debf6ffcc7762a0b5fc278, là commit integrate của M5-MILESTONE-CLOSE-R4 (candidate 22e5bdb3b85d), theo lệnh làm việc R5 của Control. So với R4, danh sách lệnh kiểm có thêm một probe (STT 290, launch-fix3): tools/launcher/docker-compose.yml ghim temporalio/admin-tools:1.31.2 theo digest và gắn tools/launcher/temporal-dynamicconfig.yaml vào /etc/temporal/config/dynamicconfig/docker.yaml. Revision đã đóng mà không tích hợp là M5-MILESTONE-CLOSE (revision 1): theo quyết định của Control ngày 20/10/2026, policy v1 thêm bốn dòng kế hoạch (CONVERGENCE-EXT, EXT-UI, PERSIST, ADAPT) vào phạm vi đóng M5; revision 1 đóng băng phạm vi cũ và chưa giao Worker nào, nên dù chạy xong vẫn phải đóng lại ở R2. Control cho retire R1 để đóng đúng một lần ở R2 với đủ phạm vi (chấm điểm chi phí và đường găng: bớt một lượt đóng, trả suất cho gói kế hoạch).
 
 Báo cáo này là bằng chứng kỹ thuật đóng milestone nội bộ, hoàn toàn không thay đổi trạng thái trong docs/11-roadmap.md hay docs/12-pre-code-checklist.md và không tự ý tuyên bố người dùng (user) đã duyệt M5. Các vai trò thẩm định trong quy trình này được ghi nhận chuẩn mực là Reviewer (Sonnet 5.5) và Auditor rủi ro (Opus 5.5).
 
-Revision 2 (M5-MILESTONE-CLOSE-R2, candidate cây mã nguồn 74c062a29d649ea0e3d1471dee9c739dc33d38fe) và revision 3 (M5-MILESTONE-CLOSE-R3, candidate cây mã nguồn 21d99fc89eb076a036b4d62f026b057a61d96135) không còn là cơ sở. R4 chạy lại toàn bộ 289 lệnh kiểm, từng lệnh riêng lẻ, trên cây mã nguồn tại 6042d7a626d3d523881cc86d1b0ac674986bcafa trong phiên R4 này; giờ chạy từng nhóm ở các dòng RERUN-LOG của command-results.md; output là output của lần chạy R4, không sao chép từ revision trước. Khác R3: gói sửa ADAPT-LAUNCH-FIX2 (integrate 6042d7a626d3d523881cc86d1b0ac674986bcafa, candidate 903393a717cb) đã tích hợp; có thêm một lệnh ở STT 50 (probe tools/launcher/launcher.py chứa build_production_ports, load_ports_config, ports.json và không có `from tools`); STT từ 50 trở đi của R4 bằng STT R3 cộng 1; tổng số lệnh là 289 thay vì 288. Kết quả: 289/289 lệnh kiểm đạt exit 0 trên candidate 6042d7a626d3d523881cc86d1b0ac674986bcafa.
+Revision 2, revision 3 và revision 4 không còn là cơ sở. R5 chạy lại toàn bộ 290 lệnh kiểm, từng lệnh riêng lẻ, trên cây mã nguồn tại a3a7d39f23ae5be6c4debf6ffcc7762a0b5fc278 trong phiên R5 này; giờ chạy từng nhóm ở các dòng RERUN-LOG của command-results.md; output là output của lần chạy R5, không sao chép từ revision trước. STT của R5 theo thứ tự danh sách lệnh kiểm của spec R5, khác thứ tự R4, nên mọi số STT dẫn chiếu ở Mục 5 và Mục 7 là STT của R5. Kết quả: 290/290 lệnh kiểm đạt exit 0 trên candidate a3a7d39f23ae5be6c4debf6ffcc7762a0b5fc278.
 
 ## 2. Kiểm lại các điểm của R1
 
 Thực hiện kiểm tra thực tế trên lịch sử git và phạm vi gói của kho lưu trữ:
 
 1. **Commit integrate của M5-MILESTONE-CLOSE (R1)**: `ĐẠT`. Kiểm tra qua lệnh `git log --format="%H%x09%s" "--grep=^integrate(M5-MILESTONE-CLOSE:"` cho kết quả rỗng (không có commit tích hợp nào của revision 1 tồn tại trên lịch sử git; lệnh `git log --format="%H%x09%s" "--grep=^integrate(M5-MILESTONE-CLOSE"` ghi nhận các commit integrate của các revision sau R1:
+   - `a3a7d39f23ae5be6c4debf6ffcc7762a0b5fc278	integrate(M5-MILESTONE-CLOSE-R4): lane lane-m5-milestone-close-r4 candidate 22e5bdb3b85d`
    - `938b96dc8edc6150ea798518edf2771ccf12db0c	integrate(M5-MILESTONE-CLOSE-R3): lane lane-m5-milestone-close-r3 candidate 4df2b60a167c`
    - `e0ecb0330702aa7146d036907b932c41677e33b1	integrate(M5-MILESTONE-CLOSE-R2): lane lane-m5-milestone-close-r2 candidate 12ce370abe0e`).
 2. **SHA tích hợp của bốn dòng kế hoạch bổ sung**: `ĐẠT`. Cả bốn dòng kế hoạch đều đã có commit tích hợp hợp lệ trong git và là tổ tiên hợp lệ của HEAD (`git merge-base --is-ancestor <sha> HEAD` đều exit 0):
@@ -23,7 +24,7 @@ Thực hiện kiểm tra thực tế trên lịch sử git và phạm vi gói c�
    - IMPL-PLAN-PERSIST: d9d23586d3af1fa6b2f2b6b741f3bd77e2178ab7 (exit 0)
    - IMPL-PLAN-ADAPT: 7823cf907f8c7ce056479b5fd09c502fbf570237 (exit 0)
    (Kiểm chứng thêm: M5-D-PLAN 3b00c35e1ad888e99ae76fe83e28c0bc44db69ee và ADAPT-LAUNCH-FIX2 6042d7a626d3d523881cc86d1b0ac674986bcafa đều là tổ tiên hợp lệ của HEAD với exit 0).
-3. **Phạm vi R4 chứa đủ bốn dòng kế hoạch**: `ĐẠT`. Danh sách gói nghiệm thu của M5-MILESTONE-CLOSE-R4 gồm đủ bốn dòng kế hoạch cùng các gói thành phần phái sinh và hai gói sửa ADAPT-LAUNCH-FIX1, ADAPT-LAUNCH-FIX2 tại Mục 3.
+3. **Phạm vi R5 chứa đủ bốn dòng kế hoạch**: `ĐẠT`. Danh sách gói nghiệm thu của M5-MILESTONE-CLOSE-R5 gồm đủ bốn dòng kế hoạch cùng các gói thành phần phái sinh và hai gói sửa ADAPT-LAUNCH-FIX1, ADAPT-LAUNCH-FIX2 tại Mục 3.
 
 ## 3. Gói được bao phủ và SHA tích hợp
 
@@ -157,7 +158,7 @@ Bảng này có 124 hàng, mỗi hàng đều có SHA tích hợp 40 hex (M5-D-P
 
 ### Danh sách nghiệm thu (tiếp theo): từ E-09
 
-Bảng này nối tiếp bảng ở trên và thuộc cùng danh sách nghiệm thu bắt buộc: E-09..E-20, F, G, H, I, J, PERSIST-A..PERSIST-J và các gói còn lại. Ba hàng CP0-GOVERNANCE, CP1-CONTRACT-BINDING, CP2A-LAYOUT là gói nền đã tích hợp, giữ làm bằng chứng bổ sung. Khoảng 21d99fc89eb076a036b4d62f026b057a61d96135..HEAD có các commit integrate: 6042d7a626d3d523881cc86d1b0ac674986bcafa integrate(ADAPT-LAUNCH-FIX2) (thuộc danh sách bắt buộc M5), và các commit còn lại thuộc các gói ngoài danh sách bắt buộc M5 (gồm PP-8 dc23de13f1c8, PP-7 1f61fdbc78b7, M7-MILESTONE-CLOSE-R2 bc339900203e, M5-MILESTONE-CLOSE-R3 4df2b60a167c, PP-6 9583245e8536, PP-5 d58464e457c6, PP-4 afd651725787, M6-MILESTONE-CLOSE-R3 f3946633336b, PP-3 353abd96fde1, PP-2 c7a0256b7dc7, PP-1 f8470188aab9, IMPL-PLAN-PROD-PORTS-FIX1 2092f7b2c54d, M4-MILESTONE-CLOSE-R2 14c19da831dc, IMPL-PLAN-PROD-PORTS 42a501fd0791):
+Bảng này nối tiếp bảng ở trên và thuộc cùng danh sách nghiệm thu bắt buộc: E-09..E-20, F, G, H, I, J, PERSIST-A..PERSIST-J và các gói còn lại. Ba hàng CP0-GOVERNANCE, CP1-CONTRACT-BINDING, CP2A-LAYOUT là gói nền đã tích hợp, giữ làm bằng chứng bổ sung. Khoảng 21d99fc89eb076a036b4d62f026b057a61d96135..6042d7a626d3d523881cc86d1b0ac674986bcafa (HEAD của R4) có các commit integrate: 6042d7a626d3d523881cc86d1b0ac674986bcafa integrate(ADAPT-LAUNCH-FIX2) (thuộc danh sách bắt buộc M5), và các commit còn lại thuộc các gói ngoài danh sách bắt buộc M5 (gồm PP-8 dc23de13f1c8, PP-7 1f61fdbc78b7, M7-MILESTONE-CLOSE-R2 bc339900203e, M5-MILESTONE-CLOSE-R3 4df2b60a167c, PP-6 9583245e8536, PP-5 d58464e457c6, PP-4 afd651725787, M6-MILESTONE-CLOSE-R3 f3946633336b, PP-3 353abd96fde1, PP-2 c7a0256b7dc7, PP-1 f8470188aab9, IMPL-PLAN-PROD-PORTS-FIX1 2092f7b2c54d, M4-MILESTONE-CLOSE-R2 14c19da831dc, IMPL-PLAN-PROD-PORTS 42a501fd0791):
 
 | Mã gói | SHA tích hợp (40 hex) | SHA candidate (12 hex) | Nguồn |
 | --- | --- | --- | --- |
@@ -281,6 +282,49 @@ Bảng này nối tiếp bảng ở trên và thuộc cùng danh sách nghiệm 
 
 Số hàng của bảng này: 117 (98 hàng đã có cộng 19 hàng bổ sung). Tổng số hàng bắt buộc có SHA tích hợp ở Mục 3: 241/241 (241 = 124 + 117; 240 hàng có commit integrate trong git log cộng 1 hàng M5-D-PLAN do Control cấp). Gói cổng ở Mục 4 tính riêng: 13/13 recordHash.
 
+### 3b. Commit phát sinh sau R4 (không thuộc 241 hàng bắt buộc)
+
+HEAD của R5 là a3a7d39f23ae5be6c4debf6ffcc7762a0b5fc278, subject `integrate(M5-MILESTONE-CLOSE-R4): lane lane-m5-milestone-close-r4 candidate 22e5bdb3b85d`.
+
+Danh sách commit phát sinh sau 6042d7a626d3d523881cc86d1b0ac674986bcafa (từ `git log --format="%H%x09%s" 6042d7a626d3d523881cc86d1b0ac674986bcafa..HEAD`):
+- `a3a7d39f23ae5be6c4debf6ffcc7762a0b5fc278	integrate(M5-MILESTONE-CLOSE-R4): lane lane-m5-milestone-close-r4 candidate 22e5bdb3b85d`
+- `84a976cb1257e9de77ed5de8e16f2fbf1fe04e28	integrate(RS-2): lane lane-rs-2 candidate 3894381f194e`
+- `3894381f194e5ff4648e481b21584ed94facdf63	docs(read-screens): record rebase evidence on integration head 24833dbb (RS-2)`
+- `c6f1eab779183f812d7fc025e10a73b1fa7b35da	feat(read-screens): add read-only ArticleModuleService with PostgreSQL tests (RS-2)`
+- `24833dbb52f5872416f369a2ee4517e536017e70	integrate(IMPL-PLAN-PROD-WIRING): lane lane-impl-plan-prod-wiring candidate 35b0b4deb83b`
+- `35b0b4deb83b11fcc51aff6d991e979065b4b740	docs(prod-wiring): cover INFERENCE_DISCLOSURE_PRESENT gate in F1, F3, F4 and E2E slices`
+- `f4e676ad6c27836827fbf9a8d999bb4596264c75	docs(prod-wiring): classify wiring slices as convergence_slice and add production.py conflict rule`
+- `ea71b4a299643af1213a940cf39ffbb94c99e736	docs(prod-wiring): plan and 32 slices to wire the production chain from batch to completion`
+- `700ee722e9549360dbb45d92db904a8483711c4f	integrate(CP-4B-UI-SCREENS-FIX3): lane lane-cp-4b-ui-screens-fix3 candidate 29a350a76374`
+- `29a350a76374563c76df80e68eca1dd13372cb36	test(control-ui): decouple media pending_module check from test_adapt_prod_app 503 pin`
+- `de9596c85ee7bddd8a3598aff4072e733c913304	docs(prod-wiring): bản kiểm kê khoảng trống nối dây chuyền production (đầu vào cho kế hoạch PW)`
+- `8e3cc0773b0f59839c802421622f3bc4436c4dba	test(cp7-3): Drive thật RG-02 — 11/12 PASS, token_invalid BLOCKED chờ nối PersistVideoOutput`
+- `53330a5be243ea097b66d09ff94ec4dac7bbe45a	fix(drive): client httplib2 mặc định không coi 308 Resume Incomplete là chuyển hướng (upload nhiều chunk hỏng RedirectMissingLocation)`
+- `6a8916eaec8005597c5822c24bddecaa6afc5bce	test(cp7-2): host_rejected đo bằng capability thật chưa dùng; canary kèm quét bí mật thật mà ứng dụng giải mã (review F1, F2)`
+- `1d3ec733d48821594f431e580bf0f2edd5976268	test(cp7-2): phiên sản xuất thật và bảo mật loopback (RG-01, 10/10 PASS)`
+- `6686c589365e6cd200d92953787c7abedf1f8d3e	fix(launcher): dừng worker Temporal bằng cách chờ luồng worker, không chờ future bị bỏ rơi trên loop đã dừng (stop từng mất 60 giây); worker nối namespace tường minh; lỗi worker ghi vào serve.log (ổn định hoá S6)`
+- `8bb57686241242e2a48da438a6ad42ca4ea16eaa	fix(api): hạn tắt êm cho mọi máy chủ uvicorn loopback (một nguồn ở api/tls.py) và test canh cả lớp (ổn định hoá S4b)`
+- `2f7e8475ff7690dc23a1d7d7b36c1195ca84b963	fix(launcher): bảo đảm namespace Temporal default trước khi khởi worker; image server không tự đăng ký nó (ổn định hoá S5)`
+- `b0bf81d81e21c2de22b1981ec2cd666b57956fd4	fix(prod): tắt êm có hạn 10 giây cho máy chủ loopback; launcher stop không còn treo khi tab giao diện giữ luồng SSE (ổn định hoá S4)`
+- `179d36822f5d5b91da495c25c917b79bf6c04c66	test(cp7): CP7-1 RG-01 PASS trên máy thật; kiểm thêm alias 9Router (ổn định hoá)`
+- `def6fc2912fdeeeedeb711e6834a63b1c31c8e8c	test(cp7): add RG-01 real-resource preflight tests and shared evidence library`
+- `aaadc0f4670d32d861c58caf3e205f1e9227e9df	integrate(RS-1): lane lane-rs-1 candidate 2317acde2a0b`
+- `2317acde2a0bbf21df9cd56917085ecac83544eb	feat(read-screens): add read_screens package, shared helpers and PostgreSQL test support (RS-1)`
+- `22e5bdb3b85d0d223de2054a806dda2e468b2e42	docs(m5): close M5 milestone revision 4 evidence after ADAPT-LAUNCH-FIX2 integrate`
+- `df8decc7a02130d8627e570fc43b5b2fae0745d0	integrate(IMPL-PLAN-READ-SCREENS): lane lane-impl-plan-read-screens candidate c327c78512ef`
+- `c327c78512ef6908233a71b0920a10e376c7434a	docs(read-screens): align service paths to infrastructure and update plan after rebase`
+- `767bb3acacea58df57419c84a89ffc34ccd9d8b6	integrate(ADAPT-LAUNCH-FIX3): lane lane-adapt-launch-fix3 candidate ff1c655e744e`
+- `ff1c655e744eb6b4f955eefaa9e24507b3b19783	fix(launcher): use temporal admin-tools for schema and mount empty dynamic config (ADAPT-LAUNCH-FIX3)`
+- `c0860b38c16e6a3274e42ec6ff42b23e528fc922	docs(read-screens): plan test_route_inventory pin in CP-4-WIRING-FIX3 (F1)`
+- `2fdea9cf22a47f1fb79933ac8f486896b2ce7b87	docs(read-screens): plan read-only GET routes for locked dashboard screens`
+
+Danh sách commit chạm `tools/launcher/docker-compose.yml` và `tools/launcher/temporal-dynamicconfig.yaml` (`git log -n 5 --format="%H%x09%s" -- tools/launcher/docker-compose.yml tools/launcher/temporal-dynamicconfig.yaml`):
+- `ff1c655e744eb6b4f955eefaa9e24507b3b19783	fix(launcher): use temporal admin-tools for schema and mount empty dynamic config (ADAPT-LAUNCH-FIX3)`
+- `9bcb10e680dc2fe95c80e3a411d08bd410f2024b	fix(launcher): run temporal-schema command as single sh -c string`
+- `faa54f225bdc52aeaa03ec6a3280da0aa3b335ce	feat(launch): add docker compose stack, launcher CLI and runbook v1 (ADAPT-LAUNCH)`
+
+Commit chạm hai tệp này là nguồn của bản sửa launch-fix3 được kiểm bằng STT 290; không tự đặt tên gói và không tự gán SHA integrate nếu git log không có commit `integrate(...)` tương ứng.
+
 ## 4. Gói cổng và bản ghi quyết định (recordHash)
 
 | Mã cổng | recordHash (bản ghi quyết định RELEASE) |
@@ -308,26 +352,26 @@ Nguồn: Control cấp trong lệnh làm việc (bản ghi quyết định RELEA
 
 | Mã | Exit gate (nguyên văn roadmap) | Slice và STT lệnh liên quan | Kết quả | Ghi chú |
 | --- | --- | --- | --- | --- |
-| G1 | Mọi output D truy được snapshot, model, prompt, config và input revision | D-04 (STT 151), D-14 (STT 161), D-17 (STT 164) | ĐẠT | Tất cả các kiểm thử STT 151, 161, 164 đều PASS (exit 0) |
-| G2 | Ba video cùng lượt không chỉ đổi style mà thật sự khác StoryAngle | D-06 (STT 153), D-11 (STT 158) | ĐẠT | Tất cả các kiểm thử STT 153, 158 đều PASS (exit 0) |
-| G3 | Variant lượt sau không exact duplicate và có khác biệt thực tế được ghi | D-11 (STT 158), D-14 (STT 161) | ĐẠT | Tất cả các kiểm thử STT 158, 161 đều PASS (exit 0) |
-| G4 | Narrative timeline bị chặn khi chỉ có repost/nguồn mới | D-07 (STT 154) | ĐẠT | Kiểm thử STT 154 PASS (exit 0) |
-| G5 | Provider lỗi không làm mất job/history và không tự thêm dịch vụ trả phí | D-15 (STT 162), D-04 (STT 151) | ĐẠT | Tất cả các kiểm thử STT 162, 151 đều PASS (exit 0) |
-| G6 | G06 phần content đạt hoặc có defect/gap rõ; chưa tuyên bố toàn G06 nếu E/F chưa đạt | D-18 (STT 165), ngưỡng 90%/95% thuộc M5-REAL | ĐẠT (phần content test) | Logic kiểm thử content đạt ở STT 165; ngưỡng chấm thật thuộc M5-REAL |
+| G1 | Mọi output D truy được snapshot, model, prompt, config và input revision | D-04 (STT 131), D-14 (STT 141), D-17 (STT 144) | ĐẠT | Các kiểm thử STT 131, 141, 144 đều exit 0 |
+| G2 | Ba video cùng lượt không chỉ đổi style mà thật sự khác StoryAngle | D-06 (STT 133), D-11 (STT 138) | ĐẠT | Các kiểm thử STT 133, 138 đều exit 0 |
+| G3 | Variant lượt sau không exact duplicate và có khác biệt thực tế được ghi | D-11 (STT 138), D-14 (STT 141) | ĐẠT | Các kiểm thử STT 138, 141 đều exit 0 |
+| G4 | Narrative timeline bị chặn khi chỉ có repost/nguồn mới | D-07 (STT 134) | ĐẠT | Kiểm thử STT 134 exit 0 |
+| G5 | Provider lỗi không làm mất job/history và không tự thêm dịch vụ trả phí | D-15 (STT 142), D-04 (STT 131) | ĐẠT | Các kiểm thử STT 142, 131 đều exit 0 |
+| G6 | G06 phần content đạt hoặc có defect/gap rõ; chưa tuyên bố toàn G06 nếu E/F chưa đạt | D-18 (STT 145), ngưỡng 90%/95% thuộc M5-REAL | ĐẠT (phần content test) | Logic kiểm thử content đạt ở STT 145; ngưỡng chấm thật thuộc M5-REAL |
 | G7 | User duyệt D và R3 Creative Alpha | M5-EG7 | CHỜ USER (M5-EG7) | Chờ người dùng phê duyệt trực tiếp, không tự xác nhận |
 
 ### Bảng đối chiếu Tiêu chí kỹ thuật (T1 - T9)
 
 | Mã | Tiêu chí kỹ thuật (nguyên văn roadmap) | Slice và STT lệnh liên quan | Kết quả | Ghi chú |
 | --- | --- | --- | --- | --- |
-| T1 | INV-004/005/006/013/014 | D-02 (STT 149), D-14 (STT 161), D-07 (STT 154), D-06 (STT 153), D-11 (STT 158) | ĐẠT | Toàn bộ kiểm thử bất biến liên quan đều PASS (exit 0) |
-| T2 | config/source đổi sau snapshot | D-02 (STT 149), D-14 (STT 161) | ĐẠT | Kiểm thử bất biến snapshot cấu hình và nguồn đều PASS |
-| T3 | AI response sai schema/thiếu field/hallucinated ref/timeout | D-03 (STT 150), D-05 (STT 152), D-08 (STT 155), D-15 (STT 162) | ĐẠT | Các kịch bản lỗi AI, validation schema và timeout đều PASS |
-| T4 | 100% inference/creative có disclosure | D-08 (STT 155) | ĐẠT | Kiểm thử gắn nhãn disclosure creative PASS (exit 0) |
+| T1 | INV-004/005/006/013/014 | D-02 (STT 129), D-14 (STT 141), D-07 (STT 134), D-06 (STT 133), D-11 (STT 138) | ĐẠT | Toàn bộ kiểm thử bất biến liên quan đều PASS (exit 0) |
+| T2 | config/source đổi sau snapshot | D-02 (STT 129), D-14 (STT 141) | ĐẠT | Kiểm thử bất biến snapshot cấu hình và nguồn đều PASS |
+| T3 | AI response sai schema/thiếu field/hallucinated ref/timeout | D-03 (STT 130), D-05 (STT 132), D-08 (STT 135), D-15 (STT 142) | ĐẠT | Các kịch bản lỗi AI, validation schema và timeout đều PASS |
+| T4 | 100% inference/creative có disclosure | D-08 (STT 135) | ĐẠT | Kiểm thử gắn nhãn disclosure creative PASS (exit 0) |
 | T5 | topic >=90% trên mẫu user chấm | M5-REAL | CHỜ TÀI NGUYÊN THẬT (M5-REAL) | Yêu cầu mẫu do người dùng chấm trên tài nguyên thật |
-| T6 | event-link >=95% | M5-REAL, B-1..B-12 (STT 91-102) | CHỜ TÀI NGUYÊN THẬT (M5-REAL) | Phần logic xác định đã kiểm chứng đạt ở B-1..B-12 (STT 91-102) |
-| T7 | media/thumbnail >=90% và hook >=90% | M5-REAL, D-09 (STT 156) | CHỜ TÀI NGUYÊN THẬT (M5-REAL) | Phần logic xác định chọn asset đã kiểm chứng đạt ở D-09 (STT 156) |
-| T8 | không dùng model làm judge duy nhất | D-03 (STT 149), D-05 (STT 151), D-08 (STT 155), D-11 (STT 157) | ĐẠT | Kiểm thử phối hợp thuật toán xác định và rule logic đều PASS |
+| T6 | event-link >=95% | M5-REAL, B-1..B-12 (STT 62-73) | CHỜ TÀI NGUYÊN THẬT (M5-REAL) | Phần logic xác định đã kiểm chứng đạt ở B-1..B-12 (STT 62-73) |
+| T7 | media/thumbnail >=90% và hook >=90% | M5-REAL, D-09 (STT 136) | CHỜ TÀI NGUYÊN THẬT (M5-REAL) | Phần logic xác định chọn asset đã kiểm chứng đạt ở D-09 (STT 136) |
+| T8 | không dùng model làm judge duy nhất | D-03 (STT 130), D-05 (STT 132), D-08 (STT 135), D-11 (STT 138) | ĐẠT | Kiểm thử phối hợp thuật toán xác định và rule logic đều PASS |
 | T9 | holdout khoá tách khỏi tập phát triển prompt | M5-REAL | CHỜ TÀI NGUYÊN THẬT (M5-REAL) | Tập holdout khoá được kiểm chứng ở gói CP7 với tài nguyên thật |
 
 ### Ghi chú theo quyết định của user (2026-10-22)
@@ -338,7 +382,7 @@ Theo quyết định của người dùng ngày 22/10/2026 ghi nhận trong sổ
 Đối chiếu thực tế cho thấy các điểm roadmap rộng hơn kế hoạch đã duyệt bao gồm:
 1. Tiêu chí G6 («chưa tuyên bố toàn G06 nếu E/F chưa đạt»): Các gói lát cắt của phân hệ E và F đã được hoàn thành và tích hợp đầy đủ (E-01..E-20 và F-01..F-22 đều có SHA tích hợp), tuy nhiên kiểm thử toàn diện end-to-end cho G06 toàn phần sẽ do mốc M6/M7 thực hiện.
 2. Các mục mở (open items) trong roadmap docs/11-roadmap.md: TEST-OPEN-001, ngưỡng deduplication/event-link, thuật toán proxy hot/trending, việc tinh chỉnh provider/model/prompt theo benchmark đều là các open items được thiết kế cho các mốc tiếp theo hoặc gói CP7, không cấu thành điều kiện FAIL kỹ thuật của mốc M5 và không yêu cầu can thiệp từ người dùng.
-3. Các lệnh đỏ ở các lần mở trước nay đạt exit 0 trên candidate R4 vì các gói sửa FIX đã tích hợp: CP-4-WIRING-FIX2 759ea0abd830f76b6f6a99232e8183ee50a9f34d, ADAPT-PROD-FIX1 6ba0bcde40de3d3adf8405d9df6bd8cae431227a, CP-4B-UI-SCREENS-FIX1 adc7634f45a21c2fa174adee662962d7a1b21a57, PERSIST-C-FIX1 ab8586d55fc612825888d6a7e26e58ae96d28af6, ADAPT-PROD-FIX2 fa250e8305aa422ff260f2ce9bb3622a29239740, CP-4B-UI-SCREENS-FIX2 74c062a29d649ea0e3d1471dee9c739dc33d38fe, ADAPT-LAUNCH-FIX1 21d99fc89eb076a036b4d62f026b057a61d96135, ADAPT-LAUNCH-FIX2 6042d7a626d3d523881cc86d1b0ac674986bcafa.
+3. Các lệnh đỏ ở các lần mở trước nay đạt exit 0 trên candidate R5 (HEAD a3a7d39f23ae5be6c4debf6ffcc7762a0b5fc278) vì các gói sửa FIX đã tích hợp: CP-4-WIRING-FIX2 759ea0abd830f76b6f6a99232e8183ee50a9f34d, ADAPT-PROD-FIX1 6ba0bcde40de3d3adf8405d9df6bd8cae431227a, CP-4B-UI-SCREENS-FIX1 adc7634f45a21c2fa174adee662962d7a1b21a57, PERSIST-C-FIX1 ab8586d55fc612825888d6a7e26e58ae96d28af6, ADAPT-PROD-FIX2 fa250e8305aa422ff260f2ce9bb3622a29239740, CP-4B-UI-SCREENS-FIX2 74c062a29d649ea0e3d1471dee9c739dc33d38fe, ADAPT-LAUNCH-FIX1 21d99fc89eb076a036b4d62f026b057a61d96135, ADAPT-LAUNCH-FIX2 6042d7a626d3d523881cc86d1b0ac674986bcafa; riêng STT 290 là probe launch-fix3 mới, exit 0 trên cây R5 (commit nguồn xem Mục 3b).
 
 ## 6. pendingUserCheckpoint
 
@@ -351,7 +395,7 @@ Theo quyết định của người dùng ngày 22/10/2026 ghi nhận trong sổ
 
 | Hạng mục kiểm tra | Đạt được | Mục tiêu bắt buộc | Kết luận |
 | --- | --- | --- | --- |
-| Lệnh kiểm tra chạy lại | 289/289 exit 0 (0 FAIL; 5 lệnh có test skip theo thiết kế tham số hoá hoặc đặc quyền symlink Windows) | 289/289 exit 0 | ĐẠT |
+| Lệnh kiểm tra chạy lại | 290/290 exit 0 (0 FAIL; 5 lệnh có test skip, xem ghi chú) | 290/290 exit 0 | ĐẠT |
 | SHA tích hợp các gói bắt buộc | 241/241 hàng (M5-D-PLAN có SHA do Control cấp; các hàng còn lại có commit integrate trong git log) | 241/241 hàng | ĐẠT |
 | Bản ghi recordHash 13 cổng | 13/13 cổng | 13/13 cổng | ĐẠT (recordHash do Control cấp trong lệnh làm việc) |
 | Kiểm lại 3 điểm của R1 (Mục 2) | 3/3 điểm ĐẠT | 3/3 điểm ĐẠT | ĐẠT |
@@ -359,24 +403,25 @@ Theo quyết định của người dùng ngày 22/10/2026 ghi nhận trong sổ
 | Gate chờ người dùng / tài nguyên thật | M5-EG7, M5-REAL | Chỉ 2 gate được phép | ĐẠT (đúng 2 gate trong pending) |
 
 ### Ghi chú bổ sung
-- Lệnh `npm --prefix src/controlplane/ui run build` (STT 35) đã chạy thành công và **không làm thay đổi** bất kỳ tệp nào trong `src/controlplane/ui/dist`.
-- Nguyên nhân 5 lệnh có test skip (STT 22, 119, 134, 143, 242), đã đối chiếu mã test; không test nào skip vì thiếu hạ tầng sống:
-  - STT 22 (`tests/integration/convergence/test_cp4_wiring.py`, 28 skip): các test tham số hoá theo danh mục lệnh `COMMANDS` tự gọi `pytest.skip` khi lệnh không áp dụng: dòng 283 và 302 ("Lệnh không yêu cầu If-Match"), dòng 350 ("cannot vary payload for empty body without resource id"), dòng 371 ("Lệnh không có body để kiểm tra trường lạ"). Đây là thiết kế tham số hoá của test.
-  - STT 242 (`tests/integration/storage/test_storage_staging_paths.py`, 7 skip): hàm `make_symlink` (dòng 81) gọi `pytest.skip` khi `os.symlink` không tạo được symlink; tài khoản chạy trên Windows không có đặc quyền tạo symlink. Biến thể junction (dòng 86) chỉ skip ngoài Windows nên không skip ở đây.
-  - STT 119 và STT 143 (36 skip mỗi lệnh): đúng bằng 28 skip của test_cp4_wiring cộng 7 skip của test_storage_staging_paths và 1 skip của tests/integration/prod_ports/test_pp_4_artifact_source.py (dòng 126: host forbids creating symlinks do thiếu đặc quyền symlink Windows); STT 134 (7 skip) chỉ gồm 7 skip của test_storage_staging_paths. Không còn nguồn skip nào khác.
+- Lệnh `npm --prefix src/controlplane/ui run build` (STT 93) đã chạy thành công và **không làm thay đổi** bất kỳ tệp nào trong `src/controlplane/ui/dist` (đã kiểm tra đúng 4 tệp ở STT 281).
+- Nguyên nhân 5 lệnh có test skip (STT 91, 110, 122, 123, 223), đã đối chiếu mã test; không test nào skip vì thiếu hạ tầng sống:
+  - STT 122 (`tests/integration/convergence/test_cp4_wiring.py`, 28 skip): các test tham số hoá theo danh mục lệnh `COMMANDS` tự gọi `pytest.skip` khi lệnh không áp dụng: dòng 283 và 302 ("Lệnh không yêu cầu If-Match"), dòng 350 ("cannot vary payload for empty body without resource id"), dòng 371 ("Lệnh không có body để kiểm tra trường lạ"). Đây là thiết kế tham số hoá của test.
+  - STT 223 (`tests/integration/storage/test_storage_staging_paths.py`, 7 skip): hàm `make_symlink` (dòng 81) gọi `pytest.skip` khi `os.symlink` không tạo được symlink; tài khoản chạy trên Windows không có đặc quyền tạo symlink. Biến thể junction (dòng 86) chỉ skip ngoài Windows nên không skip ở đây.
+  - STT 91 (`tests/integration tests/unit/control_ui`, 36 skip) và STT 123 (`tests/m2 tests/integration`, 36 skip, 1 deselected): đúng bằng 28 skip của test_cp4_wiring cộng 7 skip của test_storage_staging_paths và 1 skip của tests/integration/prod_ports/test_pp_4_artifact_source.py (dòng 126: host forbids creating symlinks do thiếu đặc quyền symlink Windows); STT 110 (7 skip) chỉ gồm 7 skip của test_storage_staging_paths. Không còn nguồn skip nào khác.
   - Hai mô-đun DPAPI (`tests/integration/adapt/j/test_adapt_j_oauth.py` dòng 26, `tests/integration/config/test_j_dpapi_secret_store.py` dòng 17) chỉ skip khi nền tảng không phải win32 nên không skip trong lần chạy này.
   - Test bị skip không được tính là test đã chạy; báo cáo chỉ ghi exit 0 của lệnh và số skip.
-- Gói sửa ADAPT-LAUNCH-FIX1 (integrate 21d99fc89eb076a036b4d62f026b057a61d96135, candidate 9bcb10e680dc) được kiểm chứng ở STT 48-49: 32 passed in 0.77s và probe docker-compose.yml exit 0.
-- Gói sửa ADAPT-LAUNCH-FIX2 (integrate 6042d7a626d3d523881cc86d1b0ac674986bcafa, candidate 903393a717cb) được kiểm chứng ở STT 50: probe tools/launcher/launcher.py (build_production_ports, load_ports_config, ports.json, không có from tools) exit 0.
+- Gói sửa ADAPT-LAUNCH-FIX1 (integrate 21d99fc89eb076a036b4d62f026b057a61d96135, candidate 9bcb10e680dc) được kiểm chứng ở STT 60-61: 36 passed in 2.66s và probe docker-compose.yml exit 0.
+- Gói sửa ADAPT-LAUNCH-FIX2 (integrate 6042d7a626d3d523881cc86d1b0ac674986bcafa, candidate 903393a717cb) được kiểm chứng ở STT 289: probe tools/launcher/launcher.py (build_production_ports, load_ports_config, ports.json, không có from tools) exit 0.
+- Probe launch-fix3 được kiểm chứng ở STT 290: probe tools/launcher/docker-compose.yml ghim digest temporalio/admin-tools:1.31.2@sha256:dbc5fcd6ee8f0f4d808bf765af9a87dea9d8a283abfdcfbd2fc148496ba66107, mount tools/launcher/temporal-dynamicconfig.yaml vào /etc/temporal/config/dynamicconfig/docker.yaml, bind 127.0.0.1 và không dùng 0.0.0.0, exit 0.
 - Kiểm thử `tests/m2/test_p7b_hardening.py::test_h36_m1_regression` được hoãn sang gói CP7 theo đúng quyết định của người dùng ngày 21/10/2026 (mang cờ `--deselect`, không chạy).
 - Báo cáo không thay đổi trạng thái trong roadmap hay checklist.
 
 ### Kết luận
 **ĐẠT** về kỹ thuật; chờ phán quyết của Reviewer (Sonnet 5.5) và Auditor rủi ro (Opus 5.5).
 
-1. Kết quả chạy lại lệnh kiểm: 289/289 lệnh exit 0, 0 FAIL. Toàn bộ 289 lệnh kiểm tra của milestone M5 đã được chạy lại và đạt exit 0 trên candidate 6042d7a626d3d523881cc86d1b0ac674986bcafa. 5 lệnh (STT 22, 119, 134, 143, 242) có test skip do thiết kế tham số hoá chuẩn và thiếu đặc quyền symlink trên Windows.
+1. Kết quả chạy lại lệnh kiểm: 290/290 lệnh exit 0, 0 FAIL, trên candidate a3a7d39f23ae5be6c4debf6ffcc7762a0b5fc278; liệt kê STT có skip theo ghi chú ở trên.
 
-2. SHA tích hợp các gói bắt buộc: 241/241 hàng ở Mục 3. M5-D-PLAN có SHA 3b00c35e1ad888e99ae76fe83e28c0bc44db69ee do Control cấp và đã kiểm chứng là tổ tiên hợp lệ của HEAD (exit 0). Mọi gói còn lại, kể cả 13 gói sửa FIX (gồm ADAPT-LAUNCH-FIX1 và ADAPT-LAUNCH-FIX2), E-09..E-20, F, G, H, I, J và PERSIST-A..PERSIST-J, đều có commit integrate. Mã E ở cuối danh sách trong lệnh làm việc là phần cắt cụt của E-09, không phải gói thiếu.
+2. SHA tích hợp các gói bắt buộc: 241/241 hàng ở Mục 3; M5-D-PLAN có SHA 3b00c35e1ad888e99ae76fe83e28c0bc44db69ee do Control cấp và là tổ tiên của HEAD (kết quả merge-base ở Mục 2); mọi gói còn lại có commit integrate; mã E ở cuối danh sách trong lệnh làm việc là phần cắt cụt của E-09 (và G-01 ở cuối danh sách R5 là phần cắt cụt trước G-02), không phải gói thiếu.
 
 3. Đã xử lý đầy đủ: 13/13 recordHash của các gói cổng ở Mục 4 (nguồn do Control cấp trong lệnh làm việc).
 
