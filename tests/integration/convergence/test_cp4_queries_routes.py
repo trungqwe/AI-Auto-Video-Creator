@@ -21,7 +21,8 @@ from controlplane.infrastructure.db.control_api_queries import PostgresControlQu
 WORKSPACE = '00000000-0000-0000-0000-0000000004b1'
 ORIGIN = 'https://localhost:8443'
 READ = {'Cookie': 'cp_session=valid'}
-NINE = ('sources', 'articles', 'events', 'media', 'hooks', 'stage_runs', 'sessions', 'logs', 'capabilities')
+NINE = ('sources', 'articles', 'events', 'media', 'hooks', 'stage_runs', 'sessions',
+        'logs', 'capabilities')
 ITEM_KEYS = {'stage_run_id', 'job_id', 'stage', 'status', 'started_at', 'finished_at', 'created_at'}
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -202,9 +203,13 @@ def test_route_inventory():
     for prefix in ('/v1/sources', '/v1/hooks', '/v1/media', '/v1/stage-runs'):
         assert route_pairs.count(('GET', prefix)) == 1
 
-    for name in ('articles', 'events', 'sessions', 'logs', 'capabilities'):
+    for name in ('logs', 'capabilities'):
         matching = [p for p in route_pairs if p[1].startswith(f'/v1/{name}')]
         assert matching == []
+
+    for name in ('articles', 'events', 'media', 'artifacts', 'snapshots', 'story-angles', 'scripts', 'sessions', 'accounts', 'cost'):
+        assert route_pairs.count(('GET', f'/v1/{name}')) == 1
+        assert route_pairs.count(('GET', f'/v1/{name}/{{item_id}}')) == 1
 
 
 @pytest.mark.parametrize('name', ['sources', 'hooks', 'media'])
