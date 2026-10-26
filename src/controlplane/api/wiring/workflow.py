@@ -11,6 +11,7 @@ from typing import Any
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from controlplane.application.orchestration.grant_runtime import ExecutionGrantCurrency
 from controlplane.application.orchestration.workflows.activities import (
     ACTIVITY_BINDINGS,
     ACTIVITY_SERVICE_UNBOUND,
@@ -154,6 +155,7 @@ def unbound_handler(clock: Callable[[], datetime.datetime]) -> ActivityHandler:
     return handler
 
 
+# Compares GrantClaims only; production wiring uses ExecutionGrantCurrency (grant_runtime), which compares an ExecutionGrant with the stored grant.
 class StoreBackedClaimsCurrency:
     def __init__(self, store: Any, clock: Callable[[], datetime.datetime]) -> None:
         self._store = store
@@ -236,7 +238,8 @@ def build_temporal_registration(
 
     @activity.defn(name='IssueExecutionGrant')
     async def _issue_grant_activity(request: dict) -> dict:
-        claims = grant_issuer(
+        claims = await asyncio.to_thread(
+            grant_issuer,
             request['stage_run_id'],
             request['allowed_operation'],
             request['input_fingerprint'],
@@ -246,7 +249,8 @@ def build_temporal_registration(
 
     @activity.defn(name='ReadCapabilityView')
     async def _read_capability_view_activity(request: dict) -> dict:
-        return dict(capability_reader())
+        view = await asyncio.to_thread(capability_reader)
+        return dict(view)
 
     control_queue = INTERNAL_ACTIVITIES['IssueExecutionGrant'].value
     activities_map.setdefault(control_queue, []).extend(
@@ -271,6 +275,7 @@ def build_temporal_registration(
 
 
 __all__ = [
+    'ExecutionGrantCurrency',
     'StoreBackedClaimsCurrency',
     'TemporalRegistration',
     'WorkflowServices',
