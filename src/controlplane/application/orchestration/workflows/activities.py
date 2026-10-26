@@ -21,9 +21,12 @@ class ActivityBinding:
     stage_type: str | None
     queue: TaskQueue
     side_effect: bool
+    extra_stage_types: tuple[str, ...] = ()
 
 
-def _b(name: str, owner: str, stage_type: str | None, side_effect: bool) -> ActivityBinding:
+def _b(
+    name: str, owner: str, stage_type: str | None, side_effect: bool, extra_stage_types: tuple[str, ...] = (),
+) -> ActivityBinding:
     queue = route_stage(stage_type) if stage_type is not None else TaskQueue.CONTROL_WORKFLOWS
     return ActivityBinding(
         name=name,
@@ -31,6 +34,7 @@ def _b(name: str, owner: str, stage_type: str | None, side_effect: bool) -> Acti
         stage_type=stage_type,
         queue=queue,
         side_effect=side_effect,
+        extra_stage_types=extra_stage_types,
     )
 
 
@@ -46,9 +50,10 @@ ACTIVITY_BINDINGS: tuple[ActivityBinding, ...] = (
     _b('GenerateStoryAngles', 'D', 'script', True),
     _b('GenerateScript', 'D', 'script', True),
     _b('BuildProductionPlan', 'D', 'plan', True),
+    _b('ValidateVariant', 'D', 'plan', True, ('qc',)),
+    _b('ReserveVariant', 'G', 'plan', True),
+    _b('GenerateOutputMetadata', 'D', 'plan', True),
     _b('SelectCreativeAssets', 'D', 'media_select', True),
-    _b('ValidateVariant', 'D', 'qc', True),
-    _b('GenerateOutputMetadata', 'D', 'qc', True),
     _b('CreateVoiceTrack', 'E', 'tts', True),
     _b('CreateWordTiming', 'E', 'align', True),
     _b('ProbeMedia', 'E', 'process', True),
@@ -58,8 +63,10 @@ ACTIVITY_BINDINGS: tuple[ActivityBinding, ...] = (
     _b('PrepareAudioBed', 'E', 'process', True),
     _b('resolve_render_package', 'F', 'render', True),
     _b('validate_render_package', 'F', 'render', True),
+    _b('reconcile_render', 'F', 'render', True),
     _b('render_video', 'F', 'render', True),
     _b('inspect_output', 'F', 'qc', True),
+    _b('prepare_output_ready', 'F', 'qc', True),
     _b('CommitVideoCompletion', 'G', 'complete', True),
     _b('MaterializeArtifactSet', 'I', 'render', True),
     _b('PersistVideoOutput', 'I', 'sync', True),
@@ -81,13 +88,13 @@ INTERNAL_ACTIVITIES: Mapping[str, TaskQueue] = MappingProxyType({
 VIDEO_STAGE_ACTIVITIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     'analyze': ('BuildProductionSnapshot', 'AnalyzeContent'),
     'script': ('GenerateStoryAngles', 'GenerateScript'),
-    'plan': ('BuildProductionPlan',),
+    'plan': ('BuildProductionPlan', 'ValidateVariant', 'ReserveVariant', 'GenerateOutputMetadata'),
     'media_select': ('SelectCreativeAssets',),
     'tts': ('CreateVoiceTrack',),
     'align': ('CreateWordTiming',),
-    'process': ('ProbeMedia', 'AssessImageSafety', 'NormalizeMedia', 'PrepareAudioBed'),
-    'render': ('MaterializeArtifactSet', 'resolve_render_package', 'validate_render_package', 'render_video'),
-    'qc': ('inspect_output', 'ValidateVariant', 'GenerateOutputMetadata'),
+    'process': ('ProbeMedia', 'AssessImageSafety', 'TransformSensitiveImage', 'NormalizeMedia', 'PrepareAudioBed'),
+    'render': ('MaterializeArtifactSet', 'resolve_render_package', 'validate_render_package', 'reconcile_render', 'render_video'),
+    'qc': ('inspect_output', 'ValidateVariant', 'prepare_output_ready'),
     'sync': ('PersistVideoOutput',),
     'complete': ('CommitVideoCompletion',),
 })
@@ -127,6 +134,14 @@ STAGE_ACTIVITIES_BY_WORKFLOW: Mapping[str, Mapping[str, tuple[str, ...]]] = Mapp
     'VideoProductionWorkflow': VIDEO_STAGE_ACTIVITIES,
     'DebugStageWorkflow': DEBUG_STAGE_ACTIVITIES,
     'MaintenanceWorkflow': MAINTENANCE_STAGE_ACTIVITIES,
+})
+
+# activity -> (stage trước, ref_type) cho activity chạy một lần trên mỗi phần tử đầu ra của stage trước.
+FAN_OUT_FROM_OUTPUT: Mapping[str, tuple[str, str]] = MappingProxyType({
+    'AssessImageSafety': ('media_select', 'selected_media'),
+    'ProbeMedia': ('media_select', 'selected_media'),
+    'NormalizeMedia': ('media_select', 'selected_media'),
+    'CollectSource': ('select_sources', 'collection_source'),
 })
 
 SUBSCRIPTIONS: Mapping[str, str] = MappingProxyType({
@@ -249,6 +264,7 @@ __all__ = [
     'DAILY_STAGE_ACTIVITIES',
     'DEBUG_STAGE_ACTIVITIES',
     'ENRICHMENT_STAGE_ACTIVITIES',
+    'FAN_OUT_FROM_OUTPUT',
     'INTERNAL_ACTIVITIES',
     'INVALID_ACTIVITY_REQUEST',
     'INVALID_ACTIVITY_RESULT',
