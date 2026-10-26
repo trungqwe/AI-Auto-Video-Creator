@@ -21,9 +21,13 @@ FORBIDDEN_DIR_NAMES = frozenset({'storage', 'orchestration', 'ui', 'config'})
 DYNAMIC_IMPORT_CALLS = frozenset({'import_module', '__import__'})
 
 # Miễn trừ hẹp theo kế hoạch ADAPT đã duyệt: docs/implementation/adapt/plan.md dòng 81 và 107 (ADAPT-D: NineRouterHTTPAdapter, ApprovedEndpointRegistry).
+# Miễn trừ hẹp theo kế hoạch PROD-WIRING V4 (PW-D3): PostgresMediaCandidates và PostgresHookCandidates đọc danh mục của C qua src/catalog/application/candidate_query.py nên chỉ hai tệp này được import đúng mô-đun catalog.application.candidate_query.
+# Không miễn cả thư mục adapters, không miễn cả gói catalog, không miễn thumbnail_candidates.py; catalog.domain, voice, psycopg vẫn bị báo.
 # Khoá là đường dẫn tệp chính xác (posix, tính từ gốc repo), không dùng mẫu, không miễn cả thư mục adapters.
 ADAPTER_IMPORT_EXEMPTIONS = {
     'src/creative/adapters/real_route_executor.py': frozenset({'controlplane.config'}),
+    'src/creative/adapters/media_candidates.py': frozenset({'catalog.application.candidate_query'}),
+    'src/creative/adapters/hook_candidates.py': frozenset({'catalog.application.candidate_query'}),
 }
 
 
@@ -130,10 +134,15 @@ class DetectorSelfTests(unittest.TestCase):
 
 class AdapterExemptionTests(unittest.TestCase):
     ADAPTER = 'src/creative/adapters/real_route_executor.py'
+    MEDIA = 'src/creative/adapters/media_candidates.py'
+    HOOKS = 'src/creative/adapters/hook_candidates.py'
+    CANDIDATE_QUERY = frozenset({'catalog.application.candidate_query'})
 
     def test_exemption_table_is_exact_paths_only(self) -> None:
-        self.assertEqual(set(ADAPTER_IMPORT_EXEMPTIONS), {self.ADAPTER})
+        self.assertEqual(set(ADAPTER_IMPORT_EXEMPTIONS), {self.ADAPTER, self.MEDIA, self.HOOKS})
         self.assertEqual(ADAPTER_IMPORT_EXEMPTIONS[self.ADAPTER], frozenset({'controlplane.config'}))
+        self.assertEqual(ADAPTER_IMPORT_EXEMPTIONS[self.MEDIA], self.CANDIDATE_QUERY)
+        self.assertEqual(ADAPTER_IMPORT_EXEMPTIONS[self.HOOKS], self.CANDIDATE_QUERY)
         for rel in ADAPTER_IMPORT_EXEMPTIONS:
             with self.subTest(rel=rel):
                 self.assertFalse(set('*?[') & set(rel))
@@ -181,6 +190,57 @@ class AdapterExemptionTests(unittest.TestCase):
                     'controlplane.config',
                     find_unexempted_imports('from controlplane import config', rel),
                 )
+
+    def test_candidate_adapters_may_import_only_candidate_query(self) -> None:
+        for rel in (self.MEDIA, self.HOOKS):
+            with self.subTest(rel=rel):
+                for source in (
+                    'from catalog.application.candidate_query import CandidateIndexEntry, query_media_candidates',
+                    'import catalog.application.candidate_query',
+                ):
+                    self.assertEqual(find_unexempted_imports(source, rel), [])
+                for source, expected in (
+                    ('import voice', 'voice'),
+                    ('import psycopg', 'psycopg'),
+                    ('from catalog.domain.identity import MediaKind', 'catalog.domain.identity'),
+                    ('from catalog.domain import states', 'catalog.domain'),
+                    ('from catalog.application.discovery import register_discovery', 'catalog.application.discovery'),
+                    ('from catalog.persistence.assets import PostgresMediaAssetRepository', 'catalog.persistence.assets'),
+                    ('from catalog.application import candidate_query', 'catalog.application'),
+                    ('import catalog', 'catalog'),
+                    ('from controlplane import config', 'controlplane.config'),
+                ):
+                    self.assertIn(expected, find_unexempted_imports(source, rel))
+
+    def test_candidate_query_stays_forbidden_for_every_other_module(self) -> None:
+        source = 'from catalog.application.candidate_query import query_media_candidates'
+        for rel in (
+            'src/creative/adapters/thumbnail_candidates.py',
+            'src/creative/adapters/postgres_selection.py',
+            'src/creative/adapters/real_route_executor.py',
+            'src/creative/adapters/other.py',
+            'src/creative/domain/media_candidates.py',
+        ):
+            with self.subTest(rel=rel):
+                self.assertIn('catalog.application.candidate_query', find_unexempted_imports(source, rel))
+
+    def test_exemptions_do_not_cover_a_directory_or_the_catalog_package(self) -> None:
+        for rel, allowed in ADAPTER_IMPORT_EXEMPTIONS.items():
+            with self.subTest(rel=rel):
+                self.assertTrue(rel.endswith('.py'))
+                self.assertNotIn('catalog', allowed)
+                self.assertNotIn('catalog.application', allowed)
+                self.assertNotIn('catalog.domain', allowed)
+
+    def test_forbidden_import_prefixes_are_unchanged(self) -> None:
+        self.assertEqual(
+            FORBIDDEN_IMPORT_PREFIXES,
+            (
+                'src', 'source_ingestion', 'ingestion', 'catalog', 'voice', 'render', 'psycopg', 'temporalio', 'pydantic',
+                'socket', 'urllib.request', 'http.client', 'controlplane.infrastructure', 'controlplane.ui',
+                'controlplane.api', 'controlplane.config',
+            ),
+        )
 
 
 class PackageLayoutTests(unittest.TestCase):
