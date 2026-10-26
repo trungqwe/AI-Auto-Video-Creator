@@ -269,7 +269,7 @@ def test_production_profile_builds_app_on_postgres(database, tmp_path, monkeypat
         assert isinstance(built, wiring('production').ProductionApp)
         assert set(built.services) == SERVICE_NAMES
         assert built.services['collection'].mode == 'production'
-        assert set(built.api_app.state.module_services) == {'sources', 'hooks'}
+        assert set(built.api_app.state.module_services) == {'sources', 'hooks', 'articles', 'events', 'media', 'artifacts', 'snapshots', 'story-angles', 'scripts', 'sessions', 'accounts', 'cost'}
         assert built.api_app.state.allowed_origins == {f'https://127.0.0.1:{PORT}', f'https://localhost:{PORT}'}
     finally:
         built.manager.close()
@@ -301,8 +301,20 @@ def test_launch_session_authorizes_v1_requests(app):
     hooks = client(app).get('/v1/hooks?limit=1', headers=headers)
     assert hooks.status_code == 200 and hooks.json() == {'items': [], 'next_cursor': None}
     media = client(app).get('/v1/media?limit=1', headers=headers)
-    assert media.status_code == 503 and media.json()['code'] == 'CAPABILITY_UNAVAILABLE'
+    assert media.status_code == 200 and media.json() == {'items': [], 'next_cursor': None}
     assert client(app).get('/v1/secrets/secret-1', headers=headers).status_code in (404, 405)
+
+
+def test_read_screen_services_answer_through_v1_on_postgres(app):
+    launched = client(app).get(launch_path(app))
+    session, csrf = cookie_value(launched, 'cp_session'), cookie_value(launched, 'csrf_token')
+    base = {'Cookie': f'cp_session={session}; csrf_token={csrf}', 'X-CSRF-Token': csrf, 'Origin': BASE}
+    c = client(app)
+    for name in ('articles', 'events', 'artifacts', 'snapshots', 'story-angles', 'scripts', 'sessions', 'accounts', 'cost'):
+        listed = c.get(f'/v1/{name}?limit=1', headers=base)
+        assert listed.status_code == 200 and listed.json() == {'items': [], 'next_cursor': None}, name
+    patched = c.patch('/v1/media/x', json={'tags': ['a']}, headers={**base, 'Idempotency-Key': 'media-1', 'If-Match': '1'})
+    assert patched.status_code == 503 and patched.json()['code'] == 'CAPABILITY_UNAVAILABLE'
 
 
 def test_sources_listed_and_updated_through_v1_on_postgres(app, config, database):

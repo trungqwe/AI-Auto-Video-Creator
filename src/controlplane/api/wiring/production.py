@@ -2,7 +2,7 @@
 
 Ghép create_app (/v1/) với UI tĩnh trên cổng loopback TLS, đổi capability một lần thành phiên
 và chạy worker Temporal. Mô-đun này không nạp mô-đun test-driver nên mọi đường /test-driver/ trả 404.
-Gắn service nguồn của A vào module_services['sources'] và service hook của C vào module_services['hooks']; media chưa gắn (catalog chưa có metadata media) nên vẫn trả 503.
+Gắn service nguồn của A vào module_services['sources'] và service hook của C vào module_services['hooks']; mười service đọc (articles, events, media, artifacts, snapshots, story-angles, scripts, sessions, accounts, cost) gắn qua compose_read_screens, và PATCH /v1/media vẫn trả 503 vì service media ném CapabilityUnavailableError.
 """
 from __future__ import annotations
 
@@ -45,6 +45,7 @@ from controlplane.application.projections.list_query import ListQuery, Page, bui
 from controlplane.application.session_security import BootstrapCapabilityRegistry
 from controlplane.domain.orchestration.workflow_catalog import TaskQueue
 from controlplane.domain.statemachine import ForbiddenTransitionError
+from controlplane.infrastructure.read_screens.compose import compose_read_screens
 from source_ingestion.application.source_commands import IdempotencyConflictError, SourceCommandHandler, SourceNotFoundError
 from source_ingestion.domain.source import Source, SourcePolicy, SourceStatus
 
@@ -393,6 +394,7 @@ def build_production_app(*, manager: Any, config: WiringConfig, port: int,
     api_app = create_app(manager=manager, allowed_origins=origins, bootstrap_registry=registry)
     api_app.state.module_services['sources'] = compose_sources_module(services, config)
     api_app.state.module_services['hooks'] = compose_hooks_module(manager)
+    api_app.state.module_services.update(compose_read_screens(manager))
     api_app.state.production_services = services
     web_app = _build_web_app(manager=manager, api_app=api_app, registry=registry, port=port,
                              dist_dir=dist_dir or DEFAULT_DIST_DIR)
