@@ -64,3 +64,21 @@ Không đổi dòng nào của test_cp6_video_production_flow.py: toàn bộ tes
 ## 7. Đọc lại tính toàn vẹn ký tự: sau khi ghi, đọc lại tệp bằng công cụ đọc tệp và xác nhận chữ có dấu còn nguyên, không có ký tự ? thay thế.
 - Tệp báo cáo được ghi với mã hóa UTF-8 không BOM, định dạng xuống dòng LF.
 - Đã đọc lại tệp bằng công cụ đọc tệp và xác nhận chữ có dấu còn nguyên, không có ký tự ? thay thế.
+
+## 8. Vá sau thu hồi grant G1 (rebase lên 23f547c6)
+- **Finding**: Lệnh canh CP-6-WORKFLOW exit 1 vì `test_workflow_modules_are_deterministic[definitions.py]` thấy `import asyncio`.
+- **Thay đổi đã làm ở definitions.py**:
+  - Xoá `import asyncio` (dòng 3) cùng dòng trống ngay sau nó, để phần đầu tệp còn `from __future__ import annotations`, một dòng trống, rồi `from datetime import timedelta`.
+  - Trong hàm `_drive`, đổi `except asyncio.TimeoutError:` thành `except TimeoutError:`.
+  - Lý do: Python 3.13.15 coi `asyncio.TimeoutError` là bí danh của `TimeoutError` dựng sẵn, nên `workflow.wait_condition(..., timeout=...)` vẫn bị bắt đúng ngoại lệ và hành vi chờ timer của `workflow.wait_condition` không đổi.
+- **Sửa dòng coveredIds của test_pw_cat2_flow.py**:
+  - Sửa dòng 3 của docstring đầu tệp: thay `coveredIds: PW-CAT2-01..06, CT-WF-006, CT-WF-007, CT-ORC-007` bằng đúng `coveredIds: PW-CAT2-01, CT-WF-006, CT-WF-007, CT-ORC-007` để Control đọc đủ từng mã. Thân test không đổi.
+- **Bảng lệnh đã chạy ở bước 4, 5, 7, 8, 9**:
+
+| Bước | Lệnh thực thi | Exit Code | Kết quả thực tế |
+| --- | --- | --- | --- |
+| Bước 4 | `python -m pytest tests/integration/convergence/test_cp6_workflow_static.py tests/integration/convergence/test_cp6_workflow_catalog.py tests/integration/convergence/test_cp6_video_production_flow.py -q -p no:cacheprovider` | 0 | 30 passed in 0.72s (test_workflow_modules_are_deterministic[definitions.py] xanh) |
+| Bước 5 | `python -m pytest tests/integration/prod_wiring/test_pw_cat2_flow.py tests/integration/convergence/test_cp6_video_production_flow.py -q -p no:cacheprovider` | 0 | 39 passed in 2.41s (test chờ trên timer Temporal xanh) |
+| Bước 7 | `git diff --check` | 0 | Exit code 0, không có lỗi whitespace |
+| Bước 8 | `python -c "import pathlib; t = pathlib.Path('src/controlplane/application/orchestration/workflows/flow.py').read_text(encoding='utf-8'); assert 'waiting' in t and 'time.sleep' not in t and 'datetime.now' not in t, 'PW-CAT2'"` | 0 | Exit code 0, không có AssertionError |
+| Bước 9 | `python -c "import pathlib; d = 'src/controlplane/application/orchestration/workflows/'; assert all('asyncio' not in pathlib.Path(d + n).read_text(encoding='utf-8') for n in ('definitions.py', 'flow.py')), 'asyncio'"` | 0 | Exit code 0: không còn chuỗi asyncio trong hai tệp |

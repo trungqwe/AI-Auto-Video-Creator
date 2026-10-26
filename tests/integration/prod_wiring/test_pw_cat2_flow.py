@@ -1,6 +1,6 @@
 """PW-CAT2: flow.py xử lý waiting, RetryStage và fan-out.
 
-coveredIds: PW-CAT2-01..06, CT-WF-006, CT-WF-007, CT-ORC-007
+coveredIds: PW-CAT2-01, CT-WF-006, CT-WF-007, CT-ORC-007
 """
 from __future__ import annotations
 

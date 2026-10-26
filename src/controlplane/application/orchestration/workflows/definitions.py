@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import timedelta
 from typing import Any
 
@@ -117,7 +116,7 @@ async def _drive(
                     lambda: bool(inbox),
                     timeout=timedelta(seconds=settings.capability_poll_seconds),
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
     return flow.snapshot()
 
