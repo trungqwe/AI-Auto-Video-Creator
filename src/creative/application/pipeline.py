@@ -10,8 +10,8 @@ from __future__ import annotations
 import dataclasses
 import enum
 import json
-from collections.abc import Callable, Mapping
-from typing import Any
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, Protocol
 
 from controlplane.application.idempotency.canonicalization import request_hash
 from controlplane.domain.interfaces.uow import IUnitOfWork
@@ -48,6 +48,9 @@ AI_INVOCATION_FAILED = 'ai_invocation_failed'
 IDEMPOTENCY_CONFLICT_CODE = 'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD'
 PROMPT_CONFIG_REF_TYPE = 'prompt'
 DATA_SENSITIVITY = 'internal'
+REF_ARTICLE_REVISION = 'article_revision'
+SELECTION_ID_PREFIX = 'selection:'
+ARTICLE_ROLES = frozenset({ROLE_ANALYSIS, ROLE_ANGLES, ROLE_SCRIPT})
 
 
 class PipelineRejected(Exception):
@@ -121,6 +124,23 @@ def _plain(value: Any) -> Any:
 
 
 
+class ArticleContextPort(Protocol):
+    """Normalized text of the article revisions a snapshot pins; the pipeline puts it in the data block only (CT-AI-000)."""
+
+    def articles(self, workspace_id: str, source_refs: Sequence[Mapping[str, str]]) -> Sequence[Mapping[str, Any]]:
+        ...
+
+
+class SelectionStorePort(Protocol):
+    """Durable CreativeAssetSelection per job: `save` is idempotent for equal content, `load` returns None for an unknown selection_id."""
+
+    def save(self, *, workspace_id: str, job_id: str, selection: CreativeAssetSelection) -> Any:
+        ...
+
+    def load(self, *, workspace_id: str, selection_id: str) -> CreativeAssetSelection | None:
+        ...
+
+
 class CreativePipeline:
     """Runs the eight D commands over one unit-of-work factory, one route port and one AI port; fakes in tests, J adapters later (CONV-D-02)."""
 
@@ -131,6 +151,8 @@ class CreativePipeline:
         route: ProviderRoutePort,
         ai: AIInvocationPort,
         instructions: Mapping[str, str],
+        articles: ArticleContextPort | None = None,
+        selections: SelectionStorePort | None = None,
     ) -> None:
         if not callable(uow_factory):
             raise TypeError('uow_factory must be callable')
@@ -140,6 +162,8 @@ class CreativePipeline:
         self._route = route
         self._ai = ai
         self._instructions = dict(instructions)
+        self._articles = articles
+        self._selections = selections
 
     def _execute(
         self,
@@ -197,8 +221,40 @@ class CreativePipeline:
             invocation_key=invocation_key,
         )
 
-    def _invoke(self, uow: Any, *, context: EventContext, idempotency_key: str, role: str, snapshot: ProductionSnapshot, payload: Mapping[str, Any]) -> tuple[Any, ResourceRef, str]:
-        """Route, call and record one AI invocation inside the open unit of work; returns (AIInvocationResult, prompt ResourceRef, invocation key)."""
+    @staticmethod
+    def _prior_item(workspace_id: str, kind: str, ref_type: str, ref_id: str, revision: Any, value: Any) -> tuple[str, Any, ResourceRef]:
+        """An earlier-stage result for the data block of the next call: its kind, the stored record and where it came from."""
+        return (kind, value, ResourceRef(workspace_id, ref_type, ref_id, str(revision)))
+
+    @staticmethod
+    def _data_item(kind: str, value: Any, provenance: ResourceRef) -> UntrustedText:
+        """External or earlier-stage content as one untrusted JSON data item; it is never part of the instructions."""
+        return UntrustedText(json.dumps({'kind': kind, 'content': _plain(value)}, sort_keys=True, ensure_ascii=False), provenance)
+
+    def _article_data(self, workspace_id: str, snapshot: ProductionSnapshot, role: str) -> list[UntrustedText]:
+        """Normalized text of the snapshot's article revisions for the roles that read content; a revision that is not stored is INPUT_NOT_READY."""
+        if self._articles is None or role not in ARTICLE_ROLES:
+            return []
+        refs = [ref for ref in snapshot.source_refs if ref['ref_type'] == REF_ARTICLE_REVISION]
+        items = list(self._articles.articles(workspace_id, refs))
+        if len(items) != len(refs):
+            raise PipelineRejected(INPUT_NOT_READY, 'article_revision_not_found', 'source_refs')
+        return [
+            self._data_item('article', item, ResourceRef(workspace_id, REF_ARTICLE_REVISION, item['article_id'], item['article_revision_id']))
+            for item in items
+        ]
+
+    def _stored_selection(self, workspace_id: str, selection_ref: str) -> CreativeAssetSelection:
+        """The selection read from the selection store by its id; no store or an unknown id is INPUT_NOT_READY."""
+        if self._selections is None:
+            raise PipelineRejected(INPUT_NOT_READY, 'selection_store_missing', 'selection_ref')
+        found = self._selections.load(workspace_id=workspace_id, selection_id=selection_ref)
+        if found is None:
+            raise PipelineRejected(INPUT_NOT_READY, 'selection_not_found', 'selection_ref')
+        return found
+
+    def _invoke(self, uow: Any, *, context: EventContext, idempotency_key: str, role: str, snapshot: ProductionSnapshot, payload: Mapping[str, Any], prior: Sequence[tuple[str, Any, ResourceRef]] = ()) -> tuple[Any, ResourceRef, str]:
+        """Route, call and record one AI invocation inside the open unit of work; the data block holds the payload ids, the article text (analysis, angles and script only) and the earlier results in `prior`, never the instructions; returns (AIInvocationResult, prompt ResourceRef, invocation key)."""
         workspace_id = context.workspace_id
         pinned = next(
             (ref for ref in snapshot.configuration_revision_refs if ref['ref_type'] == PROMPT_CONFIG_REF_TYPE and ref['ref_id'] == role),
@@ -211,8 +267,12 @@ class CreativePipeline:
             raise PipelineRejected(INPUT_NOT_READY, 'missing_instructions', role)
         prompt_ref = ResourceRef(workspace_id, PROMPT_REVISION_REF_TYPE, pinned['ref_id'], pinned['revision_id'])
         provenance = ResourceRef(workspace_id, 'production_snapshot', snapshot.snapshot_id, snapshot.source_set_fingerprint)
-        text = json.dumps(_plain(payload), sort_keys=True, ensure_ascii=False)
-        envelope = PromptEnvelope(prompt_ref=prompt_ref, instructions=instructions, data=(UntrustedText(text, provenance),))
+        data = [
+            UntrustedText(json.dumps(_plain(payload), sort_keys=True, ensure_ascii=False), provenance),
+            *self._article_data(workspace_id, snapshot, role),
+            *(self._data_item(kind, value, ref) for kind, value, ref in prior),
+        ]
+        envelope = PromptEnvelope(prompt_ref=prompt_ref, instructions=instructions, data=tuple(data))
         decision = self._route.resolve({
             'ai_role': route_key(role),
             'job_ref': snapshot.video_job_ref or snapshot.snapshot_id,
@@ -397,9 +457,10 @@ class CreativePipeline:
 
         def work(uow: Any) -> _Outcome:
             snapshot = self._committed_snapshot(uow, snapshot_id)
-            self._analysis(uow, snapshot_id, analysis_id, analysis_revision)
+            analysis = self._analysis(uow, snapshot_id, analysis_id, analysis_revision)
+            prior = [self._prior_item(context.workspace_id, 'content_analysis', 'content_analysis', analysis_id, analysis_revision, analysis)]
             result, _, key = self._invoke(
-                uow, context=context, idempotency_key=idempotency_key, role=ROLE_ANGLES, snapshot=snapshot, payload=payload)
+                uow, context=context, idempotency_key=idempotency_key, role=ROLE_ANGLES, snapshot=snapshot, payload=payload, prior=prior)
             candidates = self._angles(self._resolver(context.workspace_id, snapshot), self._model_json(result))
             angle_set = build_story_angle_set(
                 set_id=set_id, analysis_id=analysis_id, analysis_revision=analysis_revision, requested_count=requested_count,
@@ -435,10 +496,14 @@ class CreativePipeline:
 
         def work(uow: Any) -> _Outcome:
             snapshot = self._committed_snapshot(uow, snapshot_id)
-            self._analysis(uow, snapshot_id, analysis_id, analysis_revision)
-            self._angle(uow, set_id, angle_id)
+            analysis = self._analysis(uow, snapshot_id, analysis_id, analysis_revision)
+            angle = self._angle(uow, set_id, angle_id)
+            prior = [
+                self._prior_item(context.workspace_id, 'content_analysis', 'content_analysis', analysis_id, analysis_revision, analysis),
+                self._prior_item(context.workspace_id, 'story_angle', 'story_angle', angle_id, set_id, angle),
+            ]
             result, _, key = self._invoke(
-                uow, context=context, idempotency_key=idempotency_key, role=ROLE_SCRIPT, snapshot=snapshot, payload=payload)
+                uow, context=context, idempotency_key=idempotency_key, role=ROLE_SCRIPT, snapshot=snapshot, payload=payload, prior=prior)
             raw = {**self._model_json(result), 'script_version_id': script_version_id}
             script = build_script_version(
                 raw, resolver=self._resolver(context.workspace_id, snapshot), language_policy=language_policy, target_range=target_range)
@@ -468,7 +533,7 @@ class CreativePipeline:
         preset_registry_revision: str | None,
         weights: Any,
     ) -> CommandResult:
-        """SelectCreativeAssets (CT-AI-006): D-13 has no repository for the selection, so the unit of work stores the invocation record and receipt and returns the selection in the result (open item CONV-D-01)."""
+        """SelectCreativeAssets (CT-AI-006): one AI call; with a selection store the selection is saved per job (idempotent) and the receipt names it as 'selection:<selection_fingerprint>'."""
         inputs = {
             'media_candidates': list(media_candidates), 'visual_hook_candidates': list(visual_hook_candidates),
             'audio_hook_candidates': list(audio_hook_candidates), 'thumbnail_candidates': list(thumbnail_candidates),
@@ -479,13 +544,19 @@ class CreativePipeline:
 
         def work(uow: Any) -> _Outcome:
             snapshot = self._committed_snapshot(uow, snapshot_id)
-            self._stored(uow.scripts, script_version_id, None, 'script_not_found', 'script_version_id')
-            self._angle(uow, set_id, angle_id)
+            script = self._stored(uow.scripts, script_version_id, None, 'script_not_found', 'script_version_id')
+            angle = self._angle(uow, set_id, angle_id)
+            prior = [
+                self._prior_item(context.workspace_id, 'script', 'script_version', script_version_id, script.script_fingerprint, script),
+                self._prior_item(context.workspace_id, 'story_angle', 'story_angle', angle_id, set_id, angle),
+            ]
             result, _, key = self._invoke(
-                uow, context=context, idempotency_key=idempotency_key, role=ROLE_SELECTION, snapshot=snapshot, payload=payload)
+                uow, context=context, idempotency_key=idempotency_key, role=ROLE_SELECTION, snapshot=snapshot, payload=payload, prior=prior)
             selection = select_creative_assets(
                 workspace_id=context.workspace_id, snapshot_ref=snapshot_id, script_ref=script_version_id, angle_ref=angle_id,
                 proposal=self._model_json(result), **inputs)
+            if self._selections is not None:
+                self._selections.save(workspace_id=context.workspace_id, job_id=snapshot.video_job_ref or snapshot_id, selection=selection)
             return _Outcome(
                 output=selection, aggregate_ref='selection:' + selection.selection_fingerprint, aggregate_revision=1,
                 trace=self._trace(snapshot, result.record, key))
@@ -499,27 +570,41 @@ class CreativePipeline:
         idempotency_key: str,
         snapshot_id: str,
         script_version_id: str,
-        selection: CreativeAssetSelection,
+        selection: CreativeAssetSelection | None = None,
         production_plan_id: str,
         preset_revision_ref: str,
+        selection_ref: str | None = None,
     ) -> CommandResult:
-        """BuildProductionPlan (CT-AI-007): one AI call; the plan is built from the stored script and the given selection and stored with ProductionPlanCreated."""
-        if not isinstance(selection, CreativeAssetSelection):
+        """BuildProductionPlan (CT-AI-007): one AI call; the plan is built from the stored script and a selection, either given or read from the selection store by `selection_ref`, and stored with ProductionPlanCreated."""
+        if (selection is None) == (selection_ref is None):
+            raise ValueError('exactly one of selection and selection_ref is required')
+        if selection is not None and not isinstance(selection, CreativeAssetSelection):
             raise TypeError('selection must be a CreativeAssetSelection')
         payload = {
             'snapshot_id': snapshot_id, 'script_version_id': script_version_id, 'production_plan_id': production_plan_id,
-            'preset_revision_ref': preset_revision_ref, 'selection_fingerprint': selection.selection_fingerprint,
+            'preset_revision_ref': preset_revision_ref,
         }
+        if selection is not None:
+            payload['selection_fingerprint'] = selection.selection_fingerprint
+        else:
+            payload['selection_ref'] = selection_ref
 
         def work(uow: Any) -> _Outcome:
             snapshot = self._committed_snapshot(uow, snapshot_id)
             script = self._stored(uow.scripts, script_version_id, None, 'script_not_found', 'script_version_id')
-            if selection.snapshot_ref != snapshot_id:
+            chosen = selection if selection is not None else self._stored_selection(context.workspace_id, selection_ref)
+            if chosen.snapshot_ref != snapshot_id:
                 raise PipelineRejected(CONTEXT_MISMATCH, 'selection_snapshot_mismatch', 'selection')
+            prior = [
+                self._prior_item(context.workspace_id, 'script', 'script_version', script_version_id, script.script_fingerprint, script),
+                self._prior_item(
+                    context.workspace_id, 'selection', 'creative_asset_selection', SELECTION_ID_PREFIX + chosen.selection_fingerprint,
+                    chosen.selection_fingerprint, chosen),
+            ]
             result, _, key = self._invoke(
-                uow, context=context, idempotency_key=idempotency_key, role=ROLE_PLAN, snapshot=snapshot, payload=payload)
+                uow, context=context, idempotency_key=idempotency_key, role=ROLE_PLAN, snapshot=snapshot, payload=payload, prior=prior)
             plan = build_production_plan(
-                self._model_json(result), production_plan_id=production_plan_id, script=script, selection=selection,
+                self._model_json(result), production_plan_id=production_plan_id, script=script, selection=chosen,
                 preset_revision_ref=preset_revision_ref)
             uow.plans.append(production_plan_id, 1, plan)
             event = build_production_plan_created(context, aggregate_id=production_plan_id, aggregate_revision=1, plan=plan)
@@ -588,8 +673,13 @@ class CreativePipeline:
 
         def work(uow: Any) -> _Outcome:
             snapshot = self._committed_snapshot(uow, snapshot_id)
+            plans = [stored.record for stored in (uow.plans.latest(ref) for ref in refs) if stored is not None]
+            prior = [
+                self._prior_item(context.workspace_id, 'plan', 'production_plan', plan.production_plan_id, plan.plan_fingerprint, plan)
+                for plan in plans
+            ]
             result, _, key = self._invoke(
-                uow, context=context, idempotency_key=idempotency_key, role=ROLE_METADATA, snapshot=snapshot, payload=payload)
+                uow, context=context, idempotency_key=idempotency_key, role=ROLE_METADATA, snapshot=snapshot, payload=payload, prior=prior)
             raw = self._model_json(result)
             try:
                 metadata = OutputMetadata(
@@ -611,9 +701,11 @@ class CreativePipeline:
 
 __all__ = [
     'AI_ROLES',
+    'ArticleContextPort',
     'CommandResult',
     'CreativePipeline',
     'IdempotencyConflict',
     'OutputTrace',
     'PipelineRejected',
+    'SelectionStorePort',
 ]
