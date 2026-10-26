@@ -1,8 +1,8 @@
-# M4-MILESTONE-CLOSE-R3: danh sách gói và SHA tích hợp (revision 3)
+# M4-MILESTONE-CLOSE-R4: danh sách gói và SHA tích hợp (revision 4)
 
-- Candidate SHA đang kiểm định: `6042d7a626d3d523881cc86d1b0ac674986bcafa` (integration head, tiêu đề `integrate(ADAPT-LAUNCH-FIX2): lane lane-adapt-launch-fix2 candidate 903393a717cb`)
-- Tổng số gói trong danh sách yêu cầu nghiệm thu mục 1: 131 gói (gồm 118 gói công việc và 13 cổng kiểm soát); danh sách kết thúc ở E-02
-- Số gói/cổng đã tra cứu thành công SHA / recordHash: 131 / 131 (trong đó 117/117 gói công việc có commit integrate 40-hex, M4-CI-PLAN có SHA do Control cung cấp, 13/13 cổng kiểm soát có recordHash do Control cấp)
+- Candidate SHA đang kiểm định: 3497cecbf9fe9a09818192e9c7c12c0c68396c01 (HEAD của worktree, tiêu đề integrate(M4-MILESTONE-CLOSE-R3): lane lane-m4-milestone-close-r3 candidate cb368a9d8eea)
+- Tổng số gói trong danh sách yêu cầu nghiệm thu mục 1: 159 gói (gồm 146 gói công việc và 13 cổng kiểm soát); danh sách kết thúc ở G-01
+- Số gói/cổng đã tra cứu thành công SHA / recordHash: 159 / 159 (trong đó 145/145 gói công việc có commit integrate 40-hex, M4-CI-PLAN có SHA do Control cung cấp, 13/13 cổng kiểm soát có recordHash do Control cấp)
 - Số gói thiếu SHA: 0
 
 ## Bảng đối chiếu các gói trong danh sách yêu cầu
@@ -25,19 +25,6 @@
 | IMPL-PLAN-PERSIST | Gói kế hoạch (Plan) | `d9d23586d3af1fa6b2f2b6b741f3bd77e2178ab7` (lane lane-impl-plan-persist candidate e9761d25ac7e) | git log, subject `integrate(IMPL-PLAN-PERSIST): ...` |
 | IMPL-PLAN-ADAPT | Gói kế hoạch (Plan) | `7823cf907f8c7ce056479b5fd09c502fbf570237` (lane lane-impl-plan-adapt candidate dc0949d5b990) | git log, subject `integrate(IMPL-PLAN-ADAPT): ...` |
 | IMPL-PLAN-CONVERGENCE-EXT-UI | Gói kế hoạch (Plan) | `cd33459cd73cbb41accec6725e7c932da154198e` (lane lane-impl-plan-convergence-ext-ui candidate 89c22703dc93) | git log, subject `integrate(IMPL-PLAN-CONVERGENCE-EXT-UI): ...` |
-| CP-3-MIGRATIONS-FIX1 | Gói sửa lỗi (Fix) | `836de0d664d3bcbc2dc5ff53013cb8b9c5a94cf0` (lane lane-cp-3-migrations-fix1 candidate a8a6cf78f104) | git log, subject `integrate(CP-3-MIGRATIONS-FIX1): ...` |
-| CP-4-WIRING-FIX1 | Gói sửa lỗi (Fix) | `06d6c84d8b798f693eab635ab44007ebc23df263` (lane lane-cp-4-wiring-fix1 candidate 2309b3ab4898) | git log, subject `integrate(CP-4-WIRING-FIX1): ...` |
-| PERSIST-G-FIX1 | Gói sửa lỗi (Fix) | `f03fed2f209808f80999643408f4f19a32cde567` (lane lane-persist-g-fix1 candidate 6f53564a6c56) | git log, subject `integrate(PERSIST-G-FIX1): ...` |
-| CP-5-COMPLETION-FIX1 | Gói sửa lỗi (Fix) | `0ba3801fb9709dd85f7ff15330a877bfd3bf6561` (lane lane-cp-5-completion-fix1 candidate c2eaba9f3460) | git log, subject `integrate(CP-5-COMPLETION-FIX1): ...` |
-| ADAPT-WIRE-FIX1 | Gói sửa lỗi (Fix) | `810c377c112f7ce082ab51564591ade9a519e0b0` (lane lane-adapt-wire-fix1 candidate f42c94477378) | git log, subject `integrate(ADAPT-WIRE-FIX1): ...` |
-| CP-4-WIRING-FIX2 | Gói sửa lỗi (Fix) | `759ea0abd830f76b6f6a99232e8183ee50a9f34d` (lane lane-cp-4-wiring-fix2 candidate 5aed9712848f) | git log, subject `integrate(CP-4-WIRING-FIX2): ...` |
-| ADAPT-PROD-FIX1 | Gói sửa lỗi (Fix) | `6ba0bcde40de3d3adf8405d9df6bd8cae431227a` (lane lane-adapt-prod-fix1 candidate d588d9c0e8b0) | git log, subject `integrate(ADAPT-PROD-FIX1): ...` |
-| CP-4B-UI-SCREENS-FIX1 | Gói sửa lỗi (Fix) | `adc7634f45a21c2fa174adee662962d7a1b21a57` (lane lane-cp-4b-ui-screens-fix1 candidate 2760ee3ca0f9) | git log, subject `integrate(CP-4B-UI-SCREENS-FIX1): ...` |
-| PERSIST-C-FIX1 | Gói sửa lỗi (Fix) | `ab8586d55fc612825888d6a7e26e58ae96d28af6` (lane lane-persist-c-fix1 candidate 2327dcf8e326) | git log, subject `integrate(PERSIST-C-FIX1): ...` |
-| ADAPT-PROD-FIX2 | Gói sửa lỗi (Fix) | `fa250e8305aa422ff260f2ce9bb3622a29239740` (lane lane-adapt-prod-fix2 candidate e1cc7f40b25b) | git log, subject `integrate(ADAPT-PROD-FIX2): ...` |
-| CP-4B-UI-SCREENS-FIX2 | Gói sửa lỗi (Fix) | `74c062a29d649ea0e3d1471dee9c739dc33d38fe` (lane lane-cp-4b-ui-screens-fix2 candidate 1c85775dea49) | git log, subject `integrate(CP-4B-UI-SCREENS-FIX2): ...` |
-| ADAPT-LAUNCH-FIX1 | Gói sửa lỗi (Fix) | `21d99fc89eb076a036b4d62f026b057a61d96135` (lane lane-adapt-launch-fix1 candidate 9bcb10e680dc) | git log, subject `integrate(ADAPT-LAUNCH-FIX1): ...` |
-| ADAPT-LAUNCH-FIX2 | Gói sửa lỗi (Fix) | `6042d7a626d3d523881cc86d1b0ac674986bcafa` (lane lane-adapt-launch-fix2 candidate 903393a717cb) | git log, subject `integrate(ADAPT-LAUNCH-FIX2): ...` |
 | A-01 | Lát cắt triển khai (Slice) | `22535f6dcff3dbf2e3187771a9bff1b34c85c838` (lane lane-a-01 candidate b11289d9c406) | git log, subject `integrate(A-01): ...` |
 | A-02 | Lát cắt triển khai (Slice) | `e343a41ee6570c39d0cbeda2bd35a3bf2c15513f` (lane lane-a-02 candidate 0614e8d1934d) | git log, subject `integrate(A-02): ...` |
 | A-03 | Lát cắt triển khai (Slice) | `5e009d1c06ba60052bdd1658f939ffaadc626597` (lane lane-a-03 candidate 6382ebd2cdde) | git log, subject `integrate(A-03): ...` |
@@ -140,13 +127,6 @@
 | D-18 | Lát cắt triển khai (Slice) | `febeb176885bf16a5e27f5a2b344a8480a25f0c9` (lane lane-d-18 candidate 669f67fa1840) | git log, subject `integrate(D-18): ...` |
 | E-01 | Lát cắt triển khai (Slice) | `170b96b2748929758f96d9b5a54726be29fb7600` (lane lane-e-01 candidate c1e0e06e1f98) | git log, subject `integrate(E-01): ...` |
 | E-02 | Lát cắt triển khai (Slice) | `dd68637ba76c9e3213de9b564226e2e69f35f230` (lane lane-e-02 candidate 683e3e8396c4) | git log, subject `integrate(E-02): ...` |
-
-## Gói ngoài danh sách yêu cầu: E-03..E-20 và F-01..F-07
-
-25 gói E-03..E-20 và F-01..F-07 nằm ngoài danh sách yêu cầu nghiệm thu revision 3 (danh sách kết thúc ở E-02; E-03..E-05 từng nằm trong danh sách revision 2); ghi SHA tích hợp chỉ để tham khảo, không tính vào tổng 131.
-
-| Mã gói | Loại | SHA tích hợp hoặc recordHash | Nguồn tra cứu |
-| --- | --- | --- | --- |
 | E-03 | Lát cắt triển khai (Slice) | `3f89da586c1ffc46c04d3a3f2793f0c0921d24fd` (lane lane-e-03 candidate c426045eb0f9) | git log, subject `integrate(E-03): ...` |
 | E-04 | Lát cắt triển khai (Slice) | `f54199a752a19475f567738a7c70eb108d583316` (lane lane-e-04 candidate 7a2fb4c4fc40) | git log, subject `integrate(E-04): ...` |
 | E-05 | Lát cắt triển khai (Slice) | `3f026bb8ba5c01a566dde9fffcc0480c727dcdf3` (lane lane-e-05 candidate 880bb810bb04) | git log, subject `integrate(E-05): ...` |
@@ -172,29 +152,42 @@
 | F-05 | Lát cắt triển khai (Slice) | `100bfcb0fcfcc4b9940c5c07a9b4afa82e1f9a45` (lane lane-f-05 candidate 8516288f5417) | git log, subject `integrate(F-05): ...` |
 | F-06 | Lát cắt triển khai (Slice) | `7622e01f50b6257f93a5c0b90f84880b5c9bf952` (lane lane-f-06 candidate c28e40d61e92) | git log, subject `integrate(F-06): ...` |
 | F-07 | Lát cắt triển khai (Slice) | `b8dc82489eb61f7e284e02ab8d4e0be7b817fc27` (lane lane-f-07 candidate d70d7c536116) | git log, subject `integrate(F-07): ...` |
+| F-08 | Lát cắt triển khai (Slice) | `95efd236a7bf8b07dc6c0aae751d1992d2c8ef5b` (lane lane-f-08 candidate 9c31b35843c5) | git log, subject `integrate(F-08): ...` |
+| F-09 | Lát cắt triển khai (Slice) | `c8cfa82317412bd023f3e19e9134f470f4fb5fce` (lane lane-f-09 candidate 4d1fdeea9582) | git log, subject `integrate(F-09): ...` |
+| F-10 | Lát cắt triển khai (Slice) | `4bbe03d06091909a4ca31ac63850a4dc94ce20fe` (lane lane-f-10 candidate a2266598f3c9) | git log, subject `integrate(F-10): ...` |
+| F-11 | Lát cắt triển khai (Slice) | `580a981df3450c85f49558ead2a486b77ed3e68c` (lane lane-f-11 candidate 5891f0465962) | git log, subject `integrate(F-11): ...` |
+| F-12 | Lát cắt triển khai (Slice) | `6f1cf65b2e2c822f84fc951158bd3086a65cd758` (lane lane-f-12 candidate 89dd41cda238) | git log, subject `integrate(F-12): ...` |
+| F-13 | Lát cắt triển khai (Slice) | `d5e2573211069e1d7d212fead48a5fcdd70c26f3` (lane lane-f-13 candidate 4a3da74249c9) | git log, subject `integrate(F-13): ...` |
+| F-14 | Lát cắt triển khai (Slice) | `4dc0964ce286447d5d95987b402d08b9e99cdfa5` (lane lane-f-14 candidate bb2f5d106c62) | git log, subject `integrate(F-14): ...` |
+| F-15 | Lát cắt triển khai (Slice) | `8fc0a24d980ad0de18f4f5e34542151e971a842b` (lane lane-f-15 candidate a8166444db02) | git log, subject `integrate(F-15): ...` |
+| F-16 | Lát cắt triển khai (Slice) | `a5ed0e1569a24c7699bc0a184c47b9a500f30e17` (lane lane-f-16 candidate 1eac899e6206) | git log, subject `integrate(F-16): ...` |
+| F-17 | Lát cắt triển khai (Slice) | `d7f79a2aca73e091126fa1b788d4668b9801b0b3` (lane lane-f-17 candidate d50d0d8e1602) | git log, subject `integrate(F-17): ...` |
+| F-18 | Lát cắt triển khai (Slice) | `4381df15795a818cc8c774b84e55fe7b923237d3` (lane lane-f-18 candidate ace01aaf9b75) | git log, subject `integrate(F-18): ...` |
+| F-19 | Lát cắt triển khai (Slice) | `b6a4796674c86648798f1a5c41e263246acbba49` (lane lane-f-19 candidate dd031a190418) | git log, subject `integrate(F-19): ...` |
+| F-20 | Lát cắt triển khai (Slice) | `d6244988169563ae638cf419c73fafb43ff04a7a` (lane lane-f-20 candidate 19651248ab56) | git log, subject `integrate(F-20): ...` |
+| F-21 | Lát cắt triển khai (Slice) | `b61497009eccadcef157bc797e4eb1f9263b7f63` (lane lane-f-21 candidate 6beaab0677ce) | git log, subject `integrate(F-21): ...` |
+| F-22 | Lát cắt triển khai (Slice) | `bf52905b3b8547f82a51aa2ccc926f7b7ae1b0bc` (lane lane-f-22 candidate d40433158cc7) | git log, subject `integrate(F-22): ...` |
+| G-01 | Lát cắt triển khai (Slice) | `0591304d66208f1b9c445a437d793b1c1bb7210b` (lane lane-g-01 candidate ce5b3bf82eb1) | git log, subject `integrate(G-01): ...` |
 
-## Gói ngoài danh sách yêu cầu (tiếp): F-08..F-22, G, H, I, J và gói nền tảng
+## Gói ngoài danh sách yêu cầu (tham khảo, không tính vào tổng 159)
 
-79 gói F-08..F-22, G-01..G-14, H-01..H-16, I-01..I-13, J-01..J-18, CP0-GOVERNANCE, CP1-CONTRACT-BINDING và CP2A-LAYOUT cũng nằm ngoài danh sách yêu cầu; ghi SHA tích hợp để Reviewer và Orchestrator đối chiếu, không tính vào tổng 131.
+Các gói dưới đây nằm ngoài danh sách yêu cầu nghiệm thu revision 4 (G-02..G-14, H-01..H-16, I-01..I-13, J-01..J-18, CP0-GOVERNANCE, CP1-CONTRACT-BINDING, CP2A-LAYOUT và 13 gói sửa lỗi tích hợp); ghi SHA tích hợp để Reviewer và Orchestrator đối chiếu, không tính vào tổng 159.
 
-| Mã gói | Loại | SHA tích hợp hoặc recordHash | Nguồn tra cứu |
+| Mã gói | Loại | SHA tích hợp hoặc recordHash | Nguồn xác minh |
 | --- | --- | --- | --- |
-| F-08 | Lát cắt triển khai bổ sung (Slice) | `95efd236a7bf8b07dc6c0aae751d1992d2c8ef5b` (lane lane-f-08 candidate 9c31b35843c5) | git log, subject `integrate(F-08): ...` |
-| F-09 | Lát cắt triển khai bổ sung (Slice) | `c8cfa82317412bd023f3e19e9134f470f4fb5fce` (lane lane-f-09 candidate 4d1fdeea9582) | git log, subject `integrate(F-09): ...` |
-| F-10 | Lát cắt triển khai bổ sung (Slice) | `4bbe03d06091909a4ca31ac63850a4dc94ce20fe` (lane lane-f-10 candidate a2266598f3c9) | git log, subject `integrate(F-10): ...` |
-| F-11 | Lát cắt triển khai bổ sung (Slice) | `580a981df3450c85f49558ead2a486b77ed3e68c` (lane lane-f-11 candidate 5891f0465962) | git log, subject `integrate(F-11): ...` |
-| F-12 | Lát cắt triển khai bổ sung (Slice) | `6f1cf65b2e2c822f84fc951158bd3086a65cd758` (lane lane-f-12 candidate 89dd41cda238) | git log, subject `integrate(F-12): ...` |
-| F-13 | Lát cắt triển khai bổ sung (Slice) | `d5e2573211069e1d7d212fead48a5fcdd70c26f3` (lane lane-f-13 candidate 4a3da74249c9) | git log, subject `integrate(F-13): ...` |
-| F-14 | Lát cắt triển khai bổ sung (Slice) | `4dc0964ce286447d5d95987b402d08b9e99cdfa5` (lane lane-f-14 candidate bb2f5d106c62) | git log, subject `integrate(F-14): ...` |
-| F-15 | Lát cắt triển khai bổ sung (Slice) | `8fc0a24d980ad0de18f4f5e34542151e971a842b` (lane lane-f-15 candidate a8166444db02) | git log, subject `integrate(F-15): ...` |
-| F-16 | Lát cắt triển khai bổ sung (Slice) | `a5ed0e1569a24c7699bc0a184c47b9a500f30e17` (lane lane-f-16 candidate 1eac899e6206) | git log, subject `integrate(F-16): ...` |
-| F-17 | Lát cắt triển khai bổ sung (Slice) | `d7f79a2aca73e091126fa1b788d4668b9801b0b3` (lane lane-f-17 candidate d50d0d8e1602) | git log, subject `integrate(F-17): ...` |
-| F-18 | Lát cắt triển khai bổ sung (Slice) | `4381df15795a818cc8c774b84e55fe7b923237d3` (lane lane-f-18 candidate ace01aaf9b75) | git log, subject `integrate(F-18): ...` |
-| F-19 | Lát cắt triển khai bổ sung (Slice) | `b6a4796674c86648798f1a5c41e263246acbba49` (lane lane-f-19 candidate dd031a190418) | git log, subject `integrate(F-19): ...` |
-| F-20 | Lát cắt triển khai bổ sung (Slice) | `d6244988169563ae638cf419c73fafb43ff04a7a` (lane lane-f-20 candidate 19651248ab56) | git log, subject `integrate(F-20): ...` |
-| F-21 | Lát cắt triển khai bổ sung (Slice) | `b61497009eccadcef157bc797e4eb1f9263b7f63` (lane lane-f-21 candidate 6beaab0677ce) | git log, subject `integrate(F-21): ...` |
-| F-22 | Lát cắt triển khai bổ sung (Slice) | `bf52905b3b8547f82a51aa2ccc926f7b7ae1b0bc` (lane lane-f-22 candidate d40433158cc7) | git log, subject `integrate(F-22): ...` |
-| G-01 | Lát cắt triển khai bổ sung (Slice) | `0591304d66208f1b9c445a437d793b1c1bb7210b` (lane lane-g-01 candidate ce5b3bf82eb1) | git log, subject `integrate(G-01): ...` |
+| CP-3-MIGRATIONS-FIX1 | Gói sửa lỗi (Fix) | `836de0d664d3bcbc2dc5ff53013cb8b9c5a94cf0` (lane lane-cp-3-migrations-fix1 candidate a8a6cf78f104) | git log, subject `integrate(CP-3-MIGRATIONS-FIX1): ...` |
+| CP-4-WIRING-FIX1 | Gói sửa lỗi (Fix) | `06d6c84d8b798f693eab635ab44007ebc23df263` (lane lane-cp-4-wiring-fix1 candidate 2309b3ab4898) | git log, subject `integrate(CP-4-WIRING-FIX1): ...` |
+| PERSIST-G-FIX1 | Gói sửa lỗi (Fix) | `f03fed2f209808f80999643408f4f19a32cde567` (lane lane-persist-g-fix1 candidate 6f53564a6c56) | git log, subject `integrate(PERSIST-G-FIX1): ...` |
+| CP-5-COMPLETION-FIX1 | Gói sửa lỗi (Fix) | `0ba3801fb9709dd85f7ff15330a877bfd3bf6561` (lane lane-cp-5-completion-fix1 candidate c2eaba9f3460) | git log, subject `integrate(CP-5-COMPLETION-FIX1): ...` |
+| ADAPT-WIRE-FIX1 | Gói sửa lỗi (Fix) | `810c377c112f7ce082ab51564591ade9a519e0b0` (lane lane-adapt-wire-fix1 candidate f42c94477378) | git log, subject `integrate(ADAPT-WIRE-FIX1): ...` |
+| CP-4-WIRING-FIX2 | Gói sửa lỗi (Fix) | `759ea0abd830f76b6f6a99232e8183ee50a9f34d` (lane lane-cp-4-wiring-fix2 candidate 5aed9712848f) | git log, subject `integrate(CP-4-WIRING-FIX2): ...` |
+| ADAPT-PROD-FIX1 | Gói sửa lỗi (Fix) | `6ba0bcde40de3d3adf8405d9df6bd8cae431227a` (lane lane-adapt-prod-fix1 candidate d588d9c0e8b0) | git log, subject `integrate(ADAPT-PROD-FIX1): ...` |
+| CP-4B-UI-SCREENS-FIX1 | Gói sửa lỗi (Fix) | `adc7634f45a21c2fa174adee662962d7a1b21a57` (lane lane-cp-4b-ui-screens-fix1 candidate 2760ee3ca0f9) | git log, subject `integrate(CP-4B-UI-SCREENS-FIX1): ...` |
+| PERSIST-C-FIX1 | Gói sửa lỗi (Fix) | `ab8586d55fc612825888d6a7e26e58ae96d28af6` (lane lane-persist-c-fix1 candidate 2327dcf8e326) | git log, subject `integrate(PERSIST-C-FIX1): ...` |
+| ADAPT-PROD-FIX2 | Gói sửa lỗi (Fix) | `fa250e8305aa422ff260f2ce9bb3622a29239740` (lane lane-adapt-prod-fix2 candidate e1cc7f40b25b) | git log, subject `integrate(ADAPT-PROD-FIX2): ...` |
+| CP-4B-UI-SCREENS-FIX2 | Gói sửa lỗi (Fix) | `74c062a29d649ea0e3d1471dee9c739dc33d38fe` (lane lane-cp-4b-ui-screens-fix2 candidate 1c85775dea49) | git log, subject `integrate(CP-4B-UI-SCREENS-FIX2): ...` |
+| ADAPT-LAUNCH-FIX1 | Gói sửa lỗi (Fix) | `21d99fc89eb076a036b4d62f026b057a61d96135` (lane lane-adapt-launch-fix1 candidate 9bcb10e680dc) | git log, subject `integrate(ADAPT-LAUNCH-FIX1): ...` |
+| ADAPT-LAUNCH-FIX2 | Gói sửa lỗi (Fix) | `6042d7a626d3d523881cc86d1b0ac674986bcafa` (lane lane-adapt-launch-fix2 candidate 903393a717cb) | git log, subject `integrate(ADAPT-LAUNCH-FIX2): ...` |
 | G-02 | Lát cắt triển khai bổ sung (Slice) | `bb8fe184f25fbe36ed0bdefa1bbffb162c1d4634` (lane lane-g-02 candidate f34da0dcd82f) | git log, subject `integrate(G-02): ...` |
 | G-03 | Lát cắt triển khai bổ sung (Slice) | `23a1c347fc8abac60f20946be6e4c6155747995d` (lane lane-g-03 candidate 23e40f054191) | git log, subject `integrate(G-03): ...` |
 | G-04 | Lát cắt triển khai bổ sung (Slice) | `4fd21816ce8c657983f0e09d226209f381b13f5c` (lane lane-g-04 candidate 50941b02e1a4) | git log, subject `integrate(G-04): ...` |
