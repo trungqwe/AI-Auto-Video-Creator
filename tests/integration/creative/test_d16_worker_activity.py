@@ -130,10 +130,10 @@ ARGS = {
 RESPONSES = {
     role: {'text': json.dumps(payload), 'refs': []}
     for role, payload in {
-        'content_analysis': _analysis_json('v1'),
-        'story_angles': _angles_json('v1'),
-        'script_generation': _script_json('v1'),
-        'output_metadata': _metadata_json(),
+        'analysis': _analysis_json('v1'),
+        'angle': _angles_json('v1'),
+        'script': _script_json('v1'),
+        'metadata': _metadata_json(),
     }.items()
 }
 
@@ -305,7 +305,7 @@ def test_ai_activities_run_one_command_each_and_a_finished_stage_never_starts_th
     assert [item['output_refs'][0]['ref_type'] for item in rest] == ['content_analysis', 'story_angle_set', 'script_version']
     assert [item['output_refs'][0]['ref_id'] for item in rest] == ['an-1', 'set-1', 'script-1']
     assert [item['metrics']['ai_invoked'] for item in rest] == [True, True, True]
-    assert rig.ai.calls_by_role == {'content_analysis': 1, 'story_angles': 1, 'script_generation': 1}
+    assert rig.ai.calls_by_role == {'analysis': 1, 'angle': 1, 'script': 1}
     assert rig.events() == ['ProductionSnapshotCommitted', 'StoryAnglesGenerated', 'ScriptVersionCreated']
     assert rig.uow.scripts.latest('script-1') is not None
 
@@ -470,7 +470,7 @@ def test_a_command_rejection_is_a_failed_result_with_its_code_and_nothing_commit
 
 
 def test_provider_failure_is_a_failed_result_with_a_code_only_problem():
-    rig = Rig(errors={'content_analysis': f'upstream timeout token={SECRET}'}, known_secrets=(SECRET,))
+    rig = Rig(errors={'analysis': f'upstream timeout token={SECRET}'}, known_secrets=(SECRET,))
     handle(rig)
     result = handle(rig, request_of('AnalyzeContent', 'op-analysis'))
     problem = result['problem']

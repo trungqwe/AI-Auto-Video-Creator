@@ -183,11 +183,31 @@ def _asset_inputs():
         weights=ScoringWeights(semantic=0.6, technical=0.4, recent_usage_penalty=0.1))
 
 
+ROUTE_KEY_OF = {
+    'content_analysis': 'analysis', 'story_angles': 'angle', 'script_generation': 'script',
+    'asset_selection': 'selection', 'production_plan': 'selection', 'output_metadata': 'metadata'}
+
+
 def _responses(rev):
     payloads = {
-        'content_analysis': _analysis_json(rev), 'story_angles': _angles_json(rev), 'script_generation': _script_json(rev),
-        'asset_selection': _selection_json(), 'production_plan': _plan_json(), 'output_metadata': _metadata_json()}
+        'analysis': _analysis_json(rev), 'angle': _angles_json(rev), 'script': _script_json(rev),
+        'selection': _selection_json(), 'metadata': _metadata_json()}
     return {role: {'text': json.dumps(payload), 'refs': []} for role, payload in payloads.items()}
+
+
+class SelectionSplitAI(FakeAIAdapter):
+    """asset_selection and production_plan share the route key 'selection'; pick the scripted response by the envelope instructions (fake_ai.py stays untouched)."""
+
+    def __init__(self, route, **kwargs):
+        super().__init__(route, **kwargs)
+        self._selection_by_instructions = {
+            'Return JSON for asset_selection': {'text': json.dumps(_selection_json()), 'refs': []},
+            'Return JSON for production_plan': {'text': json.dumps(_plan_json()), 'refs': []}}
+
+    def invoke(self, decision, envelope):
+        if self._route.role_for_reservation(decision.capacity_reservation_ref) == 'selection':
+            self._responses['selection'] = copy.deepcopy(self._selection_by_instructions[envelope.instructions])
+        return super().invoke(decision, envelope)
 
 
 class SpyRoute(FakeProviderRoute):
@@ -204,7 +224,7 @@ class Rig:
     def __init__(self, uow=None, source_rev='v1'):
         self.uow = uow if uow is not None else InMemoryUnitOfWork()
         self.route = SpyRoute()
-        self.ai = FakeAIAdapter(self.route, responses=_responses(source_rev), config_revision='cfg-fake')
+        self.ai = SelectionSplitAI(self.route, responses=_responses(source_rev), config_revision='cfg-fake')
         self.pipeline = CreativePipeline(
             uow_factory=lambda: self.uow, route=self.route, ai=self.ai,
             instructions={role: f'Return JSON for {role}' for role in AI_ROLES})
@@ -308,9 +328,9 @@ def test_every_command_is_one_unit_of_work_with_receipt_and_outbox_event():
     assert uow.output_metadata.latest('job-1').record is out['metadata'].output
     assert out['variant'].output.valid is True
     for _, key, role in AI_STEPS:
-        assert uow.invocations.latest('ws-1:' + key).record.ai_role == role
+        assert uow.invocations.latest('ws-1:' + key).record.ai_role == ROUTE_KEY_OF[role]
     assert uow.invocations.latest('ws-1:k-snap') is None and uow.invocations.latest('ws-1:k-variant') is None
-    assert rig.ai.invoke_calls == 6 and rig.ai.calls_by_role == {role: 1 for role in AI_ROLES}
+    assert rig.ai.invoke_calls == 6 and rig.ai.calls_by_role == {'analysis': 1, 'angle': 1, 'script': 1, 'selection': 2, 'metadata': 1}
 
 
 
@@ -326,7 +346,7 @@ def test_every_output_carries_snapshot_model_prompt_config_and_input_revision():
         assert trace.model_ref == record.model_ref and trace.prompt_revision == record.prompt_revision
         assert trace.config_revision == snapshot.configuration_bundle_fingerprint
         assert trace.input_revision == snapshot.source_set_fingerprint
-        assert (record.ai_role, record.config_revision, record.error) == (role, 'cfg-fake', None)
+        assert (record.ai_role, record.config_revision, record.error) == (ROUTE_KEY_OF[role], 'cfg-fake', None)
     for name in ('snapshot', 'variant'):
         trace = out[name].trace
         assert (trace.snapshot_ref, trace.model_ref, trace.prompt_revision) == ('snap-1', None, None)
@@ -460,7 +480,7 @@ def test_same_key_and_payload_returns_old_receipt_without_second_script():
     assert (again.output, again.event_id, again.trace) == (None, None, None)
     assert len(rig.uow.scripts.revisions('script-1')) == 1
     assert rig.ai.invoke_calls == calls and len(rig.uow.outbox.records()) == events
-    assert rig.ai.calls_by_role['script_generation'] == 1
+    assert rig.ai.calls_by_role['script'] == 1
     snap = rig.pipeline.build_production_snapshot(context=_ctx(31), idempotency_key='k-snap', **_snapshot_args())
     assert snap.replayed is True and snap.receipt == out['snapshot'].receipt
 
