@@ -86,7 +86,7 @@ NEW_TABLE_COLUMNS = {
 def test_migrations_to_18_and_schema_matches_0009(db):
     with psycopg.connect(db[0], autocommit=True) as connection:
         versions = [r[0] for r in connection.execute('SELECT version FROM controlplane.cp_schema_migrations ORDER BY version').fetchall()]
-        assert versions == list(range(1, 19))
+        assert versions == list(range(1, 20))
 
         def columns(table):
             rows = connection.execute('SELECT column_name FROM information_schema.columns WHERE table_schema=%s AND table_name=%s', ('controlplane', table)).fetchall()

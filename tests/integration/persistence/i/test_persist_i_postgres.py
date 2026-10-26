@@ -92,7 +92,7 @@ def location_values(ws, version_id, name='obj-1', **extra):
 
 def test_migrations_to_18_and_schema_matches_0010(db):
     with psycopg.connect(db[0], autocommit=True) as connection:
-        assert [r[0] for r in connection.execute('SELECT version FROM controlplane.cp_schema_migrations ORDER BY version').fetchall()] == list(range(1, 19))
+        assert [r[0] for r in connection.execute('SELECT version FROM controlplane.cp_schema_migrations ORDER BY version').fetchall()] == list(range(1, 20))
         table_cols = {
             'cp_artifact_versions': {'intended_storage_class', 'producer_operation_ref', 'lineage_refs'},
             'cp_artifact_locations': {'device_ref', 'logical_category', 'last_verified_at', 'lease_ref', 'retention_state', 'cleanup_state'},

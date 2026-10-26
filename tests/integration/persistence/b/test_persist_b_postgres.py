@@ -60,7 +60,7 @@ def migrated_dsn() -> Iterator[str]:
         MigrationRunner(dsn, MIGRATIONS_DIR, is_test_env=True, expected_database_name=name).migrate_up()
         with psycopg.connect(dsn, autocommit=True) as connection:
             versions = [row[0] for row in connection.execute('SELECT version FROM controlplane.cp_schema_migrations ORDER BY version').fetchall()]
-            assert versions == list(range(1, 19)), f'unexpected applied migrations: {versions}'
+            assert versions == list(range(1, 20)), f'unexpected applied migrations: {versions}'
         yield dsn
     finally:
         with psycopg.connect(admin_dsn, autocommit=True) as admin:

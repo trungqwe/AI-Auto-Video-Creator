@@ -141,7 +141,7 @@ def test_migrations_to_18_and_schema_matches_0011(db):
         rows = connection.execute(
             'SELECT version FROM controlplane.cp_schema_migrations ORDER BY version'
         ).fetchall()
-        assert [r[0] for r in rows] == list(range(1, 19))
+        assert [r[0] for r in rows] == list(range(1, 20))
 
         table_cols = {
             'cp_execution_grants': {

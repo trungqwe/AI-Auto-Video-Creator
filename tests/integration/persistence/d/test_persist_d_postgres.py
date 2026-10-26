@@ -72,7 +72,7 @@ def database():
         MigrationRunner(dsn, MIGRATIONS_DIR, is_test_env=True, expected_database_name=name).migrate_up()
         with psycopg.connect(dsn, autocommit=True) as connection:
             versions = connection.execute('SELECT version FROM controlplane.cp_schema_migrations ORDER BY version').fetchall()
-            assert [row[0] for row in versions] == list(range(1, 19))
+            assert [row[0] for row in versions] == list(range(1, 20))
             for workspace in (WORKSPACE, OTHER_WORKSPACE):
                 connection.execute('INSERT INTO controlplane.cp_workspaces (workspace_id, name, status) VALUES (%s, %s, %s)', (workspace, 'w', 'ACTIVE'))
         yield Database(name, dsn)
@@ -303,7 +303,7 @@ def test_tables_and_columns_exist_in_the_real_schema(database):
     outbox = {'event_id', 'workspace_id', 'event_name', 'aggregate_type', 'aggregate_id', 'aggregate_revision', 'producer', 'schema_version', 'payload', 'published'}
     assert outbox <= columns['cp_outbox_events']
     forward = [p for p in MIGRATIONS_DIR.glob('[0-9][0-9][0-9][0-9]_*.sql') if not p.name.endswith('.rollback.sql')]
-    assert len(forward) == 18
+    assert len(forward) == 19
     adapter_text = ' '.join(path.read_text(encoding='utf-8') for path in sorted(ADAPTER_DIR.rglob('*.py')))
     assert set(re.findall(r'cp_[a-z_]+', adapter_text)) == set(TABLES) | {'cp_outbox_events'}
 

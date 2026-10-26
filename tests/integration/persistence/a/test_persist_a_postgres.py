@@ -233,7 +233,7 @@ def seed_run(manager, ws, **kw):
 
 def test_persist_a_migrations_and_schema(db):
     versions = [r[0] for r in run_sql(db, 'SELECT version FROM controlplane.cp_schema_migrations ORDER BY version')]
-    assert versions == list(range(1, 19))
+    assert versions == list(range(1, 20))
     expected_tables = {
         'cp_sources': {'workspace_id', 'source_id', 'canonical_locator', 'status', 'revision', 'payload', 'created_at', 'updated_at'},
         'cp_source_identities': {'workspace_id', 'canonical_locator', 'source_id', 'is_tombstone', 'tombstoned_at', 'updated_at'},
