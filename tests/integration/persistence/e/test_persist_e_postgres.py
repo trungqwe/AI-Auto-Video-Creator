@@ -296,9 +296,9 @@ def test_persist_e_rejects_unsupported_kind_bad_arguments_and_wrong_record(manag
     uow = _uow(manager)
     with uow:
         with pytest.raises(UnsupportedKindError):
-            uow.outputs.append('receipt', 'k', 1, object())
+            uow.outputs.append('no_such_kind', 'k', 1, object())
         with pytest.raises(UnsupportedKindError):
-            uow.outputs.latest('receipt', 'k')
+            uow.outputs.latest('no_such_kind', 'k')
         with pytest.raises(TypeError):
             uow.outputs.append(KIND_VOICE, 'k', 1, _timing(1))
         with pytest.raises(TypeError):
