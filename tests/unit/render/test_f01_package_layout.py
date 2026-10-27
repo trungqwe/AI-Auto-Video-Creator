@@ -24,9 +24,12 @@ DYNAMIC_IMPORT_CALLS = frozenset({'import_module', '__import__'})
 
 # Miễn trừ hẹp theo kế hoạch ADAPT đã duyệt: docs/implementation/adapt/plan.md dòng 84 và 123-124 (ADAPT-F: subprocess.run, os.replace, xoá tệp tạm).
 # Khoá là đường dẫn tệp chính xác tính từ src/render (posix), không dùng mẫu, không miễn cả thư mục adapters; giá trị là đúng chuỗi phát hiện của scan_package.
+# PW-F1 (docs/implementation/prod-wiring/slices.md, mục PW-F1): hai tệp đo khung hình chạy tiến trình con FFmpeg đã ghim; chỉ import:subprocess, đường dẫn chính xác.
 ADAPTER_EXEMPTIONS = {
     'adapters/real_ffmpeg_renderer.py': frozenset({'import:os', 'import:subprocess', 'call:unlink'}),
     'adapters/real_ffprobe_probe.py': frozenset({'import:subprocess'}),
+    'adapters/real_output_inspector.py': frozenset({'import:subprocess'}),
+    'adapters/frame_probe.py': frozenset({'import:subprocess'}),
 }
 
 # Miễn trừ theo thư mục theo kế hoạch PERSIST đã duyệt: docs/implementation/persist/plan.md dòng 15 và 40-41.
@@ -238,6 +241,8 @@ class AdapterExemptionTests(unittest.TestCase):
             {
                 'adapters/real_ffmpeg_renderer.py': frozenset({'import:os', 'import:subprocess', 'call:unlink'}),
                 'adapters/real_ffprobe_probe.py': frozenset({'import:subprocess'}),
+                'adapters/real_output_inspector.py': frozenset({'import:subprocess'}),
+                'adapters/frame_probe.py': frozenset({'import:subprocess'}),
             },
         )
         for rel in ADAPTER_EXEMPTIONS:
@@ -292,6 +297,15 @@ class AdapterExemptionTests(unittest.TestCase):
             }),
             {'adapters/real_ffprobe_probe.py': ['import:os', 'call:unlink']},
         )
+
+    def test_inspector_adapters_accept_only_subprocess(self) -> None:
+        for rel in ('adapters/real_output_inspector.py', 'adapters/frame_probe.py'):
+            with self.subTest(rel=rel):
+                self.assertEqual(self._scan({rel: 'import subprocess\n'}), {})
+                self.assertEqual(
+                    self._scan({rel: 'import os\nimport subprocess\n\n\ndef f(p):\n    p.unlink()\n'}),
+                    {rel: ['import:os', 'call:unlink']},
+                )
 
     def test_other_modules_still_reject_exempted_items(self) -> None:
         for rel in (
