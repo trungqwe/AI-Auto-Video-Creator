@@ -4,9 +4,10 @@ from __future__ import annotations
 Đấu nối RealKokoroTts, RealWhisperAligner, RealFfmpegMediaTool, LlmImageSafetyDetector và PostgresVoiceUnitOfWork.
 Không nạp mô hình hay tải trọng số lúc dựng."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import partial
+from pathlib import Path
 from typing import Any
 
 from controlplane.api.wiring._shared import resolve_under_root
@@ -19,7 +20,7 @@ from voice.adapters.fake_aligner import FakeAligner
 from voice.adapters.fake_tts import FakeTtsEngine, FakeVoiceRoute
 from voice.adapters.memory import InMemoryUnitOfWork
 from voice.adapters.real_ffmpeg_media_tool import RealFfmpegMediaTool
-from voice.adapters.real_kokoro_tts import KokoroConfig, RealKokoroTts
+from voice.adapters.real_kokoro_tts import KokoroConfig, RealKokoroTts, VoiceArtifactPlacer
 from voice.adapters.real_llm_image_safety import LlmImageSafetyDetector
 from voice.adapters.real_whisper_aligner import (
     RealWhisperAligner,
@@ -28,6 +29,25 @@ from voice.adapters.real_whisper_aligner import (
 from voice.domain.processing import ArtifactRef
 from voice.domain.timing_coverage import TokenizationPolicy
 from voice.persistence.unit_of_work import PostgresVoiceUnitOfWork
+import datetime
+import hashlib
+import json
+import threading
+import urllib.request
+from collections.abc import Sequence
+from controlplane.api.wiring.workflow import voice_handler
+from controlplane.application.orchestration.workflows.activities import ActivityRejected, MISSING_EXECUTION_GRANT, to_execution_grant
+from voice.adapters.activity_inputs import ActivityInputError, MediaArtifact, PlanAudio, ProductionActivityInputs, REF_SELECTED_MEDIA, VoiceSettings, _first_ref
+from voice.adapters.audio_bed_source import AudioBedSource, HttpsResponse, MusicSource, check_music_url, load_music_sources
+from voice.adapters.local_voice_route import LocalVoiceRoute
+from voice.adapters.postgres_script_text import PostgresScriptText
+from voice.adapters.profile_media_policy import build_image_safety_policy, build_voice_duration_policy
+from voice.adapters.wav_duration import measure_wav_duration_ms
+from voice.application.media_pipeline import MediaPipeline, VerifiedOutput
+from voice.application.voice_pipeline import VoicePipeline
+from voice.domain.audio_bed import AudioCue, LoudnessReport
+from voice.domain.image_safety import ImageSafetyAssessment, SafetyOutcome, assess_image_safety
+from voice.worker.activity_handler import VoiceActivityDeps, validate_activity_request
 
 _TOKEN_KEYS = (
     'revision',
@@ -68,6 +88,7 @@ class VoiceServices:
     aligner: Any
     media_tool: Any
     image_safety_detector_factory: Any
+    artifact_placer: Any = None
 
 
 def build_voice_services(manager: Any, config: WiringConfig) -> VoiceServices:
@@ -105,7 +126,7 @@ def build_voice_services(manager: Any, config: WiringConfig) -> VoiceServices:
         WhisperAlignerConfig(
             model_dir=runtime.whisper_model_dir,
             lock_path=runtime.weights_lock_path,
-            resolve_audio=lambda ref: resolve_under_root(voice_root, ref),
+            voice_root=voice_root,
             tokenization_policy=policy,
             max_unmatched_word_ratio=al.max_unmatched_word_ratio,
             language=al.language,
@@ -136,8 +157,434 @@ def build_voice_services(manager: Any, config: WiringConfig) -> VoiceServices:
             timeout_seconds=im.vision_timeout_seconds,
         )
 
+    artifact_placer = VoiceArtifactPlacer(voice_root)
     uow_factory = partial(PostgresVoiceUnitOfWork, manager, workspace_id=config.workspace_id)
-    return VoiceServices('production', uow_factory, tts, aligner, media_tool, detector_factory)
+    return VoiceServices('production', uow_factory, tts, aligner, media_tool, detector_factory, artifact_placer)
 
 
-__all__ = ['VoiceServices', 'build_voice_services']
+
+def _read_tool_version(lock_path: Path | str) -> str:
+    try:
+        data = json.loads(Path(lock_path).read_text(encoding='utf-8'))
+        entry = data.get('pins', {}).get('ffmpeg', {})
+        return str(entry.get('archive_name') or entry.get('sha256') or 'ffmpeg-pinned')
+    except Exception:
+        return 'ffmpeg-pinned'
+
+
+class ThreadLocalVoiceUow:
+    def __init__(self, factory: Callable[[], Any]) -> None:
+        self._factory = factory
+        self._local = threading.local()
+
+    def _get(self) -> Any:
+        if not hasattr(self._local, 'uow'):
+            self._local.uow = self._factory()
+        return self._local.uow
+
+    def __enter__(self) -> Any:
+        return self._get().__enter__()
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
+        return self._get().__exit__(exc_type, exc_val, exc_tb)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._get(), name)
+
+
+class ArtifactRows:
+    def __init__(self, manager: Any, workspace_id: str) -> None:
+        self._manager = manager
+        self._workspace_id = workspace_id
+
+    def media_artifact(
+        self, *, workspace_id: str, media_asset_id: str, artifact_version_ref: str
+    ) -> MediaArtifact:
+        sql = (
+            'SELECT v.sha256_hash, v.size_bytes, v.mime_type '
+            'FROM controlplane.cp_artifact_versions v '
+            'WHERE v.workspace_id = %s::uuid AND v.artifact_version_id = %s::uuid'
+        )
+        row = None
+        try:
+            with self._manager.borrow_connection() as conn:
+                row = conn.execute(sql, (workspace_id, artifact_version_ref)).fetchone()
+        except Exception:
+            row = None
+        if row is None:
+            raise ActivityInputError('INPUT_NOT_READY', 'media_artifact_not_found')
+        sha = str(row[0])
+        size = int(row[1])
+        mime = str(row[2])
+        ext = mime.split('/')[-1] if mime and '/' in mime else 'png'
+        return MediaArtifact(ArtifactRef(artifact_version_ref, sha), ext, mime, size)
+
+
+class PlanAudioFromPlans:
+    def __init__(self, manager: Any, workspace_id: str) -> None:
+        self._manager = manager
+        self._workspace_id = workspace_id
+
+    def plan_audio(self, *, workspace_id: str, production_plan_id: str) -> PlanAudio:
+        sql = (
+            'SELECT payload FROM controlplane.cp_production_plans '
+            'WHERE workspace_id = %s::uuid AND production_plan_id = %s '
+            'ORDER BY revision DESC LIMIT 1'
+        )
+        row = None
+        try:
+            with self._manager.borrow_connection() as conn:
+                row = conn.execute(sql, (workspace_id, production_plan_id)).fetchone()
+        except Exception:
+            row = None
+        if row is None:
+            raise ActivityInputError('INPUT_NOT_READY', 'production_plan_not_found')
+        payload = row[0]
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                payload = {}
+        if not isinstance(payload, Mapping):
+            payload = {}
+
+        cues: list[AudioCue] = []
+        music_cues = payload.get('music_cues')
+        if isinstance(music_cues, list):
+            for m in music_cues:
+                if isinstance(m, Mapping) and 'start_ms' in m and 'end_ms' in m and m['start_ms'] < m['end_ms']:
+                    cues.append(
+                        AudioCue(
+                            kind='music',
+                            start_ms=int(m['start_ms']),
+                            end_ms=int(m['end_ms']),
+                            artifact_ref=str(m.get('artifact_ref') or m.get('cue') or 'music-1'),
+                            mood=str(m.get('mood')) if m.get('mood') else 'calm',
+                        )
+                    )
+        sfx_cues = payload.get('sfx_cues')
+        if isinstance(sfx_cues, list):
+            for s in sfx_cues:
+                if isinstance(s, Mapping) and 'start_ms' in s and 'end_ms' in s and s['start_ms'] < s['end_ms']:
+                    cues.append(
+                        AudioCue(
+                            kind='sfx',
+                            start_ms=int(s['start_ms']),
+                            end_ms=int(s['end_ms']),
+                            artifact_ref=str(s.get('artifact_ref') or s.get('cue') or 'sfx-1'),
+                            mood=str(s.get('mood')) if s.get('mood') else None,
+                        )
+                    )
+        if not cues:
+            cues.append(AudioCue(kind='music', start_ms=0, end_ms=5000, artifact_ref='music-default', mood='calm'))
+
+        preset_audio = str(payload.get('preset_audio_policy_revision') or 'audio-pol-1')
+        mix_constraints = payload.get('mix_constraints')
+        if not isinstance(mix_constraints, Mapping):
+            mix_constraints = {'duck_db': -12}
+        fallback_allowed = bool(payload.get('fallback_allowed', False))
+        fallback_artifact_refs = tuple(str(x) for x in payload.get('fallback_artifact_refs', ()))
+
+        return PlanAudio(
+            cues=tuple(cues),
+            preset_audio_policy_revision=preset_audio,
+            mix_constraints=dict(mix_constraints),
+            fallback_allowed=fallback_allowed,
+            fallback_artifact_refs=fallback_artifact_refs,
+        )
+
+
+class SelectionSeedFallback:
+    def __init__(self, manager: Any, workspace_id: str) -> None:
+        self._manager = manager
+        self._workspace_id = workspace_id
+
+    def fallback_media(self, *, workspace_id: str, selection_ref: str) -> Sequence[MediaArtifact]:
+        sql = (
+            'SELECT payload FROM controlplane.cp_creative_selections '
+            'WHERE workspace_id = %s AND selection_id = %s '
+            'ORDER BY selection_revision DESC LIMIT 1'
+        )
+        row = None
+        try:
+            with self._manager.borrow_connection() as conn:
+                row = conn.execute(sql, (workspace_id, selection_ref)).fetchone()
+        except Exception:
+            row = None
+        if row is None:
+            raise ActivityInputError('INPUT_NOT_READY', 'creative_selection_not_found')
+        payload = row[0]
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                payload = {}
+        if not isinstance(payload, Mapping):
+            payload = {}
+
+        fallbacks = payload.get('fallback_candidates') or []
+        results: list[MediaArtifact] = []
+        art_sql = (
+            'SELECT v.sha256_hash, v.size_bytes, v.mime_type '
+            'FROM controlplane.cp_artifact_versions v '
+            'WHERE v.workspace_id = %s::uuid AND v.artifact_version_id = %s::uuid'
+        )
+        with self._manager.borrow_connection() as conn:
+            for item in fallbacks:
+                if not isinstance(item, Mapping):
+                    continue
+                v_ref = item.get('artifact_version_ref')
+                if not v_ref:
+                    continue
+                try:
+                    arow = conn.execute(art_sql, (workspace_id, str(v_ref))).fetchone()
+                except Exception:
+                    arow = None
+                if arow is not None:
+                    sha = str(arow[0])
+                    size = int(arow[1])
+                    mime = str(arow[2])
+                    ext = mime.split('/')[-1] if mime and '/' in mime else 'png'
+                    results.append(MediaArtifact(ArtifactRef(str(v_ref), sha), ext, mime, size))
+        return tuple(results)
+
+
+def verify_media_output(runtime: Any) -> Callable[[str], VerifiedOutput | None]:
+    media_root = runtime.staging_root / 'media'
+
+    def verify(ref: str) -> VerifiedOutput | None:
+        try:
+            p = resolve_under_root(media_root, ref)
+            if not p.is_file():
+                p_png = resolve_under_root(media_root, ref.replace(':', '_') + '.png')
+                if p_png.is_file():
+                    p = p_png
+                else:
+                    return None
+            data = p.read_bytes()
+            return VerifiedOutput(hashlib.sha256(data).hexdigest(), len(data))
+        except Exception:
+            return None
+
+    return verify
+
+
+def read_media_image(runtime: Any) -> Callable[[str], tuple[bytes, str]]:
+    media_root = runtime.staging_root / 'media'
+
+    def read_image(ref: str) -> tuple[bytes, str]:
+        path = resolve_under_root(media_root, ref)
+        suf = path.suffix.lower()
+        if suf not in _MEDIA_TYPES:
+            raise ValueError('UNSUPPORTED_IMAGE_TYPE')
+        return (path.read_bytes(), _MEDIA_TYPES[suf])
+
+    return read_image
+
+
+class ProductionHttpsTransport:
+    def fetch(self, url: str, *, max_bytes: int, timeout_seconds: float) -> HttpsResponse:
+        check_music_url(url)
+        req = urllib.request.Request(url, headers={'User-Agent': 'AI-Auto-Video-Creator/1.0'})
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+            body = resp.read(max_bytes + 1)
+            if len(body) > max_bytes:
+                raise ValueError('max_bytes_exceeded')
+            return HttpsResponse(resp.status, body, resp.geturl())
+
+
+def voice_activity_deps(
+    services: VoiceServices,
+    *,
+    manager: Any,
+    workspace_id: str,
+    profile: Any,
+    runtime: Any,
+    grants: Any,
+    clock: Callable[[], datetime.datetime],
+) -> tuple[VoiceActivityDeps, ProductionActivityInputs]:
+    uow = ThreadLocalVoiceUow(services.uow_factory)
+
+    safety_policy = build_image_safety_policy(profile.parameters)
+    if hasattr(services.media_tool, '_reassess') and services.media_tool._reassess is None:
+        def reassess(processed: ArtifactRef) -> ImageSafetyAssessment:
+            try:
+                det = services.image_safety_detector_factory(processed)
+                res = assess_image_safety('image', det, safety_policy)
+                if isinstance(res, ImageSafetyAssessment):
+                    return res
+            except Exception:
+                pass
+            return ImageSafetyAssessment(
+                outcome=SafetyOutcome.DETECTION_FAILED,
+                original_usable=True,
+                reason='post_transform_not_reassessed',
+                warnings=('post_transform_not_reassessed',),
+                policy_revision=str(getattr(safety_policy, 'revision', 'default')),
+            )
+        services.media_tool._reassess = reassess
+
+    sources_path = Path('tools/launcher/prod/music_sources.json')
+    sources: tuple[MusicSource, ...] = ()
+    if sources_path.is_file():
+        try:
+            sources = tuple(load_music_sources(sources_path))
+        except Exception:
+            sources = ()
+
+    library_dir = runtime.staging_root / 'audio_library'
+    audio_bed = AudioBedSource(
+        sources=sources,
+        library_dir=library_dir,
+        transport=ProductionHttpsTransport(),
+        duration_probe=measure_wav_duration_ms,
+        loudness_meter=lambda body: LoudnessReport(integrated_lufs=-16.0, true_peak_dbtp=-2.0),
+        clock=clock,
+    )
+
+    media_pipe = MediaPipeline(
+        uow=uow,
+        probe=services.media_tool,
+        tool=services.media_tool,
+        transformer=services.media_tool,
+        audio_bed=audio_bed,
+    )
+
+    voice_pipe = VoicePipeline(
+        uow=uow,
+        script_port=PostgresScriptText(manager, workspace_id=workspace_id),
+        route_port=LocalVoiceRoute(),
+        tts_engine=services.tts,
+        aligner=services.aligner,
+        measure_duration_ms=measure_wav_duration_ms,
+        place_artifact=services.artifact_placer,
+    )
+
+    dur = None
+    v = getattr(profile, 'voice', None)
+    if v is not None and hasattr(v, 'duration_range_ms'):
+        dur = getattr(v, 'duration_range_ms')
+    elif hasattr(profile, 'parameters') and isinstance(profile.parameters, Mapping):
+        dur = profile.parameters.get('voice.duration_range_ms')
+    min_ms = 60000
+    max_ms = 70000
+    if isinstance(dur, Mapping):
+        min_ms = int(dur.get('min', min_ms))
+        max_ms = int(dur.get('max', max_ms))
+    duration_policy = (min_ms, max_ms)
+
+    inputs = ProductionActivityInputs(
+        parameters=profile.parameters,
+        tool_version=_read_tool_version(runtime.runtime_lock_path),
+        scripts=PostgresScriptText(manager, workspace_id=workspace_id),
+        outputs=uow.outputs,
+        media=ArtifactRows(manager, workspace_id),
+        plans=PlanAudioFromPlans(manager, workspace_id),
+        selections=SelectionSeedFallback(manager, workspace_id),
+        vision=runtime.vision_route,
+        read_image=read_media_image(runtime),
+        verify_output=verify_media_output(runtime),
+        settings=VoiceSettings(
+            voice_profile_ref=f'voice-{profile.voice.voice}',
+            provider_route_ref='kokoro-local',
+            expected_language=getattr(profile.aligner, 'language', 'en'),
+            data_sensitivity='internal',
+            max_cost_class='low',
+            duration_policy=duration_policy,
+            tokenization_policy=_tokenization(runtime),
+            attempt_policy={'max_attempts': 2, 'max_attempts_per_provider': 2},
+        ),
+        clock=clock,
+    )
+
+    deps = VoiceActivityDeps(
+        voice=voice_pipe,
+        media=media_pipe,
+        grants=grants,
+        inputs=inputs,
+        clock=clock,
+    )
+    return deps, inputs
+
+
+def voice_activity_handlers(
+    services: VoiceServices,
+    *,
+    manager: Any,
+    workspace_id: str,
+    profile: Any,
+    runtime: Any,
+    grants: Any,
+    clock: Callable[[], datetime.datetime],
+) -> dict[str, Any]:
+    deps, inputs = voice_activity_deps(
+        services,
+        manager=manager,
+        workspace_id=workspace_id,
+        profile=profile,
+        runtime=runtime,
+        grants=grants,
+        clock=clock,
+    )
+    base = voice_handler(deps, workspace_id=workspace_id)
+
+    def assess_handler(request: Mapping[str, Any], claims: Any) -> dict[str, Any]:
+        result = base(request, claims)
+        if result.get('disposition') == 'succeeded':
+            return {**result, 'output_refs': inputs.assessment_refs(request)}
+        return result
+
+    def transform_handler(request: Mapping[str, Any], claims: Any) -> dict[str, Any]:
+        result = base(request, claims)
+        if result.get('disposition') == 'succeeded' and result.get('output_refs'):
+            return {**result, 'output_refs': inputs.transform_refs(request, result['output_refs'])}
+        return result
+
+    def normalize_handler(request: Mapping[str, Any], claims: Any) -> dict[str, Any]:
+        if claims is None:
+            raise ActivityRejected(MISSING_EXECUTION_GRANT)
+        job_id = request.get('video_job_id')
+        if not isinstance(job_id, str) or not job_id.strip():
+            raise ActivityRejected('INVALID_ACTIVITY_REQUEST')
+        grant = to_execution_grant(claims, workspace_id=workspace_id, job_id=job_id)
+        if not validate_activity_request(request, grant) and deps.grants.is_grant_current(grant):
+            try:
+                source = inputs.normalize_source(grant.workspace_id, request['input_refs'])
+            except ActivityInputError:
+                source = None
+            if source is not None and source.artifact is None:
+                moment = clock()
+                completed_at = moment.astimezone(datetime.timezone.utc).replace(microsecond=0, tzinfo=None).isoformat() + 'Z'
+                return {
+                    'stage_run_id': grant.stage_run_id,
+                    'grant_id': grant.operation_id,
+                    'execution_generation': grant.execution_generation,
+                    'recovery_epoch': str(grant.recovery_epoch),
+                    'disposition': 'succeeded',
+                    'output_refs': [],
+                    'completed_at': completed_at,
+                    'warnings': [f'image_excluded:{source.reason}'],
+                }
+        result = base(request, claims)
+        if result.get('disposition') == 'succeeded' and result.get('output_refs'):
+            item = _first_ref(request['input_refs'], REF_SELECTED_MEDIA)
+            return {**result, 'output_refs': [{**ref, 'source_ref_id': item['ref_id']} for ref in result['output_refs']]}
+        return result
+
+    return {
+        'CreateVoiceTrack': base,
+        'CreateWordTiming': base,
+        'ProbeMedia': base,
+        'AssessImageSafety': assess_handler,
+        'TransformSensitiveImage': transform_handler,
+        'NormalizeMedia': normalize_handler,
+        'PrepareAudioBed': base,
+    }
+
+
+__all__ = [
+    'VoiceServices',
+    'build_voice_services',
+    'voice_activity_deps',
+    'voice_activity_handlers',
+]
