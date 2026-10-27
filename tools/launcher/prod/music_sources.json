@@ -1,0 +1,30 @@
+{
+  "sources": [
+    {
+      "source_id": "openverse",
+      "role": "primary",
+      "url": "https://prod-1.storage.jamendo.com/?trackid=23557&format=mp32",
+      "license": "CC BY 3.0",
+      "attribution": "\"Ambient Dance\" by Zeropage is licensed under CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/)",
+      "author": "Zeropage",
+      "sha256": "a2baee1fb967c9a24e97307f61517a88e6e60d1abe2cd7d99ccfcaa873e6caf1",
+      "moods": [
+        "calm",
+        "ambient"
+      ]
+    },
+    {
+      "source_id": "incompetech",
+      "role": "fallback",
+      "url": "https://incompetech.com/music/royalty-free/mp3-royaltyfree/Carefree.mp3",
+      "license": "CC BY 4.0",
+      "attribution": "Carefree by Kevin MacLeod | License: CC BY 4.0 | https://incompetech.com",
+      "author": "Kevin MacLeod",
+      "sha256": "8433b770a630d9b1594fd484442c677907ece899a4d149954cd2e74fd733e311",
+      "moods": [
+        "carefree",
+        "upbeat"
+      ]
+    }
+  ]
+}
