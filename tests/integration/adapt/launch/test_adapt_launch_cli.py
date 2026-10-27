@@ -456,6 +456,7 @@ def test_worker_stop_waits_for_the_worker_thread_not_a_lost_future(launcher, mon
 
     monkeypatch.setattr(temporalio.client, "Client", FakeClient)
     monkeypatch.setattr(workflow_wiring, "assemble_activity_handlers", lambda **kw: {})
+    monkeypatch.setattr(launcher, "assemble_dfe_handlers", lambda *a, **kw: {})
     monkeypatch.setattr(workflow_wiring, "build_workflow_services", lambda **kw: SimpleNamespace(settings=SimpleNamespace()))
     monkeypatch.setattr(workflow_wiring, "wrap_dispatcher", lambda services, **kw: services)
     monkeypatch.setattr(workflow_wiring, "build_capability_probes", lambda **kw: {})

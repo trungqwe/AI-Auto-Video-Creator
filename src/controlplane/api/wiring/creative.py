@@ -10,6 +10,23 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import Any
+from controlplane.api.wiring.workflow import creative_handler
+from controlplane.domain.orchestration import ReservationState, VariantReservation
+from controlplane.infrastructure.db.control_api_commands import PostgresConfigScope
+from controlplane.infrastructure.db.orchestration.variants import PostgresVariantRegistry
+from creative.adapters.activity_inputs import (
+    ActivityInputError,
+    CreativeSettings,
+    ProductionActivityInputs,
+    REF_SELECTION,
+    selected_media_refs,
+)
+from creative.adapters.article_context import PostgresArticleContext
+from creative.adapters.prompt_source import ConfigPromptSource
+from creative.application.pipeline import CreativePipeline
+from creative.domain.asset_selection import SafetyRightsPolicy, ScoringWeights
+from creative.domain.script import LanguageVoicePolicy, TargetRange, INPUT_NOT_READY
+from creative.worker.activity_handler import CreativeActivityDeps
 from zoneinfo import ZoneInfo
 
 from controlplane.api.wiring._shared import PooledCostLedger, PooledReservationStore
@@ -185,4 +202,305 @@ def build_creative_services(manager: Any, config: WiringConfig) -> CreativeServi
     return CreativeServices('production', uow_factory, route, ai, executor, store)
 
 
-__all__ = ['CreativeServices', 'RoutedProviderRoute', 'build_creative_services', 'monthly_window']
+
+
+class PostgresPromptScope:
+    def __init__(self, manager: Any) -> None:
+        self._manager = manager
+
+    def current(self, *, workspace_id: str, scope_kind: str, scope_key: str) -> Any | None:
+        with self._manager.borrow_connection() as connection:
+            return PostgresConfigScope(connection).current(
+                workspace_id=workspace_id, scope_kind=scope_kind, scope_key=scope_key
+            )
+
+
+class LazyInstructions(Mapping):
+    def __init__(self, prompts: Any) -> None:
+        self._prompts = prompts
+        self._cache: dict[str, str] | None = None
+
+    def _get(self) -> dict[str, str]:
+        if self._cache is None:
+            self._cache = self._prompts.instructions()
+        return self._cache
+
+    def __getitem__(self, key: str) -> str:
+        return self._get()[key]
+
+    def __iter__(self):
+        return iter(self._get())
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._get().get(key, default)
+
+    def __len__(self) -> int:
+        return len(self._get())
+
+
+def creative_settings(profile: Any) -> CreativeSettings:
+    min_ms = 60000
+    max_ms = 70000
+    dur = None
+    v = getattr(profile, 'voice', None)
+    if v is not None and hasattr(v, 'duration_range_ms'):
+        dur = getattr(v, 'duration_range_ms')
+    elif hasattr(profile, 'parameters') and isinstance(profile.parameters, Mapping):
+        dur = profile.parameters.get('voice.duration_range_ms')
+    if isinstance(dur, Mapping):
+        min_ms = dur.get('min', min_ms)
+        max_ms = dur.get('max', max_ms)
+    min_s = float(min_ms) / 1000.0
+    max_s = float(max_ms) / 1000.0
+    target_range = TargetRange(min_seconds=min_s, max_seconds=max_s)
+
+    lang = 'en'
+    qc = getattr(profile, 'qc', None)
+    if qc is not None and hasattr(qc, 'required_language'):
+        lang = str(getattr(qc, 'required_language'))
+    elif hasattr(profile, 'parameters') and isinstance(profile.parameters, Mapping):
+        lang = str(profile.parameters.get('qc.required_language', 'en'))
+
+    wpm = 150.0
+    if hasattr(profile, 'parameters') and isinstance(profile.parameters, Mapping):
+        if 'voice.speech_rate_wpm' in profile.parameters:
+            try:
+                wpm = float(profile.parameters['voice.speech_rate_wpm'])
+            except Exception:
+                pass
+    speech_rate = max(0.1, wpm / 60.0)
+    language_policy = LanguageVoicePolicy(language=lang, speech_rate=speech_rate)
+
+    rev = getattr(profile, 'revision', 1)
+    variation_policy_revision = f'profile-{rev}'
+    requested_angle_count = 2
+    preset_revision_ref = 'preset-default'
+    if hasattr(profile, 'parameters') and isinstance(profile.parameters, Mapping):
+        if 'batch.videos_per_news_per_round' in profile.parameters:
+            try:
+                requested_angle_count = int(profile.parameters['batch.videos_per_news_per_round'])
+            except Exception:
+                pass
+        if 'render.presets' in profile.parameters:
+            presets = profile.parameters['render.presets']
+            if isinstance(presets, Mapping) and presets:
+                preset_revision_ref = str(next(iter(presets.keys())))
+            elif isinstance(presets, (list, tuple)) and presets:
+                preset_revision_ref = str(presets[0])
+
+    return CreativeSettings(
+        language_policy=language_policy,
+        target_range=target_range,
+        requested_angle_count=requested_angle_count,
+        variation_policy_revision=variation_policy_revision,
+        preset_revision_ref=preset_revision_ref,
+    )
+
+
+class ProductionSelectionInputs:
+    def __init__(self, *, media: Any, visual_hooks: Any, audio_hooks: Any, thumbnails: Any, profile: Any) -> None:
+        self._media = media
+        self._visual_hooks = visual_hooks
+        self._audio_hooks = audio_hooks
+        self._thumbnails = thumbnails
+        self._profile = profile
+
+    def selection_inputs(self, *, workspace_id: str, snapshot: Any, script: Any, angle: Any) -> Mapping[str, Any]:
+        media_cands = self._media.media_candidates(workspace_id=workspace_id, snapshot=snapshot)
+        snap_ref = getattr(snapshot, 'snapshot_id', str(snapshot))
+        v_hooks = self._visual_hooks.visual_hook_candidates(workspace_id=workspace_id, snapshot_ref=snap_ref)
+        a_hooks = self._audio_hooks.audio_hook_candidates(workspace_id=workspace_id, snapshot_ref=snap_ref)
+        th_cands = self._thumbnails.thumbnail_candidates(visual_hooks=v_hooks, media_candidates=media_cands)
+
+        rev = getattr(self._profile, 'revision', 1)
+        safety_policy = SafetyRightsPolicy(
+            revision=f'safe-r{rev}',
+            allowed_availability=('AVAILABLE',),
+            required_flags=('rights_cleared',),
+            blocked_flags=('unsafe',),
+        )
+        weights = ScoringWeights(semantic=0.6, technical=0.4, recent_usage_penalty=0.1)
+
+        return {
+            'media_candidates': media_cands,
+            'visual_hook_candidates': v_hooks,
+            'audio_hook_candidates': a_hooks,
+            'thumbnail_candidates': th_cands,
+            'safety_policy': safety_policy,
+            'music_sfx_policy_revision': f'music-r{rev}',
+            'preset_registry_revision': f'preset-r{rev}',
+            'weights': weights,
+        }
+
+
+class ProductionVariantContext:
+    def __init__(self, *, manager: Any, profile: Any) -> None:
+        self._manager = manager
+        self._profile = profile
+
+    def variant_context(
+        self,
+        *,
+        workspace_id: str,
+        job_id: str,
+        phase: str,
+        input_refs: Sequence[Mapping[str, Any]],
+    ) -> Mapping[str, Any]:
+        with self._manager.borrow_connection() as conn:
+            registry_revision = PostgresVariantRegistry(conn).current_revision(workspace_id)
+            rows = conn.execute(
+                'SELECT reservation_id, workspace_id::text, job_id, fingerprint, '
+                'snapshot_scope, validation_ref, variation_policy_revision, '
+                'committed_registry_revision, state '
+                'FROM controlplane.cp_variant_reservations '
+                'WHERE workspace_id = %s',
+                (workspace_id,),
+            ).fetchall()
+
+        settings = creative_settings(self._profile)
+        variation_policy_revision = settings.variation_policy_revision
+
+        active_reservations = []
+        completed = []
+        same_run = []
+        own_reservation_id = None
+
+        for row in rows:
+            res_id = str(row[0])
+            r_job_id = str(row[2])
+            fp = str(row[3])
+            scope = str(row[4])
+            v_ref = str(row[5])
+            v_pol = str(row[6])
+            com_rev = int(row[7])
+            state = ReservationState(str(row[8]))
+
+            rec = VariantReservation(
+                reservation_id=res_id,
+                workspace_id=workspace_id,
+                job_id=r_job_id,
+                fingerprint=fp,
+                snapshot_scope=scope,
+                validation_ref=v_ref,
+                variation_policy_revision=v_pol,
+                committed_registry_revision=com_rev,
+                state=state,
+            )
+            if state is ReservationState.ACTIVE:
+                active_reservations.append(rec)
+            if r_job_id == job_id:
+                own_reservation_id = res_id
+
+        result = {
+            'completed': tuple(completed),
+            'active_reservations': tuple(active_reservations),
+            'same_run': tuple(same_run),
+            'registry_revision': registry_revision,
+            'variation_policy_revision': variation_policy_revision,
+        }
+
+        if phase == 'output':
+            if own_reservation_id is not None:
+                result['own_reservation_id'] = own_reservation_id
+            output_ref = next(
+                (r['ref_id'] for r in input_refs if r.get('ref_type') in ('output_path', 'video_output', 'render_output')),
+                None,
+            )
+            if output_ref:
+                result['output_hash'] = hashlib.sha256(output_ref.encode('utf-8')).hexdigest()
+            else:
+                result['output_hash'] = hashlib.sha256(f'out:{job_id}'.encode('utf-8')).hexdigest()
+
+        return result
+
+
+def creative_activity_deps(
+    services: CreativeServices,
+    *,
+    manager: Any,
+    workspace_id: str,
+    profile: Any,
+    runtime: Any,
+    grants: Any,
+    sources: Any,
+    selection_inputs: Any,
+    selections: Any,
+    clock: Callable[[], datetime.datetime],
+) -> CreativeActivityDeps:
+    prompts = ConfigPromptSource(PostgresPromptScope(manager), workspace_id)
+    articles = PostgresArticleContext(manager.borrow_connection)
+    lazy_instructions = LazyInstructions(prompts)
+    pipeline = CreativePipeline(
+        uow_factory=services.uow_factory,
+        route=services.route,
+        ai=services.ai,
+        instructions={},
+        articles=articles,
+        selections=selections,
+    )
+    pipeline._instructions = lazy_instructions
+    inputs = ProductionActivityInputs(
+        uow_factory=services.uow_factory,
+        prompts=prompts,
+        sources=sources,
+        selection_inputs=selection_inputs,
+        variant_context=ProductionVariantContext(manager=manager, profile=profile),
+        selections=selections,
+        settings=creative_settings(profile),
+        clock=clock,
+    )
+    return CreativeActivityDeps(
+        pipeline=pipeline,
+        grants=grants,
+        inputs=inputs,
+        clock=clock,
+    )
+
+
+def creative_activity_handlers(
+    deps: CreativeActivityDeps,
+    selections: Any,
+    *,
+    workspace_id: str,
+) -> dict[str, Any]:
+    base = creative_handler(deps, workspace_id=workspace_id)
+
+    def handle_select(request: Mapping[str, Any], claims: Any) -> dict[str, Any]:
+        result = base(request, claims)
+        if result.get('disposition') == 'succeeded':
+            stored = next(
+                (dict(ref) for ref in result.get('output_refs', ()) if ref.get('ref_type') == REF_SELECTION),
+                None,
+            )
+            if stored is not None:
+                sel = selections.load(workspace_id=workspace_id, selection_id=stored['ref_id'])
+                if sel is None:
+                    raise ActivityInputError(INPUT_NOT_READY, 'selection_not_stored')
+                return {**result, 'output_refs': [stored, *selected_media_refs(sel)]}
+        return result
+
+    return {
+        'BuildProductionSnapshot': base,
+        'AnalyzeContent': base,
+        'GenerateStoryAngles': base,
+        'GenerateScript': base,
+        'SelectCreativeAssets': handle_select,
+        'BuildProductionPlan': base,
+        'ValidateVariant': base,
+        'GenerateOutputMetadata': base,
+    }
+
+
+__all__ = [
+    'CreativeServices',
+    'RoutedProviderRoute',
+    'build_creative_services',
+    'monthly_window',
+    'creative_activity_deps',
+    'creative_activity_handlers',
+    'creative_settings',
+    'PostgresPromptScope',
+    'LazyInstructions',
+    'ProductionSelectionInputs',
+    'ProductionVariantContext',
+]

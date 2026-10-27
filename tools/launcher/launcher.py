@@ -623,6 +623,234 @@ def seed_defaults(dsn: str, workspace_id: str, actor_id: str, recovery_epoch: st
         manager.close()
 
 
+def build_source_sets(manager: typing.Any, workspace_id: str) -> typing.Any:
+    ensure_src_on_path()
+    import importlib
+    act_inputs = importlib.import_module('creative.adapters.activity_inputs')
+    ActivityInputError = act_inputs.ActivityInputError
+    SourceSetPin = act_inputs.SourceSetPin
+    script_mod = importlib.import_module('creative.domain.script')
+    INPUT_NOT_READY = script_mod.INPUT_NOT_READY
+    ingestion_source_set = importlib.import_module('ingestion.application.source_set')
+    SourceSetRejected = ingestion_source_set.SourceSetRejected
+    ingestion_uow = importlib.import_module('ingestion.persistence.uow')
+    PostgresIngestionUnitOfWork = ingestion_uow.PostgresIngestionUnitOfWork
+
+    class SourceSetProvider:
+        def source_set(self, *, workspace_id: str, source_set_ref: str) -> SourceSetPin:
+            if not isinstance(source_set_ref, str):
+                raise ActivityInputError(INPUT_NOT_READY, 'invalid_source_set_ref')
+            parts = source_set_ref.split(':', 1)
+            if len(parts) != 2:
+                raise ActivityInputError(INPUT_NOT_READY, 'invalid_source_set_ref')
+            mode, rest = parts
+            rest_parts = rest.rsplit(':', 1)
+            if len(rest_parts) != 2:
+                raise ActivityInputError(INPUT_NOT_READY, 'invalid_source_set_ref')
+            subject, fingerprint = rest_parts
+
+            try:
+                with PostgresIngestionUnitOfWork(manager, workspace_id=workspace_id) as uow:
+                    built = ingestion_source_set.build_source_set(mode, subject, uow)
+            except SourceSetRejected as exc:
+                raise ActivityInputError(INPUT_NOT_READY, exc.reason) from None
+            except LookupError:
+                raise ActivityInputError(INPUT_NOT_READY, 'source_set_not_found') from None
+            except Exception as exc:
+                raise ActivityInputError(INPUT_NOT_READY, f'source_set_failed_{type(exc).__name__}') from None
+
+            if built.source_set_fingerprint != fingerprint:
+                raise ActivityInputError(INPUT_NOT_READY, 'source_set_fingerprint_mismatch')
+
+            refs = [
+                {
+                    'ref_type': 'article_revision',
+                    'ref_id': str(ref['article_id']),
+                    'revision_id': str(ref['article_revision_id']),
+                }
+                for ref in built.source_refs
+            ]
+            return SourceSetPin(
+                production_mode=built.production_mode,
+                source_refs=refs,
+                eligibility_reason=built.eligibility_reason,
+            )
+
+    return SourceSetProvider()
+
+
+def open_hooks(manager: typing.Any) -> typing.Any:
+    ensure_src_on_path()
+    import contextlib
+    import importlib
+    cat_hooks = importlib.import_module('catalog.persistence.hooks')
+    PostgresHookHistory = cat_hooks.PostgresHookHistory
+
+    @contextlib.contextmanager
+    def history_scope(workspace_id: str):
+        with manager.unit_of_work() as uow:
+            yield PostgresHookHistory(uow.connection, workspace_id)
+
+    return history_scope
+
+
+def assemble_dfe_handlers(
+    app: typing.Any,
+    *,
+    manager: typing.Any,
+    workspace_id: str,
+    profile: typing.Any,
+    runtime: typing.Any,
+    connection_factory: typing.Callable[[], typing.Any],
+    clock: typing.Callable[[], datetime.datetime],
+) -> dict[str, typing.Any]:
+    ensure_src_on_path()
+    from controlplane.api.wiring.creative import (
+        ProductionSelectionInputs,
+        build_creative_services,
+        creative_activity_deps,
+        creative_activity_handlers,
+    )
+    from controlplane.api.wiring.production_profile import PROFILE_PRODUCTION, WiringConfig
+    from controlplane.api.wiring.render import (
+        build_render_services,
+        render_activity_deps,
+        render_activity_handlers,
+    )
+    from controlplane.api.wiring.voice import (
+        build_voice_services,
+        voice_activity_deps,
+        voice_activity_handlers,
+    )
+    from controlplane.api.wiring.workflow import media_assets_opener
+    from controlplane.application.orchestration.grant_runtime import ExecutionGrantCurrency
+    import importlib
+    PostgresHookCandidates = importlib.import_module('creative.adapters.hook_candidates').PostgresHookCandidates
+    PostgresMediaCandidates = importlib.import_module('creative.adapters.media_candidates').PostgresMediaCandidates
+    PostgresSelectionStore = importlib.import_module('creative.adapters.postgres_selection').PostgresSelectionStore
+    ThumbnailCandidates = importlib.import_module('creative.adapters.thumbnail_candidates').ThumbnailCandidates
+
+    try:
+        config = WiringConfig(
+            mode=PROFILE_PRODUCTION,
+            workspace_id=workspace_id,
+            profile=profile,
+            runtime=runtime,
+        )
+
+        services = getattr(app, 'services', {})
+        creative_svc = services.get('creative')
+        if creative_svc is None:
+            creative_svc = build_creative_services(manager, config)
+
+        voice_svc = services.get('voice')
+        if voice_svc is None:
+            voice_svc = build_voice_services(manager, config)
+
+        render_svc = services.get('render')
+        if render_svc is None:
+            render_svc = build_render_services(manager, config)
+
+        grants = ExecutionGrantCurrency(connection_factory, workspace_id, clock)
+        selections = PostgresSelectionStore(manager.borrow_connection)
+
+        rev = getattr(profile, 'revision', 1)
+        safety_policy_revision = f'safe-r{rev}'
+        open_hooks_fn = open_hooks(manager)
+
+        media_cand = PostgresMediaCandidates(
+            media_assets_opener(manager),
+            safety_policy_revision=safety_policy_revision,
+        )
+        hook_cand = PostgresHookCandidates(
+            open_hooks_fn,
+            safety_policy_revision=safety_policy_revision,
+        )
+        thumb_cand = ThumbnailCandidates()
+
+        selection_inputs = ProductionSelectionInputs(
+            media=media_cand,
+            visual_hooks=hook_cand,
+            audio_hooks=hook_cand,
+            thumbnails=thumb_cand,
+            profile=profile,
+        )
+
+        sources = build_source_sets(manager, workspace_id)
+
+        c_deps = creative_activity_deps(
+            creative_svc,
+            manager=manager,
+            workspace_id=workspace_id,
+            profile=profile,
+            runtime=runtime,
+            grants=grants,
+            sources=sources,
+            selection_inputs=selection_inputs,
+            selections=selections,
+            clock=clock,
+        )
+        c_handlers = creative_activity_handlers(c_deps, selections, workspace_id=workspace_id)
+
+        v_handlers = voice_activity_handlers(
+            voice_svc,
+            manager=manager,
+            workspace_id=workspace_id,
+            profile=profile,
+            runtime=runtime,
+            grants=grants,
+            clock=clock,
+        )
+
+        r_handlers = render_activity_handlers(
+            render_svc,
+            manager=manager,
+            workspace_id=workspace_id,
+            profile=profile,
+            runtime=runtime,
+            grants=grants,
+            clock=clock,
+        )
+
+        combined: dict[str, typing.Any] = {}
+        combined.update(c_handlers)
+        combined.update(v_handlers)
+        combined.update(r_handlers)
+
+        expected_names = {
+            'BuildProductionSnapshot',
+            'AnalyzeContent',
+            'GenerateStoryAngles',
+            'GenerateScript',
+            'SelectCreativeAssets',
+            'BuildProductionPlan',
+            'ValidateVariant',
+            'GenerateOutputMetadata',
+            'CreateVoiceTrack',
+            'CreateWordTiming',
+            'ProbeMedia',
+            'PrepareAudioBed',
+            'AssessImageSafety',
+            'TransformSensitiveImage',
+            'NormalizeMedia',
+            'resolve_render_package',
+            'validate_render_package',
+            'reconcile_render',
+            'render_video',
+            'inspect_output',
+            'prepare_output_ready',
+        }
+        if set(combined.keys()) != expected_names:
+            missing = expected_names - set(combined.keys())
+            raise LauncherError('BLOCKED: handler D, E, F chưa đủ: ' + ', '.join(sorted(missing)))
+
+        return combined
+    except LauncherError:
+        raise
+    except Exception as exc:
+        raise LauncherError(f'BLOCKED: không lắp được handler D, E, F: {type(exc).__name__}') from None
+
+
 def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
     ensure_src_on_path()
     import asyncio
@@ -667,6 +895,17 @@ def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
     handlers = assemble_activity_handlers(
         manager=manager, workspace_id=workspace_id, profile=profile, runtime=runtime,
         collection=collection, storage=storage, connection_factory=grant_connection, clock=clock,
+    )
+    handlers.update(
+        assemble_dfe_handlers(
+            app,
+            manager=manager,
+            workspace_id=workspace_id,
+            profile=profile,
+            runtime=runtime,
+            connection_factory=grant_connection,
+            clock=clock,
+        )
     )
     services = build_workflow_services(
         parameters=profile.parameters, handlers=handlers, clock=clock, timezone_approved=True,
