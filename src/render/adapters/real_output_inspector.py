@@ -1,28 +1,38 @@
-"""PW-F1: OutputInspectorPort over the pinned ffmpeg measuring VISUAL_HOOK, THUMBNAIL, SUBTITLE_BURNED_IN, KARAOKE_TIMING and INFERENCE_DISCLOSURE_PRESENT.
+"""PW-F1, PW-F2: OutputInspectorPort over the pinned ffmpeg.
 
-Every measurement threshold comes from InspectorSettings, no threshold constant in code;
+PW-F1 measures VISUAL_HOOK, THUMBNAIL, SUBTITLE_BURNED_IN, KARAOKE_TIMING and INFERENCE_DISCLOSURE_PRESENT. PW-F2 adds the audio and language side:
+AUDIO_HOOK (mean level inside hook_time_range, evidence audio_hook), ENGLISH_OUTPUT (evidence language from E and D plus the burned-in subtitle),
+VOICE_AUDIBLE and OUTPUT_PROFILE (technical gates fed by RealFfprobeProbe, see GATE_SOURCES; speech_windows gives the probe the spoken ranges)
+and audio_mix_result (loudness and true peak recorded as a warning, never a hard failure).
+Every measurement threshold comes from InspectorSettings or the caller, no threshold constant in code;
 missing inputs yield None in evidence fields.
 
-coveredIds: PW-F1-01, CT-QC-001
+coveredIds: PW-F1-01, PW-F2-01, CT-QC-001
 """
 from __future__ import annotations
 
 import re
 import subprocess
+import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 
 from render.adapters.frame_probe import FrameProbe, seek_arg
 from render.adapters.real_ffmpeg_renderer import DEFAULT_FFMPEG_PATH, DEFAULT_LOCK_PATH, verify_ffmpeg_pin
+from render.adapters.real_ffprobe_probe import LoudnessStats, measure_audio
 from render.domain.content_gates import INFERENCE_CLAIM_MODES
 from render.domain.karaoke_plan import STYLE_NAME as KARAOKE_STYLE
 from render.domain.package_contract import RenderPackageRecord
+from render.domain.quality_report import GateName, GateResult, GateStatus
 from render.ports.output_inspector import (
+    AudioHookEvidence,
     DisclosureEvidence,
     DisclosureObservation,
     KaraokeEvidence,
     KaraokeWordObservation,
+    LanguageEvidence,
     OutputEvidence,
     SubtitleEvidence,
     ThumbnailEvidence,
@@ -36,6 +46,18 @@ GATE_KARAOKE = 'KARAOKE_TIMING'
 GATE_DISCLOSURE = 'INFERENCE_DISCLOSURE_PRESENT'
 DISCLOSURE_STYLE = 'Disclosure'
 UNMATCHED_ASSET_PREFIX = 'unmatched:'
+GATE_AUDIO_HOOK = 'AUDIO_HOOK'
+GATE_VOICE_AUDIBLE = 'VOICE_AUDIBLE'
+GATE_ENGLISH = 'ENGLISH_OUTPUT'
+GATE_OUTPUT_PROFILE = 'OUTPUT_PROFILE'
+UNDETERMINED_LOCALE = 'und'
+ASS_TAG_RE = re.compile(r'\{[^}]*\}')
+GATE_SOURCES = MappingProxyType({
+    GATE_AUDIO_HOOK: 'RealOutputInspector.inspect: OutputEvidence.audio_hook over hook_time_range',
+    GATE_VOICE_AUDIBLE: 'RealFfprobeProbe: audio_level over speech_windows and severe_audio_errors',
+    GATE_ENGLISH: 'RealOutputInspector.inspect: OutputEvidence.language from E and D plus the burned-in subtitle',
+    GATE_OUTPUT_PROFILE: 'RealFfprobeProbe: width, height, fps, codecs, container, duration_ms',
+})
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -77,10 +99,27 @@ class InspectorSettings:
 
 
 @dataclass(frozen=True, kw_only=True)
+class LanguageSource:
+    """Language facts handed over by E (voice_hash, voice_locale, subtitle_text_hash, script_fingerprint) and D (script, title and hashtag locales); the inspector adds only what it observes in the output (the burned-in subtitle)."""
+
+    evidence_ref: str
+    script_fingerprint: str
+    voice_hash: str
+    subtitle_text_hash: str
+    voice_locale: str
+    subtitle_locale: str
+    script_locale: str
+    title_locale: str
+    hashtag_locale: str
+    declared_language: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
 class InspectionInputs:
     staging_root: Path
     ass_ref: str
     segments: Sequence[Mapping]
+    language: LanguageSource | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, 'staging_root', Path(self.staging_root))
@@ -266,6 +305,43 @@ def ssim_between(
         return None
 
 
+def _has_non_latin_letter(text: str) -> bool:
+    return any(ch.isalpha() and not unicodedata.name(ch, '').startswith('LATIN') for ch in text)
+
+
+def observed_subtitle_locale(dialogues: Sequence[AssDialogue], claimed: str | None) -> str | None:
+    """Locale of the burned-in subtitle: None when the ASS has no karaoke line (nothing observed); 'und' when a karaoke line holds a letter outside the Latin script; otherwise the locale claimed by D and E."""
+    karaoke = [d for d in dialogues if d.style == KARAOKE_STYLE]
+    if not karaoke:
+        return None
+    if any(_has_non_latin_letter(ASS_TAG_RE.sub('', d.text)) for d in karaoke):
+        return UNDETERMINED_LOCALE
+    return claimed
+
+
+def audio_mix_result(
+    stats: LoudnessStats, *, target_lufs: float, tolerance_lu: float, max_true_peak_dbtp: float, threshold_revision: str,
+    evidence_ref: str,
+) -> GateResult:
+    """AUDIO_MIX_QUALITY warning gate: integrated loudness and true peak are recorded; out of target gives a failed warning, never a hard failure. Every limit is caller input."""
+    gate = GateName.AUDIO_MIX_QUALITY
+    if stats.integrated_lufs is None or stats.true_peak_dbtp is None:
+        return GateResult(gate=gate, status=GateStatus.NOT_EVALUATED, evidence_ref=evidence_ref, threshold_revision=threshold_revision, reason='loudness_not_measured')
+    reasons = []
+    if abs(stats.integrated_lufs - target_lufs) > tolerance_lu:
+        reasons.append('loudness_out_of_target')
+    if stats.true_peak_dbtp > max_true_peak_dbtp:
+        reasons.append('true_peak_above_limit')
+    return GateResult(
+        gate=gate,
+        status=GateStatus.FAILED if reasons else GateStatus.PASSED,
+        evidence_ref=f'{evidence_ref}:I={stats.integrated_lufs:.1f}LUFS:TP={stats.true_peak_dbtp:.1f}dBTP',
+        measured_value=stats.integrated_lufs,
+        threshold_revision=threshold_revision,
+        reason=','.join(reasons) or None,
+    )
+
+
 class RealOutputInspector:
     def __init__(
         self,
@@ -290,9 +366,11 @@ class RealOutputInspector:
         dialogues = self._dialogues(package)
         return OutputEvidence(
             visual_hook=self._visual_hook(media, package),
+            audio_hook=self._audio_hook(media, package),
             thumbnail=self._thumbnail(media, package),
             subtitle=self._subtitle(media, dialogues, duration),
             karaoke=self._karaoke(dialogues),
+            language=self._language(package, dialogues),
             disclosure=self._disclosure(media, dialogues, duration),
         )
 
@@ -341,6 +419,43 @@ class RealOutputInspector:
         except (OSError, UnicodeDecodeError):
             return ()
         return parse_ass_dialogues(text)
+
+    def speech_windows(self, package: RenderPackageRecord) -> tuple[tuple[int, int], ...]:
+        """VOICE_AUDIBLE: ms ranges of the karaoke dialogue lines (the spoken parts); pass them as voice_windows to RealFfprobeProbe so audio_level is measured only where there is speech. Empty when the ASS is missing."""
+        spans = [(d.start_ms, d.end_ms) for d in self._dialogues(package) if d.style == KARAOKE_STYLE and d.end_ms > d.start_ms]
+        return tuple(sorted(spans))
+
+    def _audio_hook(self, media: Path, package: RenderPackageRecord) -> AudioHookEvidence | None:
+        hook = self._range(package, 'hook_time_range')
+        if hook is None:
+            return None
+        stats = measure_audio(self._ffmpeg, media, windows=[hook], timeout_seconds=self._settings.timeout_seconds)
+        if stats.level_db is None:
+            return None
+        hp = package.hook_placement
+        ref = hp.get('audio_hook_ref') if isinstance(hp, Mapping) else None
+        label = ref if isinstance(ref, str) and ref else media.name
+        return AudioHookEvidence(
+            evidence_ref=f'{GATE_AUDIO_HOOK}:{label}:{hook[0]}-{hook[1]}ms', start_ms=hook[0], end_ms=hook[1], level_db=stats.level_db,
+        )
+
+    def _language(self, package: RenderPackageRecord, dialogues: Sequence[AssDialogue]) -> LanguageEvidence | None:
+        source = self._inputs.language
+        if source is None:
+            return None
+        return LanguageEvidence(
+            evidence_ref=f'{GATE_ENGLISH}:{source.evidence_ref}',
+            script_fingerprint=source.script_fingerprint,
+            voice_hash=source.voice_hash,
+            subtitle_text_hash=source.subtitle_text_hash,
+            output_metadata_revision=package.output_metadata_revision,
+            script_locale=source.script_locale,
+            voice_locale=source.voice_locale,
+            subtitle_locale=observed_subtitle_locale(dialogues, source.subtitle_locale),
+            title_locale=source.title_locale,
+            hashtag_locale=source.hashtag_locale,
+            declared_language=source.declared_language,
+        )
 
     def _visual_hook(self, media: Path, package: RenderPackageRecord) -> VisualHookEvidence | None:
         hook = self._range(package, 'hook_time_range')
@@ -481,12 +596,16 @@ class RealOutputInspector:
 __all__ = [
     'AssDialogue',
     'Band',
+    'GATE_SOURCES',
     'InspectionInputs',
     'InspectorSettings',
+    'LanguageSource',
     'RealOutputInspector',
+    'audio_mix_result',
     'baseline_ms',
     'evenly_sampled',
     'karaoke_observations',
+    'observed_subtitle_locale',
     'parse_ass_dialogues',
     'ssim_between',
 ]
