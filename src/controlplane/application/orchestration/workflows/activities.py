@@ -110,7 +110,7 @@ ENRICHMENT_STAGE_ACTIVITIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     'normalize': ('ResolveCollectedDocument',),
     'dedup': (),
     'enrich_ai': (),
-    'media': (),
+    'media':  ('RegisterMediaDiscovery',),
     'index': (),
 })
 

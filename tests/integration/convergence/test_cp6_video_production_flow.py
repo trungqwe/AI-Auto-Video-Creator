@@ -700,4 +700,4 @@ def test_enrichment_subscription():
     assert [c[0] for c in gateway.calls if c[0] == 'ResolveCollectedDocument'] == [
         'ResolveCollectedDocument', 'ResolveCollectedDocument', 'ResolveCollectedDocument'
     ]
-    assert flow.unbound == ['dedup', 'enrich_ai', 'media', 'index']
+    assert flow.unbound == ['dedup', 'enrich_ai', 'index']
