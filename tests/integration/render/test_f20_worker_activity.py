@@ -7,16 +7,18 @@ from __future__ import annotations
 import ast
 import dataclasses
 import datetime
+import hashlib
 import json
 import pathlib
 
 import pytest
 
 from controlplane.domain.orchestration import ExecutionGrant
+from controlplane.domain.statemachine import OperationState
 from render.adapters.fake_renderer import AFTER_SIDE_EFFECT, BEFORE_SIDE_EFFECT, FakeOutputStorage, FakeRenderer
-from render.application.inspect_output import InspectOutputCommand, OutputPipeline
+from render.application.inspect_output import InspectOutputCommand, OutputPipeline, PrepareOutputReadyCommand
 from render.application.package_pipeline import ResolveRenderPackageCommand, ValidateRenderPackageCommand
-from render.application.render_video import InMemoryRenderUnitOfWork, RenderPipeline, RenderVideoCommand
+from render.application.render_video import InMemoryRenderUnitOfWork, ReconcileRenderCommand, RenderPipeline, RenderVideoCommand
 from render.ports.renderer import RendererTimeout
 from render.ports.repositories import KIND_ATTEMPT, KIND_PACKAGE, KIND_QUALITY_REPORT
 from render.worker import activity_handler as ah
@@ -33,10 +35,16 @@ BINDING_FIXTURE = ROOT / 'tests' / 'fixtures' / 'contracts' / 'g-activity-execut
 NOW = datetime.datetime(2026, 10, 20, 8, 0, 0, tzinfo=datetime.timezone.utc)
 SECRET = 'hunter2-SECRET'
 RESOLVE, VALIDATE, RENDER, INSPECT = 'resolve_render_package', 'validate_render_package', 'render_video', 'inspect_output'
+RECONCILE, PREPARE = 'reconcile_render', 'prepare_output_ready'
 GRANT = _grant()
 OLD_GENERATION = dataclasses.replace(GRANT, execution_generation=1)
 OLD_EPOCH = dataclasses.replace(GRANT, recovery_epoch=0)
 NEW_GENERATION = dataclasses.replace(GRANT, execution_generation=3)
+
+
+class WorkerDied(BaseException):
+    # a worker process that dies mid-render: not an Exception, so no handler of F can turn it into a result
+    pass
 
 
 class CountingGrants:
@@ -60,6 +68,8 @@ class FakeInputs:
         self.wrong_type = False
         self.resolve_inputs = None
         self.validation_context = _validation_context()
+        self.orphan_after_seconds = None
+        self.nothing_to_reconcile = False
 
     def resolve(self, activity_name, request, grant):
         self.calls.append(activity_name)
@@ -86,6 +96,19 @@ class FakeInputs:
             command = InspectOutputCommand(
                 grant=owner, operation_key=key, render_package_id=refs['render_package'], render_attempt_id=refs['render_attempt'],
                 policy=POLICY, expected_language=EXPECTED, word_timings=WORDS, segments=SEGMENTS, context=context,
+            )
+        elif activity_name == RECONCILE:
+            if self.nothing_to_reconcile:
+                return {'nothing_to_reconcile': True}
+            command = ReconcileRenderCommand(
+                grant=owner, render_attempt_id=refs['render_attempt'], context=context,
+                expected_sha256=hashlib.sha256(CONTENT).hexdigest(), orphan_after_seconds=self.orphan_after_seconds,
+            )
+        elif activity_name == PREPARE:
+            command = PrepareOutputReadyCommand(
+                grant=owner, operation_key=key, render_package_id=refs['render_package'], render_attempt_id=refs['render_attempt'],
+                quality_report_ref=refs['quality_report'], video_output_id=f'video-output-{key}',
+                expected_sha256=hashlib.sha256(CONTENT).hexdigest(), context=context,
             )
         else:
             raise KeyError(activity_name)
@@ -325,7 +348,7 @@ def test_a_pipeline_idempotency_conflict_is_a_failed_result_with_its_code():
     assert snapshot(rig.uow) == before
 
 
-@pytest.mark.parametrize('name', ['bogus_activity', 'RenderVideo', 'prepare_output_ready', 'reconcile_render'])
+@pytest.mark.parametrize('name', ['bogus_activity', 'RenderVideo'])
 def test_unknown_activity_name_returns_a_structured_problem_without_running_anything(name):
     rig = ActivityRig()
     before = snapshot(rig.uow)
@@ -338,8 +361,8 @@ def test_unknown_activity_name_returns_a_structured_problem_without_running_anyt
     assert rig.deps.results.get('ws-1', 'op-key-1') is None
 
 
-def test_supported_activity_names_are_the_four_f_commands():
-    assert ah.ACTIVITY_NAMES == ('resolve_render_package', 'validate_render_package', 'render_video', 'inspect_output')
+def test_supported_activity_names_are_the_six_f_commands():
+    assert ah.ACTIVITY_NAMES == ('resolve_render_package', 'validate_render_package', 'reconcile_render', 'render_video', 'inspect_output', 'prepare_output_ready')
 
 
 @pytest.mark.parametrize('activity', [RESOLVE, VALIDATE, RENDER, INSPECT])
@@ -439,6 +462,94 @@ def test_a_failed_quality_report_is_a_failed_result_with_the_blocking_gates():
     assert result['output_refs'] == [{'ref_type': 'quality_report', 'ref_id': report.report_id}]
     assert result['metrics']['blocking_gates'] == ['DURATION_RANGE'] and result['metrics']['blocking_gate_count'] == 1
     assert (problem['code'], problem['category'], problem['retryable']) == ('quality_gates_failed', 'validation', False)
+
+
+def test_reconcile_activity_settles_an_unknown_attempt_with_its_output():
+    rig = ActivityRig()
+    package_id = prepared(rig)
+    rig.renderer.inject(AFTER_SIDE_EFFECT, RendererTimeout('t'))
+    run(rig, RENDER, 'op-render-1', [pkg_ref(package_id)])
+    result = run(rig, RECONCILE, 'op-reconcile-1', [pkg_ref(package_id), attempt_ref('op-render-1')])
+    assert result['disposition'] == 'succeeded'
+    assert result['output_refs'] == [{'ref_type': 'render_attempt', 'ref_id': 'op-render-1'}, {'ref_type': 'render_output', 'ref_id': out_ref(1)}]
+    assert result['metrics']['reconciled_state'] == 'succeeded'
+    attempt = rig.uow.renders.latest(KIND_ATTEMPT, 'op-render-1').record
+    assert attempt.receipt_state is OperationState.SUCCEEDED
+    assert [record.event_type for record in rig.uow.outbox.records()].count('RenderCompleted') == 1
+
+
+def test_reconcile_activity_of_a_missing_output_is_a_definite_failed_attempt():
+    rig = ActivityRig()
+    package_id = prepared(rig)
+    rig.renderer.inject(BEFORE_SIDE_EFFECT, RendererTimeout('t'))
+    run(rig, RENDER, 'op-render-1', [pkg_ref(package_id)])
+    result = run(rig, RECONCILE, 'op-reconcile-1', [pkg_ref(package_id), attempt_ref('op-render-1')])
+    assert result['disposition'] == 'succeeded'
+    assert result['output_refs'] == [{'ref_type': 'render_attempt', 'ref_id': 'op-render-1'}]
+    assert result['metrics']['reconciled_state'] == 'failed'
+    attempt = rig.uow.renders.latest(KIND_ATTEMPT, 'op-render-1').record
+    assert attempt.receipt_state is OperationState.FAILED
+    assert [record.event_type for record in rig.uow.outbox.records()].count('RenderCompleted') == 0
+
+
+def test_reconcile_activity_gives_a_definite_result_for_an_orphaned_started_attempt():
+    rig = ActivityRig()
+    package_id = prepared(rig)
+    rig.renderer.inject(BEFORE_SIDE_EFFECT, WorkerDied())
+    with pytest.raises(WorkerDied):
+        run(rig, RENDER, 'op-render-1', [pkg_ref(package_id)])
+    attempt = rig.uow.renders.latest(KIND_ATTEMPT, 'op-render-1').record
+    assert attempt.receipt_state is OperationState.STARTED
+    assert rig.lease.held == []
+    rig.inputs.orphan_after_seconds = 3600
+    failed_reconcile = run(rig, RECONCILE, 'op-reconcile-1', [pkg_ref(package_id), attempt_ref('op-render-1')])
+    assert failed_reconcile['disposition'] == 'failed'
+    assert failed_reconcile['problem']['code'] == 'attempt_in_progress'
+    attempt = rig.uow.renders.latest(KIND_ATTEMPT, 'op-render-1').record
+    assert attempt.receipt_state is OperationState.STARTED
+    rig.inputs.orphan_after_seconds = 0
+    ok_reconcile = run(rig, RECONCILE, 'op-reconcile-1', [pkg_ref(package_id), attempt_ref('op-render-1')])
+    assert ok_reconcile['disposition'] == 'succeeded'
+    assert ok_reconcile['metrics']['reconciled_state'] == 'failed'
+    attempt = rig.uow.renders.latest(KIND_ATTEMPT, 'op-render-1').record
+    assert attempt.receipt_state is OperationState.FAILED
+    assert attempt.error in ('output_missing', 'reconcile_output_missing')
+
+
+def test_reconcile_activity_without_an_open_attempt_is_a_no_op_success():
+    rig = ActivityRig()
+    rig.inputs.nothing_to_reconcile = True
+    result = run(rig, RECONCILE)
+    assert result['disposition'] == 'succeeded'
+    assert result['output_refs'] == []
+    assert result['metrics'] == {'reconciled_state': 'none'}
+
+
+def test_prepare_activity_returns_the_video_output_after_a_passing_qc():
+    rig = ActivityRig()
+    package_id, attempt_id = rendered(rig)
+    inspect_result = run(rig, INSPECT, 'op-inspect-1', [pkg_ref(package_id), attempt_ref(attempt_id)])
+    report_id = inspect_result['output_refs'][0]['ref_id']
+    result = run(rig, PREPARE, 'op-prepare-1', [pkg_ref(package_id), attempt_ref(attempt_id), {'ref_type': 'quality_report', 'ref_id': report_id}])
+    assert result['disposition'] == 'succeeded'
+    assert result['output_refs'] == [
+        {'ref_type': 'video_output', 'ref_id': 'video-output-op-prepare-1'},
+        {'ref_type': 'quality_report', 'ref_id': report_id},
+    ]
+    assert result['metrics']['ready'] is True
+    assert run(rig, PREPARE, 'op-prepare-1', [pkg_ref(package_id), attempt_ref(attempt_id), {'ref_type': 'quality_report', 'ref_id': report_id}]) == result
+
+
+def test_prepare_activity_after_a_failed_qc_is_not_ready():
+    rig = ActivityRig()
+    package_id, attempt_id = rendered(rig)
+    rig.qc_probe.measurements = measured(duration_ms=60999)
+    inspect_result = run(rig, INSPECT, 'op-inspect-1', [pkg_ref(package_id), attempt_ref(attempt_id)])
+    report_id = inspect_result['output_refs'][0]['ref_id']
+    result = run(rig, PREPARE, 'op-prepare-1', [pkg_ref(package_id), attempt_ref(attempt_id), {'ref_type': 'quality_report', 'ref_id': report_id}])
+    assert result['disposition'] == 'failed'
+    assert result['problem']['code'] == 'output_not_ready'
+    assert result['output_refs'] == [{'ref_type': 'quality_report', 'ref_id': report_id}]
 
 
 def test_unexpected_exceptions_become_redacted_failed_results():

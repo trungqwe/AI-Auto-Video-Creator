@@ -19,25 +19,29 @@ from typing import Any, Protocol
 from controlplane.domain.common.contracts import ProblemDetail
 from controlplane.domain.orchestration import ExecutionGrant
 from controlplane.domain.statemachine import OperationState
-from render.application.inspect_output import InspectOutcome, InspectOutputCommand, OutputPipeline
+from render.application.inspect_output import InspectOutcome, InspectOutputCommand, OutputPipeline, OutputReadyOutcome, PrepareOutputReadyCommand
 from render.application.package_pipeline import (
     STALE_GRANT, GrantCurrencyPort, IdempotencyConflict, PackagePipeline, PipelineRejected, ResolveOutcome,
     ResolveRenderPackageCommand, StaleGrant, ValidateOutcome, ValidateRenderPackageCommand,
 )
 from render.application.render_video import (
-    RENDER_ATTEMPT_FAILED, RENDER_OUTCOME_UNKNOWN, GpuLeaseNotAvailable, RenderPipeline, RenderResult, RenderVideoCommand,
+    RENDER_ATTEMPT_FAILED, RENDER_OUTCOME_UNKNOWN, GpuLeaseNotAvailable, ReconcileRenderCommand, RenderPipeline, RenderResult,
+    RenderVideoCommand,
 )
 from render.domain.quality_report import GATE_KINDS, GateKind, GateStatus
 
 ACTIVITY_RESOLVE = 'resolve_render_package'
 ACTIVITY_VALIDATE = 'validate_render_package'
 ACTIVITY_RENDER = 'render_video'
+ACTIVITY_RECONCILE = 'reconcile_render'
 ACTIVITY_INSPECT = 'inspect_output'
+ACTIVITY_PREPARE = 'prepare_output_ready'
 REF_TYPE_PACKAGE = 'render_package'
 REF_TYPE_VALIDATION_REPORT = 'package_validation_report'
 REF_TYPE_ATTEMPT = 'render_attempt'
 REF_TYPE_OUTPUT = 'render_output'
 REF_TYPE_QUALITY_REPORT = 'quality_report'
+REF_TYPE_VIDEO_OUTPUT = 'video_output'
 VALIDATION_ERROR = 'VALIDATION_ERROR'
 UNKNOWN_ACTIVITY = 'UNKNOWN_ACTIVITY'
 OPERATION_KEY_CONFLICT = 'OPERATION_KEY_CONFLICT'
@@ -47,6 +51,8 @@ COMMAND_TYPE_MISMATCH = 'COMMAND_TYPE_MISMATCH'
 ACTIVITY_ABORTED = 'ACTIVITY_ABORTED'
 PACKAGE_VALIDATION_FAILED = 'package_validation_failed'
 QUALITY_GATES_FAILED = 'quality_gates_failed'
+OUTPUT_NOT_READY = 'output_not_ready'
+NOTHING_TO_RECONCILE = 'nothing_to_reconcile'
 REDACTED_WARNING = 'warning_redacted'
 UNKNOWN_REF = 'unknown'
 SUCCEEDED = 'succeeded'
@@ -83,6 +89,7 @@ _PROBLEMS = MappingProxyType({
     'CAPACITY_UNAVAILABLE': ('capacity', 'no GPU slot is free; F did not wait and nothing was rendered'),
     'PACKAGE_VALIDATION_FAILED': ('validation', 'the render package has validation findings; the report is stored'),
     'QUALITY_GATES_FAILED': ('validation', 'the output failed its quality gates; the report is stored'),
+    'OUTPUT_NOT_READY': ('conflict', 'the output is not ready for G; the reasons are in the stored receipt'),
     'RENDER_FAILED': ('dependency', 'the render attempt failed; the redacted error is in the stored attempt'),
     'OUTCOME_UNKNOWN': ('conflict', 'the render outcome is unknown and needs reconciliation by G'),
     'ACTIVITY_ABORTED': ('internal', 'the activity stopped on an unexpected error; retry with the same operation_key'),
@@ -110,7 +117,7 @@ class ActivityInputPort(Protocol):
     """Resolves the input_refs of an ActivityRequest to the one F command of the activity.
 
     Returns {'command': <the F-17, F-18 or F-19 command object>}. The command carries the ExecutionGrant of the request and
-    the operation_key of the request (for render_video the render_attempt_id is that operation_key).
+    the operation_key of the request (for render_video the render_attempt_id is that operation_key). For reconcile_render it may return {'nothing_to_reconcile': True} instead of a command when the package has no open attempt.
     """
 
     def resolve(self, activity_name: str, request: Mapping[str, Any], grant: ExecutionGrant) -> Mapping[str, Any]:
@@ -320,14 +327,37 @@ def _inspect_outcome(outcome: InspectOutcome) -> _Outcome:
     return _Outcome(FAILED, refs, metrics, warnings, outcome.receipt.receipt_ref, ('QUALITY_GATES_FAILED', QUALITY_GATES_FAILED, False))
 
 
-def _command(inputs: Mapping[str, Any], kind: type, grant: ExecutionGrant, operation_key: str, key_field: str) -> Any:
+def _reconcile_outcome(result: RenderResult) -> _Outcome:
+    # a reconciled attempt is a definite answer for G: SUCCEEDED keeps its output, FAILED means a new attempt may follow; only a still unknown attempt stays outcome_unknown
+    attempt = result.attempt
+    if attempt.receipt_state is OperationState.FAILED:
+        refs = [{'ref_type': REF_TYPE_ATTEMPT, 'ref_id': attempt.render_attempt_id}]
+        return _Outcome(SUCCEEDED, refs, _metrics(reconciled_state='failed', replayed=result.replayed), [], attempt.receipt_ref)
+    outcome = _render_outcome(result)
+    if outcome.disposition == SUCCEEDED:
+        return _Outcome(SUCCEEDED, outcome.output_refs, {**(outcome.metrics or {}), 'reconciled_state': 'succeeded'}, outcome.warnings, outcome.receipt_ref)
+    return outcome
+
+
+def _prepare_outcome(outcome: OutputReadyOutcome) -> _Outcome:
+    receipt = outcome.receipt
+    refs = [{'ref_type': REF_TYPE_QUALITY_REPORT, 'ref_id': receipt.report_id}]
+    metrics = _metrics(ready=outcome.ready, reason_count=len(outcome.reasons), replayed=outcome.replayed)
+    warnings = [_safe_text(reason, REDACTED_WARNING) for reason in outcome.reasons]
+    if outcome.video_output is not None:
+        refs.insert(0, {'ref_type': REF_TYPE_VIDEO_OUTPUT, 'ref_id': outcome.video_output.video_output_id})
+        return _Outcome(SUCCEEDED, refs, metrics, warnings, receipt.receipt_ref)
+    return _Outcome(FAILED, refs, metrics, warnings, receipt.receipt_ref, ('OUTPUT_NOT_READY', OUTPUT_NOT_READY, False))
+
+
+def _command(inputs: Mapping[str, Any], kind: type, grant: ExecutionGrant, operation_key: str, key_field: str | None) -> Any:
     # the command must have the expected type, the grant of the request and the operation_key of the request
     command = inputs.get('command')
     if not isinstance(command, kind):
         raise CommandMismatch(COMMAND_TYPE_MISMATCH)
     if command.grant != grant:
         raise CommandMismatch(GRANT_MISMATCH)
-    if getattr(command, key_field) != operation_key:
+    if key_field is not None and getattr(command, key_field) != operation_key:
         raise CommandMismatch(OPERATION_KEY_MISMATCH)
     return command
 
@@ -342,6 +372,14 @@ def _run_validate(deps: RenderActivityDeps, key: str, grant: ExecutionGrant, inp
     return _validate_outcome(deps.package.validate_render_package(command))
 
 
+def _run_reconcile(deps: RenderActivityDeps, key: str, grant: ExecutionGrant, inputs: Mapping[str, Any]) -> _Outcome:
+    # nothing_to_reconcile: the input port found no STARTED or OUTCOME_UNKNOWN attempt of the package, so G may render
+    if inputs.get(NOTHING_TO_RECONCILE) is True:
+        return _Outcome(SUCCEEDED, [], _metrics(reconciled_state='none'), [])
+    command = _command(inputs, ReconcileRenderCommand, grant, key, None)
+    return _reconcile_outcome(deps.render.reconcile_render(command))
+
+
 def _run_render(deps: RenderActivityDeps, key: str, grant: ExecutionGrant, inputs: Mapping[str, Any]) -> _Outcome:
     command = _command(inputs, RenderVideoCommand, grant, key, 'render_attempt_id')
     return _render_outcome(deps.render.render_video(command))
@@ -352,12 +390,19 @@ def _run_inspect(deps: RenderActivityDeps, key: str, grant: ExecutionGrant, inpu
     return _inspect_outcome(deps.output.inspect_output(command))
 
 
+def _run_prepare(deps: RenderActivityDeps, key: str, grant: ExecutionGrant, inputs: Mapping[str, Any]) -> _Outcome:
+    command = _command(inputs, PrepareOutputReadyCommand, grant, key, 'operation_key')
+    return _prepare_outcome(deps.output.prepare_output_ready(command))
+
+
 # activity_name -> the one F-17/F-18/F-19 command it runs; no route chains to another one
 _ROUTES = MappingProxyType({
     ACTIVITY_RESOLVE: _run_resolve,
     ACTIVITY_VALIDATE: _run_validate,
+    ACTIVITY_RECONCILE: _run_reconcile,
     ACTIVITY_RENDER: _run_render,
     ACTIVITY_INSPECT: _run_inspect,
+    ACTIVITY_PREPARE: _run_prepare,
 })
 ACTIVITY_NAMES = tuple(_ROUTES)
 
