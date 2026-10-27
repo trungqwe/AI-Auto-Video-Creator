@@ -1,6 +1,8 @@
 """PostgreSQL persistence adapter for P5B storage metadata."""
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 import re
 from typing import Any
@@ -18,6 +20,7 @@ _LOCATION_COLUMNS = "workspace_id::text, location_id::text, artifact_version_id:
 _LEASE_COLUMNS = "lease_ref, operation_key, device_ref, staging_root_ref, expected_total_bytes, state, expires_at, revision"
 _PLACEMENT_COLUMNS = "placement_id, artifact_version_id::text, revision_ref, storage_class, location_id::text"
 _REVISION = re.compile(r"[1-9][0-9]*")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 _LEASE_SETTLED_STATES = ("RELEASED", "EXPIRED")
 _RECEIPT_STATE_TO_DB = {UploadReceiptState.PREPARED: "PREPARED", UploadReceiptState.VERIFIED: "VERIFIED", UploadReceiptState.OUTCOME_UNKNOWN: "OUTCOME_UNKNOWN", UploadReceiptState.CORRUPT: "FAILED", UploadReceiptState.MISSING: "FAILED"}
 _RECEIPT_STATE_FROM_DB = {"PREPARED": UploadReceiptState.PREPARED, "UPLOADING": UploadReceiptState.PREPARED, "UPLOADED_UNVERIFIED": UploadReceiptState.PREPARED, "VERIFIED": UploadReceiptState.VERIFIED, "OUTCOME_UNKNOWN": UploadReceiptState.OUTCOME_UNKNOWN, "FAILED": UploadReceiptState.CORRUPT}
@@ -44,7 +47,7 @@ def _placement(row: Any) -> RevisionPlacement | None:
 
 
 class PostgresStorageMetaRepository:
-    """SQL adapter over a caller-owned connection; never commits or rolls back."""
+    """SQL adapter over a caller-owned connection; never commits or rolls back. Handlers settle the transaction through in_transaction, which borrows a pooled connection and lets the pool settle it when the block ends."""
 
     def __init__(self, connection: Any, workspace_id: str | None = None, upload_backend_ref: str = "cloud") -> None:
         self._connection = connection
@@ -55,6 +58,14 @@ class PostgresStorageMetaRepository:
         if self._workspace_id is None:
             raise ValueError("workspace_id is required for this operation")
         return self._workspace_id
+
+    @classmethod
+    @contextmanager
+    def in_transaction(cls, transactions: Any, workspace_id: str, upload_backend_ref: str = "cloud") -> Iterator[PostgresStorageMetaRepository]:
+        """Handler-owned unit of work: yields a repository over a pooled connection; the pool commits when the block ends normally and rolls back when it raises. The repository methods stay free of transaction control."""
+        with transactions.borrow_connection() as connection:
+            yield cls(connection, workspace_id, upload_backend_ref)
+
 
     def find_version(self, workspace_id: str, artifact_id: str, sha256_hash: str) -> ArtifactVersion | None:
         return _version(self._connection.execute(f"SELECT {_VERSION_COLUMNS} FROM controlplane.cp_artifact_versions WHERE workspace_id=%s AND artifact_id=%s AND sha256_hash=%s", (workspace_id, artifact_id, sha256_hash)).fetchone())
@@ -87,8 +98,31 @@ class PostgresStorageMetaRepository:
         row = self._connection.execute("SELECT location_id::text, device_ref, logical_category, last_verified_at, lease_ref, retention_state, cleanup_state FROM controlplane.cp_artifact_locations WHERE workspace_id=%s AND location_id=%s", (workspace_id, location_id)).fetchone()
         return None if row is None else ArtifactLocationFields(str(row[0]), row[1], row[2], None if row[3] is None else _iso(row[3]), row[4], row[5], row[6])
 
-    def update_location(self, location: ArtifactLocation, expected_revision: int, requested_state: ArtifactLocationState, evidence: str | None) -> ArtifactLocation | None:
-        row = self._connection.execute("UPDATE controlplane.cp_artifact_locations SET state=%s, revision=revision+1, last_verified_at=CASE WHEN %s::text = 'VERIFIED' THEN CURRENT_TIMESTAMP ELSE last_verified_at END, verification_evidence_ref=COALESCE(%s, verification_evidence_ref), updated_at=CURRENT_TIMESTAMP WHERE workspace_id=%s AND location_id=%s AND revision=%s AND state=%s RETURNING " + _LOCATION_COLUMNS, (requested_state.value, requested_state.value, evidence, location.workspace_id, location.location_id, expected_revision, location.state.value)).fetchone()
+    def find_location(self, workspace_id: str, backend_ref: str, provider_namespace_ref: str, provider_object_ref: str) -> ArtifactLocation | None:
+        return _location(self._connection.execute(f"SELECT {_LOCATION_COLUMNS} FROM controlplane.cp_artifact_locations WHERE workspace_id=%s AND backend_ref=%s AND provider_namespace_ref=%s AND provider_object_ref=%s", (workspace_id, backend_ref, provider_namespace_ref, provider_object_ref)).fetchone())
+
+    def list_version_locations(self, workspace_id: str, artifact_version_id: str) -> list[ArtifactLocation]:
+        rows = self._connection.execute(f"SELECT {_LOCATION_COLUMNS} FROM controlplane.cp_artifact_locations WHERE workspace_id=%s AND artifact_version_id=%s ORDER BY created_at, location_id", (workspace_id, artifact_version_id)).fetchall()
+        return [_location(row) for row in rows]
+
+    def list_backend_locations(self, workspace_id: str, backend_ref: str) -> list[ArtifactLocation]:
+        rows = self._connection.execute(f"SELECT {_LOCATION_COLUMNS} FROM controlplane.cp_artifact_locations WHERE workspace_id=%s AND backend_ref=%s ORDER BY created_at, location_id", (workspace_id, backend_ref)).fetchall()
+        return [_location(row) for row in rows]
+
+    def list_versions(self, workspace_id: str, artifact_version_ids: list[str]) -> list[ArtifactVersion]:
+        rows = self._connection.execute(f"SELECT {_VERSION_COLUMNS} FROM controlplane.cp_artifact_versions WHERE workspace_id=%s AND artifact_version_id = ANY(%s::uuid[]) ORDER BY created_at, artifact_version_id", (workspace_id, list(artifact_version_ids))).fetchall()
+        return [_version(row) for row in rows]
+
+    def current_recovery_epoch(self, workspace_id: str) -> str | None:
+        row = self._connection.execute("SELECT recovery_epoch FROM controlplane.cp_app_sessions WHERE workspace_id=%s AND status='ACTIVE' ORDER BY started_at DESC, session_ref DESC LIMIT 1", (workspace_id,)).fetchone()
+        return None if row is None else str(row[0])
+
+    def update_location(self, location: ArtifactLocation, expected_revision: int, requested_state: ArtifactLocationState, evidence: str | None, observed_hash: str | None = None, observed_size_bytes: int | None = None) -> ArtifactLocation | None:
+        if observed_hash is not None and not _SHA256.fullmatch(observed_hash):
+            raise ValueError("observed_hash must be a lowercase sha256 hex digest")
+        if observed_size_bytes is not None and (type(observed_size_bytes) is not int or observed_size_bytes <= 0):
+            raise ValueError("observed_size_bytes must be a positive int")
+        row = self._connection.execute("UPDATE controlplane.cp_artifact_locations SET state=%s, revision=revision+1, last_verified_at=CASE WHEN %s::text = 'VERIFIED' THEN CURRENT_TIMESTAMP ELSE last_verified_at END, verification_evidence_ref=COALESCE(%s, verification_evidence_ref), observed_hash=COALESCE(%s, observed_hash), observed_size_bytes=COALESCE(%s, observed_size_bytes), updated_at=CURRENT_TIMESTAMP WHERE workspace_id=%s AND location_id=%s AND revision=%s AND state=%s RETURNING " + _LOCATION_COLUMNS, (requested_state.value, requested_state.value, evidence, observed_hash, observed_size_bytes, location.workspace_id, location.location_id, expected_revision, location.state.value)).fetchone()
         return _location(row)
 
     def insert_authorization(self, authorization_id: str, values: dict[str, Any]) -> CleanupAuthorization:
