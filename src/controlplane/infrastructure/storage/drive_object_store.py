@@ -38,12 +38,19 @@ def drive_http(timeout: float) -> httplib2.Http:
     return http
 
 
+DRIVE_CREDENTIAL_INVALID = 'DRIVE_CREDENTIAL_INVALID'
+
+
 class DriveObjectStoreError(Exception):
-    pass
+    code: str | None = None
 
 
 class DriveQuotaError(DriveObjectStoreError):
     pass
+
+
+class DriveCredentialError(DriveObjectStoreError):
+    code = DRIVE_CREDENTIAL_INVALID
 
 
 class ArtifactSourcePort(Protocol):
@@ -107,6 +114,8 @@ def _has_rate_limit_reason(exc: HttpError) -> bool:
 def _failure_kind(exc: BaseException) -> str:
     if isinstance(exc, HttpError):
         status = exc.resp.status
+        if status == 401:
+            return 'credential'
         if status == 409:
             return 'exists'
         if status in (404, 410):
@@ -200,6 +209,8 @@ class DriveObjectStore(CloudObjectPort):
                 kind = _failure_kind(exc)
                 if kind == 'exists':
                     raise ObjectAlreadyExistsError('Drive file id already exists') from None
+                if kind == 'credential':
+                    raise DriveCredentialError('Drive request failed: ' + _describe(exc)) from None
                 if kind in ('expired', 'fatal'):
                     raise DriveObjectStoreError('Drive request failed: ' + _describe(exc)) from None
                 failures += 1
@@ -314,6 +325,8 @@ class DriveObjectStore(CloudObjectPort):
                         kind = _failure_kind(exc)
                         if kind == 'exists':
                             raise ObjectAlreadyExistsError('Drive file id already exists') from None
+                        if kind == 'credential':
+                            raise DriveCredentialError('Drive upload failed: ' + _describe(exc)) from None
                         if kind == 'fatal':
                             raise DriveObjectStoreError('Drive upload failed: ' + _describe(exc)) from None
                         if kind == 'expired':
@@ -377,6 +390,8 @@ class DriveObjectStore(CloudObjectPort):
 
 __all__ = [
     'ArtifactSourcePort',
+    'DRIVE_CREDENTIAL_INVALID',
+    'DriveCredentialError',
     'DriveObjectStore',
     'DriveObjectStoreError',
     'DriveQuotaError',
