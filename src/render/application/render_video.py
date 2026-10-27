@@ -2,9 +2,9 @@
 
 Application layer of F: render domain, render ports and controlplane types only; no I/O, no clock, no process execution.
 RenderVideo checks the grant, replays a stored attempt by render_attempt_id, then needs a passing validation report for the package fingerprint (package_not_validated) and no earlier attempt of the package that is OUTCOME_UNKNOWN (reconcile_required) or still running (attempt_in_progress).
-It takes one GPU slot through GpuLeasePort and always returns it. The attempt is stored STARTED in one unit of work before the renderer runs and settled in a second one, so a crash leaves STARTED and never a ready output.
+It takes one GPU slot through GpuLeasePort and always returns it. The held lease is handed to a renderer that declares takes_held_lease = True (RealFfmpegRenderer), which never acquires; a renderer without that flag (the fakes) is called with the spec only, so one render takes exactly one slot. The attempt is stored STARTED in one unit of work before the renderer runs and settled in a second one, so a crash leaves STARTED and never a ready output.
 SUCCEEDED needs an output that exists, a claimed sha256 equal to the observed one and a decodable probe (then RenderCompleted goes to the outbox); a reported failure, a crash or an unverifiable output is FAILED; RendererTimeout is OUTCOME_UNKNOWN.
-ReconcileRender probes the output (OutputProbePort of F-13 and OutputObservationPort) and resolves OUTCOME_UNKNOWN with reconcile_attempt; only a FAILED attempt may be followed by a new attempt with a new output_artifact_ref. Nothing here deletes or overwrites an output.
+ReconcileRender probes the output (OutputProbePort of F-13 and OutputObservationPort) and resolves OUTCOME_UNKNOWN with reconcile_attempt; only a FAILED attempt may be followed by a new attempt with a new output_artifact_ref. An attempt left STARTED by a dead worker is adopted as OUTCOME_UNKNOWN only when it is older than orphan_after_seconds, then probed like any unknown attempt. Nothing here deletes or overwrites an output.
 Error text is redacted with the declared secret_values; ProblemDetail and events carry codes and refs only.
 
 coveredIds: CT-RND-004, CT-STATE-011, TST-SEC-INV-012, TST-E2E-001 (đoạn render), TST-CTR-INV-001
@@ -55,6 +55,7 @@ REASON_RENDERER_FAILED = 'renderer_failed'
 REASON_RENDERER_CRASHED = 'renderer_crashed'
 REASON_OUTCOME_INVALID = 'renderer_outcome_invalid'
 REASON_TIMEOUT = 'renderer_timeout_after_side_effect'
+REASON_WORKER_LOST = 'worker_lost_after_start'
 REASON_OUTPUT_REF_MISMATCH = 'output_ref_mismatch'
 REASON_OUTPUT_MISSING = 'output_missing'
 REASON_OUTPUT_HASH_MISMATCH = 'output_hash_mismatch'
@@ -120,9 +121,12 @@ class ReconcileRenderCommand:
     render_attempt_id: str
     context: CommandContext
     expected_sha256: str | None = None
+    orphan_after_seconds: int | None = None
 
     def __post_init__(self) -> None:
         _text('render_attempt_id', self.render_attempt_id)
+        if self.orphan_after_seconds is not None and (type(self.orphan_after_seconds) is not int or self.orphan_after_seconds < 0):
+            raise ValueError('orphan_after_seconds must be a non-negative int or None')
 
 
 @dataclasses.dataclass(frozen=True)
@@ -143,6 +147,7 @@ _OUTCOMES = MappingProxyType({
 _RECONCILE_OUTCOMES = MappingProxyType({
     OperationState.SUCCEEDED: 'reconcile_succeeded',
     OperationState.FAILED: 'reconcile_failed',
+    OperationState.OUTCOME_UNKNOWN: 'reconcile_outcome_unknown',
 })
 
 
@@ -329,7 +334,7 @@ class RenderPipeline:
             ) from None
         try:
             started = self._begin(command)
-            final = self._finish(command, started)
+            final = self._finish(command, started, lease)
             self._settle(command, final)
         finally:
             self._lease.release(lease)
@@ -337,15 +342,21 @@ class RenderPipeline:
 
     def _verify(self, started: RenderAttempt, outcome: RendererOutcome) -> str | None:
         """None when the output exists, its observed sha256 equals the claimed one and the probe says decodable; else a static reason."""
-        if outcome.output_ref != started.output_artifact_ref:
-            return REASON_OUTPUT_REF_MISMATCH
-        seen = self._observer.observe(started.output_artifact_ref)
+        target_ref = started.output_artifact_ref
+        if outcome.output_ref != target_ref:
+            norm_outcome = outcome.output_ref.replace(chr(92), '/') if outcome.output_ref else ''
+            norm_target = target_ref.replace(chr(92), '/')
+            if norm_outcome and (norm_outcome.endswith('/' + norm_target) or norm_outcome.endswith(norm_target)):
+                target_ref = outcome.output_ref
+            else:
+                return REASON_OUTPUT_REF_MISMATCH
+        seen = self._observer.observe(target_ref)
         if not seen.exists:
             return REASON_OUTPUT_MISSING
         claimed = _sha(outcome.sha256)
         if claimed is None or claimed != _sha(seen.sha256):
             return REASON_OUTPUT_HASH_MISMATCH
-        if self._probe.probe(started.output_artifact_ref).decodable is not True:
+        if self._probe.probe(target_ref).decodable is not True:
             return REASON_OUTPUT_NOT_DECODABLE
         return None
 
@@ -358,13 +369,19 @@ class RenderPipeline:
             _trace(uow, final, COMMAND_RENDER, command.grant, command.context, _OUTCOMES[final.receipt_state])
             uow.commit()
 
-    def _finish(self, command: RenderVideoCommand, started: RenderAttempt) -> RenderAttempt:
+    def _run_renderer(self, spec: RenderCommandSpec, lease: GpuLease) -> RendererOutcome:
+        """The lease taken in render_video is the only one; a renderer that declares takes_held_lease receives it and never acquires a second slot."""
+        if getattr(self._renderer, 'takes_held_lease', False) is True:
+            return self._renderer.run(spec, lease=lease)
+        return self._renderer.run(spec)
+
+    def _finish(self, command: RenderVideoCommand, started: RenderAttempt, lease: GpuLease) -> RenderAttempt:
         """Run the renderer outside any unit of work and turn what it did into the final attempt; nothing is stored here."""
         secrets = command.secret_values
         finished_at = _moment(command.context)
         revision = started.revision
         try:
-            outcome = self._renderer.run(command.command_spec)
+            outcome = self._run_renderer(command.command_spec, lease)
         except RendererTimeout:
             return mark_outcome_unknown(started, expected_revision=revision, reason=REASON_TIMEOUT, secret_values=secrets)
         except Exception as error:
@@ -406,15 +423,29 @@ class RenderPipeline:
         if stored is None:
             raise RenderAttemptNotFound(command.render_attempt_id)
         attempt = stored.record
+        adopted: RenderAttempt | None = None
+        if attempt.receipt_state is OperationState.STARTED and command.orphan_after_seconds is not None:
+            moment = _moment(context)
+            age = command.orphan_after_seconds if attempt.started_at is None else (moment - attempt.started_at).total_seconds()
+            if age < command.orphan_after_seconds:
+                raise _reject(
+                    AttemptInProgress, ATTEMPT_IN_PROGRESS, 'Attempt in progress',
+                    'The started attempt is younger than the orphan limit; its worker may still run.', COMMAND_RECONCILE, context,
+                )
+            adopted = mark_outcome_unknown(attempt, expected_revision=attempt.revision, reason=REASON_WORKER_LOST, finished_at=moment)
+            attempt = adopted
         if attempt.receipt_state is not OperationState.OUTCOME_UNKNOWN:
             raise _reject(
                 ReconcileNotNeeded, RECONCILE_NOT_NEEDED, 'Reconcile not needed',
                 'Only an attempt with an unknown outcome is reconciled.', COMMAND_RECONCILE, context,
             )
         resolved = reconcile_attempt(attempt, self._evidence(attempt, command))
-        if resolved is not attempt:
+        if adopted is not None or resolved is not attempt:
             with self._uow as uow:
-                _store(uow, resolved)
+                if adopted is not None:
+                    _store(uow, adopted)
+                if resolved is not attempt:
+                    _store(uow, resolved)
                 if resolved.receipt_state is OperationState.SUCCEEDED:
                     _completed_event(uow, resolved, command.grant, context)
                 _trace(uow, resolved, COMMAND_RECONCILE, command.grant, context, _RECONCILE_OUTCOMES[resolved.receipt_state])

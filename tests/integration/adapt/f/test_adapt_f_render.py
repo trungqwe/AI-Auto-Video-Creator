@@ -18,7 +18,7 @@ from render.adapters.real_ffprobe_probe import RealFfprobeProbe, measurements_fr
 from render.domain.package_contract import validate_render_package_payload
 from render.domain.preset import build_preset_revision
 from render.domain.render_command import MaterializedPaths, OutputProfile, ToolIdentity, build_render_command
-from render.ports.lease import GpuLease, GpuLeasePort, GpuLeaseUnavailable
+from render.ports.lease import GpuLease, GpuLeasePort
 from render.ports.output_probe import OutputMeasurements, OutputProbePort
 from render.ports.renderer import OutputObservationPort, RendererPort, RendererStatus, RendererTimeout
 
@@ -86,12 +86,9 @@ MATCH = 'match'
 
 class FakeLease:
     def __init__(self):
-        self.unavailable = False
         self.events = []
 
     def acquire(self, owner_ref):
-        if self.unavailable:
-            raise GpuLeaseUnavailable()
         self.events.append(('acquire', owner_ref))
         return GpuLease(lease_id='lease-1', owner_ref=owner_ref)
 
@@ -108,6 +105,8 @@ class Rig:
         self.script_sha = hashlib.sha256(self.script.read_bytes()).hexdigest()
         self.lock = root / 'runtime.lock.json'
         self.lease = FakeLease()
+        # lease do RenderPipeline giữ sẵn; không đi qua FakeLease nên mọi sự kiện của FakeLease là bằng chứng run đã tự chạm cổng lease
+        self.held = GpuLease(lease_id='lease-held', owner_ref='render-attempt-1')
         self.write_lock('PINNED', self.script_sha)
         self.plan()
         self.output_ref = str(pathlib.PureWindowsPath(str(self.staging)) / 'out' / 'final.mp4')
@@ -166,7 +165,7 @@ def test_command_is_an_argument_list_with_production_parameters(rig, monkeypatch
         return original(command, **kwargs)
 
     monkeypatch.setattr(renderer_module.subprocess, 'run', spy)
-    outcome = rig.renderer().run(rig.spec())
+    outcome = rig.renderer().run(rig.spec(), lease=rig.held)
     assert outcome.status is RendererStatus.SUCCEEDED
     command, kwargs = seen[0]
     assert isinstance(command, list) and all(isinstance(item, str) for item in command)
@@ -188,7 +187,7 @@ def test_command_is_an_argument_list_with_production_parameters(rig, monkeypatch
 def test_success_publishes_output_atomically_and_reports_encoder(rig):
     spec = rig.spec()
     adapter = rig.renderer()
-    outcome = adapter.run(spec)
+    outcome = adapter.run(spec, lease=rig.held)
     output = pathlib.Path(rig.output_ref)
     assert outcome.status is RendererStatus.SUCCEEDED and outcome.output_ref == rig.output_ref
     assert output.read_bytes() == b'fake-mp4-h264_nvenc'
@@ -196,27 +195,27 @@ def test_success_publishes_output_atomically_and_reports_encoder(rig):
     assert dict(outcome.metrics.gpu_metrics) == {'encoder_h264_nvenc': 1} and not outcome.metrics.cpu_metrics
     assert outcome.metrics.wall_time_ms >= 0 and outcome.metrics.peak_disk_bytes == output.stat().st_size
     assert adapter.last_encoder == 'h264_nvenc' and rig.leftovers() == ['final.mp4']
-    assert rig.lease.events == [('acquire', spec.spec_fingerprint), ('release', 'lease-1')]
+    assert rig.lease.events == []
     seen = adapter.observe(rig.output_ref)
     assert seen.exists and seen.sha256 == outcome.sha256
     assert adapter.observe(rig.output_ref + '.missing').exists is False
 
 
-def test_nonzero_exit_never_creates_output_and_returns_lease(rig):
+def test_nonzero_exit_never_creates_output_and_never_touches_the_lease(rig):
     rig.plan(exit=3)
     adapter = rig.renderer()
-    outcome = adapter.run(rig.spec())
+    outcome = adapter.run(rig.spec(), lease=rig.held)
     assert outcome.status is RendererStatus.FAILED and outcome.output_ref is None
     assert 'ffmpeg_exit_3' in outcome.error and 'boom' in outcome.error
     assert not pathlib.Path(rig.output_ref).exists() and rig.leftovers() == []
     assert len(rig.calls()) == 1 and adapter.last_encoder is None
-    assert [kind for kind, _ in rig.lease.events] == ['acquire', 'release']
+    assert rig.lease.events == []
 
 
 def test_nvenc_failure_retries_once_with_libx264(rig):
     rig.plan(nvenc_fail=True)
     adapter = rig.renderer()
-    outcome = adapter.run(rig.spec())
+    outcome = adapter.run(rig.spec(), lease=rig.held)
     first, second = rig.calls()
     assert value_after(first, '-c:v') == 'h264_nvenc' and value_after(second, '-c:v') == 'libx264'
     joined = ' '.join(second)
@@ -225,30 +224,30 @@ def test_nvenc_failure_retries_once_with_libx264(rig):
     assert pathlib.Path(rig.output_ref).read_bytes() == b'fake-mp4-libx264'
     assert dict(outcome.metrics.cpu_metrics) == {'encoder_libx264': 1} and not outcome.metrics.gpu_metrics
     assert adapter.last_encoder == 'libx264' and rig.leftovers() == ['final.mp4']
-    assert [kind for kind, _ in rig.lease.events] == ['acquire', 'release']
+    assert rig.lease.events == []
 
 
 def test_nvenc_failure_with_failing_fallback_is_failed_after_one_retry(rig):
     rig.plan(nvenc_fail=True, exit=3)
-    outcome = rig.renderer().run(rig.spec())
+    outcome = rig.renderer().run(rig.spec(), lease=rig.held)
     assert outcome.status is RendererStatus.FAILED and outcome.output_ref is None
     assert len(rig.calls()) == 2 and rig.leftovers() == []
-    assert [kind for kind, _ in rig.lease.events] == ['acquire', 'release']
+    assert rig.lease.events == []
 
 
 def test_timeout_raises_renderer_timeout_and_cleans_up(rig):
     rig.plan(sleep=30)
     with pytest.raises(RendererTimeout):
-        rig.renderer(timeout_seconds=1.5).run(rig.spec())
+        rig.renderer(timeout_seconds=1.5).run(rig.spec(), lease=rig.held)
     assert not pathlib.Path(rig.output_ref).exists() and rig.leftovers() == []
-    assert [kind for kind, _ in rig.lease.events] == ['acquire', 'release']
+    assert rig.lease.events == []
 
 
 @pytest.mark.parametrize('status,sha256', [('PINNED', 'f' * 64), ('BLOCKED', MATCH), ('PENDING', MATCH), ('PINNED', 'short'), ('PINNED', None)])
 def test_unpinned_or_mismatched_ffmpeg_is_refused(rig, status, sha256):
     rig.write_lock(status, rig.script_sha if sha256 == MATCH else sha256)
     with pytest.raises(FfmpegPinRejected):
-        rig.renderer().run(rig.spec())
+        rig.renderer().run(rig.spec(), lease=rig.held)
     assert rig.calls() == [] and rig.lease.events == [] and not pathlib.Path(rig.output_ref).exists()
 
 
@@ -256,28 +255,28 @@ def test_missing_lock_or_binary_is_refused(rig):
     spec = rig.spec()
     rig.lock.unlink()
     with pytest.raises(FfmpegPinRejected):
-        rig.renderer().run(spec)
+        rig.renderer().run(spec, lease=rig.held)
     rig.write_lock('PINNED', rig.script_sha)
     rig.script.unlink()
     with pytest.raises(FfmpegPinRejected):
-        rig.renderer().run(spec)
+        rig.renderer().run(spec, lease=rig.held)
     assert rig.calls() == [] and rig.lease.events == []
 
 
 def test_spec_for_another_executable_is_not_run(rig):
-    outcome = rig.renderer().run(rig.spec(executable=str(rig.root / 'other.exe')))
+    outcome = rig.renderer().run(rig.spec(executable=str(rig.root / 'other.exe')), lease=rig.held)
     assert outcome.status is RendererStatus.FAILED and outcome.error == 'executable_not_pinned'
     assert rig.calls() == [] and rig.lease.events == []
 
 
 def test_unsupported_encoder_is_not_run(rig):
-    outcome = rig.renderer().run(rig.spec(encoder='enc2'))
+    outcome = rig.renderer().run(rig.spec(encoder='enc2'), lease=rig.held)
     assert outcome.status is RendererStatus.FAILED and outcome.error == 'unsupported_encoder'
     assert rig.calls() == [] and rig.lease.events == []
 
 
 def test_libx264_spec_runs_once_without_fallback(rig):
-    outcome = rig.renderer().run(rig.spec(encoder='libx264'))
+    outcome = rig.renderer().run(rig.spec(encoder='libx264'), lease=rig.held)
     assert outcome.status is RendererStatus.SUCCEEDED and len(rig.calls()) == 1
     assert value_after(rig.calls()[0], '-c:v') == 'libx264'
 
@@ -287,26 +286,29 @@ def test_existing_output_is_never_overwritten(rig):
     output = pathlib.Path(rig.output_ref)
     output.parent.mkdir(parents=True)
     output.write_bytes(b'old')
-    outcome = rig.renderer().run(spec)
+    outcome = rig.renderer().run(spec, lease=rig.held)
     assert outcome.status is RendererStatus.FAILED and outcome.error == 'output_already_exists'
     assert output.read_bytes() == b'old' and rig.calls() == []
 
 
-def test_gpu_lease_unavailable_runs_nothing(rig):
-    rig.lease.unavailable = True
-    with pytest.raises(GpuLeaseUnavailable):
-        rig.renderer().run(rig.spec())
-    assert rig.calls() == []
+def test_run_refuses_a_missing_lease_and_runs_nothing(rig):
+    with pytest.raises(TypeError):
+        rig.renderer().run(rig.spec(), lease=None)
+    assert rig.calls() == [] and rig.lease.events == [] and not pathlib.Path(rig.output_ref).exists()
 
 
-def test_lease_is_returned_when_the_process_cannot_start(rig, monkeypatch):
+def test_a_process_that_cannot_start_leaves_the_lease_to_the_caller(rig, monkeypatch):
     def broken(command, **kwargs):
         raise OSError('cannot start')
 
     monkeypatch.setattr(renderer_module.subprocess, 'run', broken)
     with pytest.raises(OSError):
-        rig.renderer().run(rig.spec())
-    assert [kind for kind, _ in rig.lease.events] == ['acquire', 'release'] and rig.leftovers() == []
+        rig.renderer().run(rig.spec(), lease=rig.held)
+    assert rig.lease.events == [] and rig.leftovers() == []
+
+
+def test_renderer_declares_that_it_takes_a_held_lease():
+    assert RealFfmpegRenderer.takes_held_lease is True
 
 
 def test_adapter_sources_have_no_shell_and_no_src_prefix():

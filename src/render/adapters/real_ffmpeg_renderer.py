@@ -3,7 +3,7 @@
 run() executes one render RenderCommandSpec with subprocess.run and an argument list on the ffmpeg binary whose sha256 equals pins.ffmpeg.sha256 of tools/runtime/runtime.lock.json; a missing pin, a BLOCKED pin or a different hash is refused before anything runs.
 Production profile (plan.md 7.4): 1080x1920 (scale increase then crop), 30 fps, h264_nvenc with one retry on libx264 when NVENC cannot start, AAC 192k 48 kHz stereo, MP4 +faststart, ASS burned in by the subtitles filter.
 Each attempt writes a temporary file next to the output; only exit code 0 renames it atomically to output_ref (the output path of the spec), and an existing output is never overwritten.
-LOCK-DESKTOP-GPU is taken through GpuLeasePort for the whole run and always returned. The encoder used is written to the metrics (gpu_metrics encoder_h264_nvenc or cpu_metrics encoder_libx264) and to last_encoder.
+LOCK-DESKTOP-GPU is held by the caller: RenderPipeline.render_video acquires one slot and returns it; run() receives that held GpuLease and never acquires or releases it, so one render takes exactly one slot. The encoder used is written to the metrics (gpu_metrics encoder_h264_nvenc or cpu_metrics encoder_libx264) and to last_encoder.
 command_prefix exists for tests only (an interpreter that runs a fake ffmpeg script); the pin check always applies to ffmpeg_path.
 
 coveredIds: CT-RND-004, CT-STATE-011
@@ -22,7 +22,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from render.domain.render_command import KIND_RENDER, RenderCommandSpec
-from render.ports.lease import GpuLeasePort
+from render.ports.lease import GpuLease, GpuLeasePort
 from render.ports.renderer import OutputObservation, RendererMetrics, RendererOutcome, RendererStatus, RendererTimeout
 
 ENCODER_NVENC = 'h264_nvenc'
@@ -92,7 +92,10 @@ def _rewrite_graph(graph: str) -> str:
         if part.startswith('scale='):
             parts += [f'{part}:force_original_aspect_ratio=increase', 'crop=' + part[len('scale='):]]
         elif part.startswith('ass='):
-            parts.append('subtitles=' + part[len('ass='):])
+            sub_part = 'subtitles=' + part[len('ass='):]
+            if '\\:' in sub_part and '\\\\:' not in sub_part:
+                sub_part = sub_part.replace('\\:', '\\\\:')
+            parts.append(sub_part)
         else:
             parts.append(part)
     return ','.join(parts)
@@ -139,11 +142,13 @@ def _metrics(encoder: str, started: float, size: int) -> RendererMetrics:
 class RealFfmpegRenderer:
     """RendererPort and OutputObservationPort over the pinned ffmpeg; raises FfmpegPinRejected when the binary is not the pinned one."""
 
+    takes_held_lease = True  # RenderPipeline reads this flag and passes the lease it holds
+
     def __init__(
-        self, *, lease: GpuLeasePort, ffmpeg_path: str = DEFAULT_FFMPEG_PATH, lock_path: Path | str = DEFAULT_LOCK_PATH,
+        self, *, lease: GpuLeasePort | None = None, ffmpeg_path: str = DEFAULT_FFMPEG_PATH, lock_path: Path | str = DEFAULT_LOCK_PATH,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS, command_prefix: Sequence[str] = (),
     ) -> None:
-        self._lease = lease
+        # lease is accepted for wiring compatibility only; the renderer never acquires a slot
         self._ffmpeg = Path(ffmpeg_path)
         self._lock_path = Path(lock_path)
         self._timeout = timeout_seconds
@@ -173,22 +178,21 @@ class RealFfmpegRenderer:
         encoders = (ENCODER_NVENC, ENCODER_LIBX264) if requested == ENCODER_NVENC else (ENCODER_LIBX264,)
         return argv[-1], encoders
 
-    def run(self, spec: RenderCommandSpec) -> RendererOutcome:
+    def run(self, spec: RenderCommandSpec, *, lease: GpuLease) -> RendererOutcome:
         if not isinstance(spec, RenderCommandSpec):
             raise TypeError('spec must be a RenderCommandSpec')
+        if not isinstance(lease, GpuLease):
+            raise TypeError('lease must be a held GpuLease')
         verify_ffmpeg_pin(self._ffmpeg, self._lock_path)
         self.last_encoder = None
         try:
             output_ref, encoders = self._plan(spec)
         except _SpecRejected as rejected:
             return RendererOutcome(status=RendererStatus.FAILED, error=str(rejected))
-        lease = self._lease.acquire(spec.spec_fingerprint)
         try:
             return self._run_attempts(spec, output_ref, encoders)
         except _SpecRejected as rejected:
             return RendererOutcome(status=RendererStatus.FAILED, error=str(rejected))
-        finally:
-            self._lease.release(lease)
 
     def _run_attempts(self, spec: RenderCommandSpec, output_ref: str, encoders: tuple[str, ...]) -> RendererOutcome:
         """NVENC first; one retry on libx264 only when ffmpeg reports that NVENC could not start. A temporary file never outlives its attempt."""
