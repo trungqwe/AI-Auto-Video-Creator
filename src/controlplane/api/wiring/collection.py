@@ -3,10 +3,11 @@ from __future__ import annotations
 """ADAPT-WIRE: wiring cho phân hệ A (source_ingestion).
 Đấu nối RealHttpTransport, RealFeedSource, RealMediaFetcher và PostgresSourceIngestionUnitOfWork."""
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
 import socket
+from pathlib import Path
 from typing import Any
 
 from controlplane.api.wiring.production_profile import (
@@ -20,9 +21,14 @@ from source_ingestion.adapters.real_feed_source import RealFeedSource
 from source_ingestion.adapters.real_http_transport import RealHttpTransport
 from source_ingestion.adapters.real_media_fetch import RealMediaFetcher
 from source_ingestion.adapters.secure_fetch import FetchPolicy, SecureFetcher
+from source_ingestion.application.plan_cycle import PlanCollectionCycle, plan_collection_cycle_handler
+from source_ingestion.application.seed_sources import seed_sources
+from source_ingestion.application.source_commands import SourceCommandHandler
+from source_ingestion.domain.source import SourcePolicy
 from source_ingestion.persistence.unit_of_work import (
     PostgresSourceIngestionUnitOfWork,
 )
+from source_ingestion.worker.production_deps import CollectDepsFactory, collect_source_activity_handler
 
 FEED_KINDS = ('rss_feed', 'atom_feed')
 
@@ -51,6 +57,10 @@ class CollectionServices:
     source_adapters: Mapping[str, Any]
     media_fetcher: Any
     transport: Any
+    workspace_id: str = ''
+    fetcher: Any = None
+    feed_policy: Any = None
+    article_policy: Any = None
 
 
 def build_collection_services(manager: Any, config: WiringConfig) -> CollectionServices:
@@ -79,7 +89,56 @@ def build_collection_services(manager: Any, config: WiringConfig) -> CollectionS
         staging_root=runtime.staging_root / 'media',
     )
     uow_factory = partial(PostgresSourceIngestionUnitOfWork, manager, workspace_id=config.workspace_id)
-    return CollectionServices('production', uow_factory, source_adapters, media_fetcher, transport)
+    return CollectionServices('production', uow_factory, source_adapters, media_fetcher, transport, config.workspace_id, fetcher, feed, article)
 
 
-__all__ = ['CollectionServices', 'build_collection_services', 'system_dns_resolver']
+def collection_activity_handlers(
+    services: CollectionServices, *, grants: Any, tier_order: Sequence[str], clock: Callable[[], Any]
+) -> dict[str, Any]:
+    if services.mode != PROFILE_PRODUCTION:
+        raise ProductionProfileError('collection.mode', 'not a production profile')
+    plan = PlanCollectionCycle(
+        uow_factory=services.uow_factory,
+        workspace_id=services.workspace_id,
+        tier_order=tier_order,
+        clock=clock,
+    )
+    factory = CollectDepsFactory(
+        uow_factory=services.uow_factory,
+        grants=grants,
+        workspace_id=services.workspace_id,
+        fetcher=services.fetcher,
+        feed_policy=services.feed_policy,
+        article_policy=services.article_policy,
+    )
+    return {
+        'PlanCollectionCycle': plan_collection_cycle_handler(plan, clock),
+        'CollectSource': collect_source_activity_handler(factory, clock),
+    }
+
+
+def seed_collection_sources(
+    manager: Any,
+    *,
+    workspace_id: str,
+    profile: Any,
+    sources_path: Path,
+    recovery_epoch: str,
+    resolver: Callable[[str], Any] | None = None,
+) -> Any:
+    policy = SourcePolicy(
+        policy_revision='profile-' + str(profile.revision),
+        source_kinds=frozenset(profile.collection.source_kinds),
+        tiers=frozenset(profile.parameters['collection.tiers']),
+        admin_metadata_keys=frozenset(),
+    )
+    handler = SourceCommandHandler(
+        uow=PostgresSourceIngestionUnitOfWork(manager, workspace_id=workspace_id),
+        policy_provider=lambda _workspace_id: policy,
+        resolver=resolver or system_dns_resolver,
+        recovery_epoch=recovery_epoch,
+    )
+    return seed_sources(handler, sources_path, workspace_id=workspace_id)
+
+
+__all__ = ['CollectionServices', 'build_collection_services', 'collection_activity_handlers', 'seed_collection_sources', 'system_dns_resolver']

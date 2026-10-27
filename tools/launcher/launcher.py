@@ -27,6 +27,7 @@ LAUNCHER_FILE = Path(__file__).resolve()
 COMPOSE_FILE = ROOT / 'tools' / 'launcher' / 'docker-compose.yml'
 RUNTIME_LOCK = ROOT / 'tools' / 'runtime' / 'runtime.lock.json'
 PROFILE_PATH = ROOT / 'tools' / 'launcher' / 'prod' / 'profile.json'
+SOURCES_PATH = ROOT / 'tools' / 'launcher' / 'prod' / 'sources.json'
 WEIGHTS_LOCK = ROOT / 'tools' / 'launcher' / 'prod' / 'model-weights.lock.json'
 MIGRATIONS_DIR = ROOT / 'src' / 'controlplane' / 'infrastructure' / 'db' / 'migrations'
 
@@ -49,6 +50,10 @@ TEMPORAL_NAMESPACE = 'default'
 # Lịch sử workflow đã đóng giữ 7 ngày: đủ cho đối soát và diễn tập khôi phục.
 TEMPORAL_RETENTION_SECONDS = 7 * 24 * 3600
 NAMESPACE_WAIT_SECONDS = 60
+# Nhịp kiểm của relay outbox và consumer enrichment trong tiến trình worker (mặc định D8, PW-W1) và thời hạn chờ các vòng nền dừng khi stop.
+OUTBOX_RELAY_INTERVAL_SECONDS = 2.0
+ENRICHMENT_INTERVAL_SECONDS = 5.0
+BACKGROUND_STOP_SECONDS = 10.0
 
 COMMANDS = ('start', 'stop', 'down', 'status', 'backup', 'restore', 'oauth')
 
@@ -166,6 +171,8 @@ class Deps:
     now: typing.Callable[[], datetime.datetime]
     # (host, port) -> 'EXISTS' | 'REGISTERED'; None bỏ qua bước này (chỉ khi không có Temporal thật).
     ensure_namespace: typing.Callable[[str, int], str] | None = None
+    # (dsn, workspace_id, actor_id, recovery_epoch) nạp bảy nguồn và sáu prompt mặc định sau AppSession; None bỏ qua bước này.
+    seed_defaults: typing.Callable[[str, str, str, str], None] | None = None
 
 
 def resolve_layout(environ: typing.Mapping[str, str], root: Path = ROOT) -> Layout:
@@ -583,37 +590,99 @@ def build_runtime(profile: typing.Any, layout: Layout, environ: typing.Mapping[s
 def load_app(environ: typing.Mapping[str, str], layout: Layout) -> typing.Any:
     ensure_src_on_path()
     from main import build_app
-    return build_app(environ, runtime_factory=lambda profile: build_runtime(profile, layout, environ))
+    built: dict[str, typing.Any] = {}
+
+    def runtime_factory(profile: typing.Any) -> typing.Any:
+        built['runtime'] = build_runtime(profile, layout, environ)
+        return built['runtime']
+
+    app = build_app(environ, runtime_factory=runtime_factory)
+    # start_worker đọc runtime (đường FFmpeg, khoá GPU, staging) từ trạng thái của api_app.
+    app.api_app.state.production_runtime = built['runtime']
+    return app
+
+
+def seed_defaults(dsn: str, workspace_id: str, actor_id: str, recovery_epoch: str) -> None:
+    ensure_src_on_path()
+    from controlplane.api.wiring.production_profile import load_production_profile
+    from controlplane.api.wiring.workflow import seed_production_defaults
+    from controlplane.infrastructure.db.uow import TransactionManager
+    manager = TransactionManager(dsn, pool_max_size=2)
+    try:
+        seed_production_defaults(
+            manager,
+            workspace_id=workspace_id,
+            actor_id=actor_id,
+            profile=load_production_profile(PROFILE_PATH),
+            sources_path=SOURCES_PATH,
+            recovery_epoch=recovery_epoch,
+        )
+    except Exception as exc:
+        raise LauncherError(f'Nạp nguồn và prompt mặc định thất bại ({type(exc).__name__}); kiểm tra DNS và cấu hình rồi chạy lại start.') from None
+    finally:
+        manager.close()
 
 
 def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
     ensure_src_on_path()
     import asyncio
     import threading
+    import psycopg
     from temporalio.client import Client
-    from controlplane.api.wiring.workflow import build_workflow_services, build_temporal_registration
+    from controlplane.api.wiring.workflow import (
+        assemble_activity_handlers,
+        build_capability_probes,
+        build_temporal_registration,
+        build_workflow_services,
+        wrap_dispatcher,
+    )
     from controlplane.api.wiring.production import TemporalWorkerGroup
     from controlplane.api.wiring.production_profile import load_production_profile
+    from controlplane.application.orchestration.capability_view import CapabilityReader
+    from controlplane.application.orchestration.grant_runtime import build_grant_issuer
+    from controlplane.infrastructure.db.orchestration.collection_scheduler import CollectionScheduler, EnrichmentStarter
+    from controlplane.infrastructure.db.orchestration.outbox_relay import OutboxRelay
+
+    try:
+        manager = app.manager
+        workspace_id = app.workspace_id
+        runtime = app.api_app.state.production_runtime
+        collection = app.services['collection']
+        storage = app.services['storage']
+    except (AttributeError, KeyError):
+        raise LauncherError('BLOCKED: ứng dụng production thiếu manager, workspace, runtime hoặc dịch vụ collection/storage để dựng worker.') from None
 
     profile = load_production_profile(PROFILE_PATH)
-    services = build_workflow_services(
-        parameters=profile.parameters,
-        handlers={},
-        clock=lambda: datetime.datetime.now(datetime.timezone.utc),
-        timezone_approved=True,
+    dsn = manager.dsn
+
+    def clock() -> datetime.datetime:
+        return datetime.datetime.now(datetime.timezone.utc)
+
+    def grant_connection() -> typing.Any:
+        return psycopg.connect(dsn, autocommit=True)
+
+    def batch_connection() -> typing.Any:
+        return psycopg.connect(dsn)
+
+    handlers = assemble_activity_handlers(
+        manager=manager, workspace_id=workspace_id, profile=profile, runtime=runtime,
+        collection=collection, storage=storage, connection_factory=grant_connection, clock=clock,
     )
-
-    def _grant_issuer(*_args: typing.Any, **_kwargs: typing.Any) -> typing.NoReturn:
-        raise LauncherError('grant_issuer chưa nối')
-
-    def _capability_reader(*_args: typing.Any, **_kwargs: typing.Any) -> typing.NoReturn:
-        raise LauncherError('capability_reader chưa nối')
-
+    services = build_workflow_services(
+        parameters=profile.parameters, handlers=handlers, clock=clock, timezone_approved=True,
+    )
+    services = wrap_dispatcher(services, connection_factory=grant_connection, workspace_id=workspace_id, clock=clock)
+    probes = build_capability_probes(
+        connection_factory=grant_connection, workspace_id=workspace_id, ffmpeg_path=runtime.ffmpeg_path,
+        runtime_lock_path=runtime.runtime_lock_path, gpu_lease=runtime.gpu_lease,
+    )
     registration = build_temporal_registration(
         services,
-        grant_issuer=_grant_issuer,
-        capability_reader=_capability_reader,
+        grant_issuer=build_grant_issuer(grant_connection, workspace_id, None, clock),
+        capability_reader=CapabilityReader(probes),
     )
+    tier_order = tuple(profile.parameters['collection.tiers'])
+    interval_minutes = int(profile.parameters['collection.collection_interval_minutes'])
 
     loop = asyncio.new_event_loop()
     group_box: list[typing.Any] = []
@@ -625,9 +694,29 @@ def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
             client = await Client.connect(f'{LOOPBACK}:{TEMPORAL_PORT}', namespace=TEMPORAL_NAMESPACE)
             heartbeat_sec = float(profile.parameters.get('workflow.heartbeat_seconds', 30.0))
             group = TemporalWorkerGroup(client, registration, graceful_shutdown_seconds=heartbeat_sec)
+            stop_event = asyncio.Event()
+            relay = OutboxRelay(batch_connection, client, workspace_id, services.settings, clock)
+            scheduler = CollectionScheduler(
+                batch_connection, client, workspace_id, services.settings, clock,
+                collection_interval_minutes=interval_minutes, tier_order=tier_order,
+            )
+            starter = EnrichmentStarter(batch_connection, client, workspace_id, services.settings, clock)
+            background = [
+                asyncio.ensure_future(relay.run_forever(stop_event, OUTBOX_RELAY_INTERVAL_SECONDS)),
+                asyncio.ensure_future(scheduler.run_forever(stop_event)),
+                asyncio.ensure_future(starter.run_forever(stop_event, ENRICHMENT_INTERVAL_SECONDS)),
+            ]
             group_box.append(group)
             ready_evt.set()
-            await group.run()
+            try:
+                await group.run()
+            finally:
+                stop_event.set()
+                _done, pending = await asyncio.wait(background, timeout=BACKGROUND_STOP_SECONDS)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
         except Exception as e:
             init_err.append(e)
             ready_evt.set()
@@ -779,6 +868,9 @@ def cmd_start(deps: Deps, args: argparse.Namespace) -> int:
         atomic_write_text(layout.epoch_file, json.dumps({'history': history}, indent=2))
     session_ref = f'ses-{uuid.uuid4().hex}'
     deps.begin_session(dsn, identity['workspace_id'], session_ref, epoch)
+    if deps.seed_defaults is not None:
+        deps.seed_defaults(dsn, identity['workspace_id'], identity['actor_id'], epoch)
+        deps.out('Đã nạp nguồn và prompt mặc định (idempotent).')
 
     if not layout.cert_file.exists() or not layout.key_file.exists():
         deps.make_cert(layout.cert_file, layout.key_file)
@@ -1142,7 +1234,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None, deps: Deps | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    actual_deps = deps or default_deps()
+    # default_deps giữ seed_defaults=None để các test dựng từ default_deps (PW-G1) không chạm CSDL; CLI thật gắn bản thật.
+    actual_deps = deps or dataclasses.replace(default_deps(), seed_defaults=seed_defaults)
     handlers: dict[str, typing.Callable[[Deps, argparse.Namespace], int]] = {
         'start': cmd_start,
         'stop': cmd_stop,

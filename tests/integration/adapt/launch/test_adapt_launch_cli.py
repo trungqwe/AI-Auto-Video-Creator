@@ -1,4 +1,7 @@
-"""Kiểm thử tích hợp ADAPT-LAUNCH bằng subprocess giả, không chạy Docker."""
+"""Kiểm thử tích hợp ADAPT-LAUNCH bằng subprocess giả, không chạy Docker.
+
+coveredIds: PW-W1-01
+"""
 from __future__ import annotations
 
 import ast
@@ -147,6 +150,9 @@ def make_fx(launcher: typing.Any, tmp_path: Path, **over: typing.Any) -> Fx:
         events.append(("max_session_epoch", dsn, ws))
         return 0
 
+    def fake_seed_defaults(dsn: str, ws: str, actor: str, epoch: str) -> None:
+        events.append(("seed_defaults", dsn, ws, actor, epoch))
+
     deps = launcher.Deps(
         environ=environ,
         run=fake_run,
@@ -169,6 +175,7 @@ def make_fx(launcher: typing.Any, tmp_path: Path, **over: typing.Any) -> Fx:
         serve_tls=fake_serve_tls,
         now=fake_now,
         ensure_namespace=fake_ensure_namespace,
+        seed_defaults=fake_seed_defaults,
     )
     if over:
         deps = dataclasses.replace(deps, **over)
@@ -425,19 +432,58 @@ def test_worker_stop_waits_for_the_worker_thread_not_a_lost_future(launcher, mon
             self.done.set()
             await asyncio.sleep(0.2)
 
+    import controlplane.application.orchestration.capability_view as capability_view
+    import controlplane.application.orchestration.grant_runtime as grant_runtime
+    import controlplane.infrastructure.db.orchestration.collection_scheduler as scheduler_module
+    import controlplane.infrastructure.db.orchestration.outbox_relay as relay_module
+
+    class IdleLoop:
+        def __init__(self, *args, **kw):
+            pass
+
+        async def run_forever(self, stop_event, *args):
+            await stop_event.wait()
+            seen.setdefault("background_stopped", []).append(type(self).__name__)
+
+    class FakeRelay(IdleLoop):
+        pass
+
+    class FakeScheduler(IdleLoop):
+        pass
+
+    class FakeStarter(IdleLoop):
+        pass
+
     monkeypatch.setattr(temporalio.client, "Client", FakeClient)
-    monkeypatch.setattr(workflow_wiring, "build_workflow_services", lambda **kw: SimpleNamespace())
+    monkeypatch.setattr(workflow_wiring, "assemble_activity_handlers", lambda **kw: {})
+    monkeypatch.setattr(workflow_wiring, "build_workflow_services", lambda **kw: SimpleNamespace(settings=SimpleNamespace()))
+    monkeypatch.setattr(workflow_wiring, "wrap_dispatcher", lambda services, **kw: services)
+    monkeypatch.setattr(workflow_wiring, "build_capability_probes", lambda **kw: {})
     monkeypatch.setattr(workflow_wiring, "build_temporal_registration", lambda services, **kw: SimpleNamespace())
+    monkeypatch.setattr(grant_runtime, "build_grant_issuer", lambda *a, **k: (lambda *x: None))
+    monkeypatch.setattr(capability_view, "CapabilityReader", lambda probes: (lambda: {}))
+    monkeypatch.setattr(relay_module, "OutboxRelay", FakeRelay)
+    monkeypatch.setattr(scheduler_module, "CollectionScheduler", FakeScheduler)
+    monkeypatch.setattr(scheduler_module, "EnrichmentStarter", FakeStarter)
     monkeypatch.setattr(production_wiring, "TemporalWorkerGroup", FakeGroup)
-    monkeypatch.setattr(profile_wiring, "load_production_profile", lambda path: SimpleNamespace(parameters={}))
+    parameters = {"collection.tiers": {"tier_1": "x"}, "collection.collection_interval_minutes": 180}
+    monkeypatch.setattr(profile_wiring, "load_production_profile", lambda path: SimpleNamespace(parameters=parameters))
     monkeypatch.setattr(launcher, "STOP_GRACE_SECONDS", 5)
-    handle = launcher.start_worker(SimpleNamespace(), None)
+    runtime = SimpleNamespace(ffmpeg_path=Path("ffmpeg.exe"), runtime_lock_path=Path("runtime.lock.json"), gpu_lease=SimpleNamespace())
+    app = SimpleNamespace(
+        manager=SimpleNamespace(dsn="postgresql://unused"),
+        workspace_id="ws-1",
+        services={"collection": SimpleNamespace(), "storage": SimpleNamespace()},
+        api_app=SimpleNamespace(state=SimpleNamespace(production_runtime=runtime)),
+    )
+    handle = launcher.start_worker(app, None)
     _time.sleep(0.3)
     started = _time.monotonic()
     handle.stop()
     assert seen.get("stopped") is True
     assert _time.monotonic() - started < 2, "stop waited for a future the stopped loop never resolves"
     assert seen["connect"] == ("127.0.0.1:7233", "default")
+    assert sorted(seen["background_stopped"]) == ["FakeRelay", "FakeScheduler", "FakeStarter"]
 
 
 def test_default_deps_ensure_the_temporal_namespace(launcher):
@@ -794,3 +840,12 @@ def test_main_dispatch_and_usage(launcher, tmp_path):
     with pytest.raises(SystemExit) as exc:
         launcher.main(["bogus"], fx.deps)
     assert exc.value.code == 2
+
+
+def test_start_seeds_defaults_between_session_and_spawn(launcher, tmp_path):
+    fx = make_fx(launcher, tmp_path)
+    assert launcher.cmd_start(fx.deps, SimpleNamespace()) == 0
+    names = [ev[0] for ev in fx.events]
+    assert names.index("begin_session") < names.index("seed_defaults") < names.index("spawn")
+    seed = [ev for ev in fx.events if ev[0] == "seed_defaults"][0]
+    assert seed[4] == "1"
