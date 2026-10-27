@@ -7,15 +7,24 @@ Không gọi Google lúc dựng."""
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
+from pathlib import Path
 from typing import Any
 
 from controlplane.api.wiring.production_profile import (
     PROFILE_PRODUCTION,
+    ProductionProfileError,
     WiringConfig,
 )
 from controlplane.application.storage_meta.cloud_persist import (
     ObjectAlreadyExistsError,
 )
+from controlplane.application.storage_meta.handlers import (
+    materialize_artifact_set_handler,
+    reconcile_storage_handler,
+    request_cleanup_evaluation_handler,
+)
+from controlplane.application.storage_meta.persist_handler import persist_video_output_handler
+from controlplane.application.storage_meta.reconciliation import CloudObjectObservation
 from controlplane.domain.storage_meta.verification import IntegrityObservation
 from controlplane.infrastructure.db.storage_meta import (
     PostgresStorageMetaRepository,
@@ -24,6 +33,8 @@ from controlplane.infrastructure.storage.drive_object_store import (
     DriveObjectStore,
     DriveStoreConfig,
 )
+
+OUTPUT_NAMESPACE = 'output'
 
 
 class InMemoryCloudObjectStore:
@@ -83,4 +94,36 @@ def build_storage_services(manager: Any, config: WiringConfig) -> StorageService
     return StorageServices('production', manager, store, meta_repository_factory)
 
 
-__all__ = ['InMemoryCloudObjectStore', 'StorageServices', 'build_storage_services']
+def _cloud_observer(cloud: Any) -> Callable[[str], CloudObjectObservation | None]:
+    def observe(provider_object_ref: str) -> CloudObjectObservation | None:
+        found = cloud.lookup(provider_object_ref)
+        if found.object_present is None:
+            raise RuntimeError('CLOUD_LOOKUP_UNKNOWN')
+        if not found.object_present:
+            return None
+        return CloudObjectObservation(provider_object_ref, found.observed_sha256, found.observed_size_bytes)
+
+    return observe
+
+
+def storage_activity_services(
+    services: StorageServices,
+    *,
+    transactions: Any,
+    workspace_id: str,
+    staging_root: Path,
+    namespace_ref: str = OUTPUT_NAMESPACE,
+) -> dict[str, Callable[..., Any]]:
+    if services.mode != PROFILE_PRODUCTION:
+        raise ProductionProfileError('storage.mode', 'not a production profile')
+    return {
+        'MaterializeArtifactSet': materialize_artifact_set_handler(transactions, workspace_id=workspace_id, staging_root=staging_root),
+        'PersistVideoOutput': persist_video_output_handler(
+            transactions, workspace_id=workspace_id, staging_root=staging_root, cloud=services.cloud_store, namespace_ref=namespace_ref
+        ),
+        'RequestCleanupEvaluation': request_cleanup_evaluation_handler(transactions, workspace_id=workspace_id),
+        'ReconcileStorage': reconcile_storage_handler(transactions, workspace_id=workspace_id, observe=_cloud_observer(services.cloud_store)),
+    }
+
+
+__all__ = ['InMemoryCloudObjectStore', 'OUTPUT_NAMESPACE', 'StorageServices', 'build_storage_services', 'storage_activity_services']

@@ -1,6 +1,8 @@
-from __future__ import annotations
+"""Kiểm đấu nối từng phân hệ với adapter thật trên PostgreSQL 18.6 dùng một lần.
 
-"""Kiểm đấu nối từng phân hệ với adapter thật trên PostgreSQL 18.6 dùng một lần."""
+coveredIds: PW-W1-01
+"""
+from __future__ import annotations
 
 import ast
 import dataclasses
@@ -38,6 +40,9 @@ from creative.adapters.real_route_executor import (
     NineRouterExecutor,
 )
 from creative.persistence.uow import PostgresCreativeUnitOfWork
+from ingestion.application.production_deps import ResolveDepsFactory
+from ingestion.infrastructure import memory as b_memory
+from ingestion.persistence.uow import PostgresIngestionUnitOfWork
 from render.adapters import memory as f_memory
 from render.adapters.fake_renderer import FakeRenderer
 from render.adapters.real_ffmpeg_renderer import RealFfmpegRenderer
@@ -68,6 +73,7 @@ EXPECTED_BUILDERS = {
     'collection': 'build_collection_services',
     'config_security': 'build_config_security_services',
     'creative': 'build_creative_services',
+    'ingestion': 'build_ingestion_services',
     'render': 'build_render_services',
     'storage': 'build_storage_services',
     'voice': 'build_voice_services',
@@ -78,6 +84,7 @@ OWN_SUBSYSTEM = {
     'creative': 'creative',
     'voice': 'voice',
     'render': 'render',
+    'ingestion': 'ingestion',
 }
 
 # Mô-đun ghép nhiều phân hệ theo kế hoạch đã duyệt, không phải mô-đun đấu nối của một phân hệ:
@@ -572,3 +579,18 @@ def test_config_security_test_profile_uses_in_memory(manager, database):
     assert s.token_broker is None
     assert s.oauth_config is None
     assert s.secret_store.current_version('ref') is None
+
+
+def test_ingestion_production_uses_postgres_adapters(manager, database, tmp_path):
+    s = wiring('ingestion').build_ingestion_services(manager, prod_config(tmp_path, database[1]))
+    assert s.mode == 'production'
+    assert isinstance(s.uow_factory(), PostgresIngestionUnitOfWork)
+    assert isinstance(s.resolve_factory, ResolveDepsFactory)
+    handlers = wiring('ingestion').ingestion_activity_handlers(s, lambda: datetime.now(timezone.utc))
+    assert set(handlers) == {'ResolveCollectedDocument'}
+
+
+def test_ingestion_test_profile_uses_in_memory(manager, database):
+    s = wiring('ingestion').build_ingestion_services(manager, make_test_config(database[1]))
+    assert isinstance(s.uow_factory(), b_memory.InMemoryUnitOfWork)
+    assert s.resolve_factory is None

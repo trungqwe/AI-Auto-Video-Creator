@@ -3,15 +3,28 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 import datetime
+import hashlib
+import json
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from controlplane.application.orchestration.grant_runtime import ExecutionGrantCurrency
+from catalog.application.media_discovery_handler import MediaDiscoveryDeps, register_media_discovery_handler
+from catalog.persistence.assets import PostgresMediaAssetRepository
+from controlplane.api.wiring.collection import collection_activity_handlers, seed_collection_sources
+from controlplane.api.wiring.completion import completion_activity_services
+from controlplane.api.wiring.ingestion import build_ingestion_services, ingestion_activity_handlers, ingestion_candidate_selector
+from controlplane.api.wiring.production_profile import PROFILE_PRODUCTION, WiringConfig
+from controlplane.api.wiring.storage import storage_activity_services
+from controlplane.application.orchestration.grant_runtime import ExecutionGrantCurrency, GrantRevokingDispatcher
+from controlplane.application.orchestration.job_lifecycle import JobLifecycleListener
+from controlplane.application.orchestration.result_recorder import ResultRecordingDispatcher
 from controlplane.application.orchestration.workflows.activities import (
     ACTIVITY_BINDINGS,
     ACTIVITY_SERVICE_UNBOUND,
@@ -37,9 +50,14 @@ from controlplane.application.orchestration.workflows.settings import (
     settings_from_parameters,
 )
 from controlplane.domain.orchestration.fencing import GrantClaims
+from controlplane.domain.orchestration import OrchestrationContractError
+from controlplane.infrastructure.db.control_api_commands import compose_command_service
+from controlplane.infrastructure.db.orchestration.stage_runs import parse_stage_run_id
 from creative.worker.activity_handler import handle_activity as handle_creative_activity
+from creative.application.prompts import seed_default_prompts
 from ingestion.application.activity_handler import handle_resolve_activity
 from render.worker.activity_handler import handle_activity as handle_render_activity
+from render.ports.lease import GpuLeaseUnavailable
 from source_ingestion.worker.activity_handler import handle_collect_source_activity
 from voice.worker.activity_handler import handle_activity as handle_voice_activity
 
@@ -274,18 +292,162 @@ def build_temporal_registration(
     )
 
 
+class ExecutionClaimsCurrency:
+    """ClaimsCurrencyPort for A: turns GrantClaims into an ExecutionGrant and asks the PW-G3 ExecutionGrantCurrency."""
+
+    def __init__(self, currency: Any, workspace_id: str) -> None:
+        self._currency = currency
+        self._workspace_id = workspace_id
+
+    def is_grant_current(self, grant: GrantClaims) -> bool:
+        try:
+            job_id = parse_stage_run_id(grant.stage_run_id)[0]
+            execution_grant = to_execution_grant(grant, workspace_id=self._workspace_id, job_id=job_id)
+        except (ActivityRejected, OrchestrationContractError):
+            return False
+        return self._currency.is_grant_current(execution_grant)
+
+
+def media_assets_opener(manager: Any) -> Callable[[str], Any]:
+    @contextmanager
+    def open_assets(workspace_id: str) -> Any:
+        with manager.borrow_connection() as connection:
+            yield PostgresMediaAssetRepository(connection, workspace_id)
+
+    return open_assets
+
+
+def assemble_activity_handlers(
+    *,
+    manager: Any,
+    workspace_id: str,
+    profile: Any,
+    runtime: Any,
+    collection: Any,
+    storage: Any,
+    connection_factory: Callable[[], Any],
+    clock: Callable[[], datetime.datetime],
+) -> dict[str, ActivityHandler]:
+    config = WiringConfig(mode=PROFILE_PRODUCTION, workspace_id=workspace_id, profile=profile, runtime=runtime)
+    ingestion = build_ingestion_services(manager, config)
+    grants = ExecutionClaimsCurrency(ExecutionGrantCurrency(connection_factory, workspace_id, clock), workspace_id)
+    handlers: dict[str, ActivityHandler] = {}
+    handlers.update(collection_activity_handlers(
+        collection, grants=grants, tier_order=tuple(profile.parameters['collection.tiers']), clock=clock,
+    ))
+    handlers.update(ingestion_activity_handlers(ingestion, clock))
+    handlers['RegisterMediaDiscovery'] = register_media_discovery_handler(
+        MediaDiscoveryDeps(workspace_id, ingestion.resolve_factory.package_loader(), collection.media_fetcher, media_assets_opener(manager)),
+        clock,
+    )
+    selector = ingestion_candidate_selector(ingestion, connection_factory=connection_factory, clock=clock)
+    services: dict[str, Callable[..., Any]] = {}
+    services.update(completion_activity_services(
+        manager, connection_factory=connection_factory, workspace_id=workspace_id, selector=selector, clock=clock,
+    ))
+    services.update(storage_activity_services(
+        storage, transactions=manager, workspace_id=workspace_id, staging_root=runtime.staging_root,
+    ))
+    for name, service in services.items():
+        handlers[name] = service_handler(service, clock)
+    return handlers
+
+
+APP_SESSION_ACTIVE_SQL = "SELECT 1 FROM controlplane.cp_app_sessions WHERE workspace_id = %s AND status = 'ACTIVE' LIMIT 1"
+GPU_PROBE_OWNER = 'capability-probe'
+
+
+def wrap_dispatcher(
+    services: WorkflowServices,
+    *,
+    connection_factory: Callable[[], Any],
+    workspace_id: str,
+    clock: Callable[[], datetime.datetime],
+) -> WorkflowServices:
+    listener = JobLifecycleListener(connection_factory, workspace_id=workspace_id)
+    recording = ResultRecordingDispatcher(services.dispatcher, connection_factory, clock, [listener], workspace_id=workspace_id)
+    return replace(services, dispatcher=GrantRevokingDispatcher(recording, connection_factory, workspace_id))
+
+
+def build_capability_probes(
+    *,
+    connection_factory: Callable[[], Any],
+    workspace_id: str,
+    ffmpeg_path: Path,
+    runtime_lock_path: Path,
+    gpu_lease: Any,
+) -> dict[str, Callable[[], bool]]:
+    measured: dict[str, Any] = {}
+
+    def app_session_active() -> bool:
+        with connection_factory() as connection:
+            return connection.execute(APP_SESSION_ACTIVE_SQL, (workspace_id,)).fetchone() is not None
+
+    def ffmpeg_pinned() -> bool:
+        pin = json.loads(Path(runtime_lock_path).read_text(encoding='utf-8'))['pins']['ffmpeg']
+        if pin.get('status') != 'PINNED':
+            return False
+        try:
+            stat = Path(ffmpeg_path).stat()
+        except OSError:
+            return False
+        key = (stat.st_mtime_ns, stat.st_size)
+        if measured.get('key') != key:
+            digest = hashlib.sha256()
+            with Path(ffmpeg_path).open('rb') as stream:
+                for chunk in iter(lambda: stream.read(1 << 20), b''):
+                    digest.update(chunk)
+            measured['key'] = key
+            measured['sha256'] = digest.hexdigest()
+        return measured['sha256'] == pin.get('sha256')
+
+    def gpu_lease_ready() -> bool:
+        try:
+            lease = gpu_lease.acquire(GPU_PROBE_OWNER)
+        except GpuLeaseUnavailable:
+            return False
+        gpu_lease.release(lease)
+        return True
+
+    return {'app_session_active': app_session_active, 'ffmpeg_pinned': ffmpeg_pinned, 'gpu_lease_ready': gpu_lease_ready}
+
+
+def seed_production_defaults(
+    manager: Any,
+    *,
+    workspace_id: str,
+    actor_id: str,
+    profile: Any,
+    sources_path: Path,
+    recovery_epoch: str,
+    resolver: Callable[[str], Any] | None = None,
+) -> dict[str, Any]:
+    sources = seed_collection_sources(
+        manager, workspace_id=workspace_id, profile=profile, sources_path=sources_path,
+        recovery_epoch=recovery_epoch, resolver=resolver,
+    )
+    prompts = seed_default_prompts(compose_command_service(manager.unit_of_work), workspace_id=workspace_id, actor_id=actor_id)
+    return {'sources': sources, 'prompts': prompts}
+
+
 __all__ = [
+    'ExecutionClaimsCurrency',
     'ExecutionGrantCurrency',
     'StoreBackedClaimsCurrency',
     'TemporalRegistration',
     'WorkflowServices',
+    'assemble_activity_handlers',
+    'build_capability_probes',
     'build_temporal_registration',
     'build_workflow_services',
     'collect_source_handler',
     'creative_handler',
+    'media_assets_opener',
     'render_handler',
     'resolve_document_handler',
+    'seed_production_defaults',
     'service_handler',
     'unbound_handler',
     'voice_handler',
+    'wrap_dispatcher',
 ]
