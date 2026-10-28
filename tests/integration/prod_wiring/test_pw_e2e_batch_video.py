@@ -675,17 +675,64 @@ async def test_the_seeded_images_resolve_to_verified_versions_through_the_produc
         shas = [
             row[0]
             for row in conn.execute(
-                "SELECT sha256_hash FROM controlplane.cp_artifact_versions WHERE workspace_id = %s AND left(artifact_id, 6) = 'media/' ORDER BY sha256_hash",
+                "SELECT sha256_hash FROM controlplane.cp_artifact_versions WHERE workspace_id = %s AND left(artifact_id, 6) = 'media/' AND right(artifact_id, 4) = '.png' ORDER BY sha256_hash",
                 (rig.database.workspace_id,),
             ).fetchall()
         ]
     assert len(shas) == 2
+    sizes: list[str] = []
     mgr = TransactionManager(rig.database.dsn, pool_max_size=4)
     try:
         for sha in shas:
             version = verified_version_for_sha(mgr, workspace_id=rig.database.workspace_id, sha256=sha)
             assert version is not None
             assert version.artifact_id == f"media/{sha}.png"
+            size_probe = subprocess.run(
+                [
+                    str(FFPROBE),
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "v:0",
+                    "-show_entries",
+                    "stream=width,height",
+                    "-of",
+                    "csv=p=0",
+                    str(rig.tmp_path / "staging" / version.artifact_version_id),
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            sizes.append(size_probe.stdout.strip())
+    finally:
+        mgr.close()
+    assert sorted(sizes) == ['1080,1920', '720,1280']
+
+
+@pytest.mark.asyncio
+async def test_the_seeded_hooks_use_production_refs_and_registered_staged_versions(rig: Any) -> None:
+    from catalog.persistence.hooks import PostgresHookHistory
+    from controlplane.domain.statemachine import ArtifactLocationState
+    from controlplane.infrastructure.db.storage_meta import PostgresStorageMetaRepository
+    from controlplane.infrastructure.db.uow import TransactionManager
+
+    ws = rig.database.workspace_id
+    with rig.database.connect() as conn:
+        history = PostgresHookHistory(conn, ws)
+        heads = {'vh-01': history.latest('vh-01'), 'ah-01': history.latest('ah-01')}
+    mgr = TransactionManager(rig.database.dsn, pool_max_size=4)
+    try:
+        for hook_id, suffix in (('vh-01', '.mp4'), ('ah-01', '.wav')):
+            hook = heads[hook_id]
+            sha = dict(hook.technical_metadata)['media_sha256']
+            assert hook.artifact_version_ref == f'seed:{hook_id}:sha256:{sha}'
+            with PostgresStorageMetaRepository.in_transaction(mgr, ws) as repo:
+                version = repo.find_version(ws, f'media/{sha}{suffix}', sha)
+                assert version is not None
+                locations = repo.list_version_locations(ws, version.artifact_version_id)
+            assert any(loc.state is ArtifactLocationState.VERIFIED and loc.observed_hash == sha for loc in locations)
+            assert (rig.tmp_path / 'staging' / version.artifact_version_id).is_file()
     finally:
         mgr.close()
 

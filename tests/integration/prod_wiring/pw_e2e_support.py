@@ -876,7 +876,7 @@ def register(manager: Any, db: Any, locator: str, name: str, tier: str = 'tier_1
     return outcome.receipt.aggregate_ref
 
 
-def make_still(path: Path | str, colour: str) -> None:
+def make_still(path: Path | str, colour: str, size: str = '1080x1920') -> None:
     subprocess.run(
         [
             str(FFMPEG),
@@ -888,7 +888,7 @@ def make_still(path: Path | str, colour: str) -> None:
             '-f',
             'lavfi',
             '-i',
-            f'color=c={colour}:s=1080x1920:d=1',
+            f'color=c={colour}:s={size}:d=1',
             '-frames:v',
             '1',
             str(path),
@@ -908,6 +908,35 @@ def walk(repo: Any, location: Any, target: Any, evidence: str = 'ev', observed: 
     return location
 
 
+def seed_hook(manager: Any, database: Any, runtime: Any, asset_repo: Any, hook_history: Any, *, hook_id: str, kind: HookKind, media_kind: MediaKind, suffix: str, data: bytes, technical: tuple[tuple[str, str], ...]) -> None:
+    sha = hashlib.sha256(data).hexdigest()
+    media_dir = runtime.staging_root / 'media'
+    media_dir.mkdir(parents=True, exist_ok=True)
+    (media_dir / f'{sha}{suffix}').write_bytes(data)
+    register_staged_artifact(
+        manager,
+        workspace_id=database.workspace_id,
+        staging_root=runtime.staging_root,
+        owner_ref='seed',
+        relative_ref=f'media/{sha}{suffix}',
+        retention_ref='durable',
+    )
+    provenance = ProvenanceEntry(None, None, None, f'seed://{hook_id}{suffix}', '2026-10-27T00:00:00Z', ProvenanceRelation.USER_IMPORTED)
+    observation = DiscoveryObservation(f'seed:{hook_id}', media_kind, provenance, CanonicalFingerprint(sha), True)
+    result = register_discovery(asset_repo, observation, f'seed-{hook_id}')
+    import_hook(
+        hook_history,
+        hook_id=hook_id,
+        kind=kind,
+        artifact_version_ref=f'seed:{hook_id}:sha256:{sha}',
+        tags=('seed', kind.value, 'news'),
+        description=f'Seed hook {hook_id}',
+        note='seed',
+        enabled=True,
+        technical_metadata=technical + (('media_sha256', sha), ('media_asset_id', result.media_asset_id), ('seed_rights_status', 'SELF_GENERATED')),
+    )
+
+
 def seed_render_and_catalog(manager: Any, database: Any, runtime: Any) -> None:
     svc = compose_command_service(manager.unit_of_work)
     seed_render_config(
@@ -921,13 +950,12 @@ def seed_render_and_catalog(manager: Any, database: Any, runtime: Any) -> None:
     media_dir.mkdir(parents=True, exist_ok=True)
     with database.connect() as conn:
         asset_repo = PostgresMediaAssetRepository(conn, database.workspace_id)
-        storage_repo = PostgresStorageMetaRepository(conn, database.workspace_id)
         hook_history = PostgresHookHistory(conn, database.workspace_id)
 
-        for i, col in enumerate(('red', 'blue'), start=1):
+        for i, (col, still_size) in enumerate((('red', '1080x1920'), ('blue', '720x1280')), start=1):
             num = f'{i:02d}'
             img_path = media_dir / f'bg-{num}.png'
-            make_still(img_path, col)
+            make_still(img_path, col, still_size)
             data = img_path.read_bytes()
             img_sha = hashlib.sha256(data).hexdigest()
             (media_dir / f'{img_sha}.png').write_bytes(data)
@@ -986,124 +1014,21 @@ def seed_render_and_catalog(manager: Any, database: Any, runtime: Any) -> None:
             )
             asset_repo.save(asset, discovery_id=f'seed-discovery-{num}')
 
-        vh_path = media_dir / 'vh-01.mp4'
+        seed_src = runtime.staging_root.parent / 'seed-src'
+        seed_src.mkdir(parents=True, exist_ok=True)
+        vh_src = seed_src / 'vh-01.mp4'
         subprocess.run(
-            [str(FFMPEG), '-hide_banner', '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=0x1E3C72:s=1080x1920:d=3', '-c:v', 'libx264', '-t', '3', str(vh_path)],
+            [str(FFMPEG), '-hide_banner', '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=s=1080x1920:d=3:r=30', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-t', '3', str(vh_src)],
             check=True,
         )
-        vh_data = vh_path.read_bytes()
-        vh_sha = hashlib.sha256(vh_data).hexdigest()
-        vh_ver_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, 'vh-01'))
-        storage_repo.insert_version(
-            vh_ver_id,
-            {
-                'workspace_id': database.workspace_id,
-                'artifact_id': 'art-vh-01',
-                'sha256_hash': vh_sha,
-                'size_bytes': len(vh_data),
-                'mime_type': 'video/mp4',
-                'artifact_kind': 'visual_hook',
-                'owner_ref': 'seed',
-                'retention_ref': 'per_video',
-                'sensitivity_ref': 'internal',
-            },
-        )
-        vh_loc = storage_repo.insert_location(
-            str(uuid.uuid4()),
-            {
-                'workspace_id': database.workspace_id,
-                'artifact_version_id': vh_ver_id,
-                'backend_ref': 'local-staging',
-                'provider_namespace_ref': 'media',
-                'provider_object_ref': 'vh-01.mp4',
-                'logical_locator': 'media/vh-01.mp4',
-            },
-        )
-        walk(storage_repo, vh_loc, S.VERIFIED, observed=(vh_sha, len(vh_data)))
-        (runtime.staging_root / vh_ver_id).write_bytes(vh_data)
-        (runtime.staging_root / f'{vh_ver_id}.mp4').write_bytes(vh_data)
-        loc_vh_root = storage_repo.insert_location(
-            str(uuid.uuid4()),
-            {
-                'workspace_id': database.workspace_id,
-                'artifact_version_id': vh_ver_id,
-                'backend_ref': 'local-staging',
-                'provider_namespace_ref': 'staging',
-                'provider_object_ref': vh_ver_id,
-                'logical_locator': vh_ver_id,
-            },
-        )
-        walk(storage_repo, loc_vh_root, S.VERIFIED, observed=(vh_sha, len(vh_data)))
+        seed_hook(manager, database, runtime, asset_repo, hook_history, hook_id='vh-01', kind=HookKind.VISUAL_HOOK, media_kind=MediaKind.CLIP, suffix='.mp4', data=vh_src.read_bytes(), technical=(('width', '1080'), ('height', '1920'), ('fps', '30'), ('duration_ms', '3000')))
 
-        import_hook(
-            hook_history,
-            hook_id='vh-01',
-            kind=HookKind.VISUAL_HOOK,
-            artifact_version_ref=vh_ver_id,
-            tags=('seed', 'visual_hook', 'news'),
-            description='Visual hook 1',
-            note='seed',
-            enabled=True,
-            technical_metadata=(('width', '1080'), ('height', '1920'), ('fps', '30'), ('duration_ms', '3000'), ('media_sha256', vh_sha), ('seed_rights_status', 'SELF_GENERATED')),
+        ah_src = seed_src / 'ah-01.wav'
+        subprocess.run(
+            [str(FFMPEG), '-hide_banner', '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1.5:sample_rate=24000', '-ac', '1', '-c:a', 'pcm_s16le', str(ah_src)],
+            check=True,
         )
-
-        ah_bytes = _make_wav_bytes(1.5)
-        ah_path = media_dir / 'ah-01.wav'
-        ah_path.write_bytes(ah_bytes)
-        ah_sha = hashlib.sha256(ah_bytes).hexdigest()
-        ah_ver_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, 'ah-01'))
-        storage_repo.insert_version(
-            ah_ver_id,
-            {
-                'workspace_id': database.workspace_id,
-                'artifact_id': 'art-ah-01',
-                'sha256_hash': ah_sha,
-                'size_bytes': len(ah_bytes),
-                'mime_type': 'audio/wav',
-                'artifact_kind': 'audio_hook',
-                'owner_ref': 'seed',
-                'retention_ref': 'per_video',
-                'sensitivity_ref': 'internal',
-            },
-        )
-        ah_loc = storage_repo.insert_location(
-            str(uuid.uuid4()),
-            {
-                'workspace_id': database.workspace_id,
-                'artifact_version_id': ah_ver_id,
-                'backend_ref': 'local-staging',
-                'provider_namespace_ref': 'media',
-                'provider_object_ref': 'ah-01.wav',
-                'logical_locator': 'media/ah-01.wav',
-            },
-        )
-        walk(storage_repo, ah_loc, S.VERIFIED, observed=(ah_sha, len(ah_bytes)))
-        (runtime.staging_root / ah_ver_id).write_bytes(ah_bytes)
-        (runtime.staging_root / f'{ah_ver_id}.wav').write_bytes(ah_bytes)
-        loc_ah_root = storage_repo.insert_location(
-            str(uuid.uuid4()),
-            {
-                'workspace_id': database.workspace_id,
-                'artifact_version_id': ah_ver_id,
-                'backend_ref': 'local-staging',
-                'provider_namespace_ref': 'staging',
-                'provider_object_ref': ah_ver_id,
-                'logical_locator': ah_ver_id,
-            },
-        )
-        walk(storage_repo, loc_ah_root, S.VERIFIED, observed=(ah_sha, len(ah_bytes)))
-
-        import_hook(
-            hook_history,
-            hook_id='ah-01',
-            kind=HookKind.AUDIO_HOOK,
-            artifact_version_ref=ah_ver_id,
-            tags=('seed', 'audio_hook', 'news'),
-            description='Audio hook 1',
-            note='seed',
-            enabled=True,
-            technical_metadata=(('sample_rate_hz', '24000'), ('channels', '1'), ('duration_ms', '1500'), ('media_sha256', ah_sha), ('seed_rights_status', 'SELF_GENERATED')),
-        )
+        seed_hook(manager, database, runtime, asset_repo, hook_history, hook_id='ah-01', kind=HookKind.AUDIO_HOOK, media_kind=MediaKind.AUDIO, suffix='.wav', data=ah_src.read_bytes(), technical=(('sample_rate_hz', '24000'), ('channels', '1'), ('duration_ms', '1500')))
         conn.commit()
 
 

@@ -9,24 +9,31 @@
 
 ## 1. Lệnh đã chạy và kết quả kiểm chứng
 
-Báo cáo kết quả thực thi các lệnh kiểm tra bắt buộc của tác vụ PW-E2E trên HEAD đã rebase lên `2ab2ddfe4f14d4f73d55d8a4aaa2aec2300ae51d`:
+Báo cáo kết quả thực thi các lệnh kiểm tra bắt buộc của tác vụ PW-E2E trên HEAD đã rebase lên `9e67a6ba3d0e64735ffd51dc068107ea0fe0222d`:
 
 1. `git diff --check`
    - **Mã thoát:** 0
    - **Kết quả:** Không có lỗi khoảng trắng thừa hay ký tự dòng không hợp lệ trên cây làm việc.
 
 2. `python -m pytest tests/integration/prod_wiring/test_pw_e2e_batch_video.py -q -p no:cacheprovider`
-   - **Mã thoát:** 1 (FAILED / BLOCKED do khoảng trống mã nguồn production ngoài owned paths tại stage qc)
-   - **Kết quả:** 3 failed, 6 passed, 1 warning in 77.84s (0:01:17).
-     - Rig nay đã được bổ sung phương thức `fail_fast_reason` trong `E2ERig` và `wait_for_workflow_result(..., rig=rig)` cùng hàm chờ `waiting_on_credential` trong `test_pw_e2e_batch_video.py` để test dừng ngay khi stage hoặc job đạt `FAILED_FINAL`; cơ chế này rút ngắn thời gian phát hiện lỗi từ 1851.11s (30m51s) xuống 77.84s (0:01:17) mà không làm thay đổi bất kỳ tiêu chí nghiệm thu nào.
-     - 6 test PASSED: `test_the_launcher_composition_binds_every_activity_and_has_no_private_assembly`, `test_the_support_module_patches_only_edge_adapters`, `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch`, `test_the_report_lists_stage_timings_and_the_cp7_conditions`, `test_the_seeded_images_resolve_to_verified_versions_through_the_production_lookup`, `test_module_docstring_declares_covered_ids`.
-     - Quy trình thu thập RSS loopback -> trích xuất tài liệu -> enrichment -> candidate lô 2 đã PASSED hoàn toàn trong `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch`, xác nhận khoảng trống G1 (`missing business_date`) trước đây đã được đóng triệt để bởi các gói tích hợp.
-     - Test mới `test_the_seeded_images_resolve_to_verified_versions_through_the_production_lookup` PASSED, xác nhận ảnh seed staging đã được đăng ký đúng chuẩn production và tra cứu thành công qua `verified_version_for_sha`.
-     - 3 test FAILED (dừng nhanh qua fail-fast khi stage qc đạt `FAILED_FINAL` do `quality_gates_failed`):
-       - `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` (FAILED: `fail-fast: stage qc of 5cad7988-c405-44fe-9395-fcf1a9a6b902:job:1 reached FAILED_FINAL (attempt=1, problem={'code': 'quality_gates_failed', 'type': 'urn:render:problem:quality_gates_failed', 'title': 'Quality Gates Failed', 'detail': 'the output failed its quality gates; the report is stored', 'category': 'validation', 'instance': 'urn:stage-run:5cad7988-c405-44fe-9395-fcf1a9a6b902:job:1:qc:r1', 'retryable': False, 'correlation_id': '2eac696e-22ad-46ea-8a6e-6872dd3db757'})`)
-       - `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` (FAILED: `fail-fast: stage qc of 109eb5e1-9975-4650-920e-3cbb12039a16:job:1 reached FAILED_FINAL (attempt=1, problem={'code': 'quality_gates_failed', 'type': 'urn:render:problem:quality_gates_failed', 'title': 'Quality Gates Failed', 'detail': 'the output failed its quality gates; the report is stored', 'category': 'validation', 'instance': 'urn:stage-run:109eb5e1-9975-4650-920e-3cbb12039a16:job:1:qc:r1', 'retryable': False, 'correlation_id': '657fd874-f96a-4a95-bc72-74b4d7ced368'})`)
-       - `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` (FAILED: `fail-fast: stage qc of f260d3b5-689a-4eaa-8c61-7bf2ee45cdb7:job:1 reached FAILED_FINAL (attempt=1, problem={'code': 'quality_gates_failed', 'type': 'urn:render:problem:quality_gates_failed', 'title': 'Quality Gates Failed', 'detail': 'the output failed its quality gates; the report is stored', 'category': 'validation', 'instance': 'urn:stage-run:f260d3b5-689a-4eaa-8c61-7bf2ee45cdb7:job:1:qc:r1', 'retryable': False, 'correlation_id': '312efcbb-bb43-4e8f-9327-b64fc8693760'})`)
-     - **Nguyên nhân cốt lõi:** Lỗi G3 tại stage `qc` (các cổng `VISUAL_HOOK_PRESENT`, `THUMBNAIL_PRESENT`, `SUBTITLE_BURNED_IN`, `INFERENCE_DISCLOSURE_PRESENT` không đạt) là khoảng trống production ngoài owned paths tại `src/render/adapters/postgres_plan_assets.py` và `src/render/domain/render_command.py`.
+   - **Mã thoát:** 0
+   - **Kết quả:** 10 passed, 1 warning in 137.93s (0:02:17).
+     - Toàn bộ 10/10 test PASSED:
+       - `test_the_launcher_composition_binds_every_activity_and_has_no_private_assembly` (PASSED)
+       - `test_the_support_module_patches_only_edge_adapters` (PASSED)
+       - `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` (PASSED)
+       - `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` (PASSED)
+       - `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` (PASSED)
+       - `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch` (PASSED)
+       - `test_the_report_lists_stage_timings_and_the_cp7_conditions` (PASSED)
+       - `test_the_seeded_images_resolve_to_verified_versions_through_the_production_lookup` (PASSED)
+       - `test_the_seeded_hooks_use_production_refs_and_registered_staged_versions` (PASSED)
+       - `test_module_docstring_declares_covered_ids` (PASSED)
+     - Không có test nào FAILED (0 failed).
+     - Job video đạt trạng thái `COMPLETED`, lô đạt `TARGET_REACHED`, 1 ledger được ghi nhận, tệp mp4 có location `local-staging` và cloud `VERIFIED`.
+     - Cổng chất lượng `INFERENCE_DISCLOSURE_PRESENT` đạt `PASSED` ở lô chính (có segment `claim_mode=inference` kèm `disclosure` với dải burn-in đo trên mp4 do FFmpeg render thật) và `NOT_APPLICABLE` ở lô phụ (script chỉ `source_backed`).
+     - Dữ liệu hook đã được nạp qua `register_staged_artifact` với ref dạng `seed:<id>:sha256:<sha>`, thông tin `media_sha256` trong `technical_metadata`, hook visual dùng nguồn `testsrc` thật để đo kiểm và ảnh nền `bg-02` kích thước 720x1280 khác 1080x1920 được scale thật bởi pipeline render.
+     - Kiểm thử Drive 401 xác nhận job chuyển sang `WAITING credential_unavailable`, đổi token hợp lệ thì chạy tiếp đúng 1 upload và stage render không chạy lại; dừng/bật lại worker giữa render và upload không chạy lại stage đã hoàn thành (`attempt` không tăng).
 
 3. `python -c "import pathlib; t = pathlib.Path('docs/delivery-evidence/pw-e2e/report.md').read_text(encoding='utf-8'); assert 'PW-E2E' in t and 'CP7-10' in t and 'CP7-11' in t, 'PW-E2E'"`
    - **Mã thoát:** 0
@@ -36,24 +43,25 @@ Báo cáo kết quả thực thi các lệnh kiểm tra bắt buộc của tác 
 
 ## 2. Bảng thời gian thực thi từng stage (Đầu vào OI-PW-02)
 
-Trong lượt chạy kiểm thử thật trên HEAD đã rebase, quy trình thu thập `DailyCollectionWorkflow` đã chạy thành công, đo được `collect_and_enrich_seconds = 5.54` và `allocate_seconds = 1.09`. Quy trình sản xuất video `VideoProductionWorkflow` đã thực thi qua 8 stage đầu tiên (`analyze`, `script`, `media_select`, `plan`, `tts`, `align`, `process`, `render`), tuy nhiên bị dừng tại stage thứ 9 (`qc`) do lỗi production ngoài owned paths (`quality_gates_failed`). Do đó, các stage `qc`, `sync`, `complete` chưa đo được số giây hoàn tất:
+Trong lượt chạy kiểm thử thật trên HEAD đã rebase, quy trình thu thập `DailyCollectionWorkflow` đã chạy thành công, đo được `collect_and_enrich_seconds = 5.64` và `allocate_seconds = 1.09`. Quy trình sản xuất video `VideoProductionWorkflow` đã thực thi hoàn tất cả 11 stage (`analyze`, `script`, `plan`, `media_select`, `tts`, `align`, `process`, `render`, `qc`, `sync`, `complete`) cho cả lô chính và lô phụ:
 
 | Stage | Video chính (giây) | Video phụ (giây) | Ghi chú kỹ thuật |
 | :--- | :--- | :--- | :--- |
-| `analyze` | 0.10 | 0.10 | Stage phân tích ngữ cảnh và snapshot |
-| `script` | 0.10 | 0.10 | Stage sinh kịch bản và segment |
-| `plan` | 0.10 | 0.10 | Stage lập kế hoạch sản xuất video |
-| `media_select` | 0.10 | 0.10 | Đã PASSED sau khi sửa seed dữ liệu |
-| `tts` | 0.10 | 0.10 | Stage tổng hợp giọng đọc |
-| `align` | 0.10 | 0.10 | Stage căn chỉnh phụ đề Whisper |
-| `process` | 0.10 | 0.10 | Stage xử lý ảnh và nhạc nền |
-| `render` | 0.10 | 0.10 | Stage ghép video và render FFmpeg thật |
-| `qc` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Dừng tại inspect_output do quality_gates_failed |
-| `sync` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do dừng tại qc |
-| `complete` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do dừng tại qc |
-| **Tổng cộng** | **KHÔNG ĐO ĐƯỢC** | **KHÔNG ĐO ĐƯỢC** | **Chờ gói chủ đóng khoảng trống production tại qc** |
+| `analyze` | 0.12 | 0.12 | Stage phân tích ngữ cảnh và snapshot |
+| `script` | 0.11 | 0.05 | Stage sinh kịch bản và segment |
+| `plan` | 0.11 | 0.05 | Stage lập kế hoạch sản xuất video |
+| `media_select` | 0.05 | 0.05 | Stage lựa chọn media ứng viên từ catalog |
+| `tts` | 0.71 | 0.12 | Stage tổng hợp giọng đọc |
+| `align` | 0.12 | 0.12 | Stage căn chỉnh phụ đề Whisper |
+| `process` | 0.59 | 0.11 | Stage xử lý ảnh và nhạc nền |
+| `render` | 0.12 | 0.11 | Stage ghép video và render FFmpeg thật |
+| `qc` | 2.10 | 1.97 | Stage kiểm soát chất lượng đầu ra video |
+| `sync` | 0.11 | 0.12 | Stage đồng bộ và upload lên lưu trữ đám mây |
+| `complete` | 0.12 | 0.13 | Stage hoàn tất và xác nhận commit video |
+| **Tổng cộng** | **4.26** | **2.95** | **Hoàn thành trọn vẹn 11 stage cho cả hai lô** |
 
-*Ghi chú:* Số đo quy trình thu thập từ tệp `pw-e2e-stage-timings.json`: `collect_and_enrich_seconds = 5.54`, `allocate_seconds = 1.09` (đây là số liệu đầu vào OI-PW-02). Các stage `qc`, `sync`, `complete` chưa đo được do workflow dừng tại `qc` bởi lỗi production ngoài owned paths (`quality_gates_failed`). Độ phân giải đo của StageTimer là khoảng 0,1 giây.
+*Ghi chú:* Số đo quy trình thu thập từ tệp `pw-e2e-stage-timings.json`: `collect_and_enrich_seconds = 5.64`, `allocate_seconds = 1.09` (đây là số liệu đầu vào OI-PW-02). Cả 11 stage đều hoàn thành thành công và được đo lường chính xác từ tệp timings thật. Độ phân giải đo của StageTimer là khoảng 0,1 giây.
+
 ---
 
 ## 3. Danh sách giả lập (EDGE_ADAPTERS)
@@ -99,56 +107,33 @@ Danh sách đầy đủ và chính xác các adapter giả lập được phép 
 ### Kết luận G2
 - G2 là lỗi dữ liệu seed của rig PW-E2E (artifact_id `art-bg-NN` thay vì `media/<sha256>.<ext>`), đã sửa trong `tests/integration/prod_wiring/pw_e2e_support.py` bằng `register_staged_artifact`. Mã production `src/creative/adapters/media_candidates.py` và `src/controlplane/application/storage_meta/handlers.py` (`verified_version_for_sha`) hoạt động hoàn toàn chính xác. Stage `media_select` đã PASSED trong lần chạy kiểm thử này.
 
-### Khoảng trống phát hiện mới tại Stage qc
-- **G3 (Stage `qc` — Quality gates failed):**
-  - **Triệu chứng:** Hoạt động `inspect_output` trong stage `qc` bị thất bại do không đạt các cổng kiểm soát chất lượng:
-    1. Cổng `VISUAL_HOOK_PRESENT` và `THUMBNAIL_PRESENT`: Tại `src/creative/domain/production_plan.py:236`, `visual_hook_ref` nhận `'vh-01'` và `thumbnail_ref` nhận `'thumb:vh-01'`. Tại `src/render/adapters/postgres_plan_assets.py:126` (`PostgresArtifactInfo.get_asset`), hàm yêu cầu định dạng UUID (`uuid.UUID(artifact_version_id)`). Do `'vh-01'` và `'thumb:vh-01'` không phải UUID, hàm trả về `None`, dẫn đến việc các asset này bị bỏ qua không được đưa vào `package.materialization_manifest`. Sau đó, tại `src/render/adapters/real_output_inspector.py:464, 490`, `_visual_hook` và `_thumbnail` tra cứu `manifest.get('vh-01')` và `manifest.get('thumb:vh-01')`, nhận kết quả `None`, làm trượt hai cổng chất lượng (`visual_hook_not_observed`, `thumbnail_not_observed`).
-    2. Cổng `SUBTITLE_BURNED_IN` và `INFERENCE_DISCLOSURE_PRESENT`: Tại `src/render/domain/render_command.py:227`, bộ lọc ghép nối video sử dụng `concat=n=2:v=1:a=0` trên các ảnh đầu vào mà không có cờ loop (`-loop 1`), khiến luồng video xuất ra chỉ dài 2 frame (khoảng 66 ms) trong khi luồng âm thanh dài 30 giây. Luồng video kết thúc ngay ở đầu tệp, không có frame hình ảnh nào tại thời điểm phụ đề karaoke hay disclosure ở segment 2, dẫn tới việc các cổng này bị đánh trượt (`0 frames`, `disclosure_missing:s2`).
-  - **Các tệp mã nguồn production bị ảnh hưởng (đã đối chiếu trên HEAD):**
-    - `src/controlplane/api/wiring/render.py` (`resolve_inputs`, dòng 296-334 và 395): lấy nguyên `hook_placement` của kế hoạch, chỉ đưa vào manifest các ref là UUID.
-    - `src/creative/domain/production_plan.py:236` và `src/creative/adapters/thumbnail_candidates.py:42,51`: `visual_hook_ref`/`audio_hook_ref` là hook_id, `thumbnail_ref` có dạng `thumb:<id>`, không bao giờ là UUID artifact version.
-    - `src/render/adapters/postgres_plan_assets.py:109-114,134`: `asset_refs` gom các ref này nhưng `get_asset` bỏ chúng vì không phải UUID.
-    - `src/render/adapters/real_output_inspector.py:464,490`: `manifest.get(ref)` trả None nên `VISUAL_HOOK_PRESENT` và `THUMBNAIL_PRESENT` trượt.
-    - `src/render/domain/render_command.py:223-233` (`_filter_graph`) và `:289-297` (`build_render_command`): ảnh tĩnh vào `concat` không có `-loop 1 -t <thời lượng segment>`, video ra chỉ vài frame nên `SUBTITLE_BURNED_IN` và `INFERENCE_DISCLOSURE_PRESENT` trượt.
-    - `src/creative/adapters/media_candidates.py:41,72`: chỉ nhận `kind=image`, nên production luôn đi qua đường ảnh tĩnh này.
-  - **Đối chiếu bổ sung trên HEAD ngày 28/10/2026:** `src/render/domain/resolve_package.py` (`_manifest`, dòng 137-146) đặt khoá `materialization_manifest` theo `artifact_version_id` và `_plan_ids` ở dòng 198 chỉ cho phép ref của kế hoạch; vì vậy ref `vh-01` và `thumb:vh-01` không thể có mặt trong manifest nếu `get_asset` (`src/render/adapters/postgres_plan_assets.py:130-136`) bỏ chúng. Mã tại mọi dòng nêu ở trên còn nguyên trên HEAD; không gói sửa nào đã gộp (PW-A3-FIX1, PW-E3-FIX1, PW-I1-FIX1, PW-F4-FIX1, PW-A3-FIX2, ADAPT-SEED-FIX1, PW-D3-FIX1, PW-W2-FIX1, PW-W2-FIX2, PW-W2-FIX3) thay đổi các dòng đó, nên phụ thuộc này chưa có gói chủ đang chạy.
-  - **Gói sửa đề xuất cho Control mở (chưa có, không phải quyết định):** `PW-F4-FIX2` (chủ `src/controlplane/api/wiring/render.py` `resolve_inputs` và `src/render/adapters/postgres_plan_assets.py`: ánh xạ `visual_hook_ref`, `audio_hook_ref`, `thumbnail_ref` sang artifact version đã VERIFIED rồi đưa vào manifest) và `PW-F3-FIX1` (chủ `src/render/domain/render_command.py`: thêm `-loop 1 -t <thời lượng segment>` cho từng đầu vào ảnh tĩnh trước `-i`). Gói chủ gốc: `PW-F4` và `PW-F3`/`PW-W2`.
-  - **Test bị chặn (dừng nhanh trong 77.84s qua fail-fast):**
-    - `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` (fail-fast: stage qc of 5cad7988-c405-44fe-9395-fcf1a9a6b902:job:1 reached FAILED_FINAL do quality_gates_failed)
-    - `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` (fail-fast: stage qc of 109eb5e1-9975-4650-920e-3cbb12039a16:job:1 reached FAILED_FINAL do quality_gates_failed)
-    - `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` (fail-fast: stage qc of f260d3b5-689a-4eaa-8c61-7bf2ee45cdb7:job:1 reached FAILED_FINAL do quality_gates_failed)
-
-### Vì sao rig không thể vá phía test
-- Ref thumbnail luôn có tiền tố `thumb:` nên không thể thành UUID bằng dữ liệu seed; đổi hook_id sang UUID cũng không cứu được cổng `THUMBNAIL_PRESENT`.
-- Seed `MediaAsset` dạng video bị `media_candidates.py:41` loại; ghi mp4 vào `<staging>/<artifact_version_id>` làm sai sha256 đã đăng ký và vi phạm kiểm tra đầu vào render.
-- Vá logic production trong rig bị test AST `test_the_support_module_patches_only_edge_adapters` cấm và là phản ví dụ của tiêu chí 1 (assembly riêng của test).
-
-### Điều kiện chạy lại
-1. Gói chủ gộp bản sửa `resolve_inputs` và `render_command` vào nhánh tích hợp.
-2. Lane rebase lên integration head mới, chạy lại `python -m pytest tests/integration/prod_wiring/test_pw_e2e_batch_video.py -q -p no:cacheprovider`.
-3. Cập nhật mục 2, 3, 4 của báo cáo bằng số đo thật; tiêu chí 1, 2, 4 chưa có bằng chứng PASS cho tới lúc đó.
-4. Control mở hai gói sửa `PW-F4-FIX2` và `PW-F3-FIX1` (xem mục Khoảng trống phát hiện mới tại Stage qc) vì chưa gói nào đã gộp đảm nhận; trước đó lane PW-E2E không thể chuyển PASS và không được vá phía rig.
-5. Sau khi hai gói gộp, lane rebase rồi chạy lại đúng lệnh pytest ở mục 2 (ước tính 30 phút); không chạy lại trước đó để tránh đốt thời gian vô ích.
+### G3 ĐÃ ĐÓNG
+- Các gói sửa F-10-FIX1, F-10-FIX2, PW-I1-FIX2, PW-F1-FIX1, ADAPT-SEED-FIX2, PW-W2-FIX4 đã được gộp tại integration head `9e67a6ba3d0e64735ffd51dc068107ea0fe0222d`.
+- Rig `tests/integration/prod_wiring/pw_e2e_support.py` nay nạp hook đúng chuẩn production: tệp `media/<sha>.mp4` và `media/<sha>.wav` đăng ký qua `register_staged_artifact`, `import_hook` với `artifact_version_ref` dạng `seed:<id>:sha256:<sha>`, `media_sha256` nằm trong `technical_metadata`, hook visual dùng nguồn `testsrc` (có hình ảnh khác nền phẳng để cổng `VISUAL_HOOK_PRESENT` đo kiểm thật), và ảnh nền `bg-02` có kích thước 720x1280 khác 1080x1920 để pipeline render thực hiện scale thật.
+- Toàn bộ các cổng kiểm soát chất lượng tại stage `qc` (gồm `VISUAL_HOOK_PRESENT`, `THUMBNAIL_PRESENT`, `SUBTITLE_BURNED_IN`, `INFERENCE_DISCLOSURE_PRESENT`) đều đạt `PASSED` (hoặc `NOT_APPLICABLE` cho cổng disclosure ở lô phụ).
+- Không còn bất kỳ lỗi `quality_gates_failed` nào; khoảng trống G3 chính thức đóng hoàn toàn.
 
 ### Ghi nhận các vấn đề trước đây
 - Khoảng trống G1 (`missing business_date` trong `CollectSource`) đã được đóng triệt để bởi các gói tích hợp vừa gộp (test `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch` đã PASSED).
-- Các nghi vấn B2 (`rights_cleared`), B3 (`hashlib`) và B4 (`render input verification`) đã được xử lý trong các gói PW-D3-FIX1, PW-W2-FIX1, PW-W2-FIX3; pipeline đã thực thi qua toàn bộ chuỗi render thật bằng FFmpeg và chỉ dừng tại stage `qc` do lỗi production G3 nêu trên.
+- Các nghi vấn B2 (`rights_cleared`), B3 (`hashlib`) và B4 (`render input verification`) đã được xử lý trong các gói PW-D3-FIX1, PW-W2-FIX1, PW-W2-FIX3; pipeline đã thực thi qua toàn bộ chuỗi render thật bằng FFmpeg và hoàn thành toàn bộ 11 stage tới `CommitVideoCompletion`.
+
 ---
 
 ## 4. Ánh xạ coveredIds sang Test Cases
 
 | coveredId | Test Case kiểm chứng | Kết quả |
 | :--- | :--- | :--- |
-| `PW-E2E-01` | `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` | FAILED (Dừng tại stage qc do quality_gates_failed: thiếu visual hook/thumbnail trong materialization manifest và luồng video ngắn do concat thiếu loop) |
-| `CT-QC-001` | `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` | FAILED (Các cổng chất lượng tại qc không đạt do lỗi production ngoài owned paths tại postgres_plan_assets và render_command) |
-| `CT-WF-004` | `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` | FAILED (Job dừng tại qc do quality_gates_failed, chưa tiến tới upload để kích hoạt lỗi Drive 401) |
-| `CT-WF-006` | `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` | FAILED (Job dừng tại qc do quality_gates_failed, chưa tiến tới ranh giới giữa render và upload) |
-| `CT-WF-007` | `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` | FAILED (Job dừng tại qc do quality_gates_failed, chưa kiểm chứng được attempt==1 giữa render và upload) |
+| `PW-E2E-01` | `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` | PASSED |
+| `CT-QC-001` | `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` | PASSED |
+| `CT-WF-004` | `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` | PASSED |
+| `CT-WF-006` | `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` | PASSED |
+| `CT-WF-007` | `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` | PASSED |
 | `CT-ORC-007` | `test_the_launcher_composition_binds_every_activity_and_has_no_private_assembly` | PASSED |
 | `CT-ORC-010` | `test_the_launcher_composition_binds_every_activity_and_has_no_private_assembly` | PASSED |
 | `CT-SRC-004` | `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch` | PASSED |
 
-*Ghi chú:* Test `test_the_seeded_images_resolve_to_verified_versions_through_the_production_lookup` PASSED, bảo vệ dữ liệu seed và xác nhận `verified_version_for_sha` tra cứu thành công các ảnh seed staging.
+*Ghi chú:* Cả hai test seed bổ sung gồm `test_the_seeded_images_resolve_to_verified_versions_through_the_production_lookup` (xác nhận ảnh seed staging được tra cứu thành công qua `verified_version_for_sha` với kích thước 1080x1920 và 720x1280) và `test_the_seeded_hooks_use_production_refs_and_registered_staged_versions` (xác nhận hook seed sử dụng ref `seed:<id>:sha256:<sha>` và version đã đăng ký ở staging `VERIFIED`) đều đã PASSED.
+
 ---
 
 ## 5. Mục mở và Ghi nhận Kỹ thuật
@@ -177,7 +162,7 @@ Danh sách đầy đủ và chính xác các adapter giả lập được phép 
 6. Nhị phân FFmpeg và FFprobe đã được ghim đúng phiên bản tại `C:/ffmpeg/bin/`.
 7. Toàn bộ các adapter giả lập trong stack được loại bỏ hoàn toàn, thay thế bằng adapter tích hợp thật.
 8. Mục mở `OI-PW-E2E-01` đã được giải quyết và đóng chính thức.
-9. Mọi gap trong PRODUCTION_GAPS đã đóng bởi gói chủ và rig PW-E2E chạy xanh với danh sách EDGE_ADAPTERS ở mục 3.
+9. Mọi gap trong PRODUCTION_GAPS đã đóng bởi gói chủ và rig PW-E2E chạy xanh với danh sách EDGE_ADAPTERS ở mục 3 (ĐÃ ĐÓNG HOÀN TOÀN).
 
 ---
 
