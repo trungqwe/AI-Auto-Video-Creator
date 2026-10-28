@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import os
+import shutil
 from pathlib import Path
 
 from catalog.application.discovery import DiscoveryObservation, Disposition, register_discovery
@@ -15,6 +17,7 @@ from catalog.persistence.assets import PostgresMediaAssetRepository
 from catalog.persistence.hooks import PostgresHookHistory
 from controlplane.api.wiring.collection import build_collection_services, system_dns_resolver
 from controlplane.api.wiring.production_profile import PROFILE_PRODUCTION
+from controlplane.application.storage_meta.handlers import register_staged_artifact
 from source_ingestion.application.source_commands import SourceAlreadyRegisteredError, SourceCommandHandler
 from source_ingestion.domain.source import SourcePolicy
 
@@ -27,6 +30,9 @@ RECOVERY_EPOCH = 'adapt-seed-1'
 SOURCE_TOPICS = ('news',)
 SEED_OBSERVED_AT = '2026-10-22T00:00:00Z'
 ARTICLE_IMAGE_RIGHTS_STATUS = 'UNVERIFIED'
+STAGED_MEDIA_DIR = 'media'
+STAGED_OWNER_REF = 'adapt-seed'
+STAGED_RETENTION_REF = 'durable'
 
 
 class SeedError(ValueError):
@@ -53,6 +59,7 @@ class _SeedItem:
     file_name: str
     sha256: str
     technical: tuple[tuple[str, str], ...]
+    path: Path
 
 
 _GROUPS = (
@@ -93,7 +100,7 @@ def _collect_items(hooks, seed_dir):
                 raise SeedError('sha256 of ' + entry['file_name'] + ' differs from hooks.json')
             technical = tuple((key, str(entry[key])) for key in _TECHNICAL_KEYS if key in entry)
             technical += (('media_sha256', sha), ('recipe_template', entry['recipe']['template']), ('seed_rights_status', hooks['rights']['seed_rights_status']))
-            items.append(_SeedItem(entry['id'], media_kind, hook_kind, entry['file_name'], sha, technical))
+            items.append(_SeedItem(entry['id'], media_kind, hook_kind, entry['file_name'], sha, technical, path))
     if missing:
         raise SeedError('missing seed media: ' + ', '.join(missing))
     return items
@@ -172,8 +179,41 @@ def _import_items(manager, workspace_id, items):
     return counts
 
 
+def _stage_image(staging_root, item):
+    media_dir = Path(staging_root) / STAGED_MEDIA_DIR
+    media_dir.mkdir(parents=True, exist_ok=True)
+    suffix = Path(item.file_name).suffix.lower()
+    target = media_dir / (item.sha256 + suffix)
+    if target.is_file() and target.stat().st_size == item.path.stat().st_size:
+        return target
+    part = media_dir / (item.sha256 + suffix + '.part')
+    try:
+        shutil.copyfile(item.path, part)
+        os.replace(part, target)
+    finally:
+        part.unlink(missing_ok=True)
+    return target
+
+
+def _stage_images(manager, config, items):
+    _, runtime = config.production_parts()
+    staging_root = Path(runtime.staging_root)
+    for item in items:
+        if item.media_kind is not MediaKind.IMAGE:
+            continue
+        target = _stage_image(staging_root, item)
+        register_staged_artifact(
+            manager,
+            workspace_id=config.workspace_id,
+            staging_root=staging_root,
+            owner_ref=STAGED_OWNER_REF,
+            relative_ref=STAGED_MEDIA_DIR + '/' + target.name,
+            retention_ref=STAGED_RETENTION_REF,
+        )
+
+
 def import_seed(manager, config, seed_dir, *, resolver=system_dns_resolver, sources_path=SOURCES_JSON, hooks_path=HOOKS_JSON):
-    '''Nhập nguồn trước, rồi hook và tài sản seed; mọi kiểm tra đầu vào chạy trước khi ghi dòng nào; chạy lại không nhân đôi.'''
+    '''Nhập nguồn trước, rồi hook và tài sản seed, sau đó chép ảnh nền vào staging và đăng ký version; mọi kiểm tra đầu vào chạy trước khi ghi dòng nào; chạy lại không nhân đôi và bù được ảnh nền còn thiếu.'''
     if config.mode != PROFILE_PRODUCTION:
         raise SeedError('import_seed requires the production profile on PostgreSQL')
     sources = _read_json(sources_path)['sources']
@@ -183,6 +223,7 @@ def import_seed(manager, config, seed_dir, *, resolver=system_dns_resolver, sour
     items = _collect_items(hooks, seed_dir)
     registered, replayed, existing = _import_sources(manager, config, sources, resolver)
     counts = _import_items(manager, config.workspace_id, items)
+    _stage_images(manager, config, items)
     return SeedImportReport(
         registered,
         replayed,
