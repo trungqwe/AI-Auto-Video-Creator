@@ -51,6 +51,7 @@ MEDIA_OUTCOME_UNKNOWN = 'MEDIA_OUTCOME_UNKNOWN'
 IDEMPOTENCY_CODES = ('IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD', 'IDEMPOTENCY_CONFLICT')
 RETRY_NOT_ALLOWED_CODE = 'OUTCOME_UNKNOWN_RETRY_NOT_ALLOWED'
 REDACTED_WARNING = 'warning_redacted'
+NO_OUTPUT_KEY = 'no_output_reason'
 UNKNOWN_REF = 'unknown'
 SUCCEEDED = 'succeeded'
 FAILED = 'failed'
@@ -116,6 +117,7 @@ class ActivityInputPort(Protocol):
 
     CreateVoiceTrack and CreateWordTiming return {'command': <the E-16 command object>}. Media activities return the
     keyword arguments of the MediaPipeline method without operation_key (the handler passes the request operation_key).
+    TransformSensitiveImage may return {NO_OUTPUT_KEY: <reason>} instead when no image needs the transform; the handler then succeeds with no output.
     """
 
     def resolve(self, activity_name: str, request: Mapping[str, Any], grant: ExecutionGrant) -> Mapping[str, Any]:
@@ -342,6 +344,13 @@ def _run_create_word_timing(deps: VoiceActivityDeps, operation_key: str, inputs:
     return _word_timing_outcome(deps.voice.create_word_timing(command))
 
 
+def _run_transform_sensitive_image(deps: VoiceActivityDeps, operation_key: str, inputs: Mapping[str, Any]) -> _Outcome:
+    """An input port that reports NO_OUTPUT_KEY (no image to blur) gives a succeeded outcome without output and runs no media command; any other inputs run the E-17 transform."""
+    if NO_OUTPUT_KEY in inputs:
+        return _Outcome(SUCCEEDED, [], {'output_count': 0, 'replayed': False})
+    return _media_outcome(deps.media.transform_sensitive_image(operation_key=operation_key, **inputs))
+
+
 # activity_name -> the one E-16/E-17 command it runs; no route chains to another one
 _ROUTES = MappingProxyType({
     COMMAND_CREATE_VOICE_TRACK: _run_create_voice_track,
@@ -350,9 +359,7 @@ _ROUTES = MappingProxyType({
     OP_ASSESS_IMAGE_SAFETY: lambda deps, key, inputs: _media_outcome(
         deps.media.assess_image_safety(operation_key=key, **inputs)
     ),
-    OP_TRANSFORM_SENSITIVE_IMAGE: lambda deps, key, inputs: _media_outcome(
-        deps.media.transform_sensitive_image(operation_key=key, **inputs)
-    ),
+    OP_TRANSFORM_SENSITIVE_IMAGE: _run_transform_sensitive_image,
     OP_NORMALIZE_MEDIA: lambda deps, key, inputs: _media_outcome(deps.media.normalize_media(operation_key=key, **inputs)),
     OP_PREPARE_AUDIO_BED: lambda deps, key, inputs: _media_outcome(
         deps.media.prepare_audio_bed(operation_key=key, **inputs)
@@ -449,6 +456,7 @@ __all__ = [
     'ActivityRequestError',
     'GrantCurrencyPort',
     'InMemoryActivityResultStore',
+    'NO_OUTPUT_KEY',
     'OperationKeyMismatch',
     'VoiceActivityDeps',
     'handle_activity',
