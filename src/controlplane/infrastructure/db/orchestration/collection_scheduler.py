@@ -120,7 +120,10 @@ class CollectionScheduler:
         if lease is None:
             return False
         workflow_id = self.workflow_id(business_date, slot)
-        request = {'settings': dict(self._settings_payload), 'input_fingerprint': workflow_id, 'worker_lease_id': lease}
+        request = {
+            'settings': dict(self._settings_payload), 'input_fingerprint': workflow_id, 'worker_lease_id': lease,
+            'input_refs': [{'ref_type': 'business_date', 'ref_id': business_date.isoformat()}],
+        }
         try:
             await self._client.start_workflow(
                 DAILY_WORKFLOW_NAME,
