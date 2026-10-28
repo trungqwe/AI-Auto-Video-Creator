@@ -32,9 +32,11 @@ from controlplane.application.orchestration.workflows.activities import (
     MISSING_EXECUTION_GRANT,
     ActivityRejected,
 )
+from controlplane.application.orchestration.workflows.flow import FlowParams
 from controlplane.application.orchestration.workflows.settings import settings_from_parameters
 from controlplane.domain.events import DomainEvent
 from controlplane.domain.orchestration.activity_binding import validate_activity_result
+from controlplane.domain.orchestration.fencing import GrantClaims
 from controlplane.infrastructure.db.orchestration.app_session import PostgresAppSessions
 from controlplane.infrastructure.db.orchestration.collection_scheduler import CollectionScheduler, EnrichmentStarter
 from controlplane.infrastructure.db.orchestration.outbox_relay import NoActiveAppSessionError
@@ -46,6 +48,7 @@ from source_ingestion.application.seed_sources import seed_sources
 from source_ingestion.application.source_commands import SourceCommandHandler
 from source_ingestion.domain.source import SourcePolicy
 from source_ingestion.persistence.unit_of_work import PostgresSourceIngestionUnitOfWork
+from source_ingestion.worker.activity_handler import validate_collect_request
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SCHEDULER_SOURCE = ROOT / 'src/controlplane/infrastructure/db/orchestration/collection_scheduler.py'
@@ -176,7 +179,7 @@ def daily_handlers(manager: Any, db: Any, clock: Any, collected: list[str]) -> d
     )
 
     def collect(request: Any, claims: Any) -> dict[str, Any]:
-        collected.append(request['input_refs'][0]['ref_id'])
+        collected.append(next(ref['ref_id'] for ref in request['input_refs'] if ref['ref_type'] == 'collection_source'))
         return ok_result(claims, [{'ref_type': 'collection_run', 'ref_id': request['operation_key']}])
 
     return {'PlanCollectionCycle': plan_collection_cycle_handler(service, lambda: GRANT_NOW), 'CollectSource': collect}
@@ -219,7 +222,7 @@ async def test_pw_a3_01_four_checks_in_a_day_collect_each_source_once(manager, p
         assert scalar(pw_database, 'SELECT count(*) FROM controlplane.cp_source_cycle_marks') == 7
         (args, kwargs), = client.calls
         assert args[0] == 'DailyCollectionWorkflow'
-        assert args[1] == {'settings': SETTINGS.to_payload(), 'input_fingerprint': 'collect:2026-10-27:000', 'worker_lease_id': 'ses-1'}
+        assert args[1] == {'settings': SETTINGS.to_payload(), 'input_fingerprint': 'collect:2026-10-27:000', 'worker_lease_id': 'ses-1', 'input_refs': [{'ref_type': 'business_date', 'ref_id': '2026-10-27'}]}
         assert kwargs == {'id': 'collect:2026-10-27:000', 'task_queue': 'control-workflows', 'id_reuse_policy': WorkflowIDReusePolicy.REJECT_DUPLICATE}
         clock.now = ict(28, 0, 30)
         assert await scheduler.run_once() is True
@@ -250,6 +253,71 @@ async def test_pw_a3_01_no_due_source_starts_nothing_and_a_due_source_needs_a_se
         await make_scheduler(pw_database, client, Clock(ict(27, 1))).run_once()
     assert client.calls == []
     assert scalar(pw_database, 'SELECT count(*) FROM controlplane.cp_source_cycle_marks') == 0
+
+
+class CapturingClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[Any, Any]] = []
+
+    async def start_workflow(self, *args: Any, **kwargs: Any) -> None:
+        self.calls.append((args, kwargs))
+
+
+def collect_request_for(request: dict, workflow_id: str, source_id: str) -> tuple[dict, GrantClaims]:
+    params = FlowParams.from_payload(request, workflow_id=workflow_id, workflow_run_id='run-1')
+    refs = [*params.input_refs, {'ref_type': 'collection_source', 'ref_id': source_id}]
+    stage_run_id = f'{workflow_id}:collect:r1'
+    return (
+        {
+            'workflow_id': workflow_id,
+            'workflow_run_id': 'run-1',
+            'stage_run_id': stage_run_id,
+            'activity_name': 'CollectSource',
+            'activity_version': '1',
+            'input_refs': refs,
+            'operation_key': f'{workflow_id}:collect:CollectSource:0:r1',
+            'capability_requirements': {'task_queue': 'cloud-io'},
+            'retry_policy_ref': 'retry-1',
+        },
+        GrantClaims(
+            grant_id='grant-1',
+            stage_run_id=stage_run_id,
+            execution_generation=1,
+            recovery_epoch='5',
+            worker_lease_id=params.worker_lease_id,
+            issued_at='2026-10-27T01:02:03Z',
+            expires_at='2026-10-27T01:12:03Z',
+            allowed_operation='CollectSource',
+            input_fingerprint=params.input_fingerprint,
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_pw_a3_fix1_r1_workflow_request_carries_business_date_ref(manager, pw_database):
+    begin_session(pw_database)
+    seed(manager, pw_database)
+    client = CapturingClient()
+    clock = Clock(ict(27, 1))
+    scheduler = make_scheduler(pw_database, client, clock)
+    for now, expected_date in (
+        (ict(27, 1), '2026-10-27'),
+        (ict(28, 0, 30), '2026-10-28'),
+        (datetime(2026, 10, 27, 17, 30, tzinfo=timezone.utc), '2026-10-28'),
+    ):
+        clock.now = now
+        assert await scheduler.run_once() is True
+        args, kwargs = client.calls[-1]
+        request = args[1]
+        assert request['input_refs'] == [{'ref_type': 'business_date', 'ref_id': expected_date}]
+        collect_request, grant = collect_request_for(request, kwargs['id'], 'src-1')
+        assert validate_collect_request(collect_request, grant) == []
+    no_refs = {key: value for key, value in request.items() if key != 'input_refs'}
+    collect_request, grant = collect_request_for(no_refs, 'collect:x', 'src-1')
+    assert ('invalid_value', 'input_refs') in validate_collect_request(collect_request, grant)
+    bad_date = {**request, 'input_refs': [{'ref_type': 'business_date', 'ref_id': '27/10/2026'}]}
+    collect_request, grant = collect_request_for(bad_date, 'collect:x', 'src-1')
+    assert ('invalid_value', 'input_refs') in validate_collect_request(collect_request, grant)
 
 
 async def wait_for_calls(client: RecordingClient, count: int, seconds: int = 15) -> None:
