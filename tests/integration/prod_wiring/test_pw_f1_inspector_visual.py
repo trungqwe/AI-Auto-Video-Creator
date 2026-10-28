@@ -369,3 +369,153 @@ def test_pw_f1_frame_probe_reads_duration_and_band_difference(tmp_path: pathlib.
     )
     assert diff_base is not None
     assert diff_base < 5.0
+
+
+MOTION_CLIP = "color=c=gray:s=180x320:r=30:d={d},format=yuv420p,geq=lum='128+100*sin(2*PI*(X/45+T+{phase}))':cb=128:cr=128"
+
+
+def make_motion_clip(path: pathlib.Path, *, seconds: float, phase: float = 0.0) -> None:
+    ffmpeg(
+        '-f',
+        'lavfi',
+        '-i',
+        MOTION_CLIP.format(d=seconds, phase=phase),
+        '-c:v',
+        'libx264',
+        '-video_track_timescale',
+        '30',
+        '-preset',
+        'ultrafast',
+        '-crf',
+        '18',
+        '-pix_fmt',
+        'yuv420p',
+        '-an',
+        str(path),
+    )
+
+
+def clip_package(*, hook_range: tuple[int, int], thumb_range: tuple[int, int], hook_local: str, thumb_local: str):
+    return validate_render_package_payload({
+        'render_package_id': 'pkg-f1',
+        'package_fingerprint': 'a' * 64,
+        'production_snapshot_ref': 'snap',
+        'script_version_ref': 'script',
+        'production_plan_ref': 'plan',
+        'preset_revision_ref': 'preset',
+        'voice_artifact_ref': 'ref-voice',
+        'word_timing_ref': 'ref-timing',
+        'output_metadata_revision': 'meta',
+        'output_profile_revision': 'profile',
+        'language_validation_refs': ['lang'],
+        'input_artifacts': [],
+        'timeline': {'segments': []},
+        'hook_placement': {
+            'visual_hook_ref': 'ref-hook',
+            'audio_hook_ref': 'ref-voice',
+            'thumbnail_ref': 'ref-thumb',
+            'hook_time_range': {'start_ms': hook_range[0], 'end_ms': hook_range[1]},
+            'thumbnail_time_range': {'start_ms': thumb_range[0], 'end_ms': thumb_range[1]},
+        },
+        'subtitle_config': {'karaoke': True},
+        'mix_plan': {},
+        'allowed_fallbacks': [],
+        'materialization_manifest': {
+            'ref-hook': {'local_ref': hook_local},
+            'ref-thumb': {'local_ref': thumb_local},
+            'ref-ass': {'local_ref': 'subs/captions.ass'},
+        },
+        'output_path_ref': 'ref-output',
+    })
+
+
+def build_clip_sample(
+    root: pathlib.Path,
+    *,
+    clip_seconds: float,
+    hook_range: tuple[int, int] = (0, 1000),
+    thumb_range: tuple[int, int] = (200, 800),
+    thumb_clip: str = 'hook',
+) -> dict:
+    media = root / 'staging' / 'media'
+    out_dir = root / 'out'
+    media.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    make_motion_clip(media / 'hook.mp4', seconds=clip_seconds)
+    make_motion_clip(media / 'other.mp4', seconds=3, phase=0.35)
+    thumb_local = 'media/hook.mp4' if thumb_clip == 'hook' else 'media/other.mp4'
+    out_path = out_dir / 'final.mp4'
+    ffmpeg(
+        '-i',
+        str(media / 'hook.mp4'),
+        '-vf',
+        f'tpad=start_duration={hook_range[0] / 1000}:start_mode=add:color=black:stop_mode=clone:stop_duration=5',
+        '-t',
+        '4',
+        '-c:v',
+        'libx264',
+        '-preset',
+        'ultrafast',
+        '-crf',
+        '18',
+        '-pix_fmt',
+        'yuv420p',
+        '-an',
+        str(out_path),
+    )
+    return {
+        'root': root,
+        'output_ref': str(out_path),
+        'package': clip_package(
+            hook_range=hook_range,
+            thumb_range=thumb_range,
+            hook_local='media/hook.mp4',
+            thumb_local=thumb_local,
+        ),
+    }
+
+
+def thumbnail_result(sample: dict):
+    evidence = inspect_sample(sample, SEGMENTS_SOURCED)
+    return (evidence, check_thumbnail_present(evidence, sample['package'], POLICY))
+
+
+def test_pw_f1_thumbnail_hook_clip_same_asset_passes(tmp_path: pathlib.Path) -> None:
+    require_ffmpeg()
+    sample = build_clip_sample(tmp_path, clip_seconds=3)
+    evidence, result = thumbnail_result(sample)
+    assert result.status is GateStatus.PASSED
+    assert evidence.thumbnail.time_ms == 500
+
+
+def test_pw_f1_thumbnail_hook_clip_offset_uses_hook_start(tmp_path: pathlib.Path) -> None:
+    require_ffmpeg()
+    sample = build_clip_sample(tmp_path, clip_seconds=3, hook_range=(1000, 2000), thumb_range=(1200, 1800))
+    evidence, result = thumbnail_result(sample)
+    assert result.status is GateStatus.PASSED
+    assert evidence.thumbnail.time_ms == 1500
+
+
+def test_pw_f1_thumbnail_short_clip_holds_last_frame_passes(tmp_path: pathlib.Path) -> None:
+    require_ffmpeg()
+    sample = build_clip_sample(tmp_path, clip_seconds=0.4)
+    evidence, result = thumbnail_result(sample)
+    assert result.status is GateStatus.PASSED
+    assert evidence.thumbnail.time_ms == 500
+
+
+def test_pw_f1_thumbnail_other_clip_is_asset_mismatch(tmp_path: pathlib.Path) -> None:
+    require_ffmpeg()
+    sample = build_clip_sample(tmp_path, clip_seconds=3, thumb_clip='other')
+    evidence, result = thumbnail_result(sample)
+    assert result.status is GateStatus.FAILED
+    assert result.reason == 'thumbnail_asset_mismatch'
+
+
+def test_pw_f1_thumbnail_same_still_image_keeps_first_frame(tmp_path: pathlib.Path) -> None:
+    require_ffmpeg()
+    sample = build_sample(tmp_path)
+    sample['package'] = clip_package(hook_range=(0, 1000), thumb_range=(200, 800), hook_local='media/hook.png', thumb_local='media/hook.png')
+    evidence, result = thumbnail_result(sample)
+    assert result.status is GateStatus.PASSED
+    assert evidence.thumbnail is not None
