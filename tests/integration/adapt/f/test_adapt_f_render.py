@@ -179,7 +179,7 @@ def test_command_is_an_argument_list_with_production_parameters(rig, monkeypatch
     ):
         assert fragment in joined
     graph = value_after(args, '-filter_complex')
-    assert 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30' in graph
+    assert 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30' in graph
     assert 'subtitles=filename=' in graph and 'ass=filename=' not in graph
     assert args[-1].startswith(rig.output_ref + '.') and args[-1].endswith('.part')
 
