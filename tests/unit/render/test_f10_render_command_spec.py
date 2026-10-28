@@ -4,6 +4,7 @@ coveredIds: CT-RND-004, TST-SEC-INV-012, TST-SEC-INV-020
 """
 import dataclasses
 import json
+import math
 import pathlib
 import re
 import struct
@@ -15,6 +16,7 @@ import pytest
 
 from render.adapters.real_ffmpeg_renderer import DEFAULT_FFMPEG_PATH, DEFAULT_LOCK_PATH, build_final_argv, verify_ffmpeg_pin
 from render.adapters.real_ffprobe_probe import DEFAULT_FFPROBE_PATH
+from render.adapters.real_output_inspector import ssim_between
 from render.domain.package_contract import validate_render_package_payload
 from render.domain.preset import build_preset_revision
 from render.domain.render_command import (
@@ -179,9 +181,9 @@ def test_render_command_structure():
     assert all(isinstance(item, str) for item in spec.argv)
     assert spec.argv[:1] == (TOOL_PATH,)
     inputs = [spec.argv[index + 1] for index, item in enumerate(spec.argv) if item == '-i']
-    assert inputs == [staged('media/a.mp4'), staged('media/b.mp4'), staged('media/voice.wav')]
+    assert inputs == [staged('media/a.mp4'), staged('media/b.mp4'), staged('media/voice.wav'), staged('media/a.mp4'), staged('media/voice.wav')]
     maps = [spec.argv[index + 1] for index, item in enumerate(spec.argv) if item == '-map']
-    assert maps == ['[vout]', '2:a:0']
+    assert maps == ['[vout]', '[aout]']
     assert value_after(spec.argv, '-c:v') == 'libx264'
     assert value_after(spec.argv, '-c:a') == 'aac'
     assert value_after(spec.argv, '-f') == 'mp4'
@@ -193,9 +195,18 @@ def test_render_command_structure():
 def test_filter_graph_is_built_from_structured_parts():
     graph = value_after(render().argv, '-filter_complex')
     chain = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p'
-    expected = f'[0:v:0]{chain}[v0];[1:v:0]{chain}[v1];' + '[v0][v1]concat=n=2:v=1:a=0,tpad=stop_mode=clone:stop=-1,ass=filename=C' + BACKSLASH + ':/staging/job1/subs/karaoke.ass[vout]'
+    ass = 'ass=filename=C' + BACKSLASH + ':/staging/job1/subs/karaoke.ass[vout]'
+    expected = ';'.join([
+        f'[0:v:0]{chain}[v0]',
+        f'[1:v:0]{chain}[v1]',
+        '[4:a:0]adelay=0:all=1[ahook]',
+        '[2:a:0][ahook]amix=inputs=2:duration=first:normalize=0[aout]',
+        '[v0][v1]concat=n=2:v=1:a=0,tpad=stop_mode=clone:stop=-1[base]',
+        f'[3:v:0]{chain},setpts=PTS-STARTPTS+0.000/TB[vhook]',
+        "[base][vhook]overlay=eof_action=repeat:enable='between(t,0.000,3.000)'," + ass,
+    ])
     assert graph == expected
-    assert graph.count(chr(59)) == 2
+    assert graph.count(chr(59)) == 6
 
 
 def test_profile_values_come_only_from_the_profile_input():
@@ -230,10 +241,10 @@ def test_redacted_argv_replaces_every_path_with_a_token():
     spec = render()
     assert len(spec.redacted_argv) == len(spec.argv)
     assert spec.redacted_argv[:1] == ('{tool}',)
-    for token in ('{asset:0}', '{asset:1}', '{voice}', '{output}'):
+    for token in ('{asset:0}', '{asset:1}', '{voice}', '{hook_visual}', '{hook_audio}', '{output}'):
         assert token in spec.redacted_argv
     changed = [index for index, pair in enumerate(zip(spec.argv, spec.redacted_argv)) if pair[0] != pair[1]]
-    assert len(changed) == 6
+    assert len(changed) == 8
     joined = chr(10).join(spec.redacted_argv)
     assert 'ass=filename={ass}' in joined
     assert 'staging' not in joined and 'ffmpeg.exe' not in joined and 'karaoke.ass' not in joined
@@ -398,8 +409,8 @@ def test_still_image_is_looped_for_the_segment_duration_and_video_is_only_trimme
 
 def test_segment_duration_is_end_minus_start():
     argv = render(record=record(timeline=with_segments((500, 2000), (2000, 4250), (4250, 5484)))).argv
-    assert [argv[i + 1] for i, item in enumerate(argv) if item == '-t'] == ['1.500', '2.250', '1.234']
-    assert argv.count('-loop') == 2
+    assert [argv[i + 1] for i, item in enumerate(argv) if item == '-t'] == ['1.500', '2.250', '1.234', '3.000', '3.000', '5.484']
+    assert argv.count('-loop') == 3
     assert 'concat=n=3' in value_after(argv, '-filter_complex')
 
 
@@ -424,10 +435,12 @@ def test_fingerprint_and_redacted_argv_follow_durations_and_media_types():
 def test_every_input_is_normalised_before_concat():
     graph = value_after(render(record=record(timeline=with_segments((0, 1000), (1000, 2000), (2000, 3000)))).argv, '-filter_complex')
     concat = graph.index('concat=')
-    assert graph.count('scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p') == 3
+    assert graph.count('scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p') == 4
     for index in range(3):
         assert f'[{index}:v:0]scale=' in graph[:concat] and f'[v{index}]' in graph[:concat]
-    assert 'scale=' not in graph[concat:] and 'crop=' not in graph[concat:]
+    base = graph.index('[base]')
+    assert 'scale=' not in graph[concat:base] and 'crop=' not in graph[concat:base]
+    assert '[4:v:0]scale=' in graph[base:]
     assert '[v0][v1][v2]concat=n=3:v=1:a=0' in graph
 
 
@@ -435,9 +448,10 @@ def test_tpad_follows_concat_and_precedes_ass_and_shortest_is_added_next_to_segm
     argv = render().argv
     graph = value_after(argv, '-filter_complex')
     assert graph.index('concat=') < graph.index('tpad=stop_mode=clone:stop=-1') < graph.index('ass=filename=')
+    assert graph.index('tpad=stop_mode=clone:stop=-1') < graph.index('overlay=') < graph.index('ass=filename=')
     assert graph.endswith('[vout]')
     assert '-shortest' in argv and argv.index('-shortest') > argv.index('-filter_complex')
-    assert argv.count('-t') == 2
+    assert argv.count('-t') == 5
 
 
 @pytest.mark.parametrize('segment,reason', [
@@ -551,6 +565,109 @@ def test_module_holds_no_profile_values_and_builds_no_command_string():
         assert token not in source
     assert 'request_hash' in source
 
+def thumb_record(kind, **placement):
+    return record(
+        hook_placement=hook_placement(thumbnail_ref='ref-thumb', thumbnail_time_range={'start_ms': 500, 'end_ms': 1500}, **placement),
+        input_artifacts=[artifact('ref-visual-a', 'image/png'), artifact('ref-visual-b', 'video/mp4'), artifact('ref-thumb', kind)],
+        materialization_manifest=manifest(**{'ref-thumb': {'local_ref': 'media/thumb.png'}}),
+    )
+
+
+def test_hook_inputs_follow_the_voice_and_are_bounded_to_the_hook_length():
+    rec = record(
+        hook_placement=hook_placement(
+            visual_hook_ref='ref-hook-v',
+            audio_hook_ref='ref-hook-a',
+            thumbnail_ref='ref-hook-v',
+            hook_time_range={'start_ms': 1000, 'end_ms': 3500},
+            thumbnail_time_range={'start_ms': 1500, 'end_ms': 2500},
+        ),
+        input_artifacts=[artifact('ref-visual-a', 'image/png'), artifact('ref-visual-b', 'video/mp4'), artifact('ref-hook-v', 'video/mp4')],
+        materialization_manifest=manifest(**{'ref-hook-v': {'local_ref': 'media/hook.mp4'}, 'ref-hook-a': {'local_ref': 'media/hook.wav'}}),
+    )
+    spec = render(record=rec)
+    argv = spec.argv
+    voice = argv.index(staged('media/voice.wav'))
+    hook_video = argv.index(staged('media/hook.mp4'))
+    hook_audio = argv.index(staged('media/hook.wav'))
+    assert voice < hook_video < hook_audio
+    assert argv[hook_video - 3:hook_video] == ('-t', '2.500', '-i')
+    assert argv[hook_audio - 3:hook_audio] == ('-t', '2.500', '-i')
+    graph = value_after(argv, '-filter_complex')
+    assert '[3:v:0]scale=' in graph
+    assert ',setpts=PTS-STARTPTS+1.000/TB[vhook]' in graph
+    assert "overlay=eof_action=repeat:enable='between(t,1.000,3.500)'" in graph
+    assert '[4:a:0]adelay=1000:all=1[ahook]' in graph
+    assert '[2:a:0][ahook]amix=inputs=2:duration=first:normalize=0[aout]' in graph
+    assert graph.count('overlay=') == 1
+    assert '{hook_visual}' in spec.redacted_argv and '{hook_audio}' in spec.redacted_argv
+    assert '{thumbnail_asset}' not in spec.redacted_argv
+
+
+def test_still_image_hook_is_looped():
+    argv = render().argv
+    positions = [i for i, item in enumerate(argv) if item == staged('media/a.mp4')]
+    assert argv[positions[1] - 7:positions[1]] == ('-loop', '1', '-framerate', '30', '-t', '3.000', '-i')
+
+
+def test_distinct_thumbnail_is_overlaid_on_top_of_the_hook():
+    spec = render(record=thumb_record('image/png'))
+    argv = spec.argv
+    thumb = argv.index(staged('media/thumb.png'))
+    assert argv[thumb - 7:thumb] == ('-loop', '1', '-framerate', '30', '-t', '1.000', '-i')
+    graph = value_after(argv, '-filter_complex')
+    assert '[5:v:0]scale=' in graph
+    assert ',trim=end_frame=1,setpts=PTS-STARTPTS+0.500/TB[vthumb]' in graph
+    assert "[base][vhook]overlay=eof_action=repeat:enable='between(t,0.000,3.000)'[vtop]" in graph
+    assert "[vtop][vthumb]overlay=eof_action=repeat:enable='between(t,0.500,1.500)',ass=filename=" in graph
+    assert graph.count('overlay=') == 2
+    assert '{thumbnail_asset}' in render(record=thumb_record('image/png')).redacted_argv
+
+
+def test_thumbnail_clip_takes_only_its_first_frame():
+    argv = render(record=thumb_record('video/mp4')).argv
+    thumb = argv.index(staged('media/thumb.png'))
+    assert argv[thumb - 3:thumb] == ('-t', '1.000', '-i')
+    assert '-loop' not in argv[thumb - 7:thumb]
+    assert 'trim=end_frame=1' in value_after(argv, '-filter_complex')
+
+
+def test_thumbnail_with_the_same_path_as_the_hook_adds_no_second_overlay():
+    base = render()
+    assert value_after(base.argv, '-filter_complex').count('overlay=') == 1
+    assert '{thumbnail_asset}' not in base.redacted_argv
+    rec = record(
+        hook_placement=hook_placement(thumbnail_ref='ref-thumb'),
+        materialization_manifest=manifest(**{'ref-thumb': {'local_ref': 'media/a.mp4'}}),
+    )
+    same_path = render(record=rec)
+    assert value_after(same_path.argv, '-filter_complex').count('overlay=') == 1
+    assert '{thumbnail_asset}' not in same_path.redacted_argv
+
+
+@pytest.mark.parametrize('key', ('visual_hook_ref', 'audio_hook_ref', 'thumbnail_ref'))
+def test_hook_ref_outside_the_manifest_is_asset_not_materialized(key):
+    assert_rejected(lambda: render(record=record(hook_placement=hook_placement(**{key: 'ref-unknown'}))), ASSET_NOT_MATERIALIZED, key)
+
+
+@pytest.mark.parametrize('key', ('visual_hook_ref', 'audio_hook_ref', 'thumbnail_ref'))
+def test_hook_ref_missing_from_the_placement_is_input_not_ready(key):
+    trimmed = {k: v for k, v in hook_placement().items() if k != key}
+    assert_rejected(lambda: render(record=record(hook_placement=trimmed)), INPUT_NOT_READY, f'missing_{key}')
+
+
+@pytest.mark.parametrize('changes,code,reason', [
+    ({'hook_time_range': {'start_ms': 5, 'end_ms': 5}}, INVALID_INPUT, 'invalid_hook_placement.hook_time_range'),
+    ({'thumbnail_time_range': {'start_ms': 2500, 'end_ms': 3500}}, INVALID_INPUT, 'thumbnail_outside_hook_range'),
+    ({'thumbnail_time_range': {'start_ms': 1500, 'end_ms': 500}}, INVALID_INPUT, 'invalid_hook_placement.thumbnail_time_range'),
+])
+def test_invalid_hook_ranges_are_rejected_by_the_render_command(changes, code, reason):
+    assert_rejected(lambda: render(record=record(hook_placement=hook_placement(**changes))), code, reason)
+
+
+def test_hook_window_is_bound_into_the_fingerprint():
+    assert render(record=record(hook_placement=hook_placement(hook_time_range={'start_ms': 0, 'end_ms': 2500}))).spec_fingerprint != render().spec_fingerprint
+
 FFMPEG = DEFAULT_FFMPEG_PATH
 FPS = 30
 VOICE_SECONDS = 3.0
@@ -563,13 +680,16 @@ ASS_TEXT = chr(10).join([
 ]) + chr(10)
 
 
-def write_png(path, width, height, rgb):
+def write_png_raw(path, width, height, raw):
     def chunk(kind, data):
         body = kind + data
         return struct.pack('>I', len(data)) + body + struct.pack('>I', zlib.crc32(body) & 0xFFFFFFFF)
-    rows = (bytes([0]) + bytes(rgb) * width) * height
     header = struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)
-    path.write_bytes(bytes([137, 80, 78, 71, 13, 10, 26, 10]) + chunk(b'IHDR', header) + chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
+    path.write_bytes(bytes([137, 80, 78, 71, 13, 10, 26, 10]) + chunk(b'IHDR', header) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
+
+
+def write_png(path, width, height, rgb):
+    write_png_raw(path, width, height, (bytes([0]) + bytes(rgb) * width) * height)
 
 
 def write_wav(path, seconds):
@@ -578,6 +698,53 @@ def write_wav(path, seconds):
         handle.setsampwidth(2)
         handle.setframerate(48000)
         handle.writeframes(bytes(2 * int(48000 * seconds)))
+
+
+HOOK_HZ = 3000
+VOICE_HZ = 400
+VOLUME_RE = re.compile(r'max_volume:\s*(-?[0-9.]+|-inf)\s*dB')
+
+
+def write_stripes_png(path, width, height, cell):
+    def row(flip):
+        return bytes([0]) + b''.join(bytes([255, 255, 255]) if (x // cell + flip) % 2 == 0 else bytes([0, 0, 0]) for x in range(width))
+    rows = [row(0), row(1)]
+    raw = b''.join(rows[(y // cell) % 2] for y in range(height))
+    write_png_raw(path, width, height, raw)
+
+
+def write_tone(path, seconds, hertz):
+    with wave.open(str(path), 'wb') as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(48000)
+        frames = bytearray()
+        total_samples = int(48000 * seconds)
+        for n in range(total_samples):
+            s = int(8000 * math.sin(2 * math.pi * hertz * n / 48000))
+            frames.extend(struct.pack('<h', s))
+        handle.writeframes(bytes(frames))
+
+
+def write_testsrc_clip(path, seconds):
+    done = run_process([FFMPEG, '-hide_banner', '-nostdin', '-y', '-f', 'lavfi', '-i', f'testsrc=size=1080x1920:rate=30:duration={seconds}', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(path)])
+    assert done.returncode == 0, done.stderr[-2000:]
+
+
+def band_db(path, start_s, seconds, hertz):
+    done = run_process([FFMPEG, '-hide_banner', '-nostdin', '-ss', str(start_s), '-t', str(seconds), '-i', str(path), '-vn', '-af', f'bandpass=f={hertz}:width_type=h:w=200,volumedetect', '-f', 'null', '-'])
+    assert done.returncode == 0, done.stderr[-2000:]
+    found = VOLUME_RE.findall(done.stderr)
+    assert found, done.stderr[-2000:]
+    return float(found[-1])
+
+
+def similarity(left, left_ms, right, right_ms):
+    value = ssim_between(pathlib.Path(FFMPEG), pathlib.Path(left), left_ms, pathlib.Path(right), right_ms, width=270, height=480, timeout_seconds=120)
+    if value is None:
+        value = ssim_between(pathlib.Path(FFMPEG), pathlib.Path(right), right_ms, pathlib.Path(left), left_ms, width=270, height=480, timeout_seconds=120)
+    assert value is not None
+    return value
 
 
 def run_process(command):
@@ -605,14 +772,18 @@ def test_pinned_ffmpeg_renders_mixed_size_stills_to_the_voice_length(tmp_path, s
     rec = record(
         voice_artifact_ref='ref-voice',
         input_artifacts=[artifact('ref-small', 'image/png'), artifact('ref-tall', 'image/png')],
-        timeline={'segments': [
-            {'start_ms': 0, 'end_ms': first, 'visual_asset_refs': ['ref-small']},
-            {'start_ms': first, 'end_ms': first + second, 'visual_asset_refs': ['ref-tall']},
-        ]},
+        timeline={
+            'duration_ms': int(VOICE_SECONDS * 1000),
+            'segments': [
+                {'start_ms': 0, 'end_ms': first, 'visual_asset_refs': ['ref-small']},
+                {'start_ms': first, 'end_ms': first + second, 'visual_asset_refs': ['ref-tall']},
+            ],
+        },
+        hook_placement=hook_placement(visual_hook_ref='ref-small', audio_hook_ref='ref-voice', thumbnail_ref='ref-small'),
         materialization_manifest={ref: {'local_ref': local} for ref, local in locals_.items()},
     )
     spec = render(record=rec, tool_identity=tool(executable=FFMPEG), materialized=materialized(staging_root=str(root)))
-    assert 'ass=filename=' in value_after(spec.argv, '-filter_complex') and spec.argv.count('-loop') == 2
+    assert 'ass=filename=' in value_after(spec.argv, '-filter_complex') and spec.argv.count('-loop') == 3
     output = root / 'out' / 'attempt.mp4'
     done = run_process(build_final_argv(spec.argv, FFMPEG, 'libx264', str(output)))
     assert done.returncode == 0, done.stderr[-2000:]
@@ -623,3 +794,68 @@ def test_pinned_ffmpeg_renders_mixed_size_stills_to_the_voice_length(tmp_path, s
     assert abs(float(info['format']['duration']) - VOICE_SECONDS) <= frame
     assert abs(float(stream['duration']) - VOICE_SECONDS) <= frame
     assert abs(int(stream['nb_read_frames']) - VOICE_SECONDS * FPS) <= 1
+
+
+def render_hook_scene(tmp_path, thumb_ref, thumb_range):
+    verify_ffmpeg_pin(pathlib.Path(FFMPEG), DEFAULT_LOCK_PATH)
+    root = tmp_path / 'stage'
+    for folder in ('media', 'subs', 'out'):
+        (root / folder).mkdir(parents=True)
+    write_png(root / 'media' / 'bg.png', 1080, 1920, (40, 40, 200))
+    write_stripes_png(root / 'media' / 'thumb.png', 1080, 1920, 120)
+    write_testsrc_clip(root / 'media' / 'hook.mp4', 3)
+    write_tone(root / 'media' / 'voice.wav', 4, VOICE_HZ)
+    write_tone(root / 'media' / 'hook.wav', 3, HOOK_HZ)
+    (root / 'subs' / 'karaoke.ass').write_text(ASS_TEXT, encoding='utf-8')
+    manifest_dict = {
+        'ref-bg': {'local_ref': 'media/bg.png'},
+        'ref-hook-v': {'local_ref': 'media/hook.mp4'},
+        'ref-hook-a': {'local_ref': 'media/hook.wav'},
+        'ref-thumb': {'local_ref': 'media/thumb.png'},
+        'ref-voice': {'local_ref': 'media/voice.wav'},
+        'ref-ass': {'local_ref': 'subs/karaoke.ass'},
+    }
+    rec = record(
+        voice_artifact_ref='ref-voice',
+        input_artifacts=[artifact('ref-bg', 'image/png'), artifact('ref-hook-v', 'video/mp4'), artifact('ref-thumb', 'image/png')],
+        timeline={'segments': [{'start_ms': 0, 'end_ms': 4000, 'visual_asset_refs': ['ref-bg']}]},
+        hook_placement=hook_placement(
+            visual_hook_ref='ref-hook-v',
+            audio_hook_ref='ref-hook-a',
+            thumbnail_ref=thumb_ref,
+            hook_time_range={'start_ms': 1000, 'end_ms': 2500},
+            thumbnail_time_range=thumb_range,
+        ),
+        materialization_manifest=manifest_dict,
+    )
+    spec = render(record=rec, tool_identity=tool(executable=FFMPEG), materialized=materialized(staging_root=str(root)))
+    output = root / 'out' / 'attempt.mp4'
+    done = run_process(build_final_argv(spec.argv, FFMPEG, 'libx264', str(output)))
+    assert done.returncode == 0, done.stderr[-2000:]
+    return root, spec, output
+
+
+def test_pinned_ffmpeg_shows_the_visual_hook_and_mixes_the_audio_hook_only_inside_the_hook_range(tmp_path):
+    root, spec, output = render_hook_scene(tmp_path, 'ref-hook-v', {'start_ms': 1500, 'end_ms': 2000})
+    hook = root / 'media' / 'hook.mp4'
+    flat = root / 'media' / 'bg.png'
+    assert similarity(flat, None, hook, 750) < 0.85
+    assert similarity(output, 1750, hook, 750) >= 0.85
+    assert similarity(output, 500, hook, 750) < 0.85
+    assert similarity(output, 3500, hook, 750) < 0.85
+    assert band_db(output, 1.2, 1.0, HOOK_HZ) - band_db(output, 3.0, 0.8, HOOK_HZ) >= 20
+    assert abs(band_db(output, 1.2, 1.0, VOICE_HZ) - band_db(output, 3.0, 0.8, VOICE_HZ)) <= 2.0
+    assert abs(float(probe(output)['format']['duration']) - 4.0) <= 0.1
+
+
+def test_pinned_ffmpeg_overlays_a_distinct_thumbnail_image_inside_the_thumbnail_range(tmp_path):
+    root, spec, output = render_hook_scene(tmp_path, 'ref-thumb', {'start_ms': 1500, 'end_ms': 2000})
+    thumb = root / 'media' / 'thumb.png'
+    hook = root / 'media' / 'hook.mp4'
+    assert any(item.endswith('thumb.png') for item in spec.argv)
+    assert similarity(thumb, None, hook, 750) < 0.85
+    assert similarity(output, 1750, thumb, None) >= 0.85
+    assert similarity(output, 1200, thumb, None) < 0.85
+    assert similarity(output, 2250, thumb, None) < 0.85
+    assert similarity(output, 1200, hook, 200) >= 0.85
+    assert similarity(output, 2250, hook, 1250) >= 0.85

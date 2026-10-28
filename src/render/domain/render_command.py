@@ -12,7 +12,7 @@ import json
 import math
 import re
 import string
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import PureWindowsPath
 
@@ -247,19 +247,47 @@ def _filter_path(path: str) -> str:
     return path.replace(_BACKSLASH, '/').replace(':', _BACKSLASH + ':')
 
 
-def _normalise(index: int, values: dict[str, object]) -> str:
+def _chain(source: str, values: dict[str, object]) -> str:
     width, height, fps, pixel_format = values['width'], values['height'], values['fps'], values['pixel_format']
     return (
-        f'[{index}:v:0]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},'
-        f'setsar=1,fps={fps},format={pixel_format}[v{index}]'
+        f'[{source}]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},'
+        f'setsar=1,fps={fps},format={pixel_format}'
     )
 
 
-def _filter_graph(count: int, values: dict[str, object], ass_path: str) -> str:
-    normalised = [_normalise(index, values) for index in range(count)]
+def _normalise(index: int, values: dict[str, object]) -> str:
+    return _chain(f'{index}:v:0', values) + f'[v{index}]'
+
+
+def _overlay(base: str, top: str, window: tuple[int, int]) -> str:
+    return f"[{base}][{top}]overlay=eof_action=repeat:enable='between(t,{_seconds(window[0])},{_seconds(window[1])})'"
+
+
+def _shifted(source: str, values: dict[str, object], start_ms: int, label: str, first_frame_only: bool) -> str:
+    trim = ',trim=end_frame=1' if first_frame_only else ''
+    return f'{_chain(source, values)}{trim},setpts=PTS-STARTPTS+{_seconds(start_ms)}/TB[{label}]'
+
+
+def _filter_graph(count: int, values: dict[str, object], ass_path: str, hook: _HookPlan) -> str:
+    voice, visual, audio, thumbnail = count, count + 1, count + 2, count + 3
+    chains = [_normalise(index, values) for index in range(count)]
     labels = ''.join(f'[v{index}]' for index in range(count))
-    tail = ','.join((f'concat=n={count}:v=1:a=0', 'tpad=stop_mode=clone:stop=-1', f'ass=filename={ass_path}'))
-    return ';'.join([*normalised, labels + tail + '[vout]'])
+    chains += [
+        f'[{audio}:a:0]adelay={hook.hook_range[0]}:all=1[ahook]',
+        f'[{voice}:a:0][ahook]amix=inputs=2:duration=first:normalize=0[aout]',
+        labels + f'concat=n={count}:v=1:a=0,tpad=stop_mode=clone:stop=-1[base]',
+        _shifted(f'{visual}:v:0', values, hook.hook_range[0], 'vhook', False),
+    ]
+    ending = f'ass=filename={ass_path}[vout]'
+    if hook.thumbnail_path is None:
+        chains.append(_overlay('base', 'vhook', hook.hook_range) + ',' + ending)
+    else:
+        chains += [
+            _overlay('base', 'vhook', hook.hook_range) + '[vtop]',
+            _shifted(f'{thumbnail}:v:0', values, hook.thumbnail_range[0], 'vthumb', True),
+            _overlay('vtop', 'vthumb', hook.thumbnail_range) + ',' + ending,
+        ]
+    return ';'.join(chains)
 
 
 def _plain(*items: str) -> list[tuple[str, str]]:
@@ -288,6 +316,35 @@ def _thumbnail_moment_ms(record: RenderPackageRecord) -> int:
     return (thumb[0] + thumb[1]) // 2
 
 
+@dataclass(frozen=True)
+class _HookPlan:
+    visual_ref: str
+    audio_ref: str
+    thumbnail_ref: str
+    visual_path: str
+    audio_path: str
+    thumbnail_path: str | None
+    hook_range: tuple[int, int]
+    thumbnail_range: tuple[int, int]
+
+
+def _hook_plan(record: RenderPackageRecord, root: str) -> _HookPlan:
+    """thumbnail_path is None when the thumbnail shares its path with the visual hook."""
+    placement = record.hook_placement
+    if not isinstance(placement, Mapping):
+        raise RenderCommandRejected(INPUT_NOT_READY, 'missing_hook_placement')
+    hook = _time_range(placement, 'hook_time_range')
+    thumb = _time_range(placement, 'thumbnail_time_range')
+    if not (hook[0] <= thumb[0] and thumb[1] <= hook[1]):
+        raise RenderCommandRejected(INVALID_INPUT, 'thumbnail_outside_hook_range')
+    visual_ref, audio_ref, thumbnail_ref = placement.get('visual_hook_ref'), placement.get('audio_hook_ref'), placement.get('thumbnail_ref')
+    visual = _local_path(record, root, visual_ref, 'visual_hook_ref')
+    audio = _local_path(record, root, audio_ref, 'audio_hook_ref')
+    thumbnail = _local_path(record, root, thumbnail_ref, 'thumbnail_ref')
+    separate = PureWindowsPath(thumbnail) != PureWindowsPath(visual)
+    return _HookPlan(visual_ref, audio_ref, thumbnail_ref, visual, audio, thumbnail if separate else None, hook, thumb)
+
+
 def _make_spec(kind: str, pairs: list[tuple[str, str]], tool_identity: ToolIdentity, tool: dict[str, str], details: dict[str, object]) -> RenderCommandSpec:
     argv = tuple(real for real, _ in pairs)
     for index, item in enumerate(argv):
@@ -300,8 +357,29 @@ def _make_spec(kind: str, pairs: list[tuple[str, str]], tool_identity: ToolIdent
     return RenderCommandSpec(kind=kind, argv=argv, redacted_argv=redacted, spec_fingerprint=request_hash(basis), tool_identity=tool_identity)
 
 
+def _voice_duration_ms(record: RenderPackageRecord) -> int:
+    timeline = record.timeline
+    if isinstance(timeline, Mapping):
+        val = timeline.get('duration_ms') or timeline.get('voice_duration_ms')
+        if _is_int(val) and val > 0:
+            return val
+        segments = timeline.get('segments')
+        if isinstance(segments, Sequence) and segments:
+            last = segments[-1]
+            if isinstance(last, Mapping) and _is_int(last.get('end_ms')):
+                return last['end_ms']
+    return 0
+
+
+def _timed_input(record: RenderPackageRecord, ref: object, path: str, token: str, values: dict[str, object], duration_ms: int) -> list[tuple[str, str]]:
+    pairs: list[tuple[str, str]] = []
+    if _is_still_image(record, ref):
+        pairs += _plain('-loop', '1', '-framerate', str(values['fps']))
+    return pairs + [*_plain('-t', _seconds(duration_ms), '-i'), (path, token)]
+
+
 def build_render_command(record: object, preset: object, profile: object, ass_ref: object, tool_identity: object, materialized: object) -> RenderCommandSpec:
-    """Build the spec of the main render: each segment's first visual looped (still image) or trimmed (other media) to its timeline duration and normalised to the profile size, concat, ASS subtitles padded to the voice length (tpad) and the voice track (-shortest)."""
+    """Build the spec of the main render: each segment's first visual looped (still image) or trimmed (other media) to its timeline duration and normalised to the profile size, concat, the visual hook overlaid over hook_time_range, a distinct thumbnail asset's first frame overlaid over thumbnail_time_range, ASS subtitles, and the voice mixed with the audio hook delayed to hook start (amix, first input sets the length, normalize off)."""
     _require(record, RenderPackageRecord, 'record')
     _require(preset, RenderPresetRevision, 'preset')
     values = _checked_profile(profile)
@@ -314,17 +392,27 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
         visual_refs.append(refs[0])
         assets.append((paths[0], refs[0], duration_ms))
     voice = _local_path(record, root, record.voice_artifact_ref, 'voice_artifact_ref')
+    hook = _hook_plan(record, root)
     ass = _ass_path(record, root, ass_ref)
     output = _staged_path(root, materialized.output_path, 'materialized.output_path')
     count = len(assets)
     pairs = [(tool['executable'], '{tool}'), *_plain('-hide_banner', '-nostdin', '-n')]
     for index, (path, ref, duration_ms) in enumerate(assets):
-        if _is_still_image(record, ref):
-            pairs += _plain('-loop', '1', '-framerate', str(values['fps']))
-        pairs += [*_plain('-t', _seconds(duration_ms), '-i'), (path, f'{{asset:{index}}}')]
-    pairs += [*_plain('-i'), (voice, '{voice}'), *_plain('-filter_complex')]
-    pairs.append((_filter_graph(count, values, _filter_path(ass)), _filter_graph(count, values, '{ass}')))
-    pairs += _plain('-map', '[vout]', '-map', f'{count}:a:0', '-shortest', '-c:v', values['encoder'], '-c:a', values['audio_codec'])
+        pairs += _timed_input(record, ref, path, f'{{asset:{index}}}', values, duration_ms)
+    pairs += [*_plain('-i'), (voice, '{voice}')]
+    hook_ms = hook.hook_range[1] - hook.hook_range[0]
+    pairs += _timed_input(record, hook.visual_ref, hook.visual_path, '{hook_visual}', values, hook_ms)
+    pairs += [*_plain('-t', _seconds(hook_ms), '-i'), (hook.audio_path, '{hook_audio}')]
+    if hook.thumbnail_path is not None:
+        thumb_ms = hook.thumbnail_range[1] - hook.thumbnail_range[0]
+        pairs += _timed_input(record, hook.thumbnail_ref, hook.thumbnail_path, '{thumbnail_asset}', values, thumb_ms)
+    pairs += _plain('-filter_complex')
+    pairs.append((_filter_graph(count, values, _filter_path(ass), hook), _filter_graph(count, values, '{ass}', hook)))
+    pairs += _plain('-map', '[vout]', '-map', '[aout]', '-shortest')
+    voice_ms = _voice_duration_ms(record)
+    if voice_ms > 0:
+        pairs += _plain('-t', _seconds(voice_ms))
+    pairs += _plain('-c:v', values['encoder'], '-c:a', values['audio_codec'])
     if values['bitrate'] is not None:
         pairs += _plain('-b:v', str(values['bitrate']))
     pairs += [*_plain('-f', values['container']), (output, '{output}')]
@@ -335,6 +423,13 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
         'visual_refs': visual_refs,
         'voice_ref': record.voice_artifact_ref,
         'ass_ref': ass_ref,
+        'hook': {
+            'visual_ref': hook.visual_ref,
+            'audio_ref': hook.audio_ref,
+            'thumbnail_ref': hook.thumbnail_ref,
+            'hook_time_range': list(hook.hook_range),
+            'thumbnail_time_range': list(hook.thumbnail_range),
+        },
     }
     return _make_spec(KIND_RENDER, pairs, tool_identity, tool, details)
 
