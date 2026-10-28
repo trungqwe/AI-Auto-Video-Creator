@@ -166,6 +166,17 @@ def attempt_ref(attempt_id: str) -> dict:
     return {'ref_type': 'render_attempt', 'ref_id': attempt_id}
 
 
+def assert_render_attempt_and_output_refs(refs: list, attempt_id: str = 'op-render-1') -> None:
+    # PW-F4-FIX1 adds a verified sha256 to the render_output ref; a ref without it still passes (code before and after FIX1)
+    assert isinstance(refs, list) and len(refs) == 2
+    attempt, output = refs
+    assert attempt == {'ref_type': 'render_attempt', 'ref_id': attempt_id}
+    assert {key: value for key, value in output.items() if key != 'sha256'} == {'ref_type': 'render_output', 'ref_id': out_ref(1)}
+    if 'sha256' in output:
+        digest = output['sha256']
+        assert isinstance(digest, str) and len(digest) == 64 and set(digest) <= set('0123456789abcdef')
+
+
 def prepared(rig: ActivityRig) -> str:
     package_id = run(rig, RESOLVE, 'op-resolve-1')['output_refs'][0]['ref_id']
     assert run(rig, VALIDATE, 'op-validate-1', [pkg_ref(package_id)])['disposition'] == 'succeeded'
@@ -231,9 +242,7 @@ def test_render_activity_runs_only_the_render_and_never_the_inspection():
     assert (result['stage_run_id'], result['grant_id']) == ('stage-1', 'op-grant-1')
     assert (result['execution_generation'], result['recovery_epoch']) == (2, '1')
     assert result['completed_at'] == '2026-10-20T08:00:00Z'
-    assert result['output_refs'] == [
-        {'ref_type': 'render_attempt', 'ref_id': 'op-render-1'}, {'ref_type': 'render_output', 'ref_id': out_ref(1)},
-    ]
+    assert_render_attempt_and_output_refs(result['output_refs'])
     assert result['metrics'] == {'wall_time_ms': 1200, 'peak_disk_bytes': 4096, 'replayed': False}
     assert result['warnings'] == [] and result['operation_receipt_ref'] == 'receipt-op-render-1'
     assert rig.renderer.calls == 1 and rig.lease.held == [] and len(rig.lease.released) == 1
@@ -471,7 +480,7 @@ def test_reconcile_activity_settles_an_unknown_attempt_with_its_output():
     run(rig, RENDER, 'op-render-1', [pkg_ref(package_id)])
     result = run(rig, RECONCILE, 'op-reconcile-1', [pkg_ref(package_id), attempt_ref('op-render-1')])
     assert result['disposition'] == 'succeeded'
-    assert result['output_refs'] == [{'ref_type': 'render_attempt', 'ref_id': 'op-render-1'}, {'ref_type': 'render_output', 'ref_id': out_ref(1)}]
+    assert_render_attempt_and_output_refs(result['output_refs'])
     assert result['metrics']['reconciled_state'] == 'succeeded'
     attempt = rig.uow.renders.latest(KIND_ATTEMPT, 'op-render-1').record
     assert attempt.receipt_state is OperationState.SUCCEEDED
