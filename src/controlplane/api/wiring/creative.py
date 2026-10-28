@@ -402,14 +402,14 @@ class ProductionVariantContext:
         if phase == 'output':
             if own_reservation_id is not None:
                 result['own_reservation_id'] = own_reservation_id
-            output_ref = next(
-                (r['ref_id'] for r in input_refs if r.get('ref_type') in ('output_path', 'video_output', 'render_output')),
-                None,
-            )
-            if output_ref:
-                result['output_hash'] = hashlib.sha256(output_ref.encode('utf-8')).hexdigest()
-            else:
-                result['output_hash'] = hashlib.sha256(f'out:{job_id}'.encode('utf-8')).hexdigest()
+            # output_hash là sha256 nội dung video mà render_video đã xác minh, mang trong ref render_output; không có thì bỏ trống để miền trả INPUT_NOT_READY.
+            rendered = [
+                ref['sha256']
+                for ref in input_refs
+                if ref.get('ref_type') == 'render_output' and isinstance(ref.get('sha256'), str) and ref['sha256']
+            ]
+            if rendered:
+                result['output_hash'] = rendered[-1]
 
         return result
 
