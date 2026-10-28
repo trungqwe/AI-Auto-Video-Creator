@@ -28,6 +28,7 @@ ASSET_NOT_MATERIALIZED = 'asset_not_materialized'
 PATH_OUTSIDE_STAGING_ROOT = 'path_outside_staging_root'
 KIND_RENDER = 'render'
 KIND_THUMBNAIL = 'thumbnail'
+IMAGE_MEDIA_PREFIX = 'image/'
 
 
 class RenderCommandRejected(ValueError):
@@ -192,7 +193,22 @@ def _local_path(record: RenderPackageRecord, root: str, ref: object, name: str) 
     return _staged_path(root, entry.get('local_ref'), f'{name}.local_ref')
 
 
-def _visual_refs(record: RenderPackageRecord) -> list[tuple[tuple[object, ...], str]]:
+def _duration_ms(segment: Mapping, index: int) -> int:
+    name = f'timeline.segments[{index}]'
+    bounds = []
+    for key in ('start_ms', 'end_ms'):
+        value = segment.get(key)
+        if value is None:
+            raise RenderCommandRejected(INPUT_NOT_READY, f'missing_{name}.{key}')
+        if not _is_int(value):
+            raise RenderCommandRejected(INPUT_NOT_READY, f'invalid_{name}.{key}')
+        bounds.append(value)
+    if bounds[1] <= bounds[0]:
+        raise RenderCommandRejected(INVALID_INPUT, f'invalid_{name}.duration')
+    return bounds[1] - bounds[0]
+
+
+def _visual_refs(record: RenderPackageRecord) -> list[tuple[tuple[object, ...], str, int]]:
     timeline = record.timeline
     segments = timeline.get('segments') if isinstance(timeline, Mapping) else None
     if not isinstance(segments, (list, tuple)) or not segments:
@@ -203,8 +219,19 @@ def _visual_refs(record: RenderPackageRecord) -> list[tuple[tuple[object, ...], 
         refs = segment.get('visual_asset_refs') if isinstance(segment, Mapping) else None
         if not isinstance(refs, (list, tuple)) or not refs:
             raise RenderCommandRejected(INPUT_NOT_READY, f'missing_{name}')
-        found.append((tuple(refs), name))
+        found.append((tuple(refs), name, _duration_ms(segment, index)))
     return found
+
+
+def _seconds(duration_ms: int) -> str:
+    return f'{duration_ms // 1000}.{duration_ms % 1000:03d}'
+
+
+def _is_still_image(record: RenderPackageRecord, ref: object) -> bool:
+    for artifact in record.input_artifacts:
+        if artifact.artifact_version_id == ref:
+            return artifact.media_type.lower().startswith(IMAGE_MEDIA_PREFIX)
+    return False
 
 
 def _ass_path(record: RenderPackageRecord, root: str, ass_ref: object) -> str:
@@ -220,17 +247,19 @@ def _filter_path(path: str) -> str:
     return path.replace(_BACKSLASH, '/').replace(':', _BACKSLASH + ':')
 
 
-def _filter_graph(count: int, values: dict[str, object], ass_path: str) -> str:
+def _normalise(index: int, values: dict[str, object]) -> str:
     width, height, fps, pixel_format = values['width'], values['height'], values['fps'], values['pixel_format']
-    inputs = ''.join(f'[{index}:v:0]' for index in range(count))
-    chain = (
-        f'concat=n={count}:v=1:a=0',
-        f'scale={width}:{height}',
-        f'fps={fps}',
-        f'format={pixel_format}',
-        f'ass=filename={ass_path}',
+    return (
+        f'[{index}:v:0]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},'
+        f'setsar=1,fps={fps},format={pixel_format}[v{index}]'
     )
-    return inputs + ','.join(chain) + '[vout]'
+
+
+def _filter_graph(count: int, values: dict[str, object], ass_path: str) -> str:
+    normalised = [_normalise(index, values) for index in range(count)]
+    labels = ''.join(f'[v{index}]' for index in range(count))
+    tail = ','.join((f'concat=n={count}:v=1:a=0', 'tpad=stop_mode=clone:stop=-1', f'ass=filename={ass_path}'))
+    return ';'.join([*normalised, labels + tail + '[vout]'])
 
 
 def _plain(*items: str) -> list[tuple[str, str]]:
@@ -262,7 +291,9 @@ def _thumbnail_moment_ms(record: RenderPackageRecord) -> int:
 def _make_spec(kind: str, pairs: list[tuple[str, str]], tool_identity: ToolIdentity, tool: dict[str, str], details: dict[str, object]) -> RenderCommandSpec:
     argv = tuple(real for real, _ in pairs)
     for index, item in enumerate(argv):
-        if _is_unsafe(item):
+        # The filter graph is built only from validated numbers, identifiers and a character-restricted path; its chain separators are the only allowed semicolons.
+        is_graph = index > 0 and argv[index - 1] == '-filter_complex'
+        if _is_unsafe(item.replace(';', '') if is_graph else item):
             raise RenderCommandRejected(UNSAFE_ARGUMENT, f'argv[{index}]')
     redacted = tuple(shown for _, shown in pairs)
     basis = {'kind': kind, 'redacted_argv': list(redacted), 'tool': {name: tool[name] for name in ('name', 'version', 'build')}, **details}
@@ -270,7 +301,7 @@ def _make_spec(kind: str, pairs: list[tuple[str, str]], tool_identity: ToolIdent
 
 
 def build_render_command(record: object, preset: object, profile: object, ass_ref: object, tool_identity: object, materialized: object) -> RenderCommandSpec:
-    """Build the spec of the main render: concat of the first visual rendition of each segment, burned-in ASS subtitles and the voice track."""
+    """Build the spec of the main render: each segment's first visual looped (still image) or trimmed (other media) to its timeline duration and normalised to the profile size, concat, ASS subtitles padded to the voice length (tpad) and the voice track (-shortest)."""
     _require(record, RenderPackageRecord, 'record')
     _require(preset, RenderPresetRevision, 'preset')
     values = _checked_profile(profile)
@@ -278,20 +309,22 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
     root = _checked_root(materialized)
     visual_refs = []
     assets = []
-    for refs, name in _visual_refs(record):
+    for refs, name, duration_ms in _visual_refs(record):
         paths = [_local_path(record, root, ref, name) for ref in refs]
         visual_refs.append(refs[0])
-        assets.append(paths[0])
+        assets.append((paths[0], refs[0], duration_ms))
     voice = _local_path(record, root, record.voice_artifact_ref, 'voice_artifact_ref')
     ass = _ass_path(record, root, ass_ref)
     output = _staged_path(root, materialized.output_path, 'materialized.output_path')
     count = len(assets)
     pairs = [(tool['executable'], '{tool}'), *_plain('-hide_banner', '-nostdin', '-n')]
-    for index, path in enumerate(assets):
-        pairs += [*_plain('-i'), (path, f'{{asset:{index}}}')]
+    for index, (path, ref, duration_ms) in enumerate(assets):
+        if _is_still_image(record, ref):
+            pairs += _plain('-loop', '1', '-framerate', str(values['fps']))
+        pairs += [*_plain('-t', _seconds(duration_ms), '-i'), (path, f'{{asset:{index}}}')]
     pairs += [*_plain('-i'), (voice, '{voice}'), *_plain('-filter_complex')]
     pairs.append((_filter_graph(count, values, _filter_path(ass)), _filter_graph(count, values, '{ass}')))
-    pairs += _plain('-map', '[vout]', '-map', f'{count}:a:0', '-c:v', values['encoder'], '-c:a', values['audio_codec'])
+    pairs += _plain('-map', '[vout]', '-map', f'{count}:a:0', '-shortest', '-c:v', values['encoder'], '-c:a', values['audio_codec'])
     if values['bitrate'] is not None:
         pairs += _plain('-b:v', str(values['bitrate']))
     pairs += [*_plain('-f', values['container']), (output, '{output}')]

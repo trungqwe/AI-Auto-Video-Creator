@@ -6,9 +6,15 @@ import dataclasses
 import json
 import pathlib
 import re
+import struct
+import subprocess
+import wave
+import zlib
 
 import pytest
 
+from render.adapters.real_ffmpeg_renderer import DEFAULT_FFMPEG_PATH, DEFAULT_LOCK_PATH, build_final_argv, verify_ffmpeg_pin
+from render.adapters.real_ffprobe_probe import DEFAULT_FFPROBE_PATH
 from render.domain.package_contract import validate_render_package_payload
 from render.domain.preset import build_preset_revision
 from render.domain.render_command import (
@@ -56,6 +62,10 @@ def manifest_with(ref, local_ref):
     return manifest(**{ref: {'local_ref': local_ref}})
 
 
+def artifact(ref, media_type):
+    return {'artifact_version_id': ref, 'sha256': 'c' * 64, 'size_bytes': 1, 'media_type': media_type}
+
+
 def hook_placement(**changes):
     value = {
         'visual_hook_ref': 'ref-visual-a',
@@ -81,7 +91,7 @@ def payload(**changes):
         'output_metadata_revision': 'meta-1',
         'output_profile_revision': 'profile-1',
         'language_validation_refs': ['lang-1'],
-        'input_artifacts': [],
+        'input_artifacts': [artifact('ref-visual-a', 'image/png'), artifact('ref-visual-b', 'video/mp4')],
         'timeline': {'segments': [
             {'start_ms': 0, 'end_ms': 3000, 'visual_asset_refs': ['ref-visual-a']},
             {'start_ms': 3000, 'end_ms': 6000, 'visual_asset_refs': ['ref-visual-b']},
@@ -182,15 +192,16 @@ def test_render_command_structure():
 
 def test_filter_graph_is_built_from_structured_parts():
     graph = value_after(render().argv, '-filter_complex')
-    expected = '[0:v:0][1:v:0]concat=n=2:v=1:a=0,scale=1080:1920,fps=30,format=yuv420p,ass=filename=C' + BACKSLASH + ':/staging/job1/subs/karaoke.ass[vout]'
+    chain = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p'
+    expected = f'[0:v:0]{chain}[v0];[1:v:0]{chain}[v1];' + '[v0][v1]concat=n=2:v=1:a=0,tpad=stop_mode=clone:stop=-1,ass=filename=C' + BACKSLASH + ':/staging/job1/subs/karaoke.ass[vout]'
     assert graph == expected
-    assert ';' not in graph
+    assert graph.count(chr(59)) == 2
 
 
 def test_profile_values_come_only_from_the_profile_input():
     other = profile(width=720, height=1280, fps=24, video_codec='vcodec2', audio_codec='acodec2', container='cont2', pixel_format='pix2', encoder='enc2')
     spec = render(profile=other)
-    assert 'scale=720:1280,fps=24,format=pix2' in value_after(spec.argv, '-filter_complex')
+    assert '[0:v:0]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=24,format=pix2[v0]' in value_after(spec.argv, '-filter_complex')
     assert value_after(spec.argv, '-c:v') == 'enc2'
     assert value_after(spec.argv, '-c:a') == 'acodec2'
     assert value_after(spec.argv, '-f') == 'cont2'
@@ -373,6 +384,83 @@ def test_absolute_local_ref_inside_the_staging_root_is_accepted():
     assert staged('media/a.mp4') in spec.argv
 
 
+def with_segments(*spans, refs=('ref-visual-a', 'ref-visual-b')):
+    return {'segments': [{'start_ms': start, 'end_ms': end, 'visual_asset_refs': [refs[index % len(refs)]]} for index, (start, end) in enumerate(spans)]}
+
+
+def test_still_image_is_looped_for_the_segment_duration_and_video_is_only_trimmed():
+    argv = render().argv
+    image, video, voice = argv.index(staged('media/a.mp4')), argv.index(staged('media/b.mp4')), argv.index(staged('media/voice.wav'))
+    assert argv[image - 7:image] == ('-loop', '1', '-framerate', '30', '-t', '3.000', '-i')
+    assert argv[image + 1:video] == ('-t', '3.000', '-i')
+    assert argv[video + 1:voice] == ('-i',)
+
+
+def test_segment_duration_is_end_minus_start():
+    argv = render(record=record(timeline=with_segments((500, 2000), (2000, 4250), (4250, 5484)))).argv
+    assert [argv[i + 1] for i, item in enumerate(argv) if item == '-t'] == ['1.500', '2.250', '1.234']
+    assert argv.count('-loop') == 2
+    assert 'concat=n=3' in value_after(argv, '-filter_complex')
+
+
+def test_media_type_comes_from_the_input_artifact_with_the_same_ref():
+    swapped = record(input_artifacts=[artifact('ref-visual-a', 'video/mp4'), artifact('ref-visual-b', 'image/jpeg'), artifact('ref-other', 'image/png')])
+    argv = render(record=swapped).argv
+    first, second = argv.index(staged('media/a.mp4')), argv.index(staged('media/b.mp4'))
+    assert '-loop' not in argv[:first]
+    assert argv[first + 1:second] == ('-loop', '1', '-framerate', '30', '-t', '3.000', '-i')
+    assert '-loop' not in render(record=record(input_artifacts=[artifact('ref-other', 'image/png')])).argv
+
+
+def test_fingerprint_and_redacted_argv_follow_durations_and_media_types():
+    base = render()
+    longer = render(record=record(timeline=with_segments((0, 3000), (3000, 7000))))
+    video_only = render(record=record(input_artifacts=[artifact('ref-visual-a', 'video/mp4'), artifact('ref-visual-b', 'video/mp4')]))
+    assert longer.spec_fingerprint != base.spec_fingerprint and video_only.spec_fingerprint != base.spec_fingerprint
+    assert '4.000' in longer.redacted_argv
+    assert {'-loop', '-shortest', '3.000'} <= set(base.redacted_argv)
+
+
+def test_every_input_is_normalised_before_concat():
+    graph = value_after(render(record=record(timeline=with_segments((0, 1000), (1000, 2000), (2000, 3000)))).argv, '-filter_complex')
+    concat = graph.index('concat=')
+    assert graph.count('scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p') == 3
+    for index in range(3):
+        assert f'[{index}:v:0]scale=' in graph[:concat] and f'[v{index}]' in graph[:concat]
+    assert 'scale=' not in graph[concat:] and 'crop=' not in graph[concat:]
+    assert '[v0][v1][v2]concat=n=3:v=1:a=0' in graph
+
+
+def test_tpad_follows_concat_and_precedes_ass_and_shortest_is_added_next_to_segment_t():
+    argv = render().argv
+    graph = value_after(argv, '-filter_complex')
+    assert graph.index('concat=') < graph.index('tpad=stop_mode=clone:stop=-1') < graph.index('ass=filename=')
+    assert graph.endswith('[vout]')
+    assert '-shortest' in argv and argv.index('-shortest') > argv.index('-filter_complex')
+    assert argv.count('-t') == 2
+
+
+@pytest.mark.parametrize('segment,reason', [
+    ({'end_ms': 3000}, 'missing_timeline.segments[0].start_ms'),
+    ({'start_ms': 0}, 'missing_timeline.segments[0].end_ms'),
+    ({'start_ms': '0', 'end_ms': 3000}, 'invalid_timeline.segments[0].start_ms'),
+    ({'start_ms': 0, 'end_ms': 3000.0}, 'invalid_timeline.segments[0].end_ms'),
+    ({'start_ms': 0, 'end_ms': True}, 'invalid_timeline.segments[0].end_ms'),
+])
+def test_segment_bounds_missing_or_not_int_are_input_not_ready(segment, reason):
+    timeline = {'segments': [{**segment, 'visual_asset_refs': ['ref-visual-a']}]}
+    assert_rejected(lambda: render(record=record(timeline=timeline)), INPUT_NOT_READY, reason)
+
+
+@pytest.mark.parametrize('span', [(3000, 3000), (3000, 2000)])
+def test_segment_with_end_not_after_start_is_invalid_input(span):
+    assert_rejected(lambda: render(record=record(timeline=with_segments((0, 1000), span))), INVALID_INPUT, 'invalid_timeline.segments[1].duration')
+
+
+def test_thumbnail_command_is_unchanged():
+    assert thumbnail().argv == (TOOL_PATH, '-hide_banner', '-nostdin', '-n', '-ss', '1.000', '-i', staged('out/final.mp4'), '-frames:v', '1', '-vf', 'scale=1080:1920', staged('out/thumb.jpg'))
+
+
 def timeline_of(refs):
     return {'segments': [{'start_ms': 0, 'end_ms': 3000, 'visual_asset_refs': refs}]}
 
@@ -462,3 +550,76 @@ def test_module_holds_no_profile_values_and_builds_no_command_string():
     for token in ('subprocess', 'shell', 'shlex', 'os.system'):
         assert token not in source
     assert 'request_hash' in source
+
+FFMPEG = DEFAULT_FFMPEG_PATH
+FPS = 30
+VOICE_SECONDS = 3.0
+ASS_TEXT = chr(10).join([
+    '[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080', 'PlayResY: 1920', '', '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    'Style: Default,Arial,60,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1', '', '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+    'Dialogue: 0,0:00:00.00,0:00:03.00,Default,,0,0,0,,Sub',
+]) + chr(10)
+
+
+def write_png(path, width, height, rgb):
+    def chunk(kind, data):
+        body = kind + data
+        return struct.pack('>I', len(data)) + body + struct.pack('>I', zlib.crc32(body) & 0xFFFFFFFF)
+    rows = (bytes([0]) + bytes(rgb) * width) * height
+    header = struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)
+    path.write_bytes(bytes([137, 80, 78, 71, 13, 10, 26, 10]) + chunk(b'IHDR', header) + chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
+
+
+def write_wav(path, seconds):
+    with wave.open(str(path), 'wb') as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(48000)
+        handle.writeframes(bytes(2 * int(48000 * seconds)))
+
+
+def run_process(command):
+    return subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace', stdin=subprocess.DEVNULL, timeout=600, check=False)
+
+
+def probe(path):
+    done = run_process([DEFAULT_FFPROBE_PATH, '-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,nb_read_frames,duration:format=duration', '-of', 'json', str(path)])
+    assert done.returncode == 0, done.stderr[-2000:]
+    return json.loads(done.stdout)
+
+
+@pytest.mark.parametrize('segment_ms', [(1000, 1000), (2500, 2500)], ids=['segments_shorter_than_voice', 'segments_longer_than_voice'])
+def test_pinned_ffmpeg_renders_mixed_size_stills_to_the_voice_length(tmp_path, segment_ms):
+    verify_ffmpeg_pin(pathlib.Path(FFMPEG), DEFAULT_LOCK_PATH)
+    root = tmp_path / 'stage'
+    for folder in ('media', 'subs', 'out'):
+        (root / folder).mkdir(parents=True)
+    write_png(root / 'media' / 'small.png', 640, 480, (200, 40, 40))
+    write_png(root / 'media' / 'tall.png', 1080, 1920, (40, 40, 200))
+    write_wav(root / 'media' / 'voice.wav', VOICE_SECONDS)
+    (root / 'subs' / 'karaoke.ass').write_text(ASS_TEXT, encoding='utf-8')
+    locals_ = {'ref-small': 'media/small.png', 'ref-tall': 'media/tall.png', 'ref-voice': 'media/voice.wav', 'ref-ass': 'subs/karaoke.ass'}
+    first, second = segment_ms
+    rec = record(
+        voice_artifact_ref='ref-voice',
+        input_artifacts=[artifact('ref-small', 'image/png'), artifact('ref-tall', 'image/png')],
+        timeline={'segments': [
+            {'start_ms': 0, 'end_ms': first, 'visual_asset_refs': ['ref-small']},
+            {'start_ms': first, 'end_ms': first + second, 'visual_asset_refs': ['ref-tall']},
+        ]},
+        materialization_manifest={ref: {'local_ref': local} for ref, local in locals_.items()},
+    )
+    spec = render(record=rec, tool_identity=tool(executable=FFMPEG), materialized=materialized(staging_root=str(root)))
+    assert 'ass=filename=' in value_after(spec.argv, '-filter_complex') and spec.argv.count('-loop') == 2
+    output = root / 'out' / 'attempt.mp4'
+    done = run_process(build_final_argv(spec.argv, FFMPEG, 'libx264', str(output)))
+    assert done.returncode == 0, done.stderr[-2000:]
+    info = probe(output)
+    stream = info['streams'][0]
+    frame = 1 / FPS
+    assert (stream['width'], stream['height']) == (1080, 1920)
+    assert abs(float(info['format']['duration']) - VOICE_SECONDS) <= frame
+    assert abs(float(stream['duration']) - VOICE_SECONDS) <= frame
+    assert abs(int(stream['nb_read_frames']) - VOICE_SECONDS * FPS) <= 1
