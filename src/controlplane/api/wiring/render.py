@@ -66,6 +66,8 @@ from render.domain.validate_package import (
 )
 from render.ports.inputs import LocalMaterialRef, ResolveInputs, ResolvedAsset
 from render.worker.activity_handler import RenderActivityDeps
+from catalog.persistence.hooks import PostgresHookHistory
+from controlplane.application.storage_meta.handlers import STAGED_HOOK_EXTENSIONS, verified_version_for_sha
 
 
 from controlplane.api.wiring.production_profile import (
@@ -123,6 +125,40 @@ def _read_tool_version(lock_path: Path | str) -> str:
 
 _VOICE_SOURCE_PREFIX = 'voice/'
 _OUTPUT_NAME_UNSAFE = re.compile(r'[^A-Za-z0-9_-]')
+_HOOK_PLACEMENT_REFS = ('visual_hook_ref', 'audio_hook_ref', 'thumbnail_ref')
+_THUMBNAIL_REF_PREFIX = 'thumb:'
+_HOOK_MEDIA_SHA_KEY = 'media_sha256'
+
+
+@dataclass(frozen=True)
+class _StagedSource:
+    version_id: str
+    sha256: str
+    size_bytes: int
+    media_type: str
+    role: str
+
+
+def _hook_not_ready(ref: str, reason: str) -> ActivityInputError:
+    return ActivityInputError('INPUT_NOT_READY', f'{reason}:{ref}')
+
+
+def _visual_version_ref(timeline: Mapping[str, Any], media_asset_id: str) -> str | None:
+    segments = timeline.get('segments') if isinstance(timeline, Mapping) else None
+    if not isinstance(segments, list):
+        return None
+    for segment in segments:
+        if not isinstance(segment, Mapping):
+            continue
+        visuals = segment.get('visuals')
+        if not isinstance(visuals, list):
+            continue
+        for visual in visuals:
+            if isinstance(visual, Mapping) and visual.get('media_asset_id') == media_asset_id:
+                version_ref = visual.get('artifact_version_ref')
+                if isinstance(version_ref, str) and version_ref:
+                    return version_ref
+    return None
 
 
 def _output_name(render_attempt_id: str) -> str:
@@ -280,6 +316,53 @@ class ProductionRenderSources:
             segments=infos,
         )
 
+    def _hook_source(self, hook_id: str) -> _StagedSource | None:
+        try:
+            with self._manager.borrow_connection() as conn:
+                revision = PostgresHookHistory(conn, self._workspace_id).latest(hook_id)
+        except KeyError:
+            return None
+        sha256 = dict(revision.technical_metadata).get(_HOOK_MEDIA_SHA_KEY)
+        if not isinstance(sha256, str):
+            raise _hook_not_ready(hook_id, 'hook_media_sha256_missing')
+        version = verified_version_for_sha(self._manager, workspace_id=self._workspace_id, sha256=sha256, extensions=STAGED_HOOK_EXTENSIONS)
+        if version is None:
+            raise _hook_not_ready(hook_id, 'hook_version_not_verified')
+        return _StagedSource(version.artifact_version_id, version.sha256_hash, version.size_bytes, version.mime_type, version.artifact_kind)
+
+    def _thumbnail_source(self, ref: str, timeline: Mapping[str, Any], art_info: PostgresArtifactInfo) -> _StagedSource:
+        if not ref.startswith(_THUMBNAIL_REF_PREFIX) or len(ref) <= len(_THUMBNAIL_REF_PREFIX):
+            raise _hook_not_ready(ref, 'thumbnail_ref_unresolvable')
+        subject = ref[len(_THUMBNAIL_REF_PREFIX):]
+        source = self._hook_source(subject)
+        if source is not None:
+            return source
+        version_ref = _visual_version_ref(timeline, subject)
+        asset = art_info.get_asset(version_ref) if version_ref else None
+        if asset is None:
+            raise _hook_not_ready(ref, 'thumbnail_subject_not_found')
+        return _StagedSource(asset.artifact_version_id, asset.sha256, asset.size_bytes, asset.media_type, asset.role)
+
+    def _hook_assets(self, hook_placement: Any, timeline: Mapping[str, Any], art_info: PostgresArtifactInfo) -> list[tuple[ResolvedAsset, LocalMaterialRef]]:
+        if not isinstance(hook_placement, Mapping):
+            return []
+        resolved: dict[str, tuple[ResolvedAsset, LocalMaterialRef]] = {}
+        for key in _HOOK_PLACEMENT_REFS:
+            ref = hook_placement.get(key)
+            if not isinstance(ref, str) or not ref or ref in resolved:
+                continue
+            if key == 'thumbnail_ref':
+                source = self._thumbnail_source(ref, timeline, art_info)
+            else:
+                source = self._hook_source(ref)
+                if source is None:
+                    raise _hook_not_ready(ref, 'hook_not_found')
+            resolved[ref] = (
+                ResolvedAsset(artifact_version_id=ref, sha256=source.sha256, size_bytes=source.size_bytes, media_type=source.media_type, role=source.role),
+                LocalMaterialRef(artifact_version_id=ref, local_ref=source.version_id),
+            )
+        return list(resolved.values())
+
     def resolve_inputs(self, input_refs: Sequence[Mapping[str, str]]) -> ResolveInputs:
         output_path_ref = next((r['ref_id'] for r in input_refs if r.get('ref_type') == 'output_path'), 'out-default')
         script_ref = next((r['ref_id'] for r in input_refs if r.get('ref_type') == 'script_version'), None)
@@ -324,7 +407,10 @@ class ProductionRenderSources:
             refs_in_plan = ()
 
         input_artifacts = []
+        hook_refs = {hook_placement.get(key) for key in _HOOK_PLACEMENT_REFS} if isinstance(hook_placement, Mapping) else set()
         for aref in refs_in_plan:
+            if aref in hook_refs:
+                continue
             asset = art_info.get_asset(aref)
             if asset is not None:
                 input_artifacts.append(asset)
@@ -357,6 +443,9 @@ class ProductionRenderSources:
             )
         )
         manifest_entries.append(LocalMaterialRef(artifact_version_id=voice_ref, local_ref=voice_version.artifact_version_id))
+        for hook_asset, hook_entry in self._hook_assets(hook_placement, timeline, art_info):
+            input_artifacts.append(hook_asset)
+            manifest_entries.append(hook_entry)
 
         if timing_ref is None:
             raise ActivityInputError(INPUT_REF_MISSING, 'word_timing')
@@ -459,10 +548,9 @@ class ProductionRenderSources:
                     state=ArtifactLocationState.VERIFIED,
                 )
                 continue
-            lookup = ref
-            if ref == package.voice_artifact_ref:
-                entry = manifest.get(ref) if isinstance(manifest, Mapping) else None
-                lookup = entry.get('local_ref') if isinstance(entry, Mapping) else None
+            entry = manifest.get(ref) if isinstance(manifest, Mapping) else None
+            local = entry.get('local_ref') if isinstance(entry, Mapping) else None
+            lookup = local if isinstance(local, str) and local else ref
             res_asset = art_info.get_asset(lookup)
             if res_asset is not None:
                 verified[ref] = VerifiedArtifact(
