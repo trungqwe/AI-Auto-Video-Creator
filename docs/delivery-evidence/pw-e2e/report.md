@@ -103,16 +103,28 @@ Danh sách đầy đủ và chính xác các adapter giả lập được phép 
   - **Triệu chứng:** Hoạt động `inspect_output` trong stage `qc` bị thất bại do không đạt các cổng kiểm soát chất lượng:
     1. Cổng `VISUAL_HOOK_PRESENT` và `THUMBNAIL_PRESENT`: Tại `src/creative/domain/production_plan.py:236`, `visual_hook_ref` nhận `'vh-01'` và `thumbnail_ref` nhận `'thumb:vh-01'`. Tại `src/render/adapters/postgres_plan_assets.py:126` (`PostgresArtifactInfo.get_asset`), hàm yêu cầu định dạng UUID (`uuid.UUID(artifact_version_id)`). Do `'vh-01'` và `'thumb:vh-01'` không phải UUID, hàm trả về `None`, dẫn đến việc các asset này bị bỏ qua không được đưa vào `package.materialization_manifest`. Sau đó, tại `src/render/adapters/real_output_inspector.py:464, 490`, `_visual_hook` và `_thumbnail` tra cứu `manifest.get('vh-01')` và `manifest.get('thumb:vh-01')`, nhận kết quả `None`, làm trượt hai cổng chất lượng (`visual_hook_not_observed`, `thumbnail_not_observed`).
     2. Cổng `SUBTITLE_BURNED_IN` và `INFERENCE_DISCLOSURE_PRESENT`: Tại `src/render/domain/render_command.py:227`, bộ lọc ghép nối video sử dụng `concat=n=2:v=1:a=0` trên các ảnh đầu vào mà không có cờ loop (`-loop 1`), khiến luồng video xuất ra chỉ dài 2 frame (khoảng 66 ms) trong khi luồng âm thanh dài 30 giây. Luồng video kết thúc ngay ở đầu tệp, không có frame hình ảnh nào tại thời điểm phụ đề karaoke hay disclosure ở segment 2, dẫn tới việc các cổng này bị đánh trượt (`0 frames`, `disclosure_missing:s2`).
-  - **Các tệp mã nguồn production bị ảnh hưởng:**
-    - `src/render/adapters/postgres_plan_assets.py:126`
-    - `src/render/adapters/real_output_inspector.py:464, 490`
-    - `src/render/domain/render_command.py:227`
-    - `src/creative/domain/production_plan.py:236`
-  - **Gói chủ đề xuất xử lý:** `PW-F` / `PW-W2`.
+  - **Các tệp mã nguồn production bị ảnh hưởng (đã đối chiếu trên HEAD):**
+    - `src/controlplane/api/wiring/render.py` (`resolve_inputs`, dòng 296-334 và 395): lấy nguyên `hook_placement` của kế hoạch, chỉ đưa vào manifest các ref là UUID.
+    - `src/creative/domain/production_plan.py:236` và `src/creative/adapters/thumbnail_candidates.py:42,51`: `visual_hook_ref`/`audio_hook_ref` là hook_id, `thumbnail_ref` có dạng `thumb:<id>`, không bao giờ là UUID artifact version.
+    - `src/render/adapters/postgres_plan_assets.py:109-114,134`: `asset_refs` gom các ref này nhưng `get_asset` bỏ chúng vì không phải UUID.
+    - `src/render/adapters/real_output_inspector.py:464,490`: `manifest.get(ref)` trả None nên `VISUAL_HOOK_PRESENT` và `THUMBNAIL_PRESENT` trượt.
+    - `src/render/domain/render_command.py:223-233` (`_filter_graph`) và `:289-297` (`build_render_command`): ảnh tĩnh vào `concat` không có `-loop 1 -t <thời lượng segment>`, video ra chỉ vài frame nên `SUBTITLE_BURNED_IN` và `INFERENCE_DISCLOSURE_PRESENT` trượt.
+    - `src/creative/adapters/media_candidates.py:41,72`: chỉ nhận `kind=image`, nên production luôn đi qua đường ảnh tĩnh này.
+  - **Gói chủ đề xuất xử lý:** `PW-F4` (dây nối `resolve_inputs`, ánh xạ hook/thumbnail sang artifact version đã VERIFIED trong manifest) và `PW-F3`/`PW-W2` (lệnh render ảnh tĩnh có `-loop 1 -t`); Control xác nhận gói chủ.
   - **Test bị chặn:**
     - `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable`
     - `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun`
     - `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing`
+
+### Vì sao rig không thể vá phía test
+- Ref thumbnail luôn có tiền tố `thumb:` nên không thể thành UUID bằng dữ liệu seed; đổi hook_id sang UUID cũng không cứu được cổng `THUMBNAIL_PRESENT`.
+- Seed `MediaAsset` dạng video bị `media_candidates.py:41` loại; ghi mp4 vào `<staging>/<artifact_version_id>` làm sai sha256 đã đăng ký và vi phạm kiểm tra đầu vào render.
+- Vá logic production trong rig bị test AST `test_the_support_module_patches_only_edge_adapters` cấm và là phản ví dụ của tiêu chí 1 (assembly riêng của test).
+
+### Điều kiện chạy lại
+1. Gói chủ gộp bản sửa `resolve_inputs` và `render_command` vào nhánh tích hợp.
+2. Lane rebase lên integration head mới, chạy lại `python -m pytest tests/integration/prod_wiring/test_pw_e2e_batch_video.py -q -p no:cacheprovider`.
+3. Cập nhật mục 2, 3, 4 của báo cáo bằng số đo thật; tiêu chí 1, 2, 4 chưa có bằng chứng PASS cho tới lúc đó.
 
 ### Ghi nhận các vấn đề trước đây
 - Khoảng trống G1 (`missing business_date` trong `CollectSource`) đã được đóng triệt để bởi các gói tích hợp vừa gộp (test `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch` đã PASSED).
