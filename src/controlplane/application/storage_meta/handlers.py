@@ -2,7 +2,7 @@
 
 materialize_artifact_set_handler đăng ký version, đặt bản local phẳng <staging>/<artifact_version_id> rồi ghi location DECLARED -> VERIFIED với hash và size đo thật từ tệp. reconcile_storage_handler bọc reconcile(); request_cleanup_evaluation_handler bọc evaluate_cleanup() và không bao giờ cấp authorization. Mỗi handler tự mượn connection qua PostgresStorageMetaRepository.in_transaction; thông điệp lỗi là chuỗi cố định, không chứa văn bản ngoại lệ hay đường dẫn.
 
-GIẢ ĐỊNH (D8): input_refs của MaterializeArtifactSet gồm artifact_source (ref_id là đường dẫn tương đối dưới staging root, ví dụ voice/line.wav) và artifact_version (UUID đã đăng ký, chỉ kiểm lại); version mới có retention_ref per_video và sensitivity_ref internal; khi request không có artifact_source và artifact_version thì dẫn xuất mỗi ref voice_artifact thành artifact_source voice/<ref_id> và mỗi revision_id của ref selected_media thành artifact_version; register_staged_artifact đăng ký tệp staging với retention_ref do bên gọi chọn (ảnh dùng durable) và verified_version_for_sha tìm version ảnh media/<sha256>.<ext> có location local VERIFIED; tệp .ass do F ghi và đưa vào manifest riêng (with_ass_entry) nên handler này không đăng ký; location VERIFIED không bao giờ bị ghi lại, nên tệp bị sửa sau khi đăng ký luôn bị từ chối.
+GIẢ ĐỊNH (D8): input_refs của MaterializeArtifactSet gồm artifact_source (ref_id là đường dẫn tương đối dưới staging root, ví dụ voice/line.wav) và artifact_version (UUID đã đăng ký, chỉ kiểm lại); version mới có retention_ref per_video và sensitivity_ref internal; khi request không có artifact_source và artifact_version thì dẫn xuất mỗi ref voice_artifact thành artifact_source voice/<ref_id> và mỗi revision_id của ref selected_media thành artifact_version; register_staged_artifact đăng ký tệp staging với retention_ref do bên gọi chọn (ảnh dùng durable) và verified_version_for_sha tìm version media/<sha256>.<ext> có location local VERIFIED (mặc định thử hậu tố ảnh STAGED_IMAGE_EXTENSIONS; hook video hoặc âm thanh truyền extensions=STAGED_HOOK_EXTENSIONS); tệp .ass do F ghi và đưa vào manifest riêng (with_ass_entry) nên handler này không đăng ký; location VERIFIED không bao giờ bị ghi lại, nên tệp bị sửa sau khi đăng ký luôn bị từ chối.
 """
 from __future__ import annotations
 
@@ -47,6 +47,7 @@ VOICE_WAV_MIME = 'audio/wav'
 REF_VOICE_ARTIFACT = 'voice_artifact'
 REF_SELECTED_MEDIA = 'selected_media'
 STAGED_IMAGE_EXTENSIONS = ('png', 'jpg', 'jpeg', 'webp')
+STAGED_HOOK_EXTENSIONS = ('mp4', 'mov', 'webm', 'wav', 'mp3', 'm4a')
 _SHA256 = re.compile(r'[0-9a-f]{64}')
 Service = Callable[[Mapping[str, Any], GrantClaims | None], dict[str, Any]]
 
@@ -251,11 +252,11 @@ def register_staged_artifact(transactions: Any, *, workspace_id: str, staging_ro
     return version
 
 
-def verified_version_for_sha(transactions: Any, *, workspace_id: str, sha256: str) -> ArtifactVersion | None:
+def verified_version_for_sha(transactions: Any, *, workspace_id: str, sha256: str, extensions: tuple[str, ...] = STAGED_IMAGE_EXTENSIONS) -> ArtifactVersion | None:
     if not isinstance(sha256, str) or not _SHA256.fullmatch(sha256):
         return None
     with PostgresStorageMetaRepository.in_transaction(transactions, workspace_id) as repository:
-        for extension in STAGED_IMAGE_EXTENSIONS:
+        for extension in extensions:
             version = repository.find_version(workspace_id, f'media/{sha256}.{extension}', sha256)
             if version is None:
                 continue
