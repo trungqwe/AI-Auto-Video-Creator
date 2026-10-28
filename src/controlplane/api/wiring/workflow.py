@@ -49,6 +49,7 @@ from controlplane.application.orchestration.workflows.settings import (
     schedule_state,
     settings_from_parameters,
 )
+from controlplane.application.storage_meta.handlers import register_staged_artifact
 from controlplane.domain.orchestration.fencing import GrantClaims
 from controlplane.domain.orchestration import OrchestrationContractError
 from controlplane.infrastructure.db.control_api_commands import compose_command_service
@@ -317,6 +318,21 @@ def media_assets_opener(manager: Any) -> Callable[[str], Any]:
     return open_assets
 
 
+DURABLE_RETENTION = 'durable'
+
+
+def staged_artifact_registrar(manager: Any, workspace_id: str, staging_root: Path) -> Callable[[Path, str], str]:
+    def register(staged_path: Path, article_ref: str) -> str:
+        relative_ref = Path(staged_path).relative_to(staging_root).as_posix()
+        version = register_staged_artifact(
+            manager, workspace_id=workspace_id, staging_root=staging_root,
+            owner_ref=article_ref, relative_ref=relative_ref, retention_ref=DURABLE_RETENTION,
+        )
+        return version.artifact_version_id
+
+    return register
+
+
 def assemble_activity_handlers(
     *,
     manager: Any,
@@ -337,7 +353,10 @@ def assemble_activity_handlers(
     ))
     handlers.update(ingestion_activity_handlers(ingestion, clock))
     handlers['RegisterMediaDiscovery'] = register_media_discovery_handler(
-        MediaDiscoveryDeps(workspace_id, ingestion.resolve_factory.package_loader(), collection.media_fetcher, media_assets_opener(manager)),
+        MediaDiscoveryDeps(
+            workspace_id, ingestion.resolve_factory.package_loader(), collection.media_fetcher, media_assets_opener(manager),
+            staged_artifact_registrar(manager, workspace_id, runtime.staging_root),
+        ),
         clock,
     )
     selector = ingestion_candidate_selector(ingestion, connection_factory=connection_factory, clock=clock)

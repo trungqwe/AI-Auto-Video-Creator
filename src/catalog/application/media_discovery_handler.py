@@ -1,6 +1,6 @@
 """PW-A3: handler RegisterMediaDiscovery (CT-MED-001, capability C) bọc register_discovery.
 
-Anh tải kèm bài do media_fetcher tải và băm sha256 (RealMediaFetcher ở wiring thật). Mỗi ảnh chỉ được đăng ký khi observation có đủ provenance: URL gốc, bài (article_ref), thời điểm quan sát và sha256 (fingerprint). Handler không cấp quyền dùng: quyền tài sản do register_discovery đặt, handler không đổi quyền và không ghi bản ghi sử dụng.
+Anh tải kèm bài do media_fetcher tải và băm sha256 (RealMediaFetcher ở wiring thật). Mỗi ảnh chỉ được đăng ký khi observation có đủ provenance: URL gốc, bài (article_ref), thời điểm quan sát và sha256 (fingerprint). Handler không cấp quyền dùng: quyền tài sản do register_discovery đặt, handler không đổi quyền và không ghi bản ghi sử dụng. Sau khi catalog nhận ảnh (media_asset_id khác None, kể cả DUPLICATE_OBSERVATION), register_artifact (nếu có) đăng ký tệp đã nạp thành artifact version; lỗi ghi trả failed retryable để chạy lại thì bù được.
 """
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
 from catalog.application.discovery import Disposition, register_discovery
@@ -27,6 +28,7 @@ SUCCEEDED = 'succeeded'
 FAILED = 'failed'
 PROBLEM_PACKAGE_NOT_FOUND = 'collected_document_not_found'
 PROBLEM_PACKAGE_UNAVAILABLE = 'collected_document_unavailable'
+PROBLEM_ARTIFACT_NOT_REGISTERED = 'media_artifact_not_registered'
 _ASSET_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, 'urn:catalog:media-asset')
 _COUNT_KEY = {
     Disposition.NEW_ASSET: 'registered',
@@ -49,6 +51,7 @@ class MediaDiscoveryDeps:
     package_loader: Callable[[Mapping[str, Any]], Mapping[str, Any]]
     media_fetcher: MediaFetcher
     open_assets: Callable[[str], AbstractContextManager[MediaAssetRepository]]
+    register_artifact: Callable[[Path, str], str] | None = None
 
 
 def _utc(moment: datetime.datetime) -> str:
@@ -116,6 +119,7 @@ def register_media_discovery(
     )
     counts = dict.fromkeys(('registered', 'provenance_added', 'duplicates', 'rejected'), 0)
     asset_ids: dict[str, None] = {}
+    to_register: list[Path] = []
     with deps.open_assets(deps.workspace_id) as repository:
         for staged in batch.staged:
             observation = staged.observation
@@ -126,6 +130,16 @@ def register_media_discovery(
             counts[_COUNT_KEY[outcome.disposition]] += 1
             if outcome.media_asset_id is not None:
                 asset_ids[outcome.media_asset_id] = None
+                if staged.staged_path not in to_register:
+                    to_register.append(staged.staged_path)
+    if deps.register_artifact is not None:
+        for staged_path in to_register:
+            try:
+                deps.register_artifact(staged_path, input_ref['ref_id'])
+            except ActivityRejected:
+                raise
+            except Exception:
+                return build(FAILED, [], problem=_problem(PROBLEM_ARTIFACT_NOT_REGISTERED, True, 'staged image could not be registered as an artifact'))
     metrics = {**counts, 'fetch_problems': len(batch.problems)}
     return build(SUCCEEDED, [{'ref_type': REF_TYPE_MEDIA_ASSET, 'ref_id': asset_id} for asset_id in asset_ids], metrics)
 

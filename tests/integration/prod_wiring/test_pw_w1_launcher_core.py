@@ -11,6 +11,7 @@ import importlib.util
 import json
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -28,6 +29,13 @@ from controlplane.application.orchestration.workflows.activities import Activity
 from controlplane.infrastructure.db.orchestration.app_session import PostgresAppSessions
 from controlplane.infrastructure.db.uow import TransactionManager
 from controlplane.infrastructure.production_ports.gpu_lease import LocalGpuLease
+from catalog.application.discovery import DiscoveryObservation
+from catalog.domain.identity import CanonicalFingerprint, MediaKind, ProvenanceEntry, ProvenanceRelation
+from controlplane.application.storage_meta.handlers import verified_version_for_sha
+from controlplane.domain.statemachine import ArtifactLocationState
+from controlplane.infrastructure.db.storage_meta import PostgresStorageMetaRepository
+from source_ingestion.adapters.real_media_fetch import MediaFetchBatch, RealMediaFetcher, StagedImage
+from source_ingestion.adapters.secure_fetch import FetchPolicy, SecureFetcher, TransportResponse
 
 ROOT = Path(__file__).resolve().parents[3]
 LAUNCHER_PATH = ROOT / 'tools' / 'launcher' / 'launcher.py'
@@ -311,3 +319,103 @@ def test_seed_defaults_registers_seven_sources_and_six_prompts_once(launcher, pw
         launcher.seed_defaults(pw_database.dsn, pw_database.workspace_id, pw_database.actor_id, '1')
     assert scalar(pw_database, 'SELECT count(*) FROM controlplane.cp_sources WHERE workspace_id = %s') == 7
     assert scalar(pw_database, "SELECT count(*) FROM controlplane.cp_config_revisions WHERE workspace_id = %s AND scope_kind = 'prompt'") == 6
+
+IMAGE_URL = 'https://img.example/hero.png'
+PNG_BYTES = bytes.fromhex('89504e470d0a1a0a') + bytes(range(256)) * 4
+PNG_SHA = hashlib.sha256(PNG_BYTES).hexdigest()
+PUBLIC_ADDRESS = '93.184.216.34'
+DOCUMENT_ID = 'doc-r3'
+PACKAGE = {'collected_document_id': DOCUMENT_ID, 'source_id': 'src-r3', 'media_discoveries': [{'locator': IMAGE_URL, 'role': 'hero', 'media_kind': 'image'}]}
+MEDIA_REQUEST = {'input_refs': [{'ref_type': 'collected_document', 'ref_id': DOCUMENT_ID}], 'operation_key': 'op-media-r3'}
+MEDIA_CLAIMS = SimpleNamespace(stage_run_id='enrich:doc-r3:media:r1', grant_id='grant-r3', execution_generation=1, recovery_epoch='5')
+
+
+class ImageTransport:
+    def send(self, request):
+        return TransportResponse(200, (('Content-Type', 'image/png'),), [PNG_BYTES])
+
+
+class StubMediaFetcher:
+    def __init__(self, *images):
+        self.images = images
+
+    def fetch_article_media(self, media_items, *, source_ref, article_ref, event_ref=None):
+        return MediaFetchBatch(tuple(self.images), ())
+
+
+def real_media_fetcher(rig):
+    policy = FetchPolicy(revision='pw-a3-fix2', max_redirects=2, max_body_bytes=1 << 20, allowed_media_types=frozenset({'image/png'}), timeout_seconds=10.0)
+    fetcher = SecureFetcher(ImageTransport(), lambda host: [PUBLIC_ADDRESS])
+    return RealMediaFetcher(fetcher, image_policy=policy, staging_root=rig.runtime.staging_root / 'media', utc_now=lambda: NOW)
+
+
+def staged_png(rig, *, validated=True, write=True):
+    path = rig.runtime.staging_root / 'media' / f'{PNG_SHA}.png'
+    if write:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(PNG_BYTES)
+    entry = ProvenanceEntry('src-r3', DOCUMENT_ID, None, IMAGE_URL, '2026-10-27T01:02:03Z', ProvenanceRelation.HERO_IMAGE)
+    observation = DiscoveryObservation('disc-r3', MediaKind.IMAGE, entry, CanonicalFingerprint(PNG_SHA), validated)
+    return StagedImage(observation, path, PNG_SHA, len(PNG_BYTES), 'image/png', IMAGE_URL)
+
+
+def media_handler(rig, media_fetcher):
+    with rig.database.connect() as connection:
+        connection.execute(
+            'INSERT INTO controlplane.cp_collected_document_packages (workspace_id, source_id, canonical_locator, observation_fingerprint, collection_run_id, payload) VALUES (%s, %s, %s, %s, %s, %s::jsonb) ON CONFLICT DO NOTHING',
+            (rig.database.workspace_id, 'src-r3', 'https://news.example/r3', 'fp-r3', 'run-r3', json.dumps(PACKAGE)),
+        )
+    collection = dataclasses.replace(rig.app.services['collection'], media_fetcher=media_fetcher)
+    handlers = workflow_wiring.assemble_activity_handlers(
+        manager=rig.manager, workspace_id=rig.database.workspace_id, profile=rig.profile, runtime=rig.runtime,
+        collection=collection, storage=rig.app.services['storage'],
+        connection_factory=rig.database.connect, clock=lambda: NOW,
+    )
+    return handlers['RegisterMediaDiscovery']
+
+
+def verified_locations(rig, version):
+    workspace_id = rig.database.workspace_id
+    with PostgresStorageMetaRepository.in_transaction(rig.manager, workspace_id) as repository:
+        return [item for item in repository.list_version_locations(workspace_id, version.artifact_version_id) if item.state is ArtifactLocationState.VERIFIED]
+
+
+def test_pw_a3_fix2_r3_register_media_discovery_registers_the_staged_image_as_a_verified_version(rig):
+    workspace_id = rig.database.workspace_id
+    handler = media_handler(rig, real_media_fetcher(rig))
+    result = handler(MEDIA_REQUEST, MEDIA_CLAIMS)
+    assert result['disposition'] == 'succeeded'
+    assert result['metrics']['registered'] == 1
+    version = verified_version_for_sha(rig.manager, workspace_id=workspace_id, sha256=PNG_SHA)
+    assert version is not None
+    assert str(uuid.UUID(version.artifact_version_id)) == version.artifact_version_id
+    assert version.artifact_id == f'media/{PNG_SHA}.png'
+    assert version.owner_ref == DOCUMENT_ID and version.retention_ref == 'durable'
+    assert len(verified_locations(rig, version)) == 1
+    placed = rig.runtime.staging_root / version.artifact_version_id
+    assert hashlib.sha256(placed.read_bytes()).hexdigest() == PNG_SHA
+    again = handler(MEDIA_REQUEST, MEDIA_CLAIMS)
+    assert again['disposition'] == 'succeeded' and again['metrics']['duplicates'] == 1
+    assert scalar(rig.database, 'SELECT count(*) FROM controlplane.cp_artifact_versions WHERE workspace_id = %s') == 1
+
+
+def test_pw_a3_fix2_r3_a_failed_registration_is_retryable_and_a_replay_compensates(rig):
+    workspace_id = rig.database.workspace_id
+    handler = media_handler(rig, StubMediaFetcher(staged_png(rig, write=False)))
+    failed = handler(MEDIA_REQUEST, MEDIA_CLAIMS)
+    assert failed['disposition'] == 'failed' and failed['problem']['retryable'] is True
+    assert verified_version_for_sha(rig.manager, workspace_id=workspace_id, sha256=PNG_SHA) is None
+    staged_png(rig)
+    replay = handler(MEDIA_REQUEST, MEDIA_CLAIMS)
+    assert replay['disposition'] == 'succeeded' and replay['metrics']['duplicates'] == 1
+    assert verified_version_for_sha(rig.manager, workspace_id=workspace_id, sha256=PNG_SHA) is not None
+
+
+def test_pw_a3_fix2_r3_an_image_the_catalog_rejects_is_not_registered_as_an_artifact(rig):
+    workspace_id = rig.database.workspace_id
+    handler = media_handler(rig, StubMediaFetcher(staged_png(rig, validated=False)))
+    result = handler(MEDIA_REQUEST, MEDIA_CLAIMS)
+    assert result['disposition'] == 'succeeded' and result['metrics']['rejected'] == 1
+    assert result['output_refs'] == []
+    assert verified_version_for_sha(rig.manager, workspace_id=workspace_id, sha256=PNG_SHA) is None
+    assert scalar(rig.database, 'SELECT count(*) FROM controlplane.cp_artifact_versions WHERE workspace_id = %s') == 0
