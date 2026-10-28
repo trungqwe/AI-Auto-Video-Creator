@@ -55,4 +55,13 @@ Tại bước 9, toàn bộ 12 test kỳ vọng đều thất bại đúng oracl
 - Quyết định OI-ADAPT-10 vẫn là quyết định của người dùng đã ghi nhận.
 - Cờ giới hạn PRODUCTION_ACTIVATION_BLOCKED được giữ nguyên theo chính sách kiểm soát milestone của dự án.
 - Định dạng artifact_version_ref của hook (dạng seed:<id>:sha256:<hex>) nằm ngoài phạm vi xử lý của gói PW-D3-FIX1 và sẽ được quy chuẩn trong các gói chuyên trách.
-- Các bước kiểm chứng bổ sung (17, 18, 19) được thực thi và xác nhận trước khi hoàn tất gói.
+
+## 7. Chạy lại sau rebase lên 14c945facdb40b29b7279c6121f735c4890b3cd0
+
+Sau khi rebase lên 14c945facdb40b29b7279c6121f735c4890b3cd0 (đã tích hợp PW-A3-FIX2 đăng ký artifact version cho catalog), bước 2 chạy thành công ngay lập tức với 18 passed in 11.00s (mã thoát 0), không phát sinh exception hay lỗi fixture trong các bài kiểm tra dùng fixture imported/seeded; do đó ghi rõ không cần sửa đổi nào ở bước 3.
+
+| Bước | Lệnh | Mã thoát | Kết quả |
+| --- | --- | --- | --- |
+| 2 | python -m pytest tests/integration/prod_wiring/test_pw_d3_candidates.py -q -p no:cacheprovider | 0 | 18 passed in 11.00s |
+| 4 | python -m pytest tests/integration/prod_wiring/test_pw_d3_candidates.py -q -p no:cacheprovider | 0 | 18 passed in 10.65s |
+| 5 | git diff --check | 0 | Mã thoát 0, không có cảnh báo khoảng trắng thừa |
