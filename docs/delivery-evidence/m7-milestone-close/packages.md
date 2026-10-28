@@ -1,6 +1,6 @@
 # Gói được bao phủ và SHA tích hợp của M7 (revision 4)
 
-Danh sách 99 gói được bao phủ trong mốc M7 theo yêu cầu nghiệm thu của revision 4. Tất cả các commit integrate dưới đây đều được kiểm chứng là tổ tiên của HEAD sau rebase (`92849310eddf04f32fb2f64a08b4aa7a8e2b1a9e`), trên nền integration head `069d9743c18cab0003b35fcd4f81ee3b3ce622a5`.
+Danh sách 99 gói được bao phủ trong mốc M7 theo yêu cầu nghiệm thu của revision 4. Tất cả các commit integrate dưới đây đều được kiểm chứng là tổ tiên của HEAD sau rebase (`380f128bfe3c1e7e4b862ed2a8768b9344e43e91`), trên nền integration head `f080601bae4ed341837157aaf87b3bcd85bd7424` (đã chứa gói `ADAPT-F-FIX1`).
 
 | Mã gói | Commit integrate (SHA đầy đủ) | Candidate (12 hex) | Cách tra |
 | --- | --- | --- | --- |

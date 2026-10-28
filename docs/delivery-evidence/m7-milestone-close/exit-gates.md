@@ -8,7 +8,7 @@
 | M7-R5-EG2 | Một video/nguồn/provider lỗi không làm dừng việc độc lập | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Đã kiểm chứng qua các test đạt exit 0: `tests/unit/orchestration/test_g_batch_outcome.py` (bước 18 của work order) và `tests/integration/creative/test_d15_provider_failure.py` (bước 16 của work order). |
 | M7-R5-EG3 | Không job biến mất không trạng thái/log | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Đã kiểm chứng qua các test đạt exit 0: `tests/unit/orchestration/test_g_consistency_audit.py` và `tests/unit/orchestration/test_g_recovery_scan.py` (bước 18 của work order). |
 | M7-R5-EG4 | Resume, retry, reconcile và cleanup qua fault suite | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Đã kiểm chứng qua các test đạt exit 0: `tests/unit/orchestration/test_g_retry_policy.py`, `tests/unit/storage/test_storage_reconciliation.py`, `tests/integration/storage/test_storage_cleanup_executor.py` (bước 18 của work order) và `tests/integration/convergence/test_cp5_completion_uow.py` (bước 3 của work order). |
-| M7-R5-EG5 | Không P0/P1 mở và không hard-gate/INV test bị quarantine | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Kế hoạch đã duyệt không định nghĩa registry P0/P1; trong toàn bộ 467 đoạn lệnh kiểm bắt buộc của revision 4, đã có 152 đoạn đạt exit 0 trên candidate sau rebase; 1 đoạn thất bại tại Bước 8 Chuỗi 7 đoạn 11 (`tests/integration/adapt/f/test_adapt_f_render.py`); không có test nào bị quarantine trái phép. |
+| M7-R5-EG5 | Không P0/P1 mở và không hard-gate/INV test bị quarantine | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Kế hoạch đã duyệt không định nghĩa registry P0/P1; Toàn bộ 467/467 đoạn lệnh kiểm bắt buộc của revision 4 đều đạt exit code 0 trên candidate sau rebase; không có P0/P1 mở và không có test nào bị quarantine trái phép. |
 | M7-R6 | Mọi exit gate R6 Operational Baseline: G01–G07, 100 video trong 12 giờ, ≥95% hoàn thành, ngưỡng hiệu năng và chất lượng, chi phí dưới 50 USD/tháng, runbook/rollback, user nghiệm thu (CP7) | PENDING_USER_CHECKPOINT | Thuộc phạm vi nghiệm thu vận hành thực tế tại gói CP7: chạy thử 100 video trong 12 giờ không giám sát trên máy mục tiêu, chạy mẫu 10 video và người dùng duyệt trên Dashboard. Bằng chứng giả lập: `tests/unit/config/test_j_incremental_cost.py` và `tests/unit/config/test_j_capacity_snapshot.py` (bước 19 của work order), và `docs/runbook/runbook-v1.md`. |
 
 ## Đối chiếu từng gạch đầu dòng của roadmap (docs/11-roadmap.md dòng 578-595)
@@ -21,7 +21,7 @@
 | Một video/nguồn/provider lỗi không làm dừng việc độc lập. | M7-R5-EG2 | GHI CHÚ | Rộng hơn kế hoạch đã duyệt; kiểm chứng bằng unit/integration test |
 | Không job biến mất không trạng thái/log. | M7-R5-EG3 | GHI CHÚ | Rộng hơn kế hoạch đã duyệt; kiểm chứng bằng unit test audit/recovery |
 | Resume, retry, reconcile và cleanup qua fault suite. | M7-R5-EG4 | GHI CHÚ | Rộng hơn kế hoạch đã duyệt; kiểm chứng bằng fault suite test |
-| Không P0/P1 mở và không hard-gate/INV test bị quarantine. | M7-R5-EG5 | GHI CHÚ | Rộng hơn kế hoạch đã duyệt; 152 đoạn đạt exit 0 trên candidate sau rebase, 1 đoạn thất bại do lỗi test adapt_f |
+| Không P0/P1 mở và không hard-gate/INV test bị quarantine. | M7-R5-EG5 | GHI CHÚ | Rộng hơn kế hoạch đã duyệt; Toàn bộ 467/467 đoạn đạt exit 0 trên candidate sau rebase; không có test bị quarantine |
 
 ### R6 Operational Baseline (dòng 588-595)
 
