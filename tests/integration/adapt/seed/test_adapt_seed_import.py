@@ -7,7 +7,6 @@ from decimal import Decimal
 import hashlib
 import importlib.util
 import json
-import os
 from pathlib import Path
 import re
 import struct
@@ -23,7 +22,7 @@ import pytest
 
 from catalog.domain.identity import RightsStatus
 from controlplane.api.wiring import production_profile as pp
-from controlplane.infrastructure.db.migration_runner import MigrationRunner
+from controlplane.application.storage_meta.handlers import verified_version_for_sha
 from controlplane.infrastructure.db.uow import TransactionManager
 from source_ingestion.adapters.real_http_transport import RealHttpTransport
 from source_ingestion.persistence.unit_of_work import PostgresSourceIngestionUnitOfWork
@@ -32,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[4]
 PROD = ROOT / 'tools' / 'launcher' / 'prod'
 SEED_TOOLS = PROD / 'seed'
 PROFILE_PATH = PROD / 'profile.json'
-MIGRATIONS_DIR = ROOT / 'src' / 'controlplane' / 'infrastructure' / 'db' / 'migrations'
+PW_CONFTEST = ROOT / 'tests' / 'integration' / 'prod_wiring' / 'conftest.py'
 FFMPEG = Path('C:/ffmpeg/bin/ffmpeg.exe')
 FFPROBE = Path('C:/ffmpeg/bin/ffprobe.exe')
 HOOKS = json.loads((PROD / 'hooks.json').read_text(encoding='utf-8'))
@@ -49,6 +48,19 @@ def load_tool(name):
     sys.dont_write_bytecode = True
     try:
         spec = importlib.util.spec_from_file_location(f'adapt_seed_{name}', path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = previous
+    return module
+
+
+def load_pw_harness():
+    previous = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec = importlib.util.spec_from_file_location('adapt_seed_pw_harness', PW_CONFTEST)
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module
         spec.loader.exec_module(module)
@@ -82,26 +94,14 @@ def seed_runs(tmp_path_factory):
 
 
 @pytest.fixture
-def database():
-    dsn = os.environ.get('M2_TEST_PG_DSN', '')
-    if not dsn:
-        pytest.fail('BLOCKED_EXTERNAL: thiếu M2_TEST_PG_DSN', pytrace=False)
-    name = 'adapt_seed_' + uuid.uuid4().hex[:8]
-    admin = psycopg.connect(dsn, autocommit=True)
-    try:
-        assert 'PostgreSQL 18.6' in admin.execute('SELECT version()').fetchone()[0]
-        admin.execute(f'CREATE DATABASE {name}')
-        new_dsn = dsn.rsplit('/', 1)[0] + '/' + name
-        MigrationRunner(new_dsn, MIGRATIONS_DIR, is_test_env=True, expected_database_name=name).migrate_up()
-        workspace_id = str(uuid.uuid4())
-        with psycopg.connect(new_dsn, autocommit=True) as seed:
-            seed.execute('INSERT INTO controlplane.cp_workspaces (workspace_id, name, status) VALUES (%s, %s, %s)', (workspace_id, 'w', 'ACTIVE'))
-        yield (new_dsn, workspace_id)
-    finally:
-        try:
-            admin.execute(f'DROP DATABASE IF EXISTS {name} WITH (FORCE)')
-        finally:
-            admin.close()
+def pw_database():
+    with load_pw_harness().pw_temp_database() as harness_db:
+        yield harness_db
+
+
+@pytest.fixture
+def database(pw_database):
+    return (pw_database.dsn, pw_database.workspace_id)
 
 
 @pytest.fixture
@@ -172,6 +172,76 @@ def counts(dsn, workspace_id):
 def import_once(tool, manager, database, tmp_path, seed_dir, resolver=None, **kwargs):
     config = prod_config(tmp_path, database[1])
     return tool.import_seed(manager, config, seed_dir, resolver=resolver or Resolver(), **kwargs)
+
+
+BACKGROUNDS = [item['file_name'] for item in HOOKS['background_images']]
+ARTIFACT_COUNT_SQL = {'versions': 'cp_artifact_versions', 'locations': 'cp_artifact_locations'}
+
+
+def artifact_counts(dsn, workspace_id):
+    ws = uuid.UUID(workspace_id)
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        return {key: conn.execute(f'SELECT count(*) FROM controlplane.{table} WHERE workspace_id = %s', (ws,)).fetchone()[0] for key, table in ARTIFACT_COUNT_SQL.items()}
+
+
+def staged_media(tmp_path):
+    return tmp_path / 'staging' / 'media'
+
+
+def verified_ids(manager, workspace_id, shas):
+    found = {}
+    for name in BACKGROUNDS:
+        version = verified_version_for_sha(manager, workspace_id=workspace_id, sha256=shas[name])
+        assert version is not None, name
+        found[name] = version.artifact_version_id
+    return found
+
+
+def test_background_images_are_staged_and_registered_as_verified_versions(manager, database, seed_runs, tmp_path):
+    tool = load_tool('import_seed')
+    run = seed_runs[0]
+    assert len(BACKGROUNDS) == 12 and artifact_counts(database[0], database[1]) == {'versions': 0, 'locations': 0}
+    import_once(tool, manager, database, tmp_path, run.dir)
+    for name in BACKGROUNDS:
+        sha = run.shas[name]
+        staged = staged_media(tmp_path) / f'{sha}.png'
+        assert staged.is_file() and staged.read_bytes() == (run.dir / name).read_bytes()
+        version = verified_version_for_sha(manager, workspace_id=database[1], sha256=sha)
+        assert version is not None
+        assert (version.artifact_id, version.owner_ref, version.retention_ref) == (f'media/{sha}.png', 'adapt-seed', 'durable')
+    assert artifact_counts(database[0], database[1]) == {'versions': 12, 'locations': 12}
+    assert sorted(p.name for p in staged_media(tmp_path).iterdir()) == sorted(f'{run.shas[n]}.png' for n in BACKGROUNDS)
+
+
+def test_rerun_keeps_one_version_and_one_location_per_background_image(manager, database, seed_runs, tmp_path):
+    tool = load_tool('import_seed')
+    import_once(tool, manager, database, tmp_path, seed_runs[0].dir)
+    first_ids = verified_ids(manager, database[1], seed_runs[0].shas)
+    before = artifact_counts(database[0], database[1])
+    second = import_once(tool, manager, database, tmp_path, seed_runs[1].dir)
+    assert (second.assets_new, second.assets_existing) == (0, 22)
+    assert verified_ids(manager, database[1], seed_runs[1].shas) == first_ids
+    assert artifact_counts(database[0], database[1]) == before == {'versions': 12, 'locations': 12}
+    assert not list(staged_media(tmp_path).glob('*.part'))
+
+
+def test_rerun_registers_backgrounds_for_assets_that_already_exist(manager, database, seed_runs, tmp_path):
+    tool = load_tool('import_seed')
+    run = seed_runs[0]
+    tool._import_items(manager, database[1], tool._collect_items(HOOKS, run.dir))
+    assert counts(database[0], database[1])['assets'] == 22
+    assert artifact_counts(database[0], database[1]) == {'versions': 0, 'locations': 0}
+    first = BACKGROUNDS[0]
+    assert verified_version_for_sha(manager, workspace_id=database[1], sha256=run.shas[first]) is None
+    staged_media(tmp_path).mkdir(parents=True)
+    broken = staged_media(tmp_path) / f'{run.shas[first]}.png'
+    broken.write_bytes(b'partial')
+    report = import_once(tool, manager, database, tmp_path, run.dir)
+    assert (report.assets_new, report.assets_existing) == (0, 22)
+    assert broken.read_bytes() == (run.dir / first).read_bytes()
+    verified_ids(manager, database[1], run.shas)
+    assert artifact_counts(database[0], database[1]) == {'versions': 12, 'locations': 12}
+    assert counts(database[0], database[1]) == FULL_COUNTS
 
 
 def test_seed_media_sha256_is_stable_between_runs(seed_runs):
@@ -326,7 +396,7 @@ def test_non_production_profile_is_rejected(tmp_path):
 def test_import_seed_uses_application_services_only():
     path = SEED_TOOLS / 'import_seed.py'
     text = path.read_text(encoding='utf-8')
-    assert 'register_discovery' in text and 'import_hook' in text and 'register_source' in text
+    assert 'register_discovery' in text and 'import_hook' in text and 'register_source' in text and 'register_staged_artifact' in text
     assert 'urllib' not in text and 'INSERT INTO' not in text and 'import psycopg' not in text
     modules = imported_modules(path)
     banned = {'urllib', 'http', 'requests', 'httpx', 'socket', 'fastapi', 'starlette', 'uvicorn'}
