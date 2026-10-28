@@ -1,4 +1,4 @@
-# Báo cáo đóng M7 (revision 4) - TRẠNG THÁI: BLOCKED TẠI BƯỚC 6
+# Báo cáo đóng M7 (revision 4) - TRẠNG THÁI: BLOCKED TẠI BƯỚC 6 ĐOẠN 5
 
 ## 1. Phạm vi và candidate
 
@@ -6,63 +6,66 @@
 - Candidate: `b8b46c6365c243088988581dbf6d18ba5c7b4e20` (tiêu đề: `integrate(PW-E2E): lane lane-pw-e2e candidate 44e8965191b6`), là HEAD của nhánh tích hợp.
 - Interpreter khoá của lane: `C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\1ca840a7\venv\Scripts\python.exe`.
 - Ngày thực thi: `2026-10-29`.
-- Quyền hạn: Lane chỉ sở hữu `docs/delivery-evidence/m7-milestone-close/**`; cấm sửa bất kỳ tệp nào thuộc `src/**`, `tests/**`, `migrations/**` hoặc các đường dẫn khác.
+- Quyền hạn: Lane chỉ sở hữu `docs/delivery-evidence/m7-milestone-close/**`; cấm sửa bất kỳ tệp nào thuộc `src/**`, `tests/**`, `migrations/**` hoặc các đường dẫn cấm khác.
 
 ## 2. Tiến trình thực thi
 
 Thực hiện theo lệnh làm việc (Work Order) của Orchestrator:
-- Chuỗi 1/22: 12/12 đoạn đạt exit code 0 (`git diff --check` và 11 probe kiểm tra cấu trúc plan/slices của các phân hệ A, B, C, I, D, E, F, J, G, H và convergence).
-- Chuỗi 2/22: 3/3 đoạn đạt exit code 0 (bản ghi approval D9/D10, plan convergence-ext và plan persist).
-- Chuỗi 3/22: 2/2 đoạn đạt exit code 0 (plan/slices của adapt và convergence-ext-ui).
-- Chuỗi 4/22: 12/12 đoạn đạt exit code 0 (các bộ unit tests của control_ui, voice, unit toàn bộ, m2 SSE stream, m2 hardening không gồm h36, collection, convergence migration, p9 m2 exit gate).
-- Chuỗi 5/22: 24/24 đoạn đạt exit code 0 (harness PostgreSQL DSN, persistence integration tests, adapt wire, adapt prod sources/app, gitattributes, vite config).
-- Chuỗi 6/22:
-  - Đoạn 1: `npm --prefix src/controlplane/ui run build` đạt exit code 0 (built in 2.75s; dist khớp nguyên trạng).
-  - Đoạn 2: `python -m pytest tests/unit/control_ui -q -p no:cacheprovider` đạt exit code 0 (675 passed, 1 warning).
-  - Đoạn 3: probe kiểm tra assets trong `ui/dist` đạt exit code 0.
-  - Đoạn 4: probe kiểm tra 4 tệp dist đạt exit code 0.
-  - Đoạn 5: probe kiểm tra `screenRegistry.ts` gặp lỗi `AssertionError` (exit code 1).
+- Chuỗi 1/15: 13/13 đoạn đạt exit code 0 (`git diff --check` và 12 probe kiểm tra cấu trúc plan/slices của các phân hệ A, B, C, I, D, E, F, J, G, H, convergence và checkpoint D9-D10).
+- Chuỗi 2/15: 3/3 đoạn đạt exit code 0 (plan/slices của convergence-ext, persist và adapt).
+- Chuỗi 3/15: 37/37 đoạn đạt exit code 0 (các bộ unit tests của control_ui, voice, unit toàn bộ, m2 SSE stream, m2 hardening không gồm h36, collection, convergence migration, p9 m2 exit gate, PostgreSQL DSN harness, persistence integration tests, adapt wire, adapt prod sources/app, gitattributes, vite config).
+- Chuỗi 4/15: 28/28 đoạn đạt exit code 0 (build UI thành công với dist khớp nguyên trạng, các test catalog hooks, persistence C, adapt prod hooks, launch CLI, docker-compose, launcher, screen registry, wiring fix3, query routes).
+- Chuỗi 5/15: 12/12 đoạn đạt exit code 0 (các probe plan/slices của prod-wiring, music survey, prod-wiring v3/v4, layout pkgdir fix, unit tests, scheduler A3).
+- Chuỗi 6/15:
+  - Đoạn 1: `python -m pytest tests/integration/prod_wiring/test_pw_e3_media_inputs.py -q -p no:cacheprovider` đạt exit code 0 (9 passed in 3.57s).
+  - Đoạn 2: probe kiểm tra `pw-e3-fix1/report.md` đạt exit code 0.
+  - Đoạn 3: `python -m pytest tests/integration/prod_wiring/test_pw_i1_materialize.py -q -p no:cacheprovider` đạt exit code 0 (14 passed in 6.00s).
+  - Đoạn 4: probe kiểm tra `pw-i1-fix1/report.md` đạt exit code 0.
+  - Đoạn 5: `python -m pytest tests/integration/prod_wiring/test_pw_f4_render_worker.py -q -p no:cacheprovider` thất bại với exit code 1 (1 failed, 15 passed in 51.50s).
 
-Tổng số đoạn lệnh đã thực thi: 58 đoạn (57 đạt exit code 0, 1 đoạn thất bại exit code 1).
+Tổng số đoạn lệnh đã thực thi: 98 đoạn (97 đạt exit code 0, 1 đoạn thất bại exit code 1).
 
 ## 3. Chi tiết lỗi tại Bước 6 Đoạn 5
 
 - **Lệnh thực thi:**
   ```bash
-  python -c "import re, pathlib; r = pathlib.Path('src/controlplane/ui/src/features/screens/screenRegistry.ts').read_text(encoding='utf-8'); s = dict(re.findall('id: ' + chr(39) + '([a-z-]+)' + chr(39) + '.*?backendStatus: ' + chr(39) + '([a-z_]+)' + chr(39), r, re.S)); assert len(s) == 18, s; assert s['sources'] == 'available', 'sources screen still pending_module'; assert all(s[i] == 'pending_module' for i in ['artifacts', 'snapshots', 'story-angles', 'scripts', 'accounts', 'cost']), s"
+  python -m pytest tests/integration/prod_wiring/test_pw_f4_render_worker.py -q -p no:cacheprovider
   ```
 - **Exit code:** `1`
-- **Thông báo lỗi (STDERR):**
-  ```
-  Traceback (most recent call last):
-    File "<string>", line 1, in <module>
-      ...
-  AssertionError: {'operations': 'available', 'batches': 'available', 'jobs': 'available', 'configs': 'available', 'sources': 'available', 'articles': 'available', 'events': 'available', 'media': 'available', 'hooks': 'available', 'artifacts': 'available', 'snapshots': 'available', 'story-angles': 'available', 'scripts': 'available', 'stage-runs': 'available', 'sessions': 'available', 'logs': 'pending_module', 'accounts': 'available', 'cost': 'available'}
+- **Thông báo lỗi (pytest short summary & failure):**
+  ```text
+  FAILED tests/integration/prod_wiring/test_pw_f4_render_worker.py::test_inspect_output_disclosure_gate_follows_the_script_segments
+  1 failed, 15 passed in 51.50s
+
+  _________________ test_inspect_output_disclosure_gate_follows_the_script_segments _________________
+      world = World(pw_database, manager, service, tmp_path, script_modes=['source_backed', 'inference'])
+      insp_out, report, cmd, rec_inputs, deps = qc(world, 'att-qc-1')
+      assert report is not None
+      gate = next(g for g in report.gates if g.gate == GateName.INFERENCE_DISCLOSURE_PRESENT)
+  >   assert gate.status == GateStatus.PASSED
+  E   AssertionError: assert <GateStatus.FAILED: 'failed'> == <GateStatus.PASSED: 'passed'>
   ```
 
-## 4. Phân tích nguyên nhân gốc (Root Cause)
+## 4. Phân tích nguyên nhân gốc (Root Cause Analysis)
 
-1. Probe trên là tiêu chí nghiệm thu cũ từ gói `CP-4B-UI-SCREENS`. Ở thời điểm gói đó được tạo, các màn hình `artifacts`, `snapshots`, `story-angles`, `scripts`, `accounts`, `cost` chưa có backend nên được đánh dấu là `pending_module`.
-2. Tuy nhiên, sau đó dự án đã triển khai phân hệ Read Screens (`IMPL-PLAN-READ-SCREENS`, các slice `RS-1` đến `RS-13`) và gói sửa UI `CP-4B-UI-SCREENS-FIX4` (commit `98cd992636dbdbb84c26ccb6ce0da2cdf93bcaf0`). Gói này đã cập nhật `screenRegistry.ts` để đánh dấu tất cả các màn hình trên thành `available`, chỉ giữ duy nhất `logs` là `pending_module`.
-3. Suite unit test hiện hành `tests/unit/control_ui/test_h_screen_registry.py` và probe kiểm tra của `CP-4B-UI-SCREENS-FIX4` (nằm ở Chuỗi 7 đoạn 13) yêu cầu rõ ràng:
-   ```python
-   assert sorted(k for k, v in s.items() if v != 'available') == ['logs']
-   ```
-4. Khi Control sinh danh sách kiểm thử bắt buộc cho Milestone Close M7, Control đã gom cơ học toàn bộ lệnh kiểm của các gói trong DAG mà chưa loại bỏ các probe kiểm thử đã bị thay thế (obsolete / superseded probes) của `CP-4B-UI-SCREENS` (Chuỗi 6 đoạn 5), `CP-4B-UI-SCREENS-FIX1` (Chuỗi 6 đoạn 13) và `CP-4B-UI-SCREENS-FIX2` (Chuỗi 12 đoạn 32).
-5. Hai assertion này loại trừ nhau về mặt logic trên cùng một tệp `src/controlplane/ui/src/features/screens/screenRegistry.ts`: không thể vừa bắt buộc các màn hình trên là `pending_module` lại vừa bắt buộc chúng là `available`.
+1. Gói `F-10-FIX2` (commit `d594e124d9461d7be3219c7ae3128c8c003af955`, tích hợp trong `9e67a6b`) đã thay đổi `build_render_command` tại `src/render/domain/render_command.py` để phủ visual hook lên trên luồng video nền (`[base]`) trong khoảng thời gian `hook_time_range` (`0..3000ms`).
+2. Trong tệp kiểm thử `tests/integration/prod_wiring/test_pw_f4_render_worker.py`, kịch bản test sử dụng `visual_hook_ref = V1` (`visual-1.mp4`) kéo dài từ 0 đến 3000ms.
+3. Khi thực hiện kiểm tra cổng `INFERENCE_DISCLOSURE_PRESENT`, inspector `RealOutputInspector` đo độ lệch dải sáng (`band_difference`, sử dụng bộ lọc FFmpeg `signalstats.YAVG`) giữa khung hình mẫu (`sample_ms = 2950ms`) và khung hình chuẩn (`baseline_ms = 1000ms`).
+4. Do lớp overlay của `visual-1.mp4` che khuất `visual-2.mp4` tại thời điểm 2950ms, cả hai khung hình đều có nền là `visual-1.mp4` (`testsrc2`). Do đó, độ lệch dải sáng chỉ đạt `4.39954`, thấp hơn ngưỡng `disclosure_min_difference = 5.0` được khai báo trong cấu hình `SETTINGS` của `test_pw_f4_render_worker.py`.
+5. Trong báo cáo bằng chứng `docs/delivery-evidence/f-10-fix2/report.md`, tác giả của gói `F-10-FIX2` đã ghi nhận sự ảnh hưởng này nhưng không thể sửa vì nằm ngoài owned paths:
+   > "Các tệp kiểm thử `tests/integration/prod_wiring/test_pw_f3_render_inputs.py` và `test_pw_f4_render_worker.py` cũng gọi `build_render_command` nhưng nằm ngoài phạm vi owned paths của gói này."
 
 ## 5. Ranh giới phân quyền và kết luận
 
-- Tệp `src/controlplane/ui/src/features/screens/screenRegistry.ts` nằm trong `src/**`, thuộc danh sách đường dẫn cấm (`Forbidden paths`) của task `M7-MILESTONE-CLOSE-R4`.
-- Ngay cả khi có quyền sửa, việc đảo ngược `screenRegistry.ts` về `pending_module` là vi phạm kiến trúc gốc, phá vỡ toàn bộ các module `RS-1`..`RS-13` và khiến `CP-4B-UI-SCREENS-FIX4` cùng `tests/unit/control_ui/test_h_screen_registry.py` thất bại.
-- Theo quy định phân quyền nghiêm ngặt và tự vệ đóng (Fail-Closed & Zero Hallucinated Authority) tại mục 1.3 và 3.1 của quy chuẩn điều phối Orca, Worker dừng thực thi và báo cáo trạng thái `BLOCKED` kèm `blocked-manifest` để Control cập nhật lại danh sách lệnh kiểm thử cho Milestone Close.
+- Tệp `tests/integration/prod_wiring/test_pw_f4_render_worker.py` nằm ngoài `owned paths` của `M7-MILESTONE-CLOSE-R4` (`docs/delivery-evidence/m7-milestone-close/**`) và thuộc danh sách cấm sửa đổi (`tests/**`).
+- Theo quy định phân quyền nghiêm ngặt và tự vệ đóng (Fail-Closed & Zero Hallucinated Authority) tại mục 1.3 và 3.1 của quy chuẩn điều phối Orca: Worker dừng thực thi ngay lập tức, không tự ý sửa đổi tệp ngoài owned paths, ghi nhật ký bằng chứng và báo cáo trạng thái `BLOCKED` kèm khối `blocked-manifest` kiểu `DEPENDENCY_GAP` để Control phân bổ gói sửa lỗi hoặc điều chỉnh kiểm thử phù hợp.
 
 ```blocked-manifest
 {
   "step": 6,
   "kind": "DEPENDENCY_GAP",
-  "ownerTaskIds": ["CP-4B-UI-SCREENS", "CP-4B-UI-SCREENS-FIX1", "CP-4B-UI-SCREENS-FIX2"],
-  "paths": ["src/controlplane/ui/src/features/screens/screenRegistry.ts"],
-  "ids": ["python -c "import re, pathlib; r = pathlib.Path('src/controlplane/ui/src/features/screens/screenRegistry.ts').read_text(encoding='utf-8'); s = dict(re.findall('id: ' + chr(39) + '([a-z-]+)' + chr(39) + '.*?backendStatus: ' + chr(39) + '([a-z_]+)' + chr(39), r, re.S)); assert len(s) == 18, s; assert s['sources'] == 'available', 'sources screen still pending_module'; assert all(s[i] == 'pending_module' for i in ['artifacts', 'snapshots', 'story-angles', 'scripts', 'accounts', 'cost']), s""]
+  "ownerTaskIds": ["PW-F4", "F-10-FIX2"],
+  "paths": ["tests/integration/prod_wiring/test_pw_f4_render_worker.py"],
+  "ids": ["test_inspect_output_disclosure_gate_follows_the_script_segments"]
 }
 ```
