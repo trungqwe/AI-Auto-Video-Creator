@@ -1,6 +1,6 @@
 """Visual and audio hook candidates of SelectCreativeAssets read from the hook library of C (PW-D3, CT-MED-006).
 
-Hooks come through an injected catalog scope, so this module holds no SQL and no connection. Each enabled hook revision becomes an index entry that the candidate query of C turns into component scores and evidence; D keeps the C order and makes no ranking here. A kind without any enabled hook is refused instead of returning an empty list.
+Hooks come through an injected catalog scope, so this module holds no SQL and no connection. Each enabled hook revision becomes an index entry that the candidate query of C turns into component scores and evidence; D keeps the C order and makes no ranking here. A kind without any enabled hook is refused instead of returning an empty list. A hook is rights_cleared only when its seed_rights_status metadata is SELF_GENERATED.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from creative.domain.asset_selection import (
 
 MEDIA_KIND_BY_HOOK_KIND = {REF_TYPE_VISUAL_HOOK: 'clip', REF_TYPE_AUDIO_HOOK: 'audio'}
 TECHNICAL_KEYS = ('width', 'height', 'fps', 'duration_ms', 'sample_rate_hz', 'channels')
+SEED_RIGHTS_STATUS = 'SELF_GENERATED'
 
 
 def _technical(metadata: Sequence[Sequence[str]]) -> dict[str, int]:
@@ -37,7 +38,7 @@ def _index_entry(revision: Any, hook_kind: str) -> CandidateIndexEntry:
             'hook_revision': revision.revision, 'artifact_version_ref': revision.artifact_version_ref,
             'sha256': metadata.get('media_sha256'), 'technical': technical},
         technical_fitness=dict(technical), availability='AVAILABLE',
-        safety_rights_status={'rights_status': metadata.get('seed_rights_status', revision.provenance.value)}, usage_refs=())
+        safety_rights_status={'rights_status': metadata.get('seed_rights_status', revision.provenance.value), 'rights_cleared': metadata.get('seed_rights_status') == SEED_RIGHTS_STATUS}, usage_refs=())
 
 
 class PostgresHookCandidates:

@@ -694,6 +694,24 @@ def open_hooks(manager: typing.Any) -> typing.Any:
     return history_scope
 
 
+def build_media_candidates(manager: typing.Any, *, workspace_id: str, safety_policy_revision: str) -> typing.Any:
+    ensure_src_on_path()
+    import importlib
+    handlers = importlib.import_module('controlplane.application.storage_meta.handlers')
+    workflow = importlib.import_module('controlplane.api.wiring.workflow')
+    media_candidates = importlib.import_module('creative.adapters.media_candidates')
+
+    def resolve_version(sha: str) -> str | None:
+        version = handlers.verified_version_for_sha(manager, workspace_id=workspace_id, sha256=sha)
+        return None if version is None else version.artifact_version_id
+
+    return media_candidates.PostgresMediaCandidates(
+        workflow.media_assets_opener(manager),
+        resolve_version=resolve_version,
+        safety_policy_revision=safety_policy_revision,
+    )
+
+
 def assemble_dfe_handlers(
     app: typing.Any,
     *,
@@ -722,11 +740,9 @@ def assemble_dfe_handlers(
         voice_activity_deps,
         voice_activity_handlers,
     )
-    from controlplane.api.wiring.workflow import media_assets_opener
     from controlplane.application.orchestration.grant_runtime import ExecutionGrantCurrency
     import importlib
     PostgresHookCandidates = importlib.import_module('creative.adapters.hook_candidates').PostgresHookCandidates
-    PostgresMediaCandidates = importlib.import_module('creative.adapters.media_candidates').PostgresMediaCandidates
     PostgresSelectionStore = importlib.import_module('creative.adapters.postgres_selection').PostgresSelectionStore
     ThumbnailCandidates = importlib.import_module('creative.adapters.thumbnail_candidates').ThumbnailCandidates
 
@@ -758,8 +774,9 @@ def assemble_dfe_handlers(
         safety_policy_revision = f'safe-r{rev}'
         open_hooks_fn = open_hooks(manager)
 
-        media_cand = PostgresMediaCandidates(
-            media_assets_opener(manager),
+        media_cand = build_media_candidates(
+            manager,
+            workspace_id=workspace_id,
             safety_policy_revision=safety_policy_revision,
         )
         hook_cand = PostgresHookCandidates(

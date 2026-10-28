@@ -1,6 +1,6 @@
 """Media candidates of SelectCreativeAssets read from the catalog of C (PW-D3, OI-ADAPT-10).
 
-Assets come through an injected catalog scope, so this module holds no SQL and no connection. The candidate query of C (CT-MED-005) shapes every candidate; D only gathers the index entries: the twelve seed images and the images that came with the articles of the snapshot. An article image enters with its provenance (source URL, article, sha256, fetch time) and the flag needs_image_safety; its rights are never a filter here (OI-ADAPT-10), AssessImageSafety decides later. An image with incomplete provenance or without a fingerprint is dropped, and a missing seed image is refused, so the list always holds a seed fallback.
+Assets come through an injected catalog scope, so this module holds no SQL and no connection. The candidate query of C (CT-MED-005) shapes every candidate; D only gathers the index entries: the twelve seed images and the images that came with the articles of the snapshot. An article image enters with its provenance (source URL, article, sha256, fetch time) and the flag needs_image_safety; it is rights_cleared by the user decision OI-ADAPT-10 (rights_basis OI-ADAPT-10) and AssessImageSafety still decides later; a seed image is rights_cleared only when its seed rights status is SELF_GENERATED; no candidate is cleared by default. An image with incomplete provenance, without a fingerprint or without a verified version is dropped, and a missing seed image is refused, so the list always holds a seed fallback. Every candidate carries the UUID of the verified version of its bytes, resolved through the injected resolve_version.
 """
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ SEED_LOCATOR = re.compile(r'seed://bg-(0[1-9]|1[0-2])\.png')
 SEED_SCAN_TERMS = 'seed png'
 SEED_RIGHTS_STATUS = 'SELF_GENERATED'
 ARTICLE_IMAGE_RIGHTS_STATUS = 'UNVERIFIED'
+RIGHTS_BASIS_ARTICLE_IMAGE = 'OI-ADAPT-10'
 RELATION_USER_IMPORTED = 'user_imported'
 ARTICLE_RELATIONS = frozenset({'hero_image', 'inline_image'})
 REF_TYPE_ARTICLE_REVISION = 'article_revision'
@@ -55,17 +56,20 @@ def _usable(assets: Any, origin: str, article_ids: tuple[str, ...]) -> list[tupl
     return [(asset, entry) for asset, entry in pairs if entry is not None]
 
 
-def _index_entry(asset: Any, entry: Any, origin: str) -> CandidateIndexEntry:
+def _index_entry(asset: Any, entry: Any, origin: str, version_ref: str) -> CandidateIndexEntry:
     sha256 = asset.fingerprint.value
     article = origin == ORIGIN_ARTICLE
     safety = {'rights_status': asset.rights.status.value, 'needs_image_safety': article, 'origin': origin}
     if article:
         safety['article_image_rights_status'] = ARTICLE_IMAGE_RIGHTS_STATUS
+        safety['rights_cleared'] = True
+        safety['rights_basis'] = RIGHTS_BASIS_ARTICLE_IMAGE
     else:
         safety['seed_rights_status'] = SEED_RIGHTS_STATUS
+        safety['rights_cleared'] = safety['seed_rights_status'] == SEED_RIGHTS_STATUS
     return CandidateIndexEntry(
         media_asset_id=asset.media_asset_id, rendition_ref=f'original:{asset.media_asset_id}',
-        artifact_version_ref=f'sha256:{sha256}', kind='image', roles=(SCENE_ROLE,), entities=(),
+        artifact_version_ref=version_ref, kind='image', roles=(SCENE_ROLE,), entities=(),
         topics=(entry.article_ref,) if article else (), scenes=(),
         provenance={
             'origin': origin, 'source_url': entry.original_locator, 'source_ref': entry.source_ref,
@@ -76,16 +80,34 @@ def _index_entry(asset: Any, entry: Any, origin: str) -> CandidateIndexEntry:
 class PostgresMediaCandidates:
     """Media candidate port of SelectCreativeAssets over the media tables of C.
 
-    `open_assets(workspace_id)` returns a context manager that yields the asset repository of the catalog (a reader with `search(query, limit)`) on a connection of the caller; the composition root wires the PostgreSQL repository of C there. `safety_policy_revision` is the caller's revision and has no default.
+    `open_assets(workspace_id)` returns a context manager that yields the asset repository of the catalog (a reader with `search(query, limit)`) on a connection of the caller; the composition root wires the PostgreSQL repository of C there. `resolve_version(sha256)` returns the UUID of the verified version of the image bytes or None. `safety_policy_revision` is the caller's revision and has no default.
     """
 
-    def __init__(self, open_assets: Callable[[str], AbstractContextManager[Any]], *, safety_policy_revision: str) -> None:
+    def __init__(
+        self,
+        open_assets: Callable[[str], AbstractContextManager[Any]],
+        *,
+        resolve_version: Callable[[str], str | None],
+        safety_policy_revision: str,
+    ) -> None:
         if not callable(open_assets):
             raise TypeError('open_assets must be callable')
+        if not callable(resolve_version):
+            raise TypeError('resolve_version must be callable')
         if not isinstance(safety_policy_revision, str) or not safety_policy_revision:
             raise ValueError('safety_policy_revision must be a non-empty string')
         self._open_assets = open_assets
+        self._resolve_version = resolve_version
         self._safety_policy_revision = safety_policy_revision
+
+    def _entries(self, pairs: list[tuple[Any, Any]], origin: str) -> list[CandidateIndexEntry]:
+        """Index entries of the images whose bytes have a verified version; an image without one is dropped like an image without a fingerprint."""
+        entries = []
+        for asset, entry in pairs:
+            version_ref = self._resolve_version(asset.fingerprint.value)
+            if isinstance(version_ref, str) and version_ref:
+                entries.append(_index_entry(asset, entry, origin, version_ref))
+        return entries
 
     def media_candidates(self, *, workspace_id: str, snapshot: Any) -> tuple[MediaCandidate, ...]:
         """Article images of the snapshot first, then the seed images; SelectionRejected(INPUT_NOT_READY, seed_media_missing) when no seed image is usable."""
@@ -96,8 +118,8 @@ class PostgresMediaCandidates:
             for article_id in article_ids:
                 for asset, entry in _usable(assets.search(article_id, SCAN_LIMIT), ORIGIN_ARTICLE, article_ids):
                     articles.setdefault(asset.media_asset_id, (asset, entry))
-        entries = [_index_entry(asset, entry, ORIGIN_ARTICLE) for asset, entry in list(articles.values())[:MAX_ARTICLE_IMAGES]]
-        entries += [_index_entry(asset, entry, ORIGIN_SEED) for asset, entry in seeds]
+        entries = self._entries(list(articles.values()), ORIGIN_ARTICLE)[:MAX_ARTICLE_IMAGES]
+        entries += self._entries(seeds, ORIGIN_SEED)
         query = {
             'production_snapshot_ref': snapshot.snapshot_id, 'scene_intent': {'topics': list(article_ids)},
             'media_kinds': ['image'], 'roles': [SCENE_ROLE], 'safety_policy_revision': self._safety_policy_revision,
