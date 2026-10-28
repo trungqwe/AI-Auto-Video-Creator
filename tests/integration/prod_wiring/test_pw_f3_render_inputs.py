@@ -21,6 +21,9 @@ from decimal import Decimal
 from pathlib import PureWindowsPath
 from types import MappingProxyType, SimpleNamespace
 
+from catalog.application.hooks import import_hook
+from catalog.domain.hooks import HookKind
+from catalog.persistence.hooks import PostgresHookHistory
 from controlplane.api.wiring.production_profile import ProductionRuntime, load_production_profile
 from controlplane.api.wiring.render import ProductionRenderSources
 from controlplane.application.storage_meta.handlers import register_staged_artifact
@@ -1287,6 +1290,13 @@ NOW = datetime(2026, 10, 28, 1, 2, 3, tzinfo=timezone.utc)
 VOICE_BYTES = b'f3-voice-wav-bytes'
 VOICE_REF_F3 = 'voice-artifact-' + hashlib.sha256(VOICE_BYTES).hexdigest()
 FFMPEG_BYTES = b'pinned-ffmpeg-bytes'
+VISUAL_HOOK_ID = 'vh-1'
+AUDIO_HOOK_ID = 'ah-1'
+DEFAULT_THUMBNAIL_REF = 'thumb:' + VISUAL_HOOK_ID
+HOOK_VIDEO_BYTES = b'f3-hook-video-mp4-bytes'
+HOOK_AUDIO_BYTES = b'f3-hook-audio-wav-bytes'
+HOOK_VIDEO_SHA = hashlib.sha256(HOOK_VIDEO_BYTES).hexdigest()
+HOOK_AUDIO_SHA = hashlib.sha256(HOOK_AUDIO_BYTES).hexdigest()
 
 
 def render_runtime(tmp_path: pathlib.Path) -> ProductionRuntime:
@@ -1346,7 +1356,23 @@ def stage_and_register(
     )
 
 
-def creative_plan(db: Any, pinned: tuple[Any, Any], v1_id: str, v2_id: str) -> Any:
+def seed_hook(manager: Any, db: Any, hook_id: str, kind: HookKind, sha256: str) -> None:
+    with manager.borrow_connection() as connection:
+        import_hook(
+            PostgresHookHistory(connection, db.workspace_id),
+            hook_id=hook_id,
+            kind=kind,
+            artifact_version_ref='seed:' + hook_id + ':sha256:' + sha256,
+            tags=('seed', kind.value, hook_id),
+            description='Seed hook ' + hook_id,
+            note='',
+            enabled=True,
+            technical_metadata=(('duration_ms', '4000'), ('media_sha256', sha256)),
+        )
+        connection.commit()
+
+
+def creative_plan(db: Any, pinned: tuple[Any, Any], v1_id: str, v2_id: str, thumbnail_ref: str = DEFAULT_THUMBNAIL_REF) -> Any:
     script_text = ' '.join(WORDS)
     count = len(WORDS)
     est = count / 2.0
@@ -1379,9 +1405,9 @@ def creative_plan(db: Any, pinned: tuple[Any, Any], v1_id: str, v2_id: str) -> A
         safety_policy_revision='safety-r1',
         music_sfx_policy_revision='ms-r1',
         preset_registry_revision='preset-reg-r1',
-        visual_hook=ResourceRef(db.workspace_id, 'visual_hook', 'vh-1', 'vh-r1'),
-        audio_hook=ResourceRef(db.workspace_id, 'audio_hook', 'ah-1', 'ah-r1'),
-        thumbnail=ResourceRef(db.workspace_id, 'thumbnail', 'th-1', 'th-r1'),
+        visual_hook=ResourceRef(db.workspace_id, 'visual_hook', VISUAL_HOOK_ID, 'vh-r1'),
+        audio_hook=ResourceRef(db.workspace_id, 'audio_hook', AUDIO_HOOK_ID, 'ah-r1'),
+        thumbnail=ResourceRef(db.workspace_id, 'thumbnail', thumbnail_ref, 'th-r1'),
         thumbnail_overlay_intent='title card',
         assignments=(
             SceneAssignment(
@@ -1469,15 +1495,22 @@ def creative_plan(db: Any, pinned: tuple[Any, Any], v1_id: str, v2_id: str) -> A
     )
 
 
-def build_world(db: Any, manager: Any, pinned: tuple[Any, Any], tmp_path: pathlib.Path) -> SimpleNamespace:
+def build_world(db: Any, manager: Any, pinned: tuple[Any, Any], tmp_path: pathlib.Path, *, hook_catalog: bool = True, hook_media: bool = True, thumbnail_ref: str = DEFAULT_THUMBNAIL_REF) -> SimpleNamespace:
     runtime = render_runtime(tmp_path)
     v1 = stage_and_register(manager, db, runtime, 'media/f3-visual-1.mp4', b'v1-bytes-f3')
     v2 = stage_and_register(manager, db, runtime, 'media/f3-visual-2.mp4', b'v2-bytes-f3')
     voice_version = stage_and_register(manager, db, runtime, 'voice/' + VOICE_REF_F3, VOICE_BYTES)
+    hook_video = hook_audio = None
+    if hook_media:
+        hook_video = stage_and_register(manager, db, runtime, f'media/{HOOK_VIDEO_SHA}.mp4', HOOK_VIDEO_BYTES)
+        hook_audio = stage_and_register(manager, db, runtime, f'media/{HOOK_AUDIO_SHA}.wav', HOOK_AUDIO_BYTES)
+    if hook_catalog:
+        seed_hook(manager, db, VISUAL_HOOK_ID, HookKind.VISUAL_HOOK, HOOK_VIDEO_SHA)
+        seed_hook(manager, db, AUDIO_HOOK_ID, HookKind.AUDIO_HOOK, HOOK_AUDIO_SHA)
 
     insert_script(db, script_segments_payload(['source_backed', 'source_backed'], [4, 4]))
     insert_timing(db)
-    plan = creative_plan(db, pinned, v1.artifact_version_id, v2.artifact_version_id)
+    plan = creative_plan(db, pinned, v1.artifact_version_id, v2.artifact_version_id, thumbnail_ref)
     insert_plan(db, plan.to_payload())
 
     sources = ProductionRenderSources(
@@ -1507,6 +1540,8 @@ def build_world(db: Any, manager: Any, pinned: tuple[Any, Any], tmp_path: pathli
         v1=v1,
         v2=v2,
         voice_version=voice_version,
+        hook_video=hook_video,
+        hook_audio=hook_audio,
         sources=sources,
         plan_port=plan_port,
         refs=refs,
@@ -1591,3 +1626,64 @@ def test_resolve_inputs_fails_closed_on_missing_voice_or_timing(
     with pytest.raises(ActivityInputError) as exc_info:
         w.sources.resolve_inputs(refs)
     assert exc_info.value.code == expected_code
+
+# --- PW-W2-FIX4 (R10): hook and thumbnail refs resolve to verified staged versions ---
+
+
+def test_hook_and_thumbnail_refs_resolve_to_verified_staged_versions(pw_database, manager, pinned, tmp_path):
+    w = build_world(pw_database, manager, pinned, tmp_path)
+    inputs = w.sources.resolve_inputs(w.refs)
+    assert inputs.hook_placement['visual_hook_ref'] == VISUAL_HOOK_ID
+    assert inputs.hook_placement['audio_hook_ref'] == AUDIO_HOOK_ID
+    assert inputs.hook_placement['thumbnail_ref'] == DEFAULT_THUMBNAIL_REF
+    record = resolve_render_package(inputs, w.plan_port)
+    expected = {
+        VISUAL_HOOK_ID: (w.hook_video, HOOK_VIDEO_BYTES, 'video/mp4'),
+        AUDIO_HOOK_ID: (w.hook_audio, HOOK_AUDIO_BYTES, 'audio/wav'),
+        DEFAULT_THUMBNAIL_REF: (w.hook_video, HOOK_VIDEO_BYTES, 'video/mp4'),
+    }
+    by_ref = {a.artifact_version_id: a for a in inputs.input_artifacts}
+    for ref, (version, data, mime) in expected.items():
+        assert by_ref[ref].sha256 == hashlib.sha256(data).hexdigest()
+        assert by_ref[ref].size_bytes == len(data)
+        assert by_ref[ref].media_type == mime
+        assert by_ref[ref].role == version.artifact_kind
+        local = record.materialization_manifest[ref]['local_ref']
+        assert local == version.artifact_version_id
+        assert hashlib.sha256((w.runtime.staging_root / local).read_bytes()).hexdigest() == by_ref[ref].sha256
+    report = validate_render_package(record, w.sources.validation_context(record))
+    assert report.passed is True, report.findings
+
+
+def test_thumbnail_of_a_plan_visual_uses_the_visual_version(pw_database, manager, pinned, tmp_path):
+    w = build_world(pw_database, manager, pinned, tmp_path, thumbnail_ref='thumb:m-1')
+    inputs = w.sources.resolve_inputs(w.refs)
+    record = resolve_render_package(inputs, w.plan_port)
+    thumb = next(a for a in record.input_artifacts if a.artifact_version_id == 'thumb:m-1')
+    assert thumb.sha256 == hashlib.sha256(b'v1-bytes-f3').hexdigest()
+    assert record.materialization_manifest['thumb:m-1']['local_ref'] == w.v1.artifact_version_id
+    report = validate_render_package(record, w.sources.validation_context(record))
+    assert report.passed is True, report.findings
+
+
+@pytest.mark.parametrize(
+    'kwargs,ref',
+    [
+        ({'hook_media': False}, VISUAL_HOOK_ID),
+        ({'hook_catalog': False}, VISUAL_HOOK_ID),
+        ({'thumbnail_ref': 'thumb:unknown-subject'}, 'thumb:unknown-subject'),
+        ({'thumbnail_ref': 'th-1'}, 'th-1'),
+    ],
+    ids=[
+        'hook_without_version',
+        'hook_not_in_catalog',
+        'thumbnail_unknown_subject',
+        'thumbnail_without_thumb_prefix',
+    ],
+)
+def test_unresolvable_hook_refs_fail_with_input_not_ready(pw_database, manager, pinned, tmp_path, kwargs, ref):
+    w = build_world(pw_database, manager, pinned, tmp_path, **kwargs)
+    with pytest.raises(ActivityInputError) as exc_info:
+        w.sources.resolve_inputs(w.refs)
+    assert exc_info.value.code == 'INPUT_NOT_READY'
+    assert ref in str(exc_info.value)
