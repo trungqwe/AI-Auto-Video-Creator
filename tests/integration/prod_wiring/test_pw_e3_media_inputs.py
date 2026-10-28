@@ -40,7 +40,7 @@ from voice.domain.processing import ArtifactRef
 from voice.domain.timing_coverage import TokenizationPolicy
 from voice.domain.voice_track import VoiceTrack, check_duration
 from voice.persistence import PostgresVoiceUnitOfWork
-from voice.worker.activity_handler import VoiceActivityDeps
+from voice.worker.activity_handler import VoiceActivityDeps, handle_activity
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 PROFILE_PATH = ROOT / 'tools' / 'launcher' / 'prod' / 'profile.json'
@@ -465,5 +465,50 @@ def test_pw_e3_safety_chain_excludes_unsafe_images_and_blurs_with_the_pinned_ffm
             assert [ref['source_ref_id'] for ref in chain['normalized'][key]['output_refs']] == [key]
         blurred_file = world.out / (blurred.replace(':', '_') + '.png')
         assert blurred_file.is_file() and sha(blurred_file.read_bytes()) != world.media.items['media-blur'][0].content_sha256
+    finally:
+        world.close()
+
+
+def transform_deps(world: World) -> VoiceActivityDeps:
+    return VoiceActivityDeps(voice=None, media=MediaPipeline(world.uow), grants=Grants(), inputs=world.inputs, clock=lambda: NOW)
+
+
+def transform_entries(world: World, request: dict) -> list:
+    """The two entries that reach TransformSensitiveImage: the production worker handler (handle_activity) and handle_voice_activity."""
+    return [
+        lambda deps: handle_activity(request, world.grant, deps),
+        lambda deps: handle_voice_activity(request, world.grant, deps, world.inputs),
+    ]
+
+
+def test_pw_e3_transform_without_a_sensitive_image_succeeds_with_no_output(pw_database, tmp_path) -> None:
+    world = World(pw_database, tmp_path)
+    try:
+        safe_item = world.add_image('a', 1, {'confidence': 0.9, 'detections': []})
+        request = world.request('TransformSensitiveImage', 0, merge(world.base_refs, [safe_item]))
+        for entry in transform_entries(world, request):
+            deps = transform_deps(world)
+            result = entry(deps)
+            assert result['disposition'] == 'succeeded' and result['output_refs'] == [], result
+            assert 'problem' not in result and result['grant_id'] == 'op-e3' and result['stage_run_id'] == STAGE_RUN
+            assert result['metrics']['output_count'] == 0
+            assert entry(deps) == result
+        assert world.uow.outputs.latest('processed_media', request['operation_key']) is None
+    finally:
+        world.close()
+
+
+def test_pw_e3_transform_with_a_sensitive_image_keeps_the_old_path(pw_database, tmp_path) -> None:
+    world = World(pw_database, tmp_path)
+    try:
+        item = world.add_image('a', 1, {'confidence': 0.9, 'detections': []})
+        without_regions = {'ref_type': 'sensitive_image', 'ref_id': 'media-a', 'revision_id': 'v-a', 'assessment_ref': 'assessment:assess-a'}
+        not_stored = {**without_regions, 'regions': [{'category': 'weapon', 'confidence': 0.9, 'mask_ref': MASK}]}
+        for index, sensitive in enumerate((without_regions, not_stored)):
+            request = world.request('TransformSensitiveImage', index, merge(world.base_refs, [sensitive], [item]))
+            for entry in transform_entries(world, request):
+                result = entry(transform_deps(world))
+                assert result['disposition'] == 'failed' and result['output_refs'] == [], result
+                assert result['problem']['code'] == 'INPUT_NOT_READY', result
     finally:
         world.close()

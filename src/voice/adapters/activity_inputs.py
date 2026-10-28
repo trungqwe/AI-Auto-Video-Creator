@@ -1,6 +1,6 @@
 """Production ActivityInputPort of E (PW-E3): input_refs of an ActivityRequest to the typed arguments of the one E command, and the output refs of the image safety chain (DQ-11).
 
-Fan-out item rule: the item of an activity is the first ref of its ref_type in input_refs (the flow puts the item right after the workflow refs). Only an image that AssessImageSafety judged SAFE, or a blurred copy whose post assessment is SAFE, reaches NormalizeMedia; an excluded image is replaced by the next media seed of the selection, and without a seed the activity succeeds with no output.
+Fan-out item rule: the item of an activity is the first ref of its ref_type in input_refs (the flow puts the item right after the workflow refs). Only an image that AssessImageSafety judged SAFE, or a blurred copy whose post assessment is SAFE, reaches NormalizeMedia; an excluded image is replaced by the next media seed of the selection, and without a seed the activity succeeds with no output. TransformSensitiveImage follows the same rule: a request without a sensitive_image ref (no image needs the blur) succeeds with no output.
 """
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ from voice.domain.processing import ArtifactRef
 from voice.domain.timing_coverage import TokenizationPolicy
 from voice.ports.repositories import KIND_VOICE, EventContext, OutputRepository
 from voice.ports.script_text import ScriptTextPort
-from voice.worker.activity_handler import SUCCEEDED, VoiceActivityDeps, handle_activity, validate_activity_request
+from voice.worker.activity_handler import NO_OUTPUT_KEY, SUCCEEDED, VoiceActivityDeps, handle_activity, validate_activity_request
 
 INPUT_NOT_READY = 'INPUT_NOT_READY'
 UNKNOWN_ACTIVITY = 'UNKNOWN_ACTIVITY'
@@ -62,6 +62,7 @@ REF_SENSITIVE_IMAGE = 'sensitive_image'
 REF_MEDIA = 'media_artifact'
 ASSESSMENT_PREFIX = 'assessment:'
 REASON_SEED_FALLBACK = 'seed_fallback'
+REASON_NO_SENSITIVE_IMAGE = 'no_sensitive_image'
 
 
 class ActivityInputError(ValueError):
@@ -195,7 +196,7 @@ def _track_key(job_id: str) -> str:
 
 
 class ProductionActivityInputs:
-    """ActivityInputPort of E for production: `resolve` returns {'command': <E-16 command>} for the two voice activities and the keyword arguments of the MediaPipeline method (with `context` where the method has it, never operation_key) for the media activities."""
+    """ActivityInputPort of E for production: `resolve` returns {'command': <E-16 command>} for the two voice activities and the keyword arguments of the MediaPipeline method (with `context` where the method has it, never operation_key) for the media activities; `resolve` returns {NO_OUTPUT_KEY: reason} for TransformSensitiveImage when there is no sensitive_image ref."""
 
     def __init__(
         self, *, parameters: Mapping[str, object], tool_version: str, scripts: ScriptTextPort, outputs: OutputRepository,
@@ -324,6 +325,8 @@ class ProductionActivityInputs:
         return NormalizeSource(None, reason)
 
     def _transform(self, frame: _Frame, grant: ExecutionGrant, context: EventContext) -> dict[str, Any]:
+        if not _refs_of(frame.refs, REF_SENSITIVE_IMAGE):
+            return {NO_OUTPUT_KEY: REASON_NO_SENSITIVE_IMAGE}
         item = _first_ref(frame.refs, REF_SENSITIVE_IMAGE)
         art = self._artifact(frame.workspace_id, item)
         try:
