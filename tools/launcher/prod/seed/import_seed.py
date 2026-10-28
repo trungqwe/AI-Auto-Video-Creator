@@ -199,8 +199,6 @@ def _stage_images(manager, config, items):
     _, runtime = config.production_parts()
     staging_root = Path(runtime.staging_root)
     for item in items:
-        if item.media_kind is not MediaKind.IMAGE:
-            continue
         target = _stage_image(staging_root, item)
         register_staged_artifact(
             manager,
@@ -213,7 +211,7 @@ def _stage_images(manager, config, items):
 
 
 def import_seed(manager, config, seed_dir, *, resolver=system_dns_resolver, sources_path=SOURCES_JSON, hooks_path=HOOKS_JSON):
-    '''Nhập nguồn trước, rồi hook và tài sản seed, sau đó chép ảnh nền vào staging và đăng ký version; mọi kiểm tra đầu vào chạy trước khi ghi dòng nào; chạy lại không nhân đôi và bù được ảnh nền còn thiếu.'''
+    '''Nhập nguồn trước, rồi hook và tài sản seed, sau đó chép ảnh nền, hook clip và hook âm thanh vào staging và đăng ký version; mọi kiểm tra đầu vào chạy trước khi ghi dòng nào; chạy lại không nhân đôi và bù được tệp seed còn thiếu.'''
     if config.mode != PROFILE_PRODUCTION:
         raise SeedError('import_seed requires the production profile on PostgreSQL')
     sources = _read_json(sources_path)['sources']
