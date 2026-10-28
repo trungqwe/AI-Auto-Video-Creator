@@ -110,7 +110,8 @@ Danh sách đầy đủ và chính xác các adapter giả lập được phép 
     - `src/render/adapters/real_output_inspector.py:464,490`: `manifest.get(ref)` trả None nên `VISUAL_HOOK_PRESENT` và `THUMBNAIL_PRESENT` trượt.
     - `src/render/domain/render_command.py:223-233` (`_filter_graph`) và `:289-297` (`build_render_command`): ảnh tĩnh vào `concat` không có `-loop 1 -t <thời lượng segment>`, video ra chỉ vài frame nên `SUBTITLE_BURNED_IN` và `INFERENCE_DISCLOSURE_PRESENT` trượt.
     - `src/creative/adapters/media_candidates.py:41,72`: chỉ nhận `kind=image`, nên production luôn đi qua đường ảnh tĩnh này.
-  - **Gói chủ đề xuất xử lý:** `PW-F4` (dây nối `resolve_inputs`, ánh xạ hook/thumbnail sang artifact version đã VERIFIED trong manifest) và `PW-F3`/`PW-W2` (lệnh render ảnh tĩnh có `-loop 1 -t`); Control xác nhận gói chủ.
+  - **Đối chiếu bổ sung trên HEAD ngày 28/10/2026:** `src/render/domain/resolve_package.py` (`_manifest`, dòng 137-146) đặt khoá `materialization_manifest` theo `artifact_version_id` và `_plan_ids` ở dòng 198 chỉ cho phép ref của kế hoạch; vì vậy ref `vh-01` và `thumb:vh-01` không thể có mặt trong manifest nếu `get_asset` (`src/render/adapters/postgres_plan_assets.py:130-136`) bỏ chúng. Mã tại mọi dòng nêu ở trên còn nguyên trên HEAD; không gói sửa nào đã gộp (PW-A3-FIX1, PW-E3-FIX1, PW-I1-FIX1, PW-F4-FIX1, PW-A3-FIX2, ADAPT-SEED-FIX1, PW-D3-FIX1, PW-W2-FIX1, PW-W2-FIX2, PW-W2-FIX3) thay đổi các dòng đó, nên phụ thuộc này chưa có gói chủ đang chạy.
+  - **Gói sửa đề xuất cho Control mở (chưa có, không phải quyết định):** `PW-F4-FIX2` (chủ `src/controlplane/api/wiring/render.py` `resolve_inputs` và `src/render/adapters/postgres_plan_assets.py`: ánh xạ `visual_hook_ref`, `audio_hook_ref`, `thumbnail_ref` sang artifact version đã VERIFIED rồi đưa vào manifest) và `PW-F3-FIX1` (chủ `src/render/domain/render_command.py`: thêm `-loop 1 -t <thời lượng segment>` cho từng đầu vào ảnh tĩnh trước `-i`). Gói chủ gốc: `PW-F4` và `PW-F3`/`PW-W2`.
   - **Test bị chặn:**
     - `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable`
     - `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun`
@@ -125,6 +126,8 @@ Danh sách đầy đủ và chính xác các adapter giả lập được phép 
 1. Gói chủ gộp bản sửa `resolve_inputs` và `render_command` vào nhánh tích hợp.
 2. Lane rebase lên integration head mới, chạy lại `python -m pytest tests/integration/prod_wiring/test_pw_e2e_batch_video.py -q -p no:cacheprovider`.
 3. Cập nhật mục 2, 3, 4 của báo cáo bằng số đo thật; tiêu chí 1, 2, 4 chưa có bằng chứng PASS cho tới lúc đó.
+4. Control mở hai gói sửa `PW-F4-FIX2` và `PW-F3-FIX1` (xem mục Khoảng trống phát hiện mới tại Stage qc) vì chưa gói nào đã gộp đảm nhận; trước đó lane PW-E2E không thể chuyển PASS và không được vá phía rig.
+5. Sau khi hai gói gộp, lane rebase rồi chạy lại đúng lệnh pytest ở mục 2 (ước tính 30 phút); không chạy lại trước đó để tránh đốt thời gian vô ích.
 
 ### Ghi nhận các vấn đề trước đây
 - Khoảng trống G1 (`missing business_date` trong `CollectSource`) đã được đóng triệt để bởi các gói tích hợp vừa gộp (test `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch` đã PASSED).
