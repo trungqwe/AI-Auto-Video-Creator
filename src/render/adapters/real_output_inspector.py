@@ -46,6 +46,7 @@ GATE_KARAOKE = 'KARAOKE_TIMING'
 GATE_DISCLOSURE = 'INFERENCE_DISCLOSURE_PRESENT'
 DISCLOSURE_STYLE = 'Disclosure'
 UNMATCHED_ASSET_PREFIX = 'unmatched:'
+HOOK_CLIP_LAST_FRAME_GUARD_MS = 34  # one frame at the 30 fps output profile; keeps the seek inside the last frame of a hook clip
 GATE_AUDIO_HOOK = 'AUDIO_HOOK'
 GATE_VOICE_AUDIBLE = 'VOICE_AUDIBLE'
 GATE_ENGLISH = 'ENGLISH_OUTPUT'
@@ -483,6 +484,20 @@ class RealOutputInspector:
             similarity=sim,
         )
 
+    def _thumbnail_asset_seek_ms(self, package: RenderPackageRecord, asset: Path, time_ms: int) -> int | None:
+        """Seek of the thumbnail asset: the hook clip frame matching time_ms (clamped to its last frame, as the overlay repeats it); None for still images or any asset other than the hook asset."""
+        hook = self._range(package, 'hook_time_range')
+        hp = package.hook_placement
+        hook_ref = hp.get('visual_hook_ref') if isinstance(hp, Mapping) else None
+        hook_asset = self._asset(package, hook_ref)
+        if hook is None or hook_asset is None or hook_asset != asset:
+            return None
+        duration = self._probe.duration_ms(asset)
+        if duration is None:
+            return None  # still image has no duration: keep the first frame
+        offset = max(0, time_ms - hook[0])
+        return max(0, min(offset, duration - HOOK_CLIP_LAST_FRAME_GUARD_MS))
+
     def _thumbnail(self, media: Path, package: RenderPackageRecord) -> ThumbnailEvidence | None:
         rng = self._range(package, 'thumbnail_time_range')
         hp = package.hook_placement
@@ -491,12 +506,13 @@ class RealOutputInspector:
         if rng is None or ref is None or asset is None:
             return None
         time_ms = (rng[0] + rng[1]) // 2
+        right_ms = self._thumbnail_asset_seek_ms(package, asset, time_ms)
         sim = ssim_between(
             self._ffmpeg,
             media,
             time_ms,
             asset,
-            None,
+            right_ms,
             width=self._settings.compare_width,
             height=self._settings.compare_height,
             timeout_seconds=self._settings.timeout_seconds,
