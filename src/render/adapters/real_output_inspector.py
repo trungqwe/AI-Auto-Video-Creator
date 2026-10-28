@@ -11,6 +11,7 @@ coveredIds: PW-F1-01, PW-F2-01, CT-QC-001
 """
 from __future__ import annotations
 
+import math
 import re
 import subprocess
 import unicodedata
@@ -189,6 +190,59 @@ def parse_ass_dialogues(text: str) -> tuple[AssDialogue, ...]:
     return tuple(dialogues)
 
 
+def _ass_number(value: str) -> float | None:
+    try:
+        number = float(value.strip())
+    except ValueError:
+        return None
+    return number if math.isfinite(number) else None
+
+
+def disclosure_band_from_ass(text: str) -> Band | None:
+    """Vertical row of the Disclosure style: PlayResY from [Script Info]; Fontsize, Outline, Alignment, MarginV from its [V4+ Styles] row (read by the section Format). None when any value is missing or invalid, Alignment is 4/5/6, or the clipped band is empty; the caller then keeps settings.disclosure_band."""
+    play_res_y: float | None = None
+    fields: list[str] | None = None
+    row: dict[str, str] | None = None
+    current_section = ''
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith('[') and line.endswith(']'):
+            current_section = line
+            fields = None
+            continue
+        if current_section == '[Script Info]' and line.startswith('PlayResY:'):
+            play_res_y = _ass_number(line[len('PlayResY:'):])
+        elif current_section == '[V4+ Styles]':
+            if raw_line.startswith('Format:'):
+                fields = [f.strip() for f in raw_line[len('Format:'):].split(',')]
+            elif raw_line.startswith('Style:') and fields and row is None:
+                parts = raw_line[len('Style:'):].split(',', len(fields) - 1)
+                values = dict(zip(fields, (p.strip() for p in parts)))
+                if len(parts) == len(fields) and values.get('Name') == DISCLOSURE_STYLE:
+                    row = values
+    if row is None or play_res_y is None or play_res_y <= 0:
+        return None
+    size = _ass_number(row.get('Fontsize', ''))
+    outline = _ass_number(row.get('Outline', ''))
+    margin_v = _ass_number(row.get('MarginV', ''))
+    alignment = _ass_number(row.get('Alignment', ''))
+    if size is None or outline is None or margin_v is None or alignment is None:
+        return None
+    height = 2 * (size + 2 * outline) / play_res_y
+    if alignment in (7, 8, 9):
+        top = margin_v / play_res_y
+        bottom = top + height
+    elif alignment in (1, 2, 3):
+        bottom = 1 - margin_v / play_res_y
+        top = bottom - height
+    else:
+        return None
+    try:
+        return Band(top=min(max(top, 0.0), 1.0), bottom=min(max(bottom, 0.0), 1.0))
+    except ValueError:
+        return None
+
+
 _K_TAG = re.compile(r'\{\\k(\d+)\}([^{]*)')
 
 
@@ -364,7 +418,8 @@ class RealOutputInspector:
         if not media.is_file():
             return OutputEvidence()
         duration = self._probe.duration_ms(media)
-        dialogues = self._dialogues(package)
+        ass_text = self._ass_text(package)
+        dialogues = () if ass_text is None else parse_ass_dialogues(ass_text)
         return OutputEvidence(
             visual_hook=self._visual_hook(media, package),
             audio_hook=self._audio_hook(media, package),
@@ -372,7 +427,7 @@ class RealOutputInspector:
             subtitle=self._subtitle(media, dialogues, duration),
             karaoke=self._karaoke(dialogues),
             language=self._language(package, dialogues),
-            disclosure=self._disclosure(media, dialogues, duration),
+            disclosure=self._disclosure(media, dialogues, duration, self._disclosure_band(ass_text)),
         )
 
     def _asset(self, package: RenderPackageRecord, ref: str | None) -> Path | None:
@@ -411,15 +466,18 @@ class RealOutputInspector:
             return (start, end)
         return None
 
-    def _dialogues(self, package: RenderPackageRecord) -> tuple[AssDialogue, ...]:
+    def _ass_text(self, package: RenderPackageRecord) -> str | None:
         path = self._asset(package, self._inputs.ass_ref)
         if path is None or path.suffix.lower() != '.ass':
-            return ()
+            return None
         try:
-            text = path.read_text(encoding='utf-8')
+            return path.read_text(encoding='utf-8')
         except (OSError, UnicodeDecodeError):
-            return ()
-        return parse_ass_dialogues(text)
+            return None
+
+    def _dialogues(self, package: RenderPackageRecord) -> tuple[AssDialogue, ...]:
+        text = self._ass_text(package)
+        return () if text is None else parse_ass_dialogues(text)
 
     def speech_windows(self, package: RenderPackageRecord) -> tuple[tuple[int, int], ...]:
         """VOICE_AUDIBLE: ms ranges of the karaoke dialogue lines (the spoken parts); pass them as voice_windows to RealFfprobeProbe so audio_level is measured only where there is speech. Empty when the ASS is missing."""
@@ -566,11 +624,16 @@ class RealOutputInspector:
             observations=obs,
         )
 
+    def _disclosure_band(self, ass_text: str | None) -> Band:
+        derived = None if ass_text is None else disclosure_band_from_ass(ass_text)
+        return self._settings.disclosure_band if derived is None else derived
+
     def _disclosure(
         self,
         media: Path,
         dialogues: Sequence[AssDialogue],
         duration: int | None,
+        band: Band,
     ) -> DisclosureEvidence | None:
         required: list[str] = []
         seen: set[str] = set()
@@ -598,8 +661,8 @@ class RealOutputInspector:
                     baseline_ms=base,
                     width=self._settings.compare_width,
                     height=self._settings.compare_height,
-                    top=self._settings.disclosure_band.top,
-                    bottom=self._settings.disclosure_band.bottom,
+                    top=band.top,
+                    bottom=band.bottom,
                 )
                 visible = diff is not None and diff >= self._settings.disclosure_min_difference
             observations.append(DisclosureObservation(segment_id=segment_id, visible=visible))
@@ -619,6 +682,7 @@ __all__ = [
     'RealOutputInspector',
     'audio_mix_result',
     'baseline_ms',
+    'disclosure_band_from_ass',
     'evenly_sampled',
     'karaoke_observations',
     'observed_subtitle_locale',

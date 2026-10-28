@@ -9,8 +9,8 @@ import subprocess
 import pytest
 
 from render.adapters.frame_probe import FrameProbe
-from render.adapters.real_ffmpeg_renderer import FfmpegPinRejected, sha256_file
-from render.adapters.real_output_inspector import Band, InspectionInputs, InspectorSettings, RealOutputInspector
+from render.adapters.real_ffmpeg_renderer import FfmpegPinRejected, build_final_argv, sha256_file
+from render.adapters.real_output_inspector import Band, InspectionInputs, InspectorSettings, RealOutputInspector, disclosure_band_from_ass
 from render.domain.content_gates import (
     check_inference_disclosure_present,
     check_karaoke_timing_valid,
@@ -20,6 +20,11 @@ from render.domain.content_gates import (
 )
 from render.domain.package_contract import validate_render_package_payload
 from render.domain.quality_report import GateStatus, QualityPolicy
+from render.adapters.ass_manifest import build_ass_text
+from render.adapters.postgres_plan_assets import ScriptSegmentInfo
+from render.domain.karaoke_plan import TimedWord
+from render.domain.preset import build_preset_revision
+from render.domain.render_command import MaterializedPaths, OutputProfile, ToolIdentity, build_render_command
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 LOCK_PATH = ROOT / 'tools' / 'runtime' / 'runtime.lock.json'
@@ -519,3 +524,198 @@ def test_pw_f1_thumbnail_same_still_image_keeps_first_frame(tmp_path: pathlib.Pa
     evidence, result = thumbnail_result(sample)
     assert result.status is GateStatus.PASSED
     assert evidence.thumbnail is not None
+
+
+FIX2_WORDS = ['Prices', 'rose', 'sharply', 'today', 'Analysts', 'suspect', 'supply', 'shortage']
+FIX2_DISCLOSURE = 'AI analysis, not confirmed fact'
+FIX2_TYPOGRAPHY = {
+    'font_name': 'Arial', 'font_size': 72, 'primary_colour': '&H0000D4FF', 'secondary_colour': '&H00FFFFFF',
+    'outline_colour': '&H00000000', 'back_colour': '&H80000000', 'bold': -1, 'italic': 0, 'underline': 0,
+    'strike_out': 0, 'scale_x': 100, 'scale_y': 100, 'spacing': 0, 'angle': 0, 'border_style': 1,
+    'outline': 4, 'shadow': 0, 'alignment': 2, 'encoding': 1,
+}
+FIX2_SEGMENTS = (
+    ScriptSegmentInfo(segment_id='seg-1', order=0, claim_mode='source_backed', disclosure=None, word_count=4),
+    ScriptSegmentInfo(segment_id='seg-2', order=1, claim_mode='inference', disclosure=FIX2_DISCLOSURE, word_count=4),
+)
+FIX2_PROFILE = OutputProfile(width=1080, height=1920, fps=30, video_codec='h264', audio_codec='aac', container='mp4', pixel_format='yuv420p', encoder='libx264', bitrate=None)
+
+
+def fix2_ass_text() -> str:
+    words = [TimedWord(text, i * 500, i * 500 + 500) for i, text in enumerate(FIX2_WORDS)]
+    safe_area = {'margin_left': 60, 'margin_right': 60, 'margin_vertical': 360}
+    limits = {'max_words_per_line': 4, 'max_chars_per_line': 28, 'play_res_x': 1080, 'play_res_y': 1920}
+    disclosure_style = {'font_size': 40, 'alignment': 8, 'margin_v': 240}
+    return build_ass_text(words, FIX2_TYPOGRAPHY, safe_area, limits, disclosure_style, FIX2_SEGMENTS)
+
+
+def fix2_package(ass_local: str):
+    bg = {'artifact_version_id': 'ref-bg', 'sha256': 'c' * 64, 'size_bytes': 1, 'media_type': 'image/png'}
+    segments = [{'start_ms': 0, 'end_ms': 2000, 'visual_asset_refs': ['ref-bg']}, {'start_ms': 2000, 'end_ms': 4000, 'visual_asset_refs': ['ref-bg']}]
+    return validate_render_package_payload({
+        'render_package_id': 'pkg-f1',
+        'package_fingerprint': 'a' * 64,
+        'production_snapshot_ref': 'snap',
+        'script_version_ref': 'script',
+        'production_plan_ref': 'plan',
+        'preset_revision_ref': 'preset',
+        'voice_artifact_ref': 'ref-voice',
+        'word_timing_ref': 'ref-timing',
+        'output_metadata_revision': 'meta',
+        'output_profile_revision': 'profile',
+        'language_validation_refs': ['lang'],
+        'input_artifacts': [bg],
+        'timeline': {'duration_ms': 4000, 'segments': segments},
+        'hook_placement': {
+            'visual_hook_ref': 'ref-bg',
+            'audio_hook_ref': 'ref-voice',
+            'thumbnail_ref': 'ref-bg',
+            'hook_time_range': {'start_ms': 0, 'end_ms': 1000},
+            'thumbnail_time_range': {'start_ms': 200, 'end_ms': 800},
+        },
+        'subtitle_config': {'karaoke': True},
+        'mix_plan': {},
+        'allowed_fallbacks': [],
+        'materialization_manifest': {
+            'ref-bg': {'local_ref': 'media/bg.png'},
+            'ref-voice': {'local_ref': 'media/voice.wav'},
+            'ref-ass': {'local_ref': ass_local},
+        },
+        'output_path_ref': 'ref-output',
+    })
+
+
+def fix2_render(staging, ass_local, name):
+    section = {'note': 'x'}
+    preset = build_preset_revision({'preset_key': 'p1', 'revision': 1, 'visual_rhythm': section, 'layout_rules': section, 'thumbnail_overlay_style': section, 'typography_karaoke_style': section, 'hook_treatment': section, 'mix_rules': section, 'color_effect_rules': section, 'output_profile_ref': 'profile-1', 'fallback_constraints': section, 'compatibility_requirements': section})
+    tool = ToolIdentity(name='ffmpeg', version='2025-03-13', build='gyan-essentials', executable=str(FFMPEG))
+    paths = MaterializedPaths(staging_root=str(staging), output_path='out/final.mp4', thumbnail_path='out/thumb.jpg')
+    spec = build_render_command(fix2_package(ass_local), preset, FIX2_PROFILE, 'ref-ass', tool, paths)
+    out = staging / 'out' / name
+    done = subprocess.run(build_final_argv(spec.argv, str(FFMPEG), 'libx264', str(out)), capture_output=True, stdin=subprocess.DEVNULL, text=True, encoding='utf-8', errors='replace', timeout=120, check=False)
+    assert done.returncode == 0, done.stderr[-2000:]
+    return out
+
+
+@pytest.fixture(scope='module')
+def fix2_world(tmp_path_factory):
+    require_ffmpeg()
+    staging = tmp_path_factory.mktemp('pw_f1_fix2') / 'staging'
+    for folder in ('media', 'subs', 'out'):
+        (staging / folder).mkdir(parents=True)
+    ffmpeg('-f', 'lavfi', '-i', 'testsrc2=size=1080x1920:rate=1', '-frames:v', '1', str(staging / 'media' / 'bg.png'))
+    ffmpeg('-f', 'lavfi', '-i', 'sine=frequency=1000:duration=4', '-c:a', 'pcm_s16le', str(staging / 'media' / 'voice.wav'))
+    lines = fix2_ass_text().splitlines(keepends=True)
+    variants = {'with.ass': lines, 'without_dialogue.ass': [x for x in lines if not (x.startswith('Dialogue:') and ',Disclosure,' in x)], 'without_style.ass': [x for x in lines if not x.startswith('Style: Disclosure,')]}
+    assert len(variants['without_dialogue.ass']) == len(lines) - 1 and len(variants['without_style.ass']) == len(lines) - 1
+    for name, kept in variants.items():
+        (staging / 'subs' / name).write_text(''.join(kept), encoding='utf-8')
+    return {'staging': staging, 'video_with': fix2_render(staging, 'subs/with.ass', 'with.mp4'), 'video_without': fix2_render(staging, 'subs/without_dialogue.ass', 'without.mp4')}
+
+
+def fix2_inspect(world, video, ass_local, settings=SETTINGS):
+    inspector = RealOutputInspector(inputs=InspectionInputs(staging_root=world['staging'], ass_ref='ref-ass', segments=SEGMENTS_INFERENCE), settings=settings, lock_path=LOCK_PATH)
+    evidence = inspector.inspect(str(video), fix2_package(ass_local))
+    return evidence, check_inference_disclosure_present(evidence, SEGMENTS_INFERENCE)
+
+
+def test_pw_f1_fix2_static_background_disclosure_passes_with_production_band(fix2_world) -> None:
+    evidence, result = fix2_inspect(fix2_world, fix2_world['video_with'], 'subs/with.ass')
+    assert [(o.segment_id, o.visible) for o in evidence.disclosure.observations] == [('seg-2', True)]
+    assert result.status is GateStatus.PASSED
+
+
+def test_pw_f1_fix2_premise_wide_band_dilutes_the_disclosure_row(fix2_world) -> None:
+    probe = FrameProbe(ffmpeg_path=FFMPEG, timeout_seconds=60)
+    wide = probe.band_difference(fix2_world['video_with'], sample_ms=3000, baseline_ms=1000, width=90, height=160, top=0.10, bottom=0.25)
+    row = probe.band_difference(fix2_world['video_with'], sample_ms=3000, baseline_ms=1000, width=90, height=160, top=0.125, bottom=0.175)
+    assert wide is not None and row is not None
+    assert wide < 5.0 <= row
+
+
+def test_pw_f1_fix2_render_without_disclosure_dialogue_fails(fix2_world) -> None:
+    evidence, result = fix2_inspect(fix2_world, fix2_world['video_without'], 'subs/with.ass')
+    assert [(o.segment_id, o.visible) for o in evidence.disclosure.observations] == [('seg-2', False)]
+    assert result.status is GateStatus.FAILED
+    assert result.reason == 'disclosure_missing:seg-2'
+
+
+@pytest.mark.parametrize(
+    ('ass_local', 'band', 'visible'),
+    [
+        ('subs/without_style.ass', Band(top=0.50, bottom=0.60), False),
+        ('subs/without_style.ass', Band(top=0.12, bottom=0.18), True),
+        ('subs/with.ass', Band(top=0.50, bottom=0.60), True),
+    ],
+    ids=['fallback_other_band_not_visible', 'fallback_row_band_visible', 'style_band_beats_settings_band'],
+)
+def test_pw_f1_fix2_disclosure_band_source(fix2_world, ass_local: str, band: Band, visible: bool) -> None:
+    settings = dataclasses.replace(SETTINGS, disclosure_band=band)
+    evidence, _ = fix2_inspect(fix2_world, fix2_world['video_with'], ass_local, settings=settings)
+    assert evidence.disclosure.observations[0].visible is visible
+
+STYLE_FORMAT = 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding'
+
+
+def style_ass(*, play_res_y='1920', size='40', outline='4', alignment='8', margin_v='240', with_style=True) -> str:
+    lines = ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1080']
+    if play_res_y is not None:
+        lines.append(f'PlayResY: {play_res_y}')
+    lines += ['', '[V4+ Styles]', STYLE_FORMAT, 'Style: Karaoke,Arial,72,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,4,0,2,60,60,360,1']
+    if with_style:
+        lines.append(f'Style: Disclosure,Arial,{size},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,{outline},0,{alignment},60,60,{margin_v},1')
+    lines += ['', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text']
+    return chr(10).join(lines) + chr(10)
+
+
+@pytest.mark.parametrize(
+    ('kwargs', 'top', 'bottom'),
+    [
+        ({}, 0.125, 0.175),
+        ({'alignment': '7'}, 0.125, 0.175),
+        ({'alignment': '9'}, 0.125, 0.175),
+        ({'alignment': '2'}, 0.825, 0.875),
+        ({'alignment': '1'}, 0.825, 0.875),
+        ({'alignment': '3'}, 0.825, 0.875),
+        ({'margin_v': '1900'}, 1900 / 1920, 1.0),
+        ({'alignment': '2', 'margin_v': '1900'}, 0.0, 1 - 1900 / 1920),
+    ],
+)
+def test_pw_f1_fix2_band_from_style_geometry(kwargs: dict, top: float, bottom: float) -> None:
+    band = disclosure_band_from_ass(style_ass(**kwargs))
+    assert band is not None
+    assert (band.top, band.bottom) == pytest.approx((top, bottom))
+
+
+@pytest.mark.parametrize(
+    'kwargs',
+    [
+        {'with_style': False},
+        {'play_res_y': None},
+        {'play_res_y': 'abc'},
+        {'play_res_y': '0'},
+        {'alignment': '4'},
+        {'alignment': '5'},
+        {'alignment': '6'},
+        {'alignment': 'x'},
+        {'size': 'abc'},
+        {'outline': ''},
+        {'margin_v': 'abc'},
+        {'margin_v': '2000'},
+    ],
+)
+def test_pw_f1_fix2_band_none_falls_back(kwargs: dict) -> None:
+    assert disclosure_band_from_ass(style_ass(**kwargs)) is None
+
+
+def test_pw_f1_fix2_band_follows_the_section_format_order() -> None:
+    text = chr(10).join([
+        '[Script Info]',
+        'PlayResY: 1920',
+        '[V4+ Styles]',
+        'Format: Name, MarginV, Alignment, Fontsize, Outline',
+        'Style: Disclosure,240,8,40,4',
+    ]) + chr(10)
+    band = disclosure_band_from_ass(text)
+    assert band is not None
+    assert (band.top, band.bottom) == pytest.approx((0.125, 0.175))
