@@ -19,7 +19,7 @@ from controlplane.api.wiring.production_profile import (
 from voice.adapters.fake_aligner import FakeAligner
 from voice.adapters.fake_tts import FakeTtsEngine, FakeVoiceRoute
 from voice.adapters.memory import InMemoryUnitOfWork
-from voice.adapters.real_ffmpeg_media_tool import RealFfmpegMediaTool
+from voice.adapters.real_ffmpeg_media_tool import FfmpegToolError, RealFfmpegMediaTool
 from voice.adapters.real_kokoro_tts import KokoroConfig, RealKokoroTts, VoiceArtifactPlacer
 from voice.adapters.real_llm_image_safety import LlmImageSafetyDetector
 from voice.adapters.real_whisper_aligner import (
@@ -32,6 +32,7 @@ from voice.persistence.unit_of_work import PostgresVoiceUnitOfWork
 import datetime
 import hashlib
 import json
+import re
 import threading
 import urllib.request
 from collections.abc import Sequence
@@ -134,25 +135,26 @@ def build_voice_services(manager: Any, config: WiringConfig) -> VoiceServices:
             compute_type=al.compute_type,
         )
     )
+    locate = locate_media_file(manager, config.workspace_id, runtime.staging_root)
+
+    def resolve_input(ref: str) -> Path:
+        found = locate(ref)
+        if found is None:
+            raise FfmpegToolError('input_missing')
+        return found
+
     media_tool = RealFfmpegMediaTool(
         runtime.ffmpeg_path,
         runtime.runtime_lock_path,
-        lambda ref: resolve_under_root(media_root, ref),
+        resolve_input,
         lambda ref, ext: resolve_under_root(media_root, ref.replace(':', '_') + '.' + ext),
     )
 
     def detector_factory(artifact_ref: ArtifactRef) -> LlmImageSafetyDetector:
-        def read_image(ref: str) -> tuple[bytes, str]:
-            path = resolve_under_root(media_root, ref)
-            suf = path.suffix.lower()
-            if suf not in _MEDIA_TYPES:
-                raise ValueError('UNSUPPORTED_IMAGE_TYPE')
-            return (path.read_bytes(), _MEDIA_TYPES[suf])
-
         return LlmImageSafetyDetector(
             runtime.vision_route,
             artifact_ref,
-            read_image,
+            read_media_image(locate),
             categories=im.categories,
             timeout_seconds=im.vision_timeout_seconds,
         )
@@ -349,19 +351,77 @@ class SelectionSeedFallback:
         return tuple(results)
 
 
-def verify_media_output(runtime: Any) -> Callable[[str], VerifiedOutput | None]:
-    media_root = runtime.staging_root / 'media'
+_IMAGE_SUFFIXES = ('png', 'jpg', 'jpeg', 'webp')
+_VERSION_REF = re.compile(r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
+_RENDITION_REF = re.compile(r'(?:processed|rendition):[0-9A-Za-z]{8,128}')
+_MUSIC_REF = re.compile(r'music-[0-9a-f]{64}')
+_BED_NONE_REF = re.compile(r'bed-none-[0-9a-f]{64}')
+_VERIFIED_VERSION_SQL = (
+    'SELECT v.artifact_id, v.sha256_hash FROM controlplane.cp_artifact_versions v '
+    'WHERE v.workspace_id = %s::uuid AND v.artifact_version_id = %s::uuid '
+    'AND EXISTS (SELECT 1 FROM controlplane.cp_artifact_locations l '
+    'WHERE l.workspace_id = v.workspace_id AND l.artifact_version_id = v.artifact_version_id '
+    "AND l.state = 'VERIFIED' AND (l.observed_hash IS NULL OR l.observed_hash = v.sha256_hash))"
+)
 
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def locate_media_file(manager: Any, workspace_id: str, staging_root: Path) -> Callable[[str], Path | None]:
+    media_root = staging_root / 'media'
+    library_root = staging_root / 'audio_library'
+
+    def by_version(ref: str) -> Path | None:
+        with manager.borrow_connection() as conn:
+            row = conn.execute(_VERIFIED_VERSION_SQL, (workspace_id, ref)).fetchone()
+        if row is None:
+            return None
+        path = resolve_under_root(staging_root, str(row[0]))
+        if not path.is_file() or _file_sha256(path) != str(row[1]):
+            return None
+        return path
+
+    def by_rendition(ref: str) -> Path | None:
+        stem = ref.replace(':', '_')
+        found = [p for p in (resolve_under_root(media_root, stem + '.' + s) for s in _IMAGE_SUFFIXES) if p.is_file()]
+        return found[0] if len(found) == 1 else None
+
+    def by_library(name: str) -> Path | None:
+        path = resolve_under_root(library_root, name)
+        return path if path.is_file() else None
+
+    def locate(ref: str) -> Path | None:
+        if not isinstance(ref, str):
+            return None
+        try:
+            if _VERSION_REF.fullmatch(ref):
+                return by_version(ref.lower())
+            if _RENDITION_REF.fullmatch(ref):
+                return by_rendition(ref)
+            if _MUSIC_REF.fullmatch(ref):
+                return by_library(ref + '.audio')
+            if _BED_NONE_REF.fullmatch(ref):
+                return by_library(ref + '.wav')
+        except ValueError:
+            return None
+        return None
+
+    return locate
+
+
+def verify_media_output(locate: Callable[[str], Path | None]) -> Callable[[str], VerifiedOutput | None]:
     def verify(ref: str) -> VerifiedOutput | None:
         try:
-            p = resolve_under_root(media_root, ref)
-            if not p.is_file():
-                p_png = resolve_under_root(media_root, ref.replace(':', '_') + '.png')
-                if p_png.is_file():
-                    p = p_png
-                else:
-                    return None
-            data = p.read_bytes()
+            path = locate(ref)
+            if path is None:
+                return None
+            data = path.read_bytes()
             return VerifiedOutput(hashlib.sha256(data).hexdigest(), len(data))
         except Exception:
             return None
@@ -369,11 +429,11 @@ def verify_media_output(runtime: Any) -> Callable[[str], VerifiedOutput | None]:
     return verify
 
 
-def read_media_image(runtime: Any) -> Callable[[str], tuple[bytes, str]]:
-    media_root = runtime.staging_root / 'media'
-
+def read_media_image(locate: Callable[[str], Path | None]) -> Callable[[str], tuple[bytes, str]]:
     def read_image(ref: str) -> tuple[bytes, str]:
-        path = resolve_under_root(media_root, ref)
+        path = locate(ref)
+        if path is None:
+            raise ValueError('IMAGE_NOT_FOUND')
         suf = path.suffix.lower()
         if suf not in _MEDIA_TYPES:
             raise ValueError('UNSUPPORTED_IMAGE_TYPE')
@@ -473,6 +533,8 @@ def voice_activity_deps(
         max_ms = int(dur.get('max', max_ms))
     duration_policy = (min_ms, max_ms)
 
+    locate = locate_media_file(manager, workspace_id, runtime.staging_root)
+
     inputs = ProductionActivityInputs(
         parameters=profile.parameters,
         tool_version=_read_tool_version(runtime.runtime_lock_path),
@@ -482,8 +544,8 @@ def voice_activity_deps(
         plans=PlanAudioFromPlans(manager, workspace_id),
         selections=SelectionSeedFallback(manager, workspace_id),
         vision=runtime.vision_route,
-        read_image=read_media_image(runtime),
-        verify_output=verify_media_output(runtime),
+        read_image=read_media_image(locate),
+        verify_output=verify_media_output(locate),
         settings=VoiceSettings(
             voice_profile_ref=f'voice-{profile.voice.voice}',
             provider_route_ref='kokoro-local',
@@ -585,6 +647,9 @@ def voice_activity_handlers(
 __all__ = [
     'VoiceServices',
     'build_voice_services',
+    'locate_media_file',
+    'read_media_image',
+    'verify_media_output',
     'voice_activity_deps',
     'voice_activity_handlers',
 ]
