@@ -66,7 +66,6 @@ from render.domain.validate_package import (
 )
 from render.ports.inputs import LocalMaterialRef, ResolveInputs, ResolvedAsset
 from render.worker.activity_handler import RenderActivityDeps
-from catalog.persistence.hooks import PostgresHookHistory
 from controlplane.application.storage_meta.handlers import STAGED_HOOK_EXTENSIONS, verified_version_for_sha
 
 
@@ -128,6 +127,7 @@ _OUTPUT_NAME_UNSAFE = re.compile(r'[^A-Za-z0-9_-]')
 _HOOK_PLACEMENT_REFS = ('visual_hook_ref', 'audio_hook_ref', 'thumbnail_ref')
 _THUMBNAIL_REF_PREFIX = 'thumb:'
 _HOOK_MEDIA_SHA_KEY = 'media_sha256'
+_HOOK_LATEST_SQL = ('SELECT r.payload FROM controlplane.cp_hook_revisions r JOIN controlplane.cp_hooks h ON h.workspace_id = r.workspace_id AND h.hook_id = r.hook_id AND h.current_revision = r.revision WHERE h.workspace_id = %s::uuid AND h.hook_id = %s')
 
 
 @dataclass(frozen=True)
@@ -317,12 +317,15 @@ class ProductionRenderSources:
         )
 
     def _hook_source(self, hook_id: str) -> _StagedSource | None:
-        try:
-            with self._manager.borrow_connection() as conn:
-                revision = PostgresHookHistory(conn, self._workspace_id).latest(hook_id)
-        except KeyError:
+        with self._manager.borrow_connection() as conn:
+            row = conn.execute(_HOOK_LATEST_SQL, (self._workspace_id, hook_id)).fetchone()
+        if row is None:
             return None
-        sha256 = dict(revision.technical_metadata).get(_HOOK_MEDIA_SHA_KEY)
+        payload = row[0]
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        pairs = payload.get('technical_metadata') if isinstance(payload, Mapping) else None
+        sha256 = next((p[1] for p in pairs if isinstance(p, (list, tuple)) and len(p) == 2 and p[0] == _HOOK_MEDIA_SHA_KEY), None) if isinstance(pairs, list) else None
         if not isinstance(sha256, str):
             raise _hook_not_ready(hook_id, 'hook_media_sha256_missing')
         version = verified_version_for_sha(self._manager, workspace_id=self._workspace_id, sha256=sha256, extensions=STAGED_HOOK_EXTENSIONS)
