@@ -99,7 +99,7 @@ def seed_items(tool):
             sha = sha_of(entry['file_name'])
             technical = tuple((key, str(entry[key])) for key in tool._TECHNICAL_KEYS if key in entry)
             technical += (('media_sha256', sha), ('recipe_template', entry['recipe']['template']), ('seed_rights_status', HOOKS['rights']['seed_rights_status']))
-            items.append(tool._SeedItem(entry['id'], media_kind, hook_kind, entry['file_name'], sha, technical))
+            items.append(tool._SeedItem(entry['id'], media_kind, hook_kind, entry['file_name'], sha, technical, pathlib.Path(entry['file_name'])))
     return items
 
 

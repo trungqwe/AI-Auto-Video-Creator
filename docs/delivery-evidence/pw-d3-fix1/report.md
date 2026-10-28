@@ -65,3 +65,16 @@ Sau khi rebase lên 14c945facdb40b29b7279c6121f735c4890b3cd0 (đã tích hợp P
 | 2 | python -m pytest tests/integration/prod_wiring/test_pw_d3_candidates.py -q -p no:cacheprovider | 0 | 18 passed in 11.00s |
 | 4 | python -m pytest tests/integration/prod_wiring/test_pw_d3_candidates.py -q -p no:cacheprovider | 0 | 18 passed in 10.65s |
 | 5 | git diff --check | 0 | Mã thoát 0, không có cảnh báo khoảng trắng thừa |
+
+## 8. Chạy lại sau rebase lên 5ed14ccb4528312d84b7d3f4b425d3f59cc8c580 (cấp lại sau thu hồi G2)
+
+1. Mã gói PW-D3-FIX1 và nhóm lỗi R3 vẫn là phạm vi giải quyết của gói, không thay đổi bất kỳ hành vi production nào.
+2. Nguyên nhân: sau rebase lần đầu lệnh pytest của test PW-D3 trả mã thoát 1 với '6 passed, 12 errors in 7.30s' vì _SeedItem trong tools/launcher/prod/seed/import_seed.py có thêm trường bắt buộc path: Path mà hàm seed_items của test gọi thiếu đối số, làm fixture imported/seeded lỗi ở bước setup.
+3. Tệp đã sửa: chỉ tests/integration/prod_wiring/test_pw_d3_candidates.py (hàm seed_items truyền thêm pathlib.Path(entry['file_name']) làm đối số path), mã production không đổi, chữ ký tool._import_items giữ nguyên.
+4. Bảng lệnh đã chạy:
+
+| Bước | Lệnh | Mã thoát | Kết quả |
+| --- | --- | --- | --- |
+| 3 | python -m pytest tests/integration/prod_wiring/test_pw_d3_candidates.py -q -p no:cacheprovider | 0 | 18 passed in 20.83s |
+| 5 | python -c "import pathlib; t = pathlib.Path('docs/delivery-evidence/pw-d3-fix1/report.md').read_text(encoding='utf-8'); assert 'PW-D3-FIX1' in t and 'R3' in t, 'report'" | 0 | Mã thoát 0, không có ngoại lệ AssertionError |
+| 6 | git diff --check | 0 | Mã thoát 0, không có cảnh báo khoảng trắng thừa |
