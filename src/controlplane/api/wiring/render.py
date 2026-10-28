@@ -11,6 +11,7 @@ from typing import Any
 import datetime
 import hashlib
 import json
+import re
 import threading
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -18,12 +19,13 @@ from pathlib import Path
 from controlplane.api.wiring.workflow import render_handler
 from controlplane.infrastructure.db.control_api_commands import PostgresConfigScope
 from render.adapters.activity_inputs import (
+    INPUT_REF_MISSING,
     ActivityInputError,
     RenderActivityInputs,
     RenderPlan,
     QualityInputs,
 )
-from render.adapters.ass_manifest import build_ass_material
+from render.adapters.ass_manifest import build_ass_material, with_ass_entry
 from render.adapters.config_render_sources import ConfigRenderSources, ass_inputs
 from render.adapters.ffmpeg_capability import read_tool_capability
 from render.adapters.postgres_plan_assets import (
@@ -62,7 +64,7 @@ from render.domain.validate_package import (
     VoiceTrackInfo,
     WordTimingInfo,
 )
-from render.ports.inputs import LocalMaterialRef, ResolveInputs
+from render.ports.inputs import LocalMaterialRef, ResolveInputs, ResolvedAsset
 from render.worker.activity_handler import RenderActivityDeps
 
 
@@ -117,6 +119,42 @@ def _read_tool_version(lock_path: Path | str) -> str:
         return str(entry.get('archive_name') or entry.get('sha256') or 'ffmpeg-pinned')
     except Exception:
         return 'ffmpeg-pinned'
+
+
+_VOICE_SOURCE_PREFIX = 'voice/'
+_OUTPUT_NAME_UNSAFE = re.compile(r'[^A-Za-z0-9_-]')
+
+
+def _output_name(render_attempt_id: str) -> str:
+    return _OUTPUT_NAME_UNSAFE.sub('_', render_attempt_id)
+
+
+def _timing_digest(payload: Mapping[str, Any]) -> tuple[str, int]:
+    canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+    return hashlib.sha256(canonical).hexdigest(), len(canonical)
+
+
+def _timeline_for_render(timeline: Mapping[str, Any]) -> dict[str, Any]:
+    segments = timeline.get('segments') if isinstance(timeline, Mapping) else None
+    if not isinstance(segments, list):
+        return dict(timeline) if isinstance(timeline, Mapping) else {}
+    mapped: list[Any] = []
+    for segment in segments:
+        if not isinstance(segment, Mapping) or 'visual_asset_refs' in segment:
+            mapped.append(segment)
+            continue
+        visuals = segment.get('visuals')
+        ordered = sorted(
+            (v for v in visuals if isinstance(v, Mapping)) if isinstance(visuals, list) else (),
+            key=lambda v: (v.get('start_ms', 0), v.get('end_ms', 0)),
+        )
+        refs = [
+            v['artifact_version_ref']
+            for v in ordered
+            if isinstance(v.get('artifact_version_ref'), str) and v['artifact_version_ref']
+        ]
+        mapped.append({**segment, 'visual_asset_refs': refs})
+    return {**timeline, 'segments': mapped}
 
 
 class FreshScope:
@@ -204,6 +242,44 @@ class ProductionRenderSources:
         self._runtime = runtime
         self._clock = clock
 
+    def _read_timing_payload(self, timing_ref: str) -> Mapping[str, Any] | None:
+        timing_sql = (
+            'SELECT payload FROM controlplane.cp_word_timings '
+            'WHERE workspace_id = %s::uuid AND timing_artifact_ref = %s '
+            'ORDER BY revision DESC LIMIT 1'
+        )
+        try:
+            with self._manager.borrow_connection() as conn:
+                row = conn.execute(timing_sql, (self._workspace_id, timing_ref)).fetchone()
+        except Exception:
+            return None
+        if row is None:
+            return None
+        payload = row[0]
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                return None
+        return payload if isinstance(payload, Mapping) else None
+
+    def _build_ass_material(self, timing_payload: Mapping[str, Any], script_version_ref: str) -> Any:
+        scope = FreshScope(self._manager)
+        cfg_sources = ConfigRenderSources(scope, self._workspace_id)
+        preset_obj = cfg_sources.preset('bold-yellow').preset
+        profile_obj = cfg_sources.output_profile().profile
+        infos = read_script_segments(self._manager, workspace_id=self._workspace_id, script_version_ref=script_version_ref)
+        inputs_ass = ass_inputs(preset_obj, profile_obj)
+        return build_ass_material(
+            staging_root=str(self._runtime.staging_root),
+            words=parse_word_timing(timing_payload),
+            typography=inputs_ass.typography,
+            safe_area=inputs_ass.safe_area,
+            profile=inputs_ass.profile,
+            disclosure_style=inputs_ass.disclosure_style,
+            segments=infos,
+        )
+
     def resolve_inputs(self, input_refs: Sequence[Mapping[str, str]]) -> ResolveInputs:
         output_path_ref = next((r['ref_id'] for r in input_refs if r.get('ref_type') == 'output_path'), 'out-default')
         script_ref = next((r['ref_id'] for r in input_refs if r.get('ref_type') == 'script_version'), None)
@@ -252,32 +328,70 @@ class ProductionRenderSources:
             asset = art_info.get_asset(aref)
             if asset is not None:
                 input_artifacts.append(asset)
+        manifest_entries = [
+            LocalMaterialRef(artifact_version_id=art.artifact_version_id, local_ref=art.artifact_version_id)
+            for art in input_artifacts
+        ]
 
         voice_ref = next((r['ref_id'] for r in input_refs if r.get('ref_type') in ('voice_artifact', 'voice_track')), None)
-        if voice_ref:
-            v_asset = art_info.get_asset(voice_ref)
-            if v_asset is not None and v_asset not in input_artifacts:
-                input_artifacts.append(v_asset)
-
-        entries = tuple(
-            LocalMaterialRef(artifact_version_id=art.artifact_version_id, local_ref=f'{art.artifact_version_id}.mp4')
-            for art in input_artifacts
+        if voice_ref is None:
+            raise ActivityInputError(INPUT_REF_MISSING, 'voice_artifact')
+        voice_version_id = next(
+            (
+                r['ref_id']
+                for r in input_refs
+                if r.get('ref_type') == 'artifact_version' and r.get('source_ref_id') == _VOICE_SOURCE_PREFIX + voice_ref
+            ),
+            None,
         )
+        voice_version = art_info.get_asset(voice_version_id) if voice_version_id else None
+        if voice_version is None:
+            raise ActivityInputError('INPUT_NOT_READY', 'voice_version_not_verified')
+        input_artifacts.append(
+            ResolvedAsset(
+                artifact_version_id=voice_ref,
+                sha256=voice_version.sha256,
+                size_bytes=voice_version.size_bytes,
+                media_type=voice_version.media_type,
+                role=voice_version.role,
+            )
+        )
+        manifest_entries.append(LocalMaterialRef(artifact_version_id=voice_ref, local_ref=voice_version.artifact_version_id))
+
+        if timing_ref is None:
+            raise ActivityInputError(INPUT_REF_MISSING, 'word_timing')
+        timing_payload = self._read_timing_payload(timing_ref)
+        if timing_payload is None:
+            raise ActivityInputError('INPUT_NOT_READY', 'word_timing_not_found')
+        timing_sha256, timing_size = _timing_digest(timing_payload)
+        input_artifacts.append(
+            ResolvedAsset(
+                artifact_version_id=timing_ref,
+                sha256=timing_sha256,
+                size_bytes=timing_size,
+                media_type='application/json',
+                role='word_timing',
+            )
+        )
+
+        script_version_ref = script_ref or 'script-default'
+        ass = self._build_ass_material(timing_payload, script_version_ref)
+        entries = with_ass_entry(manifest_entries, ass)
 
         lang_ref = 'lang-' + str(plan_ref or 'default')
 
         return ResolveInputs(
             production_snapshot_ref=snapshot_ref,
-            script_version_ref=script_ref or 'script-default',
+            script_version_ref=script_version_ref,
             production_plan_ref=plan_ref or 'plan-default',
             preset_revision_ref=preset_pin.revision_ref,
-            voice_artifact_ref=voice_ref or 'voice-default',
-            word_timing_ref=timing_ref or 'timing-default',
+            voice_artifact_ref=voice_ref,
+            word_timing_ref=timing_ref,
             output_metadata_revision=meta_ref,
             output_profile_revision=profile_pin.revision_ref,
             language_validation_refs=(lang_ref,),
             input_artifacts=tuple(input_artifacts),
-            timeline=timeline,
+            timeline=_timeline_for_render(timeline),
             hook_placement=hook_placement,
             subtitle_config=subtitle_config,
             mix_plan={},
@@ -318,6 +432,8 @@ class ProductionRenderSources:
         if not voice_hash or not script_fingerprint or not subtitle_text_hash:
             raise ActivityInputError('INPUT_NOT_READY', 'timing_hashes_missing')
 
+        timing_sha256, timing_size = _timing_digest(payload)
+
         voice = VoiceTrackInfo(
             voice_artifact_ref=package.voice_artifact_ref,
             script_version_id=package.script_version_ref,
@@ -333,10 +449,23 @@ class ProductionRenderSources:
 
         art_info = PostgresArtifactInfo(self._manager, workspace_id=self._workspace_id)
         verified: dict[str, VerifiedArtifact] = {}
+        manifest = package.materialization_manifest
         for art in package.input_artifacts:
-            res_asset = art_info.get_asset(art.artifact_version_id)
+            ref = art.artifact_version_id
+            if ref == package.word_timing_ref:
+                verified[ref] = VerifiedArtifact(
+                    sha256=timing_sha256,
+                    size_bytes=timing_size,
+                    state=ArtifactLocationState.VERIFIED,
+                )
+                continue
+            lookup = ref
+            if ref == package.voice_artifact_ref:
+                entry = manifest.get(ref) if isinstance(manifest, Mapping) else None
+                lookup = entry.get('local_ref') if isinstance(entry, Mapping) else None
+            res_asset = art_info.get_asset(lookup)
             if res_asset is not None:
-                verified[art.artifact_version_id] = VerifiedArtifact(
+                verified[ref] = VerifiedArtifact(
                     sha256=res_asset.sha256,
                     size_bytes=res_asset.size_bytes,
                     state=ArtifactLocationState.VERIFIED,
@@ -409,75 +538,26 @@ class ProductionRenderSources:
             build='gyan-essentials',
             executable=str(self._runtime.ffmpeg_path),
         )
+        output_name = _output_name(render_attempt_id)
         materialized = MaterializedPaths(
             staging_root=str(self._runtime.staging_root),
-            output_path=f'out/{render_attempt_id}.mp4',
-            thumbnail_path=f'out/{render_attempt_id}.jpg',
+            output_path=f'out/{output_name}.mp4',
+            thumbnail_path=f'out/{output_name}.jpg',
         )
-
-        timing_sql = (
-            'SELECT payload FROM controlplane.cp_word_timings '
-            'WHERE workspace_id = %s::uuid AND timing_artifact_ref = %s '
-            'ORDER BY revision DESC LIMIT 1'
-        )
-        try:
-            with self._manager.borrow_connection() as conn:
-                row = conn.execute(timing_sql, (self._workspace_id, package.word_timing_ref)).fetchone()
-            p_data = json.loads(row[0]) if row and isinstance(row[0], str) else (row[0] if row else {})
-        except Exception:
-            p_data = {}
-
-        infos = read_script_segments(self._manager, workspace_id=self._workspace_id, script_version_ref=package.script_version_ref)
-        inputs_ass = ass_inputs(preset_obj, profile_obj)
-        ass_material = build_ass_material(
-            staging_root=str(self._runtime.staging_root),
-            words=parse_word_timing(p_data),
-            typography=inputs_ass.typography,
-            safe_area=inputs_ass.safe_area,
-            profile=inputs_ass.profile,
-            disclosure_style=inputs_ass.disclosure_style,
-            segments=infos,
-        )
-
+        ass_ref = self.ass_material(package).ass_ref
         spec = build_render_command(
             package,
             preset_obj,
             profile_obj,
-            ass_material.ass_ref,
+            ass_ref,
             tool,
             materialized,
         )
-        return RenderPlan(command_spec=spec, output_artifact_ref=f'out/{render_attempt_id}.mp4')
+        return RenderPlan(command_spec=spec, output_artifact_ref=f'out/{output_name}.mp4')
 
     def ass_material(self, package: RenderPackageRecord) -> Any:
-        scope = FreshScope(self._manager)
-        cfg_sources = ConfigRenderSources(scope, self._workspace_id)
-        preset_obj = cfg_sources.preset('bold-yellow').preset
-        profile_obj = cfg_sources.output_profile().profile
-
-        timing_sql = (
-            'SELECT payload FROM controlplane.cp_word_timings '
-            'WHERE workspace_id = %s::uuid AND timing_artifact_ref = %s '
-            'ORDER BY revision DESC LIMIT 1'
-        )
-        try:
-            with self._manager.borrow_connection() as conn:
-                row = conn.execute(timing_sql, (self._workspace_id, package.word_timing_ref)).fetchone()
-            p_data = json.loads(row[0]) if row and isinstance(row[0], str) else (row[0] if row else {})
-        except Exception:
-            p_data = {}
-
-        infos = read_script_segments(self._manager, workspace_id=self._workspace_id, script_version_ref=package.script_version_ref)
-        inputs_ass = ass_inputs(preset_obj, profile_obj)
-        return build_ass_material(
-            staging_root=str(self._runtime.staging_root),
-            words=parse_word_timing(p_data),
-            typography=inputs_ass.typography,
-            safe_area=inputs_ass.safe_area,
-            profile=inputs_ass.profile,
-            disclosure_style=inputs_ass.disclosure_style,
-            segments=infos,
-        )
+        p_data = self._read_timing_payload(package.word_timing_ref) or {}
+        return self._build_ass_material(p_data, package.script_version_ref)
 
     def ass_ref_for(self, package: RenderPackageRecord) -> str:
         return self.ass_material(package).ass_ref

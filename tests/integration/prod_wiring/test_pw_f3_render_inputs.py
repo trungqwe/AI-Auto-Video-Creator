@@ -15,7 +15,22 @@ from typing import Any
 
 import pytest
 
-from controlplane.api.wiring.production_profile import load_production_profile
+import dataclasses
+from datetime import datetime, timezone
+from decimal import Decimal
+from pathlib import PureWindowsPath
+from types import MappingProxyType, SimpleNamespace
+
+from controlplane.api.wiring.production_profile import ProductionRuntime, load_production_profile
+from controlplane.api.wiring.render import ProductionRenderSources
+from controlplane.application.storage_meta.handlers import register_staged_artifact
+from controlplane.infrastructure.production_ports.gpu_lease import LocalGpuLease
+from creative.domain.asset_selection import CreativeAssetSelection, SceneAssignment
+from creative.domain.production_plan import build_production_plan
+from creative.domain.ref_resolver import ResourceRef
+from creative.domain.script import ScriptSegment, ScriptVersion
+from render.adapters.activity_inputs import ActivityInputError
+from render.domain.validate_package import validate_render_package
 from controlplane.infrastructure.db.control_api_commands import PostgresConfigScope, compose_command_service
 from controlplane.infrastructure.db.uow import TransactionManager
 from render.adapters.ass_manifest import (
@@ -1266,3 +1281,313 @@ def test_unordered_input_gives_the_same_ass(
         segments=[seg2, seg0, seg1],
     )
     assert mat_ordered.text == mat_reversed.text
+
+# --- PW-W2-FIX3 (R6): g?i render d?ng t? k? ho?ch creative th?t ---
+NOW = datetime(2026, 10, 28, 1, 2, 3, tzinfo=timezone.utc)
+VOICE_BYTES = b'f3-voice-wav-bytes'
+VOICE_REF_F3 = 'voice-artifact-' + hashlib.sha256(VOICE_BYTES).hexdigest()
+FFMPEG_BYTES = b'pinned-ffmpeg-bytes'
+
+
+def render_runtime(tmp_path: pathlib.Path) -> ProductionRuntime:
+    ffmpeg = tmp_path / 'ffmpeg.exe'
+    ffmpeg.write_bytes(FFMPEG_BYTES)
+    lock = tmp_path / 'runtime.lock.json'
+    lock.write_text(
+        json.dumps({'pins': {'ffmpeg': {'status': 'PINNED', 'sha256': hashlib.sha256(FFMPEG_BYTES).hexdigest()}}}),
+        encoding='utf-8',
+    )
+    runtime = ProductionRuntime(
+        ffmpeg_path=ffmpeg,
+        ffprobe_path=tmp_path / 'ffprobe.exe',
+        runtime_lock_path=lock,
+        weights_dir=tmp_path / 'weights',
+        weights_lock_path=tmp_path / 'model-weights.lock.json',
+        whisper_model_dir=tmp_path / 'whisper',
+        staging_root=tmp_path / 'staging',
+        secret_store_root=tmp_path / 'vault',
+        oauth_client_secrets_path=tmp_path / 'client.json',
+        oauth_consent_timeout_seconds=300,
+        route_cost_per_request=Decimal('0'),
+        tokenization={
+            'revision': 'pw-w2',
+            'unicode_form': 'NFC',
+            'casefold': True,
+            'edge_strip_categories': ('P',),
+            'gap_tolerance_ms': 500,
+            'min_confidence': 0.5,
+        },
+        drive_placement={'original': 'folder-original', 'reusable': 'folder-reusable', 'output': 'folder-output'},
+        drive_fallback_parent_id='folder-root',
+        route_catalog=SimpleNamespace(candidates=lambda workspace_id, ai_role: ()),
+        provider_credentials=SimpleNamespace(acquire=lambda method, account: None),
+        vision_route=SimpleNamespace(invoke_vision=lambda *args, **kwargs: ''),
+        artifact_source=SimpleNamespace(open=lambda artifact_version_id: None),
+        drive_token_broker=SimpleNamespace(acquire=lambda method, account: None),
+        gpu_lease=LocalGpuLease(2, 60.0),
+    )
+    runtime.staging_root.mkdir(parents=True, exist_ok=True)
+    return runtime
+
+
+def stage_and_register(
+    manager: Any, db: Any, runtime: ProductionRuntime, relative_ref: str, data: bytes
+) -> Any:
+    target = runtime.staging_root / relative_ref
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return register_staged_artifact(
+        manager,
+        workspace_id=db.workspace_id,
+        staging_root=runtime.staging_root,
+        owner_ref='job-f3',
+        relative_ref=relative_ref,
+        retention_ref='durable',
+    )
+
+
+def creative_plan(db: Any, pinned: tuple[Any, Any], v1_id: str, v2_id: str) -> Any:
+    script_text = ' '.join(WORDS)
+    count = len(WORDS)
+    est = count / 2.0
+    script = ScriptVersion(
+        script_version_id=SCRIPT_ID,
+        language='en',
+        hook_intent='hook',
+        thumbnail_transition='fade',
+        segments=(
+            ScriptSegment(
+                segment_id='s1',
+                order=0,
+                text=script_text,
+                claim_mode='transition',
+                scene_intent='scene 1',
+                source_refs=(),
+                disclosure=None,
+                word_count=count,
+                estimated_seconds=est,
+            ),
+        ),
+        pronunciation_hints=(),
+        speech_rate=2.0,
+        estimated_duration_seconds=est,
+    )
+    base = CreativeAssetSelection(
+        snapshot_ref='snap-1',
+        script_ref=SCRIPT_ID,
+        angle_ref='angle-1',
+        safety_policy_revision='safety-r1',
+        music_sfx_policy_revision='ms-r1',
+        preset_registry_revision='preset-reg-r1',
+        visual_hook=ResourceRef(db.workspace_id, 'visual_hook', 'vh-1', 'vh-r1'),
+        audio_hook=ResourceRef(db.workspace_id, 'audio_hook', 'ah-1', 'ah-r1'),
+        thumbnail=ResourceRef(db.workspace_id, 'thumbnail', 'th-1', 'th-r1'),
+        thumbnail_overlay_intent='title card',
+        assignments=(
+            SceneAssignment(
+                order=0,
+                scene_id='sc-1',
+                media_asset_id='m-1',
+                rendition_ref='rend-1',
+                artifact_version_ref=v1_id,
+                rationale='r1',
+            ),
+            SceneAssignment(
+                order=1,
+                scene_id='sc-2',
+                media_asset_id='m-2',
+                rendition_ref='rend-2',
+                artifact_version_ref=v2_id,
+                rationale='r2',
+            ),
+        ),
+        music_intents=(MappingProxyType({'cue': 'intro_pad', 'description': 'soft pad'}),),
+        sfx_intents=(MappingProxyType({'cue': 'whoosh', 'description': 'short whoosh'}),),
+        fallback_candidates=(),
+        rationale='overall',
+        score_components=MappingProxyType({}),
+    )
+    selection = dataclasses.replace(base, selection_fingerprint=base.compute_fingerprint())
+
+    raw = {
+        'timeline': {
+            'segments': [
+                {
+                    'scene_id': 'sc-1',
+                    'start_ms': 0,
+                    'end_ms': 2000,
+                    'transition_intent': 'hard cut',
+                    'visuals': [
+                        {
+                            'media_asset_id': 'm-1',
+                            'start_ms': 0,
+                            'end_ms': 2000,
+                            'crop_intent': 'center on subject',
+                            'overlay_intent': 'lower third',
+                            'effect_intent': 'slow push-in',
+                        }
+                    ],
+                },
+                {
+                    'scene_id': 'sc-2',
+                    'start_ms': 2000,
+                    'end_ms': 4000,
+                    'transition_intent': 'cross dissolve',
+                    'visuals': [
+                        {
+                            'media_asset_id': 'm-2',
+                            'start_ms': 2000,
+                            'end_ms': 4000,
+                            'crop_intent': 'center on subject',
+                            'overlay_intent': 'lower third',
+                            'effect_intent': 'slow push-in',
+                        }
+                    ],
+                },
+            ]
+        },
+        'hook_placement': {
+            'hook_time_range': {'start_ms': 0, 'end_ms': 2000},
+            'thumbnail_time_range': {'start_ms': 500, 'end_ms': 1500},
+        },
+        'voice_profile_intent': {'direction': 'warm and confident', 'pace': 'steady', 'emotion': 'curious'},
+        'music_cues': [{'cue': 'intro_pad', 'start_ms': 0, 'end_ms': 4000}],
+        'sfx_cues': [{'cue': 'whoosh', 'start_ms': 1800, 'end_ms': 2200}],
+        'subtitle_style_intent': {'style': 'bold white captions', 'karaoke': True, 'highlight_intent': 'active word turns yellow'},
+        'allowed_fallbacks': [
+            {'rule_id': 'fb-2', 'kind': 'simplify_transition', 'scene_id': 'sc-1'},
+        ],
+        'output_metadata_requirement': 'english title, caption and 3-4 hashtags (CT-AI-009)',
+    }
+
+    return build_production_plan(
+        raw,
+        production_plan_id=PLAN_ID,
+        script=script,
+        selection=selection,
+        preset_revision_ref=pinned[0].revision_ref,
+    )
+
+
+def build_world(db: Any, manager: Any, pinned: tuple[Any, Any], tmp_path: pathlib.Path) -> SimpleNamespace:
+    runtime = render_runtime(tmp_path)
+    v1 = stage_and_register(manager, db, runtime, 'media/f3-visual-1.mp4', b'v1-bytes-f3')
+    v2 = stage_and_register(manager, db, runtime, 'media/f3-visual-2.mp4', b'v2-bytes-f3')
+    voice_version = stage_and_register(manager, db, runtime, 'voice/' + VOICE_REF_F3, VOICE_BYTES)
+
+    insert_script(db, script_segments_payload(['source_backed', 'source_backed'], [4, 4]))
+    insert_timing(db)
+    plan = creative_plan(db, pinned, v1.artifact_version_id, v2.artifact_version_id)
+    insert_plan(db, plan.to_payload())
+
+    sources = ProductionRenderSources(
+        manager=manager,
+        workspace_id=db.workspace_id,
+        profile=load_production_profile(PROFILE_PATH),
+        runtime=runtime,
+        clock=lambda: NOW,
+    )
+    plan_port = PostgresPlanAssets(manager, workspace_id=db.workspace_id)
+
+    refs = [
+        {'ref_type': 'production_plan', 'ref_id': PLAN_ID},
+        {'ref_type': 'script_version', 'ref_id': SCRIPT_ID},
+        {'ref_type': 'word_timing', 'ref_id': TIMING_REF},
+        {'ref_type': 'voice_artifact', 'ref_id': VOICE_REF_F3},
+        {'ref_type': 'artifact_version', 'ref_id': voice_version.artifact_version_id, 'source_ref_id': 'voice/' + VOICE_REF_F3},
+        {'ref_type': 'artifact_version', 'ref_id': v1.artifact_version_id, 'source_ref_id': 'media/f3-visual-1.mp4'},
+        {'ref_type': 'artifact_version', 'ref_id': v2.artifact_version_id, 'source_ref_id': 'media/f3-visual-2.mp4'},
+        {'ref_type': 'output_path', 'ref_id': 'out-f3'},
+        {'ref_type': 'production_snapshot', 'ref_id': 'snap-f3'},
+        {'ref_type': 'output_metadata', 'ref_id': 'meta-f3'},
+    ]
+
+    return SimpleNamespace(
+        runtime=runtime,
+        v1=v1,
+        v2=v2,
+        voice_version=voice_version,
+        sources=sources,
+        plan_port=plan_port,
+        refs=refs,
+    )
+
+
+def test_resolved_render_package_validates_and_builds_command(
+    pw_database: Any, manager: Any, pinned: tuple[Any, Any], tmp_path: pathlib.Path
+) -> None:
+    w = build_world(pw_database, manager, pinned, tmp_path)
+    inputs = w.sources.resolve_inputs(w.refs)
+    assert [s['visual_asset_refs'] for s in inputs.timeline['segments']] == [[w.v1.artifact_version_id], [w.v2.artifact_version_id]]
+    record = resolve_render_package(inputs, w.plan_port)
+
+    manifest = record.materialization_manifest
+    assert manifest[w.v1.artifact_version_id]['local_ref'] == w.v1.artifact_version_id
+    assert not manifest[w.v1.artifact_version_id]['local_ref'].endswith('.mp4')
+    assert manifest[w.v2.artifact_version_id]['local_ref'] == w.v2.artifact_version_id
+    assert not manifest[w.v2.artifact_version_id]['local_ref'].endswith('.mp4')
+    assert manifest[VOICE_REF_F3]['local_ref'] == w.voice_version.artifact_version_id
+    ass_ref = w.sources.ass_ref_for(record)
+    assert manifest[ass_ref]['local_ref'].endswith('.ass')
+    for entry in manifest.values():
+        assert (w.runtime.staging_root / entry['local_ref']).is_file()
+
+    voice_input = next(a for a in record.input_artifacts if a.artifact_version_id == VOICE_REF_F3)
+    assert voice_input.sha256 == hashlib.sha256(VOICE_BYTES).hexdigest()
+    assert voice_input.size_bytes == len(VOICE_BYTES)
+
+    timing_input = next(a for a in record.input_artifacts if a.artifact_version_id == TIMING_REF)
+    expected_timing_bytes = json.dumps(timing_payload(), sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+    assert timing_input.sha256 == hashlib.sha256(expected_timing_bytes).hexdigest()
+    assert timing_input.size_bytes == len(expected_timing_bytes)
+
+    report = validate_render_package(record, w.sources.validation_context(record))
+    assert report.passed is True, report.findings
+
+    plan = w.sources.render_plan(record, 'render:att:1')
+    assert ':' not in plan.output_artifact_ref
+    assert PureWindowsPath(plan.command_spec.argv[-1]).name == 'render_att_1.mp4'
+    assert str(w.runtime.staging_root / w.v1.artifact_version_id) in plan.command_spec.argv
+    assert str(w.runtime.staging_root / w.v2.artifact_version_id) in plan.command_spec.argv
+    assert str(w.runtime.staging_root / w.voice_version.artifact_version_id) in plan.command_spec.argv
+    assert any(arg.endswith('.ass') or '.ass' in arg for arg in plan.command_spec.argv)
+
+    cmd = build_render_command(
+        record,
+        pinned[0].preset,
+        pinned[1].profile,
+        w.sources.ass_ref_for(record),
+        ToolIdentity(name='ffmpeg', version='test', build='test-build', executable='C:/tools/ffmpeg.exe'),
+        MaterializedPaths(staging_root=str(w.runtime.staging_root), output_path='out/render_att_1.mp4', thumbnail_path='out/render_att_1.jpg'),
+    )
+    assert cmd is not None
+
+
+@pytest.mark.parametrize(
+    'variant,expected_code',
+    [
+        ('drop_voice_version_ref', 'INPUT_NOT_READY'),
+        ('bad_voice_source_ref', 'INPUT_NOT_READY'),
+        ('drop_voice_ref', 'INPUT_REF_MISSING'),
+        ('drop_timing_ref', 'INPUT_REF_MISSING'),
+    ],
+)
+def test_resolve_inputs_fails_closed_on_missing_voice_or_timing(
+    pw_database: Any, manager: Any, pinned: tuple[Any, Any], tmp_path: pathlib.Path, variant: str, expected_code: str
+) -> None:
+    w = build_world(pw_database, manager, pinned, tmp_path)
+    refs = [copy.deepcopy(r) for r in w.refs]
+    if variant == 'drop_voice_version_ref':
+        refs = [r for r in refs if not (r.get('ref_type') == 'artifact_version' and str(r.get('source_ref_id', '')).startswith('voice/'))]
+    elif variant == 'bad_voice_source_ref':
+        for r in refs:
+            if r.get('ref_type') == 'artifact_version' and str(r.get('source_ref_id', '')).startswith('voice/'):
+                r['source_ref_id'] = 'voice/voice-artifact-' + 'c' * 64
+    elif variant == 'drop_voice_ref':
+        refs = [r for r in refs if r.get('ref_type') != 'voice_artifact']
+    elif variant == 'drop_timing_ref':
+        refs = [r for r in refs if r.get('ref_type') != 'word_timing']
+
+    with pytest.raises(ActivityInputError) as exc_info:
+        w.sources.resolve_inputs(refs)
+    assert exc_info.value.code == expected_code
