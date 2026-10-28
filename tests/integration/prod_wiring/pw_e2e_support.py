@@ -45,6 +45,7 @@ from catalog.persistence.assets import PostgresMediaAssetRepository
 from controlplane.api.wiring.production_profile import ProductionRuntime, load_production_profile
 from controlplane.application.config_security.route_resolver import CREDENTIAL_METHOD, RouteCandidate
 from controlplane.application.storage_meta.cloud_persist import ObjectAlreadyExistsError
+from controlplane.application.storage_meta.handlers import register_staged_artifact
 from controlplane.domain.config_security.external_account import ExternalAccount
 from controlplane.domain.config_security.status_graph import ExternalAccountStatus
 from controlplane.domain.statemachine import ArtifactLocationState as S
@@ -929,38 +930,18 @@ def seed_render_and_catalog(manager: Any, database: Any, runtime: Any) -> None:
             make_still(img_path, col)
             data = img_path.read_bytes()
             img_sha = hashlib.sha256(data).hexdigest()
-            img_size = len(data)
-            art_id = f'art-bg-{num}'
-            ver_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f'seed-bg-{num}'))
-            version = storage_repo.insert_version(
-                ver_id,
-                {
-                    'workspace_id': database.workspace_id,
-                    'artifact_id': art_id,
-                    'sha256_hash': img_sha,
-                    'size_bytes': img_size,
-                    'mime_type': 'image/png',
-                    'artifact_kind': 'media_image',
-                    'owner_ref': 'seed',
-                    'retention_ref': 'per_video',
-                    'sensitivity_ref': 'internal',
-                },
+            (media_dir / f'{img_sha}.png').write_bytes(data)
+            version = register_staged_artifact(
+                manager,
+                workspace_id=database.workspace_id,
+                staging_root=runtime.staging_root,
+                owner_ref='seed',
+                relative_ref=f'media/{img_sha}.png',
+                retention_ref='durable',
             )
-            loc = storage_repo.insert_location(
-                str(uuid.uuid4()),
-                {
-                    'workspace_id': database.workspace_id,
-                    'artifact_version_id': ver_id,
-                    'backend_ref': 'local-staging',
-                    'provider_namespace_ref': 'media',
-                    'provider_object_ref': f'bg-{num}.png',
-                    'logical_locator': f'media/bg-{num}.png',
-                },
-            )
-            walk(storage_repo, loc, S.VERIFIED, observed=(img_sha, img_size))
-            (runtime.staging_root / ver_id).write_bytes(data)
+            ver_id = version.artifact_version_id
             (media_dir / ver_id).write_bytes(data)
-            (media_dir / f"{ver_id}.png").write_bytes(data)
+            (media_dir / f'{ver_id}.png').write_bytes(data)
             mp4_file = runtime.staging_root / f'{ver_id}.mp4'
             dur = 30.0 if i == 1 else 35.5
             subprocess.run(
@@ -985,18 +966,6 @@ def seed_render_and_catalog(manager: Any, database: Any, runtime: Any) -> None:
                 ],
                 check=True,
             )
-            loc_root = storage_repo.insert_location(
-                str(uuid.uuid4()),
-                {
-                    'workspace_id': database.workspace_id,
-                    'artifact_version_id': ver_id,
-                    'backend_ref': 'local-staging',
-                    'provider_namespace_ref': 'staging',
-                    'provider_object_ref': ver_id,
-                    'logical_locator': ver_id,
-                },
-            )
-            walk(storage_repo, loc_root, S.VERIFIED, observed=(img_sha, img_size))
 
             asset_id = f'seed-bg-{num}'
             entry = ProvenanceEntry(
@@ -1075,7 +1044,7 @@ def seed_render_and_catalog(manager: Any, database: Any, runtime: Any) -> None:
             description='Visual hook 1',
             note='seed',
             enabled=True,
-            technical_metadata=(('width', '1080'), ('height', '1920'), ('fps', '30'), ('duration_ms', '3000'), ('media_sha256', vh_sha)),
+            technical_metadata=(('width', '1080'), ('height', '1920'), ('fps', '30'), ('duration_ms', '3000'), ('media_sha256', vh_sha), ('seed_rights_status', 'SELF_GENERATED')),
         )
 
         ah_bytes = _make_wav_bytes(1.5)
@@ -1133,7 +1102,7 @@ def seed_render_and_catalog(manager: Any, database: Any, runtime: Any) -> None:
             description='Audio hook 1',
             note='seed',
             enabled=True,
-            technical_metadata=(('sample_rate_hz', '24000'), ('channels', '1'), ('duration_ms', '1500'), ('media_sha256', ah_sha)),
+            technical_metadata=(('sample_rate_hz', '24000'), ('channels', '1'), ('duration_ms', '1500'), ('media_sha256', ah_sha), ('seed_rights_status', 'SELF_GENERATED')),
         )
         conn.commit()
 

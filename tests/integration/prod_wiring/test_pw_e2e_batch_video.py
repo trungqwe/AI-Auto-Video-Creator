@@ -650,6 +650,30 @@ def test_the_report_lists_stage_timings_and_the_cp7_conditions() -> None:
         assert any(stage_name in line for line in table_lines), f"Stage {stage_name} missing from table in report.md"
 
 
+@pytest.mark.asyncio
+async def test_the_seeded_images_resolve_to_verified_versions_through_the_production_lookup(rig: Any) -> None:
+    from controlplane.application.storage_meta.handlers import verified_version_for_sha
+    from controlplane.infrastructure.db.uow import TransactionManager
+
+    with rig.database.connect() as conn:
+        shas = [
+            row[0]
+            for row in conn.execute(
+                "SELECT sha256_hash FROM controlplane.cp_artifact_versions WHERE workspace_id = %s AND left(artifact_id, 6) = 'media/' ORDER BY sha256_hash",
+                (rig.database.workspace_id,),
+            ).fetchall()
+        ]
+    assert len(shas) == 2
+    mgr = TransactionManager(rig.database.dsn, pool_max_size=4)
+    try:
+        for sha in shas:
+            version = verified_version_for_sha(mgr, workspace_id=rig.database.workspace_id, sha256=sha)
+            assert version is not None
+            assert version.artifact_id == f"media/{sha}.png"
+    finally:
+        mgr.close()
+
+
 def test_module_docstring_declares_covered_ids() -> None:
     self_path = pathlib.Path(__file__).resolve()
     text = self_path.read_text(encoding="utf-8")

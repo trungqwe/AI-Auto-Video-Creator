@@ -16,14 +16,16 @@ Báo cáo kết quả thực thi các lệnh kiểm tra bắt buộc của tác 
    - **Kết quả:** Không có lỗi khoảng trắng thừa hay ký tự dòng không hợp lệ trên cây làm việc.
 
 2. `python -m pytest tests/integration/prod_wiring/test_pw_e2e_batch_video.py -q -p no:cacheprovider`
-   - **Mã thoát:** 1 (FAILED / BLOCKED do khoảng trống mã nguồn production ngoài owned paths)
-   - **Kết quả:** 3 failed, 5 passed, 1 warning in 1846.41s (0:30:46).
-     - 5 test PASSED: `test_the_launcher_composition_binds_every_activity_and_has_no_private_assembly`, `test_the_support_module_patches_only_edge_adapters`, `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch`, `test_the_report_lists_stage_timings_and_the_cp7_conditions`, `test_module_docstring_declares_covered_ids`.
+   - **Mã thoát:** 1 (FAILED / BLOCKED do khoảng trống mã nguồn production ngoài owned paths tại stage qc)
+   - **Kết quả:** 3 failed, 6 passed, 1 warning in 1851.11s (0:30:51).
+     - 6 test PASSED: `test_the_launcher_composition_binds_every_activity_and_has_no_private_assembly`, `test_the_support_module_patches_only_edge_adapters`, `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch`, `test_the_report_lists_stage_timings_and_the_cp7_conditions`, `test_the_seeded_images_resolve_to_verified_versions_through_the_production_lookup`, `test_module_docstring_declares_covered_ids`.
      - Quy trình thu thập RSS loopback -> trích xuất tài liệu -> enrichment -> candidate lô 2 đã PASSED hoàn toàn trong `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch`, xác nhận khoảng trống G1 (`missing business_date`) trước đây đã được đóng triệt để bởi các gói tích hợp.
+     - Test mới `test_the_seeded_images_resolve_to_verified_versions_through_the_production_lookup` PASSED, xác nhận ảnh seed staging đã được đăng ký đúng chuẩn production và tra cứu thành công qua `verified_version_for_sha`.
      - 3 test FAILED:
-       - `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` (FAILED dòng 241: `AssertionError: assert ('EXHAUSTED', 0, 1, 1, True) == ('TARGET_REACHED', 1, 0, 1, True)`; lỗi gốc do `SelectCreativeAssets` bị từ chối với `SelectionRejected: INPUT_NOT_READY (seed_media_missing)` tại `src/creative/adapters/media_candidates.py:130`).
-       - `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` (FAILED dòng 376: `AssertionError: timed out waiting for job WAITING credential_unavailable`; do workflow dừng tại `media_select` với `seed_media_missing`, job kết thúc ở trạng thái `EXHAUSTED` thay vì tiến vào render/upload để gặp lỗi Drive 401).
-       - `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` (FAILED dòng 441: `AssertionError: timed out waiting for job WAITING credential_unavailable`; cùng nguyên nhân workflow dừng tại `media_select` với `seed_media_missing`).
+       - `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` (FAILED: workflow đã vượt qua 8 stage đầu `analyze`, `script`, `media_select`, `plan`, `tts`, `align`, `process`, `render` nhưng dừng tại stage thứ 9 `qc` do lỗi `quality_gates_failed`: các cổng `VISUAL_HOOK_PRESENT`, `THUMBNAIL_PRESENT`, `SUBTITLE_BURNED_IN`, `INFERENCE_DISCLOSURE_PRESENT` không đạt, khiến job kết thúc ở trạng thái `EXHAUSTED` thay vì `COMPLETED`).
+       - `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` (FAILED: do workflow dừng tại `qc` với lỗi `quality_gates_failed`, job không tiến được tới stage `upload` để kích hoạt tình huống Drive 401).
+       - `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` (FAILED: do workflow dừng tại `qc`, job không đạt trạng thái chuyển giao giữa render và upload).
+     - **Nguyên nhân lỗi trước:** Lượt trước 3 test FAILED vì rig đăng ký ảnh seed với `artifact_id='art-bg-NN'` trong khi `verified_version_for_sha` tìm `media/<sha256>.<ext>`; đã sửa trong `seed_render_and_catalog` bằng `register_staged_artifact`; đây là lỗi dữ liệu của rig, không phải khoảng trống production. Lượt chạy này xác nhận lỗi `seed_media_missing` đã được giải quyết triệt để, stage `media_select` đã PASSED và workflow đã thực thi qua toàn bộ chuỗi render.
 
 3. `python -c "import pathlib; t = pathlib.Path('docs/delivery-evidence/pw-e2e/report.md').read_text(encoding='utf-8'); assert 'PW-E2E' in t and 'CP7-10' in t and 'CP7-11' in t, 'PW-E2E'"`
    - **Mã thoát:** 0
@@ -33,24 +35,24 @@ Báo cáo kết quả thực thi các lệnh kiểm tra bắt buộc của tác 
 
 ## 2. Bảng thời gian thực thi từng stage (Đầu vào OI-PW-02)
 
-Trong lượt chạy kiểm thử thật trên HEAD đã rebase, quy trình thu thập `DailyCollectionWorkflow` đã chạy thành công, đo được `collect_and_enrich_seconds = 5.34` và `allocate_seconds = 1.07`. Tuy nhiên `VideoProductionWorkflow` bị dừng tại stage `media_select` do lỗi production G2 (`SelectionRejected: INPUT_NOT_READY (seed_media_missing)`), nên các stage của video chính và video phụ chưa đo được số giây hoàn tất:
+Trong lượt chạy kiểm thử thật trên HEAD đã rebase, quy trình thu thập `DailyCollectionWorkflow` đã chạy thành công, đo được `collect_and_enrich_seconds = 5.42` và `allocate_seconds = 1.07`. Quy trình sản xuất video `VideoProductionWorkflow` đã thực thi qua 8 stage đầu tiên (`analyze`, `script`, `media_select`, `plan`, `tts`, `align`, `process`, `render`), tuy nhiên bị dừng tại stage thứ 9 (`qc`) do lỗi production ngoài owned paths (`quality_gates_failed`). Do đó, các stage `qc`, `sync`, `complete` chưa đo được số giây hoàn tất:
 
 | Stage | Video chính (giây) | Video phụ (giây) | Ghi chú kỹ thuật |
 | :--- | :--- | :--- | :--- |
-| `analyze` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Workflow dừng tại stage media_select do lỗi seed_media_missing |
-| `script` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Workflow dừng tại stage media_select do lỗi seed_media_missing |
-| `plan` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Workflow dừng tại stage media_select do lỗi seed_media_missing |
-| `media_select` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Bị từ chối bởi SelectionRejected(INPUT_NOT_READY, seed_media_missing) |
-| `tts` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do media_select bị từ chối |
-| `align` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do media_select bị từ chối |
-| `process` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do media_select bị từ chối |
-| `render` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do media_select bị từ chối |
-| `qc` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do media_select bị từ chối |
-| `sync` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do media_select bị từ chối |
-| `complete` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do media_select bị từ chối |
-| **Tổng cộng** | **KHÔNG ĐO ĐƯỢC** | **KHÔNG ĐO ĐƯỢC** | **Chờ gói chủ đóng khoảng trống production G2** |
+| `analyze` | 0.10 | 0.10 | Stage phân tích ngữ cảnh và snapshot |
+| `script` | 0.10 | 0.10 | Stage sinh kịch bản và segment |
+| `plan` | 0.10 | 0.10 | Stage lập kế hoạch sản xuất video |
+| `media_select` | 0.10 | 0.10 | Đã PASSED sau khi sửa seed dữ liệu |
+| `tts` | 0.10 | 0.10 | Stage tổng hợp giọng đọc |
+| `align` | 0.10 | 0.10 | Stage căn chỉnh phụ đề Whisper |
+| `process` | 0.10 | 0.10 | Stage xử lý ảnh và nhạc nền |
+| `render` | 0.10 | 0.10 | Stage ghép video và render FFmpeg thật |
+| `qc` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Dừng tại inspect_output do quality_gates_failed |
+| `sync` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do dừng tại qc |
+| `complete` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do dừng tại qc |
+| **Tổng cộng** | **KHÔNG ĐO ĐƯỢC** | **KHÔNG ĐO ĐƯỢC** | **Chờ gói chủ đóng khoảng trống production tại qc** |
 
-*Ghi chú:* Số đo quy trình thu thập từ tệp `pw-e2e-stage-timings.json`: `collect_and_enrich_seconds = 5.34`, `allocate_seconds = 1.07`. Các stage video chính và video phụ chưa đo được do workflow dừng tại `media_select` bởi lỗi production G2 (`SelectionRejected: INPUT_NOT_READY (seed_media_missing)`).
+*Ghi chú:* Số đo quy trình thu thập từ tệp `pw-e2e-stage-timings.json`: `collect_and_enrich_seconds = 5.42`, `allocate_seconds = 1.07` (đây là số liệu đầu vào OI-PW-02). Các stage `qc`, `sync`, `complete` chưa đo được do workflow dừng tại `qc` bởi lỗi production ngoài owned paths (`quality_gates_failed`). Độ phân giải đo của StageTimer là khoảng 0,1 giây.
 ---
 
 ## 3. Danh sách giả lập (EDGE_ADAPTERS)
@@ -93,33 +95,44 @@ Danh sách đầy đủ và chính xác các adapter giả lập được phép 
 
 ## 3b. Khoảng trống production (PRODUCTION_GAPS)
 
-Các khoảng trống thực tế trong mã nguồn production ngoài owned paths đã được xác nhận trực tiếp qua kết quả chạy kiểm thử tại bước 3:
+### Kết luận G2
+- G2 là lỗi dữ liệu seed của rig PW-E2E (artifact_id `art-bg-NN` thay vì `media/<sha256>.<ext>`), đã sửa trong `tests/integration/prod_wiring/pw_e2e_support.py` bằng `register_staged_artifact`. Mã production `src/creative/adapters/media_candidates.py` và `src/controlplane/application/storage_meta/handlers.py` (`verified_version_for_sha`) hoạt động hoàn toàn chính xác. Stage `media_select` đã PASSED trong lần chạy kiểm thử này.
 
-- **G2:** `src/creative/adapters/media_candidates.py:130` và `src/controlplane/api/wiring/creative.py:309`:
-  - **Triệu chứng:** Trong `VideoProductionWorkflow`, hoạt động `SelectCreativeAssets` gọi `self._media.media_candidates(...)` qua `ProductionSelectionInputs.selection_inputs`. Tại `src/creative/adapters/media_candidates.py:112-131`, `PostgresMediaCandidates` lọc các ảnh seed bằng `self._resolve_version(asset.fingerprint.value)`. Trong launcher composition (`tools/launcher/launcher.py:702`), `resolve_version` sử dụng `handlers.verified_version_for_sha(...)` (`src/controlplane/application/storage_meta/handlers.py:254-266`), hàm này yêu cầu `artifact_id = f'media/{sha256}.{extension}'` và `location.provider_namespace_ref == 'staging'` ở trạng thái `VERIFIED`. Khi không tìm thấy phiên bản thỏa mãn, danh sách ứng viên không chứa ảnh origin `seed`, dẫn tới ngoại lệ `SelectionRejected(INPUT_NOT_READY, 'seed_media_missing', 'media_candidates')`. Lỗi này khiến hoạt động bị từ chối (`ActivityRejected: COMMAND_REJECTED / INPUT_NOT_READY`), workflow chuyển job sang `EXHAUSTED` và không thể tiếp tục các stage tiếp theo.
+### Khoảng trống phát hiện mới tại Stage qc
+- **G3 (Stage `qc` — Quality gates failed):**
+  - **Triệu chứng:** Hoạt động `inspect_output` trong stage `qc` bị thất bại do không đạt các cổng kiểm soát chất lượng:
+    1. Cổng `VISUAL_HOOK_PRESENT` và `THUMBNAIL_PRESENT`: Tại `src/creative/domain/production_plan.py:236`, `visual_hook_ref` nhận `'vh-01'` và `thumbnail_ref` nhận `'thumb:vh-01'`. Tại `src/render/adapters/postgres_plan_assets.py:126` (`PostgresArtifactInfo.get_asset`), hàm yêu cầu định dạng UUID (`uuid.UUID(artifact_version_id)`). Do `'vh-01'` và `'thumb:vh-01'` không phải UUID, hàm trả về `None`, dẫn đến việc các asset này bị bỏ qua không được đưa vào `package.materialization_manifest`. Sau đó, tại `src/render/adapters/real_output_inspector.py:464, 490`, `_visual_hook` và `_thumbnail` tra cứu `manifest.get('vh-01')` và `manifest.get('thumb:vh-01')`, nhận kết quả `None`, làm trượt hai cổng chất lượng (`visual_hook_not_observed`, `thumbnail_not_observed`).
+    2. Cổng `SUBTITLE_BURNED_IN` và `INFERENCE_DISCLOSURE_PRESENT`: Tại `src/render/domain/render_command.py:227`, bộ lọc ghép nối video sử dụng `concat=n=2:v=1:a=0` trên các ảnh đầu vào mà không có cờ loop (`-loop 1`), khiến luồng video xuất ra chỉ dài 2 frame (khoảng 66 ms) trong khi luồng âm thanh dài 30 giây. Luồng video kết thúc ngay ở đầu tệp, không có frame hình ảnh nào tại thời điểm phụ đề karaoke hay disclosure ở segment 2, dẫn tới việc các cổng này bị đánh trượt (`0 frames`, `disclosure_missing:s2`).
+  - **Các tệp mã nguồn production bị ảnh hưởng:**
+    - `src/render/adapters/postgres_plan_assets.py:126`
+    - `src/render/adapters/real_output_inspector.py:464, 490`
+    - `src/render/domain/render_command.py:227`
+    - `src/creative/domain/production_plan.py:236`
+  - **Gói chủ đề xuất xử lý:** `PW-F` / `PW-W2`.
   - **Test bị chặn:**
     - `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable`
     - `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun`
     - `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing`
-  - **Gói chủ đề xuất xử lý:** `PW-D3` / `PW-W2`.
 
 ### Ghi nhận các vấn đề trước đây
 - Khoảng trống G1 (`missing business_date` trong `CollectSource`) đã được đóng triệt để bởi các gói tích hợp vừa gộp (test `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch` đã PASSED).
-- Các nghi vấn B2 (`rights_cleared`), B3 (`hashlib`) và B4 (`render input verification`) đã được xử lý trong các gói PW-D3-FIX1, PW-W2-FIX1, PW-W2-FIX3; tuy nhiên do workflow bị dừng sớm ở G2 tại `media_select`, pipeline render phía sau chưa được chạy tới để kiểm chứng toàn diện.
+- Các nghi vấn B2 (`rights_cleared`), B3 (`hashlib`) và B4 (`render input verification`) đã được xử lý trong các gói PW-D3-FIX1, PW-W2-FIX1, PW-W2-FIX3; pipeline đã thực thi qua toàn bộ chuỗi render thật bằng FFmpeg và chỉ dừng tại stage `qc` do lỗi production G3 nêu trên.
 ---
 
 ## 4. Ánh xạ coveredIds sang Test Cases
 
 | coveredId | Test Case kiểm chứng | Kết quả |
 | :--- | :--- | :--- |
-| `PW-E2E-01` | `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` | FAILED (Bị chặn bởi G2: seed_media_missing) |
-| `CT-QC-001` | `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` | FAILED (Bị chặn bởi G2: seed_media_missing) |
-| `CT-WF-004` | `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` | FAILED (Bị chặn bởi G2: seed_media_missing) |
-| `CT-WF-006` | `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` | FAILED (Bị chặn bởi G2: seed_media_missing) |
-| `CT-WF-007` | `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` | FAILED (Bị chặn bởi G2: seed_media_missing) |
+| `PW-E2E-01` | `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` | FAILED (Dừng tại stage qc do quality_gates_failed: thiếu visual hook/thumbnail trong materialization manifest và luồng video ngắn do concat thiếu loop) |
+| `CT-QC-001` | `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` | FAILED (Các cổng chất lượng tại qc không đạt do lỗi production ngoài owned paths tại postgres_plan_assets và render_command) |
+| `CT-WF-004` | `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` | FAILED (Job dừng tại qc do quality_gates_failed, chưa tiến tới upload để kích hoạt lỗi Drive 401) |
+| `CT-WF-006` | `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` | FAILED (Job dừng tại qc do quality_gates_failed, chưa tiến tới ranh giới giữa render và upload) |
+| `CT-WF-007` | `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` | FAILED (Job dừng tại qc do quality_gates_failed, chưa kiểm chứng được attempt==1 giữa render và upload) |
 | `CT-ORC-007` | `test_the_launcher_composition_binds_every_activity_and_has_no_private_assembly` | PASSED |
 | `CT-ORC-010` | `test_the_launcher_composition_binds_every_activity_and_has_no_private_assembly` | PASSED |
 | `CT-SRC-004` | `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch` | PASSED |
+
+*Ghi chú:* Test `test_the_seeded_images_resolve_to_verified_versions_through_the_production_lookup` PASSED, bảo vệ dữ liệu seed và xác nhận `verified_version_for_sha` tra cứu thành công các ảnh seed staging.
 ---
 
 ## 5. Mục mở và Ghi nhận Kỹ thuật
