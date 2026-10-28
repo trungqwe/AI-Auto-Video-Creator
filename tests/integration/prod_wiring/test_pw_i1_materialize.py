@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from controlplane.application.orchestration.workflows.activities import ActivityRejected
-from controlplane.application.storage_meta.handlers import materialize_artifact_set_handler, reconcile_storage_handler, register_staged_artifact, request_cleanup_evaluation_handler, verified_version_for_sha
+from controlplane.application.storage_meta.handlers import STAGED_HOOK_EXTENSIONS, materialize_artifact_set_handler, reconcile_storage_handler, register_staged_artifact, request_cleanup_evaluation_handler, verified_version_for_sha
 from controlplane.application.storage_meta.materialization import RenderInputNotVerifiedError, release_for_render
 from controlplane.application.storage_meta.reconciliation import CloudObjectObservation
 from controlplane.domain.statemachine import ArtifactLocationState as S
@@ -348,3 +348,34 @@ def test_materialize_keeps_explicit_refs_and_rejects_unusable_derived_inputs(pw_
     with pytest.raises(ActivityRejected):
         service(request([('artifact_source', 'media/nosuffix')]), CLAIMS)
     assert count(pw_database, 'cp_artifact_versions') == 1
+
+
+def test_verified_version_for_sha_resolves_staged_hook_media_by_extension(pw_database, manager, tmp_path):
+    ws = pw_database.workspace_id
+    root = tmp_path / 'staging'
+    video = b'hook-video-bytes'
+    vdigest = sha(video)
+    write(root, f'media/{vdigest}.mp4', video)
+    mp4 = register_staged_artifact(manager, workspace_id=ws, staging_root=root, owner_ref='job-1', relative_ref=f'media/{vdigest}.mp4', retention_ref='durable')
+    assert mp4.artifact_id == f'media/{vdigest}.mp4'
+    found_video = verified_version_for_sha(manager, workspace_id=ws, sha256=vdigest, extensions=STAGED_HOOK_EXTENSIONS)
+    assert found_video is not None and found_video.artifact_version_id == mp4.artifact_version_id
+    assert verified_version_for_sha(manager, workspace_id=ws, sha256=vdigest) is None
+    audio = b'hook-audio-bytes'
+    adigest = sha(audio)
+    write(root, f'media/{adigest}.wav', audio)
+    wav = register_staged_artifact(manager, workspace_id=ws, staging_root=root, owner_ref='job-1', relative_ref=f'media/{adigest}.wav', retention_ref='durable')
+    found_audio = verified_version_for_sha(manager, workspace_id=ws, sha256=adigest, extensions=STAGED_HOOK_EXTENSIONS)
+    assert found_audio is not None and found_audio.artifact_version_id == wav.artifact_version_id
+    assert verified_version_for_sha(manager, workspace_id=ws, sha256=adigest) is None
+    pdigest, png = stage_image(manager, ws, root)
+    found_image = verified_version_for_sha(manager, workspace_id=ws, sha256=pdigest)
+    assert found_image is not None and found_image.artifact_version_id == png.artifact_version_id
+    assert verified_version_for_sha(manager, workspace_id=ws, sha256=pdigest, extensions=STAGED_HOOK_EXTENSIONS) is None
+    udata = b'unverified-clip'
+    udigest = sha(udata)
+    with pw_database.connect() as conn:
+        repo = PostgresStorageMetaRepository(conn, ws)
+        version = new_version(repo, ws, f'media/{udigest}.mp4', udata)
+        new_location(repo, ws, version)
+    assert verified_version_for_sha(manager, workspace_id=ws, sha256=udigest, extensions=STAGED_HOOK_EXTENSIONS) is None
