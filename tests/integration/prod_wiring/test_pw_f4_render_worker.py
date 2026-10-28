@@ -7,6 +7,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import datetime
+import hashlib
 import os
 import pathlib
 import subprocess
@@ -80,7 +81,17 @@ from render.application.render_video import (
 )
 from render.domain.content_gates import ExpectedLanguageRevisions
 from render.domain.package_contract import RenderPackageRecord
-from render.domain.quality_report import GateName, GateStatus, QualityPolicy, QualityReport
+from render.domain.quality_report import (
+    GATE_KINDS,
+    GATE_ORDER,
+    GateKind,
+    GateName,
+    GateResult,
+    GateStatus,
+    QualityPolicy,
+    QualityReport,
+    build_quality_report,
+)
 from render.domain.render_command import (
     MaterializedPaths,
     RenderCommandSpec,
@@ -1082,3 +1093,115 @@ def test_prepare_output_ready_runs_after_qc(pw_database: Any, manager: Any, serv
         assert not any(r['ref_type'] == 'video_output' for r in prep_out.get('output_refs', []))
     else:
         assert any(r['ref_type'] == 'video_output' and r['ref_id'] == 'video-output-att-qc-prep' for r in prep_out.get('output_refs', []))
+
+
+def render_command(world: World, tag: str, attempt_id: str) -> RenderVideoCommand:
+    pkg_id = world.new_package(tag)
+    with world.uow_factory() as uow:
+        pkg = uow.renders.latest(KIND_PACKAGE, pkg_id).record
+    plan = world.render_plan(pkg, attempt_id)
+    context = CommandContext(
+        workspace_id=world.db.workspace_id,
+        correlation_id=f'corr-{attempt_id}',
+        actor='tester',
+        occurred_at='2026-01-01T00:00:00+00:00',
+    )
+    return RenderVideoCommand(
+        grant=make_grant(world.db),
+        render_package_id=pkg_id,
+        render_attempt_id=attempt_id,
+        output_artifact_ref=plan.output_artifact_ref,
+        receipt_ref=f'receipt-{attempt_id}',
+        command_spec=plan.command_spec,
+        context=context,
+        validation_context=world.validation_context(pkg),
+    )
+
+
+def passing_report() -> QualityReport:
+    """Báo cáo đạt dựng bằng mã production build_quality_report, vì oracle của gói là băm chứ không phải cổng QC."""
+    hard = [GateResult(gate=gate, status=GateStatus.PASSED) for gate in GATE_ORDER if GATE_KINDS[gate] is GateKind.HARD]
+    return build_quality_report(hard, {GateName.INFERENCE_DISCLOSURE_PRESENT: False})
+
+
+def render_for_qc(world: World, tag: str) -> tuple[RecordingInputs, RenderActivityDeps, list[dict[str, str]], pathlib.Path, str]:
+    """render_video thật chạy qua handle_activity với FFmpeg thật ở biên."""
+    rec = RecordingInputs(world.inputs)
+    deps = world.make_deps(inputs=rec)
+    pkg_id = world.new_package(tag)
+    attempt_id = f'att-{tag}'
+    rendered = world.activity(deps, 'render_video', attempt_id, [{'ref_type': 'render_package', 'ref_id': pkg_id}])
+    assert rendered['disposition'] == 'succeeded', rendered
+    report = passing_report()
+    with world.uow_factory() as uow:
+        uow.renders.append(KIND_QUALITY_REPORT, attempt_id, 1, report)
+        uow.commit()
+    chain = [{'ref_type': 'render_package', 'ref_id': pkg_id}, *[dict(r) for r in rendered['output_refs']], {'ref_type': 'quality_report', 'ref_id': report.report_id}]
+    output_ref = next(r for r in chain if r['ref_type'] == 'render_output')
+    return (rec, deps, chain, world.staging / output_ref['ref_id'], attempt_id)
+
+
+def test_render_result_carries_the_sha256_verified_at_render_time(pw_database: Any, manager: Any, service: Any, tmp_path: pathlib.Path) -> None:
+    world = World(pw_database, manager, service, tmp_path, script_modes=['source_backed'])
+    pipe = RenderPipeline(uow=world.uow_factory(), renderer=world.renderer, lease=world.gpu, probe=world.probe, observer=world.renderer, grants=AlwaysCurrent())
+    res = pipe.render_video(render_command(world, 'sha-direct', 'att-sha-direct'))
+    assert res.attempt.receipt_state == OperationState.SUCCEEDED, res.attempt.error
+    produced = world.staging / res.attempt.output_artifact_ref
+    assert res.output_sha256 == hashlib.sha256(produced.read_bytes()).hexdigest()
+    assert not hasattr(res.attempt, 'output_sha256')
+
+    class CrashingRenderer:
+        takes_held_lease = True
+
+        def run(self, spec: Any, *, lease: GpuLease) -> Any:
+            raise RuntimeError('boom')
+
+        def observe(self, output_ref: str) -> Any:
+            return world.renderer.observe(output_ref)
+
+    crash_pipe = RenderPipeline(uow=world.uow_factory(), renderer=CrashingRenderer(), lease=world.gpu, probe=world.probe, observer=world.renderer, grants=AlwaysCurrent())
+    failed = crash_pipe.render_video(render_command(world, 'sha-fail', 'att-sha-fail'))
+    assert failed.attempt.receipt_state == OperationState.FAILED
+    assert failed.output_sha256 is None
+
+
+def test_the_qc_chain_gives_prepare_output_ready_the_verified_sha256(pw_database: Any, manager: Any, service: Any, tmp_path: pathlib.Path) -> None:
+    world = World(pw_database, manager, service, tmp_path, script_modes=['source_backed'])
+    rec, deps, chain, produced, attempt_id = render_for_qc(world, 'sha-chain')
+    expected = hashlib.sha256(produced.read_bytes()).hexdigest()
+    output_ref = next(r for r in chain if r['ref_type'] == 'render_output')
+    assert output_ref['sha256'] == expected
+    assert not any(r['ref_type'] == 'expected_sha256' for r in chain)
+    world.activity(deps, 'prepare_output_ready', 'prep-sha-chain', chain)
+    assert rec.last_command.expected_sha256 == expected
+
+    grant = make_grant(world.db)
+    stale = {'ref_type': 'render_output', 'ref_id': 'out/other-attempt.mp4', 'sha256': '0' * 64}
+    request = {'input_refs': [stale, *chain], 'operation_key': 'prep-sha-stale', 'workflow_run_id': 'run-1'}
+    assert world.inputs.resolve('prepare_output_ready', request, grant)['command'].expected_sha256 == expected
+
+    explicit = {'ref_type': 'expected_sha256', 'ref_id': 'f' * 64}
+    request_explicit = {'input_refs': [*chain, explicit], 'operation_key': 'prep-sha-explicit', 'workflow_run_id': 'run-1'}
+    assert world.inputs.resolve('prepare_output_ready', request_explicit, grant)['command'].expected_sha256 == 'f' * 64
+
+
+def test_prepare_output_ready_is_ready_for_the_intact_output(pw_database: Any, manager: Any, service: Any, tmp_path: pathlib.Path) -> None:
+    world = World(pw_database, manager, service, tmp_path, script_modes=['source_backed'])
+    rec, deps, chain, produced, attempt_id = render_for_qc(world, 'sha-ready')
+    res = world.activity(deps, 'prepare_output_ready', 'prep-sha-ready', chain)
+    assert res['disposition'] == 'succeeded', res
+    assert res['warnings'] == []
+    assert any(r['ref_type'] == 'video_output' and r['ref_id'] == f'video-output-{attempt_id}' for r in res['output_refs'])
+
+
+def test_prepare_output_ready_reports_hash_mismatch_when_one_byte_changes(pw_database: Any, manager: Any, service: Any, tmp_path: pathlib.Path) -> None:
+    world = World(pw_database, manager, service, tmp_path, script_modes=['source_backed'])
+    rec, deps, chain, produced, attempt_id = render_for_qc(world, 'sha-tamper')
+    data = produced.read_bytes()
+    produced.write_bytes(data[:-1] + bytes([data[-1] ^ 0xFF]))
+    res = world.activity(deps, 'prepare_output_ready', 'prep-sha-tamper', chain)
+    assert res['disposition'] == 'failed'
+    assert res['problem']['code'] == 'output_not_ready'
+    assert 'output_hash_mismatch' in res['warnings']
+    assert 'expected_sha256_invalid' not in res['warnings']
+    assert not any(r['ref_type'] == 'video_output' for r in res.get('output_refs', []))

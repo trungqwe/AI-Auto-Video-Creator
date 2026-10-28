@@ -42,6 +42,7 @@ REF_TYPE_ATTEMPT = 'render_attempt'
 REF_TYPE_OUTPUT = 'render_output'
 REF_TYPE_QUALITY_REPORT = 'quality_report'
 REF_TYPE_VIDEO_OUTPUT = 'video_output'
+REF_KEY_SHA256 = 'sha256'
 VALIDATION_ERROR = 'VALIDATION_ERROR'
 UNKNOWN_ACTIVITY = 'UNKNOWN_ACTIVITY'
 OPERATION_KEY_CONFLICT = 'OPERATION_KEY_CONFLICT'
@@ -303,7 +304,10 @@ def _render_outcome(result: RenderResult) -> _Outcome:
     metrics = _metrics(wall_time_ms=attempt.wall_time_ms, peak_disk_bytes=attempt.peak_disk_bytes, replayed=result.replayed)
     warnings = [_safe_text(item, REDACTED_WARNING) for item in attempt.warnings]
     if attempt.receipt_state is OperationState.SUCCEEDED:
-        refs.append({'ref_type': REF_TYPE_OUTPUT, 'ref_id': attempt.output_artifact_ref})
+        output = {'ref_type': REF_TYPE_OUTPUT, 'ref_id': attempt.output_artifact_ref}
+        if result.output_sha256 is not None:
+            output[REF_KEY_SHA256] = result.output_sha256
+        refs.append(output)
         return _Outcome(SUCCEEDED, refs, metrics, warnings, attempt.receipt_ref)
     if attempt.receipt_state is OperationState.FAILED:
         return _Outcome(FAILED, refs, metrics, warnings, attempt.receipt_ref, ('RENDER_FAILED', RENDER_ATTEMPT_FAILED, True))

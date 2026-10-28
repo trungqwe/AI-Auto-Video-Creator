@@ -131,11 +131,12 @@ class ReconcileRenderCommand:
 
 @dataclasses.dataclass(frozen=True)
 class RenderResult:
-    """problem is set for FAILED and OUTCOME_UNKNOWN attempts and carries codes only, never renderer text."""
+    """problem is set for FAILED and OUTCOME_UNKNOWN attempts and carries codes only, never renderer text. output_sha256 is the lower-case sha256 that _verify matched against the observed file; it is set only by a render that just SUCCEEDED and is None for FAILED, OUTCOME_UNKNOWN, replayed and reconciled results."""
 
     attempt: RenderAttempt
     replayed: bool
     problem: ProblemDetail | None = None
+    output_sha256: str | None = None
 
 
 _SHA256_RE = re.compile(r'[0-9A-Fa-f]{64}')
@@ -334,14 +335,14 @@ class RenderPipeline:
             ) from None
         try:
             started = self._begin(command)
-            final = self._finish(command, started, lease)
+            final, output_sha256 = self._finish(command, started, lease)
             self._settle(command, final)
         finally:
             self._lease.release(lease)
-        return RenderResult(final, False, _problem_for(final, COMMAND_RENDER, context))
+        return RenderResult(final, False, _problem_for(final, COMMAND_RENDER, context), output_sha256=output_sha256)
 
-    def _verify(self, started: RenderAttempt, outcome: RendererOutcome) -> str | None:
-        """None when the output exists, its observed sha256 equals the claimed one and the probe says decodable; else a static reason."""
+    def _verify(self, started: RenderAttempt, outcome: RendererOutcome) -> tuple[str | None, str | None]:
+        """(None, sha256) when the output exists, its observed sha256 equals the claimed one and the probe says decodable; sha256 is the lower-case hash that matched. Otherwise (static reason, None)."""
         target_ref = started.output_artifact_ref
         if outcome.output_ref != target_ref:
             norm_outcome = outcome.output_ref.replace(chr(92), '/') if outcome.output_ref else ''
@@ -349,16 +350,16 @@ class RenderPipeline:
             if norm_outcome and (norm_outcome.endswith('/' + norm_target) or norm_outcome.endswith(norm_target)):
                 target_ref = outcome.output_ref
             else:
-                return REASON_OUTPUT_REF_MISMATCH
+                return REASON_OUTPUT_REF_MISMATCH, None
         seen = self._observer.observe(target_ref)
         if not seen.exists:
-            return REASON_OUTPUT_MISSING
+            return REASON_OUTPUT_MISSING, None
         claimed = _sha(outcome.sha256)
         if claimed is None or claimed != _sha(seen.sha256):
-            return REASON_OUTPUT_HASH_MISMATCH
+            return REASON_OUTPUT_HASH_MISMATCH, None
         if self._probe.probe(target_ref).decodable is not True:
-            return REASON_OUTPUT_NOT_DECODABLE
-        return None
+            return REASON_OUTPUT_NOT_DECODABLE, None
+        return None, claimed
 
     def _settle(self, command: RenderVideoCommand, final: RenderAttempt) -> None:
         """Unit of work 2: the final attempt, RenderCompleted (SUCCEEDED only) and the trace commit together."""
@@ -375,35 +376,35 @@ class RenderPipeline:
             return self._renderer.run(spec, lease=lease)
         return self._renderer.run(spec)
 
-    def _finish(self, command: RenderVideoCommand, started: RenderAttempt, lease: GpuLease) -> RenderAttempt:
-        """Run the renderer outside any unit of work and turn what it did into the final attempt; nothing is stored here."""
+    def _finish(self, command: RenderVideoCommand, started: RenderAttempt, lease: GpuLease) -> tuple[RenderAttempt, str | None]:
+        """Run the renderer outside any unit of work and turn what it did into the final attempt and, for SUCCEEDED only, the sha256 verified by _verify; nothing is stored here."""
         secrets = command.secret_values
         finished_at = _moment(command.context)
         revision = started.revision
         try:
             outcome = self._run_renderer(command.command_spec, lease)
         except RendererTimeout:
-            return mark_outcome_unknown(started, expected_revision=revision, reason=REASON_TIMEOUT, secret_values=secrets)
+            return mark_outcome_unknown(started, expected_revision=revision, reason=REASON_TIMEOUT, secret_values=secrets), None
         except Exception as error:
             text = f'{REASON_RENDERER_CRASHED}: {type(error).__name__}: {error}'
-            return fail_attempt(started, expected_revision=revision, finished_at=finished_at, error=text, secret_values=secrets)
+            return fail_attempt(started, expected_revision=revision, finished_at=finished_at, error=text, secret_values=secrets), None
         if not isinstance(outcome, RendererOutcome) or not isinstance(outcome.metrics, RendererMetrics):
             return fail_attempt(
                 started, expected_revision=revision, finished_at=finished_at, error=REASON_OUTCOME_INVALID, secret_values=secrets,
-            )
+            ), None
         measured = _measured(outcome.metrics)
         if outcome.status is not RendererStatus.SUCCEEDED:
             detail = f': {outcome.error}' if isinstance(outcome.error, str) and outcome.error.strip() else ''
             return fail_attempt(
                 started, expected_revision=revision, finished_at=finished_at, error=REASON_RENDERER_FAILED + detail,
                 secret_values=secrets, **measured,
-            )
-        reason = self._verify(started, outcome)
+            ), None
+        reason, verified_sha256 = self._verify(started, outcome)
         if reason is not None:
             return fail_attempt(
                 started, expected_revision=revision, finished_at=finished_at, error=reason, secret_values=secrets, **measured,
-            )
-        return succeed_attempt(started, expected_revision=revision, finished_at=finished_at, secret_values=secrets, **measured)
+            ), None
+        return succeed_attempt(started, expected_revision=revision, finished_at=finished_at, secret_values=secrets, **measured), verified_sha256
 
     def _evidence(self, attempt: RenderAttempt, command: ReconcileRenderCommand) -> ProbeEvidence:
         ref = attempt.output_artifact_ref

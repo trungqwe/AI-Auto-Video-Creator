@@ -27,6 +27,8 @@ REF_PACKAGE = 'render_package'
 REF_ATTEMPT = 'render_attempt'
 REF_QUALITY_REPORT = 'quality_report'
 REF_EXPECTED_SHA256 = 'expected_sha256'
+REF_RENDER_OUTPUT = 'render_output'
+REF_KEY_SHA256 = 'sha256'
 
 INPUT_REF_MISSING = 'INPUT_REF_MISSING'
 INPUT_REF_AMBIGUOUS = 'INPUT_REF_AMBIGUOUS'
@@ -230,6 +232,9 @@ class RenderActivityInputs:
         package = self._package(self._one(refs, REF_PACKAGE))
         attempt_id = self._one(refs, REF_ATTEMPT)
         report_id = self._one(refs, REF_QUALITY_REPORT)
+        expected_sha256 = self._one(refs, REF_EXPECTED_SHA256, required=False)
+        if expected_sha256 is None:
+            expected_sha256 = self._rendered_sha256(refs, attempt_id)
         return {
             'command': PrepareOutputReadyCommand(
                 grant=grant,
@@ -238,12 +243,30 @@ class RenderActivityInputs:
                 render_attempt_id=attempt_id,
                 quality_report_ref=report_id,
                 video_output_id=f'video-output-{attempt_id}',
-                expected_sha256=self._one(refs, REF_EXPECTED_SHA256, required=False),
+                expected_sha256=expected_sha256,
                 context=ctx,
                 upload_verified=False,
                 completion_committed=False,
             )
         }
+
+    def _rendered_sha256(self, refs: Sequence[Mapping[str, str]], attempt_id: str) -> str | None:
+        """sha256 that render_video verified for the attempt, read from the render_output ref whose ref_id is the attempt output_artifact_ref; None when no such ref carries one."""
+        with self._uow_factory() as uow:
+            stored = uow.renders.latest(KIND_ATTEMPT, attempt_id)
+        if stored is None:
+            return None
+        output_ref = stored.record.output_artifact_ref
+        hashes = {
+            ref[REF_KEY_SHA256]
+            for ref in refs
+            if ref.get('ref_type') == REF_RENDER_OUTPUT
+            and ref.get('ref_id') == output_ref
+            and isinstance(ref.get(REF_KEY_SHA256), str)
+        }
+        if len(hashes) > 1:
+            raise ActivityInputError(INPUT_REF_AMBIGUOUS, REF_RENDER_OUTPUT)
+        return next(iter(hashes), None)
 
     def _segments(self, package: RenderPackageRecord, workspace_id: str) -> list[dict[str, str]]:
         infos = read_script_segments(self._manager, workspace_id=workspace_id, script_version_ref=package.script_version_ref)
