@@ -133,7 +133,39 @@ async def test_the_launcher_composition_binds_every_activity_and_has_no_private_
     assert "capability_reader" in rig.seen["kw"]
 
 
+EDGE_PATCH_ALLOWLIST = frozenset({
+    "prod_wiring, 'build_storage_services'",
+    "prod_wiring, 'build_creative_services'",
+    "prod_wiring, 'build_collection_services'",
+    "voice_wiring, 'RealKokoroTts'",
+    "voice_wiring, 'RealWhisperAligner'",
+    "voice_wiring, 'ProductionHttpsTransport'",
+    "voice_wiring, 'load_music_sources'",
+    "socket, 'getaddrinfo'",
+    "self.launcher, 'build_runtime'",
+    "self.launcher, 'STOP_GRACE_SECONDS'",
+    "temporalio.client, 'Client'",
+    "production_wiring, 'TemporalWorkerGroup'",
+    "workflow_wiring, b_tr_name",
+})
+PRODUCTION_LOGIC_TOKENS = ("rights_cleared", "VerifiedArtifact", "output_hash", "ProductionVariantContext", "ProductionSelectionInputs", "ProductionRenderSources", "RenderActivityInputs", "handle_collect_source_activity", "handle_voice_activity", "materialize_artifact_set_handler", "RealFfmpegMediaTool", "verify_media_output", "start_workflow", "business_date")
 
+def test_the_support_module_patches_only_edge_adapters() -> None:
+    target = ROOT / "tests" / "integration" / "prod_wiring" / "pw_e2e_support.py"
+    source = target.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    found = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+        if name in ("setattr", "delattr", "setitem"):
+            found.add(", ".join(ast.unparse(arg) for arg in node.args[:2]))
+    assert found, "khong tim thay monkeypatch nao: guard vo hieu"
+    assert found <= EDGE_PATCH_ALLOWLIST, sorted(found - EDGE_PATCH_ALLOWLIST)
+    for token in PRODUCTION_LOGIC_TOKENS:
+        assert token not in source, token
 async def wait_for_workflow(client: Any, wf_id: str, timeout: float = 60.0) -> Any:
     deadline = time.monotonic() + timeout
     handle = client.get_workflow_handle(wf_id)
