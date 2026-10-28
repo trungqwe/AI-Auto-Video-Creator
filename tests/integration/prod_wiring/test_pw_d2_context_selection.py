@@ -7,13 +7,16 @@ from __future__ import annotations
 import ast
 import dataclasses
 import datetime
+import hashlib
 import importlib.util
 import json
 import pathlib
+import types
 
 import pytest
 
 from controlplane.domain.orchestration import ExecutionGrant
+from controlplane.api.wiring.creative import ProductionVariantContext
 from controlplane.infrastructure.db.uow import TransactionManager
 from creative.adapters.activity_inputs import (
     ActivityInputError, CreativeSettings, ProductionActivityInputs, SourceSetPin, handle_creative_activity, selected_media_refs,
@@ -349,6 +352,53 @@ def test_missing_refs_and_unknown_activities_have_stable_codes(rig):
     with pytest.raises(ActivityInputError) as caught:
         flow.inputs.resolve('NoSuchActivity', request, grant)
     assert caught.value.code == 'UNKNOWN_ACTIVITY'
+
+
+@pytest.fixture
+def variant_manager(pw_database):
+    manager = TransactionManager(pw_database.dsn, pool_max_size=2)
+    try:
+        yield manager
+    finally:
+        manager.close()
+
+
+VERIFIED_SHA = hashlib.sha256(b'verified video bytes').hexdigest()
+OUTPUT_REF_ID = 'render/out.mp4'
+
+
+def variant_context(manager, workspace_id, phase, refs):
+    production = ProductionVariantContext(manager=manager, profile=types.SimpleNamespace(revision=1))
+    return production.variant_context(workspace_id=workspace_id, job_id='job-1', phase=phase, input_refs=refs)
+
+
+def test_output_hash_is_the_verified_sha256_of_the_render_output_ref(variant_manager, pw_database):
+    refs = [{'ref_type': 'job_candidate', 'ref_id': 'cand-1'}, {'ref_type': 'render_output', 'ref_id': OUTPUT_REF_ID, 'sha256': VERIFIED_SHA}]
+    context = variant_context(variant_manager, pw_database.workspace_id, 'output', refs)
+    assert context['output_hash'] == VERIFIED_SHA
+    assert context['output_hash'] != hashlib.sha256(OUTPUT_REF_ID.encode('utf-8')).hexdigest()
+    assert context['output_hash'] != hashlib.sha256(b'out:job-1').hexdigest()
+    assert 'output_hash' not in variant_context(variant_manager, pw_database.workspace_id, 'plan', refs)
+
+
+def test_the_latest_render_output_sha256_wins_after_a_re_render(variant_manager, pw_database):
+    newer = hashlib.sha256(b'second render').hexdigest()
+    refs = [
+        {'ref_type': 'render_output', 'ref_id': OUTPUT_REF_ID, 'sha256': VERIFIED_SHA},
+        {'ref_type': 'render_output', 'ref_id': 'render/out-2.mp4', 'sha256': newer}]
+    assert variant_context(variant_manager, pw_database.workspace_id, 'output', refs)['output_hash'] == newer
+
+
+def test_output_phase_without_a_verified_sha256_has_no_output_hash(variant_manager, pw_database):
+    cases = [
+        [{'ref_type': 'render_output', 'ref_id': OUTPUT_REF_ID}],
+        [{'ref_type': 'render_output', 'ref_id': OUTPUT_REF_ID, 'sha256': ''}],
+        [{'ref_type': 'render_output', 'ref_id': OUTPUT_REF_ID, 'sha256': 123}],
+        [{'ref_type': 'video_output', 'ref_id': OUTPUT_REF_ID, 'sha256': VERIFIED_SHA}],
+        [{'ref_type': 'output_path', 'ref_id': OUTPUT_REF_ID, 'sha256': VERIFIED_SHA}],
+        []]
+    for refs in cases:
+        assert 'output_hash' not in variant_context(variant_manager, pw_database.workspace_id, 'output', refs), refs
 
 
 def test_module_docstring_declares_covered_ids():
