@@ -22,7 +22,7 @@ import pytest
 
 from catalog.domain.identity import RightsStatus
 from controlplane.api.wiring import production_profile as pp
-from controlplane.application.storage_meta.handlers import verified_version_for_sha
+from controlplane.application.storage_meta.handlers import STAGED_HOOK_EXTENSIONS, verified_version_for_sha
 from controlplane.infrastructure.db.uow import TransactionManager
 from source_ingestion.adapters.real_http_transport import RealHttpTransport
 from source_ingestion.persistence.unit_of_work import PostgresSourceIngestionUnitOfWork
@@ -197,6 +197,26 @@ def verified_ids(manager, workspace_id, shas):
     return found
 
 
+HOOK_FILES = [item['file_name'] for group in ('visual_hooks', 'audio_hooks') for item in HOOKS[group]]
+HOOK_FILE_BY_ID = {item['id']: item['file_name'] for group in ('visual_hooks', 'audio_hooks') for item in HOOKS[group]}
+STAGED_TOTAL = {'versions': 22, 'locations': 22}
+
+
+def hook_versions(manager, workspace_id, shas):
+    found = {}
+    for name in HOOK_FILES:
+        version = verified_version_for_sha(manager, workspace_id=workspace_id, sha256=shas[name], extensions=STAGED_HOOK_EXTENSIONS)
+        assert version is not None, name
+        found[name] = version.artifact_version_id
+    return found
+
+
+def hook_revisions(dsn, workspace_id):
+    ws = uuid.UUID(workspace_id)
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        return conn.execute("SELECT hook_id, revision, artifact_version_ref, payload->'technical_metadata' FROM controlplane.cp_hook_revisions WHERE workspace_id = %s ORDER BY hook_id, revision", (ws,)).fetchall()
+
+
 def test_background_images_are_staged_and_registered_as_verified_versions(manager, database, seed_runs, tmp_path):
     tool = load_tool('import_seed')
     run = seed_runs[0]
@@ -209,8 +229,8 @@ def test_background_images_are_staged_and_registered_as_verified_versions(manage
         version = verified_version_for_sha(manager, workspace_id=database[1], sha256=sha)
         assert version is not None
         assert (version.artifact_id, version.owner_ref, version.retention_ref) == (f'media/{sha}.png', 'adapt-seed', 'durable')
-    assert artifact_counts(database[0], database[1]) == {'versions': 12, 'locations': 12}
-    assert sorted(p.name for p in staged_media(tmp_path).iterdir()) == sorted(f'{run.shas[n]}.png' for n in BACKGROUNDS)
+    assert artifact_counts(database[0], database[1]) == STAGED_TOTAL
+    assert sorted(p.name for p in staged_media(tmp_path).iterdir()) == sorted(f'{run.shas[n]}{Path(n).suffix.lower()}' for n in SEED_FILES)
 
 
 def test_rerun_keeps_one_version_and_one_location_per_background_image(manager, database, seed_runs, tmp_path):
@@ -221,7 +241,7 @@ def test_rerun_keeps_one_version_and_one_location_per_background_image(manager, 
     second = import_once(tool, manager, database, tmp_path, seed_runs[1].dir)
     assert (second.assets_new, second.assets_existing) == (0, 22)
     assert verified_ids(manager, database[1], seed_runs[1].shas) == first_ids
-    assert artifact_counts(database[0], database[1]) == before == {'versions': 12, 'locations': 12}
+    assert artifact_counts(database[0], database[1]) == before == STAGED_TOTAL
     assert not list(staged_media(tmp_path).glob('*.part'))
 
 
@@ -240,8 +260,67 @@ def test_rerun_registers_backgrounds_for_assets_that_already_exist(manager, data
     assert (report.assets_new, report.assets_existing) == (0, 22)
     assert broken.read_bytes() == (run.dir / first).read_bytes()
     verified_ids(manager, database[1], run.shas)
-    assert artifact_counts(database[0], database[1]) == {'versions': 12, 'locations': 12}
+    assert artifact_counts(database[0], database[1]) == STAGED_TOTAL
     assert counts(database[0], database[1]) == FULL_COUNTS
+
+
+def test_hooks_are_staged_and_registered_as_verified_versions(manager, database, seed_runs, tmp_path):
+    tool = load_tool('import_seed')
+    run = seed_runs[0]
+    assert len(HOOK_FILES) == 10 and artifact_counts(database[0], database[1]) == {'versions': 0, 'locations': 0}
+    import_once(tool, manager, database, tmp_path, run.dir)
+    for name in HOOK_FILES:
+        sha = run.shas[name]
+        suffix = Path(name).suffix.lower()
+        staged = staged_media(tmp_path) / f'{sha}{suffix}'
+        assert staged.is_file() and staged.read_bytes() == (run.dir / name).read_bytes()
+        version = verified_version_for_sha(manager, workspace_id=database[1], sha256=sha, extensions=STAGED_HOOK_EXTENSIONS)
+        assert version is not None, name
+        assert (version.artifact_id, version.owner_ref, version.retention_ref) == (f'media/{sha}{suffix}', 'adapt-seed', 'durable')
+    assert artifact_counts(database[0], database[1]) == STAGED_TOTAL
+
+
+def test_rerun_keeps_one_version_and_one_location_per_hook(manager, database, seed_runs, tmp_path):
+    tool = load_tool('import_seed')
+    import_once(tool, manager, database, tmp_path, seed_runs[0].dir)
+    first_ids = hook_versions(manager, database[1], seed_runs[0].shas)
+    before = artifact_counts(database[0], database[1])
+    revisions_before = hook_revisions(database[0], database[1])
+    second = import_once(tool, manager, database, tmp_path, seed_runs[1].dir)
+    assert (second.hooks_imported, second.hooks_existing) == (0, 10)
+    assert hook_versions(manager, database[1], seed_runs[1].shas) == first_ids
+    assert artifact_counts(database[0], database[1]) == before == STAGED_TOTAL
+    assert hook_revisions(database[0], database[1]) == revisions_before
+    assert not list(staged_media(tmp_path).glob('*.part'))
+
+
+def test_rerun_registers_hooks_that_already_exist_without_new_hook_revision(manager, database, seed_runs, tmp_path):
+    tool = load_tool('import_seed')
+    run = seed_runs[0]
+    tool._import_items(manager, database[1], tool._collect_items(HOOKS, run.dir))
+    assert counts(database[0], database[1])['hooks'] == 10
+    assert artifact_counts(database[0], database[1]) == {'versions': 0, 'locations': 0}
+    first = HOOK_FILES[0]
+    assert verified_version_for_sha(manager, workspace_id=database[1], sha256=run.shas[first], extensions=STAGED_HOOK_EXTENSIONS) is None
+    revisions_before = hook_revisions(database[0], database[1])
+    report = import_once(tool, manager, database, tmp_path, run.dir)
+    assert (report.hooks_imported, report.hooks_existing) == (0, 10)
+    hook_versions(manager, database[1], run.shas)
+    assert artifact_counts(database[0], database[1]) == STAGED_TOTAL
+    assert hook_revisions(database[0], database[1]) == revisions_before
+    assert counts(database[0], database[1]) == FULL_COUNTS
+
+
+def test_hook_revisions_keep_artifact_version_ref_and_media_sha256(manager, database, seed_runs, tmp_path):
+    tool = load_tool('import_seed')
+    run = seed_runs[0]
+    import_once(tool, manager, database, tmp_path, run.dir)
+    rows = hook_revisions(database[0], database[1])
+    assert sorted(row[0] for row in rows) == sorted(HOOK_FILE_BY_ID)
+    for hook_id, revision, ref, technical in rows:
+        sha = run.shas[HOOK_FILE_BY_ID[hook_id]]
+        assert ref == 'seed:' + hook_id + ':sha256:' + sha
+        assert {pair[0]: pair[1] for pair in technical}['media_sha256'] == sha
 
 
 def test_seed_media_sha256_is_stable_between_runs(seed_runs):
