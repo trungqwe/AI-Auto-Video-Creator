@@ -1,6 +1,6 @@
-# Gói được bao phủ và SHA tích hợp của M7 (revision 2)
+# Gói được bao phủ và SHA tích hợp của M7 (revision 4)
 
-Bảng dưới đây liệt kê đúng 110 gói theo thứ tự trong danh sách yêu cầu nghiệm thu của M7-MILESTONE-CLOSE-R2 (108 gói của revision 1 cộng ADAPT-LAUNCH-FIX1 và IMPL-PLAN-PROD-PORTS), candidate kiểm định là integration head `df46dfdb85b0bc5f2216cdf29daced518af4d5a3` (tiêu đề `integrate(IMPL-PLAN-PROD-PORTS-FIX1): lane lane-impl-plan-prod-ports-fix1 candidate 2092f7b2c54d`), và mọi commit integrate là tổ tiên của candidate này.
+Bảng dưới đây liệt kê đúng 139 gói theo thứ tự trong danh sách yêu cầu nghiệm thu của M7-MILESTONE-CLOSE-R4, candidate kiểm định là integration head `b8b46c6365c243088988581dbf6d18ba5c7b4e20` (tiêu đề `integrate(PW-E2E): lane lane-pw-e2e candidate 44e8965191b6`), và mọi commit integrate là tổ tiên của candidate này.
 
 | Mã gói | Commit integrate (SHA đầy đủ) | Candidate (12 hex) | Cách tra |
 | --- | --- | --- | --- |
@@ -45,6 +45,35 @@ Bảng dưới đây liệt kê đúng 110 gói theo thứ tự trong danh sách
 | PG-TEST-DSN-HARNESS-FIX1 | 51fdc0440160d06db296e5db8e60a7d62628b59c | 71aff7b4a405 | git log --grep="integrate(PG-TEST-DSN-HARNESS-FIX1)" |
 | ADAPT-LAUNCH-FIX1 | 21d99fc89eb076a036b4d62f026b057a61d96135 | 9bcb10e680dc | git log --grep="integrate(ADAPT-LAUNCH-FIX1)" |
 | IMPL-PLAN-PROD-PORTS | 8167d4ca8a6a5f46bcf4adc1d3ed48f0472ce4e1 | 42a501fd0791 | git log --grep="integrate(IMPL-PLAN-PROD-PORTS)" |
+| ADAPT-LAUNCH-FIX2 | 6042d7a626d3d523881cc86d1b0ac674986bcafa | 903393a717cb | git log --grep="integrate(ADAPT-LAUNCH-FIX2)" |
+| IMPL-PLAN-READ-SCREENS | df8decc7a02130d8627e570fc43b5b2fae0745d0 | c327c78512ef | git log --grep="integrate(IMPL-PLAN-READ-SCREENS)" |
+| ADAPT-LAUNCH-FIX3 | 767bb3acacea58df57419c84a89ffc34ccd9d8b6 | ff1c655e744e | git log --grep="integrate(ADAPT-LAUNCH-FIX3)" |
+| CP-4B-UI-SCREENS-FIX3 | 700ee722e9549360dbb45d92db904a8483711c4f | 29a350a76374 | git log --grep="integrate(CP-4B-UI-SCREENS-FIX3)" |
+| CP-4-WIRING-FIX3 | fee041569d07cd374053bc42a785535ccaba3ed7 | d57b7d5146fb | git log --grep="integrate(CP-4-WIRING-FIX3)" |
+| ADAPT-PROD-FIX3 | 419e08105690b213296cac9283c2d9a6480f5f99 | ffb624a59ece | git log --grep="integrate(ADAPT-PROD-FIX3)" |
+| CP-4B-UI-SCREENS-FIX4 | 98cd992636dbdbb84c26ccb6ce0da2cdf93bcaf0 | 45eaa79f881c | git log --grep="integrate(CP-4B-UI-SCREENS-FIX4)" |
+| IMPL-PLAN-PROD-WIRING | 24833dbb52f5872416f369a2ee4517e536017e70 | 35b0b4deb83b | git log --grep="integrate(IMPL-PLAN-PROD-WIRING)" |
+| PROD-WIRING-MUSIC-SURVEY | 2508632f4923d5776ded333f28d87d492bfe5a17 | 0563db59ea59 | git log --grep="integrate(PROD-WIRING-MUSIC-SURVEY)" |
+| IMPL-PLAN-PROD-WIRING-V3 | 7c068002f44a58e15de735e8b7ba4e546bd2cca2 | 354c6dce7cec | git log --grep="integrate(IMPL-PLAN-PROD-WIRING-V3)" |
+| IMPL-PLAN-PROD-WIRING-V4 | 46f9f57cab1225ea984bbe623355160d840a4c92 | e033bd99ea52 | git log --grep="integrate(IMPL-PLAN-PROD-WIRING-V4)" |
+| CP2A-LAYOUT-PKGDIR-FIX | c7ccdedb4ef46fb5fafedbd45e218a1eb5e87d1c | 1fd8b9d24d7c | git log --grep="integrate(CP2A-LAYOUT-PKGDIR-FIX)" |
+| PW-A3-FIX1 | 76766c2f4bf1892f5900aad6df735342bb63b902 | ca5c548bba0e | git log --grep="integrate(PW-A3-FIX1)" |
+| PW-E3-FIX1 | 9021038dbfcce83c8c1e76f6637dcf1f27b6e256 | 9895c4ad0713 | git log --grep="integrate(PW-E3-FIX1)" |
+| PW-I1-FIX1 | 8681b301f5fc3cfd41d5b0457acb6e14e544a1a7 | 5aef2c2a9c95 | git log --grep="integrate(PW-I1-FIX1)" |
+| PW-F4-FIX1 | 356480b8d0332fbba5ec9fe8cd133ea941c4bac3 | 4be6d77ffd85 | git log --grep="integrate(PW-F4-FIX1)" |
+| PW-A3-FIX2 | 14c945facdb40b29b7279c6121f735c4890b3cd0 | c3e9df3846b9 | git log --grep="integrate(PW-A3-FIX2)" |
+| ADAPT-SEED-FIX1 | 5ed14ccb4528312d84b7d3f4b425d3f59cc8c580 | 1880969efe70 | git log --grep="integrate(ADAPT-SEED-FIX1)" |
+| PW-D3-FIX1 | 3b86bfddf5ecb01b1c45daf77bd2c187799062de | 27372e77a68c | git log --grep="integrate(PW-D3-FIX1)" |
+| PW-W2-FIX1 | 813c739cf2d864464bd8d393409d7854c56e48dc | 68181fc3a1f2 | git log --grep="integrate(PW-W2-FIX1)" |
+| PW-W2-FIX2 | 3799d019baed5806c0c5be1ad13a1d9b7cefb16e | 416583fd3177 | git log --grep="integrate(PW-W2-FIX2)" |
+| PW-W2-FIX3 | 2ab2ddfe4f14d4f73d55d8a4aaa2aec2300ae51d | c2d6be1514e3 | git log --grep="integrate(PW-W2-FIX3)" |
+| PW-F4-FIX2 | 17f9c7405971ca1153ddf03e4181342ad9c8448b | bae7d5ddc1a9 | git log --grep="integrate(PW-F4-FIX2)" |
+| F-10-FIX1 | a48f6cab967e2ccae061c76350d74c1b8f28cbca | fa8a69962b37 | git log --grep="integrate(F-10-FIX1)" |
+| PW-I1-FIX2 | 57ab50cadf6f99901e6c3d7295287382c40f188f | d7dcdb34d68e | git log --grep="integrate(PW-I1-FIX2)" |
+| PW-F1-FIX1 | 5bf1d14e82efa2a60c9e3a28d4ccfcc44c7cfeb8 | 8f54f339b795 | git log --grep="integrate(PW-F1-FIX1)" |
+| ADAPT-SEED-FIX2 | b48d807e0f16ff061671523808def7addac0019e | df0a962cb517 | git log --grep="integrate(ADAPT-SEED-FIX2)" |
+| PW-W2-FIX4 | aa5ba684a4cffb012030cbcb3d34f4ebc30cd485 | a7db460c0b59 | git log --grep="integrate(PW-W2-FIX4)" |
+| F-10-FIX2 | 9e67a6ba3d0e64735ffd51dc068107ea0fe0222d | d594e124d946 | git log --grep="integrate(F-10-FIX2)" |
 | A-01 | 22535f6dcff3dbf2e3187771a9bff1b34c85c838 | b11289d9c406 | git log --grep="integrate(A-01)" |
 | A-02 | e343a41ee6570c39d0cbeda2bd35a3bf2c15513f | 0614e8d1934d | git log --grep="integrate(A-02)" |
 | A-03 | 5e009d1c06ba60052bdd1658f939ffaadc626597 | 6382ebd2cdde | git log --grep="integrate(A-03)" |
@@ -115,7 +144,30 @@ Bảng dưới đây liệt kê đúng 110 gói theo thứ tự trong danh sách
 | CP-4-WIRING | 750195f1a88ee5bc731893d8986992b7b97c442b | 06b6d6b453ca | git log --grep="integrate(CP-4-WIRING)" |
 | CP-4B-UI-SHELL | 42c328c98f7c0890d01fb3a590bf43a3f78eb2fb | 858d8179ba66 | git log --grep="integrate(CP-4B-UI-SHELL)" |
 
+
+## Cổng RELEASE (recordHash)
+
+| Mã cổng | Record hash (SHA-256) |
+| --- | --- |
+| GATE-CP-2D-REGISTRY | 00103f0a72d7b9e2f1f5803cc699db79373ac38ed2e47aa206f975da0eab9514 |
+| GATE-CP-5-COMPLETION | 3b9e4c9d779043c2f76022541f4524b931ad48cce3cad2e4bc4dfff7cfb54d90 |
+| GATE-CP-6-WORKFLOW | 2be7562bea521bede4812d8b5cff124d201b562b93a416b1972baca08d720190 |
+| GATE-CP-2B-DEPS-PATHS | 3bd11714d6cb8196cb1c800bc740a76e7a4436b905cb2c98d2a8400fa1d132cf |
+| GATE-PERSIST-A | 1ccf6c904ef88886ed1dd7a66b50c2206fd1c12ac5357d926572dbf53135a343 |
+| GATE-PERSIST-B | 39f5e7e8bc503704574da52b3605d1a03911b24c29494514c865af229ca35bf4 |
+| GATE-PERSIST-C | 5327ae192465197cc63aa6f6e1ebc4670e06c063f6a1fb46a4b7e6a3ce4066f2 |
+| GATE-PERSIST-D | 794e8b5634d3adaab3d35154ae2f0d732f2dc86a477ca8faeb2cd10cbd79506f |
+| GATE-PERSIST-E | b38673dd8c05bac07daae786cf282bcbae1cb359ea80fcd24b806bf5eab94ae7 |
+| GATE-PERSIST-F | 7254c80039939250ee1d2b372b627655b8b60b998372d7c9652b4360042a9055 |
+| GATE-PERSIST-G | f71b035ffeface811ea87ccc06ba8a13129922fed922018793672d14d244fe7d |
+| GATE-PERSIST-I | b987fc8b60eaddba804f31ce51c78cfc9047db41d42203882ea5fae37c31843e |
+| GATE-PERSIST-J | cc9e80f551c0a83996a2ff710c7ce2d8d73517eed0434d4c176e55403d1399de |
+| GATE-CP-4-WIRING-FIX3 | dd3635d4364dd5c662fd45d93a47ef343a3029d167d73792562d26582978288f |
+| GATE-ADAPT-PROD-FIX3 | df609f285a504fa51eab7793d285f2a2311c56b3222c1e6603b6586f0c6bc4a3 |
+| GATE-PW-E2E | de33d674f014ef13caf258cd7a9c8b6b0dae633def501a3e53e150c14ba9da19 |
+
 ## Ghi chú
 
-- Các commit integrate `IMPL-PLAN-PROD-PORTS-FIX1` (SHA: `df46dfdb85b0bc5f2216cdf29daced518af4d5a3`, tiêu đề `integrate(IMPL-PLAN-PROD-PORTS-FIX1): lane lane-impl-plan-prod-ports-fix1 candidate 2092f7b2c54d`) và `M4-MILESTONE-CLOSE-R2` (SHA: `561fdad88d2f0a31e59d3d31a6216e0e9933f5eb`, tiêu đề `integrate(M4-MILESTONE-CLOSE-R2): lane lane-m4-milestone-close-r2 candidate 14c19da831dc`) nằm trong lịch sử nhưng không thuộc danh sách gói nghiệm thu nên chỉ ghi chú tại đây.
-- Gói `IMPL-PLAN-PROD-PORTS` chỉ là gói kế hoạch (`docs/implementation/prod-ports/plan.md` và `slices.md`), slice PP-1..PP-8 chưa triển khai.
+- Gói `M7-INTEGRATION-PLAN` (0a3f707ffa08b3a5737be6fa30769933d2cf475d) là mốc tích hợp ban đầu của M7, không có commit integrate dạng `integrate(...)`. SHA được lấy từ commit nội dung là tổ tiên của nhánh tích hợp.
+- Hai gói kế hoạch đã retire: `IMPL-PLAN-PROD-WIRING-FIX1` và `IMPL-PLAN-PROD-WIRING-V3-FIX1` không được bao phủ trong danh sách nghiệm thu của revision 4; chúng được thay thế bởi các kế hoạch sửa đổi và hoàn thiện tiếp theo (như `IMPL-PLAN-PROD-WIRING-V3`, `IMPL-PLAN-PROD-WIRING-V4` và chuỗi các gói sửa lỗi PW). Việc retire hai gói này không ảnh hưởng đến các exit gate M7-R5-EG1 và M7-R6.
+- 16 gói cổng `GATE-*` không có SHA tích hợp; Control đã phát hành bản ghi quyết định RELEASE cho từng cổng với mã recordHash tương ứng được liệt kê ở bảng trên.
