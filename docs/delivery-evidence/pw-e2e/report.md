@@ -17,15 +17,16 @@ Báo cáo kết quả thực thi các lệnh kiểm tra bắt buộc của tác 
 
 2. `python -m pytest tests/integration/prod_wiring/test_pw_e2e_batch_video.py -q -p no:cacheprovider`
    - **Mã thoát:** 1 (FAILED / BLOCKED do khoảng trống mã nguồn production ngoài owned paths tại stage qc)
-   - **Kết quả:** 3 failed, 6 passed, 1 warning in 1851.11s (0:30:51).
+   - **Kết quả:** 3 failed, 6 passed, 1 warning in 77.84s (0:01:17).
+     - Rig nay đã được bổ sung phương thức `fail_fast_reason` trong `E2ERig` và `wait_for_workflow_result(..., rig=rig)` cùng hàm chờ `waiting_on_credential` trong `test_pw_e2e_batch_video.py` để test dừng ngay khi stage hoặc job đạt `FAILED_FINAL`; cơ chế này rút ngắn thời gian phát hiện lỗi từ 1851.11s (30m51s) xuống 77.84s (0:01:17) mà không làm thay đổi bất kỳ tiêu chí nghiệm thu nào.
      - 6 test PASSED: `test_the_launcher_composition_binds_every_activity_and_has_no_private_assembly`, `test_the_support_module_patches_only_edge_adapters`, `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch`, `test_the_report_lists_stage_timings_and_the_cp7_conditions`, `test_the_seeded_images_resolve_to_verified_versions_through_the_production_lookup`, `test_module_docstring_declares_covered_ids`.
      - Quy trình thu thập RSS loopback -> trích xuất tài liệu -> enrichment -> candidate lô 2 đã PASSED hoàn toàn trong `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch`, xác nhận khoảng trống G1 (`missing business_date`) trước đây đã được đóng triệt để bởi các gói tích hợp.
      - Test mới `test_the_seeded_images_resolve_to_verified_versions_through_the_production_lookup` PASSED, xác nhận ảnh seed staging đã được đăng ký đúng chuẩn production và tra cứu thành công qua `verified_version_for_sha`.
-     - 3 test FAILED:
-       - `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` (FAILED: workflow đã vượt qua 8 stage đầu `analyze`, `script`, `media_select`, `plan`, `tts`, `align`, `process`, `render` nhưng dừng tại stage thứ 9 `qc` do lỗi `quality_gates_failed`: các cổng `VISUAL_HOOK_PRESENT`, `THUMBNAIL_PRESENT`, `SUBTITLE_BURNED_IN`, `INFERENCE_DISCLOSURE_PRESENT` không đạt, khiến job kết thúc ở trạng thái `EXHAUSTED` thay vì `COMPLETED`).
-       - `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` (FAILED: do workflow dừng tại `qc` với lỗi `quality_gates_failed`, job không tiến được tới stage `upload` để kích hoạt tình huống Drive 401).
-       - `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` (FAILED: do workflow dừng tại `qc`, job không đạt trạng thái chuyển giao giữa render và upload).
-     - **Nguyên nhân lỗi trước:** Lượt trước 3 test FAILED vì rig đăng ký ảnh seed với `artifact_id='art-bg-NN'` trong khi `verified_version_for_sha` tìm `media/<sha256>.<ext>`; đã sửa trong `seed_render_and_catalog` bằng `register_staged_artifact`; đây là lỗi dữ liệu của rig, không phải khoảng trống production. Lượt chạy này xác nhận lỗi `seed_media_missing` đã được giải quyết triệt để, stage `media_select` đã PASSED và workflow đã thực thi qua toàn bộ chuỗi render.
+     - 3 test FAILED (dừng nhanh qua fail-fast khi stage qc đạt `FAILED_FINAL` do `quality_gates_failed`):
+       - `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` (FAILED: `fail-fast: stage qc of 5cad7988-c405-44fe-9395-fcf1a9a6b902:job:1 reached FAILED_FINAL (attempt=1, problem={'code': 'quality_gates_failed', 'type': 'urn:render:problem:quality_gates_failed', 'title': 'Quality Gates Failed', 'detail': 'the output failed its quality gates; the report is stored', 'category': 'validation', 'instance': 'urn:stage-run:5cad7988-c405-44fe-9395-fcf1a9a6b902:job:1:qc:r1', 'retryable': False, 'correlation_id': '2eac696e-22ad-46ea-8a6e-6872dd3db757'})`)
+       - `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` (FAILED: `fail-fast: stage qc of 109eb5e1-9975-4650-920e-3cbb12039a16:job:1 reached FAILED_FINAL (attempt=1, problem={'code': 'quality_gates_failed', 'type': 'urn:render:problem:quality_gates_failed', 'title': 'Quality Gates Failed', 'detail': 'the output failed its quality gates; the report is stored', 'category': 'validation', 'instance': 'urn:stage-run:109eb5e1-9975-4650-920e-3cbb12039a16:job:1:qc:r1', 'retryable': False, 'correlation_id': '657fd874-f96a-4a95-bc72-74b4d7ced368'})`)
+       - `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` (FAILED: `fail-fast: stage qc of f260d3b5-689a-4eaa-8c61-7bf2ee45cdb7:job:1 reached FAILED_FINAL (attempt=1, problem={'code': 'quality_gates_failed', 'type': 'urn:render:problem:quality_gates_failed', 'title': 'Quality Gates Failed', 'detail': 'the output failed its quality gates; the report is stored', 'category': 'validation', 'instance': 'urn:stage-run:f260d3b5-689a-4eaa-8c61-7bf2ee45cdb7:job:1:qc:r1', 'retryable': False, 'correlation_id': '312efcbb-bb43-4e8f-9327-b64fc8693760'})`)
+     - **Nguyên nhân cốt lõi:** Lỗi G3 tại stage `qc` (các cổng `VISUAL_HOOK_PRESENT`, `THUMBNAIL_PRESENT`, `SUBTITLE_BURNED_IN`, `INFERENCE_DISCLOSURE_PRESENT` không đạt) là khoảng trống production ngoài owned paths tại `src/render/adapters/postgres_plan_assets.py` và `src/render/domain/render_command.py`.
 
 3. `python -c "import pathlib; t = pathlib.Path('docs/delivery-evidence/pw-e2e/report.md').read_text(encoding='utf-8'); assert 'PW-E2E' in t and 'CP7-10' in t and 'CP7-11' in t, 'PW-E2E'"`
    - **Mã thoát:** 0
@@ -35,7 +36,7 @@ Báo cáo kết quả thực thi các lệnh kiểm tra bắt buộc của tác 
 
 ## 2. Bảng thời gian thực thi từng stage (Đầu vào OI-PW-02)
 
-Trong lượt chạy kiểm thử thật trên HEAD đã rebase, quy trình thu thập `DailyCollectionWorkflow` đã chạy thành công, đo được `collect_and_enrich_seconds = 5.42` và `allocate_seconds = 1.07`. Quy trình sản xuất video `VideoProductionWorkflow` đã thực thi qua 8 stage đầu tiên (`analyze`, `script`, `media_select`, `plan`, `tts`, `align`, `process`, `render`), tuy nhiên bị dừng tại stage thứ 9 (`qc`) do lỗi production ngoài owned paths (`quality_gates_failed`). Do đó, các stage `qc`, `sync`, `complete` chưa đo được số giây hoàn tất:
+Trong lượt chạy kiểm thử thật trên HEAD đã rebase, quy trình thu thập `DailyCollectionWorkflow` đã chạy thành công, đo được `collect_and_enrich_seconds = 5.54` và `allocate_seconds = 1.09`. Quy trình sản xuất video `VideoProductionWorkflow` đã thực thi qua 8 stage đầu tiên (`analyze`, `script`, `media_select`, `plan`, `tts`, `align`, `process`, `render`), tuy nhiên bị dừng tại stage thứ 9 (`qc`) do lỗi production ngoài owned paths (`quality_gates_failed`). Do đó, các stage `qc`, `sync`, `complete` chưa đo được số giây hoàn tất:
 
 | Stage | Video chính (giây) | Video phụ (giây) | Ghi chú kỹ thuật |
 | :--- | :--- | :--- | :--- |
@@ -52,7 +53,7 @@ Trong lượt chạy kiểm thử thật trên HEAD đã rebase, quy trình thu 
 | `complete` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do dừng tại qc |
 | **Tổng cộng** | **KHÔNG ĐO ĐƯỢC** | **KHÔNG ĐO ĐƯỢC** | **Chờ gói chủ đóng khoảng trống production tại qc** |
 
-*Ghi chú:* Số đo quy trình thu thập từ tệp `pw-e2e-stage-timings.json`: `collect_and_enrich_seconds = 5.42`, `allocate_seconds = 1.07` (đây là số liệu đầu vào OI-PW-02). Các stage `qc`, `sync`, `complete` chưa đo được do workflow dừng tại `qc` bởi lỗi production ngoài owned paths (`quality_gates_failed`). Độ phân giải đo của StageTimer là khoảng 0,1 giây.
+*Ghi chú:* Số đo quy trình thu thập từ tệp `pw-e2e-stage-timings.json`: `collect_and_enrich_seconds = 5.54`, `allocate_seconds = 1.09` (đây là số liệu đầu vào OI-PW-02). Các stage `qc`, `sync`, `complete` chưa đo được do workflow dừng tại `qc` bởi lỗi production ngoài owned paths (`quality_gates_failed`). Độ phân giải đo của StageTimer là khoảng 0,1 giây.
 ---
 
 ## 3. Danh sách giả lập (EDGE_ADAPTERS)
@@ -112,10 +113,10 @@ Danh sách đầy đủ và chính xác các adapter giả lập được phép 
     - `src/creative/adapters/media_candidates.py:41,72`: chỉ nhận `kind=image`, nên production luôn đi qua đường ảnh tĩnh này.
   - **Đối chiếu bổ sung trên HEAD ngày 28/10/2026:** `src/render/domain/resolve_package.py` (`_manifest`, dòng 137-146) đặt khoá `materialization_manifest` theo `artifact_version_id` và `_plan_ids` ở dòng 198 chỉ cho phép ref của kế hoạch; vì vậy ref `vh-01` và `thumb:vh-01` không thể có mặt trong manifest nếu `get_asset` (`src/render/adapters/postgres_plan_assets.py:130-136`) bỏ chúng. Mã tại mọi dòng nêu ở trên còn nguyên trên HEAD; không gói sửa nào đã gộp (PW-A3-FIX1, PW-E3-FIX1, PW-I1-FIX1, PW-F4-FIX1, PW-A3-FIX2, ADAPT-SEED-FIX1, PW-D3-FIX1, PW-W2-FIX1, PW-W2-FIX2, PW-W2-FIX3) thay đổi các dòng đó, nên phụ thuộc này chưa có gói chủ đang chạy.
   - **Gói sửa đề xuất cho Control mở (chưa có, không phải quyết định):** `PW-F4-FIX2` (chủ `src/controlplane/api/wiring/render.py` `resolve_inputs` và `src/render/adapters/postgres_plan_assets.py`: ánh xạ `visual_hook_ref`, `audio_hook_ref`, `thumbnail_ref` sang artifact version đã VERIFIED rồi đưa vào manifest) và `PW-F3-FIX1` (chủ `src/render/domain/render_command.py`: thêm `-loop 1 -t <thời lượng segment>` cho từng đầu vào ảnh tĩnh trước `-i`). Gói chủ gốc: `PW-F4` và `PW-F3`/`PW-W2`.
-  - **Test bị chặn:**
-    - `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable`
-    - `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun`
-    - `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing`
+  - **Test bị chặn (dừng nhanh trong 77.84s qua fail-fast):**
+    - `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` (fail-fast: stage qc of 5cad7988-c405-44fe-9395-fcf1a9a6b902:job:1 reached FAILED_FINAL do quality_gates_failed)
+    - `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` (fail-fast: stage qc of 109eb5e1-9975-4650-920e-3cbb12039a16:job:1 reached FAILED_FINAL do quality_gates_failed)
+    - `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` (fail-fast: stage qc of f260d3b5-689a-4eaa-8c61-7bf2ee45cdb7:job:1 reached FAILED_FINAL do quality_gates_failed)
 
 ### Vì sao rig không thể vá phía test
 - Ref thumbnail luôn có tiền tố `thumb:` nên không thể thành UUID bằng dữ liệu seed; đổi hook_id sang UUID cũng không cứu được cổng `THUMBNAIL_PRESENT`.

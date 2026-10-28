@@ -1430,6 +1430,22 @@ class E2ERig:
             ).fetchall()
             return rows_data
 
+    def fail_fast_reason(self) -> str | None:
+        with self.database.connect() as conn:
+            stage = conn.execute(
+                "SELECT job_id, stage_name, attempt, problem FROM controlplane.cp_stage_runs WHERE workspace_id = %s AND status = 'FAILED_FINAL' ORDER BY job_id, stage_name LIMIT 1",
+                (self.database.workspace_id,),
+            ).fetchone()
+            if stage:
+                return f'stage {stage[1]} of {stage[0]} reached FAILED_FINAL (attempt={stage[2]}, problem={stage[3]})'
+            job = conn.execute(
+                "SELECT job_id, wait_reason FROM controlplane.cp_video_jobs WHERE workspace_id = %s AND status = 'FAILED_FINAL' ORDER BY job_id LIMIT 1",
+                (self.database.workspace_id,),
+            ).fetchone()
+            if job:
+                return f'job {job[0]} reached FAILED_FINAL (wait_reason={job[1]})'
+        return None
+
     async def close(self) -> None:
         await self.stop_worker()
         await self.timer.stop()

@@ -178,9 +178,13 @@ async def wait_for_workflow(client: Any, wf_id: str, timeout: float = 60.0) -> A
     raise TimeoutError(f"Workflow {wf_id} was not started within {timeout}s")
 
 
-async def wait_for_workflow_result(handle: Any, timeout: float = 900.0) -> Any:
+async def wait_for_workflow_result(handle: Any, timeout: float = 900.0, rig: Any = None) -> Any:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        if rig is not None:
+            reason = await asyncio.to_thread(rig.fail_fast_reason)
+            if reason:
+                pytest.fail(f'fail-fast: {reason}', pytrace=False)
         desc = await handle.describe()
         if desc.status != WorkflowExecutionStatus.RUNNING:
             return await handle.result()
@@ -211,7 +215,7 @@ async def test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch
 
     handle = await wait_for_workflow(pw_temporal, batch_id)
     try:
-        batch_result = await wait_for_workflow_result(handle, 900.0)
+        batch_result = await wait_for_workflow_result(handle, 900.0, rig=rig)
     except Exception as exc:
         print("HANDLE RESULT ERROR:", type(exc), exc)
         desc = await handle.describe()
@@ -227,7 +231,7 @@ async def test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch
             print('BATCHES:', conn.execute('SELECT batch_id, status, stop_reason FROM controlplane.cp_production_batches').fetchall())
         raise
     child_handle = await wait_for_workflow(pw_temporal, f"{batch_id}:video:0")
-    child = await wait_for_workflow_result(child_handle, 900.0)
+    child = await wait_for_workflow_result(child_handle, 900.0, rig=rig)
     print("CHILD SNAPSHOT:", child)
     with rig.database.connect() as conn:
         r = conn.execute("SELECT stage_name, attempt, status, problem FROM controlplane.cp_stage_runs WHERE stage_name = 'media_select'").fetchall()
@@ -318,12 +322,12 @@ async def test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch
     rig.router.script_mode = "source_backed"
     batch_id_2 = await asyncio.to_thread(rig.post_batch, 1)
     handle_2 = await wait_for_workflow(pw_temporal, batch_id_2)
-    batch_result_2 = await wait_for_workflow_result(handle_2, 900.0)
+    batch_result_2 = await wait_for_workflow_result(handle_2, 900.0, rig=rig)
     assert batch_result_2["status"] == "TARGET_REACHED"
 
     child_id_2 = f"{batch_id_2}:video:0"
     child_handle_2 = await wait_for_workflow(pw_temporal, child_id_2)
-    child_2 = await wait_for_workflow_result(child_handle_2, 120.0)
+    child_2 = await wait_for_workflow_result(child_handle_2, 120.0, rig=rig)
     assert child_2["status"] == "COMPLETED"
 
     job_id_2 = f"{batch_id_2}:job:1"
@@ -373,8 +377,14 @@ async def test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_r
     batch_id = await asyncio.to_thread(rig.post_batch, 1)
     job_id = f"{batch_id}:job:1"
 
+    def waiting_on_credential() -> bool:
+        reason = rig.fail_fast_reason()
+        if reason:
+            pytest.fail(f'fail-fast: {reason}', pytrace=False)
+        return job_row(rig.database, job_id) == ("WAITING", "credential_unavailable")
+
     await wait_until(
-        lambda: job_row(rig.database, job_id) == ("WAITING", "credential_unavailable"),
+        waiting_on_credential,
         timeout=900.0,
         interval=0.5,
         what="job WAITING credential_unavailable",
@@ -399,11 +409,11 @@ async def test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_r
         print("UNLOCK_SLEEP_ERROR:", type(exc), exc)
 
     handle = await wait_for_workflow(pw_temporal, batch_id)
-    batch_res = await wait_for_workflow_result(handle, 900.0)
+    batch_res = await wait_for_workflow_result(handle, 900.0, rig=rig)
     assert batch_res["status"] == "TARGET_REACHED"
 
     child_handle = await wait_for_workflow(pw_temporal, f"{batch_id}:video:0")
-    child = await wait_for_workflow_result(child_handle, 120.0)
+    child = await wait_for_workflow_result(child_handle, 120.0, rig=rig)
     assert child["status"] == "COMPLETED"
 
     assert len(rig.drive.uploads) == 1
@@ -438,8 +448,14 @@ async def test_stopping_and_restarting_the_worker_between_render_and_upload_reru
     batch_id = await asyncio.to_thread(rig.post_batch, 1)
     job_id = f"{batch_id}:job:1"
 
+    def waiting_on_credential() -> bool:
+        reason = rig.fail_fast_reason()
+        if reason:
+            pytest.fail(f'fail-fast: {reason}', pytrace=False)
+        return job_row(rig.database, job_id) == ("WAITING", "credential_unavailable")
+
     await wait_until(
-        lambda: job_row(rig.database, job_id) == ("WAITING", "credential_unavailable"),
+        waiting_on_credential,
         timeout=900.0,
         interval=0.5,
         what="job WAITING credential_unavailable",
@@ -470,11 +486,11 @@ async def test_stopping_and_restarting_the_worker_between_render_and_upload_reru
         print('UNLOCK_SLEEP_ERROR:', type(exc), exc, flush=True)
 
     handle = await wait_for_workflow(pw_temporal, batch_id)
-    batch_res = await wait_for_workflow_result(handle, 900.0)
+    batch_res = await wait_for_workflow_result(handle, 900.0, rig=rig)
     assert batch_res["status"] == "TARGET_REACHED"
 
     child_handle = await wait_for_workflow(pw_temporal, f"{batch_id}:video:0")
-    child = await wait_for_workflow_result(child_handle, 120.0)
+    child = await wait_for_workflow_result(child_handle, 120.0, rig=rig)
     assert child["status"] == "COMPLETED"
 
     final_runs = {r[0]: (r[1], r[2], str(r[3])) for r in stage_runs(rig.database, job_id)}
