@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from controlplane.application.orchestration.workflows.activities import ActivityRejected
-from controlplane.application.storage_meta.handlers import materialize_artifact_set_handler, reconcile_storage_handler, request_cleanup_evaluation_handler
+from controlplane.application.storage_meta.handlers import materialize_artifact_set_handler, reconcile_storage_handler, register_staged_artifact, request_cleanup_evaluation_handler, verified_version_for_sha
 from controlplane.application.storage_meta.materialization import RenderInputNotVerifiedError, release_for_render
 from controlplane.application.storage_meta.reconciliation import CloudObjectObservation
 from controlplane.domain.statemachine import ArtifactLocationState as S
@@ -46,6 +46,17 @@ def write(root, name, data):
 
 def request(refs, key='op-1'):
     return {'video_job_id': 'job-1', 'operation_key': key, 'input_refs': [{'ref_type': kind, 'ref_id': ref} for kind, ref in refs]}
+
+
+def request_refs(refs, key='op-1'):
+    return {'video_job_id': 'job-1', 'operation_key': key, 'input_refs': list(refs)}
+
+
+def stage_image(manager, ws, root, data=b'image-bytes'):
+    digest = sha(data)
+    write(root, f'media/{digest}.png', data)
+    version = register_staged_artifact(manager, workspace_id=ws, staging_root=root, owner_ref='job-1', relative_ref=f'media/{digest}.png', retention_ref='durable')
+    return digest, version
 
 
 def rows(db, sql, params=()):
@@ -245,3 +256,95 @@ def test_cleanup_evaluation_never_grants_without_a_verified_cloud_copy(pw_databa
     assert evaluate(unverified) == ('forbidden', ['LOCATION_NOT_VERIFIED'])
     assert count(pw_database, 'cp_cleanup_authorizations') == 0
     assert rows(pw_database, 'SELECT state FROM controlplane.cp_artifact_locations WHERE location_id = %s', (local.location_id,)) == [('VERIFIED',)]
+
+
+def test_register_staged_artifact_places_a_verified_durable_image(pw_database, manager, tmp_path):
+    ws = pw_database.workspace_id
+    root = tmp_path / 'staging'
+    digest, version = stage_image(manager, ws, root)
+    assert version.artifact_id == f'media/{digest}.png' and version.retention_ref == 'durable'
+    assert (version.mime_type, version.artifact_kind, version.sha256_hash) == ('image/png', 'render_input_media', digest)
+    flat = root / version.artifact_version_id
+    assert flat.is_file() and sha(flat.read_bytes()) == digest
+    with pw_database.connect() as conn:
+        location = PostgresStorageMetaRepository(conn, ws).find_location(ws, 'local-staging', 'staging', version.artifact_version_id)
+    assert location.state is S.VERIFIED and (location.observed_hash, location.observed_size_bytes) == (digest, len(b'image-bytes'))
+    found = verified_version_for_sha(manager, workspace_id=ws, sha256=digest)
+    assert found is not None and found.artifact_version_id == version.artifact_version_id
+    _, again = stage_image(manager, ws, root)
+    assert again.artifact_version_id == version.artifact_version_id
+    assert count(pw_database, 'cp_artifact_versions') == 1 and count(pw_database, 'cp_artifact_locations') == 1
+    assert verified_version_for_sha(manager, workspace_id=ws, sha256=sha(b'other')) is None
+    write(root, 'media/UPPER.PNG', b'upper')
+    with pytest.raises(ActivityRejected):
+        register_staged_artifact(manager, workspace_id=ws, staging_root=root, owner_ref='job-1', relative_ref='media/UPPER.PNG', retention_ref='durable')
+    assert count(pw_database, 'cp_artifact_versions') == 1
+
+
+def test_verified_version_for_sha_requires_a_verified_local_location(pw_database, manager):
+    ws = pw_database.workspace_id
+    data = b'jpeg-bytes'
+    digest = sha(data)
+    with pw_database.connect() as conn:
+        repo = PostgresStorageMetaRepository(conn, ws)
+        version = new_version(repo, ws, f'media/{digest}.jpg', data)
+        location = new_location(repo, ws, version)
+    assert verified_version_for_sha(manager, workspace_id=ws, sha256=digest) is None
+    with pw_database.connect() as conn:
+        walk(PostgresStorageMetaRepository(conn, ws), location, S.VERIFIED, observed=(digest, len(data)))
+    found = verified_version_for_sha(manager, workspace_id=ws, sha256=digest)
+    assert found is not None and found.artifact_version_id == version.artifact_version_id
+    assert verified_version_for_sha(manager, workspace_id=ws, sha256='NOT-A-HASH') is None
+
+
+def test_materialize_derives_inputs_from_voice_and_selected_media_refs(pw_database, manager, tmp_path):
+    ws = pw_database.workspace_id
+    root = tmp_path / 'staging'
+    voice = b'voice-wav-bytes'
+    vdigest = sha(voice)
+    voice_name = f'voice-artifact-{vdigest}'
+    write(root, f'voice/{voice_name}', voice)
+    idigest, image = stage_image(manager, ws, root)
+    service = materialize_artifact_set_handler(manager, workspace_id=ws, staging_root=root)
+    refs = [{'ref_type': 'voice_artifact', 'ref_id': voice_name}, {'ref_type': 'selected_media', 'ref_id': 'asset-1', 'revision_id': image.artifact_version_id}]
+    result = service(request_refs(refs), CLAIMS)
+    assert result['disposition'] == 'succeeded' and result['metrics']['artifact_count'] == 2
+    manifest = result['metrics']['materialization_manifest']
+    assert {item['sha256'] for item in manifest} == {vdigest, idigest}
+    assert all(set(item) == {'artifact_version_id', 'local_ref', 'sha256', 'size_bytes'} for item in manifest)
+    assert result['output_refs'][0] == {'ref_type': 'artifact_set', 'ref_id': 'op-1'} and len(result['output_refs']) == 3
+    linked = {ref['ref_id']: ref['source_ref_id'] for ref in result['output_refs'][1:] if ref['ref_type'] == 'artifact_version'}
+    assert sorted(linked.values()) == sorted([f'voice/{voice_name}', f'media/{idigest}.png'])
+    assert linked[image.artifact_version_id] == f'media/{idigest}.png'
+    voice_id = next(vid for vid, source in linked.items() if source == f'voice/{voice_name}')
+    with pw_database.connect() as conn:
+        repo = PostgresStorageMetaRepository(conn, ws)
+        voice_version = repo.get_version(ws, voice_id)
+        image_version = repo.get_version(ws, image.artifact_version_id)
+    assert (voice_version.mime_type, voice_version.artifact_kind, voice_version.retention_ref) == ('audio/wav', 'voice_track', 'per_video')
+    assert image_version.retention_ref == 'durable'
+    again = service(request_refs(refs, key='op-2'), CLAIMS)
+    assert again['disposition'] == 'succeeded' and again['metrics']['materialization_manifest'] == manifest
+    assert count(pw_database, 'cp_artifact_versions') == 2
+
+
+def test_materialize_keeps_explicit_refs_and_rejects_unusable_derived_inputs(pw_database, manager, tmp_path):
+    ws = pw_database.workspace_id
+    root = tmp_path / 'staging'
+    _, image = stage_image(manager, ws, root)
+    service = materialize_artifact_set_handler(manager, workspace_id=ws, staging_root=root)
+    explicit = service(request_refs([{'ref_type': 'artifact_version', 'ref_id': image.artifact_version_id}, {'ref_type': 'voice_artifact', 'ref_id': 'voice-artifact-ignored'}]), CLAIMS)
+    assert explicit['disposition'] == 'succeeded' and explicit['metrics']['artifact_count'] == 1
+    assert count(pw_database, 'cp_artifact_versions') == 1
+    nothing = service(request_refs([{'ref_type': 'script', 'ref_id': 's-1'}]), CLAIMS)
+    assert nothing['disposition'] == 'failed' and nothing['problem']['code'] == 'MATERIALIZE_INPUT_MISSING'
+    missing = service(request_refs([{'ref_type': 'voice_artifact', 'ref_id': 'voice-artifact-missing'}]), CLAIMS)
+    assert missing['disposition'] == 'waiting' and missing['problem']['code'] == 'artifact_not_ready'
+    with pytest.raises(ActivityRejected):
+        service(request_refs([{'ref_type': 'selected_media', 'ref_id': 'asset-1'}]), CLAIMS)
+    with pytest.raises(ActivityRejected):
+        service(request_refs([{'ref_type': 'selected_media', 'ref_id': 'asset-1', 'revision_id': 'not-a-uuid'}]), CLAIMS)
+    write(root, 'media/nosuffix', b'x')
+    with pytest.raises(ActivityRejected):
+        service(request([('artifact_source', 'media/nosuffix')]), CLAIMS)
+    assert count(pw_database, 'cp_artifact_versions') == 1
