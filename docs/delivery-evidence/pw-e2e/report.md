@@ -9,18 +9,21 @@
 
 ## 1. Lệnh đã chạy và kết quả kiểm chứng
 
-Báo cáo kết quả thực thi các lệnh kiểm tra bắt buộc của tác vụ PW-E2E sau khi đã gỡ bỏ toàn bộ monkeypatch logic production khỏi test rig:
+Báo cáo kết quả thực thi các lệnh kiểm tra bắt buộc của tác vụ PW-E2E trên HEAD đã rebase lên `2ab2ddfe4f14d4f73d55d8a4aaa2aec2300ae51d`:
 
 1. `git diff --check`
    - **Mã thoát:** 0
    - **Kết quả:** Không có lỗi khoảng trắng thừa hay ký tự dòng không hợp lệ trên cây làm việc.
 
 2. `python -m pytest tests/integration/prod_wiring/test_pw_e2e_batch_video.py -q -p no:cacheprovider`
-   - **Mã thoát:** 1 (FAILED / BLOCKED do khoảng trống mã nguồn production)
-   - **Kết quả:** 4 passed, 4 failed, 1 warning trong 1222.27s (20 phút 22 giây).
-     - 4 test PASSED: `test_the_launcher_composition_binds_every_activity_and_has_no_private_assembly`, `test_the_support_module_patches_only_edge_adapters`, `test_the_report_lists_stage_timings_and_the_cp7_conditions`, `test_module_docstring_declares_covered_ids`.
-     - 4 test FAILED: `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable`, `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun`, `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing`, `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch`.
-     - Cả 4 test thất bại đều do cùng một nguyên nhân gốc ở mã nguồn production ngoài owned paths: `CollectSource` trong `DailyCollectionWorkflow` bị từ chối với lỗi `VALIDATION_ERROR` / `INVALID_ACTIVITY_REQUEST` do thiếu `business_date` (chi tiết tại mục 3b).
+   - **Mã thoát:** 1 (FAILED / BLOCKED do khoảng trống mã nguồn production ngoài owned paths)
+   - **Kết quả:** 3 failed, 5 passed, 1 warning in 1846.41s (0:30:46).
+     - 5 test PASSED: `test_the_launcher_composition_binds_every_activity_and_has_no_private_assembly`, `test_the_support_module_patches_only_edge_adapters`, `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch`, `test_the_report_lists_stage_timings_and_the_cp7_conditions`, `test_module_docstring_declares_covered_ids`.
+     - Quy trình thu thập RSS loopback -> trích xuất tài liệu -> enrichment -> candidate lô 2 đã PASSED hoàn toàn trong `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch`, xác nhận khoảng trống G1 (`missing business_date`) trước đây đã được đóng triệt để bởi các gói tích hợp.
+     - 3 test FAILED:
+       - `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` (FAILED dòng 241: `AssertionError: assert ('EXHAUSTED', 0, 1, 1, True) == ('TARGET_REACHED', 1, 0, 1, True)`; lỗi gốc do `SelectCreativeAssets` bị từ chối với `SelectionRejected: INPUT_NOT_READY (seed_media_missing)` tại `src/creative/adapters/media_candidates.py:130`).
+       - `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` (FAILED dòng 376: `AssertionError: timed out waiting for job WAITING credential_unavailable`; do workflow dừng tại `media_select` với `seed_media_missing`, job kết thúc ở trạng thái `EXHAUSTED` thay vì tiến vào render/upload để gặp lỗi Drive 401).
+       - `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` (FAILED dòng 441: `AssertionError: timed out waiting for job WAITING credential_unavailable`; cùng nguyên nhân workflow dừng tại `media_select` với `seed_media_missing`).
 
 3. `python -c "import pathlib; t = pathlib.Path('docs/delivery-evidence/pw-e2e/report.md').read_text(encoding='utf-8'); assert 'PW-E2E' in t and 'CP7-10' in t and 'CP7-11' in t, 'PW-E2E'"`
    - **Mã thoát:** 0
@@ -30,25 +33,24 @@ Báo cáo kết quả thực thi các lệnh kiểm tra bắt buộc của tác 
 
 ## 2. Bảng thời gian thực thi từng stage (Đầu vào OI-PW-02)
 
-Trong lượt chạy kiểm thử thật với rig không patch logic, quy trình thu thập `DailyCollectionWorkflow` bị chặn bởi lỗi production G1 (`VALIDATION_ERROR: missing business_date`), do đó workflow video chưa được kích hoạt và không sinh tệp `pw-e2e-stage-timings.json` mới:
+Trong lượt chạy kiểm thử thật trên HEAD đã rebase, quy trình thu thập `DailyCollectionWorkflow` đã chạy thành công, đo được `collect_and_enrich_seconds = 5.34` và `allocate_seconds = 1.07`. Tuy nhiên `VideoProductionWorkflow` bị dừng tại stage `media_select` do lỗi production G2 (`SelectionRejected: INPUT_NOT_READY (seed_media_missing)`), nên các stage của video chính và video phụ chưa đo được số giây hoàn tất:
 
 | Stage | Video chính (giây) | Video phụ (giây) | Ghi chú kỹ thuật |
 | :--- | :--- | :--- | :--- |
-| `analyze` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Bị chặn do DailyCollectionWorkflow thất bại ở CollectSource |
-| `script` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Bị chặn do DailyCollectionWorkflow thất bại ở CollectSource |
-| `plan` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Bị chặn do DailyCollectionWorkflow thất bại ở CollectSource |
-| `media_select` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Bị chặn do DailyCollectionWorkflow thất bại ở CollectSource |
-| `tts` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Bị chặn do DailyCollectionWorkflow thất bại ở CollectSource |
-| `align` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Bị chặn do DailyCollectionWorkflow thất bại ở CollectSource |
-| `process` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Bị chặn do DailyCollectionWorkflow thất bại ở CollectSource |
-| `render` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Bị chặn do DailyCollectionWorkflow thất bại ở CollectSource |
-| `qc` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Bị chặn do DailyCollectionWorkflow thất bại ở CollectSource |
-| `sync` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Bị chặn do DailyCollectionWorkflow thất bại ở CollectSource |
-| `complete` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Bị chặn do DailyCollectionWorkflow thất bại ở CollectSource |
-| **Tổng cộng** | **KHÔNG ĐO ĐƯỢC** | **KHÔNG ĐO ĐƯỢC** | **Chờ gói chủ đóng khoảng trống production G1** |
+| `analyze` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Workflow dừng tại stage media_select do lỗi seed_media_missing |
+| `script` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Workflow dừng tại stage media_select do lỗi seed_media_missing |
+| `plan` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Workflow dừng tại stage media_select do lỗi seed_media_missing |
+| `media_select` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Bị từ chối bởi SelectionRejected(INPUT_NOT_READY, seed_media_missing) |
+| `tts` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do media_select bị từ chối |
+| `align` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do media_select bị từ chối |
+| `process` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do media_select bị từ chối |
+| `render` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do media_select bị từ chối |
+| `qc` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do media_select bị từ chối |
+| `sync` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do media_select bị từ chối |
+| `complete` | KHÔNG ĐO ĐƯỢC | KHÔNG ĐO ĐƯỢC | Chưa thực thi do media_select bị từ chối |
+| **Tổng cộng** | **KHÔNG ĐO ĐƯỢC** | **KHÔNG ĐO ĐƯỢC** | **Chờ gói chủ đóng khoảng trống production G2** |
 
-*Ghi chú:* Không đo được trong lượt chạy này do quy trình thu thập `DailyCollectionWorkflow` bị từ chối bởi lỗi production G1 (`VALIDATION_ERROR: missing business_date`), workflow chưa tiến vào pipeline render video.
-
+*Ghi chú:* Số đo quy trình thu thập từ tệp `pw-e2e-stage-timings.json`: `collect_and_enrich_seconds = 5.34`, `allocate_seconds = 1.07`. Các stage video chính và video phụ chưa đo được do workflow dừng tại `media_select` bởi lỗi production G2 (`SelectionRejected: INPUT_NOT_READY (seed_media_missing)`).
 ---
 
 ## 3. Danh sách giả lập (EDGE_ADAPTERS)
@@ -91,38 +93,33 @@ Danh sách đầy đủ và chính xác các adapter giả lập được phép 
 
 ## 3b. Khoảng trống production (PRODUCTION_GAPS)
 
-Các khoảng trống thực tế trong mã nguồn production ngoài owned paths đã được xác nhận trực tiếp qua kết quả chạy kiểm thử tại bước 7:
+Các khoảng trống thực tế trong mã nguồn production ngoài owned paths đã được xác nhận trực tiếp qua kết quả chạy kiểm thử tại bước 3:
 
-- **G1:** `src/controlplane/application/orchestration/workflows/activities.py:146` và `src/source_ingestion/worker/activity_handler.py:159-175`:
-  - **Triệu chứng:** `CollectSource` trong `DailyCollectionWorkflow` chỉ truyền `input_refs` chứa `collection_source`, trong khi handler `handle_collect_source_activity` bắt buộc phải có đúng hai ref gồm cả `business_date`. Handler ném `ActivityRequestError(VALIDATION_ERROR, issues)` dẫn đến lỗi `ActivityRejected: INVALID_ACTIVITY_REQUEST` và dừng workflow thu thập.
+- **G2:** `src/creative/adapters/media_candidates.py:130` và `src/controlplane/api/wiring/creative.py:309`:
+  - **Triệu chứng:** Trong `VideoProductionWorkflow`, hoạt động `SelectCreativeAssets` gọi `self._media.media_candidates(...)` qua `ProductionSelectionInputs.selection_inputs`. Tại `src/creative/adapters/media_candidates.py:112-131`, `PostgresMediaCandidates` lọc các ảnh seed bằng `self._resolve_version(asset.fingerprint.value)`. Trong launcher composition (`tools/launcher/launcher.py:702`), `resolve_version` sử dụng `handlers.verified_version_for_sha(...)` (`src/controlplane/application/storage_meta/handlers.py:254-266`), hàm này yêu cầu `artifact_id = f'media/{sha256}.{extension}'` và `location.provider_namespace_ref == 'staging'` ở trạng thái `VERIFIED`. Khi không tìm thấy phiên bản thỏa mãn, danh sách ứng viên không chứa ảnh origin `seed`, dẫn tới ngoại lệ `SelectionRejected(INPUT_NOT_READY, 'seed_media_missing', 'media_candidates')`. Lỗi này khiến hoạt động bị từ chối (`ActivityRejected: COMMAND_REJECTED / INPUT_NOT_READY`), workflow chuyển job sang `EXHAUSTED` và không thể tiếp tục các stage tiếp theo.
   - **Test bị chặn:**
     - `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable`
     - `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun`
     - `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing`
-    - `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch`
-  - **Gói chủ đề xuất xử lý:** `PW-W1`.
+  - **Gói chủ đề xuất xử lý:** `PW-D3` / `PW-W2`.
 
-### Nghi vấn chưa xác nhận
-Các điểm nghi vấn trong mã nguồn production đã được quan sát qua phân tích tĩnh, nhưng chưa được kích hoạt trong test run này do workflow bị chặn sớm tại G1:
-- **B2:** `src/controlplane/api/wiring/creative.py:319` đặt `required_flags=('rights_cleared',)` trong khi các adapter ứng viên media (`src/creative/adapters/media_candidates.py:73`) và hook (`src/creative/adapters/hook_candidates.py:40`) không sinh cờ `rights_cleared`. Gói chủ đề xuất: `PW-W2`.
-- **B3:** `src/controlplane/api/wiring/creative.py:410-412` gọi `hashlib` nhưng module chưa import thư viện `hashlib`. Gói chủ đề xuất: `PW-W2`.
-- **B4:** `src/controlplane/api/wiring/render.py:336-343` chỉ đánh dấu `VERIFIED` cho các input có `PostgresArtifactInfo.get_asset`, khiến các artifact dạng voice hoặc timing không có asset trong cơ sở dữ liệu bị xem là chưa `VERIFIED`. Gói chủ đề xuất: `PW-W2`.
-
+### Ghi nhận các vấn đề trước đây
+- Khoảng trống G1 (`missing business_date` trong `CollectSource`) đã được đóng triệt để bởi các gói tích hợp vừa gộp (test `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch` đã PASSED).
+- Các nghi vấn B2 (`rights_cleared`), B3 (`hashlib`) và B4 (`render input verification`) đã được xử lý trong các gói PW-D3-FIX1, PW-W2-FIX1, PW-W2-FIX3; tuy nhiên do workflow bị dừng sớm ở G2 tại `media_select`, pipeline render phía sau chưa được chạy tới để kiểm chứng toàn diện.
 ---
 
 ## 4. Ánh xạ coveredIds sang Test Cases
 
 | coveredId | Test Case kiểm chứng | Kết quả |
 | :--- | :--- | :--- |
-| `PW-E2E-01` | `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` | FAILED (Bị chặn bởi G1) |
-| `CT-QC-001` | `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` | FAILED (Bị chặn bởi G1) |
-| `CT-WF-004` | `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` | FAILED (Bị chặn bởi G1) |
-| `CT-WF-006` | `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` | FAILED (Bị chặn bởi G1) |
-| `CT-WF-007` | `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` | FAILED (Bị chặn bởi G1) |
+| `PW-E2E-01` | `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` | FAILED (Bị chặn bởi G2: seed_media_missing) |
+| `CT-QC-001` | `test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch_marks_the_gate_not_applicable` | FAILED (Bị chặn bởi G2: seed_media_missing) |
+| `CT-WF-004` | `test_a_drive_401_waits_then_one_upload_and_the_render_stage_does_not_rerun` | FAILED (Bị chặn bởi G2: seed_media_missing) |
+| `CT-WF-006` | `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` | FAILED (Bị chặn bởi G2: seed_media_missing) |
+| `CT-WF-007` | `test_stopping_and_restarting_the_worker_between_render_and_upload_reruns_nothing` | FAILED (Bị chặn bởi G2: seed_media_missing) |
 | `CT-ORC-007` | `test_the_launcher_composition_binds_every_activity_and_has_no_private_assembly` | PASSED |
 | `CT-ORC-010` | `test_the_launcher_composition_binds_every_activity_and_has_no_private_assembly` | PASSED |
-| `CT-SRC-004` | `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch` | FAILED (Bị chặn bởi G1) |
-
+| `CT-SRC-004` | `test_the_feed_collection_enrichment_and_candidate_chain_feeds_the_second_batch` | PASSED |
 ---
 
 ## 5. Mục mở và Ghi nhận Kỹ thuật
