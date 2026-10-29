@@ -1,6 +1,6 @@
-# Gói được bao phủ và SHA tích hợp của M7 (revision 5)
+# Gói được bao phủ và SHA tích hợp của M7 (revision 6)
 
-Danh sách 108 gói theo yêu cầu nghiệm thu của revision 5 (M7-MILESTONE-CLOSE-R5). SHA là commit integrate chép từ nhật ký tích hợp đã ghi trong báo cáo đóng mốc M5, M6 và revision 4 của repo; HEAD hiện hành là 2e0b6809453baca35db99d060ee42fd71da59908, trên nền integration head a84ac3940a4cef48c85733df30b016b3821aa1c3 (đã chứa ADAPT-F-FIX1 và ADAPT-J-FIX1). Tổ tiên của từng SHA do Control xác minh.
+Danh sách gói theo yêu cầu nghiệm thu của revision 6 (M7-MILESTONE-CLOSE-R6), viết trên mã đã rebase lên integration head 32e335249dad5b390e05d7212b22e1718bb14d72 (Control thu hồi grant G1 vì CLOSURE_BASE_STALE). SHA là commit integrate chép từ nhật ký tích hợp đã ghi trong báo cáo đóng mốc M5, M6 và các revision trước của repo; PW-D1-FIX1 chép từ commit integrate 67b01f25ae729e39774d4e4a6adb9c20c805482c; ADAPT-D-FIX1 ghi theo integration head 32e335249dad5b390e05d7212b22e1718bb14d72 mà Control nêu trong lệnh rebase. Nhánh tích hợp đã chứa ADAPT-F-FIX1, ADAPT-J-FIX1, PW-D1-FIX1 và ADAPT-D-FIX1. Tổ tiên của từng SHA do Control xác minh.
 
 | Mã gói | Commit integrate (SHA đầy đủ) | Candidate (12 hex) | Cách tra |
 | --- | --- | --- | --- |
@@ -77,6 +77,8 @@ Danh sách 108 gói theo yêu cầu nghiệm thu của revision 5 (M7-MILESTONE-
 | PW-F1-FIX2 | 069d9743c18cab0003b35fcd4f81ee3b3ce622a5 | 2dbe58418121 | git log --grep=integrate() |
 | ADAPT-F-FIX1 | f080601bae4ed341837157aaf87b3bcd85bd7424 | 110ba265a338 | Báo cáo R4 mục 1-2: integration head f080601 đã tích hợp ADAPT-F-FIX1 (commit gói 110ba265a338) trên base 069d9743 |
 | ADAPT-J-FIX1 | a84ac3940a4cef48c85733df30b016b3821aa1c3 | 4ec05756ff07 | git log --grep=integrate() |
+| PW-D1-FIX1 | 67b01f25ae729e39774d4e4a6adb9c20c805482c | 86594a85451b | Tiêu đề commit integrate trong đề bài: integrate(PW-D1-FIX1): lane lane-pw-d1-fix1 candidate 86594a85451b; commit nội dung 86594a8 (R14, báo cáo docs/delivery-evidence/pw-d1-fix1/report.md); Control xác minh SHA này là tổ tiên của integration head 32e335249dad5b390e05d7212b22e1718bb14d72 |
+| ADAPT-D-FIX1 | 32e335249dad5b390e05d7212b22e1718bb14d72 | — | Integration head mà Control nêu trong lệnh rebase (CLOSURE_BASE_STALE), đã chứa gói được phủ tích hợp sau 67b01f2; Worker không tra git log nên ghi SHA này làm SHA tích hợp của gói, Control xác minh khớp commit integrate(ADAPT-D-FIX1) |
 | A-01 | 22535f6dcff3dbf2e3187771a9bff1b34c85c838 | b11289d9c406 | git log --grep=integrate() |
 | A-02 | e343a41ee6570c39d0cbeda2bd35a3bf2c15513f | 0614e8d1934d | git log --grep=integrate() |
 | A-03 | 5e009d1c06ba60052bdd1658f939ffaadc626597 | 6382ebd2cdde | git log --grep=integrate() |
@@ -127,3 +129,6 @@ Danh sách 108 gói theo yêu cầu nghiệm thu của revision 5 (M7-MILESTONE-
 
 - Các commit integrate của các gói tính năng bổ sung và E2E (như `integrate(PW-E2E)`, `integrate(PP-*)`, `integrate(RS-*)`) đã được tích hợp đầy đủ vào nhánh tích hợp và là tổ tiên của HEAD hiện tại.
 - Toàn bộ 16 cổng `GATE-*` không có commit integrate trực tiếp mà được Control phát hành bằng bản ghi quyết định RELEASE có mã recordHash xác thực tại `gate-releases.md`.
+- Revision 6 so với revision 5 thêm hai gói: PW-D1-FIX1 (nhóm lỗi R14: ref nguồn trong khối dữ liệu phi tín nhiệm và prompt mặc định khớp parser của phân hệ creative; báo cáo docs/delivery-evidence/pw-d1-fix1/report.md) và ADAPT-D-FIX1 (hàng mới sau khi lane rebase lên 32e335249dad5b390e05d7212b22e1718bb14d72). Mọi hàng khác chép nguyên từ revision 5.
+- Danh sách nghiệm thu của revision 6 kết thúc ở ADAPT-E. Các hàng ADAPT-E-MEDIA, ADAPT-F, ADAPT-J, ADAPT-I, ADAPT-CONF và hàng nhóm ADAPT trong bảng là hàng bổ sung giữ từ revision 5, không thuộc danh sách bắt buộc của revision 6.
+- Nhánh tích hợp còn chứa các commit nằm ngoài danh sách bao phủ của M7-MILESTONE-CLOSE-R6, không tính vào bảng gói: CP7-1 (báo cáo docs/delivery-evidence/cp7-1), CP7-2 (commit integrate 7b77aa1, candidate 4bff4cf7682f) và CP7-3 (commit integrate feb344d, candidate 4d9d6ee7083e). Đây là bằng chứng tài nguyên thật RG-01 và RG-02 của CP7, không phải gói của M7-MILESTONE-CLOSE. Lệnh làm việc không cho git log nên báo cáo chỉ chép các SHA đã nêu trong đề bài hoặc báo cáo trước và không đoán SHA khác; commit mới sau rebase (nếu có) nằm ngoài danh sách bao phủ không được liệt kê ở đây.
