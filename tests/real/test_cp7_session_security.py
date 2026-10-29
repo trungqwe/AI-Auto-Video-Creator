@@ -173,6 +173,8 @@ def _session_headers(real, *, csrf=True, origin=f'https://{HOST}:{PORT}'):
 def _pass(emit, item, *details):
     emit(c.report_line('RG-01', item, 'PASS'))
     for detail in details:
+        # emit in ra stdout của harness (cp1252): chi tiết in ra terminal phải là ASCII; chữ có dấu chỉ nằm trong report.md.
+        assert detail.isascii(), f'evidence detail for {item} must be ASCII'
         emit(f'- {item}: {detail}')
 
 
@@ -217,7 +219,7 @@ def test_rg01_host_rejected(real, emit):
     real['bodies'].append(body)
     assert launch_status == 403 and api_status == 403, (launch_status, api_status)
     assert real['probe']['finalPath'] == '/', 'capability was consumed by the foreign-Host request'
-    _pass(emit, 'host_rejected', f'/launch (capability thật, chưa dùng) status={launch_status}, sau đó Host đúng vẫn vào được; '
+    _pass(emit, 'host_rejected', f'/launch (real unused capability) status={launch_status}, then the correct Host still gets in; '
           f'/v1/jobs status={api_status} host={EVIL}')
 
 
@@ -225,14 +227,14 @@ def test_rg01_origin_rejected(real, emit):
     status, body = _request('POST', '/v1/batches', headers=_session_headers(real, origin=f'https://{EVIL}'), body='{}')
     real['bodies'].append(body)
     assert status == 403, status
-    _pass(emit, 'origin_rejected', f'POST /v1/batches Origin=https://{EVIL} status={status} (body rỗng, không tạo lô)')
+    _pass(emit, 'origin_rejected', f'POST /v1/batches Origin=https://{EVIL} status={status} (empty body, no batch created)')
 
 
 def test_rg01_csrf_required(real, emit):
     status, body = _request('POST', '/v1/batches', headers=_session_headers(real, csrf=False), body='{}')
     real['bodies'].append(body)
     assert status == 403, status
-    _pass(emit, 'csrf_required', f'POST /v1/batches without X-CSRF-Token status={status} (body rỗng, không tạo lô)')
+    _pass(emit, 'csrf_required', f'POST /v1/batches without X-CSRF-Token status={status} (empty body, no batch created)')
 
 
 def test_rg01_cookie_flags(real, emit):
@@ -286,7 +288,7 @@ def test_rg01_canary_zero_hits(real, emit):
     assert not short, f'secret too short to search reliably: {short}'
     assert sum(real_hits.values()) == 0, {k: v for k, v in real_hits.items() if v}
     _pass(emit, 'canary_zero_hits', f'surfaces={len(texts)} (dom, har, response bodies, data-dir logs) canary_hits=0 '
-          'real_secret_hits=0 (drive refresh token, 9Router key; giá trị chỉ trong bộ nhớ của test)')
+          'real_secret_hits=0 (drive refresh token, 9Router key; values only in test memory)')
 
 
 def test_rg01_secret_scan(real, emit):

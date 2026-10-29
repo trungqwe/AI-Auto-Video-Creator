@@ -2,7 +2,7 @@
 
 Ngày đo: 29/10/2026, trên máy sản xuất (Windows 10). Chạy đo lại trong lane `lane-cp7-2` (worktree của AI_SETUP, hồ sơ `production`, dưới quyền thường).
 
-Lệnh: `node --check tools/real/cp7_browser_probe.js` (mã thoát 0) và `python -m pytest tests/real/test_cp7_session_security.py -q -p no:cacheprovider` bằng interpreter khoá `.local-tools/runtime/1ca840a7/venv`. Kết quả: 10 passed trong 110.33 giây, mã thoát 0. Playwright được nạp từ `src/controlplane/ui/node_modules` nếu có, nếu không thì từ runtime khoá `.local-tools/runtime/1ca840a7/ui/node_modules/playwright` qua biến `CP7_PLAYWRIGHT_DIR`. Test chạy `launcher.py start` thật hai lần (hồ sơ `production`), bắt URL `/launch` qua biến `BROWSER` vào tệp tạm (capability không bao giờ được in), rồi mở phiên bằng Playwright headless. Trần chi phí: 0 USD, không gọi AI.
+Lệnh: `node --check tools/real/cp7_browser_probe.js` (mã thoát 0) và `python -m pytest tests/real/test_cp7_session_security.py -q -p no:cacheprovider` bằng interpreter khoá `.local-tools/runtime/1ca840a7/venv`. Kết quả: 10 passed trong 112.11 giây, mã thoát 0 (chạy với PYTHONIOENCODING=cp1252 để mô phỏng stdout của harness). Playwright được nạp từ `src/controlplane/ui/node_modules` nếu có, nếu không thì từ runtime khoá `.local-tools/runtime/1ca840a7/ui/node_modules/playwright` qua biến `CP7_PLAYWRIGHT_DIR`. Test chạy `launcher.py start` thật hai lần (hồ sơ `production`), bắt URL `/launch` qua biến `BROWSER` vào tệp tạm (capability không bao giờ được in), rồi mở phiên bằng Playwright headless. Trần chi phí: 0 USD, không gọi AI.
 
 ## Kết quả
 
@@ -36,3 +36,4 @@ RG-01.secret_scan: PASS
 - Ba lỗi hạ tầng phát hiện khi dựng slice này đã sửa trên nhánh ổn định hoá, kèm test: `launcher stop` treo khi trình duyệt giữ SSE (`b0bf81d` cho máy chủ production, `8bb5768` cho mọi nơi tạo máy chủ uvicorn: hạn tắt êm 10 giây); namespace Temporal `default` chưa đăng ký trên image server 1.31.2 (`2f7e847`); `worker.stop()` chờ đủ 60 giây vì future bị bỏ rơi khi loop của worker đã dừng (`6686c58`).
 - Probe trình duyệt không chờ `networkidle`, vì UI giữ một `EventSource` mở suốt phiên. Probe chờ trang nạp, chờ tiêu đề `h1.brand-title`, rồi chờ thêm 3 giây để các lệnh gọi API đầu tiên vào HAR.
 - DOM, HAR và cookie chỉ nằm trong thư mục tạm ngoài cây Git, và bị xoá khi test xong.
+- Dòng bằng chứng test in ra terminal chỉ dùng ASCII vì stdout của harness dùng cp1252; ở lượt trước 4 test (host_rejected, origin_rejected, csrf_required, canary_zero_hits) lỗi mã hoá Unicode khi in chi tiết tiếng Việt. Chi tiết có dấu nằm trong báo cáo này; `_pass` trong test có assert ASCII để chặn tái phát.
