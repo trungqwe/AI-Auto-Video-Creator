@@ -2,7 +2,9 @@
 
 Ngày đo: 30/10/2026, trên lane lane-cp7-4, bằng interpreter khoá .local-tools/runtime/1ca840a7/venv, dưới quyền thường.
 
-Lệnh: python -m pytest tests/real/test_cp7_ai_real.py -q -p no:cacheprovider bằng interpreter khoá .local-tools/runtime/1ca840a7/venv. Kết quả: 9 passed, 0 failed, mã thoát 0. Trần chi phí đã dùng: 60 lời gọi logic đã dùng (59/60 hợp lệ, 1 waiting tái thử nghiệm hợp lệ), 60 HTTP hit thật (status 200), 0 lần chờ quota (không gặp 429 hoặc BUDGET_BLOCKED thật), tổng ledger 0.59 USD ghi sổ.
+Đo lại sau khi rebase nhánh lên integration head 67b01f25ae729e39774d4e4a6adb9c20c805482c; lượt trước bị Control thu hồi vì pytest không trả mã thoát (exit null).
+
+Lệnh: python -m pytest tests/real/test_cp7_ai_real.py -q -p no:cacheprovider bằng interpreter khoá .local-tools/runtime/1ca840a7/venv. Kết quả: 9 passed, 0 failed, mã thoát 0. Trần chi phí đã dùng: 60 lời gọi logic đã dùng (59/60 hợp lệ, 0 waiting), 60 HTTP hit thật (status 200), 0 lần chờ quota (không gặp 429 hoặc BUDGET_BLOCKED thật), tổng ledger 0.60 USD ghi sổ.
 
 ## Kết quả
 
@@ -18,11 +20,11 @@ RG-03.secret_scan: PASS
 
 ## Chi tiết đo
 
-- six_roles_valid: valid_by_role={"analysis": 10, "angle": 10, "script": 9, "selection": 10, "metadata": 10, "image_safety": 10} waiting=1 total_valid=59/60
-- router_host_only: hits=60 hosts=[('127.0.0.1', 20128)] paths=['/v1/chat/completions'] statuses=['200', 'None']
-- ledger_recorded: j18_records=49 vision_test_records=10 logical_calls=60 total_cost=0.59 USD (bản ghi vision do test ghi, không phải sản phẩm)
-- record_no_secret: scanned_records=59 leak_count=0 key_present=False
-- latency_p95: p95=34.0s max=120.0s logical_calls=60 retries=0 ledger_total=0.59 USD
+- six_roles_valid: valid_by_role={"analysis": 10, "angle": 10, "script": 9, "selection": 10, "metadata": 10, "image_safety": 10} waiting=0 total_valid=59/60
+- router_host_only: hits=60 hosts=[('127.0.0.1', 20128)] paths=['/v1/chat/completions'] statuses=['200']
+- ledger_recorded: j18_records=50 vision_test_records=10 logical_calls=60 total_cost=0.60 USD (bản ghi vision do test ghi, không phải sản phẩm)
+- record_no_secret: scanned_records=60 leak_count=0 key_present=False
+- latency_p95: p95=33.6s max=39.0s logical_calls=60 retries=0 ledger_total=0.60 USD
 - budget_guard: hard_stop=True monthly_limit=50 USD policy_check_blocked=True (pure policy test, not quota_wait)
 - warn_80: ratio=0.8 limit=50 USD warn_threshold=40 USD at_40=WARN_80 at_39.99=OK
 - quota_wait: không gặp 429 hoặc BUDGET_BLOCKED thật
