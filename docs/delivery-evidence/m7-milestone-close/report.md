@@ -3,8 +3,8 @@
 ## 1. Phạm vi và candidate
 
 - Task: M7-MILESTONE-CLOSE-R6 (đóng milestone M7, revision 6).
-- Candidate gốc: HEAD 67b01f25ae729e39774d4e4a6adb9c20c805482c của nhánh trungqwe/lane-m7-milestone-close-r6 khi mở lane; đây là commit integrate của PW-D1-FIX1. Lane không rebase trong revision này.
-- Control đo toàn bộ 472 lệnh kiểm của milestone trên candidate sau worker_done; Worker không chạy bộ lệnh này (xem mục 6).
+- Candidate gốc: lane được rebase lên integration head 32e335249dad5b390e05d7212b22e1718bb14d72 sau khi Control thu hồi grant G1 với lý do CLOSURE_BASE_STALE (lane cũ ở HEAD 67b01f25ae729e39774d4e4a6adb9c20c805482c, commit integrate của PW-D1-FIX1, chưa chứa các gói được phủ tích hợp sau đó). Báo cáo viết trên mã đã rebase; kết quả của lần mở trước không còn dùng.
+- Control đo toàn bộ 474 lệnh kiểm của milestone trên candidate sau worker_done; Worker không chạy bộ lệnh này (xem mục 6).
 - Interpreter khoá của lane: C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\1ca840a7\venv\Scripts\python.exe.
 - Ngày thực thi: 2026-10-30.
 - Owned paths: docs/delivery-evidence/m7-milestone-close/**. Cấm sửa đổi bất kỳ tệp nào ngoài phạm vi này.
@@ -13,9 +13,9 @@
 
 Gói M7-MILESTONE-CLOSE-R6 được AI PM tự mở sau Auditor PASS của M7-INTEGRATION-PLAN, authority được ràng buộc bởi receipt, candidate, run, dispatch và hash evidence, không cần user checkpoint lặp lại.
 
-So với bảng bao phủ của revision 5, revision 6 chỉ thêm gói PW-D1-FIX1 (nhóm lỗi R14: ref nguồn trong khối dữ liệu phi tín nhiệm, prompt mặc định khớp parser của creative và nâng tự động prompt mặc định cũ; docs/delivery-evidence/pw-d1-fix1/report.md) với SHA tích hợp 67b01f25ae729e39774d4e4a6adb9c20c805482c.
+So với bảng bao phủ của revision 5, revision 6 thêm hai gói: PW-D1-FIX1 (nhóm lỗi R14: ref nguồn trong khối dữ liệu phi tín nhiệm, prompt mặc định khớp parser của creative và nâng tự động prompt mặc định cũ; docs/delivery-evidence/pw-d1-fix1/report.md) với SHA tích hợp 67b01f25ae729e39774d4e4a6adb9c20c805482c, và ADAPT-D-FIX1 với SHA tích hợp 32e335249dad5b390e05d7212b22e1718bb14d72 (integration head mà Control nêu trong lệnh rebase).
 
-Revision 6 khác revision 5 ở cách đo: Control đo toàn bộ 472 lệnh kiểm của milestone trên candidate sau worker_done, còn revision 5 ghi 470 lệnh do Worker tự chạy. Worker không chạy bộ lệnh này nên báo cáo không công bố số lệnh đạt; xem command-results.md.
+Revision 6 khác revision 5 ở cách đo: Control đo toàn bộ 474 lệnh kiểm của milestone trên candidate sau worker_done, còn revision 5 ghi 470 lệnh do Worker tự chạy. Worker không chạy bộ lệnh này nên báo cáo không công bố số lệnh đạt; xem command-results.md.
 
 ## 3. Revision trước đã đóng mà không tích hợp
 
@@ -34,7 +34,7 @@ R3 chắc chắn phải chạy lại thành R4/R5 vì các gói `RS-1..RS-13`, b
 
 ## 4. Gói được bao phủ
 
-- Toàn bộ gói được bao phủ theo yêu cầu nghiệm thu của revision 6 (revision 5 cộng PW-D1-FIX1) kèm SHA tích hợp 40 hex được liệt kê đầy đủ tại [packages.md](packages.md). Tổ tiên của từng SHA do Control xác minh.
+- Toàn bộ gói được bao phủ theo yêu cầu nghiệm thu của revision 6 (revision 5 cộng PW-D1-FIX1 và ADAPT-D-FIX1) kèm SHA tích hợp 40 hex được liệt kê đầy đủ tại [packages.md](packages.md). Tổ tiên của từng SHA do Control xác minh.
 - Gói mốc `M7-INTEGRATION-PLAN`: Control đã xác minh receipt Auditor PASS và commit nội dung `0a3f707ffa08b3a5737be6fa30769933d2cf475d` là tổ tiên của nhánh tích hợp.
 - Toàn bộ 16 cổng `GATE-*` đã có bản ghi quyết định RELEASE với mã recordHash chính xác được ghi nhận tại [gate-releases.md](gate-releases.md).
 
@@ -46,8 +46,8 @@ Hai gói kế hoạch sửa `IMPL-PLAN-PROD-WIRING-FIX1` và `IMPL-PLAN-PROD-WIR
 
 ## 6. Kết quả lệnh kiểm
 
-- Control đo toàn bộ 472 lệnh kiểm của milestone M7 trên candidate sau worker_done. Worker không chạy bộ lệnh này và không dẫn mã bản đo.
-- Báo cáo này không công bố số lệnh đạt, exit code hay thời gian của 472 lệnh; Reviewer (Sonnet 5.5) và Auditor rủi ro (Opus 5.5) đối chiếu bản đo mà đề bài của Control nêu.
+- Control đo toàn bộ 474 lệnh kiểm của milestone M7 trên candidate sau worker_done. Worker không chạy bộ lệnh này và không dẫn mã bản đo.
+- Báo cáo này không công bố số lệnh đạt, exit code hay thời gian của 474 lệnh; Reviewer (Sonnet 5.5) và Auditor rủi ro (Opus 5.5) đối chiếu bản đo mà đề bài của Control nêu.
 - Revision 5 ghi 470 lệnh do Worker tự chạy; số liệu đó không còn dùng.
 - Lệnh Worker tự chạy trong revision 6 chỉ gồm git diff --check và các probe đọc tệp kiểm packages.md, gate-releases.md, tính nhất quán nội dung và encoding; xem [command-results.md](command-results.md).
 
@@ -69,11 +69,11 @@ Hai gói kế hoạch sửa `IMPL-PLAN-PROD-WIRING-FIX1` và `IMPL-PLAN-PROD-WIR
 
 ## 9. Ghi nhận minh bạch về HEAD và commit ngoài phạm vi
 
-- HEAD của lane khi mở revision 6 là 67b01f25ae729e39774d4e4a6adb9c20c805482c, chính là commit integrate của PW-D1-FIX1 (candidate 86594a85451b, commit nội dung 86594a8).
-- Nhánh còn chứa commit nằm ngoài danh sách bao phủ, không tính vào bảng gói: CP7-1, CP7-2 (integrate 7b77aa1) và CP7-3 (integrate feb344d), là bằng chứng tài nguyên thật RG-01 và RG-02 của CP7; chi tiết ở mục Ghi chú của packages.md.
+- Lane đã rebase lên integration head 32e335249dad5b390e05d7212b22e1718bb14d72; trước rebase HEAD là 67b01f25ae729e39774d4e4a6adb9c20c805482c, commit integrate của PW-D1-FIX1 (candidate 86594a85451b, commit nội dung 86594a8); Control xác minh tổ tiên của các SHA trong packages.md.
+- Nhánh còn chứa commit nằm ngoài danh sách bao phủ, không tính vào bảng gói: CP7-1, CP7-2 (integrate 7b77aa1) và CP7-3 (integrate feb344d), là bằng chứng tài nguyên thật RG-01 và RG-02 của CP7; chi tiết ở mục Ghi chú của packages.md. Sau rebase nhánh có thể còn commit khác ngoài danh sách bao phủ; báo cáo không liệt kê chúng.
 - Báo cáo không tra git log và không đoán SHA ngoài những SHA đã nêu trong đề bài hoặc chép từ báo cáo trước.
-- Kết quả của lần mở trước (revision 5, kể cả lần chạy lại sau khi grant bị thu hồi) không còn dùng.
+- Kết quả của các lần mở trước (revision 5 và lần mở revision 6 ở HEAD 67b01f25ae72 bị thu hồi vì CLOSURE_BASE_STALE) không còn dùng.
 
 ## 10. Kết luận của Worker
 
-Phần ghi báo cáo, bảng gói, bản ghi cổng và đối chiếu exit gate đã hoàn tất. Trạng thái đạt hay không đạt của 472 lệnh kiểm do Control công bố sau worker_done; báo cáo không đổi trạng thái roadmap hay checklist. pendingUserCheckpoint chỉ gồm M7-R5-EG1 và M7-R6.
+Phần ghi báo cáo, bảng gói, bản ghi cổng và đối chiếu exit gate đã hoàn tất. Trạng thái đạt hay không đạt của 474 lệnh kiểm do Control công bố sau worker_done; báo cáo không đổi trạng thái roadmap hay checklist. pendingUserCheckpoint chỉ gồm M7-R5-EG1 và M7-R6.
