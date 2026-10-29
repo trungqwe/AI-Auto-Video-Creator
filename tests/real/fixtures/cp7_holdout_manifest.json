@@ -1,0 +1,290 @@
+{
+  "schema_version": 1,
+  "seed": "cp7-5-holdout-v1",
+  "rule": "sort article ids; list all unordered id pairs in lexicographic order; random.Random(seed).sample(range(pair_total), 40); keep chosen indices ascending",
+  "pair_count": 40,
+  "articles": [
+    {
+      "id": "aljazeera-all-4498dfa315ab",
+      "raw_sha256": "3f877b4bf134813c064b6e50974caaee563011f092f905f1c58d6ea78d19035f"
+    },
+    {
+      "id": "aljazeera-all-4ab3a42f36bc",
+      "raw_sha256": "b9d019c34beaa06681ab71f202871207bb7f211bec3f85645e2b741235a6e47c"
+    },
+    {
+      "id": "aljazeera-all-5043a38b063f",
+      "raw_sha256": "7e698f19ca8ade6e2a32ab90466575a90c55c8118b73b2e7a34bc793b507ebdc"
+    },
+    {
+      "id": "aljazeera-all-af11012ee96e",
+      "raw_sha256": "83bbb2d5d23e7a49810a815ccae3427658cc73fdae2ee8a60b5dac62ff17780c"
+    },
+    {
+      "id": "aljazeera-all-e3d5295b0592",
+      "raw_sha256": "3519421ec7d918ac45c6f5ef287cf62ed28569cca6408648c6c2b15f5b3e4d95"
+    },
+    {
+      "id": "bbc-tech-2c43e290abc0",
+      "raw_sha256": "a47e885a1e58f435e76e19bdcc183a08fdd14331dde4ff1661631b2cd4772272"
+    },
+    {
+      "id": "bbc-tech-6f0240bccdc0",
+      "raw_sha256": "88b20b0fbbb8c6f0016c19830b345abd447738c706d577066f76cb3c1b52fe60"
+    },
+    {
+      "id": "bbc-tech-91124b3ea1c8",
+      "raw_sha256": "dec3da1b6d683add047e1fdf96888a83aede62d6858976f6684d4ba9ec256518"
+    },
+    {
+      "id": "bbc-tech-b65ab71cbfef",
+      "raw_sha256": "3c10b82331d28c594ba1678049ca94c513430e69892202a983ca7847396bcffb"
+    },
+    {
+      "id": "bbc-tech-e19bd8c68654",
+      "raw_sha256": "a1256c313e37ea9503a0bc77e541cd4ca1ba86373f83bc3b2c37853cd660e543"
+    },
+    {
+      "id": "bbc-world-42b4ece9731d",
+      "raw_sha256": "d1a067d19557d369a1938f2c0c955125fbc81630093c61695cd9568769304e7e"
+    },
+    {
+      "id": "bbc-world-6a9e1f4905d4",
+      "raw_sha256": "5c4676af10c48ec4863147f83f4ef12a2e80647f9cdd9cb45e2556c998f3ff11"
+    },
+    {
+      "id": "bbc-world-8dd76e232746",
+      "raw_sha256": "b6d51604e95f835c7b84aef49a6c31240109f0c54032c845cb4fd1341820e91a"
+    },
+    {
+      "id": "bbc-world-927aa9df16c8",
+      "raw_sha256": "3b6e35ba5ebd0b68e85ce3ee56c11c25a22dbefac821ed73e6ac23115617cf57"
+    },
+    {
+      "id": "bbc-world-fab0cbed0e94",
+      "raw_sha256": "92cd52c74ddb54731894992722bae1d2efbc289cd0f5dd9520cd27df6639f976"
+    },
+    {
+      "id": "guardian-world-2f3de9f7785b",
+      "raw_sha256": "dad491f78d055f72914bfa169e2b2800336b5d1085acb2832e97761e49faec54"
+    },
+    {
+      "id": "guardian-world-49c28743b657",
+      "raw_sha256": "bebe8a5530d523d0218c192c9631399af5f5c82cd484fb991c5500736870e9ed"
+    },
+    {
+      "id": "guardian-world-6dbae2bdfca2",
+      "raw_sha256": "b25a42550774f41e4a716661c26cd583ad6398f2dc3844347bc0b1f430f53733"
+    },
+    {
+      "id": "guardian-world-c889760de5d3",
+      "raw_sha256": "1371b98b40eb5795fa1b3b550563f03e1e6ed29b7722d6ec9a66d08a143ac4d0"
+    },
+    {
+      "id": "guardian-world-eb7f0340af3d",
+      "raw_sha256": "182e79edb7adcefed533f381aa040798d42563bf6b26ea8e225a0099065441c5"
+    },
+    {
+      "id": "nasa-news-4b2c059bd94e",
+      "raw_sha256": "78e600d615e6ccc82593682e683e26c9564ca6a96cd203d60a9f06da1ba1dd46"
+    },
+    {
+      "id": "nasa-news-624e1e1e3d1b",
+      "raw_sha256": "001bbbef6a96405a265818747e7793bd331b2c74be27d2fd6d7d6c1772ef4b8a"
+    },
+    {
+      "id": "nasa-news-6a8e8f4a60c5",
+      "raw_sha256": "bdfe5b6d128e91fbd381ad5bb5add7296ee70f9a83f01b787bc848a4f57ba39c"
+    },
+    {
+      "id": "nasa-news-dbf41850dbae",
+      "raw_sha256": "4ff643faa7a9b37463ace0e119cc6da9a217d021a253b9c7d8cd3df1d525e67d"
+    },
+    {
+      "id": "nasa-news-dddd54e7732b",
+      "raw_sha256": "a5c62c5b367d173ebc33ee29e258308444295a1c596f596e73341c27121c40b5"
+    },
+    {
+      "id": "npr-news-0703acb0aa63",
+      "raw_sha256": "0aae94bdfca9d7b11496ba9f89d357ab9885213aedaf2785b489064e3af2a234"
+    },
+    {
+      "id": "npr-news-093ad3a9e12b",
+      "raw_sha256": "9312203c86fe7a9a2c1937e28310b810b87f67d3c7e3ec1eec11d7ab6d56a326"
+    },
+    {
+      "id": "npr-news-205c9d0aceef",
+      "raw_sha256": "3a027cc97c5c3c4433b1a1fcc07fc97c044fd6c96851cd40cd0844c42c565a2b"
+    },
+    {
+      "id": "npr-news-da8b8634258e",
+      "raw_sha256": "e220ea785c388e69e8b76861b29b06df36659ca7fc6dd8fb7f37a226a43aa8aa"
+    },
+    {
+      "id": "npr-news-e58da7a8afb0",
+      "raw_sha256": "22bf61d9504ef7be5b5211245acf936d9ebd66bf1eeb58a801c552577bdee728"
+    }
+  ],
+  "pairs": [
+    [
+      "aljazeera-all-4498dfa315ab",
+      "aljazeera-all-5043a38b063f"
+    ],
+    [
+      "aljazeera-all-4498dfa315ab",
+      "bbc-tech-6f0240bccdc0"
+    ],
+    [
+      "aljazeera-all-4ab3a42f36bc",
+      "aljazeera-all-5043a38b063f"
+    ],
+    [
+      "aljazeera-all-4ab3a42f36bc",
+      "bbc-tech-e19bd8c68654"
+    ],
+    [
+      "aljazeera-all-4ab3a42f36bc",
+      "nasa-news-6a8e8f4a60c5"
+    ],
+    [
+      "aljazeera-all-5043a38b063f",
+      "guardian-world-2f3de9f7785b"
+    ],
+    [
+      "aljazeera-all-5043a38b063f",
+      "npr-news-e58da7a8afb0"
+    ],
+    [
+      "aljazeera-all-af11012ee96e",
+      "bbc-tech-91124b3ea1c8"
+    ],
+    [
+      "aljazeera-all-e3d5295b0592",
+      "bbc-tech-2c43e290abc0"
+    ],
+    [
+      "aljazeera-all-e3d5295b0592",
+      "bbc-tech-6f0240bccdc0"
+    ],
+    [
+      "aljazeera-all-e3d5295b0592",
+      "guardian-world-49c28743b657"
+    ],
+    [
+      "bbc-tech-2c43e290abc0",
+      "nasa-news-4b2c059bd94e"
+    ],
+    [
+      "bbc-tech-6f0240bccdc0",
+      "bbc-world-42b4ece9731d"
+    ],
+    [
+      "bbc-tech-6f0240bccdc0",
+      "guardian-world-2f3de9f7785b"
+    ],
+    [
+      "bbc-tech-6f0240bccdc0",
+      "guardian-world-6dbae2bdfca2"
+    ],
+    [
+      "bbc-tech-6f0240bccdc0",
+      "npr-news-205c9d0aceef"
+    ],
+    [
+      "bbc-tech-91124b3ea1c8",
+      "nasa-news-dbf41850dbae"
+    ],
+    [
+      "bbc-tech-b65ab71cbfef",
+      "bbc-world-8dd76e232746"
+    ],
+    [
+      "bbc-tech-b65ab71cbfef",
+      "guardian-world-2f3de9f7785b"
+    ],
+    [
+      "bbc-tech-b65ab71cbfef",
+      "guardian-world-49c28743b657"
+    ],
+    [
+      "bbc-tech-b65ab71cbfef",
+      "nasa-news-4b2c059bd94e"
+    ],
+    [
+      "bbc-tech-b65ab71cbfef",
+      "nasa-news-dbf41850dbae"
+    ],
+    [
+      "bbc-tech-e19bd8c68654",
+      "bbc-world-8dd76e232746"
+    ],
+    [
+      "bbc-tech-e19bd8c68654",
+      "guardian-world-c889760de5d3"
+    ],
+    [
+      "bbc-world-42b4ece9731d",
+      "bbc-world-8dd76e232746"
+    ],
+    [
+      "bbc-world-42b4ece9731d",
+      "nasa-news-dddd54e7732b"
+    ],
+    [
+      "bbc-world-42b4ece9731d",
+      "npr-news-da8b8634258e"
+    ],
+    [
+      "bbc-world-6a9e1f4905d4",
+      "guardian-world-2f3de9f7785b"
+    ],
+    [
+      "bbc-world-6a9e1f4905d4",
+      "nasa-news-624e1e1e3d1b"
+    ],
+    [
+      "bbc-world-8dd76e232746",
+      "npr-news-e58da7a8afb0"
+    ],
+    [
+      "bbc-world-fab0cbed0e94",
+      "npr-news-0703acb0aa63"
+    ],
+    [
+      "bbc-world-fab0cbed0e94",
+      "npr-news-da8b8634258e"
+    ],
+    [
+      "guardian-world-49c28743b657",
+      "nasa-news-4b2c059bd94e"
+    ],
+    [
+      "guardian-world-49c28743b657",
+      "npr-news-093ad3a9e12b"
+    ],
+    [
+      "guardian-world-6dbae2bdfca2",
+      "npr-news-093ad3a9e12b"
+    ],
+    [
+      "guardian-world-c889760de5d3",
+      "nasa-news-624e1e1e3d1b"
+    ],
+    [
+      "guardian-world-c889760de5d3",
+      "npr-news-da8b8634258e"
+    ],
+    [
+      "nasa-news-624e1e1e3d1b",
+      "npr-news-093ad3a9e12b"
+    ],
+    [
+      "nasa-news-6a8e8f4a60c5",
+      "npr-news-e58da7a8afb0"
+    ],
+    [
+      "nasa-news-dbf41850dbae",
+      "npr-news-e58da7a8afb0"
+    ]
+  ]
+}
