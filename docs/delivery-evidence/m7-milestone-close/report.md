@@ -63,3 +63,17 @@ Hai gói kế hoạch sửa `IMPL-PLAN-PROD-WIRING-FIX1` và `IMPL-PLAN-PROD-WIR
 - Toàn bộ các tệp tài liệu trong `docs/delivery-evidence/m7-milestone-close/` được ghi bằng encoding UTF-8 không BOM, tiếng Việt đầy đủ dấu thanh, không có ký tự thay thế U+FFFD.
 - Kiểm tra `git diff --check` đạt chuẩn, không có khoảng trắng thừa hay lỗi dòng.
 - Worktree sạch, không sửa đổi bất kỳ tệp nào ngoài phạm vi `ownedPaths`.
+
+## 9. Chạy lại sau thu hồi grant (generation 1)
+
+- Grant `DELEGATED-AI_PM_DELEGATED_AUTHORITY_20261009-LANE-M7-MILESTONE-CLOSE-R5-G1` bị Control thu hồi do `INTEGRATION_CHECK_FAILED` khi rebase lên `3a7fbf32cf0bbd0af23991469bfbb7d21331fd7f`.
+- Finding duy nhất của lượt tích hợp: lệnh `python -m pytest tests/m2 tests/integration -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression` exit 1 với `1 failed, 3987 passed, 36 skipped, 1 deselected, 2 warnings, 25 subtests passed in 976.18s (0:16:16)`. Test đỏ là `tests/integration/prod_wiring/test_pw_vert_video_flow.py::test_retry_stage_after_the_second_activity_failed_reruns_only_that_activity`.
+- Hành động thực hiện:
+  1. Rebase nhánh lên `3a7fbf32cf0bbd0af23991469bfbb7d21331fd7f` (không có xung đột).
+  2. Đặt `PYTEST_DEBUG_TEMPROOT=C:\Users\Admin\AppData\Local\Temp\ai-setup-pytest\M7-MILESTONE-CLOSE-R5-implement`, chạy riêng tệp `tests/integration/prod_wiring/test_pw_vert_video_flow.py` bằng interpreter khóa. Kết quả: exit 0, dòng tóm tắt: `8 passed in 28.40s`.
+  3. Chạy lại nguyên văn lệnh đầy đủ `python -m pytest tests/m2 tests/integration -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression` bằng interpreter khóa với cùng `PYTEST_DEBUG_TEMPROOT`. Kết quả: exit 0, dòng tóm tắt: `3988 passed, 36 skipped, 1 deselected, 2 warnings, 25 subtests passed in 922.25s (0:15:22)`.
+- Nhận xét kỹ thuật:
+  - Test `test_retry_stage_after_the_second_activity_failed_reruns_only_that_activity` chờ bằng `wait_until` timeout 60 giây và dùng lock/unlock time skipping của Temporal test server (`test_pw_vert_video_flow.py:247-262`) nên nhạy với tải khi chạy cả bộ.
+  - Test thuộc gói `PW-VERT`, nằm ngoài `ownedPaths` của R5, không bị sửa đổi trong gói này.
+  - Cả bước 2 (chạy cô lập) và bước 3 (chạy toàn bộ) đều đạt exit 0; không tái hiện được; ghi nhận là lỗi nhạy tải ngắt quãng, đề xuất theo dõi bằng slice riêng.
+- Tham chiếu: số liệu và ghi chú được cập nhật tại [command-results.md](command-results.md) chuỗi 8 dòng 11.

@@ -260,7 +260,7 @@ Tổng số đoạn: 468 (468 đạt, 0 thất bại) thuộc 14 chuỗi.
 | 8 | python -c "import re, pathlib; t = pathlib.Path('tests/m2/test_p9_m2_exit_gate.p | 0 | không có đầu ra |  |
 | 9 | python -m pytest tests/integration/convergence/test_cp3b_catalog_graphs.py tests | 0 | 25 passed in 0.07s |  |
 | 10 | python -m pytest tests/unit/collection tests/unit/catalog tests/m2/test_p4_state | 0 | 666 passed, 841 subtests passed in 0.90s |  |
-| 11 | python -m pytest tests/m2 tests/integration -q -p no:cacheprovider --deselect te | 0 | 3988 passed, 36 skipped, 1 deselected, 2 warnings, 25 subtests passed in 873.74s (0:14:33) | hoãn sang CP7 theo quyết định của user 21/10/2026 |
+| 11 | python -m pytest tests/m2 tests/integration -q -p no:cacheprovider --deselect te | 0 | 3988 passed, 36 skipped, 1 deselected, 2 warnings, 25 subtests passed in 922.25s (0:15:22) | hoãn sang CP7 theo quyết định của user 21/10/2026; chạy lại sau khi grant generation 1 bị thu hồi (lượt tích hợp báo 1 failed ở test_retry_stage_after_the_second_activity_failed_reruns_only_that_activity); chạy riêng tệp test_pw_vert_video_flow.py: 8 passed in 28.40s |
 | 12 | python -m pytest tests/unit/collection tests/unit/ingestion tests/unit/catalog t | 0 | 5311 passed, 1 warning, 2015 subtests passed in 17.49s |  |
 | 13 | python -c "import pathlib; t = pathlib.Path('src/main.py').read_text(encoding='u | 0 | không có đầu ra |  |
 | 14 | python -c "import re, pathlib; d = pathlib.Path('src/controlplane/ui/dist'); h = | 0 | không có đầu ra |  |
