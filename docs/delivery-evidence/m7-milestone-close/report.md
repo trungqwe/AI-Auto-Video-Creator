@@ -1,38 +1,38 @@
-# Báo cáo đóng M7 (revision 4) - ĐẠT
+# Báo cáo đóng M7 (revision 5) - ĐẠT
 
 ## 1. Phạm vi và candidate
 
-- Task: `M7-MILESTONE-CLOSE-R4` (đóng milestone M7, revision 4).
-- Base tích hợp: `f080601bae4ed341837157aaf87b3bcd85bd7424` (đã tích hợp gói `ADAPT-F-FIX1` trên base `069d9743c18cab0003b35fcd4f81ee3b3ce622a5`).
-- Candidate: `380f128bfe3c1e7e4b862ed2a8768b9344e43e91` (HEAD sau rebase lên integration head `f080601bae4ed341837157aaf87b3bcd85bd7424`).
+- Task: `M7-MILESTONE-CLOSE-R5` (đóng milestone M7, revision 5).
+- Base tích hợp: integration head `a84ac3940a4cef48c85733df30b016b3821aa1c3` (lane đã rebase lên đây, không xung đột).
+- Lệnh kiểm chạy trên cây làm việc tại HEAD `2e0b6809453baca35db99d060ee42fd71da59908` (cây này chỉ khác HEAD ở các tệp trong docs/delivery-evidence/m7-milestone-close/).
 - Interpreter khoá của lane: `C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\1ca840a7\venv\Scripts\python.exe`.
 - Ngày thực thi: `2026-10-29`.
 - Owned paths: `docs/delivery-evidence/m7-milestone-close/**`. Cấm sửa đổi bất kỳ tệp nào ngoài phạm vi này.
 
-## 2. Lý do rebase (DEPENDENCY_FIXED)
+## 2. Lý do revision 5
 
-Grant G2 trước đó bị Control thu hồi với lý do `DEPENDENCY_FIXED` sau khi gói sửa lỗi `ADAPT-F-FIX1` (commit `110ba265a338`) được hợp nhất vào nhánh tích hợp tại `f080601bae4ed341837157aaf87b3bcd85bd7424`.
-Lỗi assertion cũ tại `tests/integration/adapt/f/test_adapt_f_render.py:182` (khẳng định graph cũ thiếu `setsar=1` mà lệnh render R9 F-10-FIX1 đã bổ sung) đã được khắc phục hoàn toàn.
-Sau khi rebase thành công lên `f080601bae4ed341837157aaf87b3bcd85bd7424`, toàn bộ 467/467 đoạn lệnh kiểm bắt buộc đã được chạy lại trên candidate mới `380f128bfe3c1e7e4b862ed2a8768b9344e43e91` và đều đạt 100% exit code 0.
+Gói `M7-MILESTONE-CLOSE-R5` được AI PM tự mở sau khi nhận Auditor PASS của `M7-INTEGRATION-PLAN`, authority được ràng buộc bởi receipt, candidate, run, dispatch và hash evidence, không cần user checkpoint lặp lại.
+So với bảng bao phủ của revision 4, revision 5 có thêm gói ADAPT-F-FIX1 (R12) và ADAPT-J-FIX1 (R13, docs/delivery-evidence/adapt-j-fix1/report.md) cùng nhóm ADAPT.
+Toàn bộ lệnh kiểm bắt buộc của milestone M7 đã được chạy lại trên cây làm việc tại HEAD hiện hành và đều ĐẠT 470/470 đoạn (14 chuỗi lệnh, 0 thất bại, 100% exit code 0).
 
 ## 3. Revision trước đã đóng mà không tích hợp
 
 Milestone đóng mốc revision 3 (`M7-MILESTONE-CLOSE-R3`) đã được đóng mà không tích hợp.
-Lý do mở lại revision 4 (theo kế hoạch mở lại `docs/plans/PROD_WIRING_REOPEN_PLAN_20261025.md`):
-R3 chắc chắn phải chạy lại thành R4 vì các gói `RS-1..RS-13`, bốn gói sửa read-screens (`CP-4B-UI-SCREENS-FIX3`, `CP-4-WIRING-FIX3`, `ADAPT-PROD-FIX3`, `CP-4B-UI-SCREENS-FIX4`), gói kế hoạch PW (`IMPL-PLAN-PROD-WIRING`), các gói `PW-*` và cổng `GATE-PW-E2E` không nằm trong danh sách `coveredTasks` đã đóng băng của R3. R3 được retire để không đốt một lượt kiểm 22-25 phút và một lượt kiểm định Auditor rủi ro vô ích.
+Lý do mở lại (theo kế hoạch mở lại `docs/plans/PROD_WIRING_REOPEN_PLAN_20261025.md`):
+R3 chắc chắn phải chạy lại thành R4/R5 vì các gói `RS-1..RS-13`, bốn gói sửa read-screens (`CP-4B-UI-SCREENS-FIX3`, `CP-4-WIRING-FIX3`, `ADAPT-PROD-FIX3`, `CP-4B-UI-SCREENS-FIX4`), gói kế hoạch PW (`IMPL-PLAN-PROD-WIRING`), các gói `PW-*` và cổng `GATE-PW-E2E` không nằm trong danh sách `coveredTasks` đã đóng băng của R3. R3 được retire để không đốt một lượt kiểm 22-25 phút và một lượt kiểm định Auditor rủi ro vô ích.
 
-Bảng kiểm lại các điểm bổ sung của R4 so với R3 trên candidate hiện hành:
-| Hạng mục bổ sung của R4 | Vị trí kiểm tra | Kết quả thực tế |
+Bảng kiểm lại các điểm bổ sung trên candidate hiện hành:
+| Hạng mục | Vị trí kiểm tra | Kết quả thực tế |
 | --- | --- | --- |
-| Bốn gói sửa read-screens (`CP-4B-UI-SCREENS-FIX3/4`, `CP-4-WIRING-FIX3`, `ADAPT-PROD-FIX3`) | Chuỗi 3 (đoạn 68, 75, 76, 81) | Exit 0 (toàn bộ probe và test đạt) |
-| Gói kế hoạch PW (`IMPL-PLAN-PROD-WIRING`) | Chuỗi 4 (đoạn 82..83), Chuỗi 20..21 | Exit 0 (toàn bộ probe và test đạt) |
-| Các gói tính năng PW (`PW-*`) và các gói sửa PW | Chuỗi 5, Chuỗi 20, Chuỗi 21 | Exit 0 (toàn bộ test đạt) |
-| Cổng `GATE-PW-E2E` | `gate-releases.md` & Chuỗi 21 đoạn 24 (`test_pw_e2e_batch_video.py`) | Exit 0 (10 passed, 1 warning in 120.60s) |
-| Toàn bộ chuỗi `RS-1..RS-13` (read-screens) | Chuỗi 22 (đoạn 436..461) | Exit 0 (13 test + 13 probe đạt) |
+| Bốn gói sửa read-screens (`CP-4B-UI-SCREENS-FIX3/4`, `CP-4-WIRING-FIX3`, `ADAPT-PROD-FIX3`) | Bước 4 của work order | Exit 0 (toàn bộ probe và test đạt) |
+| Gói kế hoạch PW (`IMPL-PLAN-PROD-WIRING`) | Bước 4 và 5 của work order | Exit 0 (toàn bộ probe và test đạt) |
+| Các gói tính năng PW (`PW-*`) và các gói sửa PW | Bước 5, 6, 11, 12, 13 của work order | Exit 0 (toàn bộ test đạt) |
+| Cổng GATE-PW-E2E | gate-releases.md và chuỗi 13 (`test_pw_e2e_batch_video.py`) | 10 passed, 1 warning in 116.49s (0:01:56) |
+| Toàn bộ chuỗi `RS-1..RS-13` (read-screens) | Bước 13 và 14 của work order | Exit 0 (toàn bộ 13 test và 13 probe đạt) |
 
 ## 4. Gói được bao phủ
 
-- Toàn bộ 99 gói được bao phủ theo yêu cầu nghiệm thu kèm SHA tích hợp 40 hex đã được liệt kê đầy đủ tại [packages.md](packages.md). 100% SHA tích hợp được xác nhận là tổ tiên của HEAD `380f128bfe3c1e7e4b862ed2a8768b9344e43e91`.
+- Toàn bộ 108 gói được bao phủ theo yêu cầu nghiệm thu của revision 5 (gồm ADAPT-F-FIX1, ADAPT-J-FIX1 và nhóm ADAPT) kèm SHA tích hợp 40 hex đã được liệt kê đầy đủ tại [packages.md](packages.md). Tổ tiên của từng SHA do Control xác minh.
 - Gói mốc `M7-INTEGRATION-PLAN`: Control đã xác minh receipt Auditor PASS và commit nội dung `0a3f707ffa08b3a5737be6fa30769933d2cf475d` là tổ tiên của nhánh tích hợp.
 - Toàn bộ 16 cổng `GATE-*` đã có bản ghi quyết định RELEASE với mã recordHash chính xác được ghi nhận tại [gate-releases.md](gate-releases.md).
 
@@ -40,14 +40,15 @@ Bảng kiểm lại các điểm bổ sung của R4 so với R3 trên candidate 
 
 Hai gói kế hoạch sửa `IMPL-PLAN-PROD-WIRING-FIX1` và `IMPL-PLAN-PROD-WIRING-V3-FIX1` đã được retire và không nằm trong danh sách bao phủ:
 - Đánh giá tác động: Hai gói này là các gói sửa kế hoạch trung gian của PROD-WIRING, đã bị thay thế hoàn toàn bởi `IMPL-PLAN-PROD-WIRING-V3` và `IMPL-PLAN-PROD-WIRING-V4` trong danh sách bao phủ. Do đó việc loại bỏ chúng không làm ảnh hưởng đến các exit gate `M7-R5-EG1` và `M7-R6`.
-- Toàn bộ các lệnh kiểm thử của chuỗi `PW-*` vẫn được chạy đầy đủ tại Chuỗi 20 và Chuỗi 21 và đều đạt exit code 0.
+- Toàn bộ các lệnh kiểm thử của chuỗi `PW-*` vẫn được chạy đầy đủ tại các bước 5, 6, 11, 12, 13 và đều đạt exit code 0.
 
 ## 6. Kết quả lệnh kiểm
 
-- Tổng số đoạn lệnh kiểm bắt buộc: 467 đoạn lệnh thuộc 23 chuỗi lệnh.
-- Số đoạn đạt: 467/467 đoạn (exit code 0).
+- Tổng số đoạn lệnh kiểm bắt buộc: 470 đoạn lệnh thuộc 14 chuỗi lệnh.
+- Số đoạn đạt: 470/470 đoạn (exit code 0).
 - Số đoạn thất bại: 0 đoạn.
 - Toàn bộ nhật ký kiểm thử chi tiết từng lệnh, exit code và tóm tắt đầu ra được trình bày tại [command-results.md](command-results.md).
+- Cách đọc: "bước N" trong báo cáo và exit-gates.md là chuỗi N trong command-results.md.
 
 ## 7. Đối chiếu exit gate
 
@@ -63,3 +64,14 @@ Hai gói kế hoạch sửa `IMPL-PLAN-PROD-WIRING-FIX1` và `IMPL-PLAN-PROD-WIR
 - Toàn bộ các tệp tài liệu trong `docs/delivery-evidence/m7-milestone-close/` được ghi bằng encoding UTF-8 không BOM, tiếng Việt đầy đủ dấu thanh, không có ký tự thay thế U+FFFD.
 - Kiểm tra `git diff --check` đạt chuẩn, không có khoảng trắng thừa hay lỗi dòng.
 - Worktree sạch, không sửa đổi bất kỳ tệp nào ngoài phạm vi `ownedPaths`.
+
+## 9. Chạy lại sau thu hồi grant (generation 1, CLOSURE_BASE_STALE)
+
+- Grant DELEGATED-AI_PM_DELEGATED_AUTHORITY_20261009-LANE-M7-MILESTONE-CLOSE-R5-G1 bị Control thu hồi với lý do CLOSURE_BASE_STALE (lane mở trên nhánh cũ HEAD 3a7fbf32cf0b, chưa chứa các gói đã tích hợp sau đó).
+- Hành động thực hiện:
+  1. Rebase nhánh lên integration head `a84ac3940a4cef48c85733df30b016b3821aa1c3` (không có xung đột).
+  2. Bổ sung gói ADAPT-J-FIX1 kèm SHA tích hợp 40 hex (`a84ac3940a4cef48c85733df30b016b3821aa1c3`, candidate 4ec05756ff07) vào [packages.md](packages.md).
+  3. Chạy lại toàn bộ 470 đoạn lệnh kiểm bắt buộc thuộc 14 chuỗi lệnh trên mã đã rebase bằng interpreter khóa với PYTEST_DEBUG_TEMPROOT=C:\Users\Admin\AppData\Local\Temp\ai-setup-pytest\M7-MILESTONE-CLOSE-R5-implement. Toàn bộ 470/470 đoạn đều đạt exit code 0 ngay trong lần chạy đầu tiên (không có test nào bị failed hay phải chạy lại).
+- Kết luận:
+  - Kết quả của lần mở trước (gồm số liệu '3987 passed', '3988 passed' và ghi chú về `test_pw_vert_video_flow.py` của lượt cũ) không còn dùng và đã được thay thế hoàn toàn bằng số liệu thực tế của lượt này.
+  - Toàn bộ kết quả kiểm thử mới được ghi nhận đầy đủ, trung thực tại [command-results.md](command-results.md).
