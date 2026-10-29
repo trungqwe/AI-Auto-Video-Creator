@@ -228,8 +228,8 @@ class CreativePipeline:
 
     @staticmethod
     def _data_item(kind: str, value: Any, provenance: ResourceRef) -> UntrustedText:
-        """External or earlier-stage content as one untrusted JSON data item; it is never part of the instructions."""
-        return UntrustedText(json.dumps({'kind': kind, 'content': _plain(value)}, sort_keys=True, ensure_ascii=False), provenance)
+        """External or earlier-stage content as one untrusted JSON data item: kind, content and the source ref (workspace_id, ref_type, ref_id, revision_id of its provenance) so the model can cite it; it is never part of the instructions."""
+        return UntrustedText(json.dumps({'kind': kind, 'content': _plain(value), 'ref': _plain(provenance)}, sort_keys=True, ensure_ascii=False), provenance)
 
     def _article_data(self, workspace_id: str, snapshot: ProductionSnapshot, role: str) -> list[UntrustedText]:
         """Normalized text of the snapshot's article revisions for the roles that read content; a revision that is not stored is INPUT_NOT_READY."""
