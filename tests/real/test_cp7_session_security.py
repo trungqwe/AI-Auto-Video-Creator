@@ -47,6 +47,22 @@ def _launcher(command, env):
     return proc.returncode, c.redact(proc.stdout + proc.stderr)
 
 
+def _stop_launcher():
+    """Dừng ứng dụng trong `finally`. Không dùng DEADLINE để vẫn dừng được khi hạn 20 phút đã hết; timeout 120 giây lớn hơn STOP_GRACE_SECONDS (60) của launcher."""
+    env = dict(os.environ, PYTHONUTF8='1')
+    proc = subprocess.run([sys.executable, '-B', str(LAUNCHER), 'stop'], cwd=str(REPO), env=env, capture_output=True, text=True,
+                          encoding='utf-8', errors='replace', timeout=120, check=False)
+    return proc.returncode, c.redact(proc.stdout + proc.stderr)
+
+
+def _app_listening():
+    try:
+        with socket.create_connection((HOST, PORT), timeout=3):
+            return True
+    except OSError:
+        return False
+
+
 def _start_capturing(work, name):
     """Dừng ứng dụng đang chạy rồi start lại; trả đường dẫn tệp chứa URL /launch (không đọc ra ở đây)."""
     url_file = work / f'{name}.url'
@@ -88,6 +104,17 @@ def _path_of(url_file):
     return url[url.index('/launch'):]
 
 
+def _probe_env():
+    """Môi trường cho probe Node: nếu worktree thiếu src/controlplane/ui/node_modules/playwright thì trỏ CP7_PLAYWRIGHT_DIR tới playwright của runtime khoá (<runtime>/venv/Scripts/python.exe -> <runtime>/ui/node_modules/playwright)."""
+    env = dict(os.environ)
+    in_tree = REPO / 'src' / 'controlplane' / 'ui' / 'node_modules' / 'playwright'
+    exe_parents = Path(sys.executable).parents
+    locked = exe_parents[2] / 'ui' / 'node_modules' / 'playwright' if len(exe_parents) > 2 else None
+    if not in_tree.is_dir() and locked is not None and (locked / 'package.json').is_file():
+        env['CP7_PLAYWRIGHT_DIR'] = str(locked)
+    return env
+
+
 @pytest.fixture(scope='module')
 def real(tmp_path_factory):
     from controlplane.infrastructure.security.dpapi_secret_store import DpapiSecretStore
@@ -112,7 +139,7 @@ def real(tmp_path_factory):
         launch_evil_status, body = _request('GET', _path_of(second), host_header=f'{EVIL}:{PORT}')
         bodies.append(body)
         out_dir = work / 'probe'
-        probe = subprocess.run(['node', str(PROBE), '--url-file', str(second), '--out', str(out_dir)], cwd=str(REPO),
+        probe = subprocess.run(['node', str(PROBE), '--url-file', str(second), '--out', str(out_dir)], cwd=str(REPO), env=_probe_env(),
                                capture_output=True, text=True, encoding='utf-8', errors='replace',
                                timeout=DEADLINE.timeout(180), check=False)
         result = json.loads(probe.stdout.strip().splitlines()[-1])
@@ -122,9 +149,14 @@ def real(tmp_path_factory):
                'cookies': json.loads((out_dir / 'cookies.json').read_text(encoding='utf-8'))}
     finally:
         try:
-            store.revoke(CANARY_ALIAS, version)
+            try:
+                store.revoke(CANARY_ALIAS, version)
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
         finally:
-            shutil.rmtree(work, ignore_errors=True)
+            stop_rc, stop_out = _stop_launcher()
+            assert stop_rc == 0, f'launcher stop failed in finally: {stop_out[-400:]}'
+            assert not _app_listening(), f'launcher still listening on {HOST}:{PORT} after stop'
 
 
 def _session_headers(real, *, csrf=True, origin=f'https://{HOST}:{PORT}'):
@@ -141,6 +173,8 @@ def _session_headers(real, *, csrf=True, origin=f'https://{HOST}:{PORT}'):
 def _pass(emit, item, *details):
     emit(c.report_line('RG-01', item, 'PASS'))
     for detail in details:
+        # emit in ra stdout của harness (cp1252): chi tiết in ra terminal phải là ASCII; chữ có dấu chỉ nằm trong report.md.
+        assert detail.isascii(), f'evidence detail for {item} must be ASCII'
         emit(f'- {item}: {detail}')
 
 
@@ -185,7 +219,7 @@ def test_rg01_host_rejected(real, emit):
     real['bodies'].append(body)
     assert launch_status == 403 and api_status == 403, (launch_status, api_status)
     assert real['probe']['finalPath'] == '/', 'capability was consumed by the foreign-Host request'
-    _pass(emit, 'host_rejected', f'/launch (capability thật, chưa dùng) status={launch_status}, sau đó Host đúng vẫn vào được; '
+    _pass(emit, 'host_rejected', f'/launch (real unused capability) status={launch_status}, then the correct Host still gets in; '
           f'/v1/jobs status={api_status} host={EVIL}')
 
 
@@ -193,14 +227,14 @@ def test_rg01_origin_rejected(real, emit):
     status, body = _request('POST', '/v1/batches', headers=_session_headers(real, origin=f'https://{EVIL}'), body='{}')
     real['bodies'].append(body)
     assert status == 403, status
-    _pass(emit, 'origin_rejected', f'POST /v1/batches Origin=https://{EVIL} status={status} (body rỗng, không tạo lô)')
+    _pass(emit, 'origin_rejected', f'POST /v1/batches Origin=https://{EVIL} status={status} (empty body, no batch created)')
 
 
 def test_rg01_csrf_required(real, emit):
     status, body = _request('POST', '/v1/batches', headers=_session_headers(real, csrf=False), body='{}')
     real['bodies'].append(body)
     assert status == 403, status
-    _pass(emit, 'csrf_required', f'POST /v1/batches without X-CSRF-Token status={status} (body rỗng, không tạo lô)')
+    _pass(emit, 'csrf_required', f'POST /v1/batches without X-CSRF-Token status={status} (empty body, no batch created)')
 
 
 def test_rg01_cookie_flags(real, emit):
@@ -254,7 +288,7 @@ def test_rg01_canary_zero_hits(real, emit):
     assert not short, f'secret too short to search reliably: {short}'
     assert sum(real_hits.values()) == 0, {k: v for k, v in real_hits.items() if v}
     _pass(emit, 'canary_zero_hits', f'surfaces={len(texts)} (dom, har, response bodies, data-dir logs) canary_hits=0 '
-          'real_secret_hits=0 (drive refresh token, 9Router key; giá trị chỉ trong bộ nhớ của test)')
+          'real_secret_hits=0 (drive refresh token, 9Router key; values only in test memory)')
 
 
 def test_rg01_secret_scan(real, emit):
