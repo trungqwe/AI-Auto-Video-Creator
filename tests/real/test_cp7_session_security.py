@@ -47,6 +47,22 @@ def _launcher(command, env):
     return proc.returncode, c.redact(proc.stdout + proc.stderr)
 
 
+def _stop_launcher():
+    """Dừng ứng dụng trong `finally`. Không dùng DEADLINE để vẫn dừng được khi hạn 20 phút đã hết; timeout 120 giây lớn hơn STOP_GRACE_SECONDS (60) của launcher."""
+    env = dict(os.environ, PYTHONUTF8='1')
+    proc = subprocess.run([sys.executable, '-B', str(LAUNCHER), 'stop'], cwd=str(REPO), env=env, capture_output=True, text=True,
+                          encoding='utf-8', errors='replace', timeout=120, check=False)
+    return proc.returncode, c.redact(proc.stdout + proc.stderr)
+
+
+def _app_listening():
+    try:
+        with socket.create_connection((HOST, PORT), timeout=3):
+            return True
+    except OSError:
+        return False
+
+
 def _start_capturing(work, name):
     """Dừng ứng dụng đang chạy rồi start lại; trả đường dẫn tệp chứa URL /launch (không đọc ra ở đây)."""
     url_file = work / f'{name}.url'
@@ -122,9 +138,14 @@ def real(tmp_path_factory):
                'cookies': json.loads((out_dir / 'cookies.json').read_text(encoding='utf-8'))}
     finally:
         try:
-            store.revoke(CANARY_ALIAS, version)
+            try:
+                store.revoke(CANARY_ALIAS, version)
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
         finally:
-            shutil.rmtree(work, ignore_errors=True)
+            stop_rc, stop_out = _stop_launcher()
+            assert stop_rc == 0, f'launcher stop failed in finally: {stop_out[-400:]}'
+            assert not _app_listening(), f'launcher still listening on {HOST}:{PORT} after stop'
 
 
 def _session_headers(real, *, csrf=True, origin=f'https://{HOST}:{PORT}'):
