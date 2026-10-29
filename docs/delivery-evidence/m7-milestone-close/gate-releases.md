@@ -1,0 +1,24 @@
+# Bản ghi quyết định RELEASE của cổng (M7-MILESTONE-CLOSE-R4)
+
+Các gói cổng không có SHA tích hợp được Control thả mỗi cổng bằng một bản ghi quyết định RELEASE. RecordHash dưới đây chép nguyên văn theo yêu cầu nghiệm thu của revision 4; Worker không đọc sổ quyết định của Control.
+
+| Cổng | recordHash |
+| --- | --- |
+| GATE-CP-2D-REGISTRY | `00103f0a72d7b9e2f1f5803cc699db79373ac38ed2e47aa206f975da0eab9514` |
+| GATE-CP-5-COMPLETION | `3b9e4c9d779043c2f76022541f4524b931ad48cce3cad2e4bc4dfff7cfb54d90` |
+| GATE-CP-6-WORKFLOW | `2be7562bea521bede4812d8b5cff124d201b562b93a416b1972baca08d720190` |
+| GATE-CP-2B-DEPS-PATHS | `3bd11714d6cb8196cb1c800bc740a76e7a4436b905cb2c98d2a8400fa1d132cf` |
+| GATE-PERSIST-A | `1ccf6c904ef88886ed1dd7a66b50c2206fd1c12ac5357d926572dbf53135a343` |
+| GATE-PERSIST-B | `39f5e7e8bc503704574da52b3605d1a03911b24c29494514c865af229ca35bf4` |
+| GATE-PERSIST-C | `5327ae192465197cc63aa6f6e1ebc4670e06c063f6a1fb46a4b7e6a3ce4066f2` |
+| GATE-PERSIST-D | `794e8b5634d3adaab3d35154ae2f0d732f2dc86a477ca8faeb2cd10cbd79506f` |
+| GATE-PERSIST-E | `b38673dd8c05bac07daae786cf282bcbae1cb359ea80fcd24b806bf5eab94ae7` |
+| GATE-PERSIST-F | `7254c80039939250ee1d2b372b627655b8b60b998372d7c9652b4360042a9055` |
+| GATE-PERSIST-G | `f71b035ffeface811ea87ccc06ba8a13129922fed922018793672d14d244fe7d` |
+| GATE-PERSIST-I | `b987fc8b60eaddba804f31ce51c78cfc9047db41d42203882ea5fae37c31843e` |
+| GATE-PERSIST-J | `cc9e80f551c0a83996a2ff710c7ce2d8d73517eed0434d4c176e55403d1399de` |
+| GATE-CP-4-WIRING-FIX3 | `dd3635d4364dd5c662fd45d93a47ef343a3029d167d73792562d26582978288f` |
+| GATE-ADAPT-PROD-FIX3 | `df609f285a504fa51eab7793d285f2a2311c56b3222c1e6603b6586f0c6bc4a3` |
+| GATE-PW-E2E | `de33d674f014ef13caf258cd7a9c8b6b0dae633def501a3e53e150c14ba9da19` |
+
+GATE-PW-E2E là cổng của gói PW-E2E mới so với R3.
