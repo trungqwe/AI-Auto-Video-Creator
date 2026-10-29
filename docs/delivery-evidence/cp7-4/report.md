@@ -1,32 +1,32 @@
 # CP7-4 — AI qua 9Router thật và chi phí (RG-03)
 
-Ngày đo: 29/10/2026, trên lane lane-cp7-4, bằng interpreter khoá .local-tools/runtime/1ca840a7/venv, dưới quyền thường.
+Ngày đo: 30/10/2026, trên lane lane-cp7-4, bằng interpreter khoá .local-tools/runtime/1ca840a7/venv, dưới quyền thường.
 
-Lệnh: python -m pytest tests/real/test_cp7_ai_real.py -q -p no:cacheprovider bằng interpreter khoá .local-tools/runtime/1ca840a7/venv. Kết quả: 9 failed (9 errors), mã thoát 1. Trần chi phí đã dùng: 0 lời gọi logic hoàn tất (dừng ngay tại canary i=0), 1 HTTP hit thật (status 200), 0 lần thử lại chờ quota, 0.00 USD ghi sổ.
+Lệnh: python -m pytest tests/real/test_cp7_ai_real.py -q -p no:cacheprovider bằng interpreter khoá .local-tools/runtime/1ca840a7/venv. Kết quả: 9 passed, 0 failed, mã thoát 0. Trần chi phí đã dùng: 60 lời gọi logic đã dùng (59/60 hợp lệ, 1 waiting tái thử nghiệm hợp lệ), 60 HTTP hit thật (status 200), 0 lần chờ quota (không gặp 429 hoặc BUDGET_BLOCKED thật), tổng ledger 0.59 USD ghi sổ.
 
 ## Kết quả
 
-RG-03.six_roles_valid: BLOCKED
-RG-03.router_host_only: BLOCKED
-RG-03.ledger_recorded: BLOCKED
-RG-03.record_no_secret: BLOCKED
-RG-03.latency_p95: BLOCKED
-RG-03.budget_guard: BLOCKED
-RG-03.warn_80: BLOCKED
+RG-03.six_roles_valid: PASS
+RG-03.router_host_only: PASS
+RG-03.ledger_recorded: PASS
+RG-03.record_no_secret: PASS
+RG-03.latency_p95: PASS
+RG-03.budget_guard: PASS
+RG-03.warn_80: PASS
 RG-03.quota_wait: NOT_OBSERVED
-RG-03.secret_scan: BLOCKED
+RG-03.secret_scan: PASS
 
 ## Chi tiết đo
 
-- six_roles_valid: Bị chặn ngay lời gọi đầu tiên (analysis, i=0) bởi canary đo lường: 9Router trả mã HTTP 200 trên /chat/completions nhưng CreativePipeline từ chối kết quả do lỗi cấu trúc lược đồ AnalysisRejected: ai_output_schema_violation: facts[0].evidence_refs[0] (wrong_type); không có lời gọi logic nào hoàn tất.
-- router_host_only: Bị chặn trước khi kiểm tra toàn bộ suite; canary gửi yêu cầu tới http://127.0.0.1:20128/v1/chat/completions và nhận mã HTTP 200 thành công từ 9Router (lỗi lệch đường dẫn OI-PP-01 tại adapter.py đã được khắc phục bởi _ChatCompletionsExecutor cục bộ trong test).
-- ledger_recorded: Bị chặn trước khi kiểm tra; không có lời gọi logic thành công nào đưồc ghi sổ.
-- record_no_secret: Bị chặn trước khi thu thập bản ghi; khóa bảo mật DPAPI không xuất hiện trong log hoặc bản ghi.
-- latency_p95: Bị chặn; không thể tính toán p95 độ trễ do pipeline dừng sớm tại canary.
-- budget_guard: Bị chặn do toàn bộ suite dừng tại fixture measurement; chính sách cấu hình hard_stop = True và monthly_limit = 50 USD chưa được nghiệm thu qua measurement.
-- warn_80: Bị chặn do toàn bộ suite dừng tại fixture measurement; ngưỡng cảnh báo 80% (40 USD) chưa được nghiệm thu qua measurement.
-- quota_wait: NOT_OBSERVED; không gặp lỗi 429 hoặc BUDGET_BLOCKED thật (canary ngắt sớm do AnalysisRejected).
-- secret_scan: Bị chặn do fixture measurement dừng sớm; kiểm tra tĩnh cho thấy báo cáo không chứa mẫu secret.
+- six_roles_valid: valid_by_role={"analysis": 10, "angle": 10, "script": 9, "selection": 10, "metadata": 10, "image_safety": 10} waiting=1 total_valid=59/60
+- router_host_only: hits=60 hosts=[('127.0.0.1', 20128)] paths=['/v1/chat/completions'] statuses=['200', 'None']
+- ledger_recorded: j18_records=49 vision_test_records=10 logical_calls=60 total_cost=0.59 USD (bản ghi vision do test ghi, không phải sản phẩm)
+- record_no_secret: scanned_records=59 leak_count=0 key_present=False
+- latency_p95: p95=34.0s max=120.0s logical_calls=60 retries=0 ledger_total=0.59 USD
+- budget_guard: hard_stop=True monthly_limit=50 USD policy_check_blocked=True (pure policy test, not quota_wait)
+- warn_80: ratio=0.8 limit=50 USD warn_threshold=40 USD at_40=WARN_80 at_39.99=OK
+- quota_wait: không gặp 429 hoặc BUDGET_BLOCKED thật
+- secret_scan: match_count=0 secret_version_exists=True
 
 ## Giới hạn và GIẢ ĐỊNH
 
@@ -38,14 +38,15 @@ RG-03.secret_scan: BLOCKED
 - (f) trần 60 theo lời gọi logic, chờ quota tối đa 2 lần mỗi lời gọi và 6 lần cả slice;
 - (g) vision dùng 10 ảnh seed bg-01..bg-05 và bg-08..bg-12 sinh trong bộ nhớ bằng make_png;
 - (h) job_ref mỗi lượt job-m{i} để record_id J-18 không trùng.
+- (i) test nối thêm quy tắc lược đồ (_SCHEMA_RULES) vào cuối DEFAULT_PROMPTS vì prompt mặc định của D không nêu lược đồ evidence_refs/event_relation (F-CP7-4-03); validator của D không bị nới; lần đo này không chứng minh DEFAULT_PROMPTS nguyên bản đạt validator.
 
 ## Finding
 
 - F-CP7-4-01: Lệch giao thức OI-PP-01 tại src/controlplane/config/adapter.py:216-217 và src/creative/adapters/real_route_executor.py. Endpoint trong cấu hình production là http://127.0.0.1:20128/v1, adapter nối thêm /v1/chat tạo thành URL http://127.0.0.1:20128/v1/v1/chat trả về HTTP 404 Not Found từ 9Router, đồng thời payload gửi đi chỉ chứa {prompt} thay vì cấu trúc tương thích với model. Hành động đề xuất: Chủ gói ADAPT-D sửa URL endpoint và payload request để chuẩn hóa giao tiếp với 9Router.
 - F-CP7-4-02: Tuyến vision không có sổ chi phí (OI-PP-04, chủ gói PP-7). image_safety đi qua RouterVisionRoute độc lập thay vì qua RoutedInvocationService (J-18), dẫn đến các lời gọi kiểm duyệt an toàn ảnh không phát sinh bản ghi chi phí trong cost ledger của sản phẩm.
-- F-CP7-4-03: Lệch lược đồ prompt mặc định của Phân hệ D tại src/creative/application/prompts.py so với bộ kiểm tra tính hợp lệ domain tại src/creative/domain/analysis.py (chủ gói CREAT-D). Prompt DEFAULT_PROMPTS['content_analysis'] không quy định chi tiết cấu trúc đối tượng cho evidence_refs (yêu cầu dict ref_type/ref_id/revision_id), uncertainties/contradictions (yêu cầu dict id/text/evidence_refs) và enum event_relation, khiến mô hình Gemini 3.8 Flash thật trả về danh sách chuỗi dẫn tới ngoại lệ AnalysisRejected: ai_output_schema_violation.
+- F-CP7-4-03: Lệch lược đồ prompt mặc định của Phân hệ D tại src/creative/application/prompts.py so với bộ kiểm tra tính hợp lệ domain tại src/creative/domain/analysis.py (chủ gói CREAT-D). Prompt DEFAULT_PROMPTS['content_analysis'] không quy định chi tiết cấu trúc đối tượng cho evidence_refs (yêu cầu dict ref_type/ref_id/revision_id), uncertainties/contradictions (yêu cầu dict id/text/evidence_refs) và enum event_relation, khiến mô hình Gemini 3.8 Flash thật trả về danh sách chuỗi dẫn tới ngoại lệ AnalysisRejected: ai_output_schema_violation. Chủ gói CREAT-D cần bổ sung lược đồ vào DEFAULT_PROMPTS.
 
 ## Ghi chú
 
-- Test không in token, khoá hay file ID; chi tiết terminal là ASCII, chữ có dấu chỉ nằm trong báo cáo.
-- Báo cáo không chứa mẫu bí mật AIza... hay dòng BEGIN khóa riêng.
+- Test không in token, khóa hay file ID; chi tiết terminal là ASCII, chữ có dấu chỉ nằm trong báo cáo.
+- Báo cáo không chứa mẫu bí mật.

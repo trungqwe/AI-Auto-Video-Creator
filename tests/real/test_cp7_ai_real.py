@@ -2,6 +2,7 @@
 
 6 vai trò x 10 lời gọi; 50 lời gọi văn bản qua CreativePipeline + RoutedAIInvocation + RoutedInvocationService + _ChatCompletionsExecutor (OpenAI chat/completions thật, lệch OI-PP-01 của adapter sản phẩm),
 10 lời gọi image_safety qua LlmImageSafetyDetector + RouterVisionRoute; trần chi phí (60 lời gọi logic, ledger +5 USD);
+prompt mặc định của D được test nối thêm quy tắc lược đồ (_SCHEMA_RULES, GIẢ ĐỊNH F-CP7-4-03); validator của D giữ nguyên;
 cách dừng (CostGuard, hard_stop của J, Ctrl+C, hạn 45 phút); không in khóa.
 """
 
@@ -493,13 +494,62 @@ class _RecordingAI:
         return result
 
 
+# GIẢ ĐỊNH (D8): DEFAULT_PROMPTS của D (src/creative/application/prompts.py) không nêu cấu trúc evidence_refs, enum event_relation và các ràng buộc ref, độ dài; model thật trả list chuỗi nên validator của D từ chối (F-CP7-4-03, chủ gói CREAT-D). src/** ngoài owned paths nên test nối thêm quy tắc lược đồ vào cuối prompt mặc định; validator, pipeline và J-18 vẫn là mã sản phẩm, không nới kiểm tra nào.
+_REF_RULE = (
+    'A reference is a JSON object, never a string, with the string keys workspace_id, ref_type, ref_id and revision_id. '
+    f'Use workspace_id {WS} in every reference. '
+)
+_SOURCE_REF_RULE = 'To cite the source article use ref_type article_revision, ref_id equal to the article_id and revision_id equal to the article_revision_id of the article data item. '
+_SCHEMA_RULES = {
+    'content_analysis': (
+        'Schema rules: do not output analysis_id, revision or trace. entities is a list of objects with the string keys name and entity_type. '
+        'timeline is a list of objects with the string keys time_label and description. locations, risk_flags, narrative_opportunities and media_needs are lists of non-empty strings. '
+        'facts is a list of objects with the string keys id and text and a non-empty list evidence_refs of references. '
+        'uncertainties and contradictions are lists, possibly empty, of objects with the same keys id, text and evidence_refs. '
+        'event_relation is exactly one of standalone, same_event, event_update. update_context is a string and is non-empty only when event_relation is event_update. '
+        + _REF_RULE + _SOURCE_REF_RULE
+    ),
+    'story_angles': (
+        'Schema rules: angles is a list with exactly requested_count objects, requested_count read from the data block. '
+        'Each angle has the non-empty string keys angle_id, title, summary, narrative_question, timeframe and suitability, the lists of strings planned_inference_elements, planned_creative_elements and risk_flags, '
+        'a non-empty list of strings focus_entities and a non-empty list evidence_refs of references. '
+        'angle_id values are unique and the angles differ in title, narrative_question, focus_entities and timeframe. '
+        + _REF_RULE + _SOURCE_REF_RULE
+    ),
+}
+
+_SCHEMA_RULES['script_generation'] = (
+    'Schema rules: language is the language code of language_policy in the data block. hook_intent and thumbnail_transition are non-empty strings. '
+    'pronunciation_hints is a list, possibly empty, of objects with the string keys term and pronunciation. '
+    'segments is a non-empty list of objects with the string keys segment_id (unique), text, claim_mode and scene_intent, a list source_refs of references and an optional string disclosure. '
+    'claim_mode is exactly one of source_backed, inference, creative_hypothesis, transition. source_backed needs a non-empty source_refs; inference and creative_hypothesis need a non-empty disclosure. '
+    'The total word count of all segment texts must be at least speech_rate times min_seconds and at most speech_rate times max_seconds, all read from the data block; aim for the middle of that range. '
+    + _REF_RULE + _SOURCE_REF_RULE
+)
+_SCHEMA_RULES['asset_selection'] = (
+    'Schema rules: visual_hook, audio_hook and thumbnail are each one reference copied from the matching candidate in the data block: '
+    'for a hook use ref_type visual_hook or audio_hook, ref_id equal to hook_id and revision_id equal to its revision_id; for the thumbnail use ref_type thumbnail, ref_id equal to thumbnail_id and revision_id equal to its revision_id. '
+    'scenes is a non-empty list of objects with the string keys scene_id (unique) and rationale and a key ref that is a reference with ref_type media_asset, ref_id equal to media_asset_id and revision_id equal to artifact_version_ref of a media candidate. '
+    'music_intents and sfx_intents are lists, possibly empty, of objects with the non-empty string keys cue and description. rationale is a non-empty string. '
+    + _REF_RULE
+)
+_SCHEMA_RULES['output_metadata'] = (
+    'Schema rules: title and caption are non-empty strings. hashtags is a list of 3 or 4 distinct strings, each starting with # followed by text and containing no whitespace and no second #.'
+)
+
+
+def _test_instructions():
+    from creative.application.pipeline import AI_ROLES
+    from creative.application.prompts import DEFAULT_PROMPTS
+    return {r: (DEFAULT_PROMPTS[r] + ' ' + _SCHEMA_RULES.get(r, '')).strip() for r in AI_ROLES}
+
+
 def _run_text_call(stack, role, i, rig):
     from creative.application.pipeline import CreativePipeline, PipelineRejected, AI_ROLES
-    from creative.application.prompts import DEFAULT_PROMPTS
     from creative.adapters.real_ai_invocation import WaitingAIInvocationResult
 
     recorder = _RecordingAI(stack.routed, stack.route)
-    instructions = {r: DEFAULT_PROMPTS[r] for r in AI_ROLES}
+    instructions = _test_instructions()
     pipeline = CreativePipeline(
         uow_factory=lambda: rig.uow,
         route=stack.route,
