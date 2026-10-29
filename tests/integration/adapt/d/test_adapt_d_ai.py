@@ -16,6 +16,8 @@ from controlplane.config.adapter import (
 import io
 import json
 import pathlib
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import socket
 import urllib.error
 from contextlib import contextmanager
@@ -184,7 +186,7 @@ def _ok(text='{"title":"t"}'):
 
 
 def _http_error(code, msg='error'):
-    return urllib.error.HTTPError(url=ENDPOINT + '/v1/chat', code=code, msg=msg, hdrs={}, fp=io.BytesIO(b'{}'))
+    return urllib.error.HTTPError(url=ENDPOINT + '/v1/chat/completions', code=code, msg=msg, hdrs={}, fp=io.BytesIO(b'{}'))
 
 
 def _window(now):
@@ -216,11 +218,21 @@ def _build(budget=BUDGET_CONFIG, executor_config=EXECUTOR_CONFIG, ledger=None):
 
 @pytest.fixture(autouse=True)
 def isolate_network_and_sleep(monkeypatch):
-    def blocked(*args, **kwargs):
+    real_create_connection = socket.create_connection
+    real_getaddrinfo = socket.getaddrinfo
+
+    def guarded_create_connection(address, *args, **kwargs):
+        if address[0] == '127.0.0.1':
+            return real_create_connection(address, *args, **kwargs)
         raise RuntimeError('real network is blocked in ADAPT-D tests')
 
-    monkeypatch.setattr(socket, 'create_connection', blocked)
-    monkeypatch.setattr(socket, 'getaddrinfo', blocked)
+    def guarded_getaddrinfo(host, *args, **kwargs):
+        if host == '127.0.0.1':
+            return real_getaddrinfo(host, *args, **kwargs)
+        raise RuntimeError('real network is blocked in ADAPT-D tests')
+
+    monkeypatch.setattr(socket, 'create_connection', guarded_create_connection)
+    monkeypatch.setattr(socket, 'getaddrinfo', guarded_getaddrinfo)
     monkeypatch.setattr('time.sleep', lambda seconds: None)
 
 
@@ -378,7 +390,8 @@ def test_executor_takes_timeout_retry_backoff_and_endpoint_from_config() -> None
         result = executor.execute(_j_decision(), 'c1', 'ref-1', 'secret_broker_handle')
     assert result.ok is True
     assert urlopen.call_args.kwargs['timeout'] == 7.0
-    assert urlopen.call_args[0][0].full_url == ENDPOINT + '/v1/chat'
+    assert urlopen.call_args[0][0].full_url == ENDPOINT + '/v1/chat/completions'
+    assert json.loads(urlopen.call_args[0][0].data.decode('utf-8')) == {'model': 'model-c1', 'messages': [{'role': 'user', 'content': 'prompt'}]}
     assert store.pop_output(result.output_ref)['usage']['prompt_tokens'] == 7
 
 
@@ -401,3 +414,90 @@ def test_production_modules_have_no_mock_host_fixed_endpoint_or_src_import() -> 
         for forbidden in ('mock-9router', 'from src.', 'import src.', '20128', '127.0.0.1', 'localhost', 'http://', 'https://', "Decimal('50')"):
             assert forbidden not in text, (name, forbidden)
     assert 'RoutedInvocationService' in texts['real_ai_invocation.py']
+
+
+
+class _FakeRouterHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        length = int(self.headers.get('Content-Length', '0'))
+        body = self.rfile.read(length)
+        self.server.hits.append({
+            'path': self.path,
+            'body': json.loads(body.decode('utf-8')),
+            'headers': {k.lower(): v for k, v in self.headers.items()},
+        })
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(self.server.reply)))
+        self.end_headers()
+        self.wfile.write(self.server.reply)
+
+    def log_message(self, format, *args):
+        pass
+
+
+@pytest.fixture
+def fake_router():
+    servers = []
+
+    def start(reply=None):
+        server = ThreadingHTTPServer(('127.0.0.1', 0), _FakeRouterHandler)
+        server.daemon_threads = True
+        server.hits = []
+        if reply is not None:
+            server.reply = reply
+        else:
+            server.reply = json.dumps({
+                'choices': [{'message': {'content': '{"title":"t"}'}}],
+                'usage': {'prompt_tokens': 7, 'completion_tokens': 3},
+            }).encode('utf-8')
+        server.origin = 'http://127.0.0.1:' + str(server.server_address[1])
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        servers.append(server)
+        return server
+
+    yield start
+
+    for s in servers:
+        s.shutdown()
+        s.server_close()
+
+
+@pytest.mark.parametrize('suffix', ['', '/v1'])
+def test_loopback_pipeline_posts_chat_completions_for_origin_and_v1_endpoint(fake_router, suffix):
+    router = fake_router()
+    endpoint = router.origin + suffix
+    config = dict(EXECUTOR_CONFIG, endpoint=endpoint, approved_endpoints=[endpoint], max_retries=0)
+    ai, _, credentials = _build(executor_config=config)
+    result = ai.invoke(DECISION, ENVELOPE)
+    assert result.record.error is None
+    assert result.output.text == '{"title":"t"}'
+    assert (result.record.usage.input_tokens, result.record.usage.output_tokens) == (7, 3)
+    assert len(router.hits) == 1
+    hit = router.hits[0]
+    assert hit['path'] == '/v1/chat/completions'
+    assert hit['body']['model'] == 'model-c1'
+    messages = hit['body']['messages']
+    assert len(messages) == 1
+    assert messages[0]['role'] == 'user'
+    assert 'Write the script' in messages[0]['content']
+    assert 'source text' in messages[0]['content']
+    assert set(hit['body']) == {'model', 'messages'}
+    assert hit['headers']['authorization'] == 'Bearer ' + CANARY
+    assert hit['headers']['x-config-revision-id'] == 'route-rev-1'
+    assert hit['headers']['x-route-provenance'] == '9router-adapter'
+    assert credentials.calls == [('secret_broker_handle', 'acc-1')]
+
+
+def test_loopback_path_is_never_doubled_for_v1_endpoint(fake_router):
+    router = fake_router()
+    endpoint = router.origin + '/v1'
+    config = dict(EXECUTOR_CONFIG, endpoint=endpoint, approved_endpoints=[endpoint], max_retries=0)
+    executor, store, _ = _executor(config)
+    store.put_request('ref-1', 'hello')
+    result = executor.execute(_j_decision(), 'c1', 'ref-1', 'secret_broker_handle')
+    assert result.ok is True
+    assert router.hits[0]['path'] == '/v1/chat/completions'
+    assert '/v1/v1' not in router.hits[0]['path']
+    assert router.hits[0]['body'] == {'model': 'model-c1', 'messages': [{'role': 'user', 'content': 'hello'}]}

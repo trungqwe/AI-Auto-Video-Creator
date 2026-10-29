@@ -8,6 +8,8 @@ import urllib.error
 import io
 import json
 import socket
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from controlplane.config.models import (
     AIRequest,
@@ -15,10 +17,44 @@ from controlplane.config.models import (
     MissingConfigProvenanceError,
 )
 from controlplane.config.adapter import (
+    ApprovedEndpointRegistry,
+    ChatAIRequest,
     NineRouterHTTPAdapter,
     ProviderTimeoutError,
     ProviderRateLimitExceededError,
+    UnapprovedEndpointError,
 )
+
+
+class _RecordingHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        length = int(self.headers.get('Content-Length', '0'))
+        raw = self.rfile.read(length)
+        self.server.hits.append({
+            'path': self.path,
+            'body': json.loads(raw.decode('utf-8')),
+            'headers': {k.lower(): v for k, v in self.headers.items()},
+        })
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        body = json.dumps({'choices': [{'message': {'content': 'hi'}}]}).encode('utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):
+        pass
+
+
+def _start_router():
+    server = ThreadingHTTPServer(('127.0.0.1', 0), _RecordingHandler)
+    server.daemon_threads = True
+    server.hits = []
+    port = server.server_address[1]
+    server.origin = 'http://127.0.0.1:' + str(port)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server
 
 
 class MockHTTPResponse:
@@ -60,7 +96,7 @@ class TestHTTPRouterAdapter(unittest.TestCase):
 
         # Mock 429 error
         error_429 = urllib.error.HTTPError(
-            url="http://mock-9router:8000/v1/chat",
+            url="http://mock-9router:8000/v1/chat/completions",
             code=429,
             msg="Too Many Requests",
             hdrs={},
@@ -101,6 +137,32 @@ class TestHTTPRouterAdapter(unittest.TestCase):
             headers = {k.lower(): v for k, v in outbound_req.headers.items()}
             self.assertEqual(headers.get("x-config-revision-id"), "rev-prod-999")
             self.assertIn("x-route-provenance", headers)
+
+    def test_http_adapter_posts_chat_completions_for_origin_and_v1_endpoint(self):
+        server = _start_router()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        for suffix in ('', '/v1'):
+            endpoint = server.origin + suffix
+            registry = ApprovedEndpointRegistry.from_config([endpoint])
+            adapter = NineRouterHTTPAdapter(base_url=endpoint, registry=registry, max_retries=0)
+            request = ChatAIRequest(prompt='xin chao', config_revision_id='rev-r15', model='model-r15')
+            res = adapter.send_request(request, secret_token='tok-r15')
+            self.assertEqual(res.payload['choices'][0]['message']['content'], 'hi')
+            hit = server.hits[-1]
+            self.assertEqual(hit['path'], '/v1/chat/completions')
+            self.assertEqual(hit['body'], {'model': 'model-r15', 'messages': [{'role': 'user', 'content': 'xin chao'}]})
+            self.assertEqual(hit['headers']['x-config-revision-id'], 'rev-r15')
+            self.assertEqual(hit['headers']['x-route-provenance'], '9router-adapter')
+            self.assertEqual(hit['headers']['authorization'], 'Bearer tok-r15')
+        self.assertEqual(len(server.hits), 2)
+
+    def test_http_adapter_endpoint_registry_and_drift_checks_still_apply_with_v1_suffix(self):
+        registry = ApprovedEndpointRegistry.from_config(['http://127.0.0.1:20128/v1'])
+        adapter = NineRouterHTTPAdapter(base_url='http://127.0.0.1:20128/v1', registry=registry)
+        self.assertEqual(adapter.bound_endpoint, 'http://127.0.0.1:20128/v1')
+        with self.assertRaises(UnapprovedEndpointError):
+            NineRouterHTTPAdapter(base_url='http://127.0.0.1:20129/v1', registry=registry)
 
 
 if __name__ == "__main__":
