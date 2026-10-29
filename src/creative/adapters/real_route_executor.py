@@ -2,7 +2,7 @@
 
 Endpoint, timeout, retry and backoff come from configuration; the credential only travels through credential_method and never reaches ExecutionResult, a log or a record.
 Every HTTP call goes through NineRouterHTTPAdapter; this module opens no connection itself and holds no fixed endpoint.
-GIẢ ĐỊNH (D8): config_revision_id sent to 9Router is the route_revision of the decision (J-18 hands only the decision to the executor); endpoint is the origin because NineRouterHTTPAdapter appends /v1/chat (Control confirms the 9Router port at CP7, OI-ADAPT-05).
+GIẢ ĐỊNH (D8): config_revision_id sent to 9Router is the route_revision of the decision (J-18 hands only the decision to the executor); the endpoint may be the origin or end with /v1 because NineRouterHTTPAdapter posts to <origin>/v1/chat/completions with the model of the decision and a messages list (R15; Control confirms the 9Router port at CP7, OI-ADAPT-05).
 """
 from __future__ import annotations
 
@@ -14,8 +14,7 @@ from typing import Any, Protocol
 
 from controlplane.application.config_security.route_resolver import CREDENTIAL_METHOD
 from controlplane.application.config_security.routed_invocation import ExecutionResult
-from controlplane.config.adapter import ApprovedEndpointRegistry, NineRouterHTTPAdapter
-from controlplane.config.models import AIRequest
+from controlplane.config.adapter import ApprovedEndpointRegistry, ChatAIRequest, NineRouterHTTPAdapter
 from controlplane.domain.config_security.route_binding import ProviderRouteDecision
 
 _REQUIRED_KEYS = (
@@ -134,7 +133,7 @@ class NineRouterExecutor:
                 raise ValueError('unsupported credential_method')
             prompt = self._store.get_request(request_payload_ref)
             with self._credentials.acquire(credential_method, decision.account_ref) as token:
-                request = AIRequest(prompt=prompt, config_revision_id=decision.route_revision)
+                request = ChatAIRequest(prompt=prompt, config_revision_id=decision.route_revision, model=decision.model_ref)
                 response = self._http.send_request(request, secret_token=token)
         except Exception as exc:
             return ExecutionResult(False, None, Decimal('0'), exc)

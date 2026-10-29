@@ -9,6 +9,7 @@ import json
 import socket
 import time
 from typing import Dict, Any, Optional, Iterable
+from dataclasses import dataclass
 import urllib.error
 from urllib.parse import urlparse
 import urllib.request
@@ -19,6 +20,12 @@ from controlplane.config.models import (
     MissingConfigProvenanceError,
     RateLimitError,
 )
+
+
+@dataclass
+class ChatAIRequest(AIRequest):
+    """AIRequest that also carries the model of the route decision for the chat completions body (R15)."""
+    model: Optional[str] = None
 
 
 class ProviderHTTPError(Exception):
@@ -154,6 +161,10 @@ class ApprovedEndpointRegistry:
 DEFAULT_ENDPOINT_REGISTRY = ApprovedEndpointRegistry()
 
 
+_CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
+_V1_SUFFIX = "/v1"
+
+
 class NineRouterHTTPAdapter:
     """Resilient HTTP client adapter for 9Router with timeout, 429 backoff, and provenance stamping.
 
@@ -161,6 +172,7 @@ class NineRouterHTTPAdapter:
     - INV-013: Route provenance stamping (X-Route-Provenance, X-Config-Revision-ID) and registry-approved endpoints.
     - INV-021: HTTP timeout handling and 429 exponential backoff with jitter.
     - QR-REL-007: Resilient retry and fail-closed security.
+    - R15: POST to <origin>/v1/chat/completions with an OpenAI-compatible body (model, messages); a trailing /v1 of the endpoint is dropped so one URL results.
     """
 
     def __init__(
@@ -213,8 +225,13 @@ class NineRouterHTTPAdapter:
         if validated_base != self._bound_endpoint:
             raise UnapprovedEndpointError("Endpoint drift detected prior to dispatch (fail-closed)")
 
-        url = f"{validated_base}/v1/chat"
-        payload_data = json.dumps({"prompt": req.prompt}).encode("utf-8")
+        root = validated_base[: -len(_V1_SUFFIX)] if validated_base.endswith(_V1_SUFFIX) else validated_base
+        url = f"{root}{_CHAT_COMPLETIONS_PATH}"
+        body: Dict[str, Any] = {"messages": [{"role": "user", "content": req.prompt}]}
+        model = getattr(req, "model", None)
+        if isinstance(model, str) and model.strip():
+            body = {"model": model, **body}
+        payload_data = json.dumps(body).encode("utf-8")
 
         headers: Dict[str, str] = {
             "Content-Type": "application/json",
