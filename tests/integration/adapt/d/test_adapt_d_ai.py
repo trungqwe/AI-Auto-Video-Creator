@@ -10,6 +10,7 @@ from controlplane.config.adapter import (
     DEFAULT_APPROVED_ENDPOINTS,
     ApprovedEndpointRegistry,
     NineRouterHTTPAdapter,
+    ProviderHTTPError,
     UnapprovedEndpointError,
 )
 
@@ -391,7 +392,8 @@ def test_executor_takes_timeout_retry_backoff_and_endpoint_from_config() -> None
     assert result.ok is True
     assert urlopen.call_args.kwargs['timeout'] == 7.0
     assert urlopen.call_args[0][0].full_url == ENDPOINT + '/v1/chat/completions'
-    assert json.loads(urlopen.call_args[0][0].data.decode('utf-8')) == {'model': 'model-c1', 'messages': [{'role': 'user', 'content': 'prompt'}]}
+    assert json.loads(urlopen.call_args[0][0].data.decode('utf-8')) == {'model': 'model-c1', 'messages': [{'role': 'user', 'content': 'prompt'}], 'stream': False}
+    assert urlopen.call_args[0][0].get_header('Accept') == 'application/json'
     assert store.pop_output(result.output_ref)['usage']['prompt_tokens'] == 7
 
 
@@ -421,16 +423,26 @@ class _FakeRouterHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get('Content-Length', '0'))
         body = self.rfile.read(length)
-        self.server.hits.append({
+        hit = {
             'path': self.path,
             'body': json.loads(body.decode('utf-8')),
             'headers': {k.lower(): v for k, v in self.headers.items()},
-        })
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Content-Length', str(len(self.server.reply)))
-        self.end_headers()
-        self.wfile.write(self.server.reply)
+        }
+        self.server.hits.append(hit)
+        wants_json = hit['body'].get('stream') is False and 'application/json' in hit['headers'].get('accept', '')
+        if wants_json and not getattr(self.server, 'force_sse', False):
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(self.server.reply)))
+            self.end_headers()
+            self.wfile.write(self.server.reply)
+        else:
+            sse = b'data: {"choices": [{"delta": {"content": "x"}}]}\n\ndata: [DONE]\n\n'
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Content-Length', str(len(sse)))
+            self.end_headers()
+            self.wfile.write(sse)
 
     def log_message(self, format, *args):
         pass
@@ -440,10 +452,11 @@ class _FakeRouterHandler(BaseHTTPRequestHandler):
 def fake_router():
     servers = []
 
-    def start(reply=None):
+    def start(reply=None, force_sse=False):
         server = ThreadingHTTPServer(('127.0.0.1', 0), _FakeRouterHandler)
         server.daemon_threads = True
         server.hits = []
+        server.force_sse = force_sse
         if reply is not None:
             server.reply = reply
         else:
@@ -483,7 +496,9 @@ def test_loopback_pipeline_posts_chat_completions_for_origin_and_v1_endpoint(fak
     assert messages[0]['role'] == 'user'
     assert 'Write the script' in messages[0]['content']
     assert 'source text' in messages[0]['content']
-    assert set(hit['body']) == {'model', 'messages'}
+    assert set(hit['body']) == {'model', 'messages', 'stream'}
+    assert hit['body']['stream'] is False
+    assert 'application/json' in hit['headers']['accept']
     assert hit['headers']['authorization'] == 'Bearer ' + CANARY
     assert hit['headers']['x-config-revision-id'] == 'route-rev-1'
     assert hit['headers']['x-route-provenance'] == '9router-adapter'
@@ -500,4 +515,29 @@ def test_loopback_path_is_never_doubled_for_v1_endpoint(fake_router):
     assert result.ok is True
     assert router.hits[0]['path'] == '/v1/chat/completions'
     assert '/v1/v1' not in router.hits[0]['path']
-    assert router.hits[0]['body'] == {'model': 'model-c1', 'messages': [{'role': 'user', 'content': 'hello'}]}
+    assert router.hits[0]['body'] == {'model': 'model-c1', 'messages': [{'role': 'user', 'content': 'hello'}], 'stream': False}
+
+
+def test_loopback_sse_reply_from_router_becomes_clear_provider_error(fake_router):
+    router = fake_router(force_sse=True)
+    endpoint = router.origin
+    config = dict(EXECUTOR_CONFIG, endpoint=endpoint, approved_endpoints=[endpoint], max_retries=0)
+    executor, store, _ = _executor(config)
+    store.put_request('ref-1', 'hello')
+    result = executor.execute(_j_decision(), 'c1', 'ref-1', 'secret_broker_handle')
+    assert result.ok is False
+    assert isinstance(result.error, ProviderHTTPError)
+    assert not isinstance(result.error, json.JSONDecodeError)
+    assert 'text/event-stream' in str(result.error)
+    assert len(router.hits) == 1
+
+
+def test_loopback_pipeline_sse_reply_is_final_provider_failed(fake_router):
+    router = fake_router(force_sse=True)
+    endpoint = router.origin
+    config = dict(EXECUTOR_CONFIG, endpoint=endpoint, approved_endpoints=[endpoint], max_retries=0)
+    ai, _, _ = _build(executor_config=config)
+    result = ai.invoke(DECISION, ENVELOPE)
+    assert not isinstance(result, WaitingAIInvocationResult)
+    assert result.output is None
+    assert result.record.error.startswith('provider_failed:')

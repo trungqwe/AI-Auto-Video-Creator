@@ -20,6 +20,7 @@ from controlplane.config.adapter import (
     ApprovedEndpointRegistry,
     ChatAIRequest,
     NineRouterHTTPAdapter,
+    ProviderHTTPError,
     ProviderTimeoutError,
     ProviderRateLimitExceededError,
     UnapprovedEndpointError,
@@ -35,21 +36,31 @@ class _RecordingHandler(BaseHTTPRequestHandler):
             'body': json.loads(raw.decode('utf-8')),
             'headers': {k.lower(): v for k, v in self.headers.items()},
         })
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        body = json.dumps({'choices': [{'message': {'content': 'hi'}}]}).encode('utf-8')
-        self.send_header('Content-Length', str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        wants_json = self.server.hits[-1]['body'].get('stream') is False and 'application/json' in self.server.hits[-1]['headers'].get('accept', '')
+        if wants_json and not getattr(self.server, 'force_sse', False):
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            body = json.dumps({'choices': [{'message': {'content': 'hi'}}]}).encode('utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            sse = b'data: {"choices": [{"delta": {"content": "hi"}}]}\n\ndata: [DONE]\n\n'
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Content-Length', str(len(sse)))
+            self.end_headers()
+            self.wfile.write(sse)
 
     def log_message(self, format, *args):
         pass
 
 
-def _start_router():
+def _start_router(force_sse=False):
     server = ThreadingHTTPServer(('127.0.0.1', 0), _RecordingHandler)
     server.daemon_threads = True
     server.hits = []
+    server.force_sse = force_sse
     port = server.server_address[1]
     server.origin = 'http://127.0.0.1:' + str(port)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -151,7 +162,8 @@ class TestHTTPRouterAdapter(unittest.TestCase):
             self.assertEqual(res.payload['choices'][0]['message']['content'], 'hi')
             hit = server.hits[-1]
             self.assertEqual(hit['path'], '/v1/chat/completions')
-            self.assertEqual(hit['body'], {'model': 'model-r15', 'messages': [{'role': 'user', 'content': 'xin chao'}]})
+            self.assertEqual(hit['body'], {'model': 'model-r15', 'messages': [{'role': 'user', 'content': 'xin chao'}], 'stream': False})
+            self.assertEqual(hit['headers']['accept'], 'application/json')
             self.assertEqual(hit['headers']['x-config-revision-id'], 'rev-r15')
             self.assertEqual(hit['headers']['x-route-provenance'], '9router-adapter')
             self.assertEqual(hit['headers']['authorization'], 'Bearer tok-r15')
@@ -163,6 +175,30 @@ class TestHTTPRouterAdapter(unittest.TestCase):
         self.assertEqual(adapter.bound_endpoint, 'http://127.0.0.1:20128/v1')
         with self.assertRaises(UnapprovedEndpointError):
             NineRouterHTTPAdapter(base_url='http://127.0.0.1:20129/v1', registry=registry)
+
+    def test_http_adapter_requests_non_stream_json(self):
+        server = _start_router()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        registry = ApprovedEndpointRegistry.from_config([server.origin])
+        adapter = NineRouterHTTPAdapter(base_url=server.origin, registry=registry, max_retries=0)
+        res = adapter.send_request(ChatAIRequest(prompt='p', config_revision_id='rev-r16', model='m-r16'))
+        self.assertEqual(res.payload['choices'][0]['message']['content'], 'hi')
+        self.assertIs(server.hits[0]['body']['stream'], False)
+        self.assertEqual(server.hits[0]['headers']['accept'], 'application/json')
+        self.assertEqual(server.hits[0]['headers']['x-route-provenance'], '9router-adapter')
+
+    def test_http_adapter_sse_reply_raises_clear_provider_error(self):
+        server = _start_router(force_sse=True)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        registry = ApprovedEndpointRegistry.from_config([server.origin])
+        adapter = NineRouterHTTPAdapter(base_url=server.origin, registry=registry, max_retries=3)
+        with self.assertRaises(ProviderHTTPError) as ctx:
+            adapter.send_request(ChatAIRequest(prompt='p', config_revision_id='rev-r16', model='m-r16'))
+        self.assertIn('text/event-stream', str(ctx.exception))
+        self.assertFalse(isinstance(ctx.exception, json.JSONDecodeError))
+        self.assertEqual(len(server.hits), 1)
 
 
 if __name__ == "__main__":

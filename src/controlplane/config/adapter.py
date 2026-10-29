@@ -165,6 +165,13 @@ _CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 _V1_SUFFIX = "/v1"
 
 
+def _response_content_type(resp: Any) -> str:
+    headers = getattr(resp, "headers", None)
+    getter = getattr(headers, "get", None)
+    value = getter("Content-Type") if callable(getter) else None
+    return value.lower() if isinstance(value, str) else ""
+
+
 class NineRouterHTTPAdapter:
     """Resilient HTTP client adapter for 9Router with timeout, 429 backoff, and provenance stamping.
 
@@ -173,6 +180,7 @@ class NineRouterHTTPAdapter:
     - INV-021: HTTP timeout handling and 429 exponential backoff with jitter.
     - QR-REL-007: Resilient retry and fail-closed security.
     - R15: POST to <origin>/v1/chat/completions with an OpenAI-compatible body (model, messages); a trailing /v1 of the endpoint is dropped so one URL results.
+    - R16: request body carries "stream": false and the Accept: application/json header; a text/event-stream reply is a clear ProviderHTTPError (no SSE assembling).
     """
 
     def __init__(
@@ -227,7 +235,7 @@ class NineRouterHTTPAdapter:
 
         root = validated_base[: -len(_V1_SUFFIX)] if validated_base.endswith(_V1_SUFFIX) else validated_base
         url = f"{root}{_CHAT_COMPLETIONS_PATH}"
-        body: Dict[str, Any] = {"messages": [{"role": "user", "content": req.prompt}]}
+        body: Dict[str, Any] = {"messages": [{"role": "user", "content": req.prompt}], "stream": False}
         model = getattr(req, "model", None)
         if isinstance(model, str) and model.strip():
             body = {"model": model, **body}
@@ -235,6 +243,7 @@ class NineRouterHTTPAdapter:
 
         headers: Dict[str, str] = {
             "Content-Type": "application/json",
+            "Accept": "application/json",
             "X-Config-Revision-ID": req.config_revision_id,
             "X-Route-Provenance": "9router-adapter",
         }
@@ -250,6 +259,11 @@ class NineRouterHTTPAdapter:
             )
             try:
                 with urllib.request.urlopen(req_obj, timeout=self.timeout) as resp:
+                    content_type = _response_content_type(resp)
+                    if "text/event-stream" in content_type:
+                        raise ProviderHTTPError(
+                            f"Provider returned a text/event-stream (SSE) response although stream=false and Accept: application/json were requested; streaming responses are not supported (Content-Type: {content_type})"
+                        )
                     raw_body = resp.read()
                     payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
                     return AIResponse(payload=payload, fallback_triggered=(attempt > 0))
