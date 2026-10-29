@@ -19,6 +19,7 @@ import urllib.request
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 REPO = Path(__file__).resolve().parents[2]
 for _path in (REPO / 'tools' / 'real', REPO / 'src'):
@@ -268,7 +269,7 @@ def real():
     vault_store = DpapiSecretStore(root / 'vault')
     obs = {'oauth_present': vault_store.current_version(DRIVE_SECRET_REF) is not None}
     if not obs['oauth_present']:
-        pytest.fail('BLOCKED WAITING_USER_OAUTH: chạy `python tools/launcher/launcher.py oauth` trước (điểm dừng 1)')
+        pytest.fail('BLOCKED WAITING_USER_OAUTH: run `python tools/launcher/launcher.py oauth` first (user stop point 1)')
     profile = load_production_profile(PROFILE_PATH)
     drive = profile.drive
     broker = build_drive_token_broker(root / 'secrets' / 'oauth-client.json', profile.credential_max_ttl_seconds, vault_store,
@@ -305,9 +306,33 @@ def real():
         try:
             bad_store.upload(files['a1']['id'], files['a1']['artifact'], files['a1']['sha256'], files['a1']['size'])
             obs['token_invalid_error'] = None
+            obs['token_invalid_type'] = None
+            obs['token_invalid_code'] = None
         except DriveObjectStoreError as exc:
             obs['token_invalid_error'] = str(exc)
+            obs['token_invalid_type'] = type(exc).__name__
+            obs['token_invalid_code'] = exc.code
         obs['token_invalid_statuses'] = meter.statuses[statuses_before:]
+
+        from controlplane.application.storage_meta import persist_handler
+
+        class _MemoryReceipts:
+            def __init__(self, *args, **kwargs):
+                self._rows = {}
+
+            def get(self, key):
+                return self._rows.get(key)
+
+            def save(self, receipt):
+                self._rows[receipt.operation_key] = receipt
+
+        staged = SimpleNamespace(artifact_version_id=files['a1']['artifact'], sha256_hash=files['a1']['sha256'], size_bytes=files['a1']['size'])
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(persist_handler, '_CommittedReceipts', _MemoryReceipts)
+            patch.setattr(persist_handler, '_stage_output', lambda *args, **kwargs: staged)
+            service = persist_handler.persist_video_output_handler(None, workspace_id='cp7-3', staging_root=staging, cloud=bad_store, namespace_ref=NAMESPACE)
+            result = service({'video_job_id': 'cp7-3-job', 'operation_key': 'cp7-3-op', 'input_refs': [{'ref_type': 'render_output', 'ref_id': 'render/out.mp4'}]}, SimpleNamespace(grant_id='cp7-3-grant'))
+        obs['token_invalid_job'] = {'disposition': result['disposition'], 'code': result['problem']['code'], 'retryable': result['problem']['retryable'], 'output_refs': result['output_refs']}
 
         # Ba tệp chính bằng cấu hình production (chunk 8 MiB).
         for name in ('a1', 'b9', 'c40'):
@@ -405,17 +430,19 @@ def real():
 def _pass(emit, item, *details):
     emit(c.report_line('RG-02', item, 'PASS'))
     for detail in details:
+        # emit in ra stdout của harness (cp1252): chi tiết in ra terminal phải là ASCII; chữ có dấu chỉ nằm trong report.md.
+        assert detail.isascii(), f'evidence detail for {item} must be ASCII'
         emit(f'- {item}: {detail}')
 
 
 def test_rg02_oauth_present(real, emit):
     assert real['oauth_present']
-    _pass(emit, 'oauth_present', 'alias OAuth Drive có trong kho DPAPI (chỉ kiểm tồn tại, không đọc giá trị)')
+    _pass(emit, 'oauth_present', 'OAuth Drive alias present in the DPAPI vault (existence only, value never read)')
 
 
 def test_rg02_scope_drive_file(real, emit):
     assert real['scopes'] == [DRIVE_FILE_SCOPE], real['scopes']
-    _pass(emit, 'scope_drive_file', f'tokeninfo scope={real["scopes"][0]} (đúng một phạm vi)')
+    _pass(emit, 'scope_drive_file', f'tokeninfo scope={real["scopes"][0]} (exactly one scope)')
 
 
 def test_rg02_upload_md5(real, emit):
@@ -423,7 +450,7 @@ def test_rg02_upload_md5(real, emit):
     matched = [n for n in ('a1', 'b9', 'c40') if files[n]['drive_md5'] == files[n]['md5'] and files[n]['drive_size'] == files[n]['size']]
     assert matched == ['a1', 'b9', 'c40'], matched
     assert real['parents_ok'], 'uploaded file is outside the run folder'
-    _pass(emit, 'upload_md5', 'md5Checksum Drive = md5 cục bộ 3/3 (1, 9, 40 MiB), kích thước khớp, đúng thư mục cp7-fixture/<runId>')
+    _pass(emit, 'upload_md5', 'Drive md5Checksum equals local md5 3/3 (1, 9, 40 MiB), sizes match, parent is cp7-fixture/<runId>')
 
 
 def test_rg02_resumable_chunks(real, emit):
@@ -431,7 +458,7 @@ def test_rg02_resumable_chunks(real, emit):
     expected = {n: -(-files[n]['size'] // chunk) for n in ('b9', 'c40')}
     got = {n: files[n]['chunk_puts'] for n in ('b9', 'c40')}
     assert got == expected and got['c40'] >= 5, (got, expected)
-    _pass(emit, 'resumable_chunks', f'chunk {chunk // MIB} MiB: 9 MiB → {got["b9"]} PUT, 40 MiB → {got["c40"]} PUT')
+    _pass(emit, 'resumable_chunks', f'chunk {chunk // MIB} MiB: 9 MiB -> {got["b9"]} PUT, 40 MiB -> {got["c40"]} PUT')
 
 
 def test_rg02_sha256_redownload(real, emit):
@@ -439,31 +466,31 @@ def test_rg02_sha256_redownload(real, emit):
     lookup, redownload = real['lookup_b9'], real['redownload_b9']
     assert lookup['exists'] and lookup['sha256'] == expected and lookup['size'] == real['files']['b9']['size'], lookup['evidence_kind']
     assert redownload['status'] == 200 and redownload['sha256'] == expected, redownload['status']
-    _pass(emit, 'sha256_redownload', f'lookup của DriveObjectStore ({lookup["evidence_kind"]}) và tải lại 9 MiB đều cho sha256 khớp')
+    _pass(emit, 'sha256_redownload', f'DriveObjectStore lookup ({lookup["evidence_kind"]}) and a real 9 MiB re-download both match the local sha256')
 
 
 def test_rg02_conflict_409(real, emit):
     assert real['conflict'] == 'ObjectAlreadyExistsError' and real['conflict_copies'] == 1, (real['conflict'], real['conflict_copies'])
-    _pass(emit, 'conflict_409', 'upload lại cùng file ID → ObjectAlreadyExistsError (409); Drive giữ đúng 1 bản')
+    _pass(emit, 'conflict_409', 'second upload with the same file id -> ObjectAlreadyExistsError (409); Drive keeps exactly 1 copy')
 
 
 def test_rg02_session_expired(real, emit):
     assert real['session_error'] is None, real['session_error']
     assert 404 in real['session_statuses'] and real['session_count'] == 2 and real['session_md5_ok'], (
         real['session_statuses'], real['session_count'], real['session_md5_ok'])
-    _pass(emit, 'session_expired', f'upload_id không tồn tại → HTTP 404 thật; store mở phiên mới (2 phiên), hoàn tất, md5 khớp; '
-          f'mã đã thấy {real["session_statuses"]}')
+    _pass(emit, 'session_expired', f'unknown upload_id -> real HTTP 404; store opened a new session (2 sessions), finished, md5 matches; statuses seen {real["session_statuses"]}')
 
 
 def test_rg02_token_invalid(real, emit):
+    from controlplane.infrastructure.storage.drive_object_store import DRIVE_CREDENTIAL_INVALID
+
     assert 401 in real['token_invalid_statuses'], real['token_invalid_statuses']
+    assert real['token_invalid_type'] == 'DriveCredentialError' and real['token_invalid_code'] == DRIVE_CREDENTIAL_INVALID, (real['token_invalid_type'], real['token_invalid_code'])
     assert real['token_invalid_error'] and 'HTTP 401' in real['token_invalid_error'], real['token_invalid_error']
+    job = real['token_invalid_job']
+    assert job == {'disposition': 'waiting', 'code': 'credential_unavailable', 'retryable': True, 'output_refs': []}, job
     assert real['files']['a1']['drive_md5'] == real['files']['a1']['md5'], 'reserved file id was lost after 401'
-    emit(c.report_line('RG-02', 'token_invalid', 'BLOCKED'))
-    emit('- token_invalid: adapter: bearer cố định không hợp lệ → HTTP 401 thật, DriveObjectStoreError, file ID đã cấp vẫn upload được '
-         'sau đó (không mất). Phần "job chuyển chờ credential" chưa đo được: activity PersistVideoOutput chưa được nối vào worker '
-         'production (launcher start_worker handlers={}).')
-    pytest.fail('BLOCKED: job-level credential wait needs the PersistVideoOutput activity wired into the production worker')
+    _pass(emit, 'token_invalid', 'fixed invalid bearer -> real HTTP 401, DriveCredentialError (DRIVE_CREDENTIAL_INVALID); PersistVideoOutput handler returns waiting/credential_unavailable (retryable, no output refs); the reserved file id was still uploaded afterwards with the real broker (not lost)')
 
 
 def test_rg02_quota_reserve(real, emit):
@@ -473,8 +500,7 @@ def test_rg02_quota_reserve(real, emit):
         pytest.fail('BLOCKED: Drive storageQuota has no limit, the reserve guard cannot be measured on this account')
     assert quota['free_after_ratio'] >= quota['profile_ratio'], 'account is already below the profile reserve'
     assert quota['guard'] == 'DriveQuotaError' and quota['guard_file_status'] == 404, (quota['guard'], quota['guard_file_status'])
-    _pass(emit, 'quota_reserve', f'quota thật: trống dự phóng {quota["free_after_ratio"]:.6f} ≥ ngưỡng profile {quota["profile_ratio"]}; '
-          'đặt ngưỡng ngay trên phần trống dự phóng → DriveQuotaError, không tệp nào được tạo (404)')
+    _pass(emit, 'quota_reserve', f'real quota: projected free ratio {quota["free_after_ratio"]:.6f} >= profile threshold {quota["profile_ratio"]}; threshold set just above projected free space -> DriveQuotaError, no file created (404)')
 
 
 def test_rg02_token_outside_vault(real, emit):
@@ -489,16 +515,14 @@ def test_rg02_token_outside_vault(real, emit):
         with CredentialBroker(vault.export_vault([DRIVE_SECRET_REF])).acquire_secret(DRIVE_SECRET_REF) as handle:
             hits, scanned = _scan_outside_vault([access_token, handle.get_secret_value()], extra)
     assert hits == 0, f'token found outside the vault: hits={hits}'
-    _pass(emit, 'token_outside_vault', f'access token và refresh token: 0 lần xuất hiện trong {scanned} tệp của thư mục dữ liệu (trừ vault) '
-          'và báo cáo')
+    _pass(emit, 'token_outside_vault', f'access token and refresh token: 0 occurrences in {scanned} files of the data dir (vault excluded) and the report')
 
 
 def test_rg02_cleanup_namespace(real, emit):
     cleanup = real['cleanup']
     assert cleanup['errors'] == 0 and cleanup['refused'] == 0 and cleanup['deleted'] >= 5, cleanup
     assert real['outside_after'] == real['outside_before'], (len(real['outside_before']), len(real['outside_after']))
-    _pass(emit, 'cleanup_namespace', f'xoá {cleanup["deleted"]} mục, chỉ trong cp7-fixture/<runId>; '
-          f'{len(real["outside_before"])} tệp ngoài thư mục đó không đổi')
+    _pass(emit, 'cleanup_namespace', f'deleted {cleanup["deleted"]} items, only under cp7-fixture/<runId>; {len(real["outside_before"])} files outside it unchanged')
 
 
 def test_rg02_secret_scan(real, emit):
@@ -506,5 +530,4 @@ def test_rg02_secret_scan(real, emit):
     found = len(c.scan_secrets(report.read_text(encoding='utf-8'))) if report.is_file() else 0
     assert found == 0, found
     assert real['calls'] <= CALL_CAP and real['upload_bytes'] <= UPLOAD_CAP_BYTES, (real['calls'], real['upload_bytes'])
-    _pass(emit, 'secret_scan', f'báo cáo 0 mẫu bí mật; trần: {real["calls"]} lời gọi API ≤ {CALL_CAP}, '
-          f'{real["upload_bytes"] / MIB:.2f} MiB lên Drive ≤ {UPLOAD_CAP_BYTES // MIB}')
+    _pass(emit, 'secret_scan', f'report has 0 secret patterns; caps: {real["calls"]} API calls <= {CALL_CAP}, {real["upload_bytes"] / MIB:.2f} MiB uploaded <= {UPLOAD_CAP_BYTES // MIB}')
