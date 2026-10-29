@@ -1,6 +1,6 @@
 """CP7-4 / RG-03: AI qua 9Router thật và chi phí.
 
-6 vai trò x 10 lời gọi; 50 lời gọi văn bản qua CreativePipeline + RoutedAIInvocation + RoutedInvocationService + _ChatCompletionsExecutor (OpenAI chat/completions thật, lệch OI-PP-01 của adapter sản phẩm),
+6 vai trò x 10 lời gọi; 50 lời gọi văn bản qua CreativePipeline + RoutedAIInvocation + RoutedInvocationService + NineRouterExecutor của sản phẩm (R15: POST <origin>/v1/chat/completions kèm model và messages),
 10 lời gọi image_safety qua LlmImageSafetyDetector + RouterVisionRoute; trần chi phí (60 lời gọi logic, ledger +5 USD);
 prompt mặc định của D được test nối thêm quy tắc lược đồ (_SCHEMA_RULES, GIẢ ĐỊNH F-CP7-4-03); validator của D giữ nguyên;
 cách dừng (CostGuard, hard_stop của J, Ctrl+C, hạn 45 phút); không in khóa.
@@ -326,47 +326,6 @@ def _seed_png(image_id):
     png_data = mod.make_png(item['width'], item['height'], item['recipe']['hue_degrees'], template)
     return (png_data, 'image/png')
 
-
-# Executor của test: gửi thân OpenAI chat/completions tới 9Router thật. NineRouterExecutor của sản phẩm gửi {prompt} tới {endpoint}/v1/chat nên 404 (OI-PP-01); src/** nằm ngoài owned paths.
-class _ChatCompletionsExecutor:
-    def __init__(self, endpoint, store, credentials, timeout_seconds, cost):
-        from controlplane.config.adapter import ApprovedEndpointRegistry
-        self._registry = ApprovedEndpointRegistry.from_config([endpoint])
-        self._endpoint = self._registry.validate(endpoint)
-        self._store = store
-        self._credentials = credentials
-        self._timeout = float(timeout_seconds)
-        self._cost = cost
-        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-
-    def execute(self, decision, candidate_ref, request_payload_ref, credential_method):
-        import controlplane.config.adapter as adapter
-        from controlplane.application.config_security.routed_invocation import ExecutionResult
-        try:
-            prompt = self._store.get_request(request_payload_ref)
-            body = json.dumps({'model': decision.model_ref, 'messages': [{'role': 'user', 'content': prompt}]}).encode('utf-8')
-            url = self._registry.validate(self._endpoint) + '/chat/completions'
-            with self._credentials.acquire(credential_method, decision.account_ref) as token:
-                headers = {'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': 'Bearer ' + token}
-                request = urllib.request.Request(url, data=body, method='POST', headers=headers)
-                try:
-                    with self._opener.open(request, timeout=self._timeout) as resp:
-                        payload = json.loads(resp.read().decode('utf-8'))
-                except urllib.error.HTTPError as exc:
-                    exc.close()
-                    if exc.code == 429:
-                        raise adapter.ProviderRateLimitExceededError('HTTP 429 from 9Router') from None
-                    if exc.code in (401, 403):
-                        raise adapter.ProviderAuthenticationError('HTTP ' + str(exc.code) + ' from 9Router') from None
-                    raise adapter.ProviderHTTPError('HTTP error ' + str(exc.code) + ' from 9Router') from None
-                except (TimeoutError, urllib.error.URLError) as exc:
-                    if isinstance(getattr(exc, 'reason', exc), TimeoutError):
-                        raise adapter.ProviderTimeoutError('9Router request timed out') from None
-                    raise adapter.ProviderHTTPError('9Router connection error') from None
-        except Exception as exc:
-            return ExecutionResult(False, None, Decimal('0'), exc)
-        return ExecutionResult(True, self._store.put_output(request_payload_ref + '-output', payload), self._cost, None)
-
 # Bọc RouterVisionRoute thật: sau mỗi lời gọi vision (kể cả lỗi) ghi một bản ghi chi phí ước tính vào sổ, vì route vision của sản phẩm không qua J-18 và không có sổ (OI-PP-04). Bản ghi này là sổ của test, không phải bằng chứng ghi sổ của sản phẩm.
 class _LedgeredVisionRoute:
     def __init__(self, inner, ledger, workspace_id, clock, cost):
@@ -402,7 +361,8 @@ def _build_stack():
     from controlplane.application.config_security.route_resolver import ProviderRouteResolver
     from controlplane.application.config_security.routed_invocation import RoutedInvocationService
     from controlplane.api.wiring.creative import budget_policy_from_config, monthly_window, RoutedProviderRoute
-    from creative.adapters.real_ai_invocation import FallbackIntentPolicy, InvocationPayloadStore, RoutedAIInvocation
+    from creative.adapters.real_ai_invocation import FallbackIntentPolicy, RoutedAIInvocation
+    from creative.adapters.real_route_executor import InvocationPayloadStore, NineRouterExecutor, RouteExecutorConfig
     from controlplane.infrastructure.production_ports.vision_route import RouterVisionRoute
 
     profile = load_production_profile(PROFILE_PATH)
@@ -430,8 +390,18 @@ def _build_stack():
     )
 
     payloads = InvocationPayloadStore()
-    executor = _ChatCompletionsExecutor(
-        profile.ai.route_endpoint, payloads, credentials, profile.ai.request_timeout_seconds, ESTIMATED_COST_PER_REQUEST)
+    executor = NineRouterExecutor(
+        RouteExecutorConfig.from_mapping({
+            'endpoint': profile.ai.route_endpoint,
+            'approved_endpoints': [profile.ai.route_endpoint],
+            'request_timeout_seconds': profile.ai.request_timeout_seconds,
+            'max_retries': profile.ai.retry.max_attempts - 1,
+            'backoff_factor': profile.ai.retry.backoff_base_seconds,
+            'cost_per_request': ESTIMATED_COST_PER_REQUEST,
+        }),
+        payloads,
+        credentials,
+    )
 
     budget = budget_policy_from_config({
         'monthly_limit': profile.budget.monthly_limit,
