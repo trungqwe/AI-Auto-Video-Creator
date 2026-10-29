@@ -104,6 +104,17 @@ def _path_of(url_file):
     return url[url.index('/launch'):]
 
 
+def _probe_env():
+    """Môi trường cho probe Node: nếu worktree thiếu src/controlplane/ui/node_modules/playwright thì trỏ CP7_PLAYWRIGHT_DIR tới playwright của runtime khoá (<runtime>/venv/Scripts/python.exe -> <runtime>/ui/node_modules/playwright)."""
+    env = dict(os.environ)
+    in_tree = REPO / 'src' / 'controlplane' / 'ui' / 'node_modules' / 'playwright'
+    exe_parents = Path(sys.executable).parents
+    locked = exe_parents[2] / 'ui' / 'node_modules' / 'playwright' if len(exe_parents) > 2 else None
+    if not in_tree.is_dir() and locked is not None and (locked / 'package.json').is_file():
+        env['CP7_PLAYWRIGHT_DIR'] = str(locked)
+    return env
+
+
 @pytest.fixture(scope='module')
 def real(tmp_path_factory):
     from controlplane.infrastructure.security.dpapi_secret_store import DpapiSecretStore
@@ -128,7 +139,7 @@ def real(tmp_path_factory):
         launch_evil_status, body = _request('GET', _path_of(second), host_header=f'{EVIL}:{PORT}')
         bodies.append(body)
         out_dir = work / 'probe'
-        probe = subprocess.run(['node', str(PROBE), '--url-file', str(second), '--out', str(out_dir)], cwd=str(REPO),
+        probe = subprocess.run(['node', str(PROBE), '--url-file', str(second), '--out', str(out_dir)], cwd=str(REPO), env=_probe_env(),
                                capture_output=True, text=True, encoding='utf-8', errors='replace',
                                timeout=DEADLINE.timeout(180), check=False)
         result = json.loads(probe.stdout.strip().splitlines()[-1])

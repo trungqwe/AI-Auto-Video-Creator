@@ -11,7 +11,13 @@ const fs = require('fs');
 const path = require('path');
 
 const REPO = path.resolve(__dirname, '..', '..');
-const { chromium } = require(path.join(REPO, 'src', 'controlplane', 'ui', 'node_modules', 'playwright'));
+// Nạp playwright từ src/controlplane/ui/node_modules; nếu worktree chưa có thư mục này thì dùng CP7_PLAYWRIGHT_DIR (test truyền vào đường dẫn playwright của runtime khoá). Thiếu cả hai thì main() báo JSON ok=false.
+const IN_TREE_PLAYWRIGHT = path.join(REPO, 'src', 'controlplane', 'ui', 'node_modules', 'playwright');
+const OVERRIDE_PLAYWRIGHT = process.env.CP7_PLAYWRIGHT_DIR;
+const PLAYWRIGHT_DIR = !fs.existsSync(IN_TREE_PLAYWRIGHT) && OVERRIDE_PLAYWRIGHT && fs.existsSync(path.join(OVERRIDE_PLAYWRIGHT, 'package.json')) ? OVERRIDE_PLAYWRIGHT : IN_TREE_PLAYWRIGHT;
+let chromium;
+let loadError = null;
+try { ({ chromium } = require(PLAYWRIGHT_DIR)); } catch (error) { loadError = error; }
 
 function arg(name) {
   const i = process.argv.indexOf(name);
@@ -19,6 +25,7 @@ function arg(name) {
 }
 
 async function main() {
+  if (loadError) throw loadError;
   const urlFile = arg('--url-file');
   const out = arg('--out');
   if (!urlFile || !out) throw new Error('usage: --url-file <file> --out <dir>');

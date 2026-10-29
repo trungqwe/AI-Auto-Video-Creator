@@ -1,8 +1,8 @@
 # CP7-2 — Phiên sản xuất thật và bảo mật loopback (RG-01)
 
-Ngày đo: 25/10/2026, khoảng 12:20Z, trên máy sản xuất (Windows 10). Chạy trực tiếp trong giai đoạn ổn định hoá (nhánh `stabilize/e2e-20261025`, không qua AI_SETUP; quyết định của user 25/10/2026), dưới quyền thường.
+Ngày đo: 29/10/2026, trên máy sản xuất (Windows 10). Chạy đo lại trong lane `lane-cp7-2` (worktree của AI_SETUP, hồ sơ `production`, dưới quyền thường).
 
-Lệnh: `node --check tools/real/cp7_browser_probe.js` (mã thoát 0) và `python -m pytest tests/real/test_cp7_session_security.py -q -p no:cacheprovider` bằng interpreter khoá `.local-tools/runtime/33f06a7a/venv`. Kết quả: 10 passed trong 105 giây, mã thoát 0. Test chạy `launcher.py start` thật hai lần (hồ sơ `production`), bắt URL `/launch` qua biến `BROWSER` vào tệp tạm (capability không bao giờ được in), rồi mở phiên bằng Playwright headless. Trần chi phí: 0 USD, không gọi AI.
+Lệnh: `node --check tools/real/cp7_browser_probe.js` (mã thoát 0) và `python -m pytest tests/real/test_cp7_session_security.py -q -p no:cacheprovider` bằng interpreter khoá `.local-tools/runtime/1ca840a7/venv`. Kết quả: 10 passed trong 110.33 giây, mã thoát 0. Playwright được nạp từ `src/controlplane/ui/node_modules` nếu có, nếu không thì từ runtime khoá `.local-tools/runtime/1ca840a7/ui/node_modules/playwright` qua biến `CP7_PLAYWRIGHT_DIR`. Test chạy `launcher.py start` thật hai lần (hồ sơ `production`), bắt URL `/launch` qua biến `BROWSER` vào tệp tạm (capability không bao giờ được in), rồi mở phiên bằng Playwright headless. Trần chi phí: 0 USD, không gọi AI.
 
 ## Kết quả
 
@@ -32,7 +32,7 @@ RG-01.secret_scan: PASS
 
 ## Ghi chú
 
-- Ứng dụng tiếp tục chạy sau test (phiên của lần start thứ hai) để các slice CP7 sau dùng tiếp. Dừng bằng `python tools/launcher/launcher.py stop`.
+- Test dừng ứng dụng bằng `python tools/launcher/launcher.py stop` trong `finally` của fixture và kiểm cổng `127.0.0.1:8443` đã đóng; không có launcher nào còn chạy sau test.
 - Ba lỗi hạ tầng phát hiện khi dựng slice này đã sửa trên nhánh ổn định hoá, kèm test: `launcher stop` treo khi trình duyệt giữ SSE (`b0bf81d` cho máy chủ production, `8bb5768` cho mọi nơi tạo máy chủ uvicorn: hạn tắt êm 10 giây); namespace Temporal `default` chưa đăng ký trên image server 1.31.2 (`2f7e847`); `worker.stop()` chờ đủ 60 giây vì future bị bỏ rơi khi loop của worker đã dừng (`6686c58`).
 - Probe trình duyệt không chờ `networkidle`, vì UI giữ một `EventSource` mở suốt phiên. Probe chờ trang nạp, chờ tiêu đề `h1.brand-title`, rồi chờ thêm 3 giây để các lệnh gọi API đầu tiên vào HAR.
 - DOM, HAR và cookie chỉ nằm trong thư mục tạm ngoài cây Git, và bị xoá khi test xong.
