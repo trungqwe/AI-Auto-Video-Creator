@@ -149,7 +149,8 @@ class DriveAccessTokenBroker:
                 if creds.expiry.tzinfo is None
                 else creds.expiry
             )
-            expires_at = min(expires_at, expiry_utc)
+            remaining = expiry_utc - datetime.now(timezone.utc)
+            expires_at = min(expires_at, now + remaining)
 
         self._cached = (creds.token, expires_at, version)
         return creds.token

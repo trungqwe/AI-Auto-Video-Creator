@@ -559,6 +559,26 @@ def test_server_short_expiry_wins_over_max_ttl(
     assert server.count('refresh') == 2
 
 
+def test_server_short_expiry_is_anchored_to_injected_clock_not_real_time(
+    client_file: Path,
+    server: FakeOAuthServer,
+    store: DpapiSecretStore,
+) -> None:
+    server.expires_in = 30
+    statuses = _Statuses()
+    clock = _Clock()
+    clock.now = datetime.now(timezone.utc) - timedelta(minutes=10)
+    broker = _broker(client_file, store, statuses, clock, max_ttl=3300)
+
+    tok1 = _token(broker)
+    assert server.count('refresh') == 1
+
+    clock.now += timedelta(seconds=31)
+    tok2 = _token(broker)
+    assert tok2 != tok1
+    assert server.count('refresh') == 2
+
+
 @pytest.mark.parametrize('status', [
     ExternalAccountStatus.REVOKED,
     ExternalAccountStatus.INVALID,
