@@ -1,6 +1,6 @@
-# Gói được bao phủ và SHA tích hợp của M7 (revision 4)
+# Gói được bao phủ và SHA tích hợp của M7 (revision 5)
 
-Danh sách 99 gói được bao phủ trong mốc M7 theo yêu cầu nghiệm thu của revision 4. Tất cả các commit integrate dưới đây đều được kiểm chứng là tổ tiên của HEAD sau rebase (`380f128bfe3c1e7e4b862ed2a8768b9344e43e91`), trên nền integration head `f080601bae4ed341837157aaf87b3bcd85bd7424` (đã chứa gói `ADAPT-F-FIX1`).
+Danh sách 99 gói theo yêu cầu nghiệm thu của revision 5 (M7-MILESTONE-CLOSE-R5). SHA là commit integrate chép từ nhật ký tích hợp đã ghi trong báo cáo đóng mốc M5, M6 và revision 4 của repo; HEAD hiện hành là 3a7fbf32cf0bbd0af23991469bfbb7d21331fd7f (commit integrate của R4), trên nền integration head f080601bae4ed341837157aaf87b3bcd85bd7424 (đã chứa ADAPT-F-FIX1). Tổ tiên của từng SHA do Control xác minh.
 
 | Mã gói | Commit integrate (SHA đầy đủ) | Candidate (12 hex) | Cách tra |
 | --- | --- | --- | --- |
@@ -75,6 +75,7 @@ Danh sách 99 gói được bao phủ trong mốc M7 theo yêu cầu nghiệm th
 | PW-W2-FIX4 | aa5ba684a4cffb012030cbcb3d34f4ebc30cd485 | a7db460c0b59 | git log --grep=integrate() |
 | F-10-FIX2 | 9e67a6ba3d0e64735ffd51dc068107ea0fe0222d | d594e124d946 | git log --grep=integrate() |
 | PW-F1-FIX2 | 069d9743c18cab0003b35fcd4f81ee3b3ce622a5 | 2dbe58418121 | git log --grep=integrate() |
+| ADAPT-F-FIX1 | f080601bae4ed341837157aaf87b3bcd85bd7424 | 110ba265a338 | Báo cáo R4 mục 1-2: integration head f080601 đã tích hợp ADAPT-F-FIX1 (commit gói 110ba265a338) trên base 069d9743 |
 | A-01 | 22535f6dcff3dbf2e3187771a9bff1b34c85c838 | b11289d9c406 | git log --grep=integrate() |
 | A-02 | e343a41ee6570c39d0cbeda2bd35a3bf2c15513f | 0614e8d1934d | git log --grep=integrate() |
 | A-03 | 5e009d1c06ba60052bdd1658f939ffaadc626597 | 6382ebd2cdde | git log --grep=integrate() |
@@ -103,6 +104,18 @@ Danh sách 99 gói được bao phủ trong mốc M7 theo yêu cầu nghiệm th
 | ADAPT-J | b5550a06a10d64c33eedc74d28b19569c431dfb2 | fb5ef89cb2ff | git log --grep=integrate() |
 | ADAPT-I | fbbe798a06d4030f1dfc8a48399af5ffb704d15e | 8b142a0a7ecc | git log --grep=integrate() |
 | ADAPT-CONF | fe206ac52815f87769890b77efc7d8c51807528f | 2680d83e4f06 | Commit integrate trong git ghi tiêu đề integrate(ADAPT-CONFIG) |
+| ADAPT | xem mục Gói con của nhóm ADAPT | — | Tên ADAPT trong danh sách nghiệm thu được hiểu là nhóm IMPL-PLAN-ADAPT; tài liệu repo không ghi commit integrate riêng tên ADAPT, các commit của nhóm liệt kê bên dưới |
+
+## Gói con của nhóm ADAPT
+
+| Mã gói | Commit integrate (SHA đầy đủ) | Candidate (12 hex) |
+| --- | --- | --- |
+| ADAPT-I | fbbe798a06d4030f1dfc8a48399af5ffb704d15e | 8b142a0a7ecc |
+| ADAPT-CONFIG | fe206ac52815f87769890b77efc7d8c51807528f | 2680d83e4f06 |
+| ADAPT-WIRE | a046fa4c6784cd1ea3fcf1900e769b6bee3a9863 | f4e443d18434 |
+| ADAPT-SEED | 497a06b5f0f0783ea42200cb35f0f922f2cad09d | b97c9596725d |
+| ADAPT-PROD | 790f768269fd2e1218fdeb7aec82621dfa415827 | 62c610c36106 |
+| ADAPT-LAUNCH | cc290f002074514001fa0b03b3eb8c9e00c14db6 | faa54f225bdc |
 
 ## Gói retire, không được bao phủ
 

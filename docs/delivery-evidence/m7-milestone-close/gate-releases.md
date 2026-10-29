@@ -1,6 +1,6 @@
-# Bản ghi quyết định RELEASE của cổng (M7-MILESTONE-CLOSE-R4)
+# Bản ghi quyết định RELEASE của cổng (M7-MILESTONE-CLOSE-R5)
 
-Các gói cổng không có SHA tích hợp được Control thả mỗi cổng bằng một bản ghi quyết định RELEASE. RecordHash dưới đây chép nguyên văn theo yêu cầu nghiệm thu của revision 4; Worker không đọc sổ quyết định của Control.
+Các gói cổng không có SHA tích hợp được Control thả mỗi cổng bằng một bản ghi quyết định RELEASE. RecordHash dưới đây chép nguyên văn theo yêu cầu nghiệm thu của revision 5; Worker không đọc sổ quyết định của Control.
 
 | Cổng | recordHash |
 | --- | --- |
