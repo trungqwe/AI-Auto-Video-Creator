@@ -1,6 +1,6 @@
 # Gói được bao phủ và SHA tích hợp của M7 (revision 5)
 
-Danh sách 99 gói theo yêu cầu nghiệm thu của revision 5 (M7-MILESTONE-CLOSE-R5). SHA là commit integrate chép từ nhật ký tích hợp đã ghi trong báo cáo đóng mốc M5, M6 và revision 4 của repo; HEAD hiện hành là 3a7fbf32cf0bbd0af23991469bfbb7d21331fd7f (commit integrate của R4), trên nền integration head f080601bae4ed341837157aaf87b3bcd85bd7424 (đã chứa ADAPT-F-FIX1). Tổ tiên của từng SHA do Control xác minh.
+Danh sách 108 gói theo yêu cầu nghiệm thu của revision 5 (M7-MILESTONE-CLOSE-R5). SHA là commit integrate chép từ nhật ký tích hợp đã ghi trong báo cáo đóng mốc M5, M6 và revision 4 của repo; HEAD hiện hành là 2e0b6809453baca35db99d060ee42fd71da59908, trên nền integration head a84ac3940a4cef48c85733df30b016b3821aa1c3 (đã chứa ADAPT-F-FIX1 và ADAPT-J-FIX1). Tổ tiên của từng SHA do Control xác minh.
 
 | Mã gói | Commit integrate (SHA đầy đủ) | Candidate (12 hex) | Cách tra |
 | --- | --- | --- | --- |
@@ -76,6 +76,7 @@ Danh sách 99 gói theo yêu cầu nghiệm thu của revision 5 (M7-MILESTONE-C
 | F-10-FIX2 | 9e67a6ba3d0e64735ffd51dc068107ea0fe0222d | d594e124d946 | git log --grep=integrate() |
 | PW-F1-FIX2 | 069d9743c18cab0003b35fcd4f81ee3b3ce622a5 | 2dbe58418121 | git log --grep=integrate() |
 | ADAPT-F-FIX1 | f080601bae4ed341837157aaf87b3bcd85bd7424 | 110ba265a338 | Báo cáo R4 mục 1-2: integration head f080601 đã tích hợp ADAPT-F-FIX1 (commit gói 110ba265a338) trên base 069d9743 |
+| ADAPT-J-FIX1 | a84ac3940a4cef48c85733df30b016b3821aa1c3 | 4ec05756ff07 | git log --grep=integrate() |
 | A-01 | 22535f6dcff3dbf2e3187771a9bff1b34c85c838 | b11289d9c406 | git log --grep=integrate() |
 | A-02 | e343a41ee6570c39d0cbeda2bd35a3bf2c15513f | 0614e8d1934d | git log --grep=integrate() |
 | A-03 | 5e009d1c06ba60052bdd1658f939ffaadc626597 | 6382ebd2cdde | git log --grep=integrate() |

@@ -8,7 +8,7 @@
 | M7-R5-EG2 | Một video/nguồn/provider lỗi không làm dừng việc độc lập | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Đã kiểm chứng qua các test đạt exit 0: `tests/unit/orchestration/test_g_batch_outcome.py` (bước 9 của work order) và `tests/integration/creative/test_d15_provider_failure.py` (bước 8 của work order). |
 | M7-R5-EG3 | Không job biến mất không trạng thái/log | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Đã kiểm chứng qua các test đạt exit 0: `tests/unit/orchestration/test_g_consistency_audit.py` và `tests/unit/orchestration/test_g_recovery_scan.py` (bước 9 của work order). |
 | M7-R5-EG4 | Resume, retry, reconcile và cleanup qua fault suite | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Đã kiểm chứng qua các test đạt exit 0: `tests/unit/orchestration/test_g_retry_policy.py` (bước 9 của work order), `tests/unit/storage/test_storage_reconciliation.py` và `tests/integration/storage/test_storage_cleanup_executor.py` (bước 10 của work order) và `tests/integration/convergence/test_cp5_completion_uow.py` (bước 3 của work order). |
-| M7-R5-EG5 | Không P0/P1 mở và không hard-gate/INV test bị quarantine | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Kế hoạch đã duyệt không định nghĩa registry P0/P1; 468/468 đoạn lệnh kiểm bắt buộc của revision 5 (14 chuỗi, bước 1-14) đều đạt exit code 0 trên HEAD 3a7fbf32cf0bbd0af23991469bfbb7d21331fd7f; không có P0/P1 mở và không có test nào bị quarantine trái phép. |
+| M7-R5-EG5 | Không P0/P1 mở và không hard-gate/INV test bị quarantine | GHI CHÚ (rộng hơn kế hoạch đã duyệt) | Kế hoạch đã duyệt không định nghĩa registry P0/P1; 470/470 đoạn lệnh kiểm bắt buộc của revision 5 (14 chuỗi, bước 1-14) đều đạt exit code 0 trên HEAD 2e0b6809453baca35db99d060ee42fd71da59908; không có P0/P1 mở và không có test nào bị quarantine trái phép. |
 | M7-R6 | Mọi exit gate R6 Operational Baseline: G01–G07, 100 video trong 12 giờ, ≥95% hoàn thành, ngưỡng hiệu năng và chất lượng, chi phí dưới 50 USD/tháng, runbook/rollback, user nghiệm thu (CP7) | PENDING_USER_CHECKPOINT | Thuộc phạm vi nghiệm thu vận hành thực tế tại gói CP7: chạy thử 100 video trong 12 giờ không giám sát trên máy mục tiêu, chạy mẫu 10 video và người dùng duyệt trên Dashboard. Bằng chứng giả lập: `tests/unit/config/test_j_incremental_cost.py` và `tests/unit/config/test_j_capacity_snapshot.py` (bước 10 của work order), và `docs/runbook/runbook-v1.md` qua probe launch (bước 4 của work order). |
 
 ## Đối chiếu từng gạch đầu dòng của roadmap (docs/11-roadmap.md dòng 578-595)
@@ -21,7 +21,7 @@
 | Một video/nguồn/provider lỗi không làm dừng việc độc lập. | M7-R5-EG2 | GHI CHÚ | Rộng hơn kế hoạch đã duyệt; kiểm chứng bằng unit/integration test |
 | Không job biến mất không trạng thái/log. | M7-R5-EG3 | GHI CHÚ | Rộng hơn kế hoạch đã duyệt; kiểm chứng bằng unit test audit/recovery |
 | Resume, retry, reconcile và cleanup qua fault suite. | M7-R5-EG4 | GHI CHÚ | Rộng hơn kế hoạch đã duyệt; kiểm chứng bằng fault suite test |
-| Không P0/P1 mở và không hard-gate/INV test bị quarantine. | M7-R5-EG5 | GHI CHÚ | Rộng hơn kế hoạch đã duyệt; 468/468 đoạn lệnh kiểm bắt buộc của revision 5 (14 chuỗi, bước 1-14) đều đạt exit code 0 trên HEAD 3a7fbf32cf0bbd0af23991469bfbb7d21331fd7f; không có test bị quarantine |
+| Không P0/P1 mở và không hard-gate/INV test bị quarantine. | M7-R5-EG5 | GHI CHÚ | Rộng hơn kế hoạch đã duyệt; 470/470 đoạn lệnh kiểm bắt buộc của revision 5 (14 chuỗi, bước 1-14) đều đạt exit code 0 trên HEAD 2e0b6809453baca35db99d060ee42fd71da59908; không có test bị quarantine |
 
 ### R6 Operational Baseline (dòng 588-595)
 
@@ -49,3 +49,4 @@ Căn cứ bảng open items tại `docs/11-roadmap.md` mục 23:
 ## Ghi chú bổ sung revision 5
 
 production_ports và các báo cáo pp-* (PP-1..PP-8) kiểm ở bước 11; các gói PW-* kiểm ở bước 5, 6, 11, 12, 13; PW-E2E ở bước 13 (fixture, không thay thế bằng chứng tài nguyên thật nên M7-R5-EG1 vẫn chờ CP7); RS-1..RS-13 ở bước 13 và 14. Kết luận tập pendingUserCheckpoint chỉ bao gồm đúng 2 gate: M7-R5-EG1 và M7-R6.
+Cách đọc: "bước N" trong tệp này là chuỗi N trong command-results.md; ADAPT-J-FIX1 kiểm ở chuỗi 6 (adapt_j_oauth, pp_3, pp_8 và báo cáo adapt-j-fix1).

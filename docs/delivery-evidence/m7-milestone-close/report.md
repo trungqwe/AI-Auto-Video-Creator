@@ -3,8 +3,8 @@
 ## 1. Phạm vi và candidate
 
 - Task: `M7-MILESTONE-CLOSE-R5` (đóng milestone M7, revision 5).
-- Base tích hợp: HEAD `3a7fbf32cf0bbd0af23991469bfbb7d21331fd7f` (commit integrate của R4, trên integration head `f080601bae4ed341837157aaf87b3bcd85bd7424` đã chứa gói `ADAPT-F-FIX1`).
-- Lệnh kiểm chạy trên cây làm việc tại HEAD `3a7fbf32cf0bbd0af23991469bfbb7d21331fd7f` (cây này chỉ khác HEAD ở các tệp trong docs/delivery-evidence/m7-milestone-close/).
+- Base tích hợp: integration head `a84ac3940a4cef48c85733df30b016b3821aa1c3` (lane đã rebase lên đây, không xung đột).
+- Lệnh kiểm chạy trên cây làm việc tại HEAD `2e0b6809453baca35db99d060ee42fd71da59908` (cây này chỉ khác HEAD ở các tệp trong docs/delivery-evidence/m7-milestone-close/).
 - Interpreter khoá của lane: `C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\1ca840a7\venv\Scripts\python.exe`.
 - Ngày thực thi: `2026-10-29`.
 - Owned paths: `docs/delivery-evidence/m7-milestone-close/**`. Cấm sửa đổi bất kỳ tệp nào ngoài phạm vi này.
@@ -12,8 +12,8 @@
 ## 2. Lý do revision 5
 
 Gói `M7-MILESTONE-CLOSE-R5` được AI PM tự mở sau khi nhận Auditor PASS của `M7-INTEGRATION-PLAN`, authority được ràng buộc bởi receipt, candidate, run, dispatch và hash evidence, không cần user checkpoint lặp lại.
-So với bảng bao phủ của revision 4, revision 5 có thêm gói `ADAPT-F-FIX1` (R12, `tests/integration/adapt/f/test_adapt_f_render.py:182`, khắc phục lỗi setsar=1) và nhóm `ADAPT` (đại diện nhóm `IMPL-PLAN-ADAPT`).
-Toàn bộ lệnh kiểm bắt buộc của milestone M7 đã được chạy lại trên cây làm việc tại HEAD hiện hành và đều ĐẠT 468/468 đoạn lệnh (14 chuỗi lệnh, 0 thất bại, 100% exit code 0).
+So với bảng bao phủ của revision 4, revision 5 có thêm gói ADAPT-F-FIX1 (R12) và ADAPT-J-FIX1 (R13, docs/delivery-evidence/adapt-j-fix1/report.md) cùng nhóm ADAPT.
+Toàn bộ lệnh kiểm bắt buộc của milestone M7 đã được chạy lại trên cây làm việc tại HEAD hiện hành và đều ĐẠT 470/470 đoạn (14 chuỗi lệnh, 0 thất bại, 100% exit code 0).
 
 ## 3. Revision trước đã đóng mà không tích hợp
 
@@ -27,12 +27,12 @@ Bảng kiểm lại các điểm bổ sung trên candidate hiện hành:
 | Bốn gói sửa read-screens (`CP-4B-UI-SCREENS-FIX3/4`, `CP-4-WIRING-FIX3`, `ADAPT-PROD-FIX3`) | Bước 4 của work order | Exit 0 (toàn bộ probe và test đạt) |
 | Gói kế hoạch PW (`IMPL-PLAN-PROD-WIRING`) | Bước 4 và 5 của work order | Exit 0 (toàn bộ probe và test đạt) |
 | Các gói tính năng PW (`PW-*`) và các gói sửa PW | Bước 5, 6, 11, 12, 13 của work order | Exit 0 (toàn bộ test đạt) |
-| Cổng `GATE-PW-E2E` | `gate-releases.md` và bước 13 (`test_pw_e2e_batch_video.py`) | 10 passed, 1 warning in 126.73s (0:02:06) |
+| Cổng GATE-PW-E2E | gate-releases.md và chuỗi 13 (`test_pw_e2e_batch_video.py`) | 10 passed, 1 warning in 116.49s (0:01:56) |
 | Toàn bộ chuỗi `RS-1..RS-13` (read-screens) | Bước 13 và 14 của work order | Exit 0 (toàn bộ 13 test và 13 probe đạt) |
 
 ## 4. Gói được bao phủ
 
-- Toàn bộ 99 gói được bao phủ theo yêu cầu nghiệm thu của revision 5 (gồm `ADAPT-F-FIX1` và nhóm `ADAPT`) kèm SHA tích hợp 40 hex đã được liệt kê đầy đủ tại [packages.md](packages.md). Tổ tiên của từng SHA do Control xác minh.
+- Toàn bộ 108 gói được bao phủ theo yêu cầu nghiệm thu của revision 5 (gồm ADAPT-F-FIX1, ADAPT-J-FIX1 và nhóm ADAPT) kèm SHA tích hợp 40 hex đã được liệt kê đầy đủ tại [packages.md](packages.md). Tổ tiên của từng SHA do Control xác minh.
 - Gói mốc `M7-INTEGRATION-PLAN`: Control đã xác minh receipt Auditor PASS và commit nội dung `0a3f707ffa08b3a5737be6fa30769933d2cf475d` là tổ tiên của nhánh tích hợp.
 - Toàn bộ 16 cổng `GATE-*` đã có bản ghi quyết định RELEASE với mã recordHash chính xác được ghi nhận tại [gate-releases.md](gate-releases.md).
 
@@ -44,10 +44,11 @@ Hai gói kế hoạch sửa `IMPL-PLAN-PROD-WIRING-FIX1` và `IMPL-PLAN-PROD-WIR
 
 ## 6. Kết quả lệnh kiểm
 
-- Tổng số đoạn lệnh kiểm bắt buộc: 468 đoạn lệnh thuộc 14 chuỗi lệnh.
-- Số đoạn đạt: 468/468 đoạn (exit code 0).
+- Tổng số đoạn lệnh kiểm bắt buộc: 470 đoạn lệnh thuộc 14 chuỗi lệnh.
+- Số đoạn đạt: 470/470 đoạn (exit code 0).
 - Số đoạn thất bại: 0 đoạn.
 - Toàn bộ nhật ký kiểm thử chi tiết từng lệnh, exit code và tóm tắt đầu ra được trình bày tại [command-results.md](command-results.md).
+- Cách đọc: "bước N" trong báo cáo và exit-gates.md là chuỗi N trong command-results.md.
 
 ## 7. Đối chiếu exit gate
 
@@ -64,16 +65,13 @@ Hai gói kế hoạch sửa `IMPL-PLAN-PROD-WIRING-FIX1` và `IMPL-PLAN-PROD-WIR
 - Kiểm tra `git diff --check` đạt chuẩn, không có khoảng trắng thừa hay lỗi dòng.
 - Worktree sạch, không sửa đổi bất kỳ tệp nào ngoài phạm vi `ownedPaths`.
 
-## 9. Chạy lại sau thu hồi grant (generation 1)
+## 9. Chạy lại sau thu hồi grant (generation 1, CLOSURE_BASE_STALE)
 
-- Grant `DELEGATED-AI_PM_DELEGATED_AUTHORITY_20261009-LANE-M7-MILESTONE-CLOSE-R5-G1` bị Control thu hồi do `INTEGRATION_CHECK_FAILED` khi rebase lên `3a7fbf32cf0bbd0af23991469bfbb7d21331fd7f`.
-- Finding duy nhất của lượt tích hợp: lệnh `python -m pytest tests/m2 tests/integration -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression` exit 1 với `1 failed, 3987 passed, 36 skipped, 1 deselected, 2 warnings, 25 subtests passed in 976.18s (0:16:16)`. Test đỏ là `tests/integration/prod_wiring/test_pw_vert_video_flow.py::test_retry_stage_after_the_second_activity_failed_reruns_only_that_activity`.
+- Grant DELEGATED-AI_PM_DELEGATED_AUTHORITY_20261009-LANE-M7-MILESTONE-CLOSE-R5-G1 bị Control thu hồi với lý do CLOSURE_BASE_STALE (lane mở trên nhánh cũ HEAD 3a7fbf32cf0b, chưa chứa các gói đã tích hợp sau đó).
 - Hành động thực hiện:
-  1. Rebase nhánh lên `3a7fbf32cf0bbd0af23991469bfbb7d21331fd7f` (không có xung đột).
-  2. Đặt `PYTEST_DEBUG_TEMPROOT=C:\Users\Admin\AppData\Local\Temp\ai-setup-pytest\M7-MILESTONE-CLOSE-R5-implement`, chạy riêng tệp `tests/integration/prod_wiring/test_pw_vert_video_flow.py` bằng interpreter khóa. Kết quả: exit 0, dòng tóm tắt: `8 passed in 28.40s`.
-  3. Chạy lại nguyên văn lệnh đầy đủ `python -m pytest tests/m2 tests/integration -q -p no:cacheprovider --deselect tests/m2/test_p7b_hardening.py::test_h36_m1_regression` bằng interpreter khóa với cùng `PYTEST_DEBUG_TEMPROOT`. Kết quả: exit 0, dòng tóm tắt: `3988 passed, 36 skipped, 1 deselected, 2 warnings, 25 subtests passed in 922.25s (0:15:22)`.
-- Nhận xét kỹ thuật:
-  - Test `test_retry_stage_after_the_second_activity_failed_reruns_only_that_activity` chờ bằng `wait_until` timeout 60 giây và dùng lock/unlock time skipping của Temporal test server (`test_pw_vert_video_flow.py:247-262`) nên nhạy với tải khi chạy cả bộ.
-  - Test thuộc gói `PW-VERT`, nằm ngoài `ownedPaths` của R5, không bị sửa đổi trong gói này.
-  - Cả bước 2 (chạy cô lập) và bước 3 (chạy toàn bộ) đều đạt exit 0; không tái hiện được; ghi nhận là lỗi nhạy tải ngắt quãng, đề xuất theo dõi bằng slice riêng.
-- Tham chiếu: số liệu và ghi chú được cập nhật tại [command-results.md](command-results.md) chuỗi 8 dòng 11.
+  1. Rebase nhánh lên integration head `a84ac3940a4cef48c85733df30b016b3821aa1c3` (không có xung đột).
+  2. Bổ sung gói ADAPT-J-FIX1 kèm SHA tích hợp 40 hex (`a84ac3940a4cef48c85733df30b016b3821aa1c3`, candidate 4ec05756ff07) vào [packages.md](packages.md).
+  3. Chạy lại toàn bộ 470 đoạn lệnh kiểm bắt buộc thuộc 14 chuỗi lệnh trên mã đã rebase bằng interpreter khóa với PYTEST_DEBUG_TEMPROOT=C:\Users\Admin\AppData\Local\Temp\ai-setup-pytest\M7-MILESTONE-CLOSE-R5-implement. Toàn bộ 470/470 đoạn đều đạt exit code 0 ngay trong lần chạy đầu tiên (không có test nào bị failed hay phải chạy lại).
+- Kết luận:
+  - Kết quả của lần mở trước (gồm số liệu '3987 passed', '3988 passed' và ghi chú về `test_pw_vert_video_flow.py` của lượt cũ) không còn dùng và đã được thay thế hoàn toàn bằng số liệu thực tế của lượt này.
+  - Toàn bộ kết quả kiểm thử mới được ghi nhận đầy đủ, trung thực tại [command-results.md](command-results.md).
