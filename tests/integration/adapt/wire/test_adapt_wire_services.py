@@ -58,6 +58,7 @@ from source_ingestion.persistence.unit_of_work import (
 from voice.adapters import memory as e_memory
 from voice.adapters.fake_aligner import FakeAligner
 from voice.adapters.fake_tts import FakeTtsEngine
+from voice.adapters.profile_media_policy import build_image_safety_rules
 from voice.adapters.real_ffmpeg_media_tool import RealFfmpegMediaTool
 from voice.adapters.real_kokoro_tts import RealKokoroTts
 from voice.adapters.real_llm_image_safety import LlmImageSafetyDetector
@@ -469,13 +470,17 @@ def test_creative_test_profile_uses_fakes(manager, database):
 
 
 def test_voice_production_uses_real_adapters(manager, database, tmp_path):
-    s = wiring('voice').build_voice_services(manager, prod_config(tmp_path, database[1]))
+    cfg = prod_config(tmp_path, database[1])
+    s = wiring('voice').build_voice_services(manager, cfg)
     assert isinstance(s.tts, RealKokoroTts)
     assert isinstance(s.aligner, RealWhisperAligner)
     assert isinstance(s.media_tool, RealFfmpegMediaTool)
     assert isinstance(s.uow_factory(), PostgresVoiceUnitOfWork)
     detector = s.image_safety_detector_factory(ArtifactRef('image.png', 'a' * 64))
     assert isinstance(detector, LlmImageSafetyDetector)
+    profile, _runtime = cfg.production_parts()
+    floor = build_image_safety_rules(profile.parameters).uncertain_min
+    assert floor == 0.3 and detector.uncertain_min == floor
 
 
 def test_voice_test_profile_uses_fakes(manager, database):

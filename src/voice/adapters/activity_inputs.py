@@ -277,7 +277,7 @@ class ProductionActivityInputs:
 
     def _assess(self, frame: _Frame, grant: ExecutionGrant, context: EventContext) -> dict[str, Any]:
         art = self._artifact(frame.workspace_id, _first_ref(frame.refs, REF_SELECTED_MEDIA))
-        detector = LlmImageSafetyDetector(self._vision, art.ref, self._read_image, categories=self._rules.categories, timeout_seconds=self._vision_timeout)
+        detector = LlmImageSafetyDetector(self._vision, art.ref, self._read_image, categories=self._rules.categories, timeout_seconds=self._vision_timeout, uncertain_min=self._rules.uncertain_min)
         self._detectors[frame.operation_key] = detector
         return {'context': context, 'artifact_ref': art.ref, 'media_kind': IMAGE_KIND, 'detector': detector, 'policy': self._safety_policy}
 

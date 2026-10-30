@@ -42,7 +42,7 @@ from voice.adapters.activity_inputs import ActivityInputError, MediaArtifact, Pl
 from voice.adapters.audio_bed_source import AudioBedSource, HttpsResponse, MusicSource, check_music_url, load_music_sources
 from voice.adapters.local_voice_route import LocalVoiceRoute
 from voice.adapters.postgres_script_text import PostgresScriptText
-from voice.adapters.profile_media_policy import build_image_safety_policy, build_voice_duration_policy
+from voice.adapters.profile_media_policy import build_image_safety_policy, build_image_safety_rules, build_voice_duration_policy
 from voice.adapters.wav_duration import measure_wav_duration_ms
 from voice.application.media_pipeline import MediaPipeline, VerifiedOutput
 from voice.application.voice_pipeline import VoicePipeline
@@ -150,6 +150,8 @@ def build_voice_services(manager: Any, config: WiringConfig) -> VoiceServices:
         lambda ref, ext: resolve_under_root(media_root, ref.replace(':', '_') + '.' + ext),
     )
 
+    uncertain_min = build_image_safety_rules(profile.parameters).uncertain_min
+
     def detector_factory(artifact_ref: ArtifactRef) -> LlmImageSafetyDetector:
         return LlmImageSafetyDetector(
             runtime.vision_route,
@@ -157,6 +159,7 @@ def build_voice_services(manager: Any, config: WiringConfig) -> VoiceServices:
             read_media_image(locate),
             categories=im.categories,
             timeout_seconds=im.vision_timeout_seconds,
+            uncertain_min=uncertain_min,
         )
 
     artifact_placer = VoiceArtifactPlacer(voice_root)
