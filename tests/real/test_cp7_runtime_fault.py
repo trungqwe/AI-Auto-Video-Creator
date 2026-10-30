@@ -307,6 +307,8 @@ def m1_run(tmp_path_factory):
     rc, text = _run(argv, timeout=DEADLINE.timeout(1500), log_dir=work, env=child_env)
     if rc != 0 and re.search(r'ModuleNotFoundError|ImportError', text):
         pytest.fail('BLOCKED: thiếu runtime cho tests/m1: ' + text[-800:])
+    if rc != 0 and 'Python version mismatch' in text:
+        pytest.fail(f'BLOCKED: interpreter chạy test là CPython {sys.version.split()[0]}, M1 đòi interpreter khoá 3.13.15: ' + text[-800:])
     return SimpleNamespace(
         rc=rc, text=text, tree_same=_tree_digest(M1_DIR) == tree_before,
         evidence_same=hashlib.sha256(M1_EVIDENCE.read_bytes()).hexdigest() == evidence_before,
@@ -315,7 +317,8 @@ def m1_run(tmp_path_factory):
 
 def test_rg08_m1_regression_adjusted(m1_run, emit):
     text = m1_run.text
-    assert m1_run.rc == 0, text[-2000:]
+    failed_ids = re.findall(r'(?m)^(?:FAILED|ERROR) (\S+)', text)
+    assert m1_run.rc == 0, f'python={sys.version.split()[0]} failed={failed_ids}: ' + text[-1500:]
     assert re.search(r'\b91 passed\b', text), text[-2000:]
     assert not re.search(r'\b[1-9][0-9]* (?:failed|errors?|skipped)\b', text), text[-2000:]
     assert re.search(r'\b2 deselected\b', text), text[-2000:]
