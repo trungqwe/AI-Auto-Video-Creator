@@ -6,8 +6,8 @@
       "basis": "DECIDED"
     },
     "revision": {
-      "value": 1,
-      "reason": "Phiên bản sửa đổi ban đầu của hồ sơ cấu hình.",
+      "value": 2,
+      "reason": "Revision cấu hình theo kết quả đo CP7 (docs/implementation/adapt/plan.md mục giá trị production: kết quả đo thay giá trị bằng revision cấu hình mới, không đổi mã).",
       "basis": "DECIDED"
     }
   },
@@ -259,9 +259,9 @@
       "basis": "DECIDED"
     },
     "word_timing_tolerance_ms": {
-      "value": 150,
-      "reason": "Whisper lệch khoảng 100 ms, phụ đề karaoke chấp nhận dưới 150 ms và sẽ đo ở CP7-E-02.",
-      "basis": "CONSERVATIVE_DEFAULT"
+      "value": 200,
+      "reason": "User quyết ngày 30/10/2026 (ROADMAP-OPEN-008) theo số đo RG-05 của CP7-6: 106/110 câu lệch tối đa 200 ms, giữ ngưỡng nghiệm thu 95% câu.",
+      "basis": "DECIDED"
     },
     "max_unmatched_word_ratio": {
       "value": 0.05,
@@ -429,9 +429,9 @@
       "basis": "DECIDED"
     },
     "karaoke_tolerance_ms": {
-      "value": 150,
-      "reason": "Dung sai đồng bộ phụ đề karaoke trùng với dung sai căn chỉnh từ của aligner.",
-      "basis": "CONSERVATIVE_DEFAULT"
+      "value": 200,
+      "reason": "Dung sai đồng bộ phụ đề karaoke vẫn trùng với dung sai căn chỉnh từ của aligner theo cùng quyết định của user ngày 30/10/2026 (ROADMAP-OPEN-008).",
+      "basis": "DECIDED"
     },
     "hook_similarity_min": {
       "value": 0.85,

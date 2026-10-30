@@ -147,7 +147,7 @@ Các giá trị tham số cấu hình dưới đây mang nhãn cơ sở `CONSERV
 | `voice.speech_rate_wpm` | 150 từ/phút | CP7-ADAPT-03 |
 | `voice.tts_timeout_seconds` | 180 giây | CP7-ADAPT-03 |
 | `voice.stage_retry` | 3 lần thử, backoff 5-120s | CP7-ADAPT-03 |
-| `aligner.word_timing_tolerance_ms` | 150 ms | CP7-ADAPT-04 |
+| `aligner.word_timing_tolerance_ms` | 200 ms | CP7-ADAPT-04 |
 | `aligner.max_unmatched_word_ratio` | 0.05 (5%) | CP7-ADAPT-04 |
 | `audio.loudness` | -16 LUFS, true peak -1.5 dBTP, lra 11 | CP7-ADAPT-06 |
 | `audio.bed_gain_db` | -20 dB | CP7-ADAPT-06 |
@@ -158,7 +158,7 @@ Các giá trị tham số cấu hình dưới đây mang nhãn cơ sở `CONSERV
 | `render.fallback` | libx264, medium, crf 21, yuv420p | CP7-ADAPT-06 |
 | `render.timeout_seconds` | 900 giây (15 phút) | CP7-ADAPT-06 |
 | `render.presets` | font Arial 72pt, viền 4px, 5 biến thể màu | CP7-ADAPT-06 |
-| `qc.karaoke_tolerance_ms` | 150 ms | CP7-ADAPT-06 |
+| `qc.karaoke_tolerance_ms` | 200 ms | CP7-ADAPT-06 |
 | `qc.hook_similarity_min` | 0.85 | CP7-ADAPT-06 |
 | `qc.hook_audio_min_dbfs` | -40 dBFS | CP7-ADAPT-06 |
 | `qc.visual_continuity_min` | 0.6 | CP7-ADAPT-06 |
