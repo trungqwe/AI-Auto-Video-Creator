@@ -92,6 +92,17 @@ def test_unit_trace_missing():
         assert d.trace_missing({**full, 'model_refs': empty}) == ['model_refs']
 
 
+def test_unit_should_retry_batch():
+    script_fail = ('script', 'FAILED_FINAL', 'ai_output_schema_violation')
+    assert d.should_retry_batch(script_fail, 1, 3) is True
+    assert d.should_retry_batch(('analyze', 'FAILED_FINAL', 'ai_output_schema_violation'), 2, 6) is True
+    assert d.should_retry_batch(script_fail, d.MAX_BATCH_ATTEMPTS, 6) is False
+    assert d.should_retry_batch(script_fail, 1, d.AI_CALL_CAP - d.AI_CALLS_PER_JOB_RESERVE + 1) is False
+    assert d.should_retry_batch(('render', 'FAILED_FINAL', 'ai_output_schema_violation'), 1, 3) is False
+    assert d.should_retry_batch(('script', 'FAILED_FINAL', 'ACTIVITY_ABORTED'), 1, 3) is False
+    assert d.should_retry_batch(None, 1, 3) is False
+
+
 def test_unit_stage_labels_cover_all_stages():
     assert len(d.STAGES) == 11
     assert all(name in d.STAGE_LABELS for name in d.STAGES)
@@ -209,6 +220,6 @@ def test_rg09_secret_scan(batch_run, emit):
 
 def test_rg09_budget_envelope(batch_run, emit):
     assert d.budget_violations(batch_run.ai_calls, batch_run.spent_usd, batch_run.drive_bytes, batch_run.elapsed_seconds) == []
-    emit(f'- budget: ai_calls={batch_run.ai_calls} cap=25 spent_usd={batch_run.spent_usd} ceiling_usd=3 '
+    emit(f'- budget: attempts={len(batch_run.attempts)} ai_calls={batch_run.ai_calls} cap=25 spent_usd={batch_run.spent_usd} ceiling_usd=3 '
          f'drive_bytes={batch_run.drive_bytes} cap_bytes=209715200 elapsed_s={batch_run.elapsed_seconds:.0f} '
          f'limit_s=7200 remaining_s={DEADLINE.remaining():.0f}')
