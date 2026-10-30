@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Callable, Mapping, Sequence
+from types import MappingProxyType
 from typing import Any, Protocol
 
-from controlplane.application.orchestration.workflows.activities import ActivityRejected
+from controlplane.application.orchestration.workflows.activities import STAGE_ACTIVITIES_BY_WORKFLOW, ActivityRejected
 from controlplane.domain.orchestration import OrchestrationContractError
 from controlplane.domain.orchestration.job_waiting import WaitReason
 from controlplane.domain.statemachine import StageRunState
@@ -17,6 +18,8 @@ from controlplane.infrastructure.db.orchestration.stage_runs import PostgresStag
 DEFAULT_WAIT_REASON = WaitReason.PROVIDER_UNAVAILABLE
 _STATE_BY_DISPOSITION = {'succeeded': StageRunState.SUCCEEDED, 'outcome_unknown': StageRunState.OUTCOME_UNKNOWN, 'stale': StageRunState.STALE}
 _WAIT_REASONS = frozenset(reason.value for reason in WaitReason)
+# Stage names are unique across workflows; a stage with no activities has no closing activity.
+_ACTIVITIES_BY_STAGE: Mapping[str, tuple[str, ...]] = MappingProxyType({stage: names for table in STAGE_ACTIVITIES_BY_WORKFLOW.values() for stage, names in table.items() if names})
 
 
 class ResultListener(Protocol):
@@ -63,6 +66,18 @@ def _recordable_id(request: Any) -> str | None:
     return stage_run_id
 
 
+def _closes_stage(stage_run_id: str, activity_name: Any) -> bool:
+    """True when a succeeded result of this activity may finish the stage run, i.e. it is the last activity of its stage in STAGE_ACTIVITIES_BY_WORKFLOW. A stage or activity missing from the table keeps the old behaviour (closes)."""
+    names = _ACTIVITIES_BY_STAGE.get(parse_stage_run_id(stage_run_id)[1])
+    return names is None or activity_name not in names or activity_name == names[-1]
+
+
+def _with_activity(problem: Mapping[str, Any] | None, activity_name: Any) -> dict[str, Any] | None:
+    if not isinstance(activity_name, str):
+        return dict(problem) if problem is not None else None
+    return {**(problem or {}), 'activity': activity_name}
+
+
 class ResultRecordingDispatcher:
     def __init__(self, inner: Any, connection_factory: Callable[[], Any], clock: Callable[[], datetime.datetime], listeners: Sequence[ResultListener] = (), *, workspace_id: str) -> None:
         self._inner = inner
@@ -73,17 +88,17 @@ class ResultRecordingDispatcher:
 
     def dispatch(self, request: Mapping[str, Any]) -> dict[str, Any]:
         stage_run_id = _recordable_id(request)
+        activity_name = request.get('activity_name') if stage_run_id is not None else None
         if stage_run_id is not None:
             self._begin(stage_run_id, request)
         try:
             result = self._inner.dispatch(request)
         except ActivityRejected as exc:
             if stage_run_id is not None:
-                self._finish(stage_run_id, StageRunState.FAILED_FINAL, {'code': exc.code, 'retryable': False}, None)
+                self._finish(stage_run_id, StageRunState.FAILED_FINAL, _with_activity({'code': exc.code, 'retryable': False}, activity_name), None)
             raise
         if stage_run_id is not None:
-            problem = _problem(result)
-            self._finish(stage_run_id, _state_for(result['disposition'], problem), problem, result.get('execution_generation'), _wait_reason(problem))
+            self._record(stage_run_id, activity_name, result)
         for listener in self._listeners:
             listener.on_result(request, result)
         return result
@@ -96,6 +111,14 @@ class ResultRecordingDispatcher:
                 store.ensure(stage_run_id, epoch)
                 if store.status_of(stage_run_id, lock=True) == StageRunState.PENDING:
                     store.transition(stage_run_id, StageRunState.RUNNING, self._clock(), execution_generation=generation)
+
+    def _record(self, stage_run_id: str, activity_name: Any, result: Mapping[str, Any]) -> None:
+        disposition, problem = result['disposition'], _problem(result)
+        if disposition == 'succeeded' and not _closes_stage(stage_run_id, activity_name):
+            return  # later activities of the stage are still to run: the row stays RUNNING
+        state = _state_for(disposition, problem)
+        recorded = problem if state in (None, StageRunState.SUCCEEDED) else _with_activity(problem, activity_name)
+        self._finish(stage_run_id, state, recorded, result.get('execution_generation'), _wait_reason(problem))
 
     def _finish(self, stage_run_id: str, state: StageRunState | None, problem: dict[str, Any] | None, generation: int | None, wait_reason: str = '') -> None:
         with self._connection_factory() as connection:
