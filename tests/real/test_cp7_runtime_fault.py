@@ -150,8 +150,7 @@ def stack(tmp_path_factory):
         rc, text = _launcher(work, 'start', 900)
         if rc != 0:
             pytest.fail(f'BLOCKED: launcher start rc={rc}: {text[-800:]}')
-        rc, text = _launcher(work, 'stop', 120)
-        assert rc == 0, text[-800:]
+        _stop_until_exited(work)
     password = tool.load_or_create_password(layout)
     active = tool.active_db_name(layout)
     return SimpleNamespace(
@@ -268,13 +267,43 @@ def _must(work, command, cap):
     assert rc == 0, f'BLOCKED: launcher {command} rc={rc}: {text[-800:]}'
 
 
+STOP_ATTEMPTS = 4
+
+
+def _stop_until_exited(work):
+    """`launcher stop` không ép tắt và chỉ chờ 60s mỗi lần; sau down/start worker dựng lại cần tắt êm lâu hơn (uvicorn, ân hạn Temporal 30s, tác vụ nền 10s, join 60s). stop là idempotent nên gọi lại cho tới khi worker thoát; không kill tiến trình, không sửa launcher."""
+    last = ''
+    for attempt in range(1, STOP_ATTEMPTS + 1):
+        rc, text = _launcher(work, 'stop', 120)
+        if rc == 0:
+            return attempt
+        last = text[-400:]
+    pytest.fail(f'BLOCKED: launcher stop không thoát sau {STOP_ATTEMPTS} lần (mỗi lần chờ 60s, không ép tắt): {last}')
+
+
+def _postgres_only_snapshot(stack):
+    """Sau `launcher down`, dựng lại đúng dịch vụ postgres bằng cùng lệnh compose `up -d` mà launcher dùng (không worker, không cờ xoá volume) rồi đo số hàng. `launcher start` luôn bật worker thật (CollectionScheduler, OutboxRelay, EnrichmentStarter) ghi thêm cp_stage_runs, cp_artifact_locations, cp_article_revisions... vào DB active, nên số hàng đo sau start không bất biến; chỉ phép đo khi chưa có worker mới chứng minh volume giữ nguyên dữ liệu."""
+    tool = stack.launcher
+    rc, text = _run(tool.compose_command('up', '-d', 'postgres'), timeout=DEADLINE.timeout(300), log_dir=stack.work, env=_child_env(AIAVC_PG_PASSWORD=stack.password), secrets=stack.secrets)
+    assert rc == 0, f'BLOCKED: compose up postgres rc={rc}: {text[-800:]}'
+    end = time.monotonic() + DEADLINE.timeout(tool.PG_WAIT_SECONDS)
+    last = 'chưa thử'
+    while time.monotonic() < end:
+        try:
+            return _snapshot(stack.active_dsn)
+        except psycopg.OperationalError as exc:
+            last = type(exc).__name__
+            time.sleep(2)
+    pytest.fail(f'BLOCKED: PostgreSQL chưa nhận kết nối sau {tool.PG_WAIT_SECONDS}s ({last})')
+
+
 @pytest.fixture(scope='module')
 def cycle(stack, run_db):
     work, tool = stack.work, stack.launcher
     first = len(ISSUED)
     _must(work, 'start', 900)
-    _must(work, 'stop', 120)
-    seeded = _sentinel(stack.run_dsn, seed=True)
+    stop_first = _stop_until_exited(work)
+    seeded =_sentinel(stack.run_dsn, seed=True)
     before = _snapshot(stack.active_dsn)
     volume_cmd = ('volume', 'inspect', '--format', '{{.Name}} {{.CreatedAt}}', VOLUME)
     volume_before = _docker(work, *volume_cmd)
@@ -282,15 +311,20 @@ def cycle(stack, run_db):
     _must(work, 'down', 300)
     gone = _docker(work, 'inspect', tool.POSTGRES_CONTAINER)[0] != 0
     volume_mid = _docker(work, *volume_cmd)
+    after = _postgres_only_snapshot(stack)
+    sentinel_after = _sentinel(stack.run_dsn)
+    container_after = _docker(work, 'inspect', '--format', '{{.Id}}', tool.POSTGRES_CONTAINER)
     _must(work, 'start', 900)
-    _must(work, 'stop', 120)
+    stop_after_restart = _stop_until_exited(work)
+    after_start = _snapshot(stack.active_dsn)
     return SimpleNamespace(
-        seeded=seeded, before=before, after=_snapshot(stack.active_dsn), gone=gone,
-        sentinel_after=_sentinel(stack.run_dsn),
+        seeded=seeded, before=before, after=after, after_start=after_start, gone=gone,
+        sentinel_after=sentinel_after,
         volume_before=volume_before, volume_mid=volume_mid, volume_after=_docker(work, *volume_cmd),
         container_before=container_before,
-        container_after=_docker(work, 'inspect', '--format', '{{.Id}}', tool.POSTGRES_CONTAINER),
+        container_after=container_after,
         temporal_open=tool.wait_for_tcp(tool.LOOPBACK, tool.TEMPORAL_PORT, 10.0),
+        stop_attempts=(stop_first, stop_after_restart),
         flags={arg for argv in ISSUED[first:] for arg in argv},
     )
 
@@ -306,10 +340,11 @@ def test_rg08_volume_preserved(cycle, run_db, emit):
     assert cycle.container_after[1] != cycle.container_before[1], 'container không được dựng lại'
     assert cycle.after.started > cycle.before.started, 'postgres không khởi động lại'
     assert cycle.after.system_id == cycle.before.system_id and cycle.after.db_oid == cycle.before.db_oid
+    assert cycle.after_start.system_id == cycle.before.system_id and cycle.after_start.db_oid == cycle.before.db_oid
     assert cycle.seeded[0] == SENTINEL_ROWS and cycle.sentinel_after == cycle.seeded
     assert cycle.temporal_open
     emit(c.report_line('RG-08', 'volume_preserved', 'PASS'))
-    emit(f'- volume_preserved: volume={VOLUME} created_at_equal=True container_recreated=True postmaster_restarted=True system_identifier_equal=True database_oid_equal=True sentinel_db={run_db.name} partition={run_db.partition} sentinel_rows={cycle.sentinel_after[0]} sentinel_md5_equal=True temporal_port_open={cycle.temporal_open} down_without_volume_flag=True')
+    emit(f'- volume_preserved: volume={VOLUME} created_at_equal=True container_recreated=True postmaster_restarted=True system_identifier_equal=True database_oid_equal=True sentinel_db={run_db.name} partition={run_db.partition} sentinel_rows={cycle.sentinel_after[0]} sentinel_md5_equal=True temporal_port_open={cycle.temporal_open} down_without_volume_flag=True postgres_only_up_before_launcher_start=True system_identifier_equal_after_launcher_start=True stop_attempts_first={cycle.stop_attempts[0]} stop_attempts_after_restart={cycle.stop_attempts[1]}')
 
 
 def test_rg08_row_counts_equal(cycle, emit):
@@ -317,9 +352,10 @@ def test_rg08_row_counts_equal(cycle, emit):
     assert sum(before.counts.values()) > 0, 'bảng chính rỗng, phép so số hàng vô nghĩa'
     diff = {n: (before.counts.get(n), after.counts.get(n)) for n in {*before.counts, *after.counts} if before.counts.get(n) != after.counts.get(n)}
     assert not diff, diff
-    assert after.sessions >= before.sessions
+    assert after.sessions == before.sessions, (before.sessions, after.sessions)
+    assert cycle.after_start.sessions >= after.sessions
     emit(c.report_line('RG-08', 'row_counts_equal', 'PASS'))
-    emit(f'- row_counts_equal: tables={len(after.counts)} total_rows={sum(after.counts.values())} equal=True excluded={SESSION_TABLE}(before={before.sessions} after={after.sessions}) note=launcher_start_ghi_them_mot_phien')
+    emit(f'- row_counts_equal: tables={len(after.counts)} total_rows={sum(after.counts.values())} equal=True measured=postgres_only_up_sau_down_truoc_launcher_start worker_not_running=True {SESSION_TABLE}(before={before.sessions} after={after.sessions} equal=True) after_launcher_start_total_rows={sum(cycle.after_start.counts.values())} after_launcher_start_{SESSION_TABLE}={cycle.after_start.sessions} note=worker_that_ghi_them_hang_sau_launcher_start_nen_khong_dung_de_so_sanh')
     emit('- row_counts_equal: nonzero ' + ' '.join(f'{n}={k}' for n, k in sorted(after.counts.items()) if k))
 
 
