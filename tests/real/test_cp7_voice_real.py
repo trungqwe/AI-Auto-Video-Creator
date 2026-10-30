@@ -206,8 +206,7 @@ REFERENCE_NOISE_DB = -30
 SENSITIVITY_NOISE_DB = (-40, -35, -30)
 REFERENCE_MIN_SILENCE_S = 0.1
 END_MARGIN_MS = 50
-CUT_WINDOW_FRACTION = 0.35
-CUT_WINDOW_MIN_MS = 1000
+SENTENCE_GAP_MS = 300
 
 
 def _silences(wav_path, duration_ms, noise_db):
@@ -229,35 +228,48 @@ def _silences(wav_path, duration_ms, noise_db):
     return silences
 
 
-def _sentence_spans(wav_path, duration_ms, sentences, noise_db):
-    # mốc câu tham chiếu chỉ lấy từ giọng sạch và độ dài văn bản, độc lập aligner: đầu câu đầu = hết khoảng im đầu file, cuối câu cuối = bắt đầu khoảng im cuối file; mỗi ranh giới câu là khoảng im DÀI NHẤT nằm trong cửa sổ quanh vị trí kỳ vọng (thời gian còn lại chia theo tỉ lệ số ký tự các câu còn lại, tính lại sau mỗi lần cắt) nên chỗ nghỉ hơi giữa câu ở xa vị trí đó không lẫn với ranh giới thật
-    silences = _silences(wav_path, duration_ms, noise_db)
-    begin = silences[0][1] if silences and silences[0][0] <= 0 else 0
-    finish = silences[-1][0] if silences and silences[-1][0] > begin and silences[-1][1] >= duration_ms - END_MARGIN_MS else duration_ms
-    inner = [s for s in silences if s[0] > begin and s[1] < finish]
-    lengths = [len(sentence) for sentence in sentences]
-    picked, cursor, remaining = [], begin, sum(lengths)
-    for length in lengths[:-1]:
-        expected = cursor + (finish - cursor) * length / remaining
-        window = max(CUT_WINDOW_MIN_MS, CUT_WINDOW_FRACTION * (expected - cursor))
-        ahead = [s for s in inner if s[0] > cursor]
-        pool = [s for s in ahead if abs(s[0] - expected) <= window]
-        if pool:
-            cut = max(pool, key=lambda s: (s[1] - s[0], -abs(s[0] - expected)))
-        elif ahead:
-            cut = min(ahead, key=lambda s: abs(s[0] - expected))
-        else:
-            break
-        picked.append(cut)
-        cursor = cut[1]
-        remaining -= length
-    spans, start = [], begin
-    for cut in picked:
-        spans.append((start, cut[0]))
-        start = cut[1]
-    spans.append((start, finish))
-    rest = [s[1] - s[0] for s in inner if s not in picked]
-    return spans, (min((s[1] - s[0] for s in picked), default=0), max(rest, default=0))
+def _clip_edges(clip_path, duration_ms, noise_db):
+    # (ms im đầu clip, ms im cuối clip) của clip MỘT câu, đo bằng silencedetect của FFmpeg ghim; khoảng im chỉ tính là đầu/cuối khi chạm mép clip trong END_MARGIN_MS
+    silences = _silences(clip_path, duration_ms, noise_db)
+    lead = silences[0][1] if silences and silences[0][0] <= END_MARGIN_MS else 0
+    trail = duration_ms - silences[-1][0] if silences and silences[-1][1] >= duration_ms - END_MARGIN_MS and silences[-1][0] > lead else 0
+    return lead, trail
+
+
+def _timing_audio(tts, sid, sentences, work, noise_dbs):
+    # âm thanh đo mốc câu: từng câu do RealKokoroTts thật tổng hợp riêng, ghép cách nhau SENTENCE_GAP_MS im lặng số; mốc tham chiếu mỗi câu = đầu/cuối tiếng nói do silencedetect đo trên clip riêng của câu đó cộng offset ghép (ranh giới câu biết theo cách dựng, không đoán từ độ dài văn bản, độc lập aligner)
+    pieces, clips, rate = [], [], None
+    for k, sentence in enumerate(sentences):
+        text = sentence.strip()
+        fingerprint = hashlib.sha256(text.encode('utf-8')).hexdigest()
+        clip_sid = f'{sid}-s{k:02d}'
+        request = {'script_version_id': clip_sid, 'script_fingerprint': fingerprint, 'voice_profile_ref': 'cp7-6-voice', 'provider_route_ref': 'cp7-6-route', 'expected_language': 'en-US', 'operation_key': 'cp7-6-' + clip_sid, 'execution_grant_ref': 'cp7-6-grant'}
+        data = tts.synthesize(DECISION, ScriptText(clip_sid, text, fingerprint), request).audio_bytes
+        channels, width, clip_rate, frames, _ = _wav_info(data)
+        assert channels == 1 and width == 2 and frames > 0 and rate in (None, clip_rate), 'sentence clip format differs'
+        rate = clip_rate
+        path = work / (clip_sid + '.wav')
+        path.write_bytes(data)
+        clips.append((path, frames * 1000 // clip_rate))
+        pieces.append(_samples(data))
+    gap = np.zeros(SENTENCE_GAP_MS * rate // 1000)
+    parts, offsets, position = [], [], 0
+    for index, piece in enumerate(pieces):
+        offsets.append(position * 1000 // rate)
+        parts.append(piece)
+        position += piece.size
+        if index + 1 < len(pieces):
+            parts.append(gap)
+            position += gap.size
+    spans = {}
+    for db in noise_dbs:
+        row = []
+        for (path, duration_ms), offset in zip(clips, offsets):
+            lead, trail = _clip_edges(path, duration_ms, db)
+            assert duration_ms - trail > lead, 'sentence clip has no speech'
+            row.append((offset + lead, offset + duration_ms - trail))
+        spans[db] = row
+    return np.concatenate(parts), spans, rate
 
 
 class _VramSampler(threading.Thread):
@@ -323,11 +335,7 @@ def _measure_item(tts, aligner, paths, work, sid, kind, text, rate_hz):
     channels, width, rate, frames, _ = _wav_info(data)
     clean = _samples(data)
     duration_ms = frames * 1000 // rate
-    clean_path = work / (sid + '-clean.wav')
-    clean_path.write_bytes(data)
     sentences = _sentences(text)
-    refs = {db: _sentence_spans(clean_path, duration_ms, sentences, db) for db in SENSITIVITY_NOISE_DB}
-    spans, margin = refs[REFERENCE_NOISE_DB]
     mixed, music_db = _mix(clean, rate)
     assert abs(music_db - MUSIC_DB) < 0.1, 'music level off target'
     paths[sid] = work / (sid + '-mix.wav')
@@ -341,20 +349,27 @@ def _measure_item(tts, aligner, paths, work, sid, kind, text, rate_hz):
     report = aligner.last_report
     if result is not None and report is not None:
         ratio = report.unmatched_ratio
-        by_noise = {db: _sentence_outcomes(sentences, result, report, ref[0]) for db, ref in refs.items()}
     else:
-        ratio, by_noise = 1.0, {db: [(None, None)] * len(sentences) for db in refs}
-    paths[sid + '-clean'] = clean_path
-    clean_outcomes = [(None, None)] * len(sentences)
+        ratio = 1.0
+    timing, refs, _ = _timing_audio(tts, sid, sentences, work, SENSITIVITY_NOISE_DB)
+    spans = refs[REFERENCE_NOISE_DB]
+    timing_ms = timing.size * 1000 // rate
+    margin = (spans[0][0], timing_ms - spans[-1][1])
+    timing_mixed, timing_music_db = _mix(timing, rate)
+    assert abs(timing_music_db - MUSIC_DB) < 0.1, 'music level off target'
+    timing_ref = sid + '-timing'
+    paths[timing_ref] = work / (timing_ref + '-mix.wav')
+    timing_bytes = _write_wav(paths[timing_ref], timing_mixed, rate)
+    by_noise = {db: [(None, None)] * len(sentences) for db in refs}
     aligner.last_report = None
     try:
-        clean_result = aligner.align(AlignmentRequest(voice_artifact_ref=sid + '-clean', voice_hash=hashlib.sha256(data).hexdigest(), voice_duration_ms=duration_ms, script_version_id=sid, script_text=text, expected_language='en-US'))
+        timing_result = aligner.align(AlignmentRequest(voice_artifact_ref=timing_ref, voice_hash=hashlib.sha256(timing_bytes).hexdigest(), voice_duration_ms=timing_ms, script_version_id=sid, script_text=text, expected_language='en-US'))
     except AlignerError:
-        clean_result = None
-    if clean_result is not None and aligner.last_report is not None:
-        clean_outcomes = _sentence_outcomes(sentences, clean_result, aligner.last_report, spans)
+        timing_result = None
+    if timing_result is not None and aligner.last_report is not None:
+        by_noise = {db: _sentence_outcomes(sentences, timing_result, aligner.last_report, refs[db]) for db in refs}
     valid = channels == 1 and width == 2 and rate == rate_hz and frames > 0 and float(np.max(np.abs(clean))) > 0.01
-    return SimpleNamespace(sid=sid, kind=kind, words=len(text.split()), duration_ms=duration_ms, valid=valid, latency_ms=synthesis.latency_ms, ratio=ratio, error=error, outcomes=by_noise[REFERENCE_NOISE_DB], spans=len(spans), sentences=len(sentences), margin=margin, sensitivity=by_noise, clean_outcomes=clean_outcomes, rms_db=20 * math.log10(_rms(clean)))
+    return SimpleNamespace(sid=sid, kind=kind, words=len(text.split()), duration_ms=duration_ms, valid=valid, latency_ms=synthesis.latency_ms, ratio=ratio, error=error, outcomes=by_noise[REFERENCE_NOISE_DB], spans=len(spans), sentences=len(sentences), margin=margin, sensitivity=by_noise, rms_db=20 * math.log10(_rms(clean)))
 
 
 def _locked_av():
@@ -435,13 +450,11 @@ def test_rg05_aligner_timing(measurement, emit):
     scored = [d for d in deltas if d[0] is not None]
     quantiles = (0.1, 0.5, 0.9)
     emit('- aligner_timing: diag signed start_delta_ms p10/p50/p90=' + '/'.join(str(_percentile([d[0] for d in scored], q)) for q in quantiles) + ' end_delta_ms p10/p50/p90=' + '/'.join(str(_percentile([d[1] for d in scored], q)) for q in quantiles) + f' scored={len(scored)}/{len(deltas)}')
-    emit('- aligner_timing: diag spans_sentences_margin_ms_by_passage=' + json.dumps({i.sid: [i.spans, i.sentences, list(i.margin)] for i in items}))
+    emit('- aligner_timing: diag spans_sentences_lead_trail_ms_by_passage=' + json.dumps({i.sid: [i.spans, i.sentences, list(i.margin)] for i in items}))
     emit('- aligner_timing: diag deltas_ms_by_passage=' + json.dumps({i.sid: i.outcomes for i in items}))
     sensitivity = {str(db): sum(1 for i in items for d in i.sensitivity[db] if d[0] is not None and abs(d[0]) <= tolerance and abs(d[1]) <= tolerance) for db in SENSITIVITY_NOISE_DB}
     emit('- aligner_timing: diag sentences_ok_by_reference_noise_db=' + json.dumps(sensitivity) + f' primary_db={REFERENCE_NOISE_DB} total={len(deltas)}')
     emit(f'- aligner_timing: diag clean_voice_rms_dbfs_median={sorted(i.rms_db for i in items)[len(items) // 2]:.1f}')
-    clean_ok = sum(1 for i in items for d in i.clean_outcomes if d[0] is not None and abs(d[0]) <= tolerance and abs(d[1]) <= tolerance)
-    emit(f'- aligner_timing: diag clean_voice_sentences_ok={clean_ok}/{len(deltas)} (same aligner and same reference on the voice without music and SFX; diagnostic only, not the verdict)')
     gaps = [(a[1] + b[0]) / 2 for i in items for a, b in zip(i.outcomes, i.outcomes[1:]) if a[1] is not None and b[0] is not None]
     emit(f'- aligner_timing: diag gap_midpoint_within_tolerance={sum(1 for g in gaps if abs(g) <= tolerance)}/{len(gaps)} (mean of end delta of sentence n and start delta of sentence n+1; diagnostic only, not the verdict)')
     ok = [d for d in deltas if d[0] is not None and abs(d[0]) <= tolerance and abs(d[1]) <= tolerance]
@@ -449,7 +462,7 @@ def test_rg05_aligner_timing(measurement, emit):
     measured = sorted(max(abs(d[0]), abs(d[1])) for d in scored)
     emit(c.report_line('RG-05', 'aligner_timing', 'PASS'))
     emit(f'- aligner_timing: sentences_ok={len(ok)}/{len(deltas)} tolerance_ms={tolerance} max_delta_ms={measured[-1]} median_delta_ms={measured[len(measured) // 2]}')
-    emit(f'- aligner_timing: reference=ffmpeg silencedetect on clean voice noise={REFERENCE_NOISE_DB}dB d={REFERENCE_MIN_SILENCE_S}s, each sentence cut = longest inner silence within +-{CUT_WINDOW_FRACTION} of the text-length-proportional expected position (min window {CUT_WINDOW_MIN_MS} ms, re-estimated after each cut); ffmpeg_sha256={measurement.ffmpeg_sha}; passages_with_fewer_spans_than_sentences={[i.sid for i in items if i.spans != i.sentences]}')
+    emit(f'- aligner_timing: reference=ffmpeg silencedetect (pinned ffmpeg) noise={REFERENCE_NOISE_DB}dB d={REFERENCE_MIN_SILENCE_S}s run on each sentence clip synthesized separately by the real Kokoro adapter; clips joined with {SENTENCE_GAP_MS} ms digital silence then mixed with music {MUSIC_DB} dB and 3 SFX at {SFX_DB} dB; sentence start/end = clip edges outside leading/trailing silence + join offset; ffmpeg_sha256={measurement.ffmpeg_sha}')
 
 
 def test_rg05_speech_rate_calibrated(measurement, emit):
