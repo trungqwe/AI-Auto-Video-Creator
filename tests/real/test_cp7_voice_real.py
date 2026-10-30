@@ -199,9 +199,9 @@ def _mix(voice, rate):
     return mixed, 20 * math.log10(_rms(music) / _rms(voice))
 
 
-def _speech_spans(wav_path, duration_ms):
+def _speech_spans(wav_path, duration_ms, noise_db=-40, min_silence_s=0.15):
     # mốc tham chiếu: silencedetect của FFmpeg ghim trên giọng sạch; khoảng nói = phần bù của các khoảng im
-    proc = subprocess.run([str(FFMPEG_EXE), '-hide_banner', '-nostats', '-i', str(wav_path), '-af', 'silencedetect=noise=-40dB:d=0.15', '-f', 'null', '-'], capture_output=True, text=True, timeout=DEADLINE.timeout(120), check=False)
+    proc = subprocess.run([str(FFMPEG_EXE), '-hide_banner', '-nostats', '-i', str(wav_path), '-af', f'silencedetect=noise={noise_db}dB:d={min_silence_s}', '-f', 'null', '-'], capture_output=True, text=True, timeout=DEADLINE.timeout(120), check=False)
     assert proc.returncode == 0, 'ffmpeg silencedetect failed'
     silences, start = [], None
     for line in proc.stderr.splitlines():
@@ -223,6 +223,21 @@ def _speech_spans(wav_path, duration_ms):
     if duration_ms > cursor:
         spans.append((cursor, duration_ms))
     return [span for span in spans if span[1] - span[0] >= 100]
+
+
+REFERENCE_GRID = ((-40, 0.15), (-40, 0.2), (-40, 0.25), (-40, 0.3), (-40, 0.4), (-35, 0.2), (-35, 0.3), (-30, 0.2), (-30, 0.3), (-45, 0.2), (-45, 0.3))
+
+
+def _reference_spans(wav_path, duration_ms, sentence_count):
+    # chọn tham số silencedetect chỉ dựa trên giọng sạch (không dùng kết quả aligner): bộ đầu tiên của lưới cố định cho số khoảng nói bằng số câu; không có bộ nào thì dùng bộ đầu lưới
+    first = None
+    for noise_db, min_silence_s in REFERENCE_GRID:
+        spans = _speech_spans(wav_path, duration_ms, noise_db, min_silence_s)
+        if first is None:
+            first = (spans, noise_db, min_silence_s)
+        if len(spans) == sentence_count:
+            return spans, noise_db, min_silence_s
+    return first
 
 
 class _VramSampler(threading.Thread):
@@ -252,13 +267,14 @@ class _VramSampler(threading.Thread):
 
 
 def _sentence_outcomes(sentences, result, report, spans):
-    # (lệch đầu ms, lệch cuối ms) mỗi câu so với khoảng nói silencedetect trùng nhiều nhất; (None, None) = câu hỏng
+    # (lệch đầu ms, lệch cuối ms) CÓ DẤU = mốc aligner trừ mốc silencedetect; số khoảng nói bằng số câu thì ghép theo thứ tự câu, ngược lại chọn khoảng trùng nhiều nhất; (None, None) = câu hỏng
     missing = set(report.missing_script_indices)
     matched = [i for i in range(report.script_token_count) if i not in missing]
     assert len(matched) == len(result.words), 'matched token count differs from aligned words'
     by_token = dict(zip(matched, result.words))
+    paired = len(spans) == len(sentences)
     outcomes, cursor = [], 0
-    for sentence in sentences:
+    for index, sentence in enumerate(sentences):
         count = len(sentence.split())
         words = [by_token[i] for i in range(cursor, cursor + count) if i in by_token]
         cursor += count
@@ -266,11 +282,16 @@ def _sentence_outcomes(sentences, result, report, spans):
             outcomes.append((None, None))
             continue
         start, end = words[0]['start_ms'], words[-1]['end_ms']
-        best = max(spans, key=lambda s: min(s[1], end) - max(s[0], start), default=None)
-        if best is None or min(best[1], end) - max(best[0], start) <= 0:
+        if paired:
+            best = spans[index]
+        else:
+            best = max(spans, key=lambda s: min(s[1], end) - max(s[0], start), default=None)
+            if best is not None and min(best[1], end) - max(best[0], start) <= 0:
+                best = None
+        if best is None:
             outcomes.append((None, None))
         else:
-            outcomes.append((abs(start - best[0]), abs(end - best[1])))
+            outcomes.append((start - best[0], end - best[1]))
     return outcomes
 
 
@@ -306,7 +327,7 @@ def _measure_item(tts, aligner, paths, work, sid, kind, text, rate_hz):
     duration_ms = frames * 1000 // rate
     clean_path = work / (sid + '-clean.wav')
     clean_path.write_bytes(data)
-    spans = _speech_spans(clean_path, duration_ms)
+    spans, ref_noise_db, ref_gap_s = _reference_spans(clean_path, duration_ms, len(_sentences(text)))
     mixed, music_db = _mix(clean, rate)
     assert abs(music_db - MUSIC_DB) < 0.1, 'music level off target'
     paths[sid] = work / (sid + '-mix.wav')
@@ -324,7 +345,7 @@ def _measure_item(tts, aligner, paths, work, sid, kind, text, rate_hz):
     else:
         ratio, outcomes = 1.0, [(None, None)] * len(sentences)
     valid = channels == 1 and width == 2 and rate == rate_hz and frames > 0 and float(np.max(np.abs(clean))) > 0.01
-    return SimpleNamespace(sid=sid, kind=kind, words=len(text.split()), duration_ms=duration_ms, valid=valid, latency_ms=synthesis.latency_ms, ratio=ratio, error=error, outcomes=outcomes, spans=len(spans), sentences=len(sentences))
+    return SimpleNamespace(sid=sid, kind=kind, words=len(text.split()), duration_ms=duration_ms, valid=valid, latency_ms=synthesis.latency_ms, ratio=ratio, error=error, outcomes=outcomes, spans=len(spans), sentences=len(sentences), ref=f'{ref_noise_db}dB/{ref_gap_s}s')
 
 
 @pytest.fixture(scope='module')
@@ -382,15 +403,25 @@ def test_rg05_aligner_unmatched(measurement, emit):
     emit('- aligner_unmatched: model=real faster-whisper small.en weights pinned; audio decoded by pinned ffmpeg to 16 kHz float32 mono because av==19.0.2 breaks faster_whisper.decode_audio (adapter unchanged)')
 
 
+def _percentile(values, fraction):
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, int(len(ordered) * fraction))] if ordered else None
+
+
 def test_rg05_aligner_timing(measurement, emit):
     tolerance = measurement.tolerance_ms
     deltas = [outcome for i in measurement.items for outcome in i.outcomes]
-    ok = [d for d in deltas if d[0] is not None and d[0] <= tolerance and d[1] <= tolerance]
+    scored = [d for d in deltas if d[0] is not None]
+    quantiles = (0.1, 0.5, 0.9)
+    emit('- aligner_timing: diag signed start_delta_ms p10/p50/p90=' + '/'.join(str(_percentile([d[0] for d in scored], q)) for q in quantiles) + ' end_delta_ms p10/p50/p90=' + '/'.join(str(_percentile([d[1] for d in scored], q)) for q in quantiles) + f' scored={len(scored)}/{len(deltas)}')
+    emit('- aligner_timing: diag spans_sentences_ref_by_passage=' + json.dumps({i.sid: [i.spans, i.sentences, i.ref] for i in measurement.items}))
+    emit('- aligner_timing: diag deltas_ms_by_passage=' + json.dumps({i.sid: i.outcomes for i in measurement.items}))
+    ok = [d for d in deltas if d[0] is not None and abs(d[0]) <= tolerance and abs(d[1]) <= tolerance]
     assert len(ok) / len(deltas) >= MIN_SENTENCE_OK, f'sentence timing ok only {len(ok)}/{len(deltas)}'
-    measured = sorted(max(d) for d in deltas if d[0] is not None)
+    measured = sorted(max(abs(d[0]), abs(d[1])) for d in scored)
     emit(c.report_line('RG-05', 'aligner_timing', 'PASS'))
     emit(f'- aligner_timing: sentences_ok={len(ok)}/{len(deltas)} tolerance_ms={tolerance} max_delta_ms={measured[-1]} median_delta_ms={measured[len(measured) // 2]}')
-    emit(f'- aligner_timing: reference=ffmpeg silencedetect noise=-40dB d=0.15 on clean voice; ffmpeg_sha256={measurement.ffmpeg_sha}; passages_where_span_count_differs_from_sentence_count={[i.sid for i in measurement.items if i.spans != i.sentences]}')
+    emit(f'- aligner_timing: reference=ffmpeg silencedetect on clean voice, first REFERENCE_GRID entry whose span count equals sentence count, spans paired by sentence order; ffmpeg_sha256={measurement.ffmpeg_sha}; passages_without_equal_count={[i.sid for i in measurement.items if i.spans != i.sentences]}')
 
 
 def test_rg05_speech_rate_calibrated(measurement, emit):
