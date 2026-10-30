@@ -285,7 +285,7 @@ def _evaluate(stack, bundle, tool, produced, entry, timeout_seconds):
             reason = 'blurred' if final == BLURRED else 'not_blurred_safe'
     return SimpleNamespace(
         group=entry.group, id=entry.id, outcome=assessment.outcome.value, original_usable=assessment.original_usable,
-        categories=assessment.categories, failure_code=detector.failure_code, regions=len(detector.regions),
+        confidence=assessment.confidence, categories=assessment.categories, failure_code=detector.failure_code, regions=len(detector.regions),
         kind=kind, reason=reason, final=final, reductions=reductions, seconds=seconds)
 
 
@@ -492,3 +492,10 @@ def test_rg06_secret_scan(measurement, emit):
     assert stray == [], f'unexpected files in evidence dir: {stray}'
     emit(c.report_line('RG-06', 'secret_scan', 'PASS'))
     emit(f'- secret_scan: match_count=0 embedded_images=0 report_present={REPORT.is_file()}')
+
+
+def test_rg06_per_image_diagnostics(measurement, emit):
+    assert len(measurement.results) == len(DETECTED_GROUPS) * PER_GROUP
+    for item in measurement.results:
+        cats = ','.join(item.categories) or '-'
+        emit(f'- diag {item.id}: outcome={item.outcome} confidence={item.confidence} categories={cats} regions={item.regions} final={item.final}')
