@@ -114,7 +114,7 @@ def test_ai_routes_and_duration_anchors():
     assert set(routes.values()) == {'ag/gemini-3.8-flash-high'}
     for key in ('voice.duration_range_ms', 'qc.duration_range_ms'):
         assert (p[key]['value']['min'], p[key]['value']['max']) == (61000, 70000)
-    assert p['qc.karaoke_tolerance_ms']['value'] == p['aligner.word_timing_tolerance_ms']['value'] == 150
+    assert p['qc.karaoke_tolerance_ms']['value'] == p['aligner.word_timing_tolerance_ms']['value'] == 200
     assert p['qc.required_language']['value'] == 'en'
 
 
