@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
 import wave
 from io import BytesIO
 from pathlib import Path
@@ -35,6 +36,7 @@ from voice.ports.script_text import ScriptText  # noqa: E402
 LOCK = REPO / 'tools' / 'launcher' / 'prod' / 'model-weights.lock.json'
 PROFILE = REPO / 'tools' / 'launcher' / 'prod' / 'profile.json'
 RUNTIME_LOCK = REPO / 'tools' / 'runtime' / 'runtime.lock.json'
+PYPROJECT = REPO / 'pyproject.toml'
 REPORT = REPO / 'docs' / 'delivery-evidence' / 'cp7-6' / 'report.md'
 FFMPEG_EXE = Path('C:/ffmpeg/bin/ffmpeg.exe')
 DEADLINE = c.Deadline(90 * 60)
@@ -355,8 +357,18 @@ def _measure_item(tts, aligner, paths, work, sid, kind, text, rate_hz):
     return SimpleNamespace(sid=sid, kind=kind, words=len(text.split()), duration_ms=duration_ms, valid=valid, latency_ms=synthesis.latency_ms, ratio=ratio, error=error, outcomes=by_noise[REFERENCE_NOISE_DB], spans=len(spans), sentences=len(sentences), margin=margin, sensitivity=by_noise, clean_outcomes=clean_outcomes, rms_db=20 * math.log10(_rms(clean)))
 
 
+def _locked_av():
+    for requirement in tomllib.loads(PYPROJECT.read_text(encoding='utf-8'))['tool']['uv']['constraint-dependencies']:
+        found = re.fullmatch(r'av==([0-9][0-9.]*)', requirement)
+        if found:
+            return found.group(1)
+    pytest.fail('pyproject.toml has no av== constraint')
+
+
 @pytest.fixture(scope='module')
 def measurement(weights, tmp_path_factory):
+    locked_av, installed_av = _locked_av(), importlib.metadata.version('av')
+    assert installed_av == locked_av, f'BLOCKED runtime: installed av=={installed_av} differs from pyproject.toml constraint av=={locked_av}; faster_whisper.decode_audio (production decode path of RealWhisperAligner) is unusable, aligner items cannot be measured'
     assert FFMPEG_EXE.is_file(), 'pinned ffmpeg missing'
     ffmpeg_sha = _sha256(FFMPEG_EXE)
     assert ffmpeg_sha == _json(RUNTIME_LOCK)['pins']['ffmpeg']['sha256'], 'ffmpeg differs from pin'
