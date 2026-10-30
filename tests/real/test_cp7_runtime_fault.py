@@ -8,8 +8,9 @@ import re
 import subprocess
 import sys
 
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8')
+for _stream in (sys.stdout, sys.stderr, sys.__stdout__, sys.__stderr__):
+    if hasattr(_stream, 'reconfigure') and _stream is not None:
+        _stream.reconfigure(encoding='utf-8')
 
 import time
 import uuid
@@ -300,23 +301,8 @@ def m1_run(tmp_path_factory):
     temproot = tmp_path_factory.mktemp('cp7_m1_tmp')
     tree_before = _tree_digest(M1_DIR)
     evidence_before = hashlib.sha256(M1_EVIDENCE.read_bytes()).hexdigest()
-    plugin = work / 'm1_compat_plugin.py'
-    plugin.write_text(
-        'import json, m1proof.environment as _env\n'
-        'from pathlib import Path\n'
-        '_orig = _env.validate_environment_manifest\n'
-        'def _patched_validate(bootstrap_path, environment_path, *args, **kwargs):\n'
-        '    if Path(environment_path).name == "environment.json" and "m1-p0" in str(environment_path) and "tmp" not in str(environment_path):\n'
-        '        bootstrap = json.loads(Path(bootstrap_path).read_text(encoding="utf-8"))\n'
-        '        _env.validate_bootstrap(bootstrap)\n'
-        '        return json.loads(Path(environment_path).read_text(encoding="utf-8"))\n'
-        '    return _orig(bootstrap_path, environment_path, *args, **kwargs)\n'
-        '_env.validate_environment_manifest = _patched_validate\n',
-        encoding='utf-8',
-    )
-    argv = _pytest_argv('tests/m1', '--deselect', M1_LIVE_TEST, '-p', 'm1_compat_plugin')
+    argv = _pytest_argv('tests/m1', '--deselect', M1_LIVE_TEST)
     child_env = _child_env(PYTEST_DEBUG_TEMPROOT=str(temproot))
-    child_env['PYTHONPATH'] = str(work) + os.pathsep + child_env.get('PYTHONPATH', '')
     rc, text = _run(argv, timeout=DEADLINE.timeout(1500), log_dir=work, env=child_env)
     if rc != 0 and re.search(r'ModuleNotFoundError|ImportError', text):
         pytest.fail('BLOCKED: thiếu runtime cho tests/m1: ' + text[-800:])
@@ -328,13 +314,15 @@ def m1_run(tmp_path_factory):
 
 def test_rg08_m1_regression_adjusted(m1_run, emit):
     text = m1_run.text
+    if m1_run.rc != 0 and 'uv.lock live hash mismatch' in text:
+        pytest.fail('BLOCKED: tests/m1 đỏ khi chạy nguyên trạng, validator của M1 báo lệch uv.lock so với docs/milestones/m1-proof/evidence/m1-p0/environment.json; cần AI PM quyết định mở rộng OI-CP7-05: ' + text[-1500:])
     assert m1_run.rc == 0, text[-2000:]
     assert re.search(r'\b92 passed\b', text), text[-2000:]
     assert not re.search(r'\b[1-9][0-9]* (?:failed|errors?|skipped)\b', text), text[-2000:]
     assert re.search(r'\b1 deselected\b', text), text[-2000:]
     assert m1_run.tree_same and m1_run.evidence_same
     emit(c.report_line('RG-08', 'm1_regression_adjusted', 'PASS'))
-    emit('- m1_regression_adjusted: passed=92 failed=0 skipped=0 deselected=1 excluded=test_live_e3_drive_verification(OI-CP7-05) h36_not_run=True tests_m1_unchanged=True evidence_json_unchanged=True credentials_fixture_user_deselected=True')
+    emit('- m1_regression_adjusted: passed=92 failed=0 skipped=0 deselected=1 excluded=test_live_e3_drive_verification(OI-CP7-05) h36_not_run=True tests_m1_unchanged=True evidence_json_unchanged=True m1proof_validator_patched=False plugin_or_patch=none credentials_fixture_user_deselected=True')
 
 
 def test_rg08_secret_scan(stack, emit):
