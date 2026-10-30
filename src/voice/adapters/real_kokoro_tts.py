@@ -3,6 +3,8 @@
 Weights stay outside the Git tree and their sha256 is checked against tools/launcher/prod/model-weights.lock.json before loading; nothing is downloaded and no network is used.
 
 DQ-13: this adapter writes the WAV only as <voice root>/tmp/<sha256 of the WAV bytes>.wav; VoicePipeline names the final file voice-artifact-<sha256> through VoiceArtifactPlacer and the aligner opens that exact name.
+
+SentencePauseKokoro uses the private _split_phonemes and _create_audio API of kokoro-onnx==0.4.9 (pinned in pyproject.toml); a model injected through model_factory replaces the whole model, including the sentence-join rule.
 """
 from __future__ import annotations
 
@@ -110,7 +112,33 @@ def _to_pcm16(samples: object) -> bytes:
 def _default_factory(model_path: str, voices_path: str) -> object:
     from kokoro_onnx import Kokoro
 
-    return Kokoro(model_path, voices_path)
+    return SentencePauseKokoro(Kokoro(model_path, voices_path))
+
+
+class SentencePauseKokoro:
+    """Same loop as kokoro_onnx.Kokoro.create 0.4.9, except the model tail is kept at a sentence join: the trailing silence of a non-final batch that ends with . ! or ? is not trimmed, so the join keeps the pause the model generated."""
+
+    def __init__(self, kokoro: object) -> None:
+        self._kokoro = kokoro
+
+    def create(self, text: str, voice: str, speed: float, lang: str) -> tuple[object, int]:
+        import numpy as np
+        from kokoro_onnx.trim import trim
+
+        kokoro = self._kokoro
+        if voice not in kokoro.voices:
+            raise ValueError(f'voice {voice} not found in available voices')
+        style = kokoro.get_voice_style(voice)
+        batches = kokoro._split_phonemes(kokoro.tokenizer.phonemize(text, lang))
+        pieces = []
+        rate = 0
+        for index, batch in enumerate(batches):
+            audio, rate = kokoro._create_audio(batch, style, speed)
+            start, end = (int(value) for value in trim(audio)[1])
+            tail = batch.rstrip()[-1:]
+            keep_tail = index < len(batches) - 1 and tail in ('.', '!', '?')
+            pieces.append(audio[start:] if keep_tail else audio[start:end])
+        return np.concatenate(pieces), rate
 
 
 def _library_version() -> str:
@@ -168,7 +196,8 @@ class RealKokoroTts:
                 model = self._factory(str(directory / MODEL_FILE), str(directory / VOICES_FILE))
             except Exception as exc:
                 raise self._runtime_error(exc) from None
-            self._revision = f'kokoro-onnx=={_library_version()};model={pins[MODEL_FILE]};voices={pins[VOICES_FILE]};voice={self._config.voice}'
+            join_tag = ';sentence_joins=model-tail' if isinstance(model, SentencePauseKokoro) else ''
+            self._revision = f'kokoro-onnx=={_library_version()};model={pins[MODEL_FILE]};voices={pins[VOICES_FILE]};voice={self._config.voice}{join_tag}'
             self._model = model
         return self._model
 
