@@ -274,6 +274,28 @@ def _sentence_outcomes(sentences, result, report, spans):
     return outcomes
 
 
+def _decode_16k(path):
+    # av==19.0.2 của runtime khoá không tương thích faster-whisper==1.2.1 (decode_audio gọi av.open(metadata_errors=...)); giải mã WAV bằng FFmpeg ghim sang float32 16 kHz mono, mô hình WhisperModel vẫn là thật
+    proc = subprocess.run([str(FFMPEG_EXE), '-hide_banner', '-nostats', '-loglevel', 'error', '-i', str(path), '-f', 'f32le', '-ac', '1', '-ar', '16000', '-'], capture_output=True, timeout=DEADLINE.timeout(180), check=False)
+    assert proc.returncode == 0 and proc.stdout, 'ffmpeg decode to 16 kHz failed'
+    return np.frombuffer(proc.stdout, dtype='<f4').copy()
+
+
+class _FfmpegDecodedModel:
+    # bọc WhisperModel thật: chỉ đổi đường dẫn WAV thành mảng đã giải mã; tham số transcribe do RealWhisperAligner truyền được giữ nguyên
+    def __init__(self, model):
+        self._model = model
+
+    def transcribe(self, audio, **options):
+        return self._model.transcribe(_decode_16k(audio), **options)
+
+
+def _model_factory(model_dir, device, compute_type):
+    from faster_whisper import WhisperModel
+
+    return _FfmpegDecodedModel(WhisperModel(model_dir, device=device, compute_type=compute_type, local_files_only=True))
+
+
 def _measure_item(tts, aligner, paths, work, sid, kind, text, rate_hz):
     fingerprint = hashlib.sha256(text.encode('utf-8')).hexdigest()
     request = {'script_version_id': sid, 'script_fingerprint': fingerprint, 'voice_profile_ref': 'cp7-6-voice', 'provider_route_ref': 'cp7-6-route', 'expected_language': 'en-US', 'operation_key': 'cp7-6-' + sid, 'execution_grant_ref': 'cp7-6-grant'}
@@ -318,7 +340,7 @@ def measurement(weights, tmp_path_factory):
     rate_hz = voice['output']['sample_rate_hz']
     tts = RealKokoroTts(KokoroConfig(weights_dir=weights.kokoro_dir, lock_path=LOCK, staging_dir=staging, voice=voice['voice'], speed=voice['speed'], language=voice['lang'], sample_rate=rate_hz))
     paths = {}
-    aligner = RealWhisperAligner(WhisperAlignerConfig(model_dir=weights.whisper_dir, lock_path=LOCK, resolve_audio=lambda ref: paths[ref], tokenization_policy=POLICY, max_unmatched_word_ratio=1.0, language=engine['language'], device=engine['device'], compute_type=engine['compute_type']))
+    aligner = RealWhisperAligner(WhisperAlignerConfig(model_dir=weights.whisper_dir, lock_path=LOCK, resolve_audio=lambda ref: paths[ref], tokenization_policy=POLICY, max_unmatched_word_ratio=1.0, language=engine['language'], device=engine['device'], compute_type=engine['compute_type']), model_factory=_model_factory)
     items = []
     sampler = _VramSampler()
     started = time.monotonic()
@@ -357,6 +379,7 @@ def test_rg05_aligner_unmatched(measurement, emit):
     emit(f'- aligner_unmatched: passages_ok={len(ok)}/{len(items)} cap={measurement.ratio_cap} max_ratio={max(i.ratio for i in items):.4f} aligner_errors={[i.sid for i in items if i.error]}')
     emit('- aligner_unmatched: ratio_by_passage=' + json.dumps({i.sid: round(i.ratio, 4) for i in items}))
     emit(f'- aligner_unmatched: audio=voice + music {MUSIC_DB} dB + 3 SFX at {SFX_DB} dB; aligner device={measurement.device}')
+    emit('- aligner_unmatched: model=real faster-whisper small.en weights pinned; audio decoded by pinned ffmpeg to 16 kHz float32 mono because av==19.0.2 breaks faster_whisper.decode_audio (adapter unchanged)')
 
 
 def test_rg05_aligner_timing(measurement, emit):
