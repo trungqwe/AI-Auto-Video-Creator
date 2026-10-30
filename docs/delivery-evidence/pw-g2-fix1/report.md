@@ -88,6 +88,17 @@ Lệnh: `python -m pytest tests/integration/prod_wiring/test_pw_g2_fix1_stage_ou
 | 3 | lệnh pytest bắt buộc đủ 6 tệp | 1 | `1 failed, 233 passed in 56.18s` (hỏng duy nhất: test_pw_g4_job_states.py::test_job_chain_through_the_result_recording_dispatcher; cùng dòng `At index 0 diff` như bước 1) |
 | 4 | probe PW-G2 | 0 | không có AssertionError |
 
+### Lượt chạy lần bốn (lệnh làm việc lập lại lần ba, trên candidate 205f646)
+
+| Bước | Lệnh | Mã thoát | Dòng tổng kết nguyên văn |
+| --- | --- | --- | --- |
+| 1 | `python -m pytest tests/integration/prod_wiring/test_pw_g4_job_states.py -q -p no:cacheprovider` | 1 | `1 failed, 97 passed in 29.82s` (hỏng duy nhất: test_job_chain_through_the_result_recording_dispatcher; `At index 0 diff: ('job-1:analyze:r1', 'RUNNING') != ('job-1:analyze:r1', 'SUCCEEDED')`) |
+| 2 | probe tĩnh chỉ đọc: activities.py có analyze gồm BuildProductionSnapshot rồi AnalyzeContent, dòng 323 gửi SNAPSHOT analyze succeeded, dòng 335 chứa `job-1:analyze:r1` và `SUCCEEDED` | 0 | không có AssertionError |
+| 3 | lệnh pytest bắt buộc đủ 6 tệp | 1 | `1 failed, 233 passed in 55.58s` (hỏng duy nhất: test_pw_g4_job_states.py::test_job_chain_through_the_result_recording_dispatcher; cùng dòng `At index 0 diff` như bước 1) |
+| 4 | probe PW-G2 | 0 | không có AssertionError |
+
+Probe tĩnh ở bước 2 cho Control kiểm lại mâu thuẫn mà không cần chạy pytest: request (analyze, BuildProductionSnapshot, succeeded) không thể vừa RUNNING theo acceptance vừa SUCCEEDED theo dòng 335 của test PW-G4.
+
 ## 6. Mục mở
 
 - (a) Stage collect: activity duy nhất CollectSource chạy fan-out với cùng `stage_run_id`, nên dòng thành SUCCEEDED sau lần đầu và kết quả hỏng của các lần fan-out sau vẫn bị bỏ. Chưa xử lý trong gói này.
