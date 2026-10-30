@@ -300,7 +300,7 @@ def test_profile_loads_typed_values():
     pp = wiring('production_profile')
     p = pp.load_production_profile(PROFILE_PATH)
     assert p.profile_name == 'production'
-    assert p.revision == 1
+    assert p.revision == 2
     assert p.budget.monthly_limit == Decimal('50')
     assert p.budget.hard_stop is True
     assert p.budget.window_timezone == 'Asia/Ho_Chi_Minh'
