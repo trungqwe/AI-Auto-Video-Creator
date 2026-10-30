@@ -1,7 +1,7 @@
 """CP7-10 / RG-09: một lô 1 video trên ngăn xếp thật (launcher, PostgreSQL, Temporal, 9Router, Drive, GPU).
 
 Trần chi phí: <= 25 lời gọi AI, ledger +3 USD, Drive <= 200 MiB, <= 2 giờ. Cách dừng: `python tools/launcher/launcher.py stop`
-(driver luôn dừng ở cuối). Giữa lúc render chạy stop rồi start đúng một lần. Không mock, không ghi DB.
+(driver luôn dừng ở cuối). Giữa lúc render chạy stop rồi start đúng một lần. Không mock; driver không ghi DB bằng SQL, chỉ nhập media seed qua công cụ ADAPT-SEED của sản phẩm (dịch vụ ứng dụng của A và C).
 """
 from __future__ import annotations
 
@@ -119,6 +119,16 @@ def test_unit_driver_is_read_only():
 def test_unit_driver_never_prints_launch_url():
     text = DRIVER_FILE.read_text(encoding='utf-8')
     assert not re.search(r'print\([^)]*(launch_path|launch2|\burl\b|raw)', text)
+
+
+def test_unit_seed_import_uses_product_tools():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    assert 'def ensure_seed_media(' in text
+    assert 'make_seed_media.py' in text and 'import_seed.py' in text
+    call = 'result.seed_import = ensure_seed_media('
+    assert call in text
+    assert text.index(call) < text.index('session.post_batch(1)')
+    assert not re.search(r'(?i)\b(insert\s+into|update\s+controlplane|delete\s+from)\b', text)
 
 
 # --- RG-09 trên ngăn xếp thật ------------------------------------------------------------------------------------

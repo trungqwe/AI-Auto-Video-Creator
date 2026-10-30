@@ -20,7 +20,7 @@ import tempfile
 import time
 import types
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from pathlib import Path
 
@@ -56,6 +56,8 @@ MAX_BATCH_ATTEMPTS = 3
 AI_CALLS_PER_JOB_RESERVE = 10
 RETRY_STAGES = ('analyze', 'script')
 RETRY_CODES = ('ai_output_schema_violation',)
+SEED_DIR = REPO / 'tools' / 'launcher' / 'prod' / 'seed'
+DEFAULT_FFMPEG = r'C:\ffmpeg\bin\ffmpeg.exe'
 
 
 class BatchDriverError(RuntimeError):
@@ -570,6 +572,36 @@ def qc_gates(db, job_id):
     return {'hard_total': total, 'hard_passed': passed, 'hard_failed': total - passed, 'not_applicable': na, 'failed_ids': failed}
 
 
+def _load_module(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def ensure_seed_media(launcher, db):
+    """Nhập media seed tự tạo của ADAPT-SEED (ảnh nền, hook clip, hook âm thanh) bằng công cụ sản phẩm qua dịch vụ ứng dụng của A và C; chạy lặp không nhân đôi, không gọi AI, không SQL thô trong driver."""
+    from controlplane.api.wiring.production_profile import PROFILE_PRODUCTION, WiringConfig, load_production_profile
+    from controlplane.infrastructure.db.uow import TransactionManager
+    profile = load_production_profile(launcher.PROFILE_PATH)
+    runtime = launcher.build_runtime(profile, db.layout, os.environ)
+    config = WiringConfig(mode=PROFILE_PRODUCTION, workspace_id=db.workspace_id, profile=profile, runtime=runtime)
+    ffmpeg = Path(os.environ.get('AIAVC_FFMPEG_PATH', DEFAULT_FFMPEG))
+    maker = _load_module('cp7_make_seed_media', SEED_DIR / 'make_seed_media.py')
+    importer = _load_module('cp7_import_seed', SEED_DIR / 'import_seed.py')
+    manager = TransactionManager(db.dsn, pool_max_size=2)
+    try:
+        with tempfile.TemporaryDirectory(prefix='cp7-seed-') as seed_dir:
+            maker.generate_seed_media(seed_dir, ffmpeg, emit=lambda line: None)
+            report = importer.import_seed(manager, config, seed_dir)
+    except Exception as exc:
+        raise BlockedError('BLOCKED: nhập media seed thất bại: ' + type(exc).__name__ + ': ' + c.redact(str(exc))[:200]) from None
+    finally:
+        manager.close()
+    return asdict(report)
+
+
 # --- chạy lô -----------------------------------------------------------------------------------------------------
 
 @dataclass
@@ -601,6 +633,7 @@ class RunResult:
     verified_before_complete: bool = False
     cleanup_before_verified: bool = False
     attempts: list = field(default_factory=list)
+    seed_import: dict = field(default_factory=dict)
 
 
 def _drive_verified(locations):
@@ -618,6 +651,7 @@ def run_batch(work_dir, deadline):
     try:
         launch_path, _ = start_capturing(work_dir, 'first')
         result.composition = composition_audit(launcher, db)
+        result.seed_import = ensure_seed_media(launcher, db)
         session = ApiSession(db.layout.cert_file)
         session.open(launch_path)
         for attempt in range(1, MAX_BATCH_ATTEMPTS + 1):
