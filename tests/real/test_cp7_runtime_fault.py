@@ -1,6 +1,7 @@
 """CP7-9 / RG-08: PostgreSQL thật trong Docker, ranh giới rollback commit completion, giữ volume qua down/start và hồi quy M1 điều chỉnh (OI-CP7-05)."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import importlib.util
 import os
@@ -111,6 +112,32 @@ def _tree_digest(root):
 
 def _pytest_argv(*args):
     return [sys.executable, '-m', 'pytest', *args, '-q', '-p', 'no:cacheprovider']
+
+
+TEMPORAL_VERSION = '1.31.2'
+
+
+async def _temporal_server_version(address):
+    from temporalio.api.workflowservice.v1 import GetSystemInfoRequest
+    from temporalio.client import Client
+    client = await Client.connect(address)
+    return (await client.workflow_service.get_system_info(GetSystemInfoRequest())).server_version
+
+
+def _wait_temporal_ready(address, cap):
+    """Chờ Temporal thật phục vụ gRPC đúng phiên bản; cổng TCP mở chưa đủ vì server vừa dựng lại sau down/start có thể chưa sẵn sàng."""
+    end = time.monotonic() + DEADLINE.timeout(cap)
+    last = 'chưa thử'
+    while time.monotonic() < end:
+        try:
+            version = asyncio.run(asyncio.wait_for(_temporal_server_version(address), 10))
+            if version == TEMPORAL_VERSION:
+                return version
+            last = f'phiên bản {version}'
+        except Exception as exc:
+            last = type(exc).__name__
+        time.sleep(3)
+    pytest.fail(f'BLOCKED: Temporal {address} chưa phục vụ gRPC phiên bản {TEMPORAL_VERSION} sau {cap}s ({last})')
 
 
 @pytest.fixture(scope='module')
@@ -297,9 +324,10 @@ def test_rg08_row_counts_equal(cycle, emit):
 
 
 @pytest.fixture(scope='module')
-def m1_run(tmp_path_factory):
+def m1_run(stack, tmp_path_factory):
     work = tmp_path_factory.mktemp('cp7_m1')
     temproot = tmp_path_factory.mktemp('cp7_m1_tmp')
+    temporal_version = _wait_temporal_ready(f'{stack.launcher.LOOPBACK}:{stack.launcher.TEMPORAL_PORT}', 180)
     tree_before = _tree_digest(M1_DIR)
     evidence_before = hashlib.sha256(M1_EVIDENCE.read_bytes()).hexdigest()
     argv = _pytest_argv('tests/m1', '--deselect', M1_LIVE_TEST, '--deselect', M1_ENV_TEST)
@@ -310,7 +338,7 @@ def m1_run(tmp_path_factory):
     if rc != 0 and 'Python version mismatch' in text:
         pytest.fail(f'BLOCKED: interpreter chạy test là CPython {sys.version.split()[0]}, M1 đòi interpreter khoá 3.13.15: ' + text[-800:])
     return SimpleNamespace(
-        rc=rc, text=text, tree_same=_tree_digest(M1_DIR) == tree_before,
+        rc=rc, text=text, temporal_version=temporal_version, tree_same=_tree_digest(M1_DIR) == tree_before,
         evidence_same=hashlib.sha256(M1_EVIDENCE.read_bytes()).hexdigest() == evidence_before,
     )
 
@@ -324,7 +352,7 @@ def test_rg08_m1_regression_adjusted(m1_run, emit):
     assert re.search(r'\b2 deselected\b', text), text[-2000:]
     assert m1_run.tree_same and m1_run.evidence_same
     emit(c.report_line('RG-08', 'm1_regression_adjusted', 'PASS'))
-    emit('- m1_regression_adjusted: passed=91 failed=0 skipped=0 deselected=2 excluded=test_live_e3_drive_verification(OI-CP7-05) excluded=test_validator_accepts_untampered_environment_manifest(quyết định user 30/10/2026, uv.lock đã đổi bởi 3225891, 0db5b62, f1c4e81; hai test khác cùng tệp vẫn chạy) h36_not_run=True tests_m1_unchanged=True evidence_json_unchanged=True m1proof_validator_patched=False plugin_or_patch=none credentials_fixture_user_deselected=True')
+    emit(f'- m1_regression_adjusted: passed=91 failed=0 skipped=0 deselected=2 excluded=test_live_e3_drive_verification(OI-CP7-05) excluded=test_validator_accepts_untampered_environment_manifest(quyết định user 30/10/2026, uv.lock đã đổi bởi 3225891, 0db5b62, f1c4e81; hai test khác cùng tệp vẫn chạy) h36_not_run=True tests_m1_unchanged=True evidence_json_unchanged=True m1proof_validator_patched=False plugin_or_patch=none credentials_fixture_user_deselected=True temporal_grpc_ready_before_m1={m1_run.temporal_version}')
 
 
 def test_rg08_secret_scan(stack, emit):
