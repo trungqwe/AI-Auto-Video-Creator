@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import json
 import os
 import re
 import subprocess
@@ -33,6 +34,8 @@ REPORT = REPO / 'docs' / 'delivery-evidence' / 'cp7-9' / 'report.md'
 M1_DIR = REPO / 'tests' / 'm1'
 M1_EVIDENCE = REPO / 'docs' / 'milestones' / 'm1-proof' / 'evidence' / 'm1-p3' / 'drive_e3_evidence.json'
 M1_LIVE_TEST = 'tests/m1/p3/test_drive_live_probe.py::test_live_e3_drive_verification'
+M1_ENV_TEST = 'tests/m1/p0/test_environment_validation.py::test_validator_accepts_untampered_environment_manifest'
+M1_ENVIRONMENT = REPO / 'docs' / 'milestones' / 'm1-proof' / 'evidence' / 'm1-p0' / 'environment.json'
 PG_SUITES = (
     'tests/integration/convergence/test_cp3_migration_sequence.py',
     'tests/integration/convergence/test_cp4_queries_postgres.py',
@@ -314,8 +317,19 @@ def m1_run(tmp_path_factory):
 
 def test_rg08_m1_regression_adjusted(m1_run, emit):
     text = m1_run.text
-    if m1_run.rc != 0 and 'uv.lock live hash mismatch' in text:
-        pytest.fail('BLOCKED: tests/m1 đỏ khi chạy nguyên trạng, validator của M1 báo lệch uv.lock so với docs/milestones/m1-proof/evidence/m1-p0/environment.json; cần AI PM quyết định mở rộng OI-CP7-05: ' + text[-1500:])
+    failed_ids = re.findall(r'(?m)^FAILED (\S+)', text)
+    known_drift = (
+        m1_run.rc != 0 and failed_ids == [M1_ENV_TEST] and _count(text, 'passed') == 91 and _count(text, 'failed') == 1
+        and _count(text, 'errors?') == 0 and _count(text, 'skipped') == 0 and 'uv.lock live hash mismatch' in text
+    )
+    if known_drift:
+        assert m1_run.tree_same and m1_run.evidence_same
+        recorded = json.loads(M1_ENVIRONMENT.read_text(encoding='utf-8'))['project']['uv_lock_sha256']
+        live = hashlib.sha256((REPO / 'uv.lock').read_bytes()).hexdigest()
+        assert recorded != live
+        emit(c.report_line('RG-08', 'm1_regression_adjusted', 'BLOCKED'))
+        emit(f'- m1_regression_adjusted: passed=91 failed=1 skipped=0 deselected=1 failed_test={M1_ENV_TEST} reason=uv.lock live hash mismatch recorded={recorded} live={live} tests_m1_unchanged=True evidence_json_unchanged=True m1proof_validator_patched=False plugin_or_monkeypatch=none excluded=test_live_e3_drive_verification(OI-CP7-05) h36_not_run=True')
+        pytest.fail('BLOCKED: tests/m1 chỉ đỏ đúng một test do uv.lock hiện hành lệch hash M1 đã ghi; cần AI PM (Sonnet 5.5) quyết định mở rộng OI-CP7-05; không vá validator, không sửa test M1')
     assert m1_run.rc == 0, text[-2000:]
     assert re.search(r'\b92 passed\b', text), text[-2000:]
     assert not re.search(r'\b[1-9][0-9]* (?:failed|errors?|skipped)\b', text), text[-2000:]
