@@ -1,6 +1,6 @@
 """Real AlignerPort: local faster_whisper word timestamps matched to the script text (CT-SUB-001).
 
-Every start and end comes from the model. A script word the model did not produce is reported as unmatched and gets no time; nothing is interpolated or spread evenly.
+Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time.
 """
 from __future__ import annotations
 
@@ -10,7 +10,8 @@ import importlib.metadata
 import json
 import math
 import re
-from collections.abc import Callable
+import wave
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -32,6 +33,8 @@ ERROR_UNMATCHED_RATIO_EXCEEDED = 'alignment_unmatched_ratio_exceeded'
 ERROR_RUNTIME = 'aligner_runtime_error'
 _SHA256_RE = re.compile(r'[0-9a-f]{64}')
 ARTIFACT_REF_RE = re.compile(r'voice-artifact-[0-9a-f]{64}')
+SPEECH_SAMPLE_RATE = 16000
+_SAMPLES_PER_MS = 16
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -148,6 +151,16 @@ class _Heard:
     probability: float
 
 
+@dataclass(frozen=True)
+class _Slot:
+    script_index: int
+    first: int
+    last: int
+    start_ms: int
+    end_ms: int
+    rescued: bool
+
+
 def _heard_words(segments: list, policy: TokenizationPolicy) -> list[_Heard]:
     """Flatten model words; punctuation-only words are dropped and a word that splits into several tokens never matches."""
     heard: list[_Heard] = []
@@ -175,9 +188,87 @@ def _segment_boundaries(segments: list, duration_ms: int) -> tuple[dict[str, int
     return tuple(boundaries)
 
 
-def _matching_pairs(expected: list[str], heard: list[_Heard]) -> list[tuple[int, int]]:
-    blocks = difflib.SequenceMatcher(None, expected, [item.normalized for item in heard], autojunk=False).get_matching_blocks()
-    return [(i + k, j + k) for i, j, size in blocks for k in range(size)]
+def _match_script(expected: list[str], heard: list[_Heard]) -> list[tuple[int, int, int]]:
+    """Return (script index, first heard index, last heard index); equal blocks match word by word, a replace block only as a split compound or a same-size respelling."""
+    names = [item.normalized for item in heard]
+    matches: list[tuple[int, int, int]] = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, expected, names, autojunk=False).get_opcodes():
+        if tag == 'equal':
+            matches.extend((i1 + k, j1 + k, j1 + k) for k in range(i2 - i1))
+        elif tag == 'replace' and None not in names[j1:j2]:
+            if i2 - i1 == 1 and j2 - j1 > 1 and ''.join(names[j1:j2]) == expected[i1]:
+                matches.append((i1, j1, j2 - 1))
+            elif i2 - i1 == j2 - j1:
+                matches.extend((i1 + k, j1 + k, j1 + k) for k in range(i2 - i1))
+    return matches
+
+
+def _run_at_start(runs: Sequence[tuple[int, int]], ms: int) -> tuple[int, int] | None:
+    return next((run for run in runs if run[0] <= ms < run[1]), None)
+
+
+def _run_at_end(runs: Sequence[tuple[int, int]], ms: int) -> tuple[int, int] | None:
+    return next((run for run in runs if run[0] < ms <= run[1]), None)
+
+
+def _refine_edges(start: int, end: int, lo: int, hi: int, runs: Sequence[tuple[int, int]]) -> tuple[int, int]:
+    """Move a model edge to the speech run edge only where the model left a gap; lo and hi are the neighbour bounds. An empty result keeps the model pair."""
+    overlapping = [run for run in runs if run[0] < end and run[1] > start]
+    if len(overlapping) > 1:
+        on, off = max(overlapping, key=lambda run: min(run[1], end) - max(run[0], start))
+        new_start, new_end = max(on, start), min(off, end)
+    else:
+        new_start, new_end = start, end
+        run = _run_at_start(runs, start)
+        if run is not None:
+            new_start = max(run[0], lo)
+        else:
+            onsets = [on for on, _ in runs if start <= on < end]
+            if onsets:
+                new_start = onsets[0]
+        run = _run_at_end(runs, end)
+        if run is not None:
+            new_end = min(run[1], hi)
+        else:
+            offsets = [off for _, off in runs if start < off <= end]
+            if offsets:
+                new_end = offsets[-1]
+    return (new_start, new_end) if lo <= new_start < new_end <= hi else (start, end)
+
+
+def _normalize_runs(spans: Sequence[tuple[int, int]], duration_ms: int) -> tuple[tuple[int, int], ...]:
+    runs: list[tuple[int, int]] = []
+    for span in spans:
+        start, end = span
+        if isinstance(start, bool) or isinstance(end, bool) or not isinstance(start, int) or not isinstance(end, int):
+            raise _fail(ERROR_RUNTIME, 'speech detector returned a non-integer span')
+        start, end = max(start, 0), min(end, duration_ms)
+        if end > start:
+            runs.append((start, end))
+    return tuple(sorted(runs))
+
+
+def _default_speech_detector(audio_path: Path) -> list[tuple[int, int]]:
+    """Silero speech runs in ms of the verified WAV (16-bit mono PCM, linearly resampled to 16 kHz); raw edges, no padding."""
+    import numpy as np
+    from faster_whisper.vad import VadOptions, get_speech_timestamps
+
+    try:
+        with wave.open(str(audio_path), 'rb') as wav:
+            channels, width, rate = wav.getnchannels(), wav.getsampwidth(), wav.getframerate()
+            frames = wav.readframes(wav.getnframes())
+    except (wave.Error, EOFError):
+        raise _fail(ERROR_RUNTIME, 'voice audio is not a readable PCM WAV') from None
+    if channels != 1 or width != 2 or rate <= 0:
+        raise _fail(ERROR_RUNTIME, 'voice audio must be 16-bit mono PCM')
+    samples = np.frombuffer(frames, dtype='<i2').astype(np.float32) / 32768.0
+    if samples.size == 0:
+        return []
+    if rate != SPEECH_SAMPLE_RATE:
+        count = max(1, int(round(samples.size * SPEECH_SAMPLE_RATE / rate)))
+        samples = np.interp(np.arange(count) * rate / SPEECH_SAMPLE_RATE, np.arange(samples.size), samples).astype(np.float32)
+    spans = get_speech_timestamps(samples, VadOptions(threshold=0.5, min_speech_duration_ms=0, min_silence_duration_ms=100, speech_pad_ms=0))
+    return [(int(round(span['start'] / _SAMPLES_PER_MS)), int(round(span['end'] / _SAMPLES_PER_MS))) for span in spans]
 
 
 def _default_factory(model_dir: str, device: str, compute_type: str) -> object:
@@ -201,6 +292,7 @@ class RealWhisperAligner:
         config: WhisperAlignerConfig,
         *,
         model_factory: Callable[[str, str, str], object] | None = None,
+        speech_detector: Callable[[Path], Sequence[tuple[int, int]]] | None = None,
         known_secrets: tuple[str, ...] = (),
     ) -> None:
         if not isinstance(config, WhisperAlignerConfig):
@@ -209,6 +301,7 @@ class RealWhisperAligner:
             raise TypeError('known_secrets must not be str')
         self._config = config
         self._factory = model_factory or _default_factory
+        self._speech_detector = speech_detector or _default_speech_detector
         self._known_secrets = (*known_secrets, str(config.model_dir))
         self._model: object | None = None
         self._model_hash = ''
@@ -273,25 +366,41 @@ class RealWhisperAligner:
             heard = _heard_words(segments, policy)
             boundaries = _segment_boundaries(segments, request.voice_duration_ms)
             pairs = _script_pairs(request.script_text, policy)
+            runs = _normalize_runs(self._speech_detector(audio), request.voice_duration_ms)
         except AlignerError:
             raise
         except Exception as exc:
             raise self._runtime_error(exc) from None
         expected = [token for _, token in pairs]
+        duration = request.voice_duration_ms
+        slots: list[_Slot] = []
+        previous_end = 0
+        for i, first, last in _match_script(expected, heard):
+            start = max(heard[first].start_ms, previous_end)
+            end = min(heard[last].end_ms, duration)
+            rescued = end <= start
+            if rescued:
+                run = _run_at_end(runs, end)  # the speech run holding t - 1 ms
+                start = max(run[0], previous_end) if run is not None else end
+                if start >= end:
+                    continue  # zero-length model word without speech evidence: it stays unmatched
+            slots.append(_Slot(i, first, last, start, end, rescued))
+            previous_end = end
         words: list[dict[str, object]] = []
         timed_script: set[int] = set()
         timed_heard: set[int] = set()
-        previous_end = 0
-        for i, j in _matching_pairs(expected, heard):
-            item = heard[j]
-            start = max(item.start_ms, previous_end)
-            end = min(item.end_ms, request.voice_duration_ms)
-            if end <= start:
-                continue  # no usable interval from the model: the word stays unmatched
-            words.append({'start_ms': start, 'end_ms': end, 'text': pairs[i][0], 'normalized_text': expected[i], 'confidence': item.probability})
-            timed_script.add(i)
-            timed_heard.add(j)
-            previous_end = end
+        final_end = 0
+        for k, slot in enumerate(slots):
+            start, end = slot.start_ms, slot.end_ms
+            if runs and not slot.rescued:
+                lo = max(slots[k - 1].end_ms, final_end) if k else 0
+                hi = slots[k + 1].start_ms if k + 1 < len(slots) else duration
+                start, end = _refine_edges(start, end, lo, hi, runs)
+            confidence = min(item.probability for item in heard[slot.first:slot.last + 1])
+            words.append({'start_ms': start, 'end_ms': end, 'text': pairs[slot.script_index][0], 'normalized_text': expected[slot.script_index], 'confidence': confidence})
+            timed_script.add(slot.script_index)
+            timed_heard.update(range(slot.first, slot.last + 1))
+            final_end = end
         missing = tuple(i for i in range(len(expected)) if i not in timed_script)
         extra = tuple(j for j in range(len(heard)) if j not in timed_heard)
         total = len(expected) + len(heard)

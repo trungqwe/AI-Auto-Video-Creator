@@ -49,6 +49,12 @@ def block_network(monkeypatch):
     monkeypatch.setattr(socket, 'getaddrinfo', refuse)
 
 
+@pytest.fixture(autouse=True)
+def no_speech_detected(monkeypatch):
+    # Edge snapping is covered in test_adapt_e_aligner_edges.py; here the VAD sees no speech, so model times stay untouched.
+    monkeypatch.setattr('faster_whisper.vad.get_speech_timestamps', lambda audio, vad_options=None, sampling_rate=16000, **kwargs: [])
+
+
 def write_lock(path, group, files, *, pinned=True):
     entries = [
         {'name': name, 'group': group, 'sha256': sha(data) if pinned else None, 'status': 'PINNED' if pinned else 'BLOCKED'}
@@ -500,3 +506,4 @@ def test_adapters_use_the_chosen_libraries_locally():
     aligner_text = SOURCES[1].read_text(encoding='utf-8')
     assert 'kokoro_onnx' in tts_text
     assert 'faster_whisper' in aligner_text and 'word_timestamps=True' in aligner_text and 'local_files_only=True' in aligner_text
+    assert 'faster_whisper.vad' in aligner_text and 'get_speech_timestamps' in aligner_text and 'vad_filter=False' in aligner_text and 'condition_on_previous_text=False' in aligner_text
