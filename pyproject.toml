@@ -25,6 +25,7 @@ dev = [
 
 [tool.uv]
 package = false
+constraint-dependencies = ["av==18.1.0"]
 
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers"
