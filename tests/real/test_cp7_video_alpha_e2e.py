@@ -131,6 +131,22 @@ def test_unit_seed_import_uses_product_tools():
     assert not re.search(r'(?i)\b(insert\s+into|update\s+controlplane|delete\s+from)\b', text)
 
 
+def test_unit_format_diagnostic():
+    token = 'ya29.' + 'A' * 30
+    diag = {'job': {'status': 'FAILED_FINAL', 'wait_reason': None, 'revision': 3},
+            'stages': [{'stage': 'media_select', 'attempt': 1, 'status': 'FAILED_FINAL', 'code': 'INPUT_NOT_READY',
+                        'wait_reason': None, 'message': 'seed_media_missing'}]}
+    text = d.format_diagnostic(diag, {'assets_new': 4, 'nested': {'a': 1}}, 'boom cap' + '=abc123 ' + token)
+    assert 'job=FAILED_FINAL' in text
+    assert 'media_select#1=FAILED_FINAL/INPUT_NOT_READY/msg=seed_media_missing' in text
+    assert 'assets_new=4' in text and 'nested' not in text
+    assert 'abc123' not in text and token not in text
+    assert len(text) <= 1500
+    empty = d.format_diagnostic({'job': None, 'stages': []}, {}, '')
+    assert 'no_stage_rows' in empty and 'job=None' in empty
+    assert d.serve_log_tail(SELF.parent / 'khong_co_tep.log') == 'no_serve_log'
+
+
 # --- RG-09 trên ngăn xếp thật ------------------------------------------------------------------------------------
 
 def test_rg09_stages_succeeded(batch_run, emit):

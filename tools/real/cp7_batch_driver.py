@@ -120,6 +120,49 @@ def _sha(obj):
     return hashlib.sha256(json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')).hexdigest()
 
 
+_LAUNCH_TOKEN = re.compile(r'(?i)\b(?:' + '|'.join(('cap', 'cp_session', 'csrf_token')) + r')\s*[=:]\s*\S+')
+
+
+def format_diagnostic(diag, seed, log_tail, limit=1500):
+    """Một dòng mô tả vì sao job FAILED_FINAL: mọi hàng cp_stage_runs của job, trạng thái job, số liệu nhập seed, đuôi serve.log; đã che bí mật."""
+    stages = []
+    for row in diag.get('stages') or []:
+        text = f"{row['stage']}#{row['attempt']}={row['status']}"
+        if row.get('code'):
+            text += '/' + str(row['code'])
+        if row.get('wait_reason'):
+            text += '/wait=' + str(row['wait_reason'])
+        if row.get('message'):
+            text += '/msg=' + str(row['message'])
+        stages.append(text)
+    job = diag.get('job') or {}
+    seed_text = ' '.join(f'{k}={v}' for k, v in (seed or {}).items() if isinstance(v, (int, str)))
+    text = ('job=' + str(job.get('status')) + ' job_wait=' + str(job.get('wait_reason')) + ' stages=[' + (';'.join(stages) or 'no_stage_rows')
+            + '] seed=[' + seed_text[:200] + '] serve_log_tail=[' + str(log_tail)[:600] + ']')
+    return _LAUNCH_TOKEN.sub('[REDACTED:launch]', c.redact(text))[:limit]
+
+
+def serve_log_tail(path, max_bytes=4000, lines=6):
+    """Đuôi serve.log của ứng dụng (chỉ đọc); không đọc được thì trả 'no_serve_log'."""
+    path = Path(path)
+    try:
+        size = path.stat().st_size
+        with path.open('rb') as handle:
+            handle.seek(max(0, size - max_bytes))
+            raw = handle.read().decode('utf-8', errors='replace')
+    except OSError:
+        return 'no_serve_log'
+    kept = [line.strip() for line in raw.splitlines() if line.strip()]
+    return ' | '.join(kept[-lines:])
+
+
+def collect_diagnostic(db, job_id, seed):
+    try:
+        return format_diagnostic(db.job_diagnostics(job_id), seed, serve_log_tail(db.layout.serve_log))
+    except Exception as exc:
+        return 'diagnostic_error=' + type(exc).__name__
+
+
 # --- điều khiển launcher -----------------------------------------------------------------------------------------
 
 def load_launcher():
@@ -281,6 +324,14 @@ class ReadOnlyDb:
     def failed_stage(self, job_id):
         rows = self.query("SELECT stage_name, status, problem->>'code' FROM controlplane.cp_stage_runs WHERE workspace_id = %s AND job_id = %s AND status IN ('FAILED_FINAL','OUTCOME_UNKNOWN') ORDER BY created_at LIMIT 1", job_id)
         return rows[0] if rows else None
+
+    def job_diagnostics(self, job_id):
+        """Mọi hàng cp_stage_runs của job (kể cả hàng gắn workflow_id thay vì job_id) và trạng thái job; chỉ đọc."""
+        job_rows = self.query('SELECT status, wait_reason, revision FROM controlplane.cp_video_jobs WHERE workspace_id = %s AND job_id = %s', job_id)
+        stage_rows = self.query("SELECT stage_name, attempt, status, wait_reason, problem->>'code', left(coalesce(problem->>'message', ''), 120) FROM controlplane.cp_stage_runs WHERE workspace_id = %s AND (job_id = %s OR stage_run_id LIKE %s) ORDER BY created_at, attempt", job_id, job_id + ':%')
+        job = dict(zip(('status', 'wait_reason', 'revision'), job_rows[0])) if job_rows else None
+        keys = ('stage', 'attempt', 'status', 'wait_reason', 'code', 'message')
+        return {'job': job, 'stages': [dict(zip(keys, row)) for row in stage_rows]}
 
     def stage_map(self, job_id):
         rows = self.query('SELECT DISTINCT ON (stage_name) stage_name, status, attempt, stage_run_id, recovery_epoch FROM controlplane.cp_stage_runs WHERE workspace_id = %s AND job_id = %s ORDER BY stage_name, attempt DESC', job_id)
@@ -715,7 +766,8 @@ def run_batch(work_dir, deadline):
             result.attempts.append({'attempt': attempt, 'batch_id': batch_id, 'job_id': job_id, 'outcome': str(result.final_job_status), 'failed_stage': None if failed is None else failed[0], 'code': None if failed is None else failed[2]})
             if not should_retry_batch(failed, attempt, watch.calls()):
                 detail = '' if failed is None else ' stage=' + str(failed[0]) + ' status=' + str(failed[1]) + ' code=' + str(failed[2])
-                raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + detail + ' sau ' + str(attempt) + ' lần tạo lô')
+                diag = collect_diagnostic(db, job_id, result.seed_import)
+                raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + detail + ' sau ' + str(attempt) + ' lần tạo lô; ' + diag)
             result.plan_before = None
             result.before_stop = {}
             result.render_seen_running = False
@@ -751,7 +803,7 @@ def main(argv):
     try:
         result = run_batch(out, c.Deadline(RUN_DEADLINE_SECONDS))
     except BlockedError as exc:
-        print(json.dumps({'status': 'BLOCKED', 'reason': c.redact(str(exc))[:200]}))
+        print(json.dumps({'status': 'BLOCKED', 'reason': c.redact(str(exc))[:2000]}))
         return 1
     data = {k: getattr(result, k) for k in result.__dataclass_fields__}
     (out / 'trace.json').write_text(c.redact(json.dumps(data, default=str, ensure_ascii=False)), encoding='utf-8')
