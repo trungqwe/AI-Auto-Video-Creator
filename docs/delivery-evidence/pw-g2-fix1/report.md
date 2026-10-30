@@ -79,6 +79,15 @@ Lệnh: `python -m pytest tests/integration/prod_wiring/test_pw_g2_fix1_stage_ou
 | 5 | probe report có CP7-10 | 0 | không có AssertionError |
 | 6 | probe report có PW-G2-FIX1 và R24 | 0 | không có AssertionError |
 
+### Lượt chạy lần ba (lệnh làm việc lập lại lần hai, trên candidate 2139bbf)
+
+| Bước | Lệnh | Mã thoát | Dòng tổng kết nguyên văn |
+| --- | --- | --- | --- |
+| 1 | `python -m pytest tests/integration/prod_wiring/test_pw_g4_job_states.py -q -p no:cacheprovider` | 1 | `1 failed, 97 passed in 30.54s` (hỏng duy nhất: test_job_chain_through_the_result_recording_dispatcher; `At index 0 diff: ('job-1:analyze:r1', 'RUNNING') != ('job-1:analyze:r1', 'SUCCEEDED')`) |
+| 2 | probe tĩnh dòng 335 của test PW-G4 chứa `job-1:analyze:r1` và `SUCCEEDED` | 0 | không có AssertionError |
+| 3 | lệnh pytest bắt buộc đủ 6 tệp | 1 | `1 failed, 233 passed in 56.18s` (hỏng duy nhất: test_pw_g4_job_states.py::test_job_chain_through_the_result_recording_dispatcher; cùng dòng `At index 0 diff` như bước 1) |
+| 4 | probe PW-G2 | 0 | không có AssertionError |
+
 ## 6. Mục mở
 
 - (a) Stage collect: activity duy nhất CollectSource chạy fan-out với cùng `stage_run_id`, nên dòng thành SUCCEEDED sau lần đầu và kết quả hỏng của các lần fan-out sau vẫn bị bỏ. Chưa xử lý trong gói này.
@@ -86,7 +95,7 @@ Lệnh: `python -m pytest tests/integration/prod_wiring/test_pw_g2_fix1_stage_ou
 - (c) Nơi đọc `cp_stage_runs` (UI, projection) sẽ thấy RUNNING tới activity cuối của stage.
 - (d) XUNG ĐỘT HÀNH VI với test PW-G4 (cần quyết định của Control)
   - (i) Tệp `tests/integration/prod_wiring/test_pw_g4_job_states.py:335` trong test_job_chain_through_the_result_recording_dispatcher mong `('job-1:analyze:r1', 'SUCCEEDED')`, `('job-1:process:r1', 'SUCCEEDED')`, `('job-1:process:r3', 'SUCCEEDED')` sau khi chỉ chạy BuildProductionSnapshot và ProbeMedia. Theo `STAGE_ACTIVITIES_BY_WORKFLOW` (activities.py dòng 91 và 97), analyze còn AnalyzeContent và process còn bốn activity sau ProbeMedia, nên acceptance đòi các dòng này giữ RUNNING. Cùng một request (stage analyze, BuildProductionSnapshot, succeeded) không thể vừa RUNNING theo acceptance vừa SUCCEEDED theo dòng 335, nên recorder không thể thoả cả hai.
-  - (ii) Vì sao Control không tái hiện: chạy trên HEAD tích hợp dùng recorder cũ (đóng dòng ở activity succeeded đầu tiên) nên test đạt; lỗi chỉ xuất hiện khi chạy trên candidate có bản sửa. Cách tái hiện: checkout candidate rồi chạy `python -m pytest tests/integration/prod_wiring/test_pw_g4_job_states.py -q -p no:cacheprovider`; kết quả thật: mã thoát 1, `1 failed, 97 passed in 30.25s`, đúng một test hỏng, với dòng `At index 0 diff: ('job-1:analyze:r1', 'RUNNING') != ('job-1:analyze:r1', 'SUCCEEDED')`.
+  - (ii) Vì sao Control không tái hiện: chạy trên HEAD tích hợp dùng recorder cũ (đóng dòng ở activity succeeded đầu tiên) nên test đạt; lỗi chỉ xuất hiện khi chạy trên candidate có bản sửa. Cách tái hiện: checkout candidate rồi chạy `python -m pytest tests/integration/prod_wiring/test_pw_g4_job_states.py -q -p no:cacheprovider`; kết quả thật: mã thoát 1, `1 failed, 97 passed in 30.25s`, đúng một test hỏng, với dòng `At index 0 diff: ('job-1:analyze:r1', 'RUNNING') != ('job-1:analyze:r1', 'SUCCEEDED')`. Kết quả "test đạt trên HEAD tích hợp" của Control không mâu thuẫn với kết quả này: HEAD tích hợp (b510f96) chưa chứa commit sửa recorder (2139bbf) nên recorder cũ vẫn đóng dòng ở activity succeeded đầu tiên. Mâu thuẫn còn là tất định, nhìn thấy không cần chạy: dòng 323 của test PW-G4 gửi (BuildProductionSnapshot, stage analyze, succeeded), activities.py dòng 91 cho stage analyze còn AnalyzeContent sau đó, acceptance đòi dòng RUNNING cho đúng request này, còn dòng 335 mong SUCCEEDED; không có recorder nào thoả cả hai. Probe chỉ đọc kiểm dòng 335 của tệp PW-G4 vẫn chứa literal analyze:r1 với SUCCEEDED đã chạy ở bảng lượt chạy lần ba. Trong owned paths của gói không có thay đổi nào làm lệnh pytest bắt buộc xanh mà không làm yếu acceptance, nên gói giữ recorder đúng và chờ quyết định hướng A hoặc B ở (iv).
   - (iii) Giá trị đúng mới của dòng 335: `[('job-1:analyze:r1', 'RUNNING'), ('job-1:process:r1', 'RUNNING'), ('job-1:process:r2', 'RUNNING'), ('job-1:process:r3', 'RUNNING'), ('job-1:sync:r1', 'SUCCEEDED')]`, với sync đúng vì PersistVideoOutput là activity duy nhất của stage sync. Các test PW-G4 khác (ADVANCE_CASES, listener) đạt vì chỉ đi qua JobLifecycleListener.
   - (iv) Hai hướng cho Control: A) mở ownership PW-G4 chỉ cho literal ở dòng 335 rồi giao sửa một dòng; B) ghi nhận ngoại lệ có chủ đích của lệnh kiểm bắt buộc cho test này.
 
