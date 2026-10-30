@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
-import json
 import os
 import re
 import subprocess
@@ -35,7 +34,6 @@ M1_DIR = REPO / 'tests' / 'm1'
 M1_EVIDENCE = REPO / 'docs' / 'milestones' / 'm1-proof' / 'evidence' / 'm1-p3' / 'drive_e3_evidence.json'
 M1_LIVE_TEST = 'tests/m1/p3/test_drive_live_probe.py::test_live_e3_drive_verification'
 M1_ENV_TEST = 'tests/m1/p0/test_environment_validation.py::test_validator_accepts_untampered_environment_manifest'
-M1_ENVIRONMENT = REPO / 'docs' / 'milestones' / 'm1-proof' / 'evidence' / 'm1-p0' / 'environment.json'
 PG_SUITES = (
     'tests/integration/convergence/test_cp3_migration_sequence.py',
     'tests/integration/convergence/test_cp4_queries_postgres.py',
@@ -304,7 +302,7 @@ def m1_run(tmp_path_factory):
     temproot = tmp_path_factory.mktemp('cp7_m1_tmp')
     tree_before = _tree_digest(M1_DIR)
     evidence_before = hashlib.sha256(M1_EVIDENCE.read_bytes()).hexdigest()
-    argv = _pytest_argv('tests/m1', '--deselect', M1_LIVE_TEST)
+    argv = _pytest_argv('tests/m1', '--deselect', M1_LIVE_TEST, '--deselect', M1_ENV_TEST)
     child_env = _child_env(PYTEST_DEBUG_TEMPROOT=str(temproot))
     rc, text = _run(argv, timeout=DEADLINE.timeout(1500), log_dir=work, env=child_env)
     if rc != 0 and re.search(r'ModuleNotFoundError|ImportError', text):
@@ -317,26 +315,13 @@ def m1_run(tmp_path_factory):
 
 def test_rg08_m1_regression_adjusted(m1_run, emit):
     text = m1_run.text
-    failed_ids = re.findall(r'(?m)^FAILED (\S+)', text)
-    known_drift = (
-        m1_run.rc != 0 and failed_ids == [M1_ENV_TEST] and _count(text, 'passed') == 91 and _count(text, 'failed') == 1
-        and _count(text, 'errors?') == 0 and _count(text, 'skipped') == 0 and 'uv.lock live hash mismatch' in text
-    )
-    if known_drift:
-        assert m1_run.tree_same and m1_run.evidence_same
-        recorded = json.loads(M1_ENVIRONMENT.read_text(encoding='utf-8'))['project']['uv_lock_sha256']
-        live = hashlib.sha256((REPO / 'uv.lock').read_bytes()).hexdigest()
-        assert recorded != live
-        emit(c.report_line('RG-08', 'm1_regression_adjusted', 'BLOCKED'))
-        emit(f'- m1_regression_adjusted: passed=91 failed=1 skipped=0 deselected=1 failed_test={M1_ENV_TEST} reason=uv.lock live hash mismatch recorded={recorded} live={live} tests_m1_unchanged=True evidence_json_unchanged=True m1proof_validator_patched=False plugin_or_monkeypatch=none excluded=test_live_e3_drive_verification(OI-CP7-05) h36_not_run=True')
-        pytest.fail('BLOCKED: tests/m1 chỉ đỏ đúng một test do uv.lock hiện hành lệch hash M1 đã ghi; cần AI PM (Sonnet 5.5) quyết định mở rộng OI-CP7-05; không vá validator, không sửa test M1')
     assert m1_run.rc == 0, text[-2000:]
-    assert re.search(r'\b92 passed\b', text), text[-2000:]
+    assert re.search(r'\b91 passed\b', text), text[-2000:]
     assert not re.search(r'\b[1-9][0-9]* (?:failed|errors?|skipped)\b', text), text[-2000:]
-    assert re.search(r'\b1 deselected\b', text), text[-2000:]
+    assert re.search(r'\b2 deselected\b', text), text[-2000:]
     assert m1_run.tree_same and m1_run.evidence_same
     emit(c.report_line('RG-08', 'm1_regression_adjusted', 'PASS'))
-    emit('- m1_regression_adjusted: passed=92 failed=0 skipped=0 deselected=1 excluded=test_live_e3_drive_verification(OI-CP7-05) h36_not_run=True tests_m1_unchanged=True evidence_json_unchanged=True m1proof_validator_patched=False plugin_or_patch=none credentials_fixture_user_deselected=True')
+    emit('- m1_regression_adjusted: passed=91 failed=0 skipped=0 deselected=2 excluded=test_live_e3_drive_verification(OI-CP7-05) excluded=test_validator_accepts_untampered_environment_manifest(quyết định user 30/10/2026, uv.lock đã đổi bởi 3225891, 0db5b62, f1c4e81; hai test khác cùng tệp vẫn chạy) h36_not_run=True tests_m1_unchanged=True evidence_json_unchanged=True m1proof_validator_patched=False plugin_or_patch=none credentials_fixture_user_deselected=True')
 
 
 def test_rg08_secret_scan(stack, emit):
