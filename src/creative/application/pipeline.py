@@ -27,6 +27,7 @@ from creative.domain.snapshot import ProductionSnapshot, build_production_snapsh
 from creative.domain.timeline_mode import TIMELINE_MODE, authorize_timeline_narrative
 from creative.domain.untrusted import PROMPT_REVISION_REF_TYPE, PromptEnvelope, UntrustedText
 from creative.domain.variant import validate_variant as validate_variant_domain
+from creative.application.provider_failure import ProviderCallStatus, ProviderFailureHandler, ProviderFailurePolicy, parse_failure_policy
 from creative.ports.ai import AIInvocationPort, ProviderRoutePort
 from creative.ports.repositories import (
     CommandReceipt,
@@ -51,16 +52,18 @@ DATA_SENSITIVITY = 'internal'
 REF_ARTICLE_REVISION = 'article_revision'
 SELECTION_ID_PREFIX = 'selection:'
 ARTICLE_ROLES = frozenset({ROLE_ANALYSIS, ROLE_ANGLES, ROLE_SCRIPT})
+SINGLE_ATTEMPT = 1  # failure_policy=None (D-14, PW-D1, PW-D2 tests that configure no retry): one model call, no retry; production always passes a policy from ai.retry.max_attempts
 
 
 class PipelineRejected(Exception):
-    """A command is refused: `code` is a stable machine code, `reason` the stable machine reason, `field` locates it; nothing is persisted."""
+    """A command is refused: `code` is a stable machine code, `reason` the stable machine reason, `field` locates it; nothing is persisted. attempts is the number of model calls made when the output failed validation on every attempt, 0 otherwise."""
 
-    def __init__(self, code: str, reason: str, field: str = '') -> None:
+    def __init__(self, code: str, reason: str, field: str = '', attempts: int = 0) -> None:
         super().__init__(f'{code}: {reason}' + (f' ({field})' if field else ''))
         self.code = code
         self.reason = reason
         self.field = field
+        self.attempts = attempts
 
 
 class IdempotencyConflict(ValueError):
@@ -73,6 +76,14 @@ class IdempotencyConflict(ValueError):
         self.idempotency_key = idempotency_key
         self.existing_hash = existing_hash
         self.incoming_hash = incoming_hash
+
+
+class ProviderWaiting(Exception):
+    """The provider has no capacity right now (quota, budget, rate limit, timeout): `code` is a WaitReason value; the activity answers 'waiting' and G tries again later."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -106,6 +117,18 @@ class _Outcome:
     aggregate_revision: int
     trace: OutputTrace
     event: Any = None
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class _AiPlan:
+    """What an AI command reads before the model call: role, snapshot, envelope and route request, the validator of its role (raises on a model-output failure) and the writer that stores the validated output in the second unit of work."""
+
+    role: str
+    snapshot: ProductionSnapshot
+    envelope: PromptEnvelope
+    route_request: Mapping[str, Any]
+    validate: Callable[[Any], Any]
+    store: Callable[[Any, Any, Any], _Outcome]
 
 
 def _plain(value: Any) -> Any:
@@ -142,7 +165,7 @@ class SelectionStorePort(Protocol):
 
 
 class CreativePipeline:
-    """Runs the eight D commands over one unit-of-work factory, one route port and one AI port; fakes in tests, J adapters later (CONV-D-02)."""
+    """Runs the eight D commands over one unit-of-work factory, one route port and one AI port; fakes in tests, J adapters later (CONV-D-02). failure_policy (ai.retry.max_attempts from the production profile) bounds the model calls of one command; None means a single call."""
 
     def __init__(
         self,
@@ -153,6 +176,7 @@ class CreativePipeline:
         instructions: Mapping[str, str],
         articles: ArticleContextPort | None = None,
         selections: SelectionStorePort | None = None,
+        failure_policy: ProviderFailurePolicy | Mapping[str, Any] | None = None,
     ) -> None:
         if not callable(uow_factory):
             raise TypeError('uow_factory must be callable')
@@ -164,6 +188,8 @@ class CreativePipeline:
         self._instructions = dict(instructions)
         self._articles = articles
         self._selections = selections
+        self._failures = ProviderFailureHandler(uow_factory=uow_factory, route=route, ai=ai)
+        self._failure_policy = None if failure_policy is None else parse_failure_policy(failure_policy)
 
     def _execute(
         self,
@@ -172,9 +198,9 @@ class CreativePipeline:
         context: EventContext,
         idempotency_key: str,
         payload: Mapping[str, Any],
-        work: Callable[[Any], _Outcome],
+        work: Callable[[Any], _Outcome | _AiPlan],
     ) -> CommandResult:
-        """One unit of work: receipt lookup (replay or conflict), work, receipt, outbox event, commit; any error rolls everything back."""
+        """Receipt lookup (replay or conflict), then work: one unit of work, or for an AI command a read-only unit, the bounded model call (attempt records commit on their own) and a second unit with output, receipt and event."""
         if not isinstance(context, EventContext):
             raise TypeError('context must be an EventContext')
         if not isinstance(idempotency_key, str) or not idempotency_key.strip():
@@ -182,26 +208,74 @@ class CreativePipeline:
         workspace_id = context.workspace_id
         digest = request_hash({'workspace_id': workspace_id, 'command_name': command, 'payload': _plain(payload)})
         with self._uow_factory() as uow:
-            known = uow.receipts.get(workspace_id, idempotency_key)
-            if known is not None:
-                if known.request_hash != digest:
-                    raise IdempotencyConflict(command, idempotency_key, known.request_hash, digest)
-                return CommandResult(command=command, receipt=known, replayed=True, output=None, event_id=None, trace=None)
-            outcome = work(uow)
-            receipt = CommandReceipt(
-                workspace_id=workspace_id,
-                idempotency_key=idempotency_key,
-                request_hash=digest,
-                aggregate_ref=outcome.aggregate_ref,
-                aggregate_revision=outcome.aggregate_revision,
-            )
-            uow.receipts.put(receipt)
-            event_id = None
-            if outcome.event is not None:
-                event = outcome.event
-                event_id = uow.outbox.append_event(event.event_name, event.aggregate_id, dict(event.payload), deduplication_id_for(event))
-            uow.commit()
+            replay = self._replay(uow, command, workspace_id, idempotency_key, digest)
+            if replay is not None:
+                return replay
+            step = work(uow)
+            if isinstance(step, _Outcome):
+                return self._finish(uow, command, workspace_id, idempotency_key, digest, step)
+        call = self._call_model(step, idempotency_key)
+        with self._uow_factory() as uow:
+            replay = self._replay(uow, command, workspace_id, idempotency_key, digest)
+            if replay is not None:
+                return replay
+            return self._finish(uow, command, workspace_id, idempotency_key, digest, step.store(uow, call.output, call.final_record))
+
+    @staticmethod
+    def _replay(uow, command, workspace_id, idempotency_key, digest) -> CommandResult | None:
+        known = uow.receipts.get(workspace_id, idempotency_key)
+        if known is None:
+            return None
+        if known.request_hash != digest:
+            raise IdempotencyConflict(command, idempotency_key, known.request_hash, digest)
+        return CommandResult(command=command, receipt=known, replayed=True, output=None, event_id=None, trace=None)
+
+    @staticmethod
+    def _finish(uow, command, workspace_id, idempotency_key, digest, outcome: _Outcome) -> CommandResult:
+        receipt = CommandReceipt(
+            workspace_id=workspace_id,
+            idempotency_key=idempotency_key,
+            request_hash=digest,
+            aggregate_ref=outcome.aggregate_ref,
+            aggregate_revision=outcome.aggregate_revision,
+        )
+        uow.receipts.put(receipt)
+        event_id = None
+        if outcome.event is not None:
+            event = outcome.event
+            event_id = uow.outbox.append_event(event.event_name, event.aggregate_id, dict(event.payload), deduplication_id_for(event))
+        uow.commit()
         return CommandResult(command=command, receipt=receipt, replayed=False, output=outcome.output, event_id=event_id, trace=outcome.trace)
+
+    def _call_model(self, plan: _AiPlan, idempotency_key: str) -> Any:
+        """The bounded call of CT-AI-ROUTE-002: returns the accepted ProviderCallOutcome; anything else raises ProviderWaiting, PipelineRejected (code of the last failed output, attempts) or PipelineRejected(AI_INVOCATION_FAILED)."""
+        configured = self._failure_policy is not None
+        policy = self._failure_policy if configured else ProviderFailurePolicy(max_attempts=SINGLE_ATTEMPT)
+        rejections: list[Exception] = []
+
+        def validate(result: Any) -> Any:
+            try:
+                return plan.validate(result)
+            except Exception as rejected:
+                rejections.append(rejected)
+                raise
+
+        outcome = self._failures.run(
+            idempotency_key=idempotency_key, route_request=plan.route_request, envelope=plan.envelope,
+            config_revision=plan.snapshot.configuration_bundle_fingerprint, validator=validate, policy=policy,
+            retry_same_provider=configured)
+        if outcome.status is not ProviderCallStatus.WAITING:
+            return outcome
+        problem, last = outcome.problem, outcome.final_record
+        if problem is None or last is None:
+            raise PipelineRejected(AI_INVOCATION_FAILED, 'no_attempt_made', plan.role)
+        if problem.wait_code:
+            raise ProviderWaiting(problem.wait_code)
+        if last.validation_result == 'failed':
+            final = rejections[-1] if rejections else PipelineRejected(problem.code, problem.reason, problem.field)
+            final.attempts = len(outcome.records)  # the role's own rejection (AnalysisRejected, ScriptRejected, ...) keeps its type
+            raise final
+        raise PipelineRejected(AI_INVOCATION_FAILED, problem.reason, plan.role)
 
     @staticmethod
     def _committed_snapshot(uow: Any, snapshot_id: str) -> ProductionSnapshot:
@@ -253,8 +327,12 @@ class CreativePipeline:
             raise PipelineRejected(INPUT_NOT_READY, 'selection_not_found', 'selection_ref')
         return found
 
-    def _invoke(self, uow: Any, *, context: EventContext, idempotency_key: str, role: str, snapshot: ProductionSnapshot, payload: Mapping[str, Any], prior: Sequence[tuple[str, Any, ResourceRef]] = ()) -> tuple[Any, ResourceRef, str]:
-        """Route, call and record one AI invocation inside the open unit of work; the data block holds the payload ids, the article text (analysis, angles and script only) and the earlier results in `prior`, never the instructions; returns (AIInvocationResult, prompt ResourceRef, invocation key)."""
+    @staticmethod
+    def _key(context: EventContext, idempotency_key: str) -> str:
+        return f'{context.workspace_id}:{idempotency_key}'
+
+    def _ai_plan(self, *, context: EventContext, role: str, snapshot: ProductionSnapshot, payload: Mapping[str, Any], validate: Callable[[Any, ResourceRef], Any], store: Callable[[Any, Any, Any], _Outcome], prior: Sequence[tuple[str, Any, ResourceRef]] = ()) -> _AiPlan:
+        """Everything an AI command reads before the model call; the data block holds the payload ids, the article text (analysis, angles and script only) and the earlier results in `prior`, never the instructions. The route is resolved and the model called later by _call_model, outside any unit of work."""
         workspace_id = context.workspace_id
         pinned = next(
             (ref for ref in snapshot.configuration_revision_refs if ref['ref_type'] == PROMPT_CONFIG_REF_TYPE and ref['ref_id'] == role),
@@ -273,7 +351,7 @@ class CreativePipeline:
             *(self._data_item(kind, value, ref) for kind, value, ref in prior),
         ]
         envelope = PromptEnvelope(prompt_ref=prompt_ref, instructions=instructions, data=tuple(data))
-        decision = self._route.resolve({
+        route_request = {
             'ai_role': route_key(role),
             'job_ref': snapshot.video_job_ref or snapshot.snapshot_id,
             'snapshot_ref': snapshot.snapshot_id,
@@ -281,13 +359,10 @@ class CreativePipeline:
             'data_sensitivity': DATA_SENSITIVITY,
             'quality_latency_cost_bounds': {},
             'allowed_fallbacks': [],
-        })
-        result = self._ai.invoke(decision, envelope)
-        if result.record.error is not None:
-            raise PipelineRejected(AI_INVOCATION_FAILED, result.record.error, role)
-        key = f'{workspace_id}:{idempotency_key}'
-        uow.invocations.append(key, 1, result.record)
-        return result, prompt_ref, key
+        }
+        return _AiPlan(
+            role=role, snapshot=snapshot, envelope=envelope, route_request=route_request,
+            validate=lambda result: validate(result, prompt_ref), store=store)
 
     @staticmethod
     def _model_json(result: Any) -> dict[str, Any]:
@@ -403,32 +478,38 @@ class CreativePipeline:
     def analyze_content(
         self, *, context: EventContext, idempotency_key: str, snapshot_id: str, analysis_id: str, revision: int = 1
     ) -> CommandResult:
-        """AnalyzeContent (CT-AI-002): one AI call over the pinned snapshot; the trace stored in the analysis comes from the invocation record, never from the model."""
+        """AnalyzeContent (CT-AI-002): one AI call per attempt, at most max_attempts attempts, over the pinned snapshot; the trace stored in the analysis comes from the invocation record, never from the model."""
         payload = {'snapshot_id': snapshot_id, 'analysis_id': analysis_id, 'revision': revision}
 
-        def work(uow: Any) -> _Outcome:
+        def work(uow: Any) -> _Outcome | _AiPlan:
             snapshot = self._committed_snapshot(uow, snapshot_id)
-            result, prompt_ref, key = self._invoke(
-                uow, context=context, idempotency_key=idempotency_key, role=ROLE_ANALYSIS, snapshot=snapshot, payload=payload)
-            record = result.record
-            raw = self._model_json(result)
-            raw.update(
-                analysis_id=analysis_id,
-                revision=revision,
-                trace={
-                    'provider': record.provider_ref,
-                    'model': record.model_ref,
-                    'policy_revision': record.config_revision,
-                    'prompt_ref': {
-                        'workspace_id': prompt_ref.workspace_id, 'ref_type': prompt_ref.ref_type,
-                        'ref_id': prompt_ref.ref_id, 'revision_id': prompt_ref.revision_id,
+            key = self._key(context, idempotency_key)
+
+            def validate(result: Any, prompt_ref: ResourceRef) -> Any:
+                record = result.record
+                raw = self._model_json(result)
+                raw.update(
+                    analysis_id=analysis_id,
+                    revision=revision,
+                    trace={
+                        'provider': record.provider_ref,
+                        'model': record.model_ref,
+                        'policy_revision': record.config_revision,
+                        'prompt_ref': {
+                            'workspace_id': prompt_ref.workspace_id, 'ref_type': prompt_ref.ref_type,
+                            'ref_id': prompt_ref.ref_id, 'revision_id': prompt_ref.revision_id,
+                        },
                     },
-                },
-            )
-            analysis = parse_content_analysis(raw, snapshot, self._resolver(context.workspace_id, snapshot, prompt_ref))
-            uow.analyses.append(analysis_id, revision, analysis)
-            return _Outcome(
-                output=analysis, aggregate_ref=analysis_id, aggregate_revision=revision, trace=self._trace(snapshot, record, key))
+                )
+                return parse_content_analysis(raw, snapshot, self._resolver(context.workspace_id, snapshot, prompt_ref))
+
+            def store(unit: Any, analysis: Any, record: Any) -> _Outcome:
+                unit.analyses.append(analysis_id, revision, analysis)
+                return _Outcome(
+                    output=analysis, aggregate_ref=analysis_id, aggregate_revision=revision, trace=self._trace(snapshot, record, key))
+
+            return self._ai_plan(
+                context=context, role=ROLE_ANALYSIS, snapshot=snapshot, payload=payload, validate=validate, store=store)
 
         return self._execute(command='AnalyzeContent', context=context, idempotency_key=idempotency_key, payload=payload, work=work)
 
@@ -455,21 +536,27 @@ class CreativePipeline:
             'history': history, 'initial_set_fingerprints': initial,
         }
 
-        def work(uow: Any) -> _Outcome:
+        def work(uow: Any) -> _Outcome | _AiPlan:
             snapshot = self._committed_snapshot(uow, snapshot_id)
             analysis = self._analysis(uow, snapshot_id, analysis_id, analysis_revision)
             prior = [self._prior_item(context.workspace_id, 'content_analysis', 'content_analysis', analysis_id, analysis_revision, analysis)]
-            result, _, key = self._invoke(
-                uow, context=context, idempotency_key=idempotency_key, role=ROLE_ANGLES, snapshot=snapshot, payload=payload, prior=prior)
-            candidates = self._angles(self._resolver(context.workspace_id, snapshot), self._model_json(result))
-            angle_set = build_story_angle_set(
-                set_id=set_id, analysis_id=analysis_id, analysis_revision=analysis_revision, requested_count=requested_count,
-                candidates=candidates, variation_policy_revision=variation_policy_revision, history=history,
-                initial_set_fingerprints=initial)
-            uow.angle_sets.append(set_id, 1, angle_set)
-            event = build_story_angles_generated(context, aggregate_id=set_id, aggregate_revision=1, angle_set=angle_set)
-            return _Outcome(
-                output=angle_set, aggregate_ref=set_id, aggregate_revision=1, trace=self._trace(snapshot, result.record, key), event=event)
+            key = self._key(context, idempotency_key)
+
+            def validate(result: Any, prompt_ref: ResourceRef) -> Any:
+                candidates = self._angles(self._resolver(context.workspace_id, snapshot), self._model_json(result))
+                return build_story_angle_set(
+                    set_id=set_id, analysis_id=analysis_id, analysis_revision=analysis_revision, requested_count=requested_count,
+                    candidates=candidates, variation_policy_revision=variation_policy_revision, history=history,
+                    initial_set_fingerprints=initial)
+
+            def store(unit: Any, angle_set: Any, record: Any) -> _Outcome:
+                unit.angle_sets.append(set_id, 1, angle_set)
+                event = build_story_angles_generated(context, aggregate_id=set_id, aggregate_revision=1, angle_set=angle_set)
+                return _Outcome(
+                    output=angle_set, aggregate_ref=set_id, aggregate_revision=1, trace=self._trace(snapshot, record, key), event=event)
+
+            return self._ai_plan(
+                context=context, role=ROLE_ANGLES, snapshot=snapshot, payload=payload, prior=prior, validate=validate, store=store)
 
         return self._execute(command='GenerateStoryAngles', context=context, idempotency_key=idempotency_key, payload=payload, work=work)
 
@@ -494,7 +581,7 @@ class CreativePipeline:
             'language_policy': language_policy, 'target_range': target_range,
         }
 
-        def work(uow: Any) -> _Outcome:
+        def work(uow: Any) -> _Outcome | _AiPlan:
             snapshot = self._committed_snapshot(uow, snapshot_id)
             analysis = self._analysis(uow, snapshot_id, analysis_id, analysis_revision)
             angle = self._angle(uow, set_id, angle_id)
@@ -502,16 +589,22 @@ class CreativePipeline:
                 self._prior_item(context.workspace_id, 'content_analysis', 'content_analysis', analysis_id, analysis_revision, analysis),
                 self._prior_item(context.workspace_id, 'story_angle', 'story_angle', angle_id, set_id, angle),
             ]
-            result, _, key = self._invoke(
-                uow, context=context, idempotency_key=idempotency_key, role=ROLE_SCRIPT, snapshot=snapshot, payload=payload, prior=prior)
-            raw = {**self._model_json(result), 'script_version_id': script_version_id}
-            script = build_script_version(
-                raw, resolver=self._resolver(context.workspace_id, snapshot), language_policy=language_policy, target_range=target_range)
-            uow.scripts.append(script_version_id, 1, script)
-            event = build_script_version_created(context, aggregate_id=script_version_id, aggregate_revision=1, script=script)
-            return _Outcome(
-                output=script, aggregate_ref=script_version_id, aggregate_revision=1,
-                trace=self._trace(snapshot, result.record, key), event=event)
+            key = self._key(context, idempotency_key)
+
+            def validate(result: Any, prompt_ref: ResourceRef) -> Any:
+                raw = {**self._model_json(result), 'script_version_id': script_version_id}
+                return build_script_version(
+                    raw, resolver=self._resolver(context.workspace_id, snapshot), language_policy=language_policy, target_range=target_range)
+
+            def store(unit: Any, script: Any, record: Any) -> _Outcome:
+                unit.scripts.append(script_version_id, 1, script)
+                event = build_script_version_created(context, aggregate_id=script_version_id, aggregate_revision=1, script=script)
+                return _Outcome(
+                    output=script, aggregate_ref=script_version_id, aggregate_revision=1,
+                    trace=self._trace(snapshot, record, key), event=event)
+
+            return self._ai_plan(
+                context=context, role=ROLE_SCRIPT, snapshot=snapshot, payload=payload, prior=prior, validate=validate, store=store)
 
         return self._execute(command='GenerateScript', context=context, idempotency_key=idempotency_key, payload=payload, work=work)
 
@@ -542,7 +635,7 @@ class CreativePipeline:
         }
         payload = {'snapshot_id': snapshot_id, 'script_version_id': script_version_id, 'set_id': set_id, 'angle_id': angle_id, **inputs}
 
-        def work(uow: Any) -> _Outcome:
+        def work(uow: Any) -> _Outcome | _AiPlan:
             snapshot = self._committed_snapshot(uow, snapshot_id)
             script = self._stored(uow.scripts, script_version_id, None, 'script_not_found', 'script_version_id')
             angle = self._angle(uow, set_id, angle_id)
@@ -550,16 +643,22 @@ class CreativePipeline:
                 self._prior_item(context.workspace_id, 'script', 'script_version', script_version_id, script.script_fingerprint, script),
                 self._prior_item(context.workspace_id, 'story_angle', 'story_angle', angle_id, set_id, angle),
             ]
-            result, _, key = self._invoke(
-                uow, context=context, idempotency_key=idempotency_key, role=ROLE_SELECTION, snapshot=snapshot, payload=payload, prior=prior)
-            selection = select_creative_assets(
-                workspace_id=context.workspace_id, snapshot_ref=snapshot_id, script_ref=script_version_id, angle_ref=angle_id,
-                proposal=self._model_json(result), **inputs)
-            if self._selections is not None:
-                self._selections.save(workspace_id=context.workspace_id, job_id=snapshot.video_job_ref or snapshot_id, selection=selection)
-            return _Outcome(
-                output=selection, aggregate_ref='selection:' + selection.selection_fingerprint, aggregate_revision=1,
-                trace=self._trace(snapshot, result.record, key))
+            key = self._key(context, idempotency_key)
+
+            def validate(result: Any, prompt_ref: ResourceRef) -> Any:
+                return select_creative_assets(
+                    workspace_id=context.workspace_id, snapshot_ref=snapshot_id, script_ref=script_version_id, angle_ref=angle_id,
+                    proposal=self._model_json(result), **inputs)
+
+            def store(unit: Any, selection: Any, record: Any) -> _Outcome:
+                if self._selections is not None:
+                    self._selections.save(workspace_id=context.workspace_id, job_id=snapshot.video_job_ref or snapshot_id, selection=selection)
+                return _Outcome(
+                    output=selection, aggregate_ref='selection:' + selection.selection_fingerprint, aggregate_revision=1,
+                    trace=self._trace(snapshot, record, key))
+
+            return self._ai_plan(
+                context=context, role=ROLE_SELECTION, snapshot=snapshot, payload=payload, prior=prior, validate=validate, store=store)
 
         return self._execute(command='SelectCreativeAssets', context=context, idempotency_key=idempotency_key, payload=payload, work=work)
 
@@ -589,10 +688,10 @@ class CreativePipeline:
         else:
             payload['selection_ref'] = selection_ref
 
-        def work(uow: Any) -> _Outcome:
+        def work(uow: Any) -> _Outcome | _AiPlan:
             snapshot = self._committed_snapshot(uow, snapshot_id)
             script = self._stored(uow.scripts, script_version_id, None, 'script_not_found', 'script_version_id')
-            chosen = selection if selection is not None else self._stored_selection(context.workspace_id, selection_ref)
+            chosen =selection if selection is not None else self._stored_selection(context.workspace_id, selection_ref)
             if chosen.snapshot_ref != snapshot_id:
                 raise PipelineRejected(CONTEXT_MISMATCH, 'selection_snapshot_mismatch', 'selection')
             prior = [
@@ -601,16 +700,22 @@ class CreativePipeline:
                     context.workspace_id, 'selection', 'creative_asset_selection', SELECTION_ID_PREFIX + chosen.selection_fingerprint,
                     chosen.selection_fingerprint, chosen),
             ]
-            result, _, key = self._invoke(
-                uow, context=context, idempotency_key=idempotency_key, role=ROLE_PLAN, snapshot=snapshot, payload=payload, prior=prior)
-            plan = build_production_plan(
-                self._model_json(result), production_plan_id=production_plan_id, script=script, selection=chosen,
-                preset_revision_ref=preset_revision_ref)
-            uow.plans.append(production_plan_id, 1, plan)
-            event = build_production_plan_created(context, aggregate_id=production_plan_id, aggregate_revision=1, plan=plan)
-            return _Outcome(
-                output=plan, aggregate_ref=production_plan_id, aggregate_revision=1,
-                trace=self._trace(snapshot, result.record, key), event=event)
+            key = self._key(context, idempotency_key)
+
+            def validate(result: Any, prompt_ref: ResourceRef) -> Any:
+                return build_production_plan(
+                    self._model_json(result), production_plan_id=production_plan_id, script=script, selection=chosen,
+                    preset_revision_ref=preset_revision_ref)
+
+            def store(unit: Any, plan: Any, record: Any) -> _Outcome:
+                unit.plans.append(production_plan_id, 1, plan)
+                event = build_production_plan_created(context, aggregate_id=production_plan_id, aggregate_revision=1, plan=plan)
+                return _Outcome(
+                    output=plan, aggregate_ref=production_plan_id, aggregate_revision=1,
+                    trace=self._trace(snapshot, record, key), event=event)
+
+            return self._ai_plan(
+                context=context, role=ROLE_PLAN, snapshot=snapshot, payload=payload, prior=prior, validate=validate, store=store)
 
         return self._execute(command='BuildProductionPlan', context=context, idempotency_key=idempotency_key, payload=payload, work=work)
 
@@ -671,30 +776,37 @@ class CreativePipeline:
             'metadata_revision': metadata_revision,
         }
 
-        def work(uow: Any) -> _Outcome:
+        def work(uow: Any) -> _Outcome | _AiPlan:
             snapshot = self._committed_snapshot(uow, snapshot_id)
-            plans = [stored.record for stored in (uow.plans.latest(ref) for ref in refs) if stored is not None]
+            plans =[stored.record for stored in (uow.plans.latest(ref) for ref in refs) if stored is not None]
             prior = [
                 self._prior_item(context.workspace_id, 'plan', 'production_plan', plan.production_plan_id, plan.plan_fingerprint, plan)
                 for plan in plans
             ]
-            result, _, key = self._invoke(
-                uow, context=context, idempotency_key=idempotency_key, role=ROLE_METADATA, snapshot=snapshot, payload=payload, prior=prior)
-            raw = self._model_json(result)
-            try:
-                metadata = OutputMetadata(
-                    title=raw['title'], caption=raw['caption'], hashtags=tuple(raw['hashtags']), language=OUTPUT_LANGUAGE,
-                    source_job_ref=source_job_ref, source_output_refs=refs, metadata_revision=metadata_revision)
-            except (KeyError, TypeError, ValueError) as error:
-                raise PipelineRejected(SCHEMA_VIOLATION, 'invalid_output_metadata', 'output_metadata') from error
-            if sanitizer is not None:
-                metadata = metadata.with_filename_safe(sanitizer)
-            uow.output_metadata.append(source_job_ref, metadata_revision, metadata)
-            event = build_output_metadata_created(
-                context, aggregate_id=source_job_ref, aggregate_revision=metadata_revision, metadata=metadata)
-            return _Outcome(
-                output=metadata, aggregate_ref=source_job_ref, aggregate_revision=metadata_revision,
-                trace=self._trace(snapshot, result.record, key), event=event)
+            key = self._key(context, idempotency_key)
+
+            def validate(result: Any, prompt_ref: ResourceRef) -> Any:
+                raw = self._model_json(result)
+                try:
+                    metadata = OutputMetadata(
+                        title=raw['title'], caption=raw['caption'], hashtags=tuple(raw['hashtags']), language=OUTPUT_LANGUAGE,
+                        source_job_ref=source_job_ref, source_output_refs=refs, metadata_revision=metadata_revision)
+                except (KeyError, TypeError, ValueError) as error:
+                    raise PipelineRejected(SCHEMA_VIOLATION, 'invalid_output_metadata', 'output_metadata') from error
+                if sanitizer is not None:
+                    metadata = metadata.with_filename_safe(sanitizer)
+                return metadata
+
+            def store(unit: Any, metadata: Any, record: Any) -> _Outcome:
+                unit.output_metadata.append(source_job_ref, metadata_revision, metadata)
+                event = build_output_metadata_created(
+                    context, aggregate_id=source_job_ref, aggregate_revision=metadata_revision, metadata=metadata)
+                return _Outcome(
+                    output=metadata, aggregate_ref=source_job_ref, aggregate_revision=metadata_revision,
+                    trace=self._trace(snapshot, record, key), event=event)
+
+            return self._ai_plan(
+                context=context, role=ROLE_METADATA, snapshot=snapshot, payload=payload, prior=prior, validate=validate, store=store)
 
         return self._execute(command='GenerateOutputMetadata', context=context, idempotency_key=idempotency_key, payload=payload, work=work)
 
@@ -707,5 +819,6 @@ __all__ = [
     'IdempotencyConflict',
     'OutputTrace',
     'PipelineRejected',
+    'ProviderWaiting',
     'SelectionStorePort',
 ]

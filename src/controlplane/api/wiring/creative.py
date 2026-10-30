@@ -24,6 +24,7 @@ from creative.adapters.activity_inputs import (
 from creative.adapters.article_context import PostgresArticleContext
 from creative.adapters.prompt_source import ConfigPromptSource
 from creative.application.pipeline import CreativePipeline
+from creative.application.provider_failure import ProviderFailurePolicy
 from creative.domain.asset_selection import SafetyRightsPolicy, ScoringWeights
 from creative.domain.script import LanguageVoicePolicy, TargetRange, INPUT_NOT_READY
 from creative.worker.activity_handler import CreativeActivityDeps
@@ -437,6 +438,8 @@ def creative_activity_deps(
         instructions={},
         articles=articles,
         selections=selections,
+        # D-15-FIX1: attempts of one command in one activity come from the production profile.
+        failure_policy=ProviderFailurePolicy(max_attempts=profile.ai.retry.max_attempts),
     )
     pipeline._instructions = lazy_instructions
     inputs = ProductionActivityInputs(

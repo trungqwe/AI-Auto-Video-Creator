@@ -27,6 +27,7 @@ from creative.application.pipeline import (
     CommandResult,
     CreativePipeline,
     IdempotencyConflict,
+    ProviderWaiting,
 )
 from creative.ports.repositories import DuplicateRecordError, EventContext
 
@@ -44,6 +45,8 @@ REDACTED_WARNING = 'warning_redacted'
 UNKNOWN_REF = 'unknown'
 SUCCEEDED = 'succeeded'
 FAILED = 'failed'
+WAITING = 'waiting'
+WAIT_FALLBACK = 'provider_unavailable'
 STALE = 'stale'
 
 Issue = tuple[str, str]
@@ -63,6 +66,7 @@ REQUEST_OPTIONAL = MappingProxyType({'video_job_id': 'string', 'execution_grant'
 REQUEST_FORBIDDEN = ('secret_value', 'raw_blob')
 _SAFE_TOKEN_RE = re.compile(r'[A-Za-z0-9_.:-]{1,80}')
 _SECRET_WORD_RE = re.compile(r'secret|token|password|passwd|bearer|api[_-]?key|credential', re.IGNORECASE)
+_TOKEN_JUNK_RE = re.compile(r'[^A-Za-z0-9_.:-]+')
 
 # kind -> (ProblemDetail category, fixed detail); detail is never built from exception text
 _PROBLEMS = MappingProxyType({
@@ -73,6 +77,7 @@ _PROBLEMS = MappingProxyType({
     'COMMAND_REJECTED': ('validation', 'the D command rejected its input; nothing was committed'),
     'COMMAND_CONFLICT': ('conflict', 'the D command conflicts with a stored record; nothing was committed'),
     'AI_INVOCATION_FAILED': ('dependency', 'the AI invocation of the D command failed; nothing was committed'),
+    'AI_WAITING': ('capacity', 'the AI provider has no capacity right now; the stage waits and G tries again when it recovers'),
     'ACTIVITY_ABORTED': ('internal', 'the activity stopped on an unexpected error; retry with the same operation_key'),
 })
 # activity_name -> (CreativePipeline method, ref_type of the output ref); no route chains to another command
@@ -159,6 +164,20 @@ def _safe_text(value: object, default: str) -> str:
     return value
 
 
+def _token(value: object, default: str) -> str:
+    """A stable machine token from a reason or a field path: runs of other characters become one underscore; text with a secret word or nothing left gives the default."""
+    text = _TOKEN_JUNK_RE.sub('_', value).strip('_')[:80] if isinstance(value, str) else ''
+    return _safe_text(text, default)
+
+
+def _output_field_errors(exc: Exception) -> dict[str, str] | None:
+    """field_errors of a model-output failure that used up its attempts: reason, field and the number of attempts, all tokens; None for any other rejection."""
+    attempts = getattr(exc, 'attempts', 0)
+    if type(attempts) is not int or attempts < 1:
+        return None
+    return {'reason': _token(getattr(exc, 'reason', None), 'unknown'), 'field': _token(getattr(exc, 'field', None), 'root'), 'attempts': str(attempts)}
+
+
 def _matches(value: object, type_name: str) -> bool:
     if type_name == 'string':
         return isinstance(value, str)
@@ -213,10 +232,14 @@ def _utc(moment: datetime.datetime) -> str:
     return moment.astimezone(datetime.timezone.utc).replace(microsecond=0, tzinfo=None).isoformat() + 'Z'
 
 
-def _problem(request: Mapping[str, Any], grant: ExecutionGrant, kind: str, code: str, *, retryable: bool = False) -> dict[str, Any]:
+def _problem(
+    request: Mapping[str, Any], grant: ExecutionGrant, kind: str, code: str, *, retryable: bool = False,
+    field_errors: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
     """Standard ProblemDetail: fixed detail per kind, code token only; never exception text or secret."""
     category, detail = _PROBLEMS[kind]
     stage = _safe_text(grant.stage_run_id, UNKNOWN_REF)
+    extra = {} if field_errors is None else {'field_errors': dict(field_errors)}
     problem = ProblemDetail.create(
         type=f'urn:creative:problem:{kind.lower()}',
         title=kind.replace('_', ' ').title(),
@@ -226,6 +249,7 @@ def _problem(request: Mapping[str, Any], grant: ExecutionGrant, kind: str, code:
         category=category,
         retryable=retryable,
         correlation_id=_safe_text(request['workflow_run_id'], UNKNOWN_REF),
+        **extra,
     )
     return dict(problem.values)
 
@@ -267,8 +291,9 @@ def _rejected(
     code: str,
     *,
     retryable: bool = False,
+    field_errors: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    problem = _problem(request, grant, kind, code, retryable=retryable)
+    problem = _problem(request, grant, kind, code, retryable=retryable, field_errors=field_errors)
     return _activity_result(request, grant, deps, _Outcome(disposition), problem)
 
 
@@ -320,12 +345,14 @@ def _exception_result(
         return _rejected(request, grant, deps, FAILED, 'COMMAND_CONFLICT', REVISION_CONFLICT)
     if isinstance(exc, DuplicateRecordError):
         return _rejected(request, grant, deps, FAILED, 'COMMAND_CONFLICT', DUPLICATE_RECORD)
+    if isinstance(exc, ProviderWaiting):
+        return _rejected(request, grant, deps, WAITING, 'AI_WAITING', _safe_text(exc.code, WAIT_FALLBACK), retryable=True)
     raw = getattr(exc, 'code', None)
     code = _safe_text(raw, '') if isinstance(raw, str) else ''
     if code == AI_INVOCATION_FAILED:
         return _rejected(request, grant, deps, FAILED, 'AI_INVOCATION_FAILED', code)
     if code:
-        return _rejected(request, grant, deps, FAILED, 'COMMAND_REJECTED', code)
+        return _rejected(request, grant, deps, FAILED, 'COMMAND_REJECTED', code, field_errors=_output_field_errors(exc))
     if isinstance(exc, ValueError):
         return _rejected(request, grant, deps, FAILED, 'COMMAND_REJECTED', INVALID_COMMAND_INPUT)
     return _rejected(request, grant, deps, FAILED, 'ACTIVITY_ABORTED', ACTIVITY_ABORTED, retryable=True)
@@ -358,7 +385,8 @@ def handle_activity(request: Mapping[str, Any], grant: ExecutionGrant, deps: Cre
     input lookup, command or write. Only a 'succeeded' result is stored under (workspace_id, operation_key): the same
     key returns it, re-stamped with the identity of the current grant, without running the command again; the same key
     for another activity or input_refs is OPERATION_KEY_CONFLICT. Exactly one command runs per call; the next stage is
-    G's decision and D never waits for a capability.
+    G's decision and D never waits for a capability. A provider that has no capacity (ProviderWaiting) gives a 'waiting'
+    result whose problem code is a WaitReason value; it is never stored, so G calls again with the same operation_key.
     """
     issues = validate_activity_request(request, grant)
     if issues:

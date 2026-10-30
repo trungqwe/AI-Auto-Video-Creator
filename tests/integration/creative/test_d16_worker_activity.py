@@ -477,7 +477,9 @@ def test_provider_failure_is_a_failed_result_with_a_code_only_problem():
     assert result['disposition'] == 'failed' and result['output_refs'] == []
     assert (problem['code'], problem['category'], problem['retryable']) == ('ai_invocation_failed', 'dependency', False)
     assert SECRET not in repr(result) and 'upstream' not in repr(result)
-    assert rig.uow.analyses.latest('an-1') is None and rig.uow.invocations.latest('ws-1:op-analysis') is None
+    assert rig.uow.analyses.latest('an-1') is None
+    (attempt,) = rig.uow.invocations.revisions('ws-1:op-analysis')
+    assert (attempt.record.validation_result, SECRET in attempt.record.to_json()) == ('not_run', False)
     assert rig.deps.results.get(WS, 'op-analysis') is None
 
 
@@ -515,7 +517,7 @@ def test_a_new_key_for_an_existing_script_id_is_a_non_retryable_conflict_and_com
     assert (problem['code'], problem['category'], problem['retryable']) == ('REVISION_CONFLICT', 'conflict', False)
     assert len(rig.uow.scripts.revisions('script-1')) == 1 and rig.events() == events
     assert rig.uow.receipts.get(WS, 'op-script-2') is None
-    assert rig.uow.invocations.latest('ws-1:op-script-2') is None
+    assert rig.uow.invocations.latest('ws-1:op-script-2').record.validation_result == 'passed'
 
 
 @pytest.mark.parametrize(
