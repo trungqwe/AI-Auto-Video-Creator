@@ -216,6 +216,23 @@ def test_pw_e4_without_usable_music_the_bed_is_none_with_warning_and_the_chain_g
     assert (rig.library / f'{stored.renditions[0].rendition_ref}.wav').read_bytes() == silent_wav(5000)
 
 
+def test_pw_e4_bed_none_already_present_and_open_is_reused(rig_factory) -> None:
+    transport = FakeTransport({})
+    rig = rig_factory(transport, (make_source('primary', PRIMARY_URL, SAMPLE), make_source('fallback', FALLBACK_URL, OTHER)))
+    first = rig.run('op-bed-open-1', request(mood='tense'))
+    assert first.receipt.disposition is Disposition.SUCCEEDED
+    ref = first.record.renditions[0].rendition_ref
+    path = rig.library / f'{ref}.wav'
+    assert ref.startswith('bed-none-') and path.is_file()
+    with path.open('rb') as handle:
+        second = rig.run('op-bed-open-2', request(mood='tense'))
+        assert handle.read() == silent_wav(5000)
+    assert second.receipt.disposition is Disposition.SUCCEEDED
+    assert second.record.renditions[0].rendition_ref == ref
+    assert path.read_bytes() == silent_wav(5000)
+    assert not list(rig.library.glob('*.part*'))
+
+
 @pytest.mark.parametrize('url', ['https://evil.example/bed.wav', 'http://music-primary.test/bed.wav', 'https://music-primary.test/other.wav', 'https://user:pw@music-primary.test/bed.wav', 'https://127.0.0.1/bed.wav', 'https://music-primary.test:8443/bed.wav', 'file:///etc/passwd'])
 def test_pw_e4_url_outside_the_pinned_list_is_blocked(url) -> None:
     sources = (make_source('primary', PRIMARY_URL, SAMPLE), make_source('fallback', FALLBACK_URL, OTHER))

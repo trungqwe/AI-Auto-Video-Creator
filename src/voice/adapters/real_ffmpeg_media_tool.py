@@ -9,8 +9,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 import subprocess
+import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -182,8 +184,6 @@ class RealFfmpegMediaTool:
         path = Path(self._resolve_output(ref, extension))
         if path.resolve() == source.resolve():
             raise FfmpegToolError('output_is_input')
-        if path.exists():
-            raise FfmpegToolError('output_exists')
         if not path.parent.is_dir():
             raise FfmpegToolError('output_dir_missing')
         return path
@@ -195,26 +195,56 @@ class RealFfmpegMediaTool:
         except OSError:
             pass
 
-    def _execute(self, tail: list[str], output: Path, output_ref: str) -> ToolOutcome:
-        command = [str(self._ffmpeg), '-nostdin', '-hide_banner', '-loglevel', 'error', '-n', *tail]
+    @staticmethod
+    def _temp_for(output: Path) -> Path:
+        return output.with_name(f'{output.stem}.{uuid.uuid4().hex[:12]}.part{output.suffix}')
+
+    def _execute(self, head: list[str], output: Path, output_ref: str) -> ToolOutcome:
+        temp = self._temp_for(output)
+        command = [str(self._ffmpeg), '-nostdin', '-hide_banner', '-loglevel', 'error', '-n', *head, str(temp)]
         try:
-            completed = self._run(command)
-        except subprocess.TimeoutExpired:
-            self._discard(output)
-            return ToolOutcome(Disposition.OUTCOME_UNKNOWN, error='ffmpeg_timeout')
+            try:
+                completed = self._run(command)
+            except subprocess.TimeoutExpired:
+                return ToolOutcome(Disposition.OUTCOME_UNKNOWN, error='ffmpeg_timeout')
+            except OSError:
+                return ToolOutcome(Disposition.FAILED, error='ffmpeg_not_started')
+            if completed.returncode != 0:
+                return ToolOutcome(Disposition.FAILED, error=f'ffmpeg_exit_{completed.returncode}')
+            if not temp.is_file() or temp.stat().st_size == 0:
+                return ToolOutcome(Disposition.FAILED, error='output_missing')
+            return self._publish(temp, output, output_ref)
+        finally:
+            self._discard(temp)
+
+    def _publish(self, temp: Path, output: Path, output_ref: str) -> ToolOutcome:
+        try:
+            os.link(temp, output)
+        except FileExistsError:
+            return self._accept_existing(temp, output, output_ref)
         except OSError:
-            self._discard(output)
-            return ToolOutcome(Disposition.FAILED, error='ffmpeg_not_started')
+            if os.name != 'nt':
+                return ToolOutcome(Disposition.FAILED, error='output_publish_failed')
+            try:
+                os.rename(temp, output)
+            except FileExistsError:
+                return self._accept_existing(temp, output, output_ref)
+            except OSError:
+                return ToolOutcome(Disposition.FAILED, error='output_publish_failed')
+        try:
+            return ToolOutcome(Disposition.SUCCEEDED, output_ref=output_ref, output_sha256=_file_sha256(output))
+        except OSError:
+            return ToolOutcome(Disposition.FAILED, error='output_publish_failed')
 
-        if completed.returncode != 0:
-            self._discard(output)
-            return ToolOutcome(Disposition.FAILED, error=f'ffmpeg_exit_{completed.returncode}')
-
-        if not output.is_file() or output.stat().st_size == 0:
-            self._discard(output)
-            return ToolOutcome(Disposition.FAILED, error='output_missing')
-
-        return ToolOutcome(Disposition.SUCCEEDED, output_ref=output_ref, output_sha256=_file_sha256(output))
+    def _accept_existing(self, temp: Path, output: Path, output_ref: str) -> ToolOutcome:
+        try:
+            existing = _file_sha256(output)
+            same = _file_sha256(temp) == existing
+        except OSError:
+            return ToolOutcome(Disposition.FAILED, error='output_publish_failed')
+        if not same:
+            return ToolOutcome(Disposition.FAILED, error='output_conflict')
+        return ToolOutcome(Disposition.SUCCEEDED, output_ref=output_ref, output_sha256=existing)
 
     def _run_ffprobe(self, extra: list[str], path: Path) -> dict:
         completed = self._run([str(self._ffprobe), '-v', 'error', '-print_format', 'json', *extra, str(path)])
@@ -324,7 +354,7 @@ class RealFfmpegMediaTool:
             tail = self._plan_tail(plan, source, output)
         except FfmpegToolError as exc:
             return ToolOutcome(Disposition.FAILED, error=exc.code)
-        return self._execute(tail, output, plan.output_ref)
+        return self._execute(tail[:-1], output, plan.output_ref)
 
     def _post_assessment(self, request: TransformRequest, processed: ArtifactRef) -> ImageSafetyAssessment:
         if self._reassess is not None:
@@ -385,6 +415,7 @@ class RealFfmpegMediaTool:
             'actions': list(request.actions),
             'policy': request.transform_policy_revision,
             'profile': dict(request.output_profile),
+            'processor': f'ffmpeg-{archive}',
         }
         digest = hashlib.sha256(
             json.dumps(payload, sort_keys=True, separators=(',', ':')).encode('utf-8')
@@ -396,7 +427,7 @@ class RealFfmpegMediaTool:
 
         output = self._new_output(processed_ref, extension, source)
         outcome = self._execute(
-            ['-i', str(source), '-filter_complex', graph, '-map', f'[b{n}]', '-frames:v', '1', str(output)],
+            ['-i', str(source), '-filter_complex', graph, '-map', f'[b{n}]', '-frames:v', '1'],
             output,
             processed_ref,
         )

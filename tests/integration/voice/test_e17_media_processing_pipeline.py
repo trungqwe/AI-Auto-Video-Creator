@@ -9,11 +9,12 @@ import ast
 import pathlib
 
 import pytest
-from voice.adapters.memory import InMemoryUnitOfWork
+from voice.adapters.memory import InMemoryOutputRepository, InMemoryUnitOfWork
 from voice.application.media_pipeline import (
     AudioBedOutcome,
     IdempotencyConflictError,
     ImageBatchItem,
+    KIND_RECEIPT_BY_REQUEST,
     MediaPipeline,
     RetryNotAllowedError,
     VerifiedOutput,
@@ -203,6 +204,28 @@ class CrashOnCommitUow(InMemoryUnitOfWork):
             self.fail_commits -= 1
             raise RuntimeError('simulated crash before receipt')
         super().commit()
+
+
+class StaleReceiptOutputs(InMemoryOutputRepository):
+    """Trả bản cũ một revision cho lần đọc latest(receipt_by_request) kế tiếp khi giao dịch đang mở."""
+
+    def __init__(self, uow) -> None:
+        super().__init__(uow)
+        self.stale_reads = 0
+
+    def latest(self, kind, key):
+        if kind == KIND_RECEIPT_BY_REQUEST and self._uow.active and self.stale_reads > 0:
+            self.stale_reads -= 1
+            rows = self.revisions(kind, key)
+            return rows[-2] if len(rows) >= 2 else None
+        return super().latest(kind, key)
+
+
+class StaleReadUow(InMemoryUnitOfWork):
+    def __init__(self) -> None:
+        super().__init__()
+        self.outputs = StaleReceiptOutputs(self)
+        self._tables = (self.outputs, self.outbox)
 
 
 def ctx(name: str) -> EventContext:
@@ -621,6 +644,27 @@ def test_normalize_crash_after_side_effect_before_receipt_is_outcome_unknown():
     with pytest.raises(RetryNotAllowedError):
         normalize(pipeline, 'op-n-6b', verified_outputs=verified(ref))
     assert len(tool.calls) == 1
+
+
+def test_normalize_receipt_by_request_conflict_retries_and_succeeds():
+    uow = StaleReadUow()
+    tool = FakeTool()
+    pipeline = MediaPipeline(uow, tool=tool)
+    ref = out_ref()
+    first = normalize(pipeline, 'op-n-c1', verified_outputs=verified(ref))
+    second = normalize(pipeline, 'op-n-c2', verified_outputs=verified(ref))
+    assert first.receipt.disposition is Disposition.SUCCEEDED and second.receipt.disposition is Disposition.SUCCEEDED
+    fingerprint = first.receipt.request_fingerprint
+    assert [item.revision for item in uow.outputs.revisions(KIND_RECEIPT_BY_REQUEST, fingerprint)] == [1, 2]
+    uow.outputs.stale_reads = 1
+    third = normalize(pipeline, 'op-n-c3', verified_outputs=verified(ref))
+    assert uow.outputs.stale_reads == 0
+    assert third.receipt.disposition is Disposition.SUCCEEDED
+    assert third.receipt.error is None
+    assert stored(uow, 'receipt', 'op-n-c3') == third.receipt
+    assert [item.revision for item in uow.outputs.revisions(KIND_RECEIPT_BY_REQUEST, fingerprint)] == [1, 2, 3]
+    assert events(uow).count('MediaProcessingCompleted') == 3
+    assert len(tool.calls) == 3
 
 
 @pytest.mark.parametrize(

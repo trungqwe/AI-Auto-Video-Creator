@@ -5,6 +5,7 @@ Fan-out item rule: the item of an activity is the first ref of its ref_type in i
 from __future__ import annotations
 
 import datetime
+import hashlib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -44,6 +45,7 @@ from voice.application.voice_pipeline import (
 from voice.domain.audio_bed import AudioBedRequest, AudioCue
 from voice.domain.image_safety import IMAGE_KIND, ImageSafetyAssessment, SafetyOutcome
 from voice.domain.image_transform import TransformRegion, TransformResult
+from voice.domain.normalize import compute_plan_fingerprint, compute_spec_fingerprint
 from voice.domain.processing import ArtifactRef
 from voice.domain.speed_fit import SpeedFitPolicy
 from voice.domain.timing_coverage import TokenizationPolicy
@@ -348,8 +350,11 @@ class ProductionActivityInputs:
         source = self.normalize_source(frame.workspace_id, frame.refs)
         if source.artifact is None:
             raise ActivityInputError(INPUT_NOT_READY, f'image_excluded:{source.reason}')
+        plan_fp = compute_plan_fingerprint(source.artifact, compute_spec_fingerprint(self._normalize_spec))
+        output_ref = 'rendition:' + hashlib.sha256(f'{frame.operation_key}|{plan_fp}'.encode('utf-8')).hexdigest()
         return {
             'context': context, 'input_ref': source.artifact, 'spec': self._normalize_spec, 'media_kind': IMAGE_KIND,
+            'output_ref': output_ref,
             'verified_outputs': LazyVerifiedOutputs(self._verify_output),
         }
 

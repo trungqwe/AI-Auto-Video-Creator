@@ -11,6 +11,7 @@ import hashlib
 import io
 import json
 import pathlib
+import re
 import struct
 import wave
 import zlib
@@ -36,7 +37,8 @@ from voice.application.voice_pipeline import CreateVoiceTrackCommand, CreateWord
 from voice.domain.audio_bed import AudioCue
 from voice.domain.image_safety import ImageSafetyAssessment, SafetyOutcome
 from voice.domain.image_transform import TransformRegion
-from voice.domain.processing import ArtifactRef
+from voice.domain.normalize import compute_plan_fingerprint, compute_spec_fingerprint, plan_rendition
+from voice.domain.processing import ArtifactRef, Disposition
 from voice.domain.timing_coverage import TokenizationPolicy
 from voice.domain.voice_track import VoiceTrack, check_duration
 from voice.persistence import PostgresVoiceUnitOfWork
@@ -51,6 +53,7 @@ JOB = 'job-e3'
 STAGE_RUN = 'job-e3:process:r1'
 TOKENIZATION = TokenizationPolicy(revision='tok-test-v1', unicode_form='NFC', casefold=True, edge_strip_categories=('P',), gap_tolerance_ms=500, min_confidence=0.5)
 MASK = 'region:0.250000,0.250000,0.500000,0.500000'
+RENDITION_REF = re.compile(r'(?:processed|rendition):[0-9A-Za-z]{8,128}')
 
 
 def sha(data: bytes) -> str:
@@ -312,10 +315,10 @@ class World:
         data = path.read_bytes()
         return VerifiedOutput(sha(data), len(data))
 
-    def request(self, name: str, index: int, input_refs: list) -> dict:
+    def request(self, name: str, index: int, input_refs: list, workflow_id: str = 'wf-e3') -> dict:
         return {
-            'workflow_id': 'wf-e3', 'workflow_run_id': 'run-e3', 'stage_run_id': STAGE_RUN, 'activity_name': name,
-            'activity_version': '1', 'input_refs': input_refs, 'operation_key': f'wf-e3:process:{name}:{index}:r1',
+            'workflow_id': workflow_id, 'workflow_run_id': 'run-e3', 'stage_run_id': STAGE_RUN, 'activity_name': name,
+            'activity_version': '1', 'input_refs': input_refs, 'operation_key': f'{workflow_id}:process:{name}:{index}:r1',
             'capability_requirements': {'task_queue': 'desktop_cpu'}, 'retry_policy_ref': 'retry-1', 'video_job_id': JOB,
         }
 
@@ -397,9 +400,16 @@ def test_pw_e3_transform_normalize_and_audio_bed_inputs_come_from_the_ports(pw_d
         world.close()
 
 
-def run_chain(world: World) -> dict:
+def media_deps(world: World, reassess=None):
     if not FFMPEG.is_file():
         pytest.fail('BLOCKED_EXTERNAL: pinned FFmpeg C:/ffmpeg/bin/ffmpeg.exe is required; no skip and no fallback is permitted.', pytrace=False)
+    tool = RealFfmpegMediaTool(FFMPEG, LOCK_PATH, world.resolve_input, world.resolve_output, reassess=reassess)
+    deps = VoiceActivityDeps(voice=None, media=MediaPipeline(world.uow, probe=tool, tool=tool, transformer=tool), grants=Grants(), inputs=world.inputs, clock=lambda: NOW)
+    return tool, deps
+
+
+def run_chain(world: World, workflow_id: str = 'wf-e3', selected: list | None = None) -> dict:
+    tool, deps = media_deps(world, lambda ref: assessment(SafetyOutcome.SAFE, True, 'post_check_clean'))
     region = {'x': 0.25, 'y': 0.25, 'width': 0.5, 'height': 0.5}
     answers = {
         'safe': {'confidence': 0.9, 'detections': []},
@@ -408,16 +418,15 @@ def run_chain(world: World) -> dict:
         'reject': {'confidence': 0.9, 'detections': [{'category': 'minor_child', 'confidence': 0.9, 'region': region}]},
         'failed': 'not json',
     }
-    selected = [world.add_image(name, index, answer) for index, (name, answer) in enumerate(answers.items(), start=1)]
-    world.add_seed('s0', 20)
-    world.add_seed('s1', 21)
-    tool = RealFfmpegMediaTool(FFMPEG, LOCK_PATH, world.resolve_input, world.resolve_output, reassess=lambda ref: assessment(SafetyOutcome.SAFE, True, 'post_check_clean'))
-    deps = VoiceActivityDeps(voice=None, media=MediaPipeline(world.uow, probe=tool, tool=tool, transformer=tool), grants=Grants(), inputs=world.inputs, clock=lambda: NOW)
+    if selected is None:
+        selected = [world.add_image(name, index, answer) for index, (name, answer) in enumerate(answers.items(), start=1)]
+        world.add_seed('s0', 20)
+        world.add_seed('s1', 21)
     produced: list[dict] = []
 
     def run(name, index, item):
         refs = merge(world.base_refs, [item], selected, produced)
-        result = handle_voice_activity(world.request(name, index, refs), world.grant, deps, world.inputs)
+        result = handle_voice_activity(world.request(name, index, refs, workflow_id=workflow_id), world.grant, deps, world.inputs)
         assert result['disposition'] == 'succeeded', result
         return result
 
@@ -510,5 +519,94 @@ def test_pw_e3_transform_with_a_sensitive_image_keeps_the_old_path(pw_database, 
                 result = entry(transform_deps(world))
                 assert result['disposition'] == 'failed' and result['output_refs'] == [], result
                 assert result['problem']['code'] == 'INPUT_NOT_READY', result
+    finally:
+        world.close()
+
+
+def stored_record(world: World, kind: str, key: str):
+    return world.uow.outputs.latest(kind, key).record
+
+
+def assess_safe(world: World, deps, name: str, seed: int):
+    item = world.add_image(name, seed, {'confidence': 0.9, 'detections': []})
+    result = handle_voice_activity(world.request('AssessImageSafety', 0, merge(world.base_refs, [item])), world.grant, deps, world.inputs)
+    assert result['disposition'] == 'succeeded', result
+    return item, merge(world.base_refs, [item], result['output_refs'])
+
+
+def test_pw_e3_normalize_output_ref_is_per_operation(pw_database, tmp_path) -> None:
+    world = World(pw_database, tmp_path)
+    try:
+        item = world.add_image('a', 1, {'confidence': 0.9, 'detections': []})
+        world.store('image_safety_assessment', 'assess-a', assessment(SafetyOutcome.SAFE, True, 'no_sensitive_category'))
+        link = {'ref_type': 'image_safety_assessment', 'ref_id': 'assessment:assess-a', 'source_ref_id': 'media-a', 'revision_id': 'v-a'}
+        refs = merge(world.base_refs, [item], [link])
+
+        def resolve(index):
+            return world.inputs.resolve('NormalizeMedia', world.request('NormalizeMedia', index, refs), world.grant)
+
+        first, again, other = resolve(0), resolve(0), resolve(1)
+        assert RENDITION_REF.fullmatch(first['output_ref'])
+        assert first['output_ref'] == again['output_ref']
+        assert first['output_ref'] != other['output_ref']
+        plan_fp = compute_plan_fingerprint(first['input_ref'], compute_spec_fingerprint(first['spec']))
+        expected = 'rendition:' + hashlib.sha256((world.request('NormalizeMedia', 0, refs)['operation_key'] + '|' + plan_fp).encode('utf-8')).hexdigest()
+        assert first['output_ref'] == expected
+        assert first['output_ref'] != f'rendition:{plan_fp}'
+    finally:
+        world.close()
+
+
+def test_pw_e3_second_job_on_the_same_images_normalizes_and_blurs_again(pw_database, tmp_path) -> None:
+    world = World(pw_database, tmp_path)
+    try:
+        first = run_chain(world)
+        second = run_chain(world, workflow_id='wf-e3b', selected=first['selected'])
+        assert len(second['transform']) == 1
+        processed = [stored_record(world, 'processed_media', f'{wf}:process:TransformSensitiveImage:0:r1').processed_ref for wf in ('wf-e3', 'wf-e3b')]
+        assert processed[0] == processed[1]
+        for index in range(4):
+            one = stored_record(world, 'processed_media', f'wf-e3:process:NormalizeMedia:{index}:r1')
+            two = stored_record(world, 'processed_media', f'wf-e3b:process:NormalizeMedia:{index}:r1')
+            assert one.output_ref != two.output_ref
+            assert one.output_sha256 == two.output_sha256
+            assert one.input_ref == two.input_ref
+        assert second['normalized']['media-failed']['output_refs'] == []
+    finally:
+        world.close()
+
+
+def test_pw_e3_two_items_with_the_same_image_both_normalize(pw_database, tmp_path) -> None:
+    world = World(pw_database, tmp_path)
+    try:
+        tool, deps = media_deps(world)
+        item, refs = assess_safe(world, deps, 'a', 1)
+        results = [handle_voice_activity(world.request('NormalizeMedia', index, refs), world.grant, deps, world.inputs) for index in (0, 1)]
+        assert all(result['disposition'] == 'succeeded' and result['output_refs'] for result in results), results
+        one, two = (stored_record(world, 'processed_media', f'wf-e3:process:NormalizeMedia:{index}:r1') for index in (0, 1))
+        assert one.output_ref != two.output_ref
+        assert one.output_sha256 == two.output_sha256
+        assert one.input_ref == two.input_ref
+        assert (world.out / (one.output_ref.replace(':', '_') + '.png')).is_file()
+        assert (world.out / (two.output_ref.replace(':', '_') + '.png')).is_file()
+    finally:
+        world.close()
+
+
+def test_pw_e3_normalize_with_the_destination_already_written_by_the_tool_succeeds(pw_database, tmp_path) -> None:
+    world = World(pw_database, tmp_path)
+    try:
+        tool, deps = media_deps(world)
+        item, refs = assess_safe(world, deps, 'a', 1)
+        request = world.request('NormalizeMedia', 0, refs)
+        resolved = world.inputs.resolve('NormalizeMedia', request, world.grant)
+        plan = plan_rendition(resolved['input_ref'], resolved['spec'], resolved['media_kind'], output_ref=resolved['output_ref'])
+        pre = tool.run(plan)
+        assert pre.status is Disposition.SUCCEEDED
+        result = handle_voice_activity(request, world.grant, deps, world.inputs)
+        assert result['disposition'] == 'succeeded' and result['output_refs'], result
+        record = stored_record(world, 'processed_media', request['operation_key'])
+        assert record.output_ref == resolved['output_ref']
+        assert record.output_sha256 == pre.output_sha256
     finally:
         world.close()
