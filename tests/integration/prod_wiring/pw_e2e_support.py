@@ -1218,8 +1218,6 @@ class E2ERig:
         }
         self.layout = self.launcher.Layout(self.tmp_path / 'data')
         self.app = self.launcher.load_app(environ, self.layout)
-        self.app.services['render'].probe._ffmpeg = runtime.ffmpeg_path
-        self.app.services['render'].probe._lock = runtime.runtime_lock_path
 
     async def start_worker(self) -> None:
         epoch = str(self.epoch_counter)
