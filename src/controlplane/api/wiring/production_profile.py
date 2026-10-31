@@ -45,7 +45,7 @@ REQUIRED_PARAMETERS = tuple(
     'retention.original retention.reusable retention.output retention.temporary '
     'retention.log_days retention.audit_days time.timezone workflow.start_to_close_seconds '
     'workflow.heartbeat_seconds workflow.retry workflow.schedule '
-    'batch.videos_per_news_per_round batch.target resume.ready_within_seconds'.split()
+    'batch.videos_per_news_per_round batch.target batch.max_concurrent_videos resume.ready_within_seconds'.split()
 )
 
 
@@ -388,6 +388,12 @@ def load_production_profile(path: Path | str) -> ProductionProfile:
         session_ttl_seconds=session_ttl_seconds,
         quota_reserve_ratio=quota_reserve_ratio,
     )
+
+    batch_limits = _whole(values['batch.max_concurrent_videos'], 'batch.max_concurrent_videos', _is_dict)
+    batch_default = _member(batch_limits, 'batch.max_concurrent_videos', 'default', _is_pos_int)
+    batch_max = _member(batch_limits, 'batch.max_concurrent_videos', 'max', _is_pos_int)
+    if set(batch_limits) != {'default', 'max'} or batch_default > batch_max:
+        raise ProductionProfileError('batch.max_concurrent_videos', 'invalid parameter')
 
     parameters = MappingProxyType(values)
     return ProductionProfile(

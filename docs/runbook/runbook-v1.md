@@ -180,6 +180,7 @@ Các giá trị tham số cấu hình dưới đây mang nhãn cơ sở `CONSERV
 | `qc.visual_continuity_min` | 0.6 | CP7-ADAPT-06 |
 | `qc.max_file_bytes` | 157286400 byte (150 MB) | CP7-ADAPT-06 |
 | `gpu.slots` | 2 khe desktop GPU (LOCK-DESKTOP-GPU) | CP7-ADAPT-06 |
+| `batch.max_concurrent_videos` | mặc định 6, tối đa 10 luồng video song song; chọn theo lô qua `POST /v1/batches` (trường `max_concurrent_videos`), xem `GET /v1/batch-settings` | PW-G6-FIX1 |
 | `drive.chunk_bytes` | 8388608 byte (8 MB) | CP7-ADAPT-01 |
 | `drive.chunk_timeout_seconds` | 120 giây | CP7-ADAPT-01 |
 | `drive.retry` | 5 lần thử, backoff 2-60s | CP7-ADAPT-01 |

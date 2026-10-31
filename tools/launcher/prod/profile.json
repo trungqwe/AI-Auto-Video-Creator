@@ -6,7 +6,7 @@
       "basis": "DECIDED"
     },
     "revision": {
-      "value": 4,
+      "value": 5,
       "reason": "Revision cấu hình theo kết quả đo CP7 (docs/implementation/adapt/plan.md mục giá trị production: kết quả đo thay giá trị bằng revision cấu hình mới, không đổi mã).",
       "basis": "DECIDED"
     }
@@ -727,6 +727,14 @@
         "overnight_trial": 100
       },
       "reason": "Mục tiêu 10 video cho lần chạy mẫu và 100 video cho đợt chạy thử nghiệm qua đêm theo U4.",
+      "basis": "DECIDED"
+    },
+    "max_concurrent_videos": {
+      "value": {
+        "default": 6,
+        "max": 10
+      },
+      "reason": "Quyết định của user (CLOSURE_NOTE CP7/RG-10, 31/10/2026): AI chạy trên pool 9Router gồm 10 tài khoản nên không phải trần; số luồng video song song chỉ tính theo tài nguyên máy và user chọn số luồng của từng lô từ 1 tới mức tối đa. Control tính tối đa 10 vì CPU 7950X bão hòa khoảng 146 video mỗi giờ, mặc định 6; CP7-11 báo số đo thật để chỉnh mức tối đa.",
       "basis": "DECIDED"
     }
   },

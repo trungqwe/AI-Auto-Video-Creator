@@ -243,6 +243,7 @@ Mục này cho giá trị production của mọi tham số mà kế hoạch phâ
 | `workflow.retry` | `initial_interval_s` 5, `backoff_coefficient` 2.0, `maximum_interval_s` 120, `maximum_attempts` 3 | D8-G-07 |
 | `batch.videos_per_news_per_round` | 2 | roadmap §13: 1 đến 3 video mỗi tin mỗi lượt |
 | `batch.target` | 10 cho lần chạy mẫu, 100 cho đêm chạy thử | U4 |
+| `batch.max_concurrent_videos` | `{default 6, max 10}`: mặc định 6, tối đa 10; chọn theo lô qua `POST /v1/batches`, xem `GET /v1/batch-settings` | quyết định user 31/10/2026 (CLOSURE_NOTE CP7/RG-10); tối đa tính theo tài nguyên máy (CPU 7950X bão hòa khoảng 146 video mỗi giờ), AI chạy trên pool 9Router 10 tài khoản |
 | `resume.ready_within_seconds` | 300 | roadmap §13 (khởi động lại không chạy lại từ đầu) |
 | `schedule` | không bật lịch cloud; thu thập chạy khi worker bật | U1 |
 
