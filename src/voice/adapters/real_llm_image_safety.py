@@ -6,12 +6,12 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import math
 import time
 from collections.abc import Callable, Mapping
 from typing import Protocol
 
+from controlplane.application.ai_output.model_json import ModelJsonError, parse_model_json_object
 from voice.adapters.real_ffmpeg_media_tool import format_mask_ref
 from voice.domain.image_safety import DetectionStatus, ImageDetection
 from voice.domain.image_transform import TransformRegion
@@ -99,19 +99,13 @@ def _parse_vision(
     raw: object, categories: tuple[str, ...], uncertain_min: float | None
 ) -> tuple[ImageDetection, tuple[TransformRegion, ...], dict[str, float] | None]:
     if isinstance(raw, str):
-        text = raw.strip()
-        if text.startswith('```'):
-            lines = text.splitlines()
-            if len(lines) >= 2 and lines[-1].strip().startswith('```'):
-                lines = lines[1:-1]
-            elif len(lines) >= 1:
-                lines = lines[1:]
-            text = '\n'.join(lines).strip()
         try:
-            data = json.loads(text, parse_constant=_reject_constant)
+            data = parse_model_json_object(raw, parse_constant=_reject_constant)
         except ImageSafetyDetectionError:
             raise
-        except (ValueError, TypeError):
+        except ModelJsonError as error:
+            if error.reason == 'not_a_json_object':
+                raise ImageSafetyDetectionError('wrong_type') from None
             raise ImageSafetyDetectionError('bad_json') from None
     elif isinstance(raw, Mapping):
         data = dict(raw)

@@ -13,6 +13,7 @@ import json
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Protocol
 
+from controlplane.application.ai_output.model_json import ModelJsonError, parse_model_json_object
 from controlplane.application.idempotency.canonicalization import request_hash
 from controlplane.domain.interfaces.uow import IUnitOfWork
 from creative.application.roles import AI_ROLES, ROLE_ANALYSIS, ROLE_ANGLES, ROLE_METADATA, ROLE_PLAN, ROLE_SCRIPT, ROLE_SELECTION, route_key
@@ -367,12 +368,9 @@ class CreativePipeline:
     @staticmethod
     def _model_json(result: Any) -> dict[str, Any]:
         try:
-            raw = json.loads(result.output.text)
-        except ValueError as error:
-            raise PipelineRejected(SCHEMA_VIOLATION, 'not_json', '$') from error
-        if not isinstance(raw, dict):
-            raise PipelineRejected(SCHEMA_VIOLATION, 'not_a_json_object', '$')
-        return raw
+            return parse_model_json_object(result.output.text)
+        except ModelJsonError as error:
+            raise PipelineRejected(SCHEMA_VIOLATION, error.reason, '$') from error
 
     @staticmethod
     def _resolver(workspace_id: str, snapshot: ProductionSnapshot, *extra: ResourceRef) -> RefResolver:

@@ -85,6 +85,10 @@ def fenced(body):
     return ('text', '```json' + chr(10) + json.dumps(body) + chr(10) + '```')
 
 
+def truncated(body):
+    return ('text', json.dumps(body)[:-1])
+
+
 class CurrentGrants:
     def is_grant_current(self, grant):
         return True
@@ -219,7 +223,7 @@ def make_rig(pw_database, monkeypatch):
 
 
 def test_story_angles_retry_after_fenced_json_records_both_attempts(make_rig):
-    rig = make_rig({'analysis': [ok(D14._analysis_json('v1'))], 'angle': [fenced(D14._angles_json('v1')), ok(D14._angles_json('v1'))]})
+    rig = make_rig({'analysis': [ok(D14._analysis_json('v1'))], 'angle': [truncated(D14._angles_json('v1')), ok(D14._angles_json('v1'))]})
     rig.ok('BuildProductionSnapshot', 'snapshot')
     rig.ok('AnalyzeContent', 'analyze')
     result = rig.run('GenerateStoryAngles', 'angles')
@@ -257,7 +261,7 @@ def test_generate_script_retries_a_missing_required_field(make_rig):
 
 
 def test_schema_violation_on_every_attempt_stops_at_max_attempts_with_a_structured_problem(make_rig):
-    bad = fenced(D14._analysis_json('v1'))
+    bad = truncated(D14._analysis_json('v1'))
     rig = make_rig({'analysis': [bad] * (PROFILE_ATTEMPTS + 2)})
     rig.ok('BuildProductionSnapshot', 'snapshot')
     result = rig.run('AnalyzeContent', 'analyze')
@@ -342,7 +346,7 @@ def test_waiting_provider_results_wait_and_auth_failure_fails(make_rig, kind, te
 
 @pytest.mark.parametrize('attempts', [2, 4])
 def test_composition_passes_max_attempts_from_the_profile(make_rig, attempts):
-    bad = fenced(D14._analysis_json('v1'))
+    bad = truncated(D14._analysis_json('v1'))
     rig = make_rig({'analysis': [bad] * (attempts + 2)}, attempts=attempts)
     rig.ok('BuildProductionSnapshot', 'snapshot')
     result = rig.run('AnalyzeContent', 'analyze')
@@ -360,3 +364,36 @@ def test_wiring_reads_max_attempts_only_from_the_profile():
 def test_pipeline_source_uses_the_failure_handler():
     text = (ROOT / 'src' / 'creative' / 'application' / 'pipeline.py').read_text(encoding='utf-8')
     assert 'ProviderFailureHandler' in text and 'self._ai.invoke' not in text and 'from src.' not in text
+
+
+def test_analyze_content_accepts_a_fenced_json_object_on_the_first_attempt(make_rig):
+    rig = make_rig({'analysis': [fenced(D14._analysis_json('v1'))]})
+    rig.ok('BuildProductionSnapshot', 'snapshot')
+    result = rig.run('AnalyzeContent', 'analyze')
+    assert result['disposition'] == 'succeeded', result
+    assert rig.ai.calls.count('analysis') == 1
+    assert rig.attempts('AnalyzeContent', 'analyze') == [(1, 1, 'passed')]
+    assert rig.count('analysis') == 1
+
+
+def test_story_angles_accepts_json_surrounded_by_sentences_on_the_first_attempt(make_rig):
+    chatter = ('text', 'Here are the angles:' + chr(10) + json.dumps(D14._angles_json('v1')) + chr(10) + 'Let me know if you need more.')
+    rig = make_rig({'analysis': [ok(D14._analysis_json('v1'))], 'angle': [chatter]})
+    rig.ok('BuildProductionSnapshot', 'snapshot')
+    rig.ok('AnalyzeContent', 'analyze')
+    result = rig.run('GenerateStoryAngles', 'angles')
+    assert result['disposition'] == 'succeeded', result
+    assert rig.ai.calls.count('angle') == 1
+    assert rig.attempts('GenerateStoryAngles', 'angles') == [(1, 1, 'passed')]
+    assert rig.count('angles') == 1
+
+
+def test_empty_model_output_on_every_attempt_fails_with_reason_empty_output(make_rig):
+    rig = make_rig({'analysis': [('text', '')] * (PROFILE_ATTEMPTS + 2)})
+    rig.ok('BuildProductionSnapshot', 'snapshot')
+    result = rig.run('AnalyzeContent', 'analyze')
+    assert result['disposition'] == 'failed'
+    assert result['problem']['code'] == 'ai_output_schema_violation'
+    assert result['problem']['field_errors'] == {'reason': 'empty_output', 'field': 'root', 'attempts': str(PROFILE_ATTEMPTS)}
+    assert rig.ai.calls.count('analysis') == PROFILE_ATTEMPTS
+    assert rig.count('analysis') == 0
