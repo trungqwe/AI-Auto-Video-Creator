@@ -13,6 +13,7 @@ Lệnh trên bắt buộc thực thi bằng Python interpreter đã khóa của 
 ### Điều kiện tiên quyết
 1. Docker Desktop đã được khởi động và đang chạy trên hệ thống máy trạm.
 2. Đã chuẩn bị sẵn tệp thông tin ủy quyền Google Cloud OAuth client loại Desktop (`oauth-client.json`) đặt ngoài cây Git theo hướng dẫn tại mục `oauth`.
+3. FFmpeg ghim tại `C:\ffmpeg\bin\ffmpeg.exe` (hoặc đường dẫn đặt qua biến môi trường `AIAVC_FFMPEG_PATH`), có sha256 khớp `tools/runtime/runtime.lock.json`; launcher dùng nó để sinh media seed ở lần start đầu tiên.
 
 ### Quy trình khởi động
 Người vận hành chạy lệnh:
@@ -25,9 +26,10 @@ Thứ tự thực thi tuần tự của launcher bao gồm:
 3. Chờ dịch vụ PostgreSQL và Temporal Server đạt trạng thái sẵn sàng (healthcheck và TCP socket mở).
 4. Khởi chạy `MigrationRunner` áp dụng các bản di chuyển lược đồ CSDL PostgreSQL.
 5. Khởi tạo workspace và actor mặc định cho người vận hành trong CSDL.
-6. Sinh chứng chỉ TLS tự ký (SAN gồm `127.0.0.1` và `localhost`) ngoài cây Git nếu chưa tồn tại.
-7. Xóa cờ dừng tiến trình (`stop.request`) và khởi chạy tiến trình con phục vụ ngầm (`_serve`).
-8. Tiến trình worker kết nối Temporal cluster, đồng thời cấp capability một lần có thời hạn 60 giây và tự động mở trình duyệt tại địa chỉ `/launch`.
+6. Mỗi lần start nạp lại, không nhân đôi, nguồn RSS, prompt, render config và bộ media seed theo `hooks.json` (ảnh nền bg-01..12, hook hình vh-01..05, hook âm thanh ah-01..05, tự tạo `SELF_GENERATED`). Lần đầu, hay khi thiếu hoặc lệch tệp so với `seed-manifest.json`, launcher sinh lại cả bộ 22 tệp vào `%LOCALAPPDATA%\AIAutoVideoCreator\seed` (hoặc `<AIAVC_DATA_DIR>\seed`) bằng FFmpeg ghim, cùng sha256, rồi nhập vào catalog và chép vào `staging\media`. Thiếu media seed thì `media_select` dừng `INPUT_NOT_READY`. Người vận hành không thao tác gì.
+7. Sinh chứng chỉ TLS tự ký (SAN gồm `127.0.0.1` và `localhost`) ngoài cây Git nếu chưa tồn tại.
+8. Xóa cờ dừng tiến trình (`stop.request`) và khởi chạy tiến trình con phục vụ ngầm (`_serve`).
+9. Tiến trình worker kết nối Temporal cluster, đồng thời cấp capability một lần có thời hạn 60 giây và tự động mở trình duyệt tại địa chỉ `/launch`.
 
 ### Cảnh báo chứng chỉ TLS trên trình duyệt (OI-ADAPT-07)
 Trong lần truy cập đầu tiên, trình duyệt web sẽ cảnh báo chứng chỉ tự ký chưa tin cậy:
@@ -119,6 +121,7 @@ Bảng hướng dẫn chẩn đoán và khắc phục các sự cố thường g
 | Chứng chỉ bị trình duyệt chặn | Trình duyệt cảnh báo chứng chỉ HTTPS tự ký chưa được tin cậy | Bấm "Nâng cao" chọn tiếp tục tới 127.0.0.1, hoặc nhập `tls/cert.pem` vào Trusted Root của Windows. |
 | Truy cập `/launch` trả về mã lỗi 403 Forbidden | Capability URL chỉ dùng một lần đã được kích hoạt hoặc đã quá hạn 60 giây | Chạy `python tools/launcher/launcher.py stop` rồi chạy lại `start` để nhận đường dẫn capability mới. |
 | Start báo `BLOCKED: thiếu cổng ProductionRuntime` | Thiếu adapter thật cho 6 cổng ProductionRuntime (gói J, G, I hoặc CP7) | Kiểm tra nhật ký `logs/serve.log`; đây là thiết kế fail-closed chuẩn khi chưa nối adapter sản xuất thực tế. |
+| Start báo `Nạp media seed thất bại` | FFmpeg ghim thiếu hay lệch sha256, hoặc không ghi được thư mục dữ liệu | Đặt đúng FFmpeg ghim, kiểm quyền ghi rồi chạy lại `start` (không nhân đôi dữ liệu). |
 | Di chuyển CSDL báo lệch checksum di chuyển | Tệp migration trong mã nguồn bị thay đổi trái phép sau khi áp dụng | Tuyệt đối không sửa tay CSDL; đối chiếu lịch sử git của `src/controlplane/infrastructure/db/migrations` và báo cáo điều phối. |
 | Worker không thoát sau 60 giây khi chạy `stop` | Tiến trình worker đang thực hiện render video nặng hoặc đồng bộ khối lượng lớn | Không ép tắt; chờ tác vụ hiện tại hoàn tất tiến trình con rồi chạy lại lệnh `stop`. |
 | Lệnh `oauth` báo lỗi thiếu tệp client | Chưa đặt tệp `oauth-client.json` tại `secrets/` hoặc biến `AIAVC_OAUTH_CLIENT_SECRETS` sai | Tải tệp cấu hình OAuth Desktop từ Google Cloud Console và đặt đúng vị trí ngoài cây Git. |

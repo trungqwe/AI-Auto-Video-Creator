@@ -173,6 +173,8 @@ class Deps:
     ensure_namespace: typing.Callable[[str, int], str] | None = None
     # (dsn, workspace_id, actor_id, recovery_epoch) nạp bảy nguồn và sáu prompt mặc định sau AppSession; None bỏ qua bước này.
     seed_defaults: typing.Callable[[str, str, str, str], None] | None = None
+    # (dsn, workspace_id, layout, environ) sinh nếu cần rồi nhập bộ media seed ngay sau seed_defaults; None bỏ qua bước này.
+    seed_media: typing.Callable[[str, str, Layout, typing.Mapping[str, str]], None] | None = None
 
 
 def resolve_layout(environ: typing.Mapping[str, str], root: Path = ROOT) -> Layout:
@@ -624,6 +626,55 @@ def seed_defaults(dsn: str, workspace_id: str, actor_id: str, recovery_epoch: st
         raise LauncherError(f'Nạp nguồn, prompt và render config mặc định thất bại ({type(exc).__name__}); kiểm tra DNS và cấu hình rồi chạy lại start.') from None
     finally:
         manager.close()
+
+
+def seed_media(dsn: str, workspace_id: str, layout: Layout, environ: typing.Mapping[str, str]) -> None:
+    ensure_src_on_path()
+    import importlib.util
+    seed_tools = ROOT / 'tools' / 'launcher' / 'prod' / 'seed'
+
+    def load_tool(name: str) -> typing.Any:
+        module_name = f'aiavc_seed_{name}'
+        spec = importlib.util.spec_from_file_location(module_name, seed_tools / f'{name}.py')
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        previous = sys.dont_write_bytecode
+        sys.dont_write_bytecode = True
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.dont_write_bytecode = previous
+        return module
+
+    manager = None
+    try:
+        make_seed = load_tool('make_seed_media')
+        import_tool = load_tool('import_seed')
+        from controlplane.infrastructure.db.uow import TransactionManager
+        seed_dir = make_seed.resolve_seed_dir(layout.data_dir)
+        hooks = json.loads(make_seed.HOOKS_JSON.read_text(encoding='utf-8'))
+        files = {item['id']: item['file_name'] for group in ('visual_hooks', 'audio_hooks', 'background_images') for item in hooks[group]}
+
+        def manifest_current() -> bool:
+            try:
+                manifest = json.loads((seed_dir / make_seed.MANIFEST_NAME).read_text(encoding='utf-8'))
+                if set(manifest) != set(files):
+                    return False
+                return all(make_seed.file_sha256(seed_dir / files[key]) == manifest[key]['sha256'] for key in files)
+            except (OSError, ValueError, KeyError, TypeError):
+                return False
+
+        if not manifest_current():
+            ffmpeg = Path(environ.get('AIAVC_FFMPEG_PATH', str(make_seed.DEFAULT_FFMPEG)))
+            make_seed.generate_seed_media(seed_dir, ffmpeg, emit=lambda line: None)
+        manager = TransactionManager(dsn, pool_max_size=2)
+        import_tool.import_seed_media(manager, workspace_id=workspace_id, staging_root=layout.staging_dir, seed_dir=seed_dir)
+    except Exception as exc:
+        detail = f': {exc}' if type(exc).__name__ == 'SeedError' else ''
+        raise LauncherError(f'Nạp media seed thất bại ({type(exc).__name__}{detail}); kiểm tra FFmpeg ghim (AIAVC_FFMPEG_PATH), quyền ghi thư mục dữ liệu và CSDL rồi chạy lại start.') from None
+    finally:
+        if manager is not None:
+            manager.close()
 
 
 def build_source_sets(manager: typing.Any, workspace_id: str) -> typing.Any:
@@ -1131,6 +1182,10 @@ def cmd_start(deps: Deps, args: argparse.Namespace) -> int:
         deps.seed_defaults(dsn, identity['workspace_id'], identity['actor_id'], epoch)
         deps.out('Đã nạp nguồn và prompt mặc định (idempotent).')
 
+    if deps.seed_media is not None:
+        deps.seed_media(dsn, identity['workspace_id'], layout, deps.environ)
+        deps.out('Đã nạp bộ media seed (idempotent).')
+
     if not layout.cert_file.exists() or not layout.key_file.exists():
         deps.make_cert(layout.cert_file, layout.key_file)
 
@@ -1493,8 +1548,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None, deps: Deps | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    # default_deps giữ seed_defaults=None để các test dựng từ default_deps (PW-G1) không chạm CSDL; CLI thật gắn bản thật.
-    actual_deps = deps or dataclasses.replace(default_deps(), seed_defaults=seed_defaults)
+    # default_deps giữ seed_defaults và seed_media là None để các test dựng từ default_deps (PW-G1) không chạm CSDL; CLI thật gắn bản thật.
+    actual_deps = deps or dataclasses.replace(default_deps(), seed_defaults=seed_defaults, seed_media=seed_media)
     handlers: dict[str, typing.Callable[[Deps, argparse.Namespace], int]] = {
         'start': cmd_start,
         'stop': cmd_stop,
