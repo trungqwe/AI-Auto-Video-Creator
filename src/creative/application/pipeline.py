@@ -13,7 +13,7 @@ import json
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Protocol
 
-from controlplane.application.ai_output.model_json import ModelJsonError, parse_model_json_object
+from controlplane.application.model_json import ModelJsonError, parse_model_json_object
 from controlplane.application.idempotency.canonicalization import request_hash
 from controlplane.domain.interfaces.uow import IUnitOfWork
 from creative.application.roles import AI_ROLES, ROLE_ANALYSIS, ROLE_ANGLES, ROLE_METADATA, ROLE_PLAN, ROLE_SCRIPT, ROLE_SELECTION, route_key

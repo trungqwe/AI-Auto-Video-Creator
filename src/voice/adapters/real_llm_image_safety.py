@@ -11,7 +11,7 @@ import time
 from collections.abc import Callable, Mapping
 from typing import Protocol
 
-from controlplane.application.ai_output.model_json import ModelJsonError, parse_model_json_object
+from controlplane.application.model_json import ModelJsonError, parse_model_json_object
 from voice.adapters.real_ffmpeg_media_tool import format_mask_ref
 from voice.domain.image_safety import DetectionStatus, ImageDetection
 from voice.domain.image_transform import TransformRegion

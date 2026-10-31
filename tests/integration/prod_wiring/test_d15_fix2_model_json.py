@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from controlplane.application.ai_output.model_json import ModelJsonError, parse_model_json_object
+from controlplane.application.model_json import ModelJsonError, parse_model_json_object
 
 OBJ = {'topic': 'port strike', 'items': [1, 2]}
 BODY = json.dumps(OBJ)
