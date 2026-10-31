@@ -6,6 +6,8 @@ services:
     image: postgres:18.6@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
     container_name: aiavc-postgres
     restart: unless-stopped
+    # Pool DB 36 cộng kết nối trực tiếp của launcher/worker và Temporal dùng chung máy chủ; mặc định 100 quá sát (ADAPT-PROD-FIX4). Áp khi launcher tạo lại container.
+    command: ["postgres", "-c", "max_connections=200"]
     environment:
       POSTGRES_USER: controlplane
       POSTGRES_DB: controlplane

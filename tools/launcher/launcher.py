@@ -922,6 +922,16 @@ def assemble_dfe_handlers(
         raise LauncherError(f'BLOCKED: không lắp được handler D, E, F: {type(exc).__name__}') from None
 
 
+def install_activity_executor(loop: typing.Any) -> typing.Any:
+    """Đặt executor mặc định của event loop worker đủ rộng cho 10 luồng video (ACTIVITY_THREADS) và trả executor để đóng khi loop dừng."""
+    from concurrent.futures import ThreadPoolExecutor
+    from controlplane.infrastructure.capacity import ACTIVITY_THREADS
+
+    executor = ThreadPoolExecutor(max_workers=ACTIVITY_THREADS, thread_name_prefix='aiavc-activity')
+    loop.set_default_executor(executor)
+    return executor
+
+
 def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
     ensure_src_on_path()
     import asyncio
@@ -995,6 +1005,7 @@ def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
     interval_minutes = int(profile.parameters['collection.collection_interval_minutes'])
 
     loop = asyncio.new_event_loop()
+    executor = install_activity_executor(loop)
     group_box: list[typing.Any] = []
     ready_evt = threading.Event()
     init_err: list[Exception] = []
@@ -1035,7 +1046,10 @@ def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
 
     def _thread_target() -> None:
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(_runner())
+        try:
+            loop.run_until_complete(_runner())
+        finally:
+            executor.shutdown(wait=False)
 
     t = threading.Thread(target=_thread_target, daemon=True)
     t.start()

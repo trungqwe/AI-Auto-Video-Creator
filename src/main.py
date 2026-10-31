@@ -8,7 +8,7 @@ import os
 
 from controlplane.api.main import create_app
 from controlplane.entrypoint import main as serve
-from controlplane.infrastructure.db.uow import TransactionManager
+from controlplane.infrastructure.db.uow import DB_POOL_MAX_SIZE, TransactionManager
 
 DEFAULT_PORT = 8443
 PROFILE_TEST = 'test'
@@ -60,7 +60,7 @@ def build_app(environ: Mapping[str, str] | None = None,
         return create_app(manager=manager, allowed_origins=config.allowed_origins)
     production = _production_module()
     wiring = production.load_wiring_config(env, runtime_factory=runtime_factory)
-    manager = TransactionManager(config.dsn)
+    manager = TransactionManager(config.dsn, pool_max_size=DB_POOL_MAX_SIZE)
     try:
         return production.build_production_app(manager=manager, config=wiring, port=config.port)
     except BaseException:

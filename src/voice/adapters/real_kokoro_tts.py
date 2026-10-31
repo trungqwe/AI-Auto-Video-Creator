@@ -13,6 +13,7 @@ import importlib.metadata
 import json
 import math
 import re
+import threading
 import time
 import wave
 from collections.abc import Callable, Mapping
@@ -169,6 +170,7 @@ class RealKokoroTts:
         self._known_secrets = (*known_secrets, str(config.weights_dir), str(config.staging_dir))
         self._model: object | None = None
         self._revision = ''
+        self._load_lock = threading.Lock()
 
     def _runtime_error(self, exc: Exception) -> TtsProviderError:
         return _fail(ERROR_RUNTIME, f'{type(exc).__name__}: {exc}', known_secrets=self._known_secrets)
@@ -192,15 +194,17 @@ class RealKokoroTts:
 
     def _load(self) -> object:
         if self._model is None:
-            pins = self._verify_weights()
-            directory = self._config.weights_dir
-            try:
-                model = self._factory(str(directory / MODEL_FILE), str(directory / VOICES_FILE))
-            except Exception as exc:
-                raise self._runtime_error(exc) from None
-            join_tag = ';sentence_joins=model-tail' if isinstance(model, SentencePauseKokoro) else ''
-            self._revision = f'kokoro-onnx=={_library_version()};model={pins[MODEL_FILE]};voices={pins[VOICES_FILE]};voice={self._config.voice}{join_tag}'
-            self._model = model
+            with self._load_lock:
+                if self._model is None:
+                    pins = self._verify_weights()
+                    directory = self._config.weights_dir
+                    try:
+                        model = self._factory(str(directory / MODEL_FILE), str(directory / VOICES_FILE))
+                    except Exception as exc:
+                        raise self._runtime_error(exc) from None
+                    join_tag = ';sentence_joins=model-tail' if isinstance(model, SentencePauseKokoro) else ''
+                    self._revision = f'kokoro-onnx=={_library_version()};model={pins[MODEL_FILE]};voices={pins[VOICES_FILE]};voice={self._config.voice}{join_tag}'
+                    self._model = model
         return self._model
 
     def _write_wav(self, pcm: bytes) -> bytes:

@@ -10,6 +10,7 @@ import importlib.metadata
 import json
 import math
 import re
+import threading
 import unicodedata
 import wave
 from collections.abc import Callable, Sequence
@@ -479,6 +480,7 @@ class RealWhisperAligner:
         self._known_secrets = (*known_secrets, str(config.model_dir))
         self._model: object | None = None
         self._model_hash = ''
+        self._load_lock = threading.Lock()
         self.last_report: AlignmentReport | None = None
 
     def _runtime_error(self, exc: Exception) -> AlignerError:
@@ -505,13 +507,15 @@ class RealWhisperAligner:
 
     def _load(self) -> object:
         if self._model is None:
-            model_hash = self._verify_model()
-            try:
-                model = self._factory(str(self._config.model_dir), self._config.device, self._config.compute_type)
-            except Exception as exc:
-                raise self._runtime_error(exc) from None
-            self._model_hash = model_hash
-            self._model = model
+            with self._load_lock:
+                if self._model is None:
+                    model_hash = self._verify_model()
+                    try:
+                        model = self._factory(str(self._config.model_dir), self._config.device, self._config.compute_type)
+                    except Exception as exc:
+                        raise self._runtime_error(exc) from None
+                    self._model_hash = model_hash
+                    self._model = model
         return self._model
 
     def _verify_voice(self, request: AlignmentRequest) -> Path:
