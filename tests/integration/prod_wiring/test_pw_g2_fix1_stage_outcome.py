@@ -11,6 +11,8 @@ import pytest
 from controlplane.application.orchestration.job_lifecycle import JobLifecycleListener
 from controlplane.application.orchestration.result_recorder import ResultRecordingDispatcher
 from controlplane.application.orchestration.workflows.activities import ActivityDispatcher, ActivityRejected
+from controlplane.domain.statemachine import StageRunState
+from controlplane.infrastructure.db.orchestration.stage_runs import PostgresStageRuns
 
 NOW = datetime(2026, 10, 26, 1, 2, 3, tzinfo=timezone.utc)
 SNAPSHOT, ANALYZE, ANGLES, SCRIPT, VOICE = 'BuildProductionSnapshot', 'AnalyzeContent', 'GenerateStoryAngles', 'GenerateScript', 'CreateVoiceTrack'
@@ -83,20 +85,56 @@ def test_single_activity_stage_keeps_the_old_behaviour(pw_database):
 
 
 LATER_RESULTS = [
-    ('failed', {'problem': {'code': 'X', 'retryable': True}}, 'FAILED_RETRYABLE', {'code': 'X', 'retryable': True, 'activity': ANALYZE}),
+    ('outcome_unknown', {'problem': {'code': 'X', 'retryable': True}}, 'OUTCOME_UNKNOWN', {'code': 'X', 'retryable': True, 'activity': ANALYZE}),
     ('failed', {}, 'FAILED_FINAL', {'activity': ANALYZE}),
     ('outcome_unknown', {}, 'OUTCOME_UNKNOWN', {'activity': ANALYZE}),
-    ('stale', {}, 'STALE', {'activity': ANALYZE}),
 ]
 
 
 @pytest.mark.parametrize('disposition, extra, status, expected_problem', LATER_RESULTS)
-def test_every_non_success_result_of_the_second_activity_is_recorded(pw_database, disposition, extra, status, expected_problem):
+def test_final_results_of_the_second_activity_are_recorded(pw_database, disposition, extra, status, expected_problem):
     seed_job(pw_database)
     dispatcher = build_dispatcher(pw_database, [('succeeded', {}), (disposition, extra)], (SNAPSHOT, ANALYZE))
     dispatcher.dispatch(request_for(SNAPSHOT, 'analyze'))
     dispatcher.dispatch(request_for(ANALYZE, 'analyze'))
     assert stage_row(pw_database, 'analyze') == (status, expected_problem, None, NOW)
+
+
+@pytest.mark.parametrize('disposition, extra', [('failed', {'problem': {'code': 'X', 'retryable': True}}), ('stale', {})])
+def test_a_result_the_flow_retries_in_place_keeps_the_row_running_until_the_retry_is_recorded(pw_database, disposition, extra):
+    seed_job(pw_database)
+    dispatcher = build_dispatcher(pw_database, [('succeeded', {}), (disposition, extra), ('succeeded', {})], (SNAPSHOT, ANALYZE))
+    dispatcher.dispatch(request_for(SNAPSHOT, 'analyze'))
+    dispatcher.dispatch(request_for(ANALYZE, 'analyze'))
+    assert stage_row(pw_database, 'analyze') == ('RUNNING', None, None, None)
+    assert job_status(pw_database) == 'ACTIVE'
+    dispatcher.dispatch(request_for(ANALYZE, 'analyze'))
+    assert stage_row(pw_database, 'analyze') == ('SUCCEEDED', None, None, NOW)
+
+
+def test_a_final_failure_after_a_retryable_failure_fails_the_row_and_the_job(pw_database):
+    seed_job(pw_database)
+    script = [('succeeded', {}), ('failed', {'problem': {'code': 'ACTIVITY_ABORTED', 'retryable': True}}), ('failed', {'problem': {'code': 'ai_output_schema_violation', 'retryable': False}})]
+    dispatcher = build_dispatcher(pw_database, script, (SNAPSHOT, ANALYZE))
+    dispatcher.dispatch(request_for(SNAPSHOT, 'analyze'))
+    dispatcher.dispatch(request_for(ANALYZE, 'analyze'))
+    dispatcher.dispatch(request_for(ANALYZE, 'analyze'))
+    assert stage_row(pw_database, 'analyze') == ('FAILED_FINAL', {'code': 'ai_output_schema_violation', 'retryable': False, 'activity': ANALYZE}, None, NOW)
+    assert job_status(pw_database) == 'FAILED_FINAL'
+
+
+@pytest.mark.parametrize('state', ['FAILED_RETRYABLE', 'STALE'])
+def test_a_row_that_left_running_as_failed_retryable_or_stale_is_not_rewritten(pw_database, state):
+    seed_job(pw_database)
+    with pw_database.connect() as conn:
+        store = PostgresStageRuns(conn, pw_database.workspace_id)
+        store.ensure('job-1:analyze:r1', '5')
+        store.transition('job-1:analyze:r1', StageRunState.RUNNING, NOW, execution_generation=1)
+        store.transition('job-1:analyze:r1', StageRunState(state), NOW, execution_generation=1, problem={'code': 'OLD'})
+    dispatcher = build_dispatcher(pw_database, [('succeeded', {})], (ANALYZE,))
+    assert dispatcher.dispatch(request_for(ANALYZE, 'analyze'))['disposition'] == 'succeeded'
+    assert stage_row(pw_database, 'analyze') == (state, {'code': 'OLD'}, None, NOW)
+    assert job_status(pw_database) == 'ACTIVE'
 
 
 def test_failure_of_the_first_activity_fails_the_row_with_its_name(pw_database):

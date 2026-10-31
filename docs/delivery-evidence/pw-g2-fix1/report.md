@@ -4,112 +4,80 @@ Task: PW-G2-FIX1
 Nhóm lỗi: R24 (kết quả activity thứ hai trở đi của stage nhiều activity bị bộ ghi bỏ)
 Nguồn lỗi: CP7-10 lượt 3 và 4 (30/10/2026): job FAILED_FINAL mà không dòng cp_stage_runs nào hỏng
 
-Trạng thái: ỨNG VIÊN SẴN SÀNG ĐỂ KIỂM, còn đúng một lệnh kiểm bắt buộc đỏ do xung đột hành vi. Mã recorder, test mới và test PW-G2 đã xong. Test test_pw_g4_job_states.py::test_job_chain_through_the_result_recording_dispatcher (dòng 335, chủ PW-G4, ngoài owned paths) hỏng vì khẳng định hành vi cũ mà yêu cầu nghiệm thu đòi đổi; chi tiết, cách tái hiện trên candidate và đề xuất ở mục 6d. Gói không sửa tệp ngoài owned paths và không làm yếu recorder.
+## 1. Trạng thái
 
-## 1. Tóm tắt lỗi và cách sửa
+ỨNG VIÊN SẴN SÀNG ĐỂ KIỂM: mọi lệnh kiểm bắt buộc xanh trên mã đã rebase lên 1197b045edef2a3f479c80e8e01b08cfd4db0089 (kết quả thật ở mục 5).
 
-Lỗi: `ResultRecordingDispatcher` chỉ chuyển PENDING sang RUNNING và chỉ ghi khi dòng còn RUNNING. Mọi activity của một stage dùng chung `stage_run_id`, nên activity succeeded đầu tiên đã đóng dòng thành SUCCEEDED và kết quả của activity sau bị bỏ. Stage analyze (BuildProductionSnapshot rồi AnalyzeContent) và script (GenerateStoryAngles rồi GenerateScript) vì vậy báo SUCCEEDED dù activity sau hỏng, còn job vẫn FAILED_FINAL.
+## 2. Ngữ nghĩa mới
 
-Cách sửa trong `result_recorder.py`:
+Vị trí activity lấy theo `STAGE_ACTIVITIES_BY_WORKFLOW`, stage lấy từ `stage_run_id`.
 
-- Dòng chỉ thành SUCCEEDED ở activity cuối của stage theo `STAGE_ACTIVITIES_BY_WORKFLOW` (hàm `_closes_stage`). Activity succeeded chưa phải cuối thì giữ RUNNING.
-- Kết quả failed, outcome_unknown, stale và `ActivityRejected` của activity bất kỳ ghi trạng thái tương ứng kèm problem có thêm khoá `activity` (hàm `_with_activity`).
-- `waiting` giữ như cũ (dòng RUNNING và ghi wait_reason); listener vẫn được gọi sau khi ghi.
-- Không đổi state machine, `stage_runs.py`, flow hay `activities.py`.
+- Dòng chỉ thành SUCCEEDED ở activity cuối của stage (`_closes_stage`). `succeeded` của activity chưa cuối: không ghi, dòng giữ RUNNING.
+- `failed` có `problem.retryable` là True và `stale`: không ghi, dòng giữ RUNNING (`_retried_in_place`). Lý do: CT-STATE-008 không có cạnh ra khỏi FAILED_RETRYABLE hay STALE, còn flow thử lại tại chỗ trên cùng `stage_run_id`.
+- `failed` còn lại (không retryable, thiếu khoá hoặc không có problem): RUNNING sang FAILED_FINAL; problem cộng khoá `activity`.
+- `outcome_unknown` (kể cả retryable True): RUNNING sang OUTCOME_UNKNOWN; problem cộng khoá `activity`.
+- `ActivityRejected`: RUNNING sang FAILED_FINAL với `{code, retryable: False, activity}`, rồi ném lại; listener không chạy.
+- `waiting`: giữ như cũ (dòng RUNNING, ghi wait_reason).
+- Dòng không còn ở RUNNING lúc ghi: không ghi gì. Listener vẫn được gọi sau bước ghi hoặc bỏ ghi.
+- Không đổi state machine, `stage_runs.py`, flow, `activities.py`, `job_lifecycle.py`.
 
-## 2. Tệp đã sửa
+## 3. Tệp đã sửa
 
-- `src/controlplane/application/orchestration/result_recorder.py`
-- `tests/integration/prod_wiring/test_pw_g2_fix1_stage_outcome.py` (mới, 10 test: 3 test đơn, 4 ca tham số, lỗi activity đầu, ActivityRejected ở activity sau, waiting ở activity sau; work-order ghi 9 vì đếm ca tham số là một)
+- `src/controlplane/application/orchestration/result_recorder.py` (thêm `_retried_in_place` và đúng một lệnh gọi trong `_record`)
+- `tests/integration/prod_wiring/test_pw_g2_fix1_stage_outcome.py` (14 test)
 - `tests/integration/prod_wiring/test_pw_g2_stage_runs.py`
+- `tests/integration/prod_wiring/test_pw_g4_job_states.py` (đúng dòng 335)
 - `docs/delivery-evidence/pw-g2-fix1/report.md` (báo cáo này)
 
-## 3. Từng dòng test PW-G2 đã đổi kèm lý do
+## 4. Từng dòng test đã đổi kèm lý do
 
-Các ca dùng stage process và activity ProbeMedia, không phải activity cuối (PrepareAudioBed), nên succeeded giữ RUNNING và problem có thêm khoá `activity`.
+`test_pw_g4_job_states.py`, dòng 335 (`test_job_chain_through_the_result_recording_dispatcher`): `runs` thành `[('job-1:analyze:r1', 'RUNNING'), ('job-1:process:r1', 'RUNNING'), ('job-1:process:r2', 'RUNNING'), ('job-1:process:r3', 'RUNNING'), ('job-1:sync:r1', 'SUCCEEDED')]`. Lý do: BuildProductionSnapshot và ProbeMedia không phải activity cuối của stage analyze và process nên dòng giữ RUNNING; sync chỉ có PersistVideoOutput nên SUCCEEDED.
 
-`CASES` (8 dòng, dạng disposition, extra, status, wait_reason, problem):
+`test_pw_g2_stage_runs.py` so với bản nghiệm thu b510f96:
 
-1. `('succeeded', {}, 'SUCCEEDED', None, None)` -> `('succeeded', {}, 'RUNNING', None, None)`: ProbeMedia chưa phải activity cuối.
-2. `('outcome_unknown', {}, 'OUTCOME_UNKNOWN', None, None)` -> problem `{'activity': 'ProbeMedia'}`.
-3. `('stale', {}, 'STALE', None, None)` -> problem `{'activity': 'ProbeMedia'}`.
-4. `failed` retryable: problem `{'code': 'X', 'retryable': True}` -> thêm `'activity': 'ProbeMedia'`.
-5. `failed` không retryable: problem `{'code': 'X', 'retryable': False}` -> thêm `'activity': 'ProbeMedia'`.
-6. `('failed', {}, 'FAILED_FINAL', None, None)` -> problem `{'activity': 'ProbeMedia'}`.
-7. `waiting` có `quota_wait`: không đổi.
-8. `waiting` không problem (`provider_unavailable`): không đổi.
+- CASES `('succeeded', {}, 'SUCCEEDED', None, None)` thành `'RUNNING'`: ProbeMedia chưa phải activity cuối (PrepareAudioBed).
+- CASES `outcome_unknown`: problem mong đợi `{'activity': 'ProbeMedia'}`.
+- CASES `stale` thành `('stale', {}, 'RUNNING', None, None)`: flow thử lại tại chỗ, CT-STATE-008 không có cạnh ra khỏi STALE.
+- CASES `failed` retryable thành `('failed', {'problem': {'code': 'X', 'retryable': True}}, 'RUNNING', None, None)`: cùng lý do với stale.
+- CASES `failed` không retryable: FAILED_FINAL, problem có thêm `'activity': 'ProbeMedia'`; `failed {}`: FAILED_FINAL, problem `{'activity': 'ProbeMedia'}`.
+- Khẳng định `finished_at`: `(row[11] is not None) == (status != 'RUNNING')`, vì dòng RUNNING chưa có finished_at.
+- Problem của `ActivityRejected` thêm `'activity': 'ProbeMedia'`; ca listener dùng `failed` không retryable và kỳ vọng `FAILED_FINAL`.
+- `test_second_dispatch_of_a_finished_stage_run_keeps_the_row`: tham số thành `[('succeeded', 'SUCCEEDED'), ('failed', 'FAILED_FINAL')]` và `extra` dùng `retryable: False`, để có dòng đã kết thúc thật; hai lần dispatch dùng activity cuối `PrepareAudioBed`.
+- Các ca `waiting`: không đổi.
 
-Test đích danh khác:
+`test_pw_g2_fix1_stage_outcome.py`:
 
-- `test_second_dispatch_of_a_finished_stage_run_keeps_the_row`: dùng activity cuối PrepareAudioBed (dựng `ResultRecordingDispatcher` với `ActivityDispatcher({last: handler})`), vì activity không cuối giữ RUNNING nên không tạo dòng đã kết thúc để kiểm "dispatch lần hai không đổi dòng".
+- `LATER_RESULTS`: dòng đầu thành `outcome_unknown` retryable kỳ vọng `OUTCOME_UNKNOWN` kèm `{'code': 'X', 'retryable': True, 'activity': ANALYZE}`; bỏ bộ `stale` (nay giữ RUNNING, đã có test riêng).
+- Đổi tên test thành `test_final_results_of_the_second_activity_are_recorded`.
+- Thêm (1) `test_a_result_the_flow_retries_in_place_keeps_the_row_running_until_the_retry_is_recorded` (failed retryable và stale giữ RUNNING, job ACTIVE, lần sau SUCCEEDED).
+- Thêm (2) `test_a_final_failure_after_a_retryable_failure_fails_the_row_and_the_job` (failed retryable rồi failed không retryable: FAILED_FINAL kèm `activity`, job FAILED_FINAL).
+- Thêm (3) `test_a_row_that_left_running_as_failed_retryable_or_stale_is_not_rewritten` (dòng đã rời RUNNING không bị ghi lại).
 
-Thay đổi ngoài danh sách đích danh (hệ quả bắt buộc của hành vi mới):
+## 5. Bằng chứng (chạy bằng interpreter khoá, PYTEST_DEBUG_TEMPROOT riêng của lượt)
 
-- `test_each_disposition_is_committed_in_its_own_transaction`: `(row[11] is not None) == (disposition != 'waiting')` -> `(row[11] is not None) == (status != 'RUNNING')`. Lý do: dòng RUNNING (waiting hoặc succeeded chưa cuối) chưa có finished_at; mọi dòng đã rời RUNNING phải có.
-- `test_activity_rejected_passes_through_and_fails_the_stage_run`: problem mong đợi thêm `'activity': 'ProbeMedia'`. Lý do: yêu cầu nghiệm thu đòi problem của ActivityRejected có tên activity.
-- `test_listeners_run_after_the_write_with_request_and_result`: kết quả đổi từ succeeded sang `failed` không retryable và `status_at_call == 'FAILED_FINAL'`. Lý do: ProbeMedia succeeded giờ giữ RUNNING; dùng failed để vẫn chứng minh listener thấy trạng thái đã ghi (khác RUNNING).
+- Bước 1, rebase: `git rebase 1197b045edef2a3f479c80e8e01b08cfd4db0089` xong, không xung đột; ba commit của lane nằm trên 1197b04.
 
-## 4. Bằng chứng RED (mã production cũ)
-
-Lệnh: `python -m pytest tests/integration/prod_wiring/test_pw_g2_fix1_stage_outcome.py -q -p no:cacheprovider` (interpreter khoá, PYTEST_DEBUG_TEMPROOT của lượt).
-
-- Mã thoát: 1.
-- Dòng tổng kết nguyên văn: `9 failed, 1 passed in 4.70s`
-- Test hỏng bằng AssertionError ở khẳng định trạng thái dòng stage (ví dụ `At index 0 diff: 'SUCCEEDED' != 'RUNNING'`): test_analyze_failure_after_the_snapshot_fails_the_stage_row_and_the_job, test_script_stage_row_stays_running_until_the_last_activity_succeeds, 4 ca test_every_non_success_result_of_the_second_activity_is_recorded, test_failure_of_the_first_activity_fails_the_row_with_its_name, test_activity_rejected_on_the_second_activity_fails_the_row, test_waiting_on_the_second_activity_keeps_the_row_running_with_the_wait_reason.
-- Chỉ test_single_activity_stage_keeps_the_old_behaviour đạt.
-
-## 5. Lệnh đã chạy
-
-| Bước | Lệnh | Mã thoát | Dòng tổng kết nguyên văn |
+| Lượt | Lệnh | Mã thoát | Dòng tổng kết |
 | --- | --- | --- | --- |
-| 7 | `pytest tests/integration/prod_wiring/test_pw_g2_fix1_stage_outcome.py -q -p no:cacheprovider` | 0 | `10 passed in 4.49s` |
-| 13 | `pytest tests/integration/prod_wiring/test_pw_g2_stage_runs.py -q -p no:cacheprovider` | 0 | `33 passed in 11.97s` |
-| 14 | lệnh pytest bắt buộc (G2-FIX1, G2, G4, CAT2, CP5 completion UoW, PERSIST-G) | 1 | `1 failed, 233 passed in 56.44s` (hỏng duy nhất: test_pw_g4_job_states.py::test_job_chain_through_the_result_recording_dispatcher, dòng 335) |
-| 15 | probe PW-G2 (không `from src.`, fake, mock trong stage_runs.py và result_recorder.py) | 0 | không có AssertionError |
-| 19 | `git diff --check` | 0 | không có cảnh báo |
+| RED (recorder chưa sửa) | `python -m pytest tests/integration/prod_wiring/test_pw_g2_fix1_stage_outcome.py -q -p no:cacheprovider` | 1 | `3 failed, 11 passed in 6.83s` |
+| GREEN | cùng lệnh | 0 | `14 passed in 6.49s` |
+| Lệnh kiểm 1 (6 tệp: fix1, PW-G2, PW-G4, PW-CAT2, CP5 UoW, PERSIST-G) | `python -m pytest ... -q -p no:cacheprovider` | 0 | `238 passed in 57.17s` |
+| Lệnh kiểm 2 (PW-VERT, PW-G3) | `python -m pytest tests/integration/prod_wiring/test_pw_vert_video_flow.py tests/integration/prod_wiring/test_pw_g3_grants.py -q -p no:cacheprovider` | 0 | `49 passed in 42.28s` |
+| Lệnh kiểm 3 (PW-E2E) | `python -m pytest tests/integration/prod_wiring/test_pw_e2e_batch_video.py -q -p no:cacheprovider` | 0 | `10 passed, 1 warning in 118.92s (0:01:58)` |
+| Probe PW-G2 | `python -c "..."` (không `from src.`, `fake`, `mock`) | 0 | không có AssertionError |
+| Probe report CP7-10 | `python -c "..."` | 0 | không có AssertionError |
+| Probe report PW-G2-FIX1, R24 | `python -c "..."` | 0 | không có AssertionError |
+| `git diff --check` | `git diff --check` | 0 | không có cảnh báo |
 
-### Lượt chạy lại sau lệnh làm việc lập lại (trên cùng candidate)
-
-| Bước | Lệnh | Mã thoát | Dòng tổng kết nguyên văn |
-| --- | --- | --- | --- |
-| 1 | `python -m pytest tests/integration/prod_wiring/test_pw_g4_job_states.py -q -p no:cacheprovider` | 1 | `1 failed, 97 passed in 30.25s` (hỏng duy nhất: test_job_chain_through_the_result_recording_dispatcher; `At index 0 diff: ('job-1:analyze:r1', 'RUNNING') != ('job-1:analyze:r1', 'SUCCEEDED')`, test_pw_g4_job_states.py:335) |
-| 2 | lệnh pytest bắt buộc đủ 6 tệp (G2-FIX1, G2, G4, CAT2, CP5 completion UoW, PERSIST-G) | 1 | `1 failed, 233 passed in 55.41s` (hỏng duy nhất: test_pw_g4_job_states.py::test_job_chain_through_the_result_recording_dispatcher) |
-| 3 | `git diff --check` | 0 | không có cảnh báo |
-| 4 | probe PW-G2 | 0 | không có AssertionError |
-| 5 | probe report có CP7-10 | 0 | không có AssertionError |
-| 6 | probe report có PW-G2-FIX1 và R24 | 0 | không có AssertionError |
-
-### Lượt chạy lần ba (lệnh làm việc lập lại lần hai, trên candidate 2139bbf)
-
-| Bước | Lệnh | Mã thoát | Dòng tổng kết nguyên văn |
-| --- | --- | --- | --- |
-| 1 | `python -m pytest tests/integration/prod_wiring/test_pw_g4_job_states.py -q -p no:cacheprovider` | 1 | `1 failed, 97 passed in 30.54s` (hỏng duy nhất: test_job_chain_through_the_result_recording_dispatcher; `At index 0 diff: ('job-1:analyze:r1', 'RUNNING') != ('job-1:analyze:r1', 'SUCCEEDED')`) |
-| 2 | probe tĩnh dòng 335 của test PW-G4 chứa `job-1:analyze:r1` và `SUCCEEDED` | 0 | không có AssertionError |
-| 3 | lệnh pytest bắt buộc đủ 6 tệp | 1 | `1 failed, 233 passed in 56.18s` (hỏng duy nhất: test_pw_g4_job_states.py::test_job_chain_through_the_result_recording_dispatcher; cùng dòng `At index 0 diff` như bước 1) |
-| 4 | probe PW-G2 | 0 | không có AssertionError |
-
-### Lượt chạy lần bốn (lệnh làm việc lập lại lần ba, trên candidate 205f646)
-
-| Bước | Lệnh | Mã thoát | Dòng tổng kết nguyên văn |
-| --- | --- | --- | --- |
-| 1 | `python -m pytest tests/integration/prod_wiring/test_pw_g4_job_states.py -q -p no:cacheprovider` | 1 | `1 failed, 97 passed in 29.82s` (hỏng duy nhất: test_job_chain_through_the_result_recording_dispatcher; `At index 0 diff: ('job-1:analyze:r1', 'RUNNING') != ('job-1:analyze:r1', 'SUCCEEDED')`) |
-| 2 | probe tĩnh chỉ đọc: activities.py có analyze gồm BuildProductionSnapshot rồi AnalyzeContent, dòng 323 gửi SNAPSHOT analyze succeeded, dòng 335 chứa `job-1:analyze:r1` và `SUCCEEDED` | 0 | không có AssertionError |
-| 3 | lệnh pytest bắt buộc đủ 6 tệp | 1 | `1 failed, 233 passed in 55.58s` (hỏng duy nhất: test_pw_g4_job_states.py::test_job_chain_through_the_result_recording_dispatcher; cùng dòng `At index 0 diff` như bước 1) |
-| 4 | probe PW-G2 | 0 | không có AssertionError |
-
-Probe tĩnh ở bước 2 cho Control kiểm lại mâu thuẫn mà không cần chạy pytest: request (analyze, BuildProductionSnapshot, succeeded) không thể vừa RUNNING theo acceptance vừa SUCCEEDED theo dòng 335 của test PW-G4.
+Ba test hỏng ở lượt RED: hai ca của test (1) (`failed-extra0`, `stale-extra1`) và test (2), đều AssertionError ở trạng thái dòng cp_stage_runs (FAILED_RETRYABLE/STALE thay vì RUNNING hoặc FAILED_FINAL).
 
 ## 6. Mục mở
 
-- (a) Stage collect: activity duy nhất CollectSource chạy fan-out với cùng `stage_run_id`, nên dòng thành SUCCEEDED sau lần đầu và kết quả hỏng của các lần fan-out sau vẫn bị bỏ. Chưa xử lý trong gói này.
-- (b) Dòng FAILED_RETRYABLE không mở lại khi activity retry thành công (hành vi PW-G2 giữ nguyên).
-- (c) Nơi đọc `cp_stage_runs` (UI, projection) sẽ thấy RUNNING tới activity cuối của stage.
-- (d) XUNG ĐỘT HÀNH VI với test PW-G4 (cần quyết định của Control)
-  - (i) Tệp `tests/integration/prod_wiring/test_pw_g4_job_states.py:335` trong test_job_chain_through_the_result_recording_dispatcher mong `('job-1:analyze:r1', 'SUCCEEDED')`, `('job-1:process:r1', 'SUCCEEDED')`, `('job-1:process:r3', 'SUCCEEDED')` sau khi chỉ chạy BuildProductionSnapshot và ProbeMedia. Theo `STAGE_ACTIVITIES_BY_WORKFLOW` (activities.py dòng 91 và 97), analyze còn AnalyzeContent và process còn bốn activity sau ProbeMedia, nên acceptance đòi các dòng này giữ RUNNING. Cùng một request (stage analyze, BuildProductionSnapshot, succeeded) không thể vừa RUNNING theo acceptance vừa SUCCEEDED theo dòng 335, nên recorder không thể thoả cả hai.
-  - (ii) Vì sao Control không tái hiện: chạy trên HEAD tích hợp dùng recorder cũ (đóng dòng ở activity succeeded đầu tiên) nên test đạt; lỗi chỉ xuất hiện khi chạy trên candidate có bản sửa. Cách tái hiện: checkout candidate rồi chạy `python -m pytest tests/integration/prod_wiring/test_pw_g4_job_states.py -q -p no:cacheprovider`; kết quả thật: mã thoát 1, `1 failed, 97 passed in 30.25s`, đúng một test hỏng, với dòng `At index 0 diff: ('job-1:analyze:r1', 'RUNNING') != ('job-1:analyze:r1', 'SUCCEEDED')`. Kết quả "test đạt trên HEAD tích hợp" của Control không mâu thuẫn với kết quả này: HEAD tích hợp (b510f96) chưa chứa commit sửa recorder (2139bbf) nên recorder cũ vẫn đóng dòng ở activity succeeded đầu tiên. Mâu thuẫn còn là tất định, nhìn thấy không cần chạy: dòng 323 của test PW-G4 gửi (BuildProductionSnapshot, stage analyze, succeeded), activities.py dòng 91 cho stage analyze còn AnalyzeContent sau đó, acceptance đòi dòng RUNNING cho đúng request này, còn dòng 335 mong SUCCEEDED; không có recorder nào thoả cả hai. Probe chỉ đọc kiểm dòng 335 của tệp PW-G4 vẫn chứa literal analyze:r1 với SUCCEEDED đã chạy ở bảng lượt chạy lần ba. Trong owned paths của gói không có thay đổi nào làm lệnh pytest bắt buộc xanh mà không làm yếu acceptance, nên gói giữ recorder đúng và chờ quyết định hướng A hoặc B ở (iv).
-  - (iii) Giá trị đúng mới của dòng 335: `[('job-1:analyze:r1', 'RUNNING'), ('job-1:process:r1', 'RUNNING'), ('job-1:process:r2', 'RUNNING'), ('job-1:process:r3', 'RUNNING'), ('job-1:sync:r1', 'SUCCEEDED')]`, với sync đúng vì PersistVideoOutput là activity duy nhất của stage sync. Các test PW-G4 khác (ADVANCE_CASES, listener) đạt vì chỉ đi qua JobLifecycleListener.
-  - (iv) Hai hướng cho Control: A) mở ownership PW-G4 chỉ cho literal ở dòng 335 rồi giao sửa một dòng; B) ghi nhận ngoại lệ có chủ đích của lệnh kiểm bắt buộc cho test này.
+- Đây là ngữ nghĩa tạm vì flow chưa nối D8-G-01. Khi hết lượt thử lại (`failed` retryable hoặc `stale` ở lần thứ `maximum_attempts`), dòng giữ RUNNING không có problem, job giữ ACTIVE và workflow con kết thúc FAILED. Terminal rule CT-CMN-010 (`docs/09-contracts/00-common-contract.md:197`) và D8-G-01 thuộc gói sửa riêng, không làm trong gói này.
+- Nơi đọc cp_stage_runs (UI, projection) sẽ thấy RUNNING tới activity cuối.
+- Stage `debug_observe` của DebugStageWorkflow có bảng rỗng nên activity đầu đóng dòng; stage `collect` còn đóng dòng sớm (activity cuối chạy fan-out cùng `stage_run_id`).
+- Control đã chọn hướng A trong đính chính ngày 31/10/2026; dòng 335 của PW-G4 đổi theo.
 
 ## 7. Xác nhận UTF-8
 
-Tệp được ghi bằng công cụ ghi tệp của agent (UTF-8, không qua PowerShell) và đã đọc lại: chữ tiếng Việt có dấu còn nguyên.
+Tệp ghi bằng công cụ ghi tệp (UTF-8 không BOM); chữ tiếng Việt có dấu còn nguyên sau khi đọc lại.

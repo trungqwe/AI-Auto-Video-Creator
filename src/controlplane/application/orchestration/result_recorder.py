@@ -78,6 +78,11 @@ def _with_activity(problem: Mapping[str, Any] | None, activity_name: Any) -> dic
     return {**(problem or {}), 'activity': activity_name}
 
 
+def _retried_in_place(disposition: str, problem: Mapping[str, Any] | None) -> bool:
+    """True for a result the flow runs again in place on the same stage_run_id: 'stale', or 'failed' whose problem has retryable True."""
+    return disposition == 'stale' or (disposition == 'failed' and problem is not None and problem.get('retryable') is True)
+
+
 class ResultRecordingDispatcher:
     def __init__(self, inner: Any, connection_factory: Callable[[], Any], clock: Callable[[], datetime.datetime], listeners: Sequence[ResultListener] = (), *, workspace_id: str) -> None:
         self._inner = inner
@@ -116,6 +121,8 @@ class ResultRecordingDispatcher:
         disposition, problem = result['disposition'], _problem(result)
         if disposition == 'succeeded' and not _closes_stage(stage_run_id, activity_name):
             return  # later activities of the stage are still to run: the row stays RUNNING
+        if _retried_in_place(disposition, problem):
+            return  # CT-STATE-008 has no edge out of FAILED_RETRYABLE or STALE: the row stays RUNNING for the retry
         state = _state_for(disposition, problem)
         recorded = problem if state in (None, StageRunState.SUCCEEDED) else _with_activity(problem, activity_name)
         self._finish(stage_run_id, state, recorded, result.get('execution_generation'), _wait_reason(problem))

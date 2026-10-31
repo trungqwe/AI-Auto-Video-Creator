@@ -209,8 +209,8 @@ def test_transition_of_unknown_stage_run_is_rejected(pw_database):
 CASES = [
     ('succeeded', {}, 'RUNNING', None, None),
     ('outcome_unknown', {}, 'OUTCOME_UNKNOWN', None, {'activity': 'ProbeMedia'}),
-    ('stale', {}, 'STALE', None, {'activity': 'ProbeMedia'}),
-    ('failed', {'problem': {'code': 'X', 'retryable': True}}, 'FAILED_RETRYABLE', None, {'code': 'X', 'retryable': True, 'activity': 'ProbeMedia'}),
+    ('stale', {}, 'RUNNING', None, None),
+    ('failed', {'problem': {'code': 'X', 'retryable': True}}, 'RUNNING', None, None),
     ('failed', {'problem': {'code': 'X', 'retryable': False}}, 'FAILED_FINAL', None, {'code': 'X', 'retryable': False, 'activity': 'ProbeMedia'}),
     ('failed', {}, 'FAILED_FINAL', None, {'activity': 'ProbeMedia'}),
     ('waiting', {'problem': {'code': 'quota_wait'}}, 'RUNNING', 'quota_wait', None),
@@ -302,12 +302,12 @@ def test_handler_error_propagates_and_leaves_the_row_running(pw_database):
     assert (row[1], row[11]) == ('RUNNING', None)
 
 
-@pytest.mark.parametrize('first, status', [('succeeded', 'SUCCEEDED'), ('failed', 'FAILED_RETRYABLE')])
+@pytest.mark.parametrize('first, status', [('succeeded', 'SUCCEEDED'), ('failed', 'FAILED_FINAL')])
 def test_second_dispatch_of_a_finished_stage_run_keeps_the_row(pw_database, first, status):
     sid = 'job-1:process:r1'
     last = 'PrepareAudioBed'  # activity cuối của stage process; activity không cuối giữ dòng RUNNING nên không tạo dòng đã kết thúc
     seed(pw_database)
-    extra = {'problem': {'code': 'X', 'retryable': True}} if first == 'failed' else {}
+    extra = {'problem': {'code': 'X', 'retryable': False}} if first == 'failed' else {}
     queue = [(first, extra), ('succeeded', {})]
 
     def handler(request, claims):
