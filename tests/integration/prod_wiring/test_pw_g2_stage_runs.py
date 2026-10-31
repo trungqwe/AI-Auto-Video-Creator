@@ -207,12 +207,12 @@ def test_transition_of_unknown_stage_run_is_rejected(pw_database):
 
 
 CASES = [
-    ('succeeded', {}, 'SUCCEEDED', None, None),
-    ('outcome_unknown', {}, 'OUTCOME_UNKNOWN', None, None),
-    ('stale', {}, 'STALE', None, None),
-    ('failed', {'problem': {'code': 'X', 'retryable': True}}, 'FAILED_RETRYABLE', None, {'code': 'X', 'retryable': True}),
-    ('failed', {'problem': {'code': 'X', 'retryable': False}}, 'FAILED_FINAL', None, {'code': 'X', 'retryable': False}),
-    ('failed', {}, 'FAILED_FINAL', None, None),
+    ('succeeded', {}, 'RUNNING', None, None),
+    ('outcome_unknown', {}, 'OUTCOME_UNKNOWN', None, {'activity': 'ProbeMedia'}),
+    ('stale', {}, 'RUNNING', None, None),
+    ('failed', {'problem': {'code': 'X', 'retryable': True}}, 'RUNNING', None, None),
+    ('failed', {'problem': {'code': 'X', 'retryable': False}}, 'FAILED_FINAL', None, {'code': 'X', 'retryable': False, 'activity': 'ProbeMedia'}),
+    ('failed', {}, 'FAILED_FINAL', None, {'activity': 'ProbeMedia'}),
     ('waiting', {'problem': {'code': 'quota_wait'}}, 'RUNNING', 'quota_wait', None),
     ('waiting', {}, 'RUNNING', 'provider_unavailable', None),
 ]
@@ -234,7 +234,7 @@ def test_each_disposition_is_committed_in_its_own_transaction(pw_database, dispo
     assert (before[1], before[6], before[7], before[10], before[11]) == ('RUNNING', '5', 3, NOW, None)
     row = current(pw_database, sid)
     assert (row[1], row[7], row[8], row[9]) == (status, 3, wait_reason, problem)
-    assert (row[11] is not None) == (disposition != 'waiting')
+    assert (row[11] is not None) == (status != 'RUNNING')
 
 
 def test_activity_rejected_passes_through_and_fails_the_stage_run(pw_database):
@@ -246,7 +246,7 @@ def test_activity_rejected_passes_through_and_fails_the_stage_run(pw_database):
     assert info.value.code == 'MISSING_EXECUTION_GRANT'
     assert [issue['field'] for issue in info.value.issues] == ['execution_grant']
     row = current(pw_database, sid)
-    assert (row[1], row[9]) == ('FAILED_FINAL', {'code': 'MISSING_EXECUTION_GRANT', 'retryable': False})
+    assert (row[1], row[9]) == ('FAILED_FINAL', {'code': 'MISSING_EXECUTION_GRANT', 'retryable': False, 'activity': 'ProbeMedia'})
 
 
 def test_unrecordable_requests_are_rejected_without_any_row(pw_database):
@@ -273,11 +273,11 @@ def test_listeners_run_after_the_write_with_request_and_result(pw_database):
     seed(pw_database)
     first, second = Listener(pw_database, sid), Listener(pw_database, sid)
     request = request_for(sid)
-    result = build(pw_database, lambda r, c: result_for(r, 'succeeded'), [first, second]).dispatch(request)
+    result = build(pw_database, lambda r, c: result_for(r, 'failed', problem={'code': 'X', 'retryable': False}), [first, second]).dispatch(request)
     for listener in (first, second):
         assert len(listener.calls) == 1
         got_request, got_result, status_at_call = listener.calls[0]
-        assert got_request is request and got_result == result and status_at_call == 'SUCCEEDED'
+        assert got_request is request and got_result == result and status_at_call == 'FAILED_FINAL'
 
 
 def test_listeners_are_not_called_when_the_request_is_rejected(pw_database):
@@ -302,23 +302,30 @@ def test_handler_error_propagates_and_leaves_the_row_running(pw_database):
     assert (row[1], row[11]) == ('RUNNING', None)
 
 
-@pytest.mark.parametrize('first, status', [('succeeded', 'SUCCEEDED'), ('failed', 'FAILED_RETRYABLE')])
+@pytest.mark.parametrize('first, status', [('succeeded', 'SUCCEEDED'), ('failed', 'FAILED_FINAL')])
 def test_second_dispatch_of_a_finished_stage_run_keeps_the_row(pw_database, first, status):
     sid = 'job-1:process:r1'
+    last = 'PrepareAudioBed'  # activity cuối của stage process; activity không cuối giữ dòng RUNNING nên không tạo dòng đã kết thúc
     seed(pw_database)
-    extra = {'problem': {'code': 'X', 'retryable': True}} if first == 'failed' else {}
+    extra = {'problem': {'code': 'X', 'retryable': False}} if first == 'failed' else {}
     queue = [(first, extra), ('succeeded', {})]
 
     def handler(request, claims):
         disposition, more = queue.pop(0)
         return result_for(request, disposition, **more)
 
+    def last_request():
+        request = request_for(sid)
+        request['activity_name'] = last
+        request['execution_grant']['allowed_operation'] = last
+        return request
+
     listener = Listener(pw_database, sid)
-    dispatcher = build(pw_database, handler, [listener])
-    dispatcher.dispatch(request_for(sid))
+    dispatcher = ResultRecordingDispatcher(ActivityDispatcher({last: handler}), pw_database.connect, lambda: NOW, [listener], workspace_id=pw_database.workspace_id)
+    dispatcher.dispatch(last_request())
     before = current(pw_database, sid)
     assert before[1] == status
-    assert dispatcher.dispatch(request_for(sid))['disposition'] == 'succeeded'
+    assert dispatcher.dispatch(last_request())['disposition'] == 'succeeded'
     assert current(pw_database, sid) == before
     assert len(listener.calls) == 2
 

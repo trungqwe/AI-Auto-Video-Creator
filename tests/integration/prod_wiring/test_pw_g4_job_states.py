@@ -332,7 +332,7 @@ def test_job_chain_through_the_result_recording_dispatcher(pw_database):
         assert job_row(pw_database) == row
     with pw_database.connect() as conn:
         runs = sorted(conn.execute('SELECT stage_run_id, status FROM controlplane.cp_stage_runs WHERE workspace_id = %s', (pw_database.workspace_id,)).fetchall())
-    assert runs == [('job-1:analyze:r1', 'SUCCEEDED'), ('job-1:process:r1', 'SUCCEEDED'), ('job-1:process:r2', 'RUNNING'), ('job-1:process:r3', 'SUCCEEDED'), ('job-1:sync:r1', 'SUCCEEDED')]
+    assert runs == [('job-1:analyze:r1', 'RUNNING'), ('job-1:process:r1', 'RUNNING'), ('job-1:process:r2', 'RUNNING'), ('job-1:process:r3', 'RUNNING'), ('job-1:sync:r1', 'SUCCEEDED')]
 
 
 BATCH_SQL = 'SELECT status, stop_reason, stopped_at FROM controlplane.cp_production_batches WHERE workspace_id = %s AND batch_id = %s'
