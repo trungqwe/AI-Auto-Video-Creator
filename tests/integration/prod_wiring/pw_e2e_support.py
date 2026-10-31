@@ -318,7 +318,7 @@ def write_weights(root: Path) -> tuple[Path, Path, Path]:
 def make_e2e_runtime(root: Path, *, gpu: Any, broker: Any, profile: Any) -> ProductionRuntime:
     weights_dir, whisper_dir, lock_path = write_weights(root)
     staging = root / "staging"
-    for sub in ("voice", "media", "out", "audio_library"):
+    for sub in ("out", "audio_library"):
         (staging / sub).mkdir(parents=True, exist_ok=True)
     vault = root / "vault"
     vault.mkdir(parents=True, exist_ok=True)
@@ -748,8 +748,7 @@ from source_ingestion.adapters.real_http_transport import RealHttpTransport
 from source_ingestion.adapters.secure_fetch import SecureFetcher
 from source_ingestion.application.source_commands import SourceCommandHandler
 from source_ingestion.persistence.unit_of_work import PostgresSourceIngestionUnitOfWork
-from render.adapters.config_render_sources import seed_render_config
-from tests.integration.prod_wiring.test_pw_f3_render_inputs import PARAMS, SUPPLEMENTS
+from controlplane.api.wiring.render import seed_production_render_config
 from tests.integration.prod_wiring.pw_vertical import (
     VIDEO_STAGES,
     batch_row,
@@ -937,15 +936,8 @@ def seed_hook(manager: Any, database: Any, runtime: Any, asset_repo: Any, hook_h
     )
 
 
-def seed_render_and_catalog(manager: Any, database: Any, runtime: Any) -> None:
-    svc = compose_command_service(manager.unit_of_work)
-    seed_render_config(
-        svc,
-        workspace_id=database.workspace_id,
-        actor_id=database.actor_id,
-        parameters=PARAMS,
-        supplements=SUPPLEMENTS,
-    )
+def seed_render_and_catalog(manager: Any, database: Any, runtime: Any, profile: Any) -> None:
+    seed_production_render_config(manager, workspace_id=database.workspace_id, actor_id=database.actor_id, profile=profile)
     media_dir = runtime.staging_root / 'media'
     media_dir.mkdir(parents=True, exist_ok=True)
     with database.connect() as conn:
@@ -1179,7 +1171,7 @@ class E2ERig:
 
         mgr = TransactionManager(self.database.dsn, pool_max_size=4)
         try:
-            seed_render_and_catalog(mgr, self.database, runtime)
+            seed_render_and_catalog(mgr, self.database, runtime, load_production_profile(PROFILE_PATH))
             seed_default_prompts(
                 compose_command_service(mgr.unit_of_work),
                 workspace_id=self.database.workspace_id,

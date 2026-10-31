@@ -605,20 +605,23 @@ def load_app(environ: typing.Mapping[str, str], layout: Layout) -> typing.Any:
 def seed_defaults(dsn: str, workspace_id: str, actor_id: str, recovery_epoch: str) -> None:
     ensure_src_on_path()
     from controlplane.api.wiring.production_profile import load_production_profile
+    from controlplane.api.wiring.render import seed_production_render_config
     from controlplane.api.wiring.workflow import seed_production_defaults
     from controlplane.infrastructure.db.uow import TransactionManager
     manager = TransactionManager(dsn, pool_max_size=2)
     try:
+        profile = load_production_profile(PROFILE_PATH)
         seed_production_defaults(
             manager,
             workspace_id=workspace_id,
             actor_id=actor_id,
-            profile=load_production_profile(PROFILE_PATH),
+            profile=profile,
             sources_path=SOURCES_PATH,
             recovery_epoch=recovery_epoch,
         )
+        seed_production_render_config(manager, workspace_id=workspace_id, actor_id=actor_id, profile=profile)
     except Exception as exc:
-        raise LauncherError(f'Nạp nguồn và prompt mặc định thất bại ({type(exc).__name__}); kiểm tra DNS và cấu hình rồi chạy lại start.') from None
+        raise LauncherError(f'Nạp nguồn, prompt và render config mặc định thất bại ({type(exc).__name__}); kiểm tra DNS và cấu hình rồi chạy lại start.') from None
     finally:
         manager.close()
 

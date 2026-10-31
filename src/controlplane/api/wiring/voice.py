@@ -111,6 +111,8 @@ def build_voice_services(manager: Any, config: WiringConfig) -> VoiceServices:
     media_root = runtime.staging_root / 'media'
 
     policy = _tokenization(runtime)
+    voice_root.mkdir(parents=True, exist_ok=True)
+    media_root.mkdir(parents=True, exist_ok=True)
 
     tts = RealKokoroTts(
         KokoroConfig(

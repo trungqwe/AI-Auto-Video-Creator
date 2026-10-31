@@ -316,7 +316,7 @@ def test_profile_loads_typed_values():
     assert p.render.timeout_seconds == 900
     assert p.drive.chunk_bytes == 8388608
     assert p.credential_max_ttl_seconds == 3300
-    assert len(pp.REQUIRED_PARAMETERS) == 78
+    assert len(pp.REQUIRED_PARAMETERS) == 83
     assert set(pp.REQUIRED_PARAMETERS) == set(LEAVES)
     assert set(p.parameters) == set(LEAVES)
 
