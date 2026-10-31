@@ -90,3 +90,19 @@ Ghi chú: finding probe screenRegistry (6 màn pending_module: artifacts, snapsh
 Tên tệp dist sau build không đổi so với mục 5: `dist/index.html`, `dist/assets/index-BgnRr_o6.js`, `dist/assets/index-BgnRr_o6.js.map`, `dist/assets/index-DNWUXu2_.css`; cây làm việc không có thay đổi nào ở dist sau build.
 
 Ghi chú: finding probe screenRegistry (yêu cầu 6 màn `pending_module`) là probe cũ của gói CP-4B-UI-SCREENS, không thuộc lệnh kiểm của gói này; tại integration head `8cfc687` registry có 17 màn `available` và chỉ `logs` còn `pending_module`; `screenRegistry.ts` nằm ngoài owned paths nên gói này không sửa.
+
+## 10. Rebase lần ba sau khi grant G3 bị thu hồi
+
+Grant G3 bị Control thu hồi với lý do `Rebase lên integration head 439a93ff99984820a2f114d1036be7137846ab42: INTEGRATION_CHECK_FAILED`. Đã chạy `git rebase 439a93ff99984820a2f114d1036be7137846ab42`, exit code 0, kết quả thực tế: `Successfully rebased and updated refs/heads/trungqwe/lane-cp-4b-ui-screens-fix5.` (áp dụng lại 3 commit của gói lên `439a93f`, không xung đột).
+
+| Lệnh | Exit code | Kết quả |
+| --- | --- | --- |
+| `npm --prefix src/controlplane/ui run build` | 0 | `✓ built in 2.40s` |
+| probe dist (4 tệp, không tệp băm mồ côi, bundle có `max-concurrent-select` và `/v1/batch-settings`) | 0 | không có output |
+| `python -m pytest tests/unit -q -p no:cacheprovider` | 0 | `7550 passed, 1 warning, 2561 subtests passed in 21.87s` |
+| probe nguồn (form, client, types) | 0 | không có output |
+| `git diff --check` | 0 | không có cảnh báo |
+
+Tên tệp dist sau build: `dist/index.html`, `dist/assets/index-BgnRr_o6.js`, `dist/assets/index-BgnRr_o6.js.map`, `dist/assets/index-DNWUXu2_.css`. Tên băm không đổi so với mục 5 nên không có tệp băm cũ nào bị xoá; cây làm việc không có thay đổi nào ở dist sau build.
+
+Ghi chú: finding probe screenRegistry (yêu cầu 6 màn `pending_module`) là probe cũ của gói CP-4B-UI-SCREENS, không thuộc lệnh kiểm của gói này; tại integration head `439a93ff99984820a2f114d1036be7137846ab42` registry chỉ còn `logs` ở `pending_module` (các màn còn lại `available`), `screenRegistry.ts` nằm ngoài owned paths nên gói này không sửa và không chạy probe đó.
