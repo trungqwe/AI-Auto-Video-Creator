@@ -508,7 +508,8 @@ def test_new_key_for_same_script_id_does_not_create_a_second_script():
     with pytest.raises(RevisionConflictError):
         rig.pipeline.generate_script(context=_ctx(34), idempotency_key='k-script-2', **SCRIPT_ARGS)
     assert len(rig.uow.scripts.revisions('script-1')) == 1
-    assert rig.uow.receipts.get(WS, 'k-script-2') is None and rig.uow.invocations.latest('ws-1:k-script-2') is None
+    assert rig.uow.receipts.get(WS, 'k-script-2') is None
+    assert [(item.revision, item.record.validation_result) for item in rig.uow.invocations.revisions('ws-1:k-script-2')] == [(1, 'passed')]
     assert len(rig.uow.outbox.records()) == events
 
 
@@ -525,7 +526,8 @@ def test_outbox_failure_rolls_back_output_record_receipt_and_outbox_together():
     uow.outbox.append_event = broken
     with pytest.raises(RuntimeError):
         rig.pipeline.generate_script(context=_ctx(4), idempotency_key='k-script', **SCRIPT_ARGS)
-    assert uow.scripts.latest('script-1') is None and uow.invocations.latest('ws-1:k-script') is None
+    assert uow.scripts.latest('script-1') is None
+    assert [(item.revision, item.record.validation_result) for item in uow.invocations.revisions('ws-1:k-script')] == [(1, 'passed')]
     assert uow.receipts.get(WS, 'k-script') is None and len(uow.outbox.records()) == events
     del uow.outbox.append_event
     result = rig.pipeline.generate_script(context=_ctx(5), idempotency_key='k-script', **SCRIPT_ARGS)

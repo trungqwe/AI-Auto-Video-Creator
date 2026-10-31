@@ -4,8 +4,9 @@ coveredIds: CT-AI-ROUTE-002, CT-AI-010
 
 Application layer: depends on domain and ports only, never on adapters, clock, id generation or network.
 GIẢ ĐỊNH (D8): model_ref and account_ref of the primary ProviderRouteDecision apply to every fallback provider until J assigns a decision per provider (CONV-D-11), as in run_tts_attempts of E.
-GIẢ ĐỊNH (D8): a provider error arrives either as AIInvocationRecord.error or as an OSError (TimeoutError included) raised by the port; any other exception is a defect and propagates.
+GIẢ ĐỊNH (D8): a provider error arrives as AIInvocationRecord.error (a WaitingAIInvocationResult marks a retryable wait), or as an OSError (TimeoutError included) raised by the port. A validator rejection that carries a str code and a str reason is a failed attempt unless the code is input-determined (INPUT_NOT_READY or any code ending in context_mismatch); any other exception is a defect: its attempt is recorded and committed, then it propagates.
 The handler tries each provider of the path at most once per run, never beyond policy.max_attempts, and only appends records: stored output and history are never edited or deleted; G decides retry or wait from a WAITING outcome.
+D-15-FIX1: pipeline.py imports this module, so the names of pipeline.py are imported inside the functions that need them.
 """
 from __future__ import annotations
 
@@ -15,7 +16,6 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from controlplane.domain.interfaces.uow import IUnitOfWork
-from creative.application.pipeline import INPUT_NOT_READY, PipelineRejected
 from creative.domain.invocation import (
     WRONG_TYPE,
     AIInvocationRecord,
@@ -35,6 +35,8 @@ PROVIDER_TIMEOUT = 'provider_timeout'
 PROVIDER_RATE_LIMITED = 'provider_rate_limited'
 PROVIDER_UNREACHABLE = 'provider_unreachable'
 PROVIDER_ERROR = 'provider_error'
+WAIT_QUOTA = 'quota_wait'
+WAIT_PROVIDER_UNAVAILABLE = 'provider_unavailable'
 FALLBACK_CHANGES_INTENT = 'fallback_changes_intent'
 WAIT_BUDGET_EXHAUSTED = 'attempt_budget_exhausted'
 WAIT_PROVIDERS_EXHAUSTED = 'providers_exhausted'
@@ -51,6 +53,20 @@ def classify_provider_error(message: str) -> str:
     if 'rate limit' in text or 'rate_limit' in text or 'rate-limit' in text or '429' in text:
         return PROVIDER_RATE_LIMITED
     return PROVIDER_ERROR
+
+
+def provider_wait_code(message: str) -> str:
+    """WaitReason value of a retryable waiting result: budget, quota and rate limit wait for quota, anything else (timeout, no route yet) waits for the provider."""
+    text = message.casefold()
+    if 'budget_blocked' in text or 'quota' in text or classify_provider_error(message) == PROVIDER_RATE_LIMITED:
+        return WAIT_QUOTA
+    return WAIT_PROVIDER_UNAVAILABLE
+
+
+def _input_determined(code: str) -> bool:
+    """INPUT_NOT_READY and every code ending in context_mismatch come from inputs known before the model call: never a model-output failure, never retried."""
+    from creative.application.pipeline import INPUT_NOT_READY  # deferred: pipeline.py imports this module
+    return code == INPUT_NOT_READY or code.endswith('context_mismatch')
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -74,6 +90,7 @@ class ProviderFailurePolicy:
 
 def parse_failure_policy(policy: object) -> ProviderFailurePolicy:
     """Accept a ProviderFailurePolicy or a mapping; a missing max_attempts is INPUT_NOT_READY, never a default number."""
+    from creative.application.pipeline import INPUT_NOT_READY, PipelineRejected  # deferred: pipeline.py imports this module
     if isinstance(policy, ProviderFailurePolicy):
         return policy
     if not isinstance(policy, Mapping):
@@ -86,13 +103,14 @@ def parse_failure_policy(policy: object) -> ProviderFailurePolicy:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class ProviderProblem:
-    """Structured problem of one failed attempt; reason and field are always redacted."""
+    """Structured problem of one failed attempt; reason and field are always redacted. wait_code is a WaitReason value when the provider answered with a retryable waiting result (quota, budget, rate limit, timeout), otherwise empty; it is not part of to_payload."""
 
     code: str
     reason: str
     provider_ref: str
     attempt: int
     field: str = ''
+    wait_code: str = ''
 
     def __post_init__(self) -> None:
         object.__setattr__(self, 'reason', redact_error(self.reason))
@@ -172,11 +190,12 @@ def plan_fallback_path(
 
 
 def _problem(
-    code: str, reason: str, provider_ref: str, attempt: int, known_secrets: tuple[str, ...], field: str = ''
+    code: str, reason: str, provider_ref: str, attempt: int, known_secrets: tuple[str, ...], field: str = '',
+    wait_code: str = ''
 ) -> ProviderProblem:
     return ProviderProblem(
         code=code, reason=redact_error(reason, known_secrets), provider_ref=provider_ref, attempt=attempt,
-        field=redact_error(field, known_secrets))
+        field=redact_error(field, known_secrets), wait_code=wait_code)
 
 
 class ProviderFailureHandler:
@@ -202,8 +221,9 @@ class ProviderFailureHandler:
         policy: object,
         current_output_revision: int = 0,
         known_secrets: tuple[str, ...] = (),
+        retry_same_provider: bool = False,
     ) -> ProviderCallOutcome:
-        """Try the primary provider, then decision.fallback_order within route_request allowed_fallbacks: each provider once, at most policy.max_attempts calls; a validated output is ACCEPTED or NEW_REVISION (output_revision = current_output_revision + 1), anything else is WAITING for G."""
+        """Try the primary provider, then decision.fallback_order within route_request allowed_fallbacks: each provider once, at most policy.max_attempts calls; a validated output is ACCEPTED or NEW_REVISION (output_revision = current_output_revision + 1), anything else is WAITING for G. With retry_same_provider the primary provider is called again, with the same decision, envelope and config, after the path is used up and the last attempt failed validation; a provider error, a waiting result or a defect never triggers a repeat."""
         if not isinstance(idempotency_key, str) or not idempotency_key.strip():
             raise ValueError('idempotency_key must be a non-empty string')
         if not isinstance(envelope, PromptEnvelope):
@@ -227,31 +247,42 @@ class ProviderFailureHandler:
         output: object | None = None
         succeeded = False
         intent_changed = False
+        schedule = path + (path[0],) * limits.max_attempts if retry_same_provider else path
+        defect: Exception | None = None
         with self._uow_factory() as uow:
             latest = uow.invocations.latest(key)
             stored = 0 if latest is None else latest.revision
-            for index, provider_ref in enumerate(path):
+            for index, provider_ref in enumerate(schedule):
                 if len(invoked) >= limits.max_attempts:
                     break
-                intent_changed = index > 0 and provider_ref not in limits.intent_preserving_providers
+                if index >= len(path) and (not records or records[-1].validation_result != 'failed'):
+                    break
+                primary = provider_ref == decision.provider_ref
+                intent_changed = not primary and provider_ref not in limits.intent_preserving_providers
                 if intent_changed and limits.on_intent_change == INTENT_WAIT:
                     problems.append(
                         _problem(FALLBACK_CHANGES_INTENT, FALLBACK_CHANGES_INTENT, provider_ref, stored + len(invoked), secrets))
                     continue
                 invoked.append(provider_ref)
                 attempt = stored + len(invoked)
-                call = decision if index == 0 else dataclasses.replace(decision, provider_ref=provider_ref, fallback_order=())
-                record, validated, problem = self._attempt(
+                call = decision if primary else dataclasses.replace(decision, provider_ref=provider_ref, fallback_order=())
+                record, validated, problem, defect = self._attempt(
                     call, ai_role=route_request['ai_role'], envelope=envelope, config_revision=config_revision,
                     validator=validator, attempt=attempt, invoked=tuple(invoked), secrets=secrets)
                 uow.invocations.append(key, attempt, record)
                 records.append(record)
+                if defect is not None:
+                    break
                 if problem is not None:
                     problems.append(problem)
+                    if problem.wait_code:
+                        break
                     continue
                 output, succeeded = validated, True
                 break
             uow.commit()
+        if defect is not None:
+            raise defect
         shared = {
             'records': tuple(records), 'problems': tuple(problems), 'provider_path': tuple(invoked),
             'skipped_fallbacks': skipped,
@@ -280,8 +311,8 @@ class ProviderFailureHandler:
         attempt: int,
         invoked: tuple[str, ...],
         secrets: tuple[str, ...],
-    ) -> tuple[AIInvocationRecord, Any, ProviderProblem | None]:
-        """One provider call: the stamped record (attempt, fallback_path, validation_result), the validated output and the problem; the problem is None exactly when the output passed the validator."""
+    ) -> tuple[AIInvocationRecord, Any, ProviderProblem | None, Exception | None]:
+        """One provider call: the stamped record, the validated output, the problem and the defect; exactly one of validated output, problem and defect describes the outcome."""
         provider_ref = call.provider_ref
         stamp = {'attempt': attempt, 'fallback_path': invoked}
         try:
@@ -295,23 +326,31 @@ class ProviderFailureHandler:
                 prompt_revision=envelope.prompt_ref.revision_id, config_revision=config_revision,
                 input_fingerprint=fingerprint_envelope(envelope), usage=InvocationUsage(0, 0, call.estimated_cost_class),
                 latency_ms=0, validation_result='not_run', error=text, **stamp)
-            return record, None, _problem(code, text, provider_ref, attempt, secrets)
+            return record, None, _problem(code, text, provider_ref, attempt, secrets), None
         record = result.record
         if record.error is not None:
             text = redact_error(record.error, secrets)
             stamped = dataclasses.replace(record, error=text, validation_result='not_run', **stamp)
-            return stamped, None, _problem(classify_provider_error(text), text, provider_ref, attempt, secrets)
+            waiting = getattr(result, 'retryable', False) is True and isinstance(getattr(result, 'wait_reason', None), str)
+            problem = _problem(
+                classify_provider_error(text), text, provider_ref, attempt, secrets, wait_code=provider_wait_code(text) if waiting else '')
+            return stamped, None, problem, None
         try:
             validated = validator(result)
-        except PipelineRejected as rejected:
+        except Exception as rejected:
             stamped = dataclasses.replace(record, validation_result='failed', **stamp)
-            return stamped, None, _problem(rejected.code, rejected.reason, provider_ref, attempt, secrets, rejected.field)
-        return dataclasses.replace(record, validation_result='passed', **stamp), validated, None
+            code, reason = getattr(rejected, 'code', None), getattr(rejected, 'reason', None)
+            if not isinstance(code, str) or not isinstance(reason, str) or _input_determined(code):
+                return stamped, None, None, rejected
+            field = getattr(rejected, 'field', '')
+            return stamped, None, _problem(code, reason, provider_ref, attempt, secrets, field if isinstance(field, str) else ''), None
+        return dataclasses.replace(record, validation_result='passed', **stamp), validated, None, None
 
 
 __all__ = [
     'FALLBACK_CHANGES_INTENT', 'INTENT_MODES', 'INTENT_NEW_REVISION', 'INTENT_WAIT', 'PROVIDER_ERROR',
     'PROVIDER_RATE_LIMITED', 'PROVIDER_TIMEOUT', 'PROVIDER_UNREACHABLE', 'ProviderCallOutcome', 'ProviderCallStatus',
     'ProviderFailureHandler', 'ProviderFailurePolicy', 'ProviderProblem', 'WAIT_BUDGET_EXHAUSTED',
-    'WAIT_PROVIDERS_EXHAUSTED', 'classify_provider_error', 'parse_failure_policy', 'plan_fallback_path',
+    'WAIT_PROVIDERS_EXHAUSTED', 'WAIT_PROVIDER_UNAVAILABLE', 'WAIT_QUOTA', 'classify_provider_error', 'parse_failure_policy',
+    'plan_fallback_path', 'provider_wait_code',
 ]

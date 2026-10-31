@@ -354,3 +354,33 @@ def test_provider_failure_source_has_no_adapter_clock_network_import_and_no_whil
     banned = {'socket', 'uuid', 'time', 'random', 'datetime'}
     assert not [name for name in names if name.split('.')[0] in banned or name.startswith('creative.adapters')]
     assert not [node for node in ast.walk(tree) if isinstance(node, ast.While)]
+
+
+def test_retry_same_provider_repeats_the_primary_after_validation_failures_up_to_the_budget():
+    rig = Rig({'primary': [BAD_SCHEMA, BAD_SCHEMA, OK]})
+    result = rig.run(policy={'max_attempts': 3}, retry_same_provider=True)
+    assert result.status is ProviderCallStatus.ACCEPTED and rig.ai.calls == ['primary'] * 3
+    assert [(item.attempt, item.validation_result) for item in result.records] == [(1, 'failed'), (2, 'failed'), (3, 'passed')]
+    capped = Rig({'primary': [BAD_SCHEMA] * 5})
+    stopped = capped.run(policy={'max_attempts': 2}, retry_same_provider=True)
+    assert capped.ai.calls == ['primary'] * 2 and stopped.status is ProviderCallStatus.WAITING
+    assert stopped.wait_reason == 'attempt_budget_exhausted' and stopped.problem.attempt == 2
+
+
+def test_retry_same_provider_never_repeats_after_a_provider_error():
+    rig = Rig({'primary': [TIMEOUT, OK]})
+    result = rig.run(policy={'max_attempts': 3}, retry_same_provider=True)
+    assert rig.ai.calls == ['primary'] and result.status is ProviderCallStatus.WAITING
+
+
+def test_input_determined_rejection_is_recorded_and_raised_without_a_retry():
+    rig = Rig({'primary': [OK, OK]})
+
+    def refuse(result):
+        raise PipelineRejected(INPUT_NOT_READY, 'missing_input', 'x')
+
+    rig.validator = refuse
+    with pytest.raises(PipelineRejected) as caught:
+        rig.run(policy={'max_attempts': 3}, retry_same_provider=True)
+    assert caught.value.code == INPUT_NOT_READY and rig.ai.calls == ['primary']
+    assert [(item.revision, item.record.validation_result) for item in rig.uow.invocations.revisions(KEY)] == [(1, 'failed')]
