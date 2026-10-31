@@ -92,15 +92,16 @@ def test_unit_trace_missing():
         assert d.trace_missing({**full, 'model_refs': empty}) == ['model_refs']
 
 
-def test_unit_should_retry_batch():
-    script_fail = ('script', 'FAILED_FINAL', 'ai_output_schema_violation')
-    assert d.should_retry_batch(script_fail, 1, 3) is True
-    assert d.should_retry_batch(('analyze', 'FAILED_FINAL', 'ai_output_schema_violation'), 2, 6) is True
-    assert d.should_retry_batch(script_fail, d.MAX_BATCH_ATTEMPTS, 6) is False
-    assert d.should_retry_batch(script_fail, 1, d.AI_CALL_CAP - d.AI_CALLS_PER_JOB_RESERVE + 1) is False
-    assert d.should_retry_batch(('render', 'FAILED_FINAL', 'ai_output_schema_violation'), 1, 3) is False
-    assert d.should_retry_batch(('script', 'FAILED_FINAL', 'ACTIVITY_ABORTED'), 1, 3) is False
-    assert d.should_retry_batch(None, 1, 3) is False
+def test_unit_no_batch_retry_loop():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    for name in ('MAX_BATCH_ATTEMPTS', 'AI_CALLS_PER_JOB_RESERVE', 'RETRY_STAGES', 'RETRY_CODES', 'should_retry_batch'):
+        assert name not in text
+    assert text.count('session.post_batch(1)') == 1
+
+
+def test_unit_format_failed_stage():
+    assert d.format_failed_stage(None) == 'stage=none'
+    assert d.format_failed_stage(('script', 'FAILED_FINAL', 'ai_output_schema_violation', 'GenerateScript', '{"hook": "required"}')) == 'stage=script status=FAILED_FINAL activity=GenerateScript code=ai_output_schema_violation field_errors={"hook": "required"}'
 
 
 def test_unit_stage_labels_cover_all_stages():

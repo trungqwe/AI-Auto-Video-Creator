@@ -52,10 +52,6 @@ TRACE_KEYS = ('snapshot_id', 'snapshot_payload_sha256', 'model_refs', 'prompt_re
               'script_version_id', 'script_sha256', 'input_revisions')
 CLEANUP_STATES = ('CLEANUP_ELIGIBLE', 'CLEANUP_AUTHORIZED', 'DELETED')
 TERMINAL_JOB = ('COMPLETED', 'FAILED_FINAL')
-MAX_BATCH_ATTEMPTS = 3
-AI_CALLS_PER_JOB_RESERVE = 10
-RETRY_STAGES = ('analyze', 'script')
-RETRY_CODES = ('ai_output_schema_violation',)
 SEED_DIR = REPO / 'tools' / 'launcher' / 'prod' / 'seed'
 DEFAULT_FFMPEG = r'C:\ffmpeg\bin\ffmpeg.exe'
 
@@ -107,13 +103,11 @@ def budget_violations(ai_calls, spent_usd, drive_bytes, elapsed_seconds):
     return bad
 
 
-def should_retry_batch(failed, attempt, ai_calls):
-    """Chỉ tạo lô mới khi job hỏng ở analyze hoặc script vì AI trả sai schema và còn đủ trần AI cho một job đầy đủ."""
-    if failed is None or attempt >= MAX_BATCH_ATTEMPTS:
-        return False
-    if failed[0] not in RETRY_STAGES or failed[2] not in RETRY_CODES:
-        return False
-    return ai_calls + AI_CALLS_PER_JOB_RESERVE <= AI_CALL_CAP
+def format_failed_stage(failed):
+    """Mô tả stage hỏng của job FAILED_FINAL; None nếu không có hàng stage FAILED_FINAL hay OUTCOME_UNKNOWN."""
+    if failed is None:
+        return 'stage=none'
+    return f'stage={failed[0]} status={failed[1]} activity={failed[3]} code={failed[2]} field_errors={failed[4]}'
 
 
 def _sha(obj):
@@ -194,10 +188,10 @@ def run_launcher(command, timeout, env=None):
 def stop_until_exited(attempts=4):
     """stop idempotent, chỉ chờ 60 giây mỗi lần; gọi lại tới khi thoát, không ép tắt, không sửa launcher."""
     last = ''
-    for attempt in range(1, attempts + 1):
+    for try_no in range(1, attempts + 1):
         rc, text = run_launcher('stop', 120)
         if rc == 0:
-            return attempt
+            return try_no
         last = text[-400:]
     raise BlockedError('BLOCKED: launcher stop không thoát sau ' + str(attempts) + ' lần: ' + last)
 
@@ -322,7 +316,8 @@ class ReadOnlyDb:
         return rows[0][0] if rows else None
 
     def failed_stage(self, job_id):
-        rows = self.query("SELECT stage_name, status, problem->>'code' FROM controlplane.cp_stage_runs WHERE workspace_id = %s AND job_id = %s AND status IN ('FAILED_FINAL','OUTCOME_UNKNOWN') ORDER BY created_at LIMIT 1", job_id)
+        """Hàng stage FAILED_FINAL hay OUTCOME_UNKNOWN đầu tiên (PW-G2-FIX1: bộ ghi không còn ghi FAILED_RETRYABLE hay STALE khi flow còn thử lại tại chỗ); chỉ đọc."""
+        rows = self.query("SELECT stage_name, status, problem->>'code', problem->>'activity', left(coalesce(problem->'field_errors', '{}'::jsonb)::text, 300) FROM controlplane.cp_stage_runs WHERE workspace_id = %s AND job_id = %s AND status IN ('FAILED_FINAL','OUTCOME_UNKNOWN') ORDER BY created_at LIMIT 1", job_id)
         return rows[0] if rows else None
 
     def job_diagnostics(self, job_id):
@@ -705,74 +700,65 @@ def run_batch(work_dir, deadline):
         result.seed_import = ensure_seed_media(launcher, db)
         session = ApiSession(db.layout.cert_file)
         session.open(launch_path)
-        for attempt in range(1, MAX_BATCH_ATTEMPTS + 1):
-            batch_id = result.batch_id = session.post_batch(1)
-            job = None
-            wait_end = time.monotonic() + ELIGIBLE_WAIT_SECONDS
-            while job is None:
-                watch.check()
-                job = db.job_for_batch(batch_id)
-                if job is None:
-                    if time.monotonic() > wait_end:
-                        raise BlockedError('BLOCKED: NO_ELIGIBLE_CANDIDATE: AllocateJob chưa cấp job cho lô lần ' + str(attempt) + '; cần tin đủ hook và ảnh seed từ CP7-4..CP7-7, không tạo dữ liệu giả')
-                    time.sleep(deadline.timeout(POLL_SECONDS))
-            job_id = result.job_id = job[0]
-            seen_pairs, resumed = set(), False
-            while True:
-                watch.check()
-                stages = db.stage_map(job_id)
-                status = db.job_status(job_id)
-                for name, row in stages.items():
-                    pair = (name, row['status'])
-                    if pair not in seen_pairs:
-                        seen_pairs.add(pair)
-                        result.timeline.append((round(time.monotonic() - t0, 1), name, row['status']))
-                if result.plan_before is None and stages.get('plan', {}).get('status') == 'SUCCEEDED':
-                    result.plan_before = plan_digest(db, job_id, window_start)
-                locations = db.locations(job_id, window_start)
-                ledger = db.ledger_row(job_id)
-                verified = _drive_verified(locations)
-                complete_done = stages.get('complete', {}).get('status') == 'SUCCEEDED'
-                if verified and not result.verified_before_complete and not complete_done and ledger is None:
-                    result.verified_before_complete = True
-                verified_versions = {loc['artifact_version_id'] for loc in verified}
-                for loc in locations:
-                    if not is_drive(loc) and loc['state'] in CLEANUP_STATES and loc['artifact_version_id'] not in verified_versions:
-                        result.cleanup_before_verified = True
-                if not resumed and stages.get('render', {}).get('status') == 'RUNNING':
-                    result.render_seen_running = resumed = True
-                    result.before_stop = stages
-                    result.stop_attempts = stop_until_exited()
-                    launch2, t_start = start_capturing(work_dir, 'second')
-                    session = ApiSession(db.layout.cert_file)
-                    session.open(launch2)
-                    while True:
-                        code, _ = session.get_batch(batch_id)
-                        if code == 200:
-                            break
-                        time.sleep(deadline.timeout(1))
-                    result.ready_seconds = time.monotonic() - t_start
-                    result.after_start = db.stage_map(job_id)
-                    continue
-                if status in TERMINAL_JOB:
-                    break
+        batch_id = result.batch_id = session.post_batch(1)
+        job = None
+        wait_end = time.monotonic() + ELIGIBLE_WAIT_SECONDS
+        while job is None:
+            watch.check()
+            job = db.job_for_batch(batch_id)
+            if job is None:
+                if time.monotonic() > wait_end:
+                    raise BlockedError('BLOCKED: NO_ELIGIBLE_CANDIDATE: AllocateJob chưa cấp job cho lô; cần tin đủ hook và ảnh seed từ CP7-4..CP7-7, không tạo dữ liệu giả')
                 time.sleep(deadline.timeout(POLL_SECONDS))
-            result.final_stages = db.stage_map(job_id)
-            result.final_job_status = db.job_status(job_id)
-            if result.final_job_status == 'COMPLETED':
-                result.attempts.append({'attempt': attempt, 'batch_id': batch_id, 'job_id': job_id, 'outcome': 'COMPLETED'})
+        job_id = result.job_id = job[0]
+        seen_pairs, resumed = set(), False
+        while True:
+            watch.check()
+            stages = db.stage_map(job_id)
+            status = db.job_status(job_id)
+            for name, row in stages.items():
+                pair = (name, row['status'])
+                if pair not in seen_pairs:
+                    seen_pairs.add(pair)
+                    result.timeline.append((round(time.monotonic() - t0, 1), name, row['status']))
+            if result.plan_before is None and stages.get('plan', {}).get('status') == 'SUCCEEDED':
+                result.plan_before = plan_digest(db, job_id, window_start)
+            locations = db.locations(job_id, window_start)
+            ledger = db.ledger_row(job_id)
+            verified = _drive_verified(locations)
+            complete_done = stages.get('complete', {}).get('status') == 'SUCCEEDED'
+            if verified and not result.verified_before_complete and not complete_done and ledger is None:
+                result.verified_before_complete = True
+            verified_versions = {loc['artifact_version_id'] for loc in verified}
+            for loc in locations:
+                if not is_drive(loc) and loc['state'] in CLEANUP_STATES and loc['artifact_version_id'] not in verified_versions:
+                    result.cleanup_before_verified = True
+            if not resumed and stages.get('render', {}).get('status') == 'RUNNING':
+                result.render_seen_running = resumed = True
+                result.before_stop = stages
+                result.stop_attempts = stop_until_exited()
+                launch2, t_start = start_capturing(work_dir, 'second')
+                session = ApiSession(db.layout.cert_file)
+                session.open(launch2)
+                while True:
+                    code, _ = session.get_batch(batch_id)
+                    if code == 200:
+                        break
+                    time.sleep(deadline.timeout(1))
+                result.ready_seconds = time.monotonic() - t_start
+                result.after_start = db.stage_map(job_id)
+                continue
+            if status in TERMINAL_JOB:
                 break
+            time.sleep(deadline.timeout(POLL_SECONDS))
+        result.final_stages = db.stage_map(job_id)
+        result.final_job_status = db.job_status(job_id)
+        if result.final_job_status != 'COMPLETED':
             failed = db.failed_stage(job_id)
-            result.attempts.append({'attempt': attempt, 'batch_id': batch_id, 'job_id': job_id, 'outcome': str(result.final_job_status), 'failed_stage': None if failed is None else failed[0], 'code': None if failed is None else failed[2]})
-            if not should_retry_batch(failed, attempt, watch.calls()):
-                detail = '' if failed is None else ' stage=' + str(failed[0]) + ' status=' + str(failed[1]) + ' code=' + str(failed[2])
-                diag = collect_diagnostic(db, job_id, result.seed_import)
-                raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + detail + ' sau ' + str(attempt) + ' lần tạo lô; ' + diag)
-            result.plan_before = None
-            result.before_stop = {}
-            result.render_seen_running = False
-            result.verified_before_complete = False
-            result.cleanup_before_verified = False
+            result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': str(result.final_job_status), 'failed_stage': None if failed is None else failed[0], 'activity': None if failed is None else failed[3], 'code': None if failed is None else failed[2]})
+            diag = collect_diagnostic(db, job_id, result.seed_import)
+            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; ' + diag)
+        result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': 'COMPLETED'})
         result.final_batch_status = db.batch_status(batch_id) or ''
         result.locations = db.locations(job_id, window_start)
         result.ledger_row = db.ledger_row(job_id)
