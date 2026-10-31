@@ -411,6 +411,64 @@
       },
       "reason": "Năm preset phụ đề theo ROADMAP-OPEN-009, user duyệt ở nghiệm thu và font theo OI-ADAPT-08.",
       "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "ass_style": {
+      "value": {
+        "secondary_colour": "&H00FFFFFF",
+        "back_colour": "&H80000000",
+        "italic": 0,
+        "underline": 0,
+        "strike_out": 0,
+        "scale_x": 100,
+        "scale_y": 100,
+        "spacing": 0,
+        "angle": 0,
+        "border_style": 1,
+        "shadow": 0,
+        "alignment": 2,
+        "encoding": 1
+      },
+      "reason": "Kiểu phụ đề ASS (13 khoá) là giá trị đã chạy qua PW-F3 và PW-E2E, chuyển từ hằng số test vào hồ sơ để production tự seed (OI-PW-F3-01); chờ user duyệt preset ở R4.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "layout": {
+      "value": {
+        "margin_left": 60,
+        "margin_right": 60,
+        "max_words_per_line": 4,
+        "max_chars_per_line": 28,
+        "disclosure_font_size": 40,
+        "disclosure_alignment": 8,
+        "disclosure_margin_v": 240
+      },
+      "reason": "Bố cục phụ đề và dòng công bố đã chạy qua PW-F3 và PW-E2E, chuyển vào hồ sơ để production tự seed (OI-PW-F3-01); chờ user duyệt preset ở R4.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "sections": {
+      "value": {
+        "visual_rhythm": {
+          "status": "UNSPECIFIED_V1"
+        },
+        "thumbnail_overlay_style": {
+          "status": "UNSPECIFIED_V1"
+        },
+        "hook_treatment": {
+          "status": "UNSPECIFIED_V1"
+        },
+        "color_effect_rules": {
+          "status": "UNSPECIFIED_V1"
+        }
+      },
+      "reason": "Bốn phần CT-RND-001 chưa được đặc tả ở v1 nên đặt tạm UNSPECIFIED_V1 (render v1 không đọc); seed theo OI-PW-F3-01, chờ user duyệt preset ở R4.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "output_stream": {
+      "value": {
+        "video_codec": "h264",
+        "pixel_format": "yuv420p"
+      },
+      "reason": "Luồng video đầu ra h264 và yuv420p đã chạy qua PW-F3 và PW-E2E, chuyển vào hồ sơ để production tự seed (OI-PW-F3-01); chờ user duyệt preset ở R4.",
+      "basis": "CONSERVATIVE_DEFAULT"
     }
   },
   "qc": {
@@ -451,6 +509,18 @@
     "max_file_bytes": {
       "value": 157286400,
       "reason": "Kích thước tệp video tối đa 150 MiB đủ cho 65 giây ở bitrate 12 Mbit/s.",
+      "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "quality_thresholds": {
+      "value": {
+        "SUBTITLE_BURNED_IN": {
+          "min_frames_with_text": 2
+        },
+        "VOICE_AUDIBLE": {
+          "min_voice_level": -40.0
+        }
+      },
+      "reason": "Ngưỡng QC phụ đề đã ghi vào khung hình và giọng đọc nghe được đã chạy qua PW-F3 và PW-E2E, chuyển vào hồ sơ để production tự seed (OI-PW-F3-01); chờ user duyệt ở R4.",
       "basis": "CONSERVATIVE_DEFAULT"
     }
   },

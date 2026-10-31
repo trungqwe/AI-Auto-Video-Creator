@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from controlplane.api.wiring.workflow import render_handler
-from controlplane.infrastructure.db.control_api_commands import PostgresConfigScope
+from controlplane.infrastructure.db.control_api_commands import PostgresConfigScope, compose_command_service
 from render.adapters.activity_inputs import (
     INPUT_REF_MISSING,
     ActivityInputError,
@@ -26,7 +26,7 @@ from render.adapters.activity_inputs import (
     QualityInputs,
 )
 from render.adapters.ass_manifest import build_ass_material, with_ass_entry
-from render.adapters.config_render_sources import ConfigRenderSources, ass_inputs
+from render.adapters.config_render_sources import ConfigRenderSources, ass_inputs, seed_render_config
 from render.adapters.ffmpeg_capability import read_tool_capability
 from render.adapters.postgres_plan_assets import (
     PostgresArtifactInfo,
@@ -111,6 +111,29 @@ def build_render_services(manager: Any, config: WiringConfig) -> RenderServices:
     )
     uow_factory = partial(PostgresRenderUnitOfWork, manager, workspace_id=config.workspace_id)
     return RenderServices('production', uow_factory, renderer, probe)
+
+
+_RENDER_SUPPLEMENT_PARAMETERS = (
+    ('ass_style', 'render.ass_style'),
+    ('layout', 'render.layout'),
+    ('sections', 'render.sections'),
+    ('output_profile', 'render.output_stream'),
+    ('quality_thresholds', 'qc.quality_thresholds'),
+)
+
+
+def render_supplements(profile: Any) -> dict[str, Any]:
+    return {name: profile.parameters[parameter] for name, parameter in _RENDER_SUPPLEMENT_PARAMETERS}
+
+
+def seed_production_render_config(manager: Any, *, workspace_id: str, actor_id: str, profile: Any) -> tuple[str, ...]:
+    return seed_render_config(
+        compose_command_service(manager.unit_of_work),
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        parameters=profile.parameters,
+        supplements=render_supplements(profile),
+    )
 
 
 def _read_tool_version(lock_path: Path | str) -> str:
@@ -899,4 +922,6 @@ __all__ = [
     'build_render_services',
     'render_activity_deps',
     'render_activity_handlers',
+    'render_supplements',
+    'seed_production_render_config',
 ]

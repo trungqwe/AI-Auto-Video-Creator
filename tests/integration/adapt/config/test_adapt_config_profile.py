@@ -77,14 +77,14 @@ REQUIRED = '''
 meta.profile_name meta.revision collection.source_kind collection.tiers collection.fetch_policy.feed collection.fetch_policy.article collection.fetch_policy.image collection.retry_fetch collection.concurrency collection.collection_interval_minutes collection.freshness_window_hours collection.extraction_min_text_chars collection.user_agent
 ai.route_endpoint ai.route_model_refs ai.request_timeout_seconds ai.retry ai.reservation_ttl_seconds ai.quota_wait_poll_seconds ai.quota_wait_max budget.monthly_limit budget.currency budget.hard_stop budget.warn_at_ratio budget.window_timezone credential.max_ttl_seconds
 voice.engine voice.duration_range_ms voice.speech_rate_wpm voice.tts_timeout_seconds voice.stage_retry aligner.engine aligner.word_timing_tolerance_ms aligner.max_unmatched_word_ratio audio.loudness audio.bed_gain_db image_safety.categories image_safety.thresholds image_safety.boxblur image_safety.vision
-render.profile render.nvenc render.fallback render.timeout_seconds render.presets qc.duration_range_ms qc.required_language qc.karaoke_tolerance_ms qc.hook_similarity_min qc.hook_audio_min_dbfs qc.visual_continuity_min qc.max_file_bytes gpu.slots
+render.profile render.nvenc render.fallback render.timeout_seconds render.presets render.ass_style render.layout render.sections render.output_stream qc.duration_range_ms qc.required_language qc.karaoke_tolerance_ms qc.hook_similarity_min qc.hook_audio_min_dbfs qc.visual_continuity_min qc.max_file_bytes qc.quality_thresholds gpu.slots
 drive.account drive.folders drive.chunk_bytes drive.chunk_timeout_seconds drive.retry drive.session_ttl_seconds drive.quota_reserve_ratio drive.verify working_set.max_video_sets working_set.max_bytes working_set.disk_reserve_bytes retention.original retention.reusable retention.output retention.temporary retention.log_days retention.audit_days
 time.timezone workflow.start_to_close_seconds workflow.heartbeat_seconds workflow.retry workflow.schedule batch.videos_per_news_per_round batch.target resume.ready_within_seconds
 '''.split()
 
 
 def test_profile_has_exactly_the_required_parameters():
-    assert len(REQUIRED) == 78
+    assert len(REQUIRED) == 83
     assert sorted(profile_params()) == sorted(REQUIRED)
 
 

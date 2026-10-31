@@ -180,3 +180,8 @@ Các giá trị tham số cấu hình dưới đây mang nhãn cơ sở `CONSERV
 | `OAUTH_CONSENT_TIMEOUT_SECONDS` | 300 giây | CP7-ADAPT-08 |
 | `STOP_GRACE_SECONDS` | 60 giây | CP7-ADAPT-08 |
 | `PG_WAIT_SECONDS` | 120 giây | CP7-ADAPT-08 |
+| `render.ass_style` | 13 khoá kiểu ASS (viền, bóng, căn dưới giữa) | R4 (user duyệt preset) |
+| `render.layout` | lề 60, tối đa 4 từ và 28 ký tự mỗi dòng, dòng công bố cỡ 40 | R4 (user duyệt preset) |
+| `render.sections` | UNSPECIFIED_V1 cho 4 phần CT-RND-001, render v1 không đọc | R4 (user duyệt preset) |
+| `render.output_stream` | h264, yuv420p | R4 (user duyệt preset) |
+| `qc.quality_thresholds` | SUBTITLE_BURNED_IN ít nhất 2 khung có chữ, VOICE_AUDIBLE từ -40 dB | R4 (user duyệt preset) |
