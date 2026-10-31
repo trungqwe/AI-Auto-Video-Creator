@@ -648,6 +648,17 @@ def ensure_seed_media(launcher, db):
     return asdict(report)
 
 
+def ensure_voice_staging(staging_root):
+    """Tạo thư mục rỗng `<staging>/voice` mà RealKokoroTts đòi có sẵn (KokoroConfig.staging_dir, kiểm ở synthesize, mã staging_missing). Production chưa có mã nào tạo thư mục này (wiring/voice.py chỉ tính đường dẫn, launcher.ensure_dirs chỉ tạo staging); driver chỉ chuẩn bị môi trường như ADAPT-SEED tạo staging/media, không sửa src. Trả 'created' hay 'existing'; chạy lặp không xoá gì."""
+    voice_dir = Path(staging_root) / 'voice'
+    existed = voice_dir.is_dir()
+    try:
+        voice_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise BlockedError('BLOCKED: không tạo được thư mục staging/voice: ' + type(exc).__name__) from None
+    return 'existing' if existed else 'created'
+
+
 # --- chạy lô -----------------------------------------------------------------------------------------------------
 
 @dataclass
@@ -680,6 +691,7 @@ class RunResult:
     cleanup_before_verified: bool = False
     attempts: list = field(default_factory=list)
     seed_import: dict = field(default_factory=dict)
+    staging_voice: str = ''
 
 
 def _drive_verified(locations):
@@ -698,6 +710,7 @@ def run_batch(work_dir, deadline):
         launch_path, _ = start_capturing(work_dir, 'first')
         result.composition = composition_audit(launcher, db)
         result.seed_import = ensure_seed_media(launcher, db)
+        result.staging_voice = ensure_voice_staging(db.layout.staging_dir)
         session = ApiSession(db.layout.cert_file)
         session.open(launch_path)
         batch_id = result.batch_id = session.post_batch(1)

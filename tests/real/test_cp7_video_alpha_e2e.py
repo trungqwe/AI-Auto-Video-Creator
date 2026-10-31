@@ -132,6 +132,20 @@ def test_unit_seed_import_uses_product_tools():
     assert not re.search(r'(?i)\b(insert\s+into|update\s+controlplane|delete\s+from)\b', text)
 
 
+def test_unit_ensure_voice_staging(tmp_path):
+    root = tmp_path / 'staging'
+    root.mkdir()
+    assert d.ensure_voice_staging(root) == 'created'
+    assert (root / 'voice').is_dir()
+    (root / 'voice' / 'keep.txt').write_text('x', encoding='utf-8')
+    assert d.ensure_voice_staging(root) == 'existing'
+    assert (root / 'voice' / 'keep.txt').read_text(encoding='utf-8') == 'x'
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    call = 'result.staging_voice = ensure_voice_staging('
+    assert text.count(call) == 1
+    assert text.index('result.seed_import = ensure_seed_media(') < text.index(call) < text.index('session.post_batch(1)')
+
+
 def test_unit_format_diagnostic():
     token = 'ya29.' + 'A' * 30
     diag = {'job': {'status': 'FAILED_FINAL', 'wait_reason': None, 'revision': 3},
