@@ -248,6 +248,50 @@ def test_unit_driver_stops_stale_worker_before_first_start():
     assert text.count('session.post_batch(1)') == 1
 
 
+_PROFILE_VOICE = {'voice': {'speech_rate_wpm': {'value': 150}, 'duration_range_ms': {'value': {'min': 61000, 'max': 70000}}}}
+
+
+def test_unit_format_script_length():
+    short = {'segments': [{'word_count': 30}, {'word_count': 32}, {'word_count': True}, {'word_count': '9'}, 'x']}
+    assert d.format_script_length(short, _PROFILE_VOICE) == 'script_length=[segments=5 words=62 wpm=150 est_ms=24800 range_ms=61000-70000 verdict=too_short]'
+    assert 'verdict=too_long' in d.format_script_length({'segments': [{'word_count': 200}]}, _PROFILE_VOICE)
+    assert 'est_ms=62000' in d.format_script_length({'segments': [{'word_count': 155}]}, _PROFILE_VOICE)
+    assert 'verdict=within_range' in d.format_script_length({'segments': [{'word_count': 155}]}, _PROFILE_VOICE)
+    assert d.format_script_length({}, _PROFILE_VOICE) == 'script_length=[no_segments]'
+    assert d.format_script_length(None, _PROFILE_VOICE) == 'script_length=[no_segments]'
+    real = json.loads(d.PROFILE_JSON.read_text(encoding='utf-8'))
+    assert 'range_ms=61000-70000' in d.format_script_length({'segments': [{'word_count': 1}]}, real)
+
+
+def test_unit_collect_script_length_read_only():
+    class _Db:
+        def __init__(self):
+            self.sqls = []
+
+        def query(self, sql, *params):
+            self.sqls.append(sql)
+            if 'cp_production_plans' in sql:
+                return [({'script_version_id': 'sv1'}, 'plan1')]
+            return [({'segments': [{'word_count': 62}]}, 1)]
+
+    class _Broken:
+        def query(self, sql, *params):
+            raise OSError('x')
+
+    db = _Db()
+    text = d.collect_script_length(db, 'since')
+    assert 'words=62' in text and 'verdict=too_short' in text
+    assert db.sqls and all(sql.lstrip().upper().startswith('SELECT') for sql in db.sqls)
+    assert d.collect_script_length(_Broken(), 'since') == 'script_length_error=OSError'
+
+
+def test_unit_blocked_message_reports_script_length():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    body = text[text.index('def run_batch('):]
+    assert "+ ' ' + collect_script_length(db, window_start) + ' ' + diag)" in body
+    assert text.count('session.post_batch(1)') == 1
+
+
 # --- RG-09 trên ngăn xếp thật ------------------------------------------------------------------------------------
 
 def test_rg09_stages_succeeded(batch_run, emit):

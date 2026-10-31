@@ -200,6 +200,31 @@ def format_start_output(text, limit=400):
     return label + 'launcher_start_output=[' + body[-limit:] + ']'
 
 
+def format_script_length(payload, profile):
+    """Ước lượng thời lượng giọng đọc từ tổng word_count của script so với voice.duration_range_ms của profile production (chỉ đọc); cho biết script quá ngắn, quá dài hay nằm trong khoảng trước khi CreateVoiceTrack đo thật."""
+    segments = payload.get('segments') if isinstance(payload, dict) else None
+    if not isinstance(segments, list):
+        return 'script_length=[no_segments]'
+    words = sum(s['word_count'] for s in segments if isinstance(s, dict) and type(s.get('word_count')) is int)
+    voice = profile['voice']
+    wpm = voice['speech_rate_wpm']['value']
+    low = voice['duration_range_ms']['value']['min']
+    high = voice['duration_range_ms']['value']['max']
+    est_ms = int(words * 60000 / wpm)
+    verdict = 'too_short' if est_ms < low else 'too_long' if est_ms > high else 'within_range'
+    return f'script_length=[segments={len(segments)} words={words} wpm={wpm} est_ms={est_ms} range_ms={low}-{high} verdict={verdict}]'
+
+
+def collect_script_length(db, since):
+    try:
+        plan = _plan_row(db, since)
+        script = None if plan is None else _script_row(db, plan[0].get('script_version_id'))
+        profile = json.loads(PROFILE_JSON.read_text(encoding='utf-8'))
+        return format_script_length(None if script is None else script[0], profile)
+    except Exception as exc:
+        return 'script_length_error=' + type(exc).__name__
+
+
 # --- điều khiển launcher -----------------------------------------------------------------------------------------
 
 def load_launcher():
@@ -786,7 +811,7 @@ def run_batch(work_dir, deadline):
             failed = db.failed_stage(job_id)
             result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': str(result.final_job_status), 'failed_stage': None if failed is None else failed[0], 'activity': None if failed is None else failed[3], 'code': None if failed is None else failed[2]})
             diag = collect_diagnostic(db, job_id)
-            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; ' + collect_render_config(db) + ' launcher_seed=[' + result.launcher_seed_line + '] seed_counts=' + json.dumps(result.seed_counts, sort_keys=True) + ' ' + diag)
+            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; ' + collect_render_config(db) + ' launcher_seed=[' + result.launcher_seed_line + '] seed_counts=' + json.dumps(result.seed_counts, sort_keys=True) + ' ' + collect_script_length(db, window_start) + ' ' + diag)
         result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': 'COMPLETED'})
         result.final_batch_status = db.batch_status(batch_id) or ''
         result.locations = db.locations(job_id, window_start)

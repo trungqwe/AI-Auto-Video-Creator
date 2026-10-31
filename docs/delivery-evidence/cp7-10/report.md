@@ -1,18 +1,18 @@
 # CP7-10 — R4 Video Alpha có giám sát trên ngăn xếp thật (RG-09)
 
-Ngày kiểm: 31/10/2026. Lane `lane-cp7-10`, interpreter khoá `.local-tools\runtime\8715e538\venv\Scripts\python.exe`. HEAD nền khi chạy là `3b495cd` (kèm thay đổi chưa commit của lượt này trong driver và test).
+Ngày kiểm: 31/10/2026. Lane `lane-cp7-10`, interpreter khoá `.local-tools\runtime\8715e538\venv\Scripts\python.exe`. HEAD nền khi chạy là `479c1b3` (kèm thay đổi chưa commit của lượt này trong driver và test).
 
 ## Lệnh đã chạy
 
-- Commit trước: `3b495cd`. Lần chạy ngăn xếp thật ở commit đó đã BLOCKED vì không bắt được URL /launch (launcher start exit 0 nhưng không có URL). Lượt này là lần chạy đúng một lần mới.
-- Thay đổi lượt này: thêm `format_start_output` (BLOCKED nêu đuôi stdout đã che của `launcher start`, nhãn `worker_already_running`); gọi `stop_until_exited()` trước lần start đầu trong `run_batch` và ghi `pre_stop_attempts`; thêm hai test thuần mới; thêm dòng emit `pre_stop_attempts`.
+- Commit trước: `479c1b3`. Lần chạy ngăn xếp thật ở commit đó BLOCKED ở stage `tts` (`voice_duration_out_of_range`) mà driver chưa đo độ dài script.
+- Thay đổi lượt này: thêm `format_script_length` và `collect_script_length` (chỉ đọc, chỉ SELECT) vào thông điệp BLOCKED của job FAILED_FINAL; thêm ba test thuần mới (`test_unit_format_script_length`, `test_unit_collect_script_length_read_only`, `test_unit_blocked_message_reports_script_length`) và hằng `_PROFILE_VOICE`.
 - `git diff --check` (trước khi chạy ngăn xếp thật): exit 0.
-- Test thuần (`-k unit`, không chạm ngăn xếp): 19 passed, 11 deselected, exit 0.
-- `python -m pytest tests/real/test_cp7_video_alpha_e2e.py -q -p no:cacheprovider` (ngăn xếp thật, đúng một lần): 19 passed, 0 failed, 11 errors, exit code 1. Cả 11 error là lỗi setup của fixture `batch_run` cùng một nguyên nhân. Thời gian chạy: không ghi lại được (dòng đo thời gian bị cắt khỏi output của công cụ); không chạy lại để đo.
+- Test thuần (`-k unit`, không chạm ngăn xếp): 22 passed, 11 deselected, exit 0.
+- `python -m pytest tests/real/test_cp7_video_alpha_e2e.py -q -p no:cacheprovider` (ngăn xếp thật, đây là lần chạy duy nhất của lượt, một lô 1 video): 22 passed, 0 failed, 11 errors, exit code 1, thời gian `521.02s (0:08:41)`. Cả 11 error là lỗi setup của fixture `batch_run` cùng một nguyên nhân.
 
 ## Trạng thái
 
-0/10 PASS. Lần này đã qua được bước start và seed, job chạy tới stage `tts` rồi FAILED_FINAL, nên không mục RG-09 nào được chứng minh.
+0/10 PASS. Lần này job dừng ở stage `analyze` (không phải `tts` như lần trước), nên không mục RG-09 nào được chứng minh.
 
 ## Kết quả
 
@@ -29,29 +29,33 @@ RG-09.secret_scan: BLOCKED
 
 ## Chi tiết đo
 
-Blocker nguyên văn (đã che): `BLOCKED: job kết thúc ở FAILED_FINAL stage=tts status=FAILED_FINAL activity=CreateVoiceTrack code=voice_duration_out_of_range field_errors={}; không thử lại, không tạo lô khác; render_config=[preset/bold-yellow=PUBLISHED preset/output-profile=PUBLISHED policy/quality=PUBLISHED] launcher_seed=[Đã nạp bộ media seed (idempotent).] seed_counts={"hooks": 10, "media_assets": 411, "sources": 7} job=FAILED_FINAL job_wait=None stages=[analyze#1=SUCCEEDED;script#1=SUCCEEDED;media_select#1=SUCCEEDED;plan#1=SUCCEEDED;tts#1=FAILED_FINAL/voice_duration_out_of_range]`.
+Blocker nguyên văn (đã che, phần serve_log_tail được cắt ở đuôi): `BLOCKED: job kết thúc ở FAILED_FINAL stage=analyze status=FAILED_FINAL activity=AnalyzeContent code=ai_output_schema_violation field_errors={"field": "root", "reason": "not_json", "attempts": "3"}; không thử lại, không tạo lô khác; render_config=[preset/bold-yellow=PUBLISHED preset/output-profile=PUBLISHED policy/quality=PUBLISHED] launcher_seed=[Đã nạp bộ media seed (idempotent).] seed_counts={"hooks": 10, "media_assets": 411, "sources": 7} script_length=[segments=5 words=167 wpm=150 est_ms=66800 range_ms=61000-70000 verdict=within_range] job=FAILED_FINAL job_wait=None stages=[analyze#1=FAILED_FINAL/ai_output_schema_violation]`.
 
-- stage=tts, activity=CreateVoiceTrack, code=voice_duration_out_of_range, field_errors rỗng.
-- stage đã SUCCEEDED: analyze, script, media_select, plan (mỗi stage 1 attempt).
+- stage=analyze, activity=AnalyzeContent, code=ai_output_schema_violation, field_errors: field=root, reason=not_json, attempts=3 (đầu ra AI ba lần liên tiếp không phải JSON).
+- stage đã SUCCEEDED: không có; chỉ `analyze#1` FAILED_FINAL.
 - launcher_seed: `Đã nạp bộ media seed (idempotent).`; seed_counts: hooks=10, media_assets=411, sources=7.
 - render_config: ba scope (preset/bold-yellow, preset/output-profile, policy/quality) đều PUBLISHED.
-- serve_log_tail: Kokoro tạo audio dài 24,82 giây cho 419 phoneme (RTF 0,16) ngay trước khi job fail.
-- pre_stop_attempts: fixture BLOCKED nên dòng `- start: pre_stop_attempts=` không được in; giá trị cụ thể chưa đo. Việc `launcher start` cấp được URL /launch và job được tạo cho thấy `stop_until_exited()` đã thoát thành công.
+- script_length: `segments=5 words=167 wpm=150 est_ms=66800 range_ms=61000-70000 verdict=within_range`. Lưu ý trung thực: job lần này chỉ có stage `analyze` FAILED_FINAL (chưa có stage `script`), nên dòng script_length không chứng minh được script thuộc job này; driver chỉ đọc bản ghi kế hoạch/script mới nhất trong cửa sổ thời gian của lô, nguồn gốc bản ghi đó chưa được xác minh.
+- serve_log_tail: đuôi serve.log ghi Kokoro tạo audio 21,70 giây cho 348 phoneme (RTF 0,16). Đây chỉ là một đoạn trong đuôi serve.log, chưa chứng minh là tổng thời lượng giọng; dòng 24,82 giây của lần chạy trước cũng vậy.
+- pre_stop_attempts: fixture BLOCKED nên dòng `- start: pre_stop_attempts=` không được in; giá trị chưa đo.
 - Các dòng `- ...` khác của fixture (elapsed, md5/sha256, ledger, resume ready_seconds, budget): không được in vì fixture BLOCKED.
-- Driver đã xác nhận bằng test canh: không còn `ensure_voice_staging`, `ensure_seed_media`, `staging_voice`, `seed_import`; `session.post_batch(1)` đúng một lần; không có lô thứ hai.
+- Driver đã được test canh xác nhận: không còn `ensure_voice_staging`, `ensure_seed_media`, `staging_voice`, `seed_import`; `session.post_batch(1)` đúng một lần; không có lô thứ hai.
 
-Nguyên nhân gốc của `voice_duration_out_of_range`: chưa xác định. Evidence chỉ cho thấy audio 24,82 giây được tạo, chưa cho biết ngưỡng độ dài mà CreateVoiceTrack áp dụng; việc kiểm tra thuộc production, ngoài owned paths.
+Kết luận nguyên nhân theo số đo:
+- Lỗi lần này (`ai_output_schema_violation`, `not_json` sau 3 lần ở stage analyze) xuất phát từ đầu ra của AI qua 9Router không phải JSON; chưa xác định thêm nguyên nhân gốc. Phần sửa thuộc production (lời gọi AI hay parse đầu ra), ngoài owned paths, Worker không sửa.
+- Với `voice_duration_out_of_range` của lần trước: job lần này không tới stage tts nên chưa kiểm chứng lại. Verdict `within_range` đo được (ước lượng theo 150 wpm nằm trong khoảng 61000-70000 ms) kèm lưu ý nguồn bản ghi ở trên; nếu bản ghi đó đúng là script của một job đã tới tts thì tổng thời lượng Kokoro đo thật lệch so với ước lượng, cần Control đo tổng thời lượng giọng. Phần sửa thuộc production (sinh script hay voice policy), ngoài owned paths, Worker không sửa.
 
 ## Open item
 
-- OI-RG09-LAUNCH-URL-01: đã giải quyết trong lần chạy này (có URL /launch, lô được tạo) nhờ stop trước start.
-- OI-RG09-TTS-DURATION-01: stage tts FAILED_FINAL với `voice_duration_out_of_range`; cần Control xác định ngưỡng và nguyên nhân (production, ngoài owned paths).
-- OI-PW-E2E-01 (writer CREATED→RUNNING): job đã chạy qua bốn stage đầu, chưa chạm render nên chưa kết luận hoàn toàn theo stages_succeeded.
+- OI-RG09-LAUNCH-URL-01: đã giải quyết (có URL /launch, lô được tạo ở cả hai lần chạy gần nhất).
+- OI-RG09-TTS-DURATION-01: chưa giải quyết; lần chạy này không tới stage tts. Cần Control đo tổng thời lượng giọng khi job tới tts (verdict script_length đo được là within_range, xem lưu ý nguồn bản ghi).
+- OI-RG09-ANALYZE-JSON-01 (mới): stage analyze FAILED_FINAL `ai_output_schema_violation` / `not_json` sau 3 lần; cần Control xem đầu ra AI của AnalyzeContent (production, ngoài owned paths).
+- OI-PW-E2E-01 (writer CREATED→RUNNING): job chạy tới stage analyze rồi FAILED_FINAL, chưa chạm các stage sau nên chưa kết luận theo stages_succeeded.
 
 ## Giới hạn trung thực
 
 - Không hạ ngưỡng RG-09, không nâng trần 25 lời gọi AI hay 3 USD.
-- Không SQL ghi, không sửa `src/**`, không dữ liệu giả, không đọc `Credentials/`.
+- Không SQL ghi, không sửa `src/**`, không sửa profile, không dữ liệu giả, không đọc `Credentials/`.
 - Không có capability, cookie, token hay file ID trong tệp này.
-- Chạy ngăn xếp thật đúng một lần, một lô.
+- Chạy ngăn xếp thật đúng một lần, một lô, không thử lại.
 - Driver không còn làm thay production; chỉ dùng launcher stop/start sẵn có.
