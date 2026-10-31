@@ -1,18 +1,18 @@
 # CP7-10 — R4 Video Alpha có giám sát trên ngăn xếp thật (RG-09)
 
-Ngày kiểm: 31/10/2026. Lane `lane-cp7-10`, interpreter khoá `.local-tools\runtime\8715e538\venv\Scripts\python.exe`. Lane đã rebase lên `984946d`; HEAD nền khi chạy là `7f1e349` (kèm thay đổi chưa commit trong driver và test).
+Ngày kiểm: 31/10/2026. Lane `lane-cp7-10`, interpreter khoá `.local-tools\runtime\8715e538\venv\Scripts\python.exe`. HEAD nền khi chạy là `3b495cd` (kèm thay đổi chưa commit của lượt này trong driver và test).
 
 ## Lệnh đã chạy
 
-- `git rebase 984946d8427b05977fe7700c7635fbc933a5811a`: hoàn tất, không xung đột. `tools/launcher/launcher.py` có `seed_media` (in dòng `Đã nạp bộ media seed (idempotent).`) và `seed_defaults` gọi `seed_production_render_config` trong luồng `start`.
-- Kiểm tĩnh bước 8 (ast, tên bị gỡ, `post_batch(1)` đúng một lần, cổng render config trước `post_batch`): exit 0.
+- Commit trước: `3b495cd`. Lần chạy ngăn xếp thật ở commit đó đã BLOCKED vì không bắt được URL /launch (launcher start exit 0 nhưng không có URL). Lượt này là lần chạy đúng một lần mới.
+- Thay đổi lượt này: thêm `format_start_output` (BLOCKED nêu đuôi stdout đã che của `launcher start`, nhãn `worker_already_running`); gọi `stop_until_exited()` trước lần start đầu trong `run_batch` và ghi `pre_stop_attempts`; thêm hai test thuần mới; thêm dòng emit `pre_stop_attempts`.
 - `git diff --check` (trước khi chạy ngăn xếp thật): exit 0.
-- Test thuần (`-k unit`, không chạm ngăn xếp): 17 passed.
-- `python -m pytest tests/real/test_cp7_video_alpha_e2e.py -q -p no:cacheprovider` (ngăn xếp thật, đúng một lần): 17 passed, 0 failed, 11 errors, exit code 1, 181,62 giây. Cả 11 error là lỗi setup của fixture `batch_run` cùng một nguyên nhân.
+- Test thuần (`-k unit`, không chạm ngăn xếp): 19 passed, 11 deselected, exit 0.
+- `python -m pytest tests/real/test_cp7_video_alpha_e2e.py -q -p no:cacheprovider` (ngăn xếp thật, đúng một lần): 19 passed, 0 failed, 11 errors, exit code 1. Cả 11 error là lỗi setup của fixture `batch_run` cùng một nguyên nhân. Thời gian chạy: không ghi lại được (dòng đo thời gian bị cắt khỏi output của công cụ); không chạy lại để đo.
 
 ## Trạng thái
 
-0/10 PASS. Fixture `batch_run` báo BLOCKED trước khi tạo lô: không có lô, job hay stage nào được tạo, nên không mục RG-09 nào được chứng minh.
+0/10 PASS. Lần này đã qua được bước start và seed, job chạy tới stage `tts` rồi FAILED_FINAL, nên không mục RG-09 nào được chứng minh.
 
 ## Kết quả
 
@@ -29,26 +29,29 @@ RG-09.secret_scan: BLOCKED
 
 ## Chi tiết đo
 
-Blocker nguyên văn (đã che): `BLOCKED: không bắt được URL /launch trong 120 giây`, phát sinh tại `start_capturing` (`tools/real/cp7_batch_driver.py`).
+Blocker nguyên văn (đã che): `BLOCKED: job kết thúc ở FAILED_FINAL stage=tts status=FAILED_FINAL activity=CreateVoiceTrack code=voice_duration_out_of_range field_errors={}; không thử lại, không tạo lô khác; render_config=[preset/bold-yellow=PUBLISHED preset/output-profile=PUBLISHED policy/quality=PUBLISHED] launcher_seed=[Đã nạp bộ media seed (idempotent).] seed_counts={"hooks": 10, "media_assets": 411, "sources": 7} job=FAILED_FINAL job_wait=None stages=[analyze#1=SUCCEEDED;script#1=SUCCEEDED;media_select#1=SUCCEEDED;plan#1=SUCCEEDED;tts#1=FAILED_FINAL/voice_duration_out_of_range]`.
 
-- `launcher start` trả exit code 0 (nếu khác 0 driver đã báo `launcher start rc=...`), nhưng tệp bắt URL `/launch` (qua `BROWSER`) không được tạo trong 120 giây.
-- stage / activity / code / field_errors: không áp dụng, vì job chưa được tạo (`stage=none`).
-- `launcher_seed`: không có số liệu. Lỗi xảy ra trong `start_capturing`, trước khi `run_batch` gán `launcher_seed_line`; stdout của launcher không được đưa vào chuỗi BLOCKED.
-- `seed_counts` (sources, hooks, media_assets): không có số liệu, vì `db.seed_counts()` chạy sau `start_capturing`.
-- `render_config=[...]`: không đo được, vì `require_render_config` chạy sau `start_capturing`; không có lô nào được tạo.
-- Driver đã xác nhận bằng test canh: không còn `ensure_voice_staging`, `ensure_seed_media`, `staging_voice`, `seed_import`; `session.post_batch(1)` xuất hiện đúng một lần; không có lô thứ hai.
+- stage=tts, activity=CreateVoiceTrack, code=voice_duration_out_of_range, field_errors rỗng.
+- stage đã SUCCEEDED: analyze, script, media_select, plan (mỗi stage 1 attempt).
+- launcher_seed: `Đã nạp bộ media seed (idempotent).`; seed_counts: hooks=10, media_assets=411, sources=7.
+- render_config: ba scope (preset/bold-yellow, preset/output-profile, policy/quality) đều PUBLISHED.
+- serve_log_tail: Kokoro tạo audio dài 24,82 giây cho 419 phoneme (RTF 0,16) ngay trước khi job fail.
+- pre_stop_attempts: fixture BLOCKED nên dòng `- start: pre_stop_attempts=` không được in; giá trị cụ thể chưa đo. Việc `launcher start` cấp được URL /launch và job được tạo cho thấy `stop_until_exited()` đã thoát thành công.
+- Các dòng `- ...` khác của fixture (elapsed, md5/sha256, ledger, resume ready_seconds, budget): không được in vì fixture BLOCKED.
+- Driver đã xác nhận bằng test canh: không còn `ensure_voice_staging`, `ensure_seed_media`, `staging_voice`, `seed_import`; `session.post_batch(1)` đúng một lần; không có lô thứ hai.
 
-Nguyên nhân gốc chưa xác định, và lần chạy này không chứng minh được. Giả thuyết chưa kiểm chứng: `cmd_start` in `Worker đang chạy; bỏ qua khởi động mới.` và thoát 0 khi PID cũ còn sống, nên `on_ready` không mở trình duyệt lần nào. Ngoài ra worker có thể không kế thừa `BROWSER`. Theo quy định "đúng một lần", không chạy lại để kiểm chứng.
+Nguyên nhân gốc của `voice_duration_out_of_range`: chưa xác định. Evidence chỉ cho thấy audio 24,82 giây được tạo, chưa cho biết ngưỡng độ dài mà CreateVoiceTrack áp dụng; việc kiểm tra thuộc production, ngoài owned paths.
 
 ## Open item
 
-- OI-RG09-LAUNCH-URL-01: driver không lấy được URL `/launch` sau `launcher start`. Cần Control xác minh trạng thái worker trước lượt chạy (PID còn sống hay không) và cách launcher cấp URL khi worker đã chạy sẵn. Việc sửa thuộc `tools/launcher/**`, ngoài owned paths.
-- OI-PW-E2E-01 (writer CREATED→RUNNING): chưa được chứng minh hay bác bỏ bởi lần chạy này.
-- Các gói PW-W2-FIX5, ADAPT-E-FIX3, ADAPT-E-FIX4, PW-W1-FIX1 là phần production đã gộp; lần chạy này chưa tới stage nào nên chưa chứng minh hiệu quả của chúng.
+- OI-RG09-LAUNCH-URL-01: đã giải quyết trong lần chạy này (có URL /launch, lô được tạo) nhờ stop trước start.
+- OI-RG09-TTS-DURATION-01: stage tts FAILED_FINAL với `voice_duration_out_of_range`; cần Control xác định ngưỡng và nguyên nhân (production, ngoài owned paths).
+- OI-PW-E2E-01 (writer CREATED→RUNNING): job đã chạy qua bốn stage đầu, chưa chạm render nên chưa kết luận hoàn toàn theo stages_succeeded.
 
 ## Giới hạn trung thực
 
 - Không hạ ngưỡng RG-09, không nâng trần 25 lời gọi AI hay 3 USD.
 - Không SQL ghi, không sửa `src/**`, không dữ liệu giả, không đọc `Credentials/`.
 - Không có capability, cookie, token hay file ID trong tệp này.
-- Chạy đúng một lần, không có lô nào được tạo.
+- Chạy ngăn xếp thật đúng một lần, một lô.
+- Driver không còn làm thay production; chỉ dùng launcher stop/start sẵn có.

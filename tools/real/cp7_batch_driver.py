@@ -192,6 +192,14 @@ def require_render_config(db):
     return line
 
 
+def format_start_output(text, limit=400):
+    """Đuôi stdout/stderr của `launcher start` (đã che bí mật) để BLOCKED nêu được vì sao không có URL /launch; 'Worker đang chạy' được gắn nhãn worker_already_running."""
+    raw = str(text or '')
+    body = _LAUNCH_TOKEN.sub('[REDACTED:launch]', c.redact(' | '.join(line.strip() for line in raw.splitlines() if line.strip())))
+    label = 'worker_already_running ' if 'Worker đang chạy' in raw else ''
+    return label + 'launcher_start_output=[' + body[-limit:] + ']'
+
+
 # --- điều khiển launcher -----------------------------------------------------------------------------------------
 
 def load_launcher():
@@ -247,7 +255,7 @@ def start_capturing(work_dir, name):
             break
         time.sleep(1)
     else:
-        raise BlockedError('BLOCKED: không bắt được URL /launch trong 120 giây')
+        raise BlockedError('BLOCKED: không bắt được URL /launch trong 120 giây; ' + format_start_output(text))
     raw = url_file.read_text(encoding='utf-8').strip()
     url_file.unlink()
     if '/launch' not in raw:
@@ -696,6 +704,7 @@ class RunResult:
     launcher_seed_line: str = ''
     seed_counts: dict = field(default_factory=dict)
     render_config: str = ''
+    pre_stop_attempts: int = 0
 
 
 def _drive_verified(locations):
@@ -711,6 +720,8 @@ def run_batch(work_dir, deadline):
     watch = CostWatch(db, window_start)
     watch.check()
     try:
+        # Đưa về trạng thái đã biết: stop idempotent, không đụng container hay dữ liệu; worker cũ còn sống thì start in 'Worker đang chạy' và không cấp URL /launch.
+        result.pre_stop_attempts = stop_until_exited()
         launch_path, _, launcher_out = start_capturing(work_dir, 'first')
         result.composition = composition_audit(launcher, db)
         result.launcher_seed_line = launcher_seed_line(launcher_out)

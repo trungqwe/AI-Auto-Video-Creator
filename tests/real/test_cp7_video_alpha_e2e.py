@@ -225,6 +225,29 @@ def test_unit_seed_counts_read_only():
     assert len(db.calls[0][1]) == 2
 
 
+def test_unit_format_start_output():
+    token = 'ya29.' + 'A' * 30
+    out = 'Worker đang chạy; bỏ qua khởi động mới.\nOpen https://x/launch?cap' + '=abc123\n' + token
+    text = d.format_start_output(out)
+    assert text.startswith('worker_already_running launcher_start_output=[')
+    assert 'bỏ qua khởi động mới' in text
+    assert 'abc123' not in text and token not in text
+    other = d.format_start_output('Đã khởi động; trình duyệt sẽ mở tại /launch')
+    assert other.startswith('launcher_start_output=[') and 'worker_already_running' not in other
+    assert len(d.format_start_output('x' * 5000)) <= 450
+    assert d.format_start_output('') == 'launcher_start_output=[]'
+    assert d.format_start_output(None) == 'launcher_start_output=[]'
+
+
+def test_unit_driver_stops_stale_worker_before_first_start():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    body = text[text.index('def run_batch('):]
+    assert body.index('try:') < body.index('result.pre_stop_attempts = stop_until_exited()')
+    assert body.index('result.pre_stop_attempts = stop_until_exited()') < body.index("start_capturing(work_dir, 'first')")
+    assert "'BLOCKED: không bắt được URL /launch trong 120 giây; ' + format_start_output(text)" in text
+    assert text.count('session.post_batch(1)') == 1
+
+
 # --- RG-09 trên ngăn xếp thật ------------------------------------------------------------------------------------
 
 def test_rg09_stages_succeeded(batch_run, emit):
@@ -328,3 +351,4 @@ def test_rg09_budget_envelope(batch_run, emit):
          f'drive_bytes={batch_run.drive_bytes} cap_bytes=209715200 elapsed_s={batch_run.elapsed_seconds:.0f} '
          f'limit_s=7200 remaining_s={DEADLINE.remaining():.0f}')
     emit('- seed: launcher_line=' + batch_run.launcher_seed_line + ' seed_counts=' + json.dumps(batch_run.seed_counts, sort_keys=True) + ' render_config=' + batch_run.render_config)
+    emit('- start: pre_stop_attempts=' + str(batch_run.pre_stop_attempts))
