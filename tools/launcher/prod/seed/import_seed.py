@@ -33,6 +33,7 @@ ARTICLE_IMAGE_RIGHTS_STATUS = 'UNVERIFIED'
 STAGED_MEDIA_DIR = 'media'
 STAGED_OWNER_REF = 'adapt-seed'
 STAGED_RETENTION_REF = 'durable'
+SEED_RIGHTS_STATUS = 'SELF_GENERATED'
 
 
 class SeedError(ValueError):
@@ -195,19 +196,24 @@ def _stage_image(staging_root, item):
     return target
 
 
-def _stage_images(manager, config, items):
-    _, runtime = config.production_parts()
-    staging_root = Path(runtime.staging_root)
+def _stage_items(manager, workspace_id, staging_root, items):
+    staging_root = Path(staging_root)
     for item in items:
         target = _stage_image(staging_root, item)
         register_staged_artifact(
             manager,
-            workspace_id=config.workspace_id,
+            workspace_id=workspace_id,
             staging_root=staging_root,
             owner_ref=STAGED_OWNER_REF,
             relative_ref=STAGED_MEDIA_DIR + '/' + target.name,
             retention_ref=STAGED_RETENTION_REF,
         )
+
+
+def _import_media(manager, workspace_id, staging_root, items):
+    counts = _import_items(manager, workspace_id, items)
+    _stage_items(manager, workspace_id, staging_root, items)
+    return counts
 
 
 def import_seed(manager, config, seed_dir, *, resolver=system_dns_resolver, sources_path=SOURCES_JSON, hooks_path=HOOKS_JSON):
@@ -220,8 +226,8 @@ def import_seed(manager, config, seed_dir, *, resolver=system_dns_resolver, sour
     _require_rights(hooks)
     items = _collect_items(hooks, seed_dir)
     registered, replayed, existing = _import_sources(manager, config, sources, resolver)
-    counts = _import_items(manager, config.workspace_id, items)
-    _stage_images(manager, config, items)
+    _, runtime = config.production_parts()
+    counts = _import_media(manager, config.workspace_id, runtime.staging_root, items)
     return SeedImportReport(
         registered,
         replayed,
@@ -231,4 +237,20 @@ def import_seed(manager, config, seed_dir, *, resolver=system_dns_resolver, sour
         counts['assets_new'],
         counts['assets_existing'],
         ARTICLE_IMAGE_RIGHTS_STATUS,
+    )
+
+
+def import_seed_media(manager, *, workspace_id, staging_root, seed_dir, hooks_path=HOOKS_JSON):
+    '''Nhập riêng bộ media seed tự tạo: kiểm quyền SELF_GENERATED và mọi tệp trước khi ghi dòng nào, rồi nhập tài sản và hook, chép vào staging và đăng ký version; không đăng ký nguồn, không gọi DNS; chạy lại không nhân đôi.'''
+    hooks = _read_json(hooks_path)
+    if hooks['rights']['seed_rights_status'] != SEED_RIGHTS_STATUS:
+        raise SeedError('seed media must be ' + SEED_RIGHTS_STATUS)
+    items = _collect_items(hooks, seed_dir)
+    counts = _import_media(manager, workspace_id, staging_root, items)
+    return SeedImportReport(
+        hooks_imported=counts['hooks_imported'],
+        hooks_existing=counts['hooks_existing'],
+        assets_new=counts['assets_new'],
+        assets_existing=counts['assets_existing'],
+        article_image_rights_status=ARTICLE_IMAGE_RIGHTS_STATUS,
     )
