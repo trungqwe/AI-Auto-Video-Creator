@@ -24,6 +24,7 @@ from controlplane.api.wiring.production_profile import PROFILE_PRODUCTION, Wirin
 from controlplane.api.wiring.storage import storage_activity_services
 from controlplane.application.orchestration.grant_runtime import ExecutionGrantCurrency, GrantRevokingDispatcher
 from controlplane.application.orchestration.job_lifecycle import JobLifecycleListener
+from controlplane.application.orchestration.job_terminal import FailJobRequest, JobTerminator
 from controlplane.application.orchestration.result_recorder import ResultRecordingDispatcher
 from controlplane.application.orchestration.workflows.activities import (
     ACTIVITY_BINDINGS,
@@ -191,6 +192,7 @@ class WorkflowServices:
     dispatcher: ActivityDispatcher
     bound_activities: frozenset[str]
     schedule_state: str
+    job_terminator: Any = None
 
 
 def build_workflow_services(
@@ -271,9 +273,25 @@ def build_temporal_registration(
         view = await asyncio.to_thread(capability_reader)
         return dict(view)
 
+    @activity.defn(name='FailVideoJob')
+    async def _fail_video_job_activity(request: dict) -> dict:
+        terminator = services.job_terminator
+        if terminator is None:
+            raise ApplicationError('JOB_TERMINATOR_UNBOUND', non_retryable=True)
+        try:
+            fail_request = FailJobRequest(
+                video_job_id=request['video_job_id'],
+                stage_run_id=request['stage_run_id'],
+                problem=request.get('problem') or {},
+            )
+        except KeyError:
+            raise ApplicationError('INVALID_ACTIVITY_REQUEST', non_retryable=True) from None
+        result = await asyncio.to_thread(terminator.fail, fail_request)
+        return {'code': result.code, 'job_state': result.job_state}
+
     control_queue = INTERNAL_ACTIVITIES['IssueExecutionGrant'].value
     activities_map.setdefault(control_queue, []).extend(
-        [_issue_grant_activity, _read_capability_view_activity]
+        [_issue_grant_activity, _read_capability_view_activity, _fail_video_job_activity]
     )
 
     activities_by_queue = {
@@ -385,7 +403,11 @@ def wrap_dispatcher(
 ) -> WorkflowServices:
     listener = JobLifecycleListener(connection_factory, workspace_id=workspace_id)
     recording = ResultRecordingDispatcher(services.dispatcher, connection_factory, clock, [listener], workspace_id=workspace_id)
-    return replace(services, dispatcher=GrantRevokingDispatcher(recording, connection_factory, workspace_id))
+    return replace(
+        services,
+        dispatcher=GrantRevokingDispatcher(recording, connection_factory, workspace_id),
+        job_terminator=JobTerminator(connection_factory, clock, workspace_id=workspace_id),
+    )
 
 
 def build_capability_probes(
