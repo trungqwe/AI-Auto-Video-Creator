@@ -4,6 +4,7 @@ Driver khởi động launcher, lấy phiên từ URL /launch (không ghi URL ra
 `POST /v1/batches`, theo dõi từng stage trong cp_stage_runs bằng truy vấn chỉ đọc và ghi trace đã che bí mật.
 Trần: <= 25 lời gọi AI, ledger +3 USD, Drive <= 200 MiB, <= 2 giờ. Cách dừng: `python tools/launcher/launcher.py stop`
 (driver luôn gọi ở cuối). Không in capability, cookie, token hay file ID.
+Driver không làm thay production: staging, media seed và render config do `launcher start` tự tạo; driver chỉ đọc.
 """
 from __future__ import annotations
 
@@ -16,11 +17,10 @@ import re
 import ssl
 import subprocess
 import sys
-import tempfile
 import time
 import types
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 
@@ -52,8 +52,6 @@ TRACE_KEYS = ('snapshot_id', 'snapshot_payload_sha256', 'model_refs', 'prompt_re
               'script_version_id', 'script_sha256', 'input_revisions')
 CLEANUP_STATES = ('CLEANUP_ELIGIBLE', 'CLEANUP_AUTHORIZED', 'DELETED')
 TERMINAL_JOB = ('COMPLETED', 'FAILED_FINAL')
-SEED_DIR = REPO / 'tools' / 'launcher' / 'prod' / 'seed'
-DEFAULT_FFMPEG = r'C:\ffmpeg\bin\ffmpeg.exe'
 RENDER_CONFIG_SCOPES = (('preset', 'bold-yellow'), ('preset', 'output-profile'), ('policy', 'quality'))
 
 
@@ -124,8 +122,8 @@ def _sha(obj):
 _LAUNCH_TOKEN = re.compile(r'(?i)\b(?:' + '|'.join(('cap', 'cp_session', 'csrf_token')) + r')\s*[=:]\s*\S+')
 
 
-def format_diagnostic(diag, seed, log_tail, limit=1500):
-    """Một dòng mô tả vì sao job FAILED_FINAL: mọi hàng cp_stage_runs của job, trạng thái job, số liệu nhập seed, đuôi serve.log; đã che bí mật."""
+def format_diagnostic(diag, log_tail, limit=1500):
+    """Một dòng mô tả vì sao job FAILED_FINAL: mọi hàng cp_stage_runs của job, trạng thái job, đuôi serve.log; đã che bí mật."""
     stages = []
     for row in diag.get('stages') or []:
         text = f"{row['stage']}#{row['attempt']}={row['status']}"
@@ -137,9 +135,8 @@ def format_diagnostic(diag, seed, log_tail, limit=1500):
             text += '/msg=' + str(row['message'])
         stages.append(text)
     job = diag.get('job') or {}
-    seed_text = ' '.join(f'{k}={v}' for k, v in (seed or {}).items() if isinstance(v, (int, str)))
     text = ('job=' + str(job.get('status')) + ' job_wait=' + str(job.get('wait_reason')) + ' stages=[' + (';'.join(stages) or 'no_stage_rows')
-            + '] seed=[' + seed_text[:200] + '] serve_log_tail=[' + str(log_tail)[:600] + ']')
+            + '] serve_log_tail=[' + str(log_tail)[:600] + ']')
     return _LAUNCH_TOKEN.sub('[REDACTED:launch]', c.redact(text))[:limit]
 
 
@@ -157,9 +154,9 @@ def serve_log_tail(path, max_bytes=4000, lines=6):
     return ' | '.join(kept[-lines:])
 
 
-def collect_diagnostic(db, job_id, seed):
+def collect_diagnostic(db, job_id):
     try:
-        return format_diagnostic(db.job_diagnostics(job_id), seed, serve_log_tail(db.layout.serve_log))
+        return format_diagnostic(db.job_diagnostics(job_id), serve_log_tail(db.layout.serve_log))
     except Exception as exc:
         return 'diagnostic_error=' + type(exc).__name__
 
@@ -169,6 +166,30 @@ def collect_render_config(db):
         return format_render_config(db.render_config_status())
     except Exception as exc:
         return 'render_config_error=' + type(exc).__name__
+
+
+def render_config_published(rows):
+    """True khi cả ba scope RENDER_CONFIG_SCOPES có revision mới nhất PUBLISHED."""
+    seen = {(row[0], row[1]): row[2] for row in rows or []}
+    return all(seen.get(scope) == 'PUBLISHED' for scope in RENDER_CONFIG_SCOPES)
+
+
+def launcher_seed_line(text):
+    """Các dòng của stdout launcher start có chữ seed (đã che bí mật); không có thì no_seed_line."""
+    lines = [line.strip() for line in str(text or '').splitlines() if 'seed' in line.lower()]
+    return _LAUNCH_TOKEN.sub('[REDACTED:launch]', c.redact(' | '.join(lines)))[:300] if lines else 'no_seed_line'
+
+
+def require_render_config(db):
+    """Điều kiện chặn: ba scope render config phải PUBLISHED trước post_batch; trả dòng đo."""
+    try:
+        rows = db.render_config_status()
+    except Exception as exc:
+        raise BlockedError('BLOCKED: không đọc được trạng thái render config: ' + type(exc).__name__) from None
+    line = format_render_config(rows)
+    if not render_config_published(rows):
+        raise BlockedError('BLOCKED: render config chưa PUBLISHED trước khi tạo lô, không tạo lô; ' + line)
+    return line
 
 
 # --- điều khiển launcher -----------------------------------------------------------------------------------------
@@ -231,7 +252,7 @@ def start_capturing(work_dir, name):
     url_file.unlink()
     if '/launch' not in raw:
         raise BlockedError('BLOCKED: URL /launch không hợp lệ')
-    return raw[raw.index('/launch'):], started
+    return raw[raw.index('/launch'):], started, text
 
 
 # --- Control API -------------------------------------------------------------------------------------------------
@@ -337,6 +358,11 @@ class ReadOnlyDb:
     def render_config_status(self):
         """(scope_kind, scope_key, status) của revision mới nhất mỗi scope render config mà resolve_inputs đòi; chỉ đọc."""
         return self.query("SELECT DISTINCT ON (scope_kind, scope_key) scope_kind, scope_key, status FROM controlplane.cp_config_revisions WHERE workspace_id = %s AND ((scope_kind = 'preset' AND scope_key IN ('bold-yellow', 'output-profile')) OR (scope_kind = 'policy' AND scope_key = 'quality')) ORDER BY scope_kind, scope_key, config_revision_number DESC")
+
+    def seed_counts(self):
+        """Số đếm chỉ đọc của dữ liệu seed trong workspace: nguồn, hook, media asset."""
+        rows = self.query('SELECT (SELECT count(*) FROM controlplane.cp_sources WHERE workspace_id = %s), (SELECT count(*) FROM controlplane.cp_hooks WHERE workspace_id = %s), (SELECT count(*) FROM controlplane.cp_media_assets WHERE workspace_id = %s)', self.workspace_id, self.workspace_id)
+        return {'sources': int(rows[0][0]), 'hooks': int(rows[0][1]), 'media_assets': int(rows[0][2])}
 
     def job_diagnostics(self, job_id):
         """Mọi hàng cp_stage_runs của job (kể cả hàng gắn workflow_id thay vì job_id) và trạng thái job; chỉ đọc."""
@@ -636,47 +662,6 @@ def qc_gates(db, job_id):
     return {'hard_total': total, 'hard_passed': passed, 'hard_failed': total - passed, 'not_applicable': na, 'failed_ids': failed}
 
 
-def _load_module(name, path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def ensure_seed_media(launcher, db):
-    """Nhập media seed tự tạo của ADAPT-SEED (ảnh nền, hook clip, hook âm thanh) bằng công cụ sản phẩm qua dịch vụ ứng dụng của A và C; chạy lặp không nhân đôi, không gọi AI, không SQL thô trong driver."""
-    from controlplane.api.wiring.production_profile import PROFILE_PRODUCTION, WiringConfig, load_production_profile
-    from controlplane.infrastructure.db.uow import TransactionManager
-    profile = load_production_profile(launcher.PROFILE_PATH)
-    runtime = launcher.build_runtime(profile, db.layout, os.environ)
-    config = WiringConfig(mode=PROFILE_PRODUCTION, workspace_id=db.workspace_id, profile=profile, runtime=runtime)
-    ffmpeg = Path(os.environ.get('AIAVC_FFMPEG_PATH', DEFAULT_FFMPEG))
-    maker = _load_module('cp7_make_seed_media', SEED_DIR / 'make_seed_media.py')
-    importer = _load_module('cp7_import_seed', SEED_DIR / 'import_seed.py')
-    manager = TransactionManager(db.dsn, pool_max_size=2)
-    try:
-        with tempfile.TemporaryDirectory(prefix='cp7-seed-') as seed_dir:
-            maker.generate_seed_media(seed_dir, ffmpeg, emit=lambda line: None)
-            report = importer.import_seed(manager, config, seed_dir)
-    except Exception as exc:
-        raise BlockedError('BLOCKED: nhập media seed thất bại: ' + type(exc).__name__ + ': ' + c.redact(str(exc))[:200]) from None
-    finally:
-        manager.close()
-    return asdict(report)
-
-
-def ensure_voice_staging(staging_root):
-    """Tạo thư mục rỗng `<staging>/voice` mà RealKokoroTts đòi có sẵn (KokoroConfig.staging_dir, kiểm ở synthesize, mã staging_missing). Production chưa có mã nào tạo thư mục này (wiring/voice.py chỉ tính đường dẫn, launcher.ensure_dirs chỉ tạo staging); driver chỉ chuẩn bị môi trường như ADAPT-SEED tạo staging/media, không sửa src. Trả 'created' hay 'existing'; chạy lặp không xoá gì."""
-    voice_dir = Path(staging_root) / 'voice'
-    existed = voice_dir.is_dir()
-    try:
-        voice_dir.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        raise BlockedError('BLOCKED: không tạo được thư mục staging/voice: ' + type(exc).__name__) from None
-    return 'existing' if existed else 'created'
-
-
 # --- chạy lô -----------------------------------------------------------------------------------------------------
 
 @dataclass
@@ -708,8 +693,9 @@ class RunResult:
     verified_before_complete: bool = False
     cleanup_before_verified: bool = False
     attempts: list = field(default_factory=list)
-    seed_import: dict = field(default_factory=dict)
-    staging_voice: str = ''
+    launcher_seed_line: str = ''
+    seed_counts: dict = field(default_factory=dict)
+    render_config: str = ''
 
 
 def _drive_verified(locations):
@@ -725,10 +711,11 @@ def run_batch(work_dir, deadline):
     watch = CostWatch(db, window_start)
     watch.check()
     try:
-        launch_path, _ = start_capturing(work_dir, 'first')
+        launch_path, _, launcher_out = start_capturing(work_dir, 'first')
         result.composition = composition_audit(launcher, db)
-        result.seed_import = ensure_seed_media(launcher, db)
-        result.staging_voice = ensure_voice_staging(db.layout.staging_dir)
+        result.launcher_seed_line = launcher_seed_line(launcher_out)
+        result.seed_counts = db.seed_counts()
+        result.render_config = require_render_config(db)
         session = ApiSession(db.layout.cert_file)
         session.open(launch_path)
         batch_id = result.batch_id = session.post_batch(1)
@@ -768,7 +755,7 @@ def run_batch(work_dir, deadline):
                 result.render_seen_running = resumed = True
                 result.before_stop = stages
                 result.stop_attempts = stop_until_exited()
-                launch2, t_start = start_capturing(work_dir, 'second')
+                launch2, t_start, _ = start_capturing(work_dir, 'second')
                 session = ApiSession(db.layout.cert_file)
                 session.open(launch2)
                 while True:
@@ -787,8 +774,8 @@ def run_batch(work_dir, deadline):
         if result.final_job_status != 'COMPLETED':
             failed = db.failed_stage(job_id)
             result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': str(result.final_job_status), 'failed_stage': None if failed is None else failed[0], 'activity': None if failed is None else failed[3], 'code': None if failed is None else failed[2]})
-            diag = collect_diagnostic(db, job_id, result.seed_import)
-            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; ' + collect_render_config(db) + ' ' + diag)
+            diag = collect_diagnostic(db, job_id)
+            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; ' + collect_render_config(db) + ' launcher_seed=[' + result.launcher_seed_line + '] seed_counts=' + json.dumps(result.seed_counts, sort_keys=True) + ' ' + diag)
         result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': 'COMPLETED'})
         result.final_batch_status = db.batch_status(batch_id) or ''
         result.locations = db.locations(job_id, window_start)

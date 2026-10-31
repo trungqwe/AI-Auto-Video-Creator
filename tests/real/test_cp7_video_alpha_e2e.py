@@ -1,7 +1,7 @@
 """CP7-10 / RG-09: một lô 1 video trên ngăn xếp thật (launcher, PostgreSQL, Temporal, 9Router, Drive, GPU).
 
 Trần chi phí: <= 25 lời gọi AI, ledger +3 USD, Drive <= 200 MiB, <= 2 giờ. Cách dừng: `python tools/launcher/launcher.py stop`
-(driver luôn dừng ở cuối). Giữa lúc render chạy stop rồi start đúng một lần. Không mock; driver không ghi DB bằng SQL, chỉ nhập media seed qua công cụ ADAPT-SEED của sản phẩm (dịch vụ ứng dụng của A và C).
+(driver luôn dừng ở cuối). Giữa lúc render chạy stop rồi start đúng một lần. Không mock; driver không ghi DB và không làm thay production: thư mục staging, media seed và render config do `launcher start` tự tạo, driver chỉ đọc.
 """
 from __future__ import annotations
 
@@ -134,28 +134,18 @@ def test_unit_driver_never_prints_launch_url():
     assert not re.search(r'print\([^)]*(launch_path|launch2|\burl\b|raw)', text)
 
 
-def test_unit_seed_import_uses_product_tools():
+def test_unit_driver_does_not_call_import_seed():
     text = DRIVER_FILE.read_text(encoding='utf-8')
-    assert 'def ensure_seed_media(' in text
-    assert 'make_seed_media.py' in text and 'import_seed.py' in text
-    call = 'result.seed_import = ensure_seed_media('
-    assert call in text
-    assert text.index(call) < text.index('session.post_batch(1)')
-    assert not re.search(r'(?i)\b(insert\s+into|update\s+controlplane|delete\s+from)\b', text)
+    for name in ('import_seed', 'make_seed_media', 'ensure_seed_media', 'seed_import'):
+        assert name not in text, name
+    assert not hasattr(d, 'ensure_seed_media')
 
 
-def test_unit_ensure_voice_staging(tmp_path):
-    root = tmp_path / 'staging'
-    root.mkdir()
-    assert d.ensure_voice_staging(root) == 'created'
-    assert (root / 'voice').is_dir()
-    (root / 'voice' / 'keep.txt').write_text('x', encoding='utf-8')
-    assert d.ensure_voice_staging(root) == 'existing'
-    assert (root / 'voice' / 'keep.txt').read_text(encoding='utf-8') == 'x'
+def test_unit_driver_does_not_ensure_voice_staging():
     text = DRIVER_FILE.read_text(encoding='utf-8')
-    call = 'result.staging_voice = ensure_voice_staging('
-    assert text.count(call) == 1
-    assert text.index('result.seed_import = ensure_seed_media(') < text.index(call) < text.index('session.post_batch(1)')
+    for name in ('ensure_voice_staging', 'staging_voice'):
+        assert name not in text, name
+    assert not hasattr(d, 'ensure_voice_staging')
 
 
 def test_unit_format_diagnostic():
@@ -163,15 +153,76 @@ def test_unit_format_diagnostic():
     diag = {'job': {'status': 'FAILED_FINAL', 'wait_reason': None, 'revision': 3},
             'stages': [{'stage': 'media_select', 'attempt': 1, 'status': 'FAILED_FINAL', 'code': 'INPUT_NOT_READY',
                         'wait_reason': None, 'message': 'seed_media_missing'}]}
-    text = d.format_diagnostic(diag, {'assets_new': 4, 'nested': {'a': 1}}, 'boom cap' + '=abc123 ' + token)
+    text = d.format_diagnostic(diag, 'boom cap' + '=abc123 ' + token)
     assert 'job=FAILED_FINAL' in text
     assert 'media_select#1=FAILED_FINAL/INPUT_NOT_READY/msg=seed_media_missing' in text
-    assert 'assets_new=4' in text and 'nested' not in text
     assert 'abc123' not in text and token not in text
     assert len(text) <= 1500
-    empty = d.format_diagnostic({'job': None, 'stages': []}, {}, '')
+    empty = d.format_diagnostic({'job': None, 'stages': []}, '')
     assert 'no_stage_rows' in empty and 'job=None' in empty
     assert d.serve_log_tail(SELF.parent / 'khong_co_tep.log') == 'no_serve_log'
+
+
+_FULL_RENDER_CONFIG = [('preset', 'bold-yellow', 'PUBLISHED'), ('preset', 'output-profile', 'PUBLISHED'), ('policy', 'quality', 'PUBLISHED')]
+
+
+def test_unit_render_config_published():
+    full = _FULL_RENDER_CONFIG
+    assert d.render_config_published(full) is True
+    assert d.render_config_published(full[:2]) is False
+    assert d.render_config_published(full[:2] + [('policy', 'quality', 'DRAFT')]) is False
+    assert d.render_config_published([]) is False
+    assert d.render_config_published(None) is False
+
+
+def test_unit_require_render_config_blocks():
+    class _Db:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def render_config_status(self):
+            return self.rows
+
+    class _Broken:
+        def render_config_status(self):
+            raise OSError('x')
+
+    full = _FULL_RENDER_CONFIG
+    assert d.require_render_config(_Db(full)) == 'render_config=[preset/bold-yellow=PUBLISHED preset/output-profile=PUBLISHED policy/quality=PUBLISHED]'
+    with pytest.raises(d.BlockedError) as info:
+        d.require_render_config(_Db(full[:1]))
+    assert str(info.value).startswith('BLOCKED: ')
+    assert 'preset/output-profile=MISSING' in str(info.value)
+    with pytest.raises(d.BlockedError):
+        d.require_render_config(_Broken())
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    assert text.index('result.render_config = require_render_config(db)') < text.index('session.post_batch(1)')
+
+
+def test_unit_launcher_seed_line():
+    token = 'ya29.' + 'A' * 30
+    out = 'start ok\nseed media loaded (idempotent)\nOpen https://x/launch?cap' + '=abc123\nSeed done ' + token
+    line = d.launcher_seed_line(out)
+    assert 'seed media loaded (idempotent)' in line and 'Seed done' in line
+    assert token not in line and 'start ok' not in line and 'abc123' not in line
+    assert d.launcher_seed_line('start ok') == 'no_seed_line'
+    assert d.launcher_seed_line('') == 'no_seed_line'
+
+
+def test_unit_seed_counts_read_only():
+    class _Db(d.ReadOnlyDb):
+        def __init__(self):
+            self.workspace_id = 'w'
+            self.calls = []
+
+        def query(self, sql, *params):
+            self.calls.append((sql, params))
+            return [(7, 10, 22)]
+
+    db = _Db()
+    assert db.seed_counts() == {'sources': 7, 'hooks': 10, 'media_assets': 22}
+    assert db.calls[0][0].lstrip().upper().startswith('SELECT')
+    assert len(db.calls[0][1]) == 2
 
 
 # --- RG-09 trên ngăn xếp thật ------------------------------------------------------------------------------------
@@ -276,3 +327,4 @@ def test_rg09_budget_envelope(batch_run, emit):
     emit(f'- budget: attempts={len(batch_run.attempts)} ai_calls={batch_run.ai_calls} cap=25 spent_usd={batch_run.spent_usd} ceiling_usd=3 '
          f'drive_bytes={batch_run.drive_bytes} cap_bytes=209715200 elapsed_s={batch_run.elapsed_seconds:.0f} '
          f'limit_s=7200 remaining_s={DEADLINE.remaining():.0f}')
+    emit('- seed: launcher_line=' + batch_run.launcher_seed_line + ' seed_counts=' + json.dumps(batch_run.seed_counts, sort_keys=True) + ' render_config=' + batch_run.render_config)
