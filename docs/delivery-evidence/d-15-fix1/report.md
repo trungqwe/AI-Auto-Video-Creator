@@ -41,13 +41,13 @@ Interpreter khoá của lane, `PYTEST_DEBUG_TEMPROOT` đặt theo spec.
 | Lệnh | Mã thoát | Kết quả |
 | --- | --- | --- |
 | `git diff --check` | 0 | không có lỗi khoảng trắng |
-| pytest lệnh 1 (D15-FIX1, D15, D14, D16, PW-D1, PW-D2) | 0 | `160 passed in 22.57s` |
-| pytest lệnh 2 (ADAPT-WIRE, PW-W2) | 1 | `1 failed, 125 passed in 14.60s` |
+| pytest lệnh 1 (D15-FIX1, D15, D14, D16, PW-D1, PW-D2) | 0 | `160 passed in 22.43s` |
+| pytest lệnh 2 (ADAPT-WIRE, PW-W2) | 0 | `126 passed in 13.89s` |
 | probe pipeline.py (`ProviderFailureHandler`, không `from src.`) | 0 | đạt |
 | probe report (CP7-10, `ai_output_schema_violation`) | 0 | đạt |
 | probe report (D-15-FIX1, R23) | 0 | đạt |
 
-Lệnh 2 đỏ ở `tests/integration/adapt/wire/test_adapt_wire_services.py::test_profile_loads_typed_values` (`assert p.revision == 1`, thực tế 2). Nguyên nhân có sẵn từ trước gói này: `tools/launcher/prod/profile.json` ở HEAD đã ghi `revision` = 2 (commit "revision cấu hình theo kết quả đo CP7"), còn test đòi 1. Tệp profile và test đó nằm ngoài owned paths nên gói không sửa; 125 test còn lại của lệnh đạt.
+Sau khi rebase lên integration head 1197ba6a034543616c2e0c78098899752c2a32d6 (đã gộp ADAPT-WIRE-FIX2), `test_profile_loads_typed_values` đạt; lệnh 2 thoát 0. Lượt trước lệnh 2 đỏ vì test đòi `revision` = 1 trong khi profile production đã là revision 2 (lỗi có sẵn ngoài owned paths).
 
 Kiểm chứng đỏ với mã cũ: chạy test mới trên `src` của HEAD cho `13 failed, 2 passed` (hai ca đạt là ca e và f, vốn là chốt chặn không gọi AI). Sau đó áp lại mã mới.
 
