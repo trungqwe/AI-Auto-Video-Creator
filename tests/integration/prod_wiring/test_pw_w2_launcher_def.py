@@ -264,7 +264,7 @@ def test_one_local_gpu_lease_is_shared(rig):
         grants=grants,
         clock=clock,
     )
-    assert deps.render._lease is rig.runtime.gpu_lease
+    assert deps.render._lease is rig.runtime.gpu_lease.waiting_port()
     assert rig.app.services["render"].renderer.lease is rig.runtime.gpu_lease
 
     probes = workflow_wiring.build_capability_probes(

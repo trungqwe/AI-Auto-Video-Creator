@@ -1,11 +1,12 @@
 {
-  "revision": 1,
+  "revision": 2,
   "router": {
     "account_ref": "router-primary",
     "secret_ref": "router-primary-api-key"
   },
   "gpu_lease": {
-    "grace_seconds": 60
+    "grace_seconds": 60,
+    "wait_seconds": 180
   },
   "drive": {
     "placement_state_file": "drive-placement.json",

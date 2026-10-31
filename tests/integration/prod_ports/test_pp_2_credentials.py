@@ -43,12 +43,13 @@ def mutated(tmp_path: pathlib.Path, keys: tuple, value: object) -> pathlib.Path:
     target.write_text(json.dumps(data), encoding='utf-8')
     return target
 
-MISSING = [('revision',), ('router',), ('router', 'account_ref'), ('router', 'secret_ref'), ('gpu_lease',), ('gpu_lease', 'grace_seconds'), ('drive',), ('drive', 'placement_state_file'), ('drive', 'artifact_namespaces')]
+MISSING = [('revision',), ('router',), ('router', 'account_ref'), ('router', 'secret_ref'), ('gpu_lease',), ('gpu_lease', 'grace_seconds'), ('gpu_lease', 'wait_seconds'), ('drive',), ('drive', 'placement_state_file'), ('drive', 'artifact_namespaces')]
 BAD = (
     [(('revision',), v) for v in (0, -1, True, '1', 1.5, None)]
     + [(('router', 'account_ref'), v) for v in ('', '  ', 7, None)]
     + [(('router', 'secret_ref'), v) for v in ('', '  ', 7, None)]
     + [(('gpu_lease', 'grace_seconds'), v) for v in (0, -1, True, '60', 60.5, None)]
+    + [(('gpu_lease', 'wait_seconds'), v) for v in (0, -1, True, '180', 180.5, None)]
     + [(('drive', 'placement_state_file'), v) for v in ('', 7, 'a/b', 'a' + BS + 'b', '..', None)]
     + [(('drive', 'artifact_namespaces'), v) for v in ([], 'original', ['original', 'original'], ['original', ''], [1], None)]
     + [(('router',), v) for v in ([], 'x', None)]
@@ -59,9 +60,10 @@ BAD = (
 def test_real_ports_json_loads_with_expected_values() -> None:
     config = load_ports_config(PORTS_PATH)
     assert isinstance(config, PortsConfig)
-    assert config.revision == 1
+    assert config.revision == 2
     assert (config.router.account_ref, config.router.secret_ref) == (ACCOUNT, SECRET)
     assert config.gpu_lease.grace_seconds == 60
+    assert config.gpu_lease.wait_seconds == 180
     assert config.drive.placement_state_file == 'drive-placement.json'
     assert config.drive.artifact_namespaces == ('original', 'reusable', 'output')
     assert config.router.secret_ref != 'drive-primary-oauth'

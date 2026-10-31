@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import pathlib
 import threading
+import time
 
 import pytest
 
 import controlplane.infrastructure.production_ports.gpu_lease as gpu_lease_module
 from controlplane.infrastructure.production_ports.gpu_lease import LocalGpuLease
-from render.ports.lease import GPU_LOCK_ID, GpuLease, GpuLeasePort, GpuLeaseUnavailable
+from render.ports.lease import GPU_LOCK_ID, GpuLease, GpuLeasePort, GpuLeaseUnavailable, GpuLeaseWaitExpired
 
 
 class ManualClock:
@@ -25,6 +26,11 @@ class ManualClock:
 def make(slots: int = 1, ttl: float = 10.0) -> tuple[LocalGpuLease, ManualClock]:
     clock = ManualClock()
     return LocalGpuLease(slots, ttl, clock=clock), clock
+
+
+def make_waiting(slots: int = 1, ttl: float = 60.0, wait: float = 2.0) -> LocalGpuLease:
+    # clock thật time.monotonic: vòng chờ của Condition chạy theo thời gian thật, ManualClock đứng yên sẽ làm vòng chờ không dừng
+    return LocalGpuLease(slots, ttl, wait_seconds=wait)
 
 
 def test_implements_port_and_lease_fields() -> None:
@@ -150,3 +156,117 @@ def test_source_has_no_hardware_probe_environment_or_branches() -> None:
     text = pathlib.Path(gpu_lease_module.__file__).read_text(encoding='utf-8').lower()
     for banned in ('nvidia', 'os.environ', 'getenv', 'subprocess', 'from src.', 'mock', 'fake'):
         assert banned not in text
+
+
+def test_acquire_waiting_gets_the_slot_soon_after_another_thread_releases() -> None:
+    port = make_waiting(wait=2.0)
+    held = port.acquire('holder')
+    threading.Timer(0.2, port.release, args=(held,)).start()
+    started = time.monotonic()
+    lease = port.acquire_waiting('waiter')
+    assert time.monotonic() - started < 1.0
+    assert lease.owner_ref == 'waiter' and lease.lease_id != held.lease_id
+
+
+def test_acquire_waiting_expires_after_wait_seconds_and_leaves_no_lease() -> None:
+    port = make_waiting(wait=0.3)
+    held = port.acquire('holder')
+    assert issubclass(GpuLeaseWaitExpired, GpuLeaseUnavailable)
+    started = time.monotonic()
+    with pytest.raises(GpuLeaseWaitExpired):
+        port.acquire_waiting('waiter')
+    assert 0.25 <= time.monotonic() - started < 2.0
+    port.release(held)
+    port.acquire('after')
+    with pytest.raises(GpuLeaseUnavailable):
+        port.acquire('one-too-many')
+
+
+def test_leaked_lease_is_reclaimed_at_ttl_and_wakes_the_waiter() -> None:
+    port = make_waiting(ttl=0.3, wait=5.0)
+    port.acquire('leaked')
+    started = time.monotonic()
+    lease = port.acquire_waiting('waiter')
+    assert 0.2 <= time.monotonic() - started < 2.0
+    assert lease.owner_ref == 'waiter'
+
+
+def test_ten_threads_two_slots_all_finish_and_never_hold_more_than_two() -> None:
+    port = make_waiting(slots=2, wait=5.0)
+    guard = threading.Lock()
+    state = {'current': 0, 'peak': 0}
+    done: list[int] = []
+    errors: list[BaseException] = []
+
+    def work(index: int) -> None:
+        try:
+            lease = port.acquire_waiting(f'job-{index}')
+            with guard:
+                state['current'] += 1
+                state['peak'] = max(state['peak'], state['current'])
+            time.sleep(0.1)
+            with guard:
+                state['current'] -= 1
+            port.release(lease)
+            done.append(index)
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=work, args=(index,)) for index in range(10)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=15)
+    assert errors == [] and sorted(done) == list(range(10))
+    assert 1 <= state['peak'] <= 2
+
+
+def test_acquire_still_raises_at_once_while_a_thread_waits() -> None:
+    port = make_waiting(wait=5.0)
+    held = port.acquire('holder')
+    result: list[GpuLease] = []
+    waiter = threading.Thread(target=lambda: result.append(port.acquire_waiting('waiter')))
+    waiter.start()
+    time.sleep(0.1)
+    started = time.monotonic()
+    with pytest.raises(GpuLeaseUnavailable) as caught:
+        port.acquire('prober')
+    assert time.monotonic() - started < 0.5
+    assert not isinstance(caught.value, GpuLeaseWaitExpired)
+    port.release(held)
+    waiter.join(timeout=5)
+    assert [lease.owner_ref for lease in result] == ['waiter']
+
+
+def test_wait_zero_makes_acquire_waiting_behave_like_acquire() -> None:
+    port = LocalGpuLease(1, 60.0)
+    port.acquire('holder')
+    started = time.monotonic()
+    with pytest.raises(GpuLeaseUnavailable) as caught:
+        port.acquire_waiting('waiter')
+    assert time.monotonic() - started < 0.5
+    assert not isinstance(caught.value, GpuLeaseWaitExpired)
+    assert port._wait_seconds == 0
+
+
+@pytest.mark.parametrize('wait', [-1, -0.5, float('nan'), float('inf'), -float('inf'), True, False, '5', None])
+def test_constructor_rejects_bad_wait_seconds(wait: object) -> None:
+    with pytest.raises(ValueError):
+        LocalGpuLease(1, 10.0, wait_seconds=wait)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize('wait', [0, 0.5, 180])
+def test_constructor_keeps_valid_wait_seconds(wait: float) -> None:
+    assert LocalGpuLease(1, 10.0, wait_seconds=wait)._wait_seconds == wait
+
+
+def test_waiting_port_is_one_stable_gpu_lease_port() -> None:
+    port = make_waiting(wait=0.3)
+    waiting = port.waiting_port()
+    assert waiting is port.waiting_port() and waiting is not port
+    assert isinstance(waiting, GpuLeasePort)
+    held = waiting.acquire('holder')
+    with pytest.raises(GpuLeaseWaitExpired):
+        waiting.acquire('waiter')
+    waiting.release(held)
+    waiting.acquire('after')
