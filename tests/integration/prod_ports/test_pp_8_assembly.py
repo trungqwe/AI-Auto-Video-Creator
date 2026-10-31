@@ -262,6 +262,7 @@ def test_gpu_lease_uses_profile_slots_and_ttl(rig):
     with pytest.raises(GpuLeaseUnavailable):
         lease.acquire('one-too-many')
     assert lease._ttl_seconds == 900 + rig.ports_config.gpu_lease.grace_seconds
+    assert lease._wait_seconds == rig.ports_config.gpu_lease.wait_seconds
 
 
 def test_gpu_lease_changes_with_the_profile_values(rig):
@@ -272,6 +273,34 @@ def test_gpu_lease_changes_with_the_profile_values(rig):
     with pytest.raises(GpuLeaseUnavailable):
         lease.acquire('second')
     assert lease._ttl_seconds == 101 + rig.ports_config.gpu_lease.grace_seconds
+    assert lease._wait_seconds == rig.ports_config.gpu_lease.wait_seconds
+
+
+def build_with_wait(rig, wait_seconds, profile=None):
+    gpu_lease = dataclasses.replace(rig.ports_config.gpu_lease, wait_seconds=wait_seconds)
+    ports_config = dataclasses.replace(rig.ports_config, gpu_lease=gpu_lease)
+    kwargs = dict(rig.kwargs, ports_config=ports_config)
+    return build_production_ports(profile or rig.profile, http_factory=lambda timeout: LoopbackHttp(rig.drive.base, timeout), **kwargs)
+
+
+def test_gpu_lease_wait_seconds_is_taken_from_the_ports_config(rig):
+    assert rig.build()['gpu_lease']._wait_seconds == rig.ports_config.gpu_lease.wait_seconds == 180
+    assert build_with_wait(rig, 7)['gpu_lease']._wait_seconds == 7
+
+
+@pytest.mark.parametrize('wait_seconds, render_timeout', [(300, 900.0), (299, 900.5), (1200, 1.0)])
+def test_assembly_rejects_wait_plus_render_timeout_not_below_start_to_close(rig, wait_seconds, render_timeout):
+    profile = dataclasses.replace(rig.profile, render=RenderConfig(timeout_seconds=render_timeout))
+    with pytest.raises(ValueError) as caught:
+        build_with_wait(rig, wait_seconds, profile)
+    message = str(caught.value)
+    for name in ('gpu_lease.wait_seconds', 'render.timeout_seconds', 'workflow.start_to_close_seconds'):
+        assert name in message
+    assert rig.drive.requests == [] and rig.tokens.calls == 0 and not rig.state_file.exists()
+
+
+def test_assembly_accepts_wait_plus_render_timeout_just_below_start_to_close(rig):
+    assert build_with_wait(rig, 299)['gpu_lease']._wait_seconds == 299
 
 
 def test_ai_adapters_follow_profile_route_endpoint_and_model_refs(rig):

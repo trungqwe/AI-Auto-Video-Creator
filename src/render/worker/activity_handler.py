@@ -87,7 +87,7 @@ _PROBLEMS = MappingProxyType({
     'IDEMPOTENCY_CONFLICT': ('conflict', 'operation_key was already used with a different payload'),
     'COMMAND_REJECTED': ('validation', 'the F command rejected its input; nothing was committed'),
     'PIPELINE_REJECTED': ('conflict', 'a precondition of the F command is not met; nothing was committed'),
-    'CAPACITY_UNAVAILABLE': ('capacity', 'no GPU slot is free; F did not wait and nothing was rendered'),
+    'CAPACITY_UNAVAILABLE': ('capacity', 'no GPU slot was free within the wait limit; nothing was rendered'),
     'PACKAGE_VALIDATION_FAILED': ('validation', 'the render package has validation findings; the report is stored'),
     'QUALITY_GATES_FAILED': ('validation', 'the output failed its quality gates; the report is stored'),
     'OUTPUT_NOT_READY': ('conflict', 'the output is not ready for G; the reasons are in the stored receipt'),

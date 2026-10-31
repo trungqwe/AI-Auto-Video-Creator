@@ -1,6 +1,6 @@
 """PP-8: assembly of the eight ProductionRuntime port values and a read-only description of them (CT-SEC-001, INV-012, ADR-0006).
 
-build_production_ports wires the PP-1 to PP-7 adapters from the production profile and the ports config and returns exactly the keyword values ProductionRuntime expects. Every port error (DrivePlacementError, DriveTokenError, ProviderCredentialError, ValueError) propagates unchanged and no placement value is ever invented; the Drive placement is built last so a configuration error fails before any network call.
+build_production_ports wires the PP-1 to PP-7 adapters from the production profile and the ports config and returns exactly the keyword values ProductionRuntime expects. Every port error (DrivePlacementError, DriveTokenError, ProviderCredentialError, ValueError) propagates unchanged and no placement value is ever invented; the Drive placement is built last so a configuration error fails before any network call. The GPU lease is built with the wait limit gpu_lease.wait_seconds, and the build fails when wait_seconds plus the rounded render timeout is not below the desktop-render start_to_close, the only limit of that activity.
 describe_runtime_ports only checks that aliases, the OAuth client file, the staging directory and the placement state file exist: it decrypts nothing and opens no connection.
 ASSUMPTION (D8): the Drive placement requests use profile drive.chunk_timeout_seconds as their timeout.
 """
@@ -58,9 +58,18 @@ def build_production_ports(
     drive_token_broker = build_drive_token_broker(
         Path(oauth_client_secrets_path), profile.credential_max_ttl_seconds, store, _utc_now,
     )
+    render_timeout = math.ceil(profile.render.timeout_seconds)
+    wait_seconds = ports_config.gpu_lease.wait_seconds
+    start_to_close = _profile_value(profile, 'workflow.start_to_close_seconds', 'desktop-render')
+    if wait_seconds + render_timeout >= start_to_close:
+        raise ValueError(
+            f'gpu_lease.wait_seconds ({wait_seconds}) + render.timeout_seconds ({render_timeout}) '
+            f'must be below workflow.start_to_close_seconds[desktop-render] ({start_to_close})'
+        )
     gpu_lease = LocalGpuLease(
         _profile_value(profile, 'gpu.slots', 'slots'),
-        math.ceil(profile.render.timeout_seconds) + ports_config.gpu_lease.grace_seconds,
+        render_timeout + ports_config.gpu_lease.grace_seconds,
+        wait_seconds=wait_seconds,
     )
     retry = profile.drive.retry
     bootstrap = DrivePlacementBootstrap(

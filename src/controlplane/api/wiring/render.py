@@ -18,6 +18,7 @@ from pathlib import Path
 
 from controlplane.api.wiring.workflow import render_handler
 from controlplane.infrastructure.db.control_api_commands import PostgresConfigScope, compose_command_service
+from controlplane.infrastructure.production_ports.gpu_lease import LocalGpuLease
 from render.adapters.activity_inputs import (
     INPUT_REF_MISSING,
     ActivityInputError,
@@ -812,10 +813,13 @@ def render_activity_deps(
         plan_assets=PostgresPlanAssets(manager, workspace_id=workspace_id),
         grants=grants,
     )
+    lease = runtime.gpu_lease
+    if isinstance(lease, LocalGpuLease):
+        lease = lease.waiting_port()
     render_pipe = RenderPipeline(
         uow=uow,
         renderer=renderer,
-        lease=runtime.gpu_lease,
+        lease=lease,
         probe=probe,
         observer=renderer,
         grants=grants,

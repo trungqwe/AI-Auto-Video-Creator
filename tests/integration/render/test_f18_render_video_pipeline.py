@@ -21,7 +21,7 @@ from render.application.render_video import (
 )
 from render.domain.render_attempt import RenderAttemptRejected
 from render.domain.render_command import KIND_RENDER, RenderCommandSpec, ToolIdentity
-from render.ports.lease import GPU_LOCK_ID, GpuLease, GpuLeasePort, GpuLeaseUnavailable
+from render.ports.lease import GPU_LOCK_ID, GpuLease, GpuLeasePort, GpuLeaseUnavailable, GpuLeaseWaitExpired
 from render.ports.output_probe import OutputProbePort
 from render.ports.renderer import OutputObservationPort, RendererPort, RendererTimeout
 from render.ports.repositories import KIND_ATTEMPT
@@ -64,6 +64,19 @@ class FakeLease:
         self.released.append(lease)
 
 
+class WaitExpiredLease:
+    def __init__(self) -> None:
+        self.acquire_calls: list[str] = []
+        self.released: list[GpuLease] = []
+
+    def acquire(self, owner_ref: str) -> GpuLease:
+        self.acquire_calls.append(owner_ref)
+        raise GpuLeaseWaitExpired('no slot within the wait limit')
+
+    def release(self, lease: GpuLease) -> None:
+        self.released.append(lease)
+
+
 class SpyProbe:
     def __init__(self, storage: FakeOutputStorage) -> None:
         self.storage = storage
@@ -79,7 +92,7 @@ def snapshot(uow) -> tuple:
 
 
 class RenderRig:
-    def __init__(self, *, validate: bool = True, slots: int = 2) -> None:
+    def __init__(self, *, validate: bool = True, slots: int = 2, lease=None) -> None:
         self.uow = InMemoryRenderUnitOfWork()
         self.base = Rig(self.uow)
         self.package = self.base.resolve().package
@@ -87,7 +100,7 @@ class RenderRig:
             self.base.validate(self.package.render_package_id, context=_validation_context())
         self.storage = FakeOutputStorage()
         self.renderer = FakeRenderer(self.storage, output_ref=out_ref(1), content=CONTENT)
-        self.lease = FakeLease(slots)
+        self.lease = FakeLease(slots) if lease is None else lease
         self.probe = SpyProbe(self.storage)
         self.pipeline = RenderPipeline(
             uow=self.uow, renderer=self.renderer, lease=self.lease, probe=self.probe, observer=self.storage, grants=self.base.grants,
@@ -320,6 +333,19 @@ def test_no_free_gpu_slot_is_refused_before_any_attempt_or_render():
         rig.render()
     problem = caught.value.problem
     assert (caught.value.code, problem.category, problem.retryable) == ('gpu_lease_unavailable', 'capacity', True)
+    assert rig.renderer.calls == 0 and snapshot(rig.uow) == before
+
+
+def test_gpu_lease_wait_expired_is_a_non_retryable_capacity_rejection_before_any_attempt():
+    lease = WaitExpiredLease()
+    rig = RenderRig(lease=lease)
+    before = snapshot(rig.uow)
+    with pytest.raises(GpuLeaseNotAvailable) as caught:
+        rig.render()
+    problem = caught.value.problem
+    assert (caught.value.code, problem.category, problem.retryable) == ('gpu_lease_wait_expired', 'capacity', False)
+    assert problem.values.get('status') == 503
+    assert lease.acquire_calls == ['attempt-1'] and lease.released == []
     assert rig.renderer.calls == 0 and snapshot(rig.uow) == before
 
 

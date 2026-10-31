@@ -1,4 +1,4 @@
-"""PP-2: strict loader for tools/launcher/prod/ports.json (aliases, GPU lease grace, Drive placement layout).
+"""PP-2: strict loader for tools/launcher/prod/ports.json (aliases, GPU lease grace and wait, Drive placement layout).
 
 Every key is required and type-checked; this module holds no built-in values, so a missing or mistyped key fails with ValueError.
 """
@@ -19,6 +19,7 @@ class RouterPortsConfig:
 @dataclass(frozen=True)
 class GpuLeasePortsConfig:
     grace_seconds: int
+    wait_seconds: int
 
 
 @dataclass(frozen=True)
@@ -81,7 +82,7 @@ def load_ports_config(path: Path) -> PortsConfig:
     data = json.loads(Path(path).read_text(encoding='utf-8'))
     top = _section(data, 'ports', ('revision', 'router', 'gpu_lease', 'drive'))
     router = _section(top['router'], 'router', ('account_ref', 'secret_ref'))
-    gpu_lease = _section(top['gpu_lease'], 'gpu_lease', ('grace_seconds',))
+    gpu_lease = _section(top['gpu_lease'], 'gpu_lease', ('grace_seconds', 'wait_seconds'))
     drive = _section(top['drive'], 'drive', ('placement_state_file', 'artifact_namespaces'))
     return PortsConfig(
         revision=_positive_int(top['revision'], 'revision'),
@@ -89,7 +90,10 @@ def load_ports_config(path: Path) -> PortsConfig:
             account_ref=_text(router['account_ref'], 'router.account_ref'),
             secret_ref=_text(router['secret_ref'], 'router.secret_ref'),
         ),
-        gpu_lease=GpuLeasePortsConfig(grace_seconds=_positive_int(gpu_lease['grace_seconds'], 'gpu_lease.grace_seconds')),
+        gpu_lease=GpuLeasePortsConfig(
+            grace_seconds=_positive_int(gpu_lease['grace_seconds'], 'gpu_lease.grace_seconds'),
+            wait_seconds=_positive_int(gpu_lease['wait_seconds'], 'gpu_lease.wait_seconds'),
+        ),
         drive=DrivePortsConfig(
             placement_state_file=_file_name(drive['placement_state_file'], 'drive.placement_state_file'),
             artifact_namespaces=_names(drive['artifact_namespaces'], 'drive.artifact_namespaces'),

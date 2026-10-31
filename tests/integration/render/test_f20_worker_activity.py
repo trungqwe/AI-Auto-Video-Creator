@@ -25,7 +25,7 @@ from render.worker import activity_handler as ah
 from render.worker.activity_handler import ActivityRequestError, RenderActivityDeps, handle_activity, validate_activity_request
 from test_f17_resolve_validate_pipeline import Rig as PackageRig
 from test_f17_resolve_validate_pipeline import _context, _grant, _inputs, _validation_context
-from test_f18_render_video_pipeline import CANARY, CONTENT, SPEC, FakeLease, SpyProbe, out_ref, snapshot
+from test_f18_render_video_pipeline import CANARY, CONTENT, SPEC, FakeLease, SpyProbe, WaitExpiredLease, out_ref, snapshot
 from test_f19_inspect_output_pipeline import EXPECTED, POLICY, SEGMENTS, WORDS, FakeInspector, FakeProbe, evidence, measured
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -116,13 +116,13 @@ class FakeInputs:
 
 
 class ActivityRig:
-    def __init__(self, *, slots: int = 2, extra_grants: tuple[ExecutionGrant, ...] = ()) -> None:
+    def __init__(self, *, slots: int = 2, extra_grants: tuple[ExecutionGrant, ...] = (), lease=None) -> None:
         self.uow = InMemoryRenderUnitOfWork()
         self.base = PackageRig(self.uow)
         self.base.grants.current.update(extra_grants)
         self.storage = FakeOutputStorage()
         self.renderer = FakeRenderer(self.storage, output_ref=out_ref(1), content=CONTENT)
-        self.lease = FakeLease(slots)
+        self.lease = FakeLease(slots) if lease is None else lease
         self.qc_probe = FakeProbe(measured())
         self.inspector = FakeInspector(evidence())
         render = RenderPipeline(
@@ -277,6 +277,19 @@ def test_a_full_gpu_pool_gives_a_retryable_capacity_problem_without_waiting():
     problem = result['problem']
     assert result['disposition'] == 'failed' and result['output_refs'] == []
     assert (problem['code'], problem['category'], problem['retryable']) == ('gpu_lease_unavailable', 'capacity', True)
+    assert rig.renderer.calls == 0 and snapshot(rig.uow) == before
+
+
+def test_a_wait_expired_gpu_lease_gives_a_non_retryable_capacity_problem():
+    rig = ActivityRig(lease=WaitExpiredLease())
+    package_id = prepared(rig)
+    before = snapshot(rig.uow)
+    result = run(rig, RENDER, 'op-render-1', [pkg_ref(package_id)])
+    problem = result['problem']
+    assert result['disposition'] == 'failed' and result['output_refs'] == []
+    assert problem['type'] == 'urn:render:problem:capacity_unavailable'
+    assert (problem['code'], problem['category'], problem['retryable']) == ('gpu_lease_wait_expired', 'capacity', False)
+    assert problem['detail'] == 'no GPU slot was free within the wait limit; nothing was rendered'
     assert rig.renderer.calls == 0 and snapshot(rig.uow) == before
 
 

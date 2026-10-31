@@ -2,7 +2,7 @@
 
 Application layer of F: render domain, render ports and controlplane types only; no I/O, no clock, no process execution.
 RenderVideo checks the grant, replays a stored attempt by render_attempt_id, then needs a passing validation report for the package fingerprint (package_not_validated) and no earlier attempt of the package that is OUTCOME_UNKNOWN (reconcile_required) or still running (attempt_in_progress).
-It takes one GPU slot through GpuLeasePort and always returns it. The held lease is handed to a renderer that declares takes_held_lease = True (RealFfmpegRenderer), which never acquires; a renderer without that flag (the fakes) is called with the spec only, so one render takes exactly one slot. The attempt is stored STARTED in one unit of work before the renderer runs and settled in a second one, so a crash leaves STARTED and never a ready output.
+It takes one GPU slot through GpuLeasePort and always returns it. The held lease is handed to a renderer that declares takes_held_lease = True (RealFfmpegRenderer), which never acquires; a renderer without that flag (the fakes) is called with the spec only, so one render takes exactly one slot. The attempt is stored STARTED in one unit of work before the renderer runs and settled in a second one, so a crash leaves STARTED and never a ready output. A GpuLeaseWaitExpired from a waiting adapter is rejected as gpu_lease_wait_expired (capacity, not retryable) so the flow does not repeat the whole wait.
 SUCCEEDED needs an output that exists, a claimed sha256 equal to the observed one and a decodable probe (then RenderCompleted goes to the outbox); a reported failure, a crash or an unverifiable output is FAILED; RendererTimeout is OUTCOME_UNKNOWN.
 ReconcileRender probes the output (OutputProbePort of F-13 and OutputObservationPort) and resolves OUTCOME_UNKNOWN with reconcile_attempt; only a FAILED attempt may be followed by a new attempt with a new output_artifact_ref. An attempt left STARTED by a dead worker is adopted as OUTCOME_UNKNOWN only when it is older than orphan_after_seconds, then probed like any unknown attempt. Nothing here deletes or overwrites an output.
 Error text is redacted with the declared secret_values; ProblemDetail and events carry codes and refs only.
@@ -34,7 +34,7 @@ from render.domain.render_attempt import (
 )
 from render.domain.render_command import RenderCommandSpec
 from render.domain.validate_package import ValidationContext, validate_render_package
-from render.ports.lease import GpuLease, GpuLeasePort, GpuLeaseUnavailable
+from render.ports.lease import GpuLease, GpuLeasePort, GpuLeaseUnavailable, GpuLeaseWaitExpired
 from render.ports.output_probe import OutputProbePort
 from render.ports.renderer import (
     OutputObservationPort, RendererMetrics, RendererOutcome, RendererPort, RendererStatus, RendererTimeout,
@@ -47,6 +47,7 @@ PACKAGE_NOT_VALIDATED = 'package_not_validated'
 RECONCILE_REQUIRED = 'reconcile_required'
 ATTEMPT_IN_PROGRESS = 'attempt_in_progress'
 GPU_LEASE_UNAVAILABLE = 'gpu_lease_unavailable'
+GPU_LEASE_WAIT_EXPIRED = 'gpu_lease_wait_expired'
 RECONCILE_NOT_NEEDED = 'reconcile_not_needed'
 RENDER_ATTEMPT_NOT_FOUND = 'RENDER_ATTEMPT_NOT_FOUND'
 RENDER_ATTEMPT_FAILED = 'render_attempt_failed'
@@ -75,7 +76,7 @@ class AttemptInProgress(PipelineRejected):
 
 
 class GpuLeaseNotAvailable(PipelineRejected):
-    """No LOCK-DESKTOP-GPU slot is free; nothing was stored or rendered."""
+    """No LOCK-DESKTOP-GPU slot is free, or none became free within the wait limit of the adapter; nothing was stored or rendered."""
 
 
 class ReconcileNotNeeded(PipelineRejected):
@@ -328,6 +329,12 @@ class RenderPipeline:
             self._gate(uow, command)
         try:
             lease = self._lease.acquire(command.render_attempt_id)
+        except GpuLeaseWaitExpired:
+            raise _reject(
+                GpuLeaseNotAvailable, GPU_LEASE_WAIT_EXPIRED, 'GPU lease wait expired',
+                'No GPU slot became free within the wait limit; nothing was rendered.',
+                COMMAND_RENDER, context, category='capacity', retryable=False, status=503,
+            ) from None
         except GpuLeaseUnavailable:
             raise _reject(
                 GpuLeaseNotAvailable, GPU_LEASE_UNAVAILABLE, 'GPU lease unavailable', 'No GPU slot is free; try again later.',
