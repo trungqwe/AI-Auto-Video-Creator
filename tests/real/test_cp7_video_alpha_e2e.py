@@ -104,6 +104,18 @@ def test_unit_format_failed_stage():
     assert d.format_failed_stage(('script', 'FAILED_FINAL', 'ai_output_schema_violation', 'GenerateScript', '{"hook": "required"}')) == 'stage=script status=FAILED_FINAL activity=GenerateScript code=ai_output_schema_violation field_errors={"hook": "required"}'
 
 
+def test_unit_format_render_config():
+    rows = [('preset', 'bold-yellow', 'PUBLISHED'), ('policy', 'quality', 'DRAFT')]
+    assert d.format_render_config(rows) == 'render_config=[preset/bold-yellow=PUBLISHED preset/output-profile=MISSING policy/quality=DRAFT]'
+    missing = 'render_config=[preset/bold-yellow=MISSING preset/output-profile=MISSING policy/quality=MISSING]'
+    assert d.format_render_config([]) == missing
+    assert d.format_render_config(None) == missing
+    assert d.RENDER_CONFIG_SCOPES == (('preset', 'bold-yellow'), ('preset', 'output-profile'), ('policy', 'quality'))
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    assert 'collect_render_config(db) + ' in text
+    assert text.count('session.post_batch(1)') == 1
+
+
 def test_unit_stage_labels_cover_all_stages():
     assert len(d.STAGES) == 11
     assert all(name in d.STAGE_LABELS for name in d.STAGES)

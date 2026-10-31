@@ -54,6 +54,7 @@ CLEANUP_STATES = ('CLEANUP_ELIGIBLE', 'CLEANUP_AUTHORIZED', 'DELETED')
 TERMINAL_JOB = ('COMPLETED', 'FAILED_FINAL')
 SEED_DIR = REPO / 'tools' / 'launcher' / 'prod' / 'seed'
 DEFAULT_FFMPEG = r'C:\ffmpeg\bin\ffmpeg.exe'
+RENDER_CONFIG_SCOPES = (('preset', 'bold-yellow'), ('preset', 'output-profile'), ('policy', 'quality'))
 
 
 class BatchDriverError(RuntimeError):
@@ -110,6 +111,12 @@ def format_failed_stage(failed):
     return f'stage={failed[0]} status={failed[1]} activity={failed[3]} code={failed[2]} field_errors={failed[4]}'
 
 
+def format_render_config(rows):
+    """Một dòng trạng thái ConfigRevision mới nhất của ba scope render config mà resolve_inputs đòi PUBLISHED. RenderConfigNotSeeded là LookupError không có .code nên activity chỉ báo ACTIVITY_ABORTED; dòng này cho thấy scope nào thiếu. rows là (scope_kind, scope_key, status); scope không có hàng ghi MISSING."""
+    seen = {(row[0], row[1]): row[2] for row in rows or []}
+    return 'render_config=[' + ' '.join(f'{kind}/{key}=' + str(seen.get((kind, key), 'MISSING')) for kind, key in RENDER_CONFIG_SCOPES) + ']'
+
+
 def _sha(obj):
     return hashlib.sha256(json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')).hexdigest()
 
@@ -155,6 +162,13 @@ def collect_diagnostic(db, job_id, seed):
         return format_diagnostic(db.job_diagnostics(job_id), seed, serve_log_tail(db.layout.serve_log))
     except Exception as exc:
         return 'diagnostic_error=' + type(exc).__name__
+
+
+def collect_render_config(db):
+    try:
+        return format_render_config(db.render_config_status())
+    except Exception as exc:
+        return 'render_config_error=' + type(exc).__name__
 
 
 # --- điều khiển launcher -----------------------------------------------------------------------------------------
@@ -319,6 +333,10 @@ class ReadOnlyDb:
         """Hàng stage FAILED_FINAL hay OUTCOME_UNKNOWN đầu tiên (PW-G2-FIX1: bộ ghi không còn ghi FAILED_RETRYABLE hay STALE khi flow còn thử lại tại chỗ); chỉ đọc."""
         rows = self.query("SELECT stage_name, status, problem->>'code', problem->>'activity', left(coalesce(problem->'field_errors', '{}'::jsonb)::text, 300) FROM controlplane.cp_stage_runs WHERE workspace_id = %s AND job_id = %s AND status IN ('FAILED_FINAL','OUTCOME_UNKNOWN') ORDER BY created_at LIMIT 1", job_id)
         return rows[0] if rows else None
+
+    def render_config_status(self):
+        """(scope_kind, scope_key, status) của revision mới nhất mỗi scope render config mà resolve_inputs đòi; chỉ đọc."""
+        return self.query("SELECT DISTINCT ON (scope_kind, scope_key) scope_kind, scope_key, status FROM controlplane.cp_config_revisions WHERE workspace_id = %s AND ((scope_kind = 'preset' AND scope_key IN ('bold-yellow', 'output-profile')) OR (scope_kind = 'policy' AND scope_key = 'quality')) ORDER BY scope_kind, scope_key, config_revision_number DESC")
 
     def job_diagnostics(self, job_id):
         """Mọi hàng cp_stage_runs của job (kể cả hàng gắn workflow_id thay vì job_id) và trạng thái job; chỉ đọc."""
@@ -770,7 +788,7 @@ def run_batch(work_dir, deadline):
             failed = db.failed_stage(job_id)
             result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': str(result.final_job_status), 'failed_stage': None if failed is None else failed[0], 'activity': None if failed is None else failed[3], 'code': None if failed is None else failed[2]})
             diag = collect_diagnostic(db, job_id, result.seed_import)
-            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; ' + diag)
+            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; ' + collect_render_config(db) + ' ' + diag)
         result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': 'COMPLETED'})
         result.final_batch_status = db.batch_status(batch_id) or ''
         result.locations = db.locations(job_id, window_start)
