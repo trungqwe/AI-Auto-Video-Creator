@@ -5,6 +5,7 @@ from typing import Any
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy as TemporalRetryPolicy
+from temporalio.exceptions import ActivityError
 
 with workflow.unsafe.imports_passed_through():
     from controlplane.application.orchestration.workflows.activities import (
@@ -32,6 +33,8 @@ with workflow.unsafe.imports_passed_through():
         start_to_close_for,
     )
     from controlplane.domain.orchestration.workflow_catalog import TaskQueue, get_workflow
+
+JOB_TERMINAL_PATCH_ID = 'job-terminal-on-failure'
 
 
 class TemporalGateway:
@@ -80,6 +83,13 @@ class TemporalGateway:
             {},
         )
 
+    async def fail_video_job(self, request: Any) -> Any:
+        return await self._call(
+            'FailVideoJob',
+            INTERNAL_ACTIVITIES['FailVideoJob'],
+            dict(request),
+        )
+
     async def execute(self, name: str, request: Any) -> Any:
         return await self._call(name, BINDINGS_BY_NAME[name].queue, dict(request))
 
@@ -121,6 +131,18 @@ async def _drive(
     return flow.snapshot()
 
 
+async def _fail_video_job(gateway: TemporalGateway, params: FlowParams, snapshot: dict[str, Any]) -> None:
+    request = {
+        'video_job_id': params.video_job_id,
+        'stage_run_id': f"{params.video_job_id}:{snapshot['failed_stage']}:r{snapshot['revision']}",
+        'problem': dict(snapshot['last_problem'] or {}),
+    }
+    try:
+        await gateway.fail_video_job(request)
+    except ActivityError as exc:
+        workflow.logger.warning('FailVideoJob did not finish for %s: %s', params.video_job_id, exc)
+
+
 async def _run_stage_graph(name: str, payload: dict[str, Any], inbox: list) -> dict[str, Any]:
     info = workflow.info()
     settings = WorkflowSettings.from_payload(payload['settings'])
@@ -141,7 +163,17 @@ async def _run_stage_graph(name: str, payload: dict[str, Any], inbox: list) -> d
             inbox,
             chain_outputs=(name == 'VideoProductionWorkflow'),
         )
-    return await _drive(flow, inbox, params, settings, gateway)
+    snapshot = await _drive(flow, inbox, params, settings, gateway)
+    if (
+        name == 'VideoProductionWorkflow'
+        and params.video_job_id is not None
+        and snapshot['status'] == STATUS_FAILED
+        and snapshot['failed_stage'] is not None
+        and not params.hold_on_failure
+        and workflow.patched(JOB_TERMINAL_PATCH_ID)
+    ):
+        await _fail_video_job(gateway, params, snapshot)
+    return snapshot
 
 
 @workflow.defn(name='DailyCollectionWorkflow')
