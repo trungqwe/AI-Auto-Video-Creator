@@ -147,7 +147,6 @@ Các giá trị tham số cấu hình dưới đây mang nhãn cơ sở `CONSERV
 | `ai.reservation_ttl_seconds` | 300 giây | CP7-ADAPT-02 |
 | `ai.quota_wait_poll_seconds` | 300 giây | CP7-ADAPT-02 |
 | `credential.max_ttl_seconds` | 3300 giây (55 phút) | CP7-ADAPT-01 |
-| `voice.speech_rate_wpm` | 150 từ/phút | CP7-ADAPT-03 |
 | `voice.tts_timeout_seconds` | 180 giây | CP7-ADAPT-03 |
 | `voice.stage_retry` | 3 lần thử, backoff 5-120s | CP7-ADAPT-03 |
 | `aligner.word_timing_tolerance_ms` | 200 ms | CP7-ADAPT-04 |
@@ -188,3 +187,13 @@ Các giá trị tham số cấu hình dưới đây mang nhãn cơ sở `CONSERV
 | `render.sections` | UNSPECIFIED_V1 cho 4 phần CT-RND-001, render v1 không đọc | R4 (user duyệt preset) |
 | `render.output_stream` | h264, yuv420p | R4 (user duyệt preset) |
 | `qc.quality_thresholds` | SUBTITLE_BURNED_IN ít nhất 2 khung có chữ, VOICE_AUDIBLE từ -40 dB | R4 (user duyệt preset) |
+
+### Giá trị đã đo trên giọng production
+
+| Tham số | Giá trị |
+| --- | --- |
+| `voice.speech_rate_wpm` | 136 từ/phút, đo trên giọng production (Kokoro af_heart, engine.speed 1.0) ở 15 lượt TTS thật của RG-09 ngày 31/10/2026 (từng script 128-158 từ/phút); hiệu chỉnh theo CP7-D-04, không dùng 121 của corpus RG-05 |
+
+`voice.speed_fit`: E đọc lại đúng một lần khi giọng lần đầu lệch khoảng 61-70 s, với hệ số tốc độ kẹp 0,85-1,15 (`min_scale` 0,85, `max_scale` 1,15, `duration_slope` 0,56) do user chọn. Kẹp này tính tương đối với `voice.engine.speed` hiện là 1.0, nên nếu đổi `voice.engine.speed` thì phải đổi kẹp để tốc độ thật vẫn nằm trong 0,85-1,15.
+
+Cảnh báo `speed_fit_applied` nghĩa là lượt đọc đầu lệch khoảng thời lượng nên giọng đã được đọc lại một lần với tốc độ khớp (xem `speed_scale` và `first_take_duration_ms` trong usage_metrics); đây không phải lỗi. Ngoài phạm vi kẹp thì job vẫn FAILED_FINAL.

@@ -93,7 +93,7 @@ Mỗi gate gồm tài nguyên, cách kiểm thật, ngưỡng đạt, bằng ch�
 - **Tài nguyên**: GPU máy này (`LOCK-DESKTOP-GPU`); `kokoro-v1.0.onnx`, `voices-v1.0.bin` và faster-whisper `small.en` ngoài cây Git, sha256 do Control ghi (OI-CP7-01); FFmpeg đã ghim.
 - **Cách kiểm thật**: 20 đoạn thoại tiếng Anh (15–60 từ) và 5 kịch bản 150–190 từ qua `real_kokoro_tts.py`; aligner chạy trên giọng có nhạc nền −20 dB và SFX; so mốc câu với `silencedetect` của FFmpeg ghim; đo `actual_duration_ms`.
 - **Ngưỡng đạt**: 100% WAV hợp lệ (24 kHz, mono, thời lượng > 0); tỷ lệ từ không khớp ≤ 5% ở ≥ 95% đoạn (`aligner.max_unmatched_word_ratio` 0.05); lệch mốc đầu/cuối câu ≤ 150 ms ở ≥ 95% câu (`word_timing_tolerance_ms`); sau hiệu chỉnh `speech_rate_wpm`, ước lượng thời lượng lệch ≤ 10% so với thực tế ở ≥ 90% đoạn (D8); VRAM đỉnh ≤ 11 GiB. User nghe thử giọng ở R4.
-- **Bằng chứng**: `docs/delivery-evidence/cp7-6/report.md` (số đo và `speech_rate_wpm` đề xuất để Control ghi revision cấu hình).
+- **Bằng chứng**: `docs/delivery-evidence/cp7-6/report.md` (số đo và `speech_rate_wpm` đề xuất để Control ghi revision cấu hình). Nguồn hiệu chỉnh `speech_rate_wpm` là giọng production (15 lượt TTS thật của RG-09, gộp 136 từ/phút, ADAPT-CONFIG-FIX3), không phải corpus RG-05; giá trị 121 do corpus từ dài đề xuất không áp.
 - **Rủi ro chi phí**: 0 USD; GPU ≤ 60 phút; `BLOCKED` nếu sha256 trọng số còn `null`.
 
 ### RG-06 — An toàn ảnh (M6-EG5 phần media; CP7-ADAPT-05; CP7-E-03; ROADMAP-OPEN-006) — CP7-7
