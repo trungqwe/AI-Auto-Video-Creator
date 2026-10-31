@@ -57,3 +57,20 @@ Tệp băm cũ `index-DV6jC0op.js` và `.map` đã bị xoá.
 ## 7. Tuân thủ
 
 Không sửa `App.tsx`, `package.json`, `tests/m2`; không chạy `npm ci` hay `npm install`; `fetch` chỉ nằm ở `client.ts`; không push, không merge.
+
+## 8. Rebase lại sau khi grant G1 bị thu hồi
+
+Đã chạy `git rebase 8cfc6875fbc08070a43bc58b1165fb48388750d8`, exit code 0, kết quả thực tế: `Current branch trungqwe/lane-cp-4b-ui-screens-fix5 is up to date.` (no-op, HEAD `4534e89` đã nằm trên `8cfc687`, không xung đột).
+
+| Lệnh | Exit code | Kết quả |
+| --- | --- | --- |
+| `npm --prefix src/controlplane/ui run build` | 0 | `✓ built in 3.03s` |
+| probe dist (4 tệp, không tệp băm mồ côi, bundle có `max-concurrent-select` và `/v1/batch-settings`) | 0 | không có output |
+| `python -m pytest tests/unit -q -p no:cacheprovider` | 0 | `7550 passed, 1 warning, 2561 subtests passed in 26.52s` |
+| probe nguồn (form, client, types) | 0 | không có output |
+| `git diff --check` | 0 | không có cảnh báo |
+| `python -m pytest tests/unit/control_ui/test_h_batch_concurrency_form.py tests/unit/control_ui/test_h_screen_registry.py -q` | 0 | `51 passed in 0.09s` (gồm 6 test của `test_h_batch_concurrency_form.py` và các test của `test_h_screen_registry.py`) |
+
+Tên tệp dist sau build lại không đổi so với mục 5: `dist/index.html`, `dist/assets/index-BgnRr_o6.js`, `dist/assets/index-BgnRr_o6.js.map`, `dist/assets/index-DNWUXu2_.css`; cây làm việc không có thay đổi nào ở dist sau build.
+
+Ghi chú: finding probe screenRegistry (6 màn pending_module: artifacts, snapshots, story-angles, scripts, accounts, cost) là probe cũ của gói CP-4B-UI-SCREENS, không thuộc lệnh kiểm của gói này; registry tại integration head 8cfc687 đã chuyển các màn đó sang available (chỉ logs còn pending_module), `tests/unit/control_ui/test_h_screen_registry.py` khớp registry hiện hành và đạt; gói này không sửa `screenRegistry.ts` (ngoài owned paths).
