@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
@@ -35,6 +36,7 @@ with workflow.unsafe.imports_passed_through():
     from controlplane.domain.orchestration.workflow_catalog import TaskQueue, get_workflow
 
 JOB_TERMINAL_PATCH_ID = 'job-terminal-on-failure'
+BATCH_CONCURRENCY_PATCH_ID = 'batch-concurrent-videos'
 
 
 class TemporalGateway:
@@ -103,6 +105,17 @@ class TemporalGateway:
             id=payload['child_id'],
             task_queue=TaskQueue.CONTROL_WORKFLOWS.value,
         )
+
+    async def start_child(self, workflow_name: str, payload: Any) -> Any:
+        return await workflow.start_child_workflow(
+            workflow_name,
+            payload,
+            id=payload['child_id'],
+            task_queue=TaskQueue.CONTROL_WORKFLOWS.value,
+        )
+
+    async def wait_first(self, handles: Any) -> None:
+        await workflow.wait(list(handles), return_when='FIRST_COMPLETED')
 
 
 async def _drive(
@@ -256,6 +269,8 @@ class ProductionBatchWorkflow:
         params = BatchParams.from_payload(
             {**payload, 'batch_id': info.workflow_id, 'workflow_run_id': info.run_id}
         )
+        if params.max_concurrent_videos > 1 and not workflow.patched(BATCH_CONCURRENCY_PATCH_ID):
+            params = replace(params, max_concurrent_videos=1)
         flow = ProductionBatchFlow(
             get_workflow('ProductionBatchWorkflow'),
             params,
