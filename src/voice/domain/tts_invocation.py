@@ -237,17 +237,20 @@ def fingerprint(value: object) -> str:
     return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
 
-def fingerprint_tts_input(script_text: ScriptText, request: Mapping[str, object]) -> str:
+def fingerprint_tts_input(script_text: ScriptText, request: Mapping[str, object], *, speed_scale: float | None = None) -> str:
     """Fingerprint exact TTS input; calls verify_script_binding first; NEVER hash script_text.text."""
     verify_script_binding(request, script_text)
-    return fingerprint({
+    payload = {
         'expected_language': request['expected_language'],
         'pronunciation_hints': request.get('pronunciation_hints') or [],
         'script_fingerprint': script_text.script_fingerprint,
         'script_version_id': script_text.script_version_id,
         'style_parameters': request.get('style_parameters') or {},
         'voice_profile_ref': request['voice_profile_ref'],
-    })
+    }
+    if speed_scale is not None:
+        payload['speed_scale'] = float(speed_scale)
+    return fingerprint(payload)
 
 
 class TtsProviderError(Exception):
@@ -499,15 +502,19 @@ def run_tts_attempts(
     voice_request: Mapping[str, object],
     script_text: ScriptText,
     policy: object,
+    *,
+    speed_scale: float | None = None,
 ) -> TtsRunOutcome:
     """Execute TTS attempts bounded by policy with deterministic fallback path.
+
+    speed_scale None calls the engine with exactly three positional arguments; a value adds the speed_scale key to the input fingerprint and is passed as keyword.
 
     model_ref and account_ref of decision apply to all fallback attempts (GIẢ ĐỊNH; J assigns decision per provider at CONV-E-11).
     True retry/fallback decisions belong to G (CONV-E-05).
     """
     if not isinstance(decision, ProviderRouteDecision) or not isinstance(script_text, ScriptText):
         raise TypeError('decision must be ProviderRouteDecision and script_text must be ScriptText')
-    input_fp = fingerprint_tts_input(script_text, voice_request)
+    input_fp = fingerprint_tts_input(script_text, voice_request, speed_scale=speed_scale)
     budget = parse_attempt_policy(policy)
     path = plan_provider_path(decision, route_request)
     attempt = 0
@@ -519,7 +526,11 @@ def run_tts_attempts(
                 break
             attempt += 1
             try:
-                synthesis = engine.synthesize(replace(decision, provider_ref=provider_ref), script_text, voice_request)
+                target = replace(decision, provider_ref=provider_ref)
+                if speed_scale is None:
+                    synthesis = engine.synthesize(target, script_text, voice_request)
+                else:
+                    synthesis = engine.synthesize(target, script_text, voice_request, speed_scale=speed_scale)
             except TtsProviderError as error:
                 last_error = error
                 records.append(TtsInvocationRecord(

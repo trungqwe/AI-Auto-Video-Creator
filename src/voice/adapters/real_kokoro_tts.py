@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import json
+import math
 import re
 import time
 import wave
@@ -34,6 +35,7 @@ ERROR_STAGING_MISSING = 'staging_missing'
 ERROR_SAMPLE_RATE_MISMATCH = 'sample_rate_mismatch'
 ERROR_EMPTY_AUDIO = 'empty_audio'
 ERROR_RUNTIME = 'tts_runtime_error'
+ERROR_SPEED_OUT_OF_RANGE = 'speed_out_of_range'
 _SHA256_RE = re.compile(r'[0-9a-f]{64}')
 ARTIFACT_NAME_RE = re.compile(r'voice-artifact-([0-9a-f]{64})')
 
@@ -216,7 +218,7 @@ class RealKokoroTts:
             part.unlink(missing_ok=True)
         return wav_bytes
 
-    def synthesize(self, decision: ProviderRouteDecision, script_text: ScriptText, request: Mapping[str, object]) -> TtsSynthesis:
+    def synthesize(self, decision: ProviderRouteDecision, script_text: ScriptText, request: Mapping[str, object], *, speed_scale: float = 1.0) -> TtsSynthesis:
         if not isinstance(decision, ProviderRouteDecision):
             raise TypeError('decision must be ProviderRouteDecision')
         if not isinstance(script_text, ScriptText):
@@ -224,6 +226,11 @@ class RealKokoroTts:
         if not isinstance(request, Mapping):
             raise TypeError('request must be Mapping')
         verify_script_binding(request, script_text)
+        if isinstance(speed_scale, bool) or not isinstance(speed_scale, (int, float)) or not math.isfinite(speed_scale) or speed_scale <= 0:
+            raise ValueError('speed_scale must be a finite number > 0')
+        effective = round(self._config.speed * speed_scale, 4)
+        if not 0.5 <= effective <= 2.0:
+            raise _fail(ERROR_SPEED_OUT_OF_RANGE, f'effective speed {effective} is outside [0.5, 2.0]')
         config = self._config
         if not config.staging_dir.is_dir():
             raise _fail(ERROR_STAGING_MISSING, 'staging directory missing')
@@ -234,7 +241,7 @@ class RealKokoroTts:
         model = self._load()
         started = time.perf_counter()
         try:
-            samples, rate = model.create(script_text.text, voice=config.voice, speed=config.speed, lang=config.language)
+            samples, rate = model.create(script_text.text, voice=config.voice, speed=effective, lang=config.language)
             if rate != config.sample_rate:
                 raise _fail(ERROR_SAMPLE_RATE_MISMATCH, 'model sample rate differs from configured sample rate')
             pcm = _to_pcm16(samples)
@@ -248,7 +255,12 @@ class RealKokoroTts:
         return TtsSynthesis(
             audio_bytes=wav_bytes,
             voice_revision=self._revision,
-            usage_metrics={'characters': len(script_text.text), 'audio_ms': len(pcm) // 2 * 1000 // config.sample_rate},
+            usage_metrics={
+                'characters': len(script_text.text),
+                'audio_ms': len(pcm) // 2 * 1000 // config.sample_rate,
+                'speed': effective,
+                'speed_scale': speed_scale,
+            },
             latency_ms=int(round((time.perf_counter() - started) * 1000)),
         )
 

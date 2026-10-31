@@ -18,9 +18,10 @@ from voice.adapters.fake_tts import FakeTtsEngine, FakeVoiceRoute, fake_rate_lim
 from voice.adapters.memory import InMemoryUnitOfWork
 from voice.application import voice_pipeline as vp
 from voice.domain.language_evidence import RevisionMismatchError
+from voice.domain.speed_fit import SpeedFitPolicy, plan_speed_fit
 from voice.domain.timing_binding import TimingBindingError
 from voice.domain.timing_coverage import TokenizationPolicy
-from voice.domain.tts_invocation import TtsSynthesis
+from voice.domain.tts_invocation import TtsProviderError, TtsSynthesis
 from voice.domain.voice_track import ScriptBindingError, VoiceTrackRejected
 from voice.domain.word_timing import WordTimingError
 from voice.ports.aligner import AlignerError
@@ -34,6 +35,7 @@ SOURCES = (
     ROOT / 'src' / 'voice' / 'application' / 'voice_pipeline.py',
     ROOT / 'src' / 'voice' / 'ports' / 'aligner.py',
     ROOT / 'src' / 'voice' / 'adapters' / 'fake_aligner.py',
+    ROOT / 'src' / 'voice' / 'domain' / 'speed_fit.py',
 )
 TRACK = 'track-1'
 TEXT = 'Breaking news today'
@@ -42,6 +44,8 @@ PRIMARY = 'fake-tts-provider'
 # test-only policy inputs (GIẢ ĐỊNH, IMPL-PLAN-E §7): src/ has no default for any of them
 ATTEMPTS = {'max_attempts': 2, 'max_attempts_per_provider': 2}
 DURATION_RANGE = (500, 70000)
+RANGE = (61000, 70000)
+FIT = SpeedFitPolicy(min_scale=0.85, max_scale=1.15, duration_slope=0.56)
 TOKENIZATION = TokenizationPolicy(
     revision='tok-test-v1',
     unicode_form='NFC',
@@ -116,6 +120,35 @@ class _DurationSequenceEngine:
         )
 
 
+def _after(base: int, scale: float) -> int:
+    return round(base * (1 - 0.56 * (scale - 1)))
+
+
+class _ScaleEngine:
+    """Test-only TTS engine: duration follows the measured speed sensitivity (0.56) of the production path."""
+
+    def __init__(self, base: int) -> None:
+        self.base = base
+        self.scales: list[float] = []
+
+    def synthesize(self, decision, script_text, request, *, speed_scale=1.0) -> TtsSynthesis:
+        self.scales.append(speed_scale)
+        return TtsSynthesis(
+            audio_bytes=_wav(_after(self.base, speed_scale)),
+            voice_revision='scale-voice-v1',
+            usage_metrics={'characters': len(script_text.text)},
+            latency_ms=0,
+        )
+
+
+class _RetakeFailEngine(_ScaleEngine):
+    def synthesize(self, decision, script_text, request, *, speed_scale=1.0) -> TtsSynthesis:
+        if speed_scale != 1.0:
+            self.scales.append(speed_scale)
+            raise TtsProviderError('tts_runtime_error', 'boom', retryable=False)
+        return super().synthesize(decision, script_text, request, speed_scale=speed_scale)
+
+
 class Rig:
     def __init__(self, *, tts_scripts=None, engine=None, aligner=None, fingerprint=None, extra_texts=()) -> None:
         request = _voice_request()
@@ -147,7 +180,7 @@ class Rig:
         return [record.event_type for record in self.uow.outbox.records()]
 
 
-def _voice_cmd(request=None, *, attempts=ATTEMPTS, duration=DURATION_RANGE, name='voice-1'):
+def _voice_cmd(request=None, *, attempts=ATTEMPTS, duration=DURATION_RANGE, name='voice-1', speed_fit=None):
     return vp.CreateVoiceTrackCommand(
         track_key=TRACK,
         voice_request=_voice_request() if request is None else request,
@@ -155,6 +188,7 @@ def _voice_cmd(request=None, *, attempts=ATTEMPTS, duration=DURATION_RANGE, name
         attempt_policy=attempts,
         duration_policy=duration,
         context=_context(name),
+        speed_fit=speed_fit,
     )
 
 
@@ -442,6 +476,122 @@ def test_script_change_after_timing_rejects_old_timing_and_stale_voice():
         rig.pipeline.create_word_timing(_timing_cmd(new_request, name='timing-2'))
     assert mismatch.value.fields == ('script_version_id', 'script_fingerprint')
     assert rig.aligner.align_calls == 1 and len(rig.revs('word_timing')) == 1
+
+
+def test_plan_speed_fit_centres_on_range_and_clamps():
+    assert plan_speed_fit(71939, RANGE, FIT) == 1.15
+    assert plan_speed_fit(65500, RANGE, FIT) == 1.0
+    assert plan_speed_fit(56000, RANGE, FIT) == 0.85
+    inside = plan_speed_fit(68000, RANGE, FIT)
+    assert inside == round(1 + (1 - 65500 / 68000) / 0.56, 3)
+    flat = plan_speed_fit(68000, RANGE, SpeedFitPolicy(min_scale=0.85, max_scale=1.15, duration_slope=1.0))
+    assert flat != inside
+
+
+@pytest.mark.parametrize(
+    ('field', 'value'),
+    [
+        ('min_scale', True),
+        ('min_scale', 0),
+        ('min_scale', 1.01),
+        ('min_scale', float('nan')),
+        ('max_scale', 0.99),
+        ('max_scale', float('inf')),
+        ('max_scale', 'x'),
+        ('duration_slope', 0),
+        ('duration_slope', 2.01),
+        ('duration_slope', True),
+        ('duration_slope', None),
+    ],
+)
+def test_speed_fit_policy_rejects_bad_shapes(field, value):
+    fields = {'min_scale': 0.85, 'max_scale': 1.15, 'duration_slope': 0.56}
+    fields[field] = value
+    with pytest.raises(ValueError, match=field):
+        SpeedFitPolicy(**fields)
+
+
+def test_speed_fit_rereads_once_and_commits_second_take():
+    engine = _ScaleEngine(71939)
+    rig = Rig(engine=engine)
+    outcome = rig.pipeline.create_voice_track(_voice_cmd(duration=RANGE, speed_fit=FIT))
+    voice = outcome.voice_track
+    assert engine.scales == [1.0, 1.15]
+    assert voice.actual_duration_ms == _after(71939, 1.15)
+    assert voice.warnings == ('speed_fit_applied',)
+    assert voice.usage_metrics['speed_scale'] == 1.15
+    assert voice.usage_metrics['first_take_duration_ms'] == 71939
+    invocations = [item.record for item in rig.revs('tts_invocation')]
+    assert [r.attempt for r in invocations] == [1, 2]
+    assert [r.validation_result for r in invocations] == ['failed', 'passed']
+    assert [r.usage_metrics['measured_duration_ms'] for r in invocations] == [71939, voice.actual_duration_ms]
+    assert invocations[0].input_fingerprint != invocations[1].input_fingerprint
+    assert invocations[1].output_fingerprint == voice.voice_hash
+    assert len(rig.revs('voice')) == 1
+    assert rig.receipt('CreateVoiceTrack') is not None
+    assert rig.events() == ['VoiceReady']
+
+
+def test_speed_fit_second_take_still_out_of_range_is_rejected_after_two_takes():
+    engine = _ScaleEngine(90000)
+    rig = Rig(engine=engine)
+    with pytest.raises(vp.VoiceDurationRejected) as info:
+        rig.pipeline.create_voice_track(_voice_cmd(duration=RANGE, speed_fit=FIT))
+    assert info.value.finding.actual_duration_ms == _after(90000, 1.15)
+    assert info.value.first_finding.actual_duration_ms == 90000
+    assert engine.scales == [1.0, 1.15]
+    invocations = [item.record for item in rig.revs('tts_invocation')]
+    assert [r.validation_result for r in invocations] == ['failed', 'failed']
+    assert [r.attempt for r in invocations] == [1, 2]
+    assert rig.revs('voice') == ()
+    assert rig.receipt('CreateVoiceTrack') is None
+    assert rig.events() == []
+
+
+def test_speed_fit_not_used_when_first_take_in_range():
+    engine = _ScaleEngine(65500)
+    rig = Rig(engine=engine)
+    voice = rig.pipeline.create_voice_track(_voice_cmd(duration=RANGE, speed_fit=FIT)).voice_track
+    assert engine.scales == [1.0]
+    assert voice.warnings == ()
+    assert 'speed_scale' not in voice.usage_metrics
+    (invocation,) = [item.record for item in rig.revs('tts_invocation')]
+    assert invocation.validation_result == 'passed'
+
+
+def test_speed_fit_none_keeps_old_behaviour():
+    engine = _ScaleEngine(71939)
+    rig = Rig(engine=engine)
+    with pytest.raises(vp.VoiceDurationRejected) as info:
+        rig.pipeline.create_voice_track(_voice_cmd(duration=RANGE))
+    assert info.value.first_finding is None
+    assert engine.scales == [1.0]
+    (invocation,) = [item.record for item in rig.revs('tts_invocation')]
+    assert invocation.validation_result == 'failed'
+    assert 'measured_duration_ms' not in invocation.usage_metrics
+
+
+def test_speed_fit_replay_adds_no_engine_call():
+    engine = _ScaleEngine(71939)
+    rig = Rig(engine=engine)
+    rig.pipeline.create_voice_track(_voice_cmd(duration=RANGE, speed_fit=FIT))
+    replayed = rig.pipeline.create_voice_track(_voice_cmd(duration=RANGE, speed_fit=FIT, name='voice-2'))
+    assert replayed.replayed is True
+    assert len(engine.scales) == 2
+    assert len(rig.revs('voice')) == 1
+
+
+def test_speed_fit_second_take_failure_commits_all_records():
+    engine = _RetakeFailEngine(71939)
+    rig = Rig(engine=engine)
+    with pytest.raises(vp.VoiceGenerationFailed) as info:
+        rig.pipeline.create_voice_track(_voice_cmd(duration=RANGE, speed_fit=FIT))
+    assert info.value.code == 'tts_runtime_error'
+    invocations = [item.record for item in rig.revs('tts_invocation')]
+    assert (invocations[0].attempt, invocations[0].validation_result) == (1, 'failed')
+    assert invocations[1].attempt == 2 and invocations[1].error_code == 'tts_runtime_error'
+    assert rig.revs('voice') == ()
+    assert rig.events() == []
 
 
 FORBIDDEN_ROOTS = frozenset(

@@ -18,6 +18,7 @@ from voice.domain.language_evidence import (
     RevisionMismatchError,
     build_language_evidence,
 )
+from voice.domain.speed_fit import SpeedFitPolicy, plan_speed_fit
 from voice.domain.timing_binding import TimingBinding, require_valid_timing
 from voice.domain.timing_coverage import (
     CoverageReport,
@@ -60,6 +61,7 @@ KIND_TTS_INVOCATION = 'tts_invocation'
 KIND_RECEIPT = 'receipt'
 KIND_TIMING_REPORT = 'timing_report'
 KIND_LANGUAGE_EVIDENCE = 'language_evidence'
+WARNING_SPEED_FIT_APPLIED = 'speed_fit_applied'
 
 
 class IdempotencyConflict(ValueError):
@@ -87,9 +89,10 @@ class VoiceGenerationFailed(Exception):
 
 
 class VoiceDurationRejected(Exception):
-    def __init__(self, finding: DurationFinding) -> None:
+    def __init__(self, finding: DurationFinding, *, first_finding: DurationFinding | None = None) -> None:
         self.code = VOICE_DURATION_OUT_OF_RANGE
         self.finding = finding
+        self.first_finding = first_finding
         super().__init__(f'{self.code}: {finding.actual_duration_ms}')
 
 
@@ -108,6 +111,7 @@ class CreateVoiceTrackCommand:
     attempt_policy: Mapping[str, object] | None
     duration_policy: tuple[int, int] | list[int] | None
     context: EventContext
+    speed_fit: SpeedFitPolicy | None = None
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -181,6 +185,14 @@ def _emit(uow: Any, event: Any) -> None:
     uow.outbox.append_event(event.event_name, event.aggregate_id, event.payload, deduplication_id_for(event))
 
 
+def _judged(records: tuple[TtsInvocationRecord, ...], finding: DurationFinding | None, measured_ms: int, *, record_duration: bool) -> tuple[TtsInvocationRecord, ...]:
+    """Mark the last (successful) record of a take with its validation verdict; with record_duration also store measured_duration_ms in its usage_metrics."""
+    changes: dict[str, Any] = {'validation_result': 'failed' if finding is not None else 'passed'}
+    if record_duration:
+        changes['usage_metrics'] = {**dict(records[-1].usage_metrics), 'measured_duration_ms': measured_ms}
+    return records[:-1] + (dataclasses.replace(records[-1], **changes),)
+
+
 class VoicePipeline:
     def __init__(
         self,
@@ -250,9 +262,35 @@ class VoicePipeline:
         audio = run.synthesis.audio_bytes
         actual_duration_ms = self._measure_duration_ms(audio)
         finding = check_duration(actual_duration_ms, command.duration_policy)
-        verdict = 'failed' if finding is not None else 'passed'
-        records = run.records[:-1] + (dataclasses.replace(run.records[-1], validation_result=verdict),)
-        if finding is not None:
+        speed_fit = command.speed_fit
+        records = _judged(run.records, finding, actual_duration_ms, record_duration=speed_fit is not None)
+        speed_scale = None
+        first_take_duration_ms = None
+        if finding is not None and speed_fit is not None:
+            first_finding = finding
+            first_take_duration_ms = actual_duration_ms
+            speed_scale = plan_speed_fit(actual_duration_ms, command.duration_policy, speed_fit)
+            retake = run_tts_attempts(
+                self._tts_engine, decision, command.route_request, request, script_text, command.attempt_policy,
+                speed_scale=speed_scale,
+            )
+            offset = records[-1].attempt
+            numbered = tuple(dataclasses.replace(item, attempt=offset + item.attempt) for item in retake.records)
+            if retake.synthesis is None:
+                records = records + numbered
+                self._commit_invocations(command.track_key, records)
+                raise VoiceGenerationFailed(
+                    retake.error.code, retake.error.message, retryable=retake.error.retryable, records=records
+                )
+            run = retake
+            audio = retake.synthesis.audio_bytes
+            actual_duration_ms = self._measure_duration_ms(audio)
+            finding = check_duration(actual_duration_ms, command.duration_policy)
+            records = records + _judged(numbered, finding, actual_duration_ms, record_duration=True)
+            if finding is not None:
+                self._commit_invocations(command.track_key, records)
+                raise VoiceDurationRejected(finding, first_finding=first_finding)
+        elif finding is not None:
             self._commit_invocations(command.track_key, records)
             raise VoiceDurationRejected(finding)
         voice_hash = compute_voice_hash(audio)
@@ -260,6 +298,11 @@ class VoicePipeline:
         if self._place_artifact is not None:
             self._place_artifact(artifact_ref, audio)  # DQ-13: the file gets this exact name before anything is committed
         receipt_ref = f'receipt-{digest[:32]}'
+        usage_metrics = run.synthesis.usage_metrics.to_dict()
+        warnings: tuple[str, ...] = ()
+        if speed_scale is not None:
+            usage_metrics = {**usage_metrics, 'speed_scale': speed_scale, 'first_take_duration_ms': first_take_duration_ms}
+            warnings = (WARNING_SPEED_FIT_APPLIED,)
         voice = VoiceTrack(
             voice_artifact_ref=artifact_ref,
             script_version_id=request['script_version_id'],
@@ -267,8 +310,8 @@ class VoicePipeline:
             voice_hash=voice_hash,
             actual_duration_ms=actual_duration_ms,
             provider_model_voice_revision=run.synthesis.voice_revision,
-            usage_metrics=run.synthesis.usage_metrics.to_dict(),
-            warnings=(),
+            usage_metrics=usage_metrics,
+            warnings=warnings,
             receipt_ref=receipt_ref,
         )
         with self._uow as uow:

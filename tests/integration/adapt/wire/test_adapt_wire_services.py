@@ -64,6 +64,7 @@ from voice.adapters.real_kokoro_tts import RealKokoroTts
 from voice.adapters.real_llm_image_safety import LlmImageSafetyDetector
 from voice.adapters.real_whisper_aligner import RealWhisperAligner
 from voice.domain.processing import ArtifactRef
+from voice.domain.speed_fit import SpeedFitPolicy, plan_speed_fit
 from voice.persistence.unit_of_work import PostgresVoiceUnitOfWork
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -300,7 +301,7 @@ def test_profile_loads_typed_values():
     pp = wiring('production_profile')
     p = pp.load_production_profile(PROFILE_PATH)
     assert p.profile_name == 'production'
-    assert p.revision == 2
+    assert p.revision == load_data()['meta']['revision']['value']
     assert p.budget.monthly_limit == Decimal('50')
     assert p.budget.hard_stop is True
     assert p.budget.window_timezone == 'Asia/Ho_Chi_Minh'
@@ -316,9 +317,10 @@ def test_profile_loads_typed_values():
     assert p.render.timeout_seconds == 900
     assert p.drive.chunk_bytes == 8388608
     assert p.credential_max_ttl_seconds == 3300
-    assert len(pp.REQUIRED_PARAMETERS) == 83
+    assert len(pp.REQUIRED_PARAMETERS) == 84
     assert set(pp.REQUIRED_PARAMETERS) == set(LEAVES)
     assert set(p.parameters) == set(LEAVES)
+    assert (p.voice.speed_fit_min_scale, p.voice.speed_fit_max_scale, p.voice.speed_fit_duration_slope) == (0.85, 1.15, 0.56)
 
 
 @pytest.mark.parametrize('name', LEAVES)
@@ -361,6 +363,38 @@ def test_invalid_and_null_values_are_rejected(tmp_path):
         with pytest.raises(pp.ProductionProfileError) as info:
             pp.load_production_profile(write_profile(tmp_path, data))
         assert info.value.parameter == expected_param
+
+
+@pytest.mark.parametrize(
+    'override',
+    [
+        {'min_scale': 1.2},
+        {'max_scale': 0.9},
+        {'min_scale': True},
+        {'duration_slope': 0},
+        {'duration_slope': 2.5},
+        {'min_scale': 0.4},
+        {'max_scale': 2.5},
+    ],
+)
+def test_invalid_voice_speed_fit_names_it(override, tmp_path):
+    pp = wiring('production_profile')
+    data = load_data()
+    set_leaf(data, 'voice.speed_fit', {**data['voice']['speed_fit']['value'], **override})
+    with pytest.raises(pp.ProductionProfileError) as info:
+        pp.load_production_profile(write_profile(tmp_path, data))
+    assert info.value.parameter.startswith('voice.speed_fit')
+
+
+def test_voice_speed_fit_wires_into_policy():
+    pp = wiring('production_profile')
+    p = pp.load_production_profile(PROFILE_PATH)
+    policy = SpeedFitPolicy(
+        min_scale=p.voice.speed_fit_min_scale,
+        max_scale=p.voice.speed_fit_max_scale,
+        duration_slope=p.voice.speed_fit_duration_slope,
+    )
+    assert plan_speed_fit(71939, (61000, 70000), policy) == 1.15
 
 
 def test_wiring_config_rules():

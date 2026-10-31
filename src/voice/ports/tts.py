@@ -20,8 +20,11 @@ class VoiceRoutePort(Protocol):
 
 @runtime_checkable
 class TtsEnginePort(Protocol):
-    def synthesize(self, decision: ProviderRouteDecision, script_text: ScriptText, request: Mapping[str, object]) -> TtsSynthesis:
-        """Synthesize speech from script text and VoiceTrackRequest; provider errors are TtsProviderError with retryable and redacted message."""
+    def synthesize(self, decision: ProviderRouteDecision, script_text: ScriptText, request: Mapping[str, object], *, speed_scale: float = 1.0) -> TtsSynthesis:
+        """Synthesize speech from script text and VoiceTrackRequest; provider errors are TtsProviderError with retryable and redacted message.
+
+        speed_scale is a configured-speed multiplier (1.0 = configured speed); the engine multiplies it with its own configured speed.
+        """
         ...
 
 

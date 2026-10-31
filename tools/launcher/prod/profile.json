@@ -6,7 +6,7 @@
       "basis": "DECIDED"
     },
     "revision": {
-      "value": 2,
+      "value": 3,
       "reason": "Revision cấu hình theo kết quả đo CP7 (docs/implementation/adapt/plan.md mục giá trị production: kết quả đo thay giá trị bằng revision cấu hình mới, không đổi mã).",
       "basis": "DECIDED"
     }
@@ -241,6 +241,15 @@
       },
       "reason": "G quyết định thử lại tầng voice theo TEST-OPEN-003 vì E không tự retry.",
       "basis": "CONSERVATIVE_DEFAULT"
+    },
+    "speed_fit": {
+      "value": {
+        "min_scale": 0.85,
+        "max_scale": 1.15,
+        "duration_slope": 0.56
+      },
+      "reason": "Quyết định của user (CLOSURE_NOTE CP7/RG-09, 31/10/2026): E đọc lại đúng một lần với tốc độ khớp, hệ số kẹp 0,85-1,15. duration_slope 0,56 là số đo trên đường production: thời lượng chỉ đổi khoảng 0,56 lần mức đổi tốc độ (1.1 cho x0.952, 1.15 cho x0.925, 0.85 cho x1.115).",
+      "basis": "DECIDED"
     }
   },
   "aligner": {

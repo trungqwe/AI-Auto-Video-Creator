@@ -1,6 +1,7 @@
 """ADAPT-E-FIX2: sentence joins keep the model-generated tail through the default Kokoro factory; fake Kokoro subclass, no real weights, no network."""
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import socket
@@ -16,7 +17,7 @@ from kokoro_onnx.trim import trim as library_trim
 
 from voice.adapters import real_kokoro_tts as tts_module
 from voice.adapters.real_kokoro_tts import KokoroConfig, RealKokoroTts
-from voice.domain.tts_invocation import ProviderRouteDecision
+from voice.domain.tts_invocation import ProviderRouteDecision, TtsProviderError
 from voice.ports.script_text import ScriptText
 
 FINGERPRINT = 'a' * 64
@@ -237,3 +238,51 @@ def test_revision_marks_join_policy_and_injected_model_path_unchanged(tts_env):
     assert 'sentence_joins' not in injected.voice_revision
     assert len(factory_calls) == 1
     assert len(FakeKokoro.instances) == 1
+
+
+def _scaled_engine(config):
+    model = FourArgModel()
+    factory_calls = []
+
+    def factory(model_path: str, voices_path: str):
+        factory_calls.append((model_path, voices_path))
+        return model
+
+    return RealKokoroTts(config, model_factory=factory), model, factory_calls
+
+
+def test_speed_scale_multiplies_configured_speed_and_keeps_revision(tts_env):
+    config = dataclasses.replace(tts_env.config, speed=1.0)
+    engine, model, _factory_calls = _scaled_engine(config)
+    first = engine.synthesize(decision(), script(SINGLE_TEXT), voice_request())
+    second = engine.synthesize(decision(), script(SINGLE_TEXT), voice_request(), speed_scale=1.15)
+    assert model.calls[0]['speed'] == 1.0
+    assert model.calls[1]['speed'] == 1.15
+    assert second.usage_metrics['speed'] == 1.15 and second.usage_metrics['speed_scale'] == 1.15
+    assert first.usage_metrics['speed_scale'] == 1.0
+    assert first.voice_revision == second.voice_revision
+
+
+def test_speed_scale_multiplies_non_default_config_speed(tts_env):
+    engine, model, _factory_calls = _scaled_engine(tts_env.config)
+    engine.synthesize(decision(), script(SINGLE_TEXT), voice_request(), speed_scale=1.15)
+    assert model.calls[0]['speed'] == round(1.1 * 1.15, 4)
+
+
+@pytest.mark.parametrize('scale', [2.5, 0.4])
+def test_speed_scale_out_of_range_fails_without_model_call(tts_env, scale):
+    config = dataclasses.replace(tts_env.config, speed=1.0)
+    engine, model, factory_calls = _scaled_engine(config)
+    with pytest.raises(TtsProviderError) as info:
+        engine.synthesize(decision(), script(SINGLE_TEXT), voice_request(), speed_scale=scale)
+    assert info.value.code == 'speed_out_of_range' and info.value.retryable is False
+    assert model.calls == [] and factory_calls == []
+
+
+@pytest.mark.parametrize('scale', [True, 0, -1.0, 'x', float('nan')])
+def test_speed_scale_rejects_non_positive_or_non_number(tts_env, scale):
+    config = dataclasses.replace(tts_env.config, speed=1.0)
+    engine, model, _factory_calls = _scaled_engine(config)
+    with pytest.raises(ValueError):
+        engine.synthesize(decision(), script(SINGLE_TEXT), voice_request(), speed_scale=scale)
+    assert model.calls == []

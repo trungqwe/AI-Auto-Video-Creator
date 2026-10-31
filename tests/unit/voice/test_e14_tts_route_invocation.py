@@ -485,7 +485,12 @@ def test_fakes_satisfy_ports_and_signatures():
     assert isinstance(route, VoiceRoutePort) and isinstance(engine, TtsEnginePort)
     assert not isinstance(object(), VoiceRoutePort) and not isinstance(object(), TtsEnginePort)
     assert list(inspect.signature(VoiceRoutePort.resolve).parameters) == ['self', 'request']
-    assert list(inspect.signature(TtsEnginePort.synthesize).parameters) == ['self', 'decision', 'script_text', 'request']
+    assert list(inspect.signature(TtsEnginePort.synthesize).parameters) == [
+        'self', 'decision', 'script_text', 'request', 'speed_scale'
+    ]
+    param = inspect.signature(TtsEnginePort.synthesize).parameters['speed_scale']
+    assert param.kind is inspect.Parameter.KEYWORD_ONLY and param.default == 1.0
+    assert 'speed_scale' in inspect.signature(engine.synthesize).parameters
 
 
 def test_fake_route_returns_valid_decision_counts_and_rejects_invalid_request():
@@ -653,7 +658,9 @@ def test_attempt_limits_have_no_default_in_source():
     tree = ast.parse(DOMAIN_SOURCE.read_text(encoding='utf-8'))
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name in ('parse_attempt_policy', 'run_tts_attempts'):
-            defaults = [d for d in node.args.defaults + node.args.kw_defaults if d is not None]
+            # speed_scale is a keyword-only multiplier defaulting to None, not an attempt limit
+            kw = [d for arg, d in zip(node.args.kwonlyargs, node.args.kw_defaults) if d is not None and arg.arg != 'speed_scale']
+            defaults = [*node.args.defaults, *kw]
             assert defaults == []
         elif isinstance(node, ast.ClassDef) and node.name == 'TtsAttemptPolicy':
             for stmt in node.body:
@@ -711,6 +718,72 @@ def _prepare(scripts=None, allowed=('fb-1', 'fb-2'), **engine_kwargs) -> tuple[F
 def _run(scripts=None, policy=POLICY, **kw) -> tuple[FakeTtsEngine, dict, TtsRunOutcome]:
     engine, args = _prepare(scripts, **kw)
     return (engine, args, run_tts_attempts(engine, policy=policy, **args))
+
+
+class _RecordingEngine:
+    """Test-only wrapper recording the exact (args, kwargs) of every synthesize call."""
+
+    def __init__(self, inner):
+        self.inner = inner
+        self.calls = []
+
+    def synthesize(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        return self.inner.synthesize(*args, **kwargs)
+
+
+def test_fingerprint_with_speed_scale_adds_key():
+    request = _voice_request()
+    base = fingerprint_tts_input(_script(request), request)
+    assert fingerprint_tts_input(_script(request), request, speed_scale=None) == base
+    fast = fingerprint_tts_input(_script(request), request, speed_scale=1.15)
+    assert fast != base
+    assert fast != fingerprint_tts_input(_script(request), request, speed_scale=0.85)
+    assert fast == fingerprint_tts_input(_script(request), request, speed_scale=1.15)
+
+
+def test_run_tts_attempts_without_speed_scale_calls_engine_with_three_positional_args():
+    engine, args = _prepare()
+    recorder = _RecordingEngine(engine)
+    run_tts_attempts(recorder, policy=POLICY, **args)
+    assert recorder.calls
+    for call_args, kwargs in recorder.calls:
+        assert len(call_args) == 3 and kwargs == {}
+
+
+def test_run_tts_attempts_with_speed_scale_passes_kw_and_changes_fingerprint():
+    engine, args = _prepare()
+    plain = run_tts_attempts(engine, policy=POLICY, **args)
+    engine2, args2 = _prepare()
+    recorder = _RecordingEngine(engine2)
+    outcome = run_tts_attempts(recorder, policy=POLICY, speed_scale=1.15, **args2)
+    assert recorder.calls
+    for _call_args, kwargs in recorder.calls:
+        assert kwargs == {'speed_scale': 1.15}
+    expected = fingerprint_tts_input(args2['script_text'], args2['voice_request'], speed_scale=1.15)
+    assert outcome.records[0].input_fingerprint == expected
+    assert outcome.records[0].input_fingerprint != plain.records[0].input_fingerprint
+
+
+def test_fake_engine_speed_scale_scales_wav_and_metrics():
+    route, engine = _rig(duration_ms=1000, sample_rate=16000)
+    decision = _resolve(route)
+    request = _voice_request()
+    script = _script(request)
+
+    def measure(result) -> int:
+        with wave.open(io.BytesIO(result.audio_bytes), 'rb') as wav:
+            return wav.getnframes() * 1000 // wav.getframerate()
+
+    fast = engine.synthesize(decision, script, request, speed_scale=1.25)
+    assert measure(fast) == 800 and fast.usage_metrics['speed_scale'] == 1.25
+    plain = engine.synthesize(decision, script, request)
+    assert measure(plain) == 1000 and 'speed_scale' not in plain.usage_metrics
+    calls = engine.synthesize_calls
+    for bad in (True, 0, -1):
+        with pytest.raises(ValueError):
+            engine.synthesize(decision, script, request, speed_scale=bad)
+    assert engine.synthesize_calls == calls
 
 
 class _BrokenEngine:

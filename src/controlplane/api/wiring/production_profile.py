@@ -31,7 +31,7 @@ REQUIRED_PARAMETERS = tuple(
     'ai.reservation_ttl_seconds ai.quota_wait_poll_seconds ai.quota_wait_max '
     'budget.monthly_limit budget.currency budget.hard_stop budget.warn_at_ratio '
     'budget.window_timezone credential.max_ttl_seconds voice.engine voice.duration_range_ms '
-    'voice.speech_rate_wpm voice.tts_timeout_seconds voice.stage_retry aligner.engine '
+    'voice.speech_rate_wpm voice.tts_timeout_seconds voice.stage_retry voice.speed_fit aligner.engine '
     'aligner.word_timing_tolerance_ms aligner.max_unmatched_word_ratio audio.loudness '
     'audio.bed_gain_db image_safety.categories image_safety.thresholds image_safety.boxblur '
     'image_safety.vision render.profile render.nvenc render.fallback render.timeout_seconds '
@@ -173,6 +173,9 @@ class VoiceConfig:
     speed: float
     sample_rate_hz: int
     tts_timeout_seconds: float
+    speed_fit_min_scale: float
+    speed_fit_max_scale: float
+    speed_fit_duration_slope: float
 
 
 @dataclass(frozen=True)
@@ -319,6 +322,14 @@ def load_production_profile(path: Path | str) -> ProductionProfile:
     v_output = _member(v_eng, 'voice.engine', 'output', _is_dict)
     v_sample_rate = _member(v_output, 'voice.engine.output', 'sample_rate_hz', _is_pos_int)
     tts_timeout_seconds = float(_whole(values['voice.tts_timeout_seconds'], 'voice.tts_timeout_seconds', _is_pos_num))
+    speed_fit = values['voice.speed_fit']
+    sf_min = float(_member(speed_fit, 'voice.speed_fit', 'min_scale', _is_pos_num))
+    sf_max = float(_member(speed_fit, 'voice.speed_fit', 'max_scale', _is_pos_num))
+    sf_slope = float(_member(speed_fit, 'voice.speed_fit', 'duration_slope', _is_pos_num))
+    if sf_min > 1 or sf_max < 1 or sf_slope > 2:
+        raise ProductionProfileError('voice.speed_fit', 'invalid parameter')
+    if round(v_speed * sf_min, 4) < 0.5 or round(v_speed * sf_max, 4) > 2.0:
+        raise ProductionProfileError('voice.speed_fit', 'invalid parameter')
     voice = VoiceConfig(
         library=v_lib,
         voice=v_voice,
@@ -326,6 +337,9 @@ def load_production_profile(path: Path | str) -> ProductionProfile:
         speed=v_speed,
         sample_rate_hz=v_sample_rate,
         tts_timeout_seconds=tts_timeout_seconds,
+        speed_fit_min_scale=sf_min,
+        speed_fit_max_scale=sf_max,
+        speed_fit_duration_slope=sf_slope,
     )
 
     # Aligner
