@@ -1,6 +1,6 @@
 """Real AlignerPort: local faster_whisper word timestamps matched to the script text (CT-SUB-001).
 
-Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time.
+Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count under the max_unmatched_word_ratio cap.
 """
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ ERROR_MODEL_OUTPUT_INVALID = 'model_output_invalid'
 ERROR_TOKENIZATION_INCONSISTENT = 'tokenization_inconsistent'
 ERROR_NO_ALIGNED_WORDS = 'no_aligned_words'
 ERROR_UNMATCHED_RATIO_EXCEEDED = 'alignment_unmatched_ratio_exceeded'
+ERROR_SPLIT_RATIO_EXCEEDED = 'alignment_split_ratio_exceeded'
 ERROR_RUNTIME = 'aligner_runtime_error'
 _SHA256_RE = re.compile(r'[0-9a-f]{64}')
 ARTIFACT_REF_RE = re.compile(r'voice-artifact-[0-9a-f]{64}')
@@ -133,7 +134,7 @@ def _voice_artifact_path(voice_root: Path, ref: str) -> Path:
 
 @dataclass(frozen=True)
 class AlignmentReport:
-    """Counts of the last align call; unmatched_ratio = (missing script words + extra model words) / (script words + model words)."""
+    """Counts of the last align call; unmatched_ratio = (missing script words + extra model words) / (script words + model words); split_word_count = script words that took a share of one heard span (ADAPT-E-FIX3 number groups)."""
 
     script_token_count: int
     transcript_word_count: int
@@ -141,6 +142,7 @@ class AlignmentReport:
     missing_script_indices: tuple[int, ...]
     extra_transcript_indices: tuple[int, ...]
     unmatched_ratio: float
+    split_word_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -188,18 +190,56 @@ def _segment_boundaries(segments: list, duration_ms: int) -> tuple[dict[str, int
     return tuple(boundaries)
 
 
-def _match_script(expected: list[str], heard: list[_Heard]) -> list[tuple[int, int, int]]:
-    """Return (script index, first heard index, last heard index); equal blocks match word by word, a replace block only as a split compound or a same-size respelling."""
+_NUMBER_RE = re.compile(r'[1-9][0-9]{0,2}(?:,[0-9]{3}){1,3}|[1-9][0-9]{0,11}')
+_SCALE_WORDS = ('hundred', 'thousand', 'million', 'billion')
+_SMALL = ('zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen')
+_TENS = ('', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety')
+_SCALES = ((10 ** 9, 'billion'), (10 ** 6, 'million'), (1000, 'thousand'), (100, 'hundred'))
+
+
+def _cardinal(value: int) -> list[str]:
+    """English cardinal words of 1 <= value <= 999999999999, one word per element, no 'and', no hyphen."""
+    if value < 20:
+        return [_SMALL[value]]
+    if value < 100:
+        return [_TENS[value // 10], *(_cardinal(value % 10) if value % 10 else ())]
+    for size, name in _SCALES:
+        if value >= size:
+            return [*_cardinal(value // size), name, *(_cardinal(value % size) if value % size else ())]
+    raise ValueError('value out of range')
+
+
+def _same_number(digits: Sequence[str], words: Sequence[str]) -> bool:
+    """ADAPT-E-FIX3: True when one digit token and a group of two or more tokens write the same whole number (156 = one hundred and fifty-six, 2026 = two thousand twenty-six = twenty twenty-six, 100 = a hundred)."""
+    if len(digits) != 1 or len(words) < 2 or _NUMBER_RE.fullmatch(digits[0]) is None:
+        return False
+    value = int(digits[0].replace(',', ''))
+    tokens = [part for word in words for part in word.split('-')]
+    if tokens[0] == 'a' and tokens[1] in _SCALE_WORDS:
+        tokens[0] = 'one'
+    tokens = [t for k, t in enumerate(tokens) if not (t == 'and' and 0 < k < len(tokens) - 1 and tokens[k - 1] in _SCALE_WORDS)]
+    forms = [_cardinal(value)]
+    if 1000 <= value <= 9999 and value % 100 >= 10:
+        forms.append(_cardinal(value // 100) + _cardinal(value % 100))
+    return tokens in forms
+
+
+def _match_script(expected: list[str], heard: list[_Heard]) -> list[tuple[int, int, int, int]]:
+    """Return (first script index, last script index, first heard index, last heard index); equal blocks match word by word, a replace block only as a split compound, a same-size respelling or (ADAPT-E-FIX3 exception) one whole number written as digits on one side and as words on the other."""
     names = [item.normalized for item in heard]
-    matches: list[tuple[int, int, int]] = []
+    matches: list[tuple[int, int, int, int]] = []
     for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, expected, names, autojunk=False).get_opcodes():
         if tag == 'equal':
-            matches.extend((i1 + k, j1 + k, j1 + k) for k in range(i2 - i1))
+            matches.extend((i1 + k, i1 + k, j1 + k, j1 + k) for k in range(i2 - i1))
         elif tag == 'replace' and None not in names[j1:j2]:
             if i2 - i1 == 1 and j2 - j1 > 1 and ''.join(names[j1:j2]) == expected[i1]:
-                matches.append((i1, j1, j2 - 1))
+                matches.append((i1, i1, j1, j2 - 1))
             elif i2 - i1 == j2 - j1:
-                matches.extend((i1 + k, j1 + k, j1 + k) for k in range(i2 - i1))
+                matches.extend((i1 + k, i1 + k, j1 + k, j1 + k) for k in range(i2 - i1))
+            elif _same_number(names[j1:j2], expected[i1:i2]):
+                matches.append((i1, i2 - 1, j1, j1))
+            elif _same_number(expected[i1:i2], names[j1:j2]):
+                matches.append((i1, i1, j1, j2 - 1))
     return matches
 
 
@@ -375,9 +415,18 @@ class RealWhisperAligner:
         duration = request.voice_duration_ms
         slots: list[_Slot] = []
         previous_end = 0
-        for i, first, last in _match_script(expected, heard):
+        split_count = 0
+        for i, i_last, first, last in _match_script(expected, heard):
             start = max(heard[first].start_ms, previous_end)
             end = min(heard[last].end_ms, duration)
+            if i_last > i:
+                w = [len(expected[n]) for n in range(i, i_last + 1)]
+                b = [start + (end - start) * sum(w[:n]) // sum(w) for n in range(len(w))] + [end]
+                if all(b[n] < b[n + 1] for n in range(len(w))):
+                    slots.extend(_Slot(i + n, first, last, b[n], b[n + 1], False) for n in range(len(w)))
+                    split_count += len(w)
+                    previous_end = end
+                continue
             rescued = end <= start
             if rescued:
                 run = _run_at_end(runs, end)  # the speech run holding t - 1 ms
@@ -405,12 +454,14 @@ class RealWhisperAligner:
         extra = tuple(j for j in range(len(heard)) if j not in timed_heard)
         total = len(expected) + len(heard)
         ratio = (len(missing) + len(extra)) / total if total else 1.0
-        self.last_report = AlignmentReport(len(expected), len(heard), len(words), missing, extra, ratio)
+        self.last_report = AlignmentReport(len(expected), len(heard), len(words), missing, extra, ratio, split_count)
         if not words:
             raise _fail(ERROR_NO_ALIGNED_WORDS, 'no script word could be aligned to a model word')
         if ratio > config.max_unmatched_word_ratio:
             raise _fail(ERROR_UNMATCHED_RATIO_EXCEEDED, f'unmatched word ratio {ratio:.4f} exceeds {config.max_unmatched_word_ratio}')
-        language = getattr(info, 'language', None)
+        if split_count / len(expected) > config.max_unmatched_word_ratio:
+            raise _fail(ERROR_SPLIT_RATIO_EXCEEDED, f'split word ratio {split_count / len(expected):.4f} exceeds {config.max_unmatched_word_ratio}')
+        language =getattr(info, 'language', None)
         return AlignmentResult(
             words=tuple(words),
             segment_boundaries=boundaries,
