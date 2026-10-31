@@ -317,7 +317,7 @@ def test_profile_loads_typed_values():
     assert p.render.timeout_seconds == 900
     assert p.drive.chunk_bytes == 8388608
     assert p.credential_max_ttl_seconds == 3300
-    assert len(pp.REQUIRED_PARAMETERS) == 84
+    assert len(pp.REQUIRED_PARAMETERS) == 85
     assert set(pp.REQUIRED_PARAMETERS) == set(LEAVES)
     assert set(p.parameters) == set(LEAVES)
     assert (p.voice.speed_fit_min_scale, p.voice.speed_fit_max_scale, p.voice.speed_fit_duration_slope) == (0.85, 1.15, 0.56)
@@ -395,6 +395,26 @@ def test_voice_speed_fit_wires_into_policy():
         duration_slope=p.voice.speed_fit_duration_slope,
     )
     assert plan_speed_fit(71939, (61000, 70000), policy) == 1.15
+
+
+def test_batch_max_concurrent_videos_loads_default_and_max():
+    pp = wiring('production_profile')
+    p = pp.load_production_profile(PROFILE_PATH)
+    assert p.parameters['batch.max_concurrent_videos'] == {'default': 6, 'max': 10}
+
+
+@pytest.mark.parametrize('value', [
+    {'default': 11, 'max': 10}, {'default': 6, 'max': 0}, {'default': 0, 'max': 10},
+    {'default': True, 'max': 10}, {'default': 6, 'max': True}, {'default': 6}, {'max': 10},
+    {'default': 6, 'max': 10, 'min': 1}, 6, 'abc',
+])
+def test_invalid_batch_max_concurrent_videos_names_it(value, tmp_path):
+    pp = wiring('production_profile')
+    data = load_data()
+    set_leaf(data, 'batch.max_concurrent_videos', value)
+    with pytest.raises(pp.ProductionProfileError) as info:
+        pp.load_production_profile(write_profile(tmp_path, data))
+    assert info.value.parameter.startswith('batch.max_concurrent_videos') and 'batch.max_concurrent_videos' in str(info.value)
 
 
 def test_wiring_config_rules():

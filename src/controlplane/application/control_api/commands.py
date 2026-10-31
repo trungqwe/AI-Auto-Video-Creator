@@ -8,6 +8,7 @@ import uuid
 
 from controlplane.application.idempotency import request_hash
 from controlplane.application.control_api.command_gateway import CommandHandlerPort, ControlCommandGateway
+from controlplane.application.control_api.batch_concurrency import SEQUENTIAL, BatchConcurrency, resolve
 from controlplane.application.orchestration.start_batch import StartBatchService
 from controlplane.domain.concurrency import RevisionConflictError
 from controlplane.domain.events import DomainEvent
@@ -80,10 +81,12 @@ class ControlApiCommandService:
     def start_batch(self, *, workspace_id: str, actor_id: str,
                     correlation_id: str, idempotency_key: str,
                     payload: dict[str, object],
-                    inject_before_commit: BaseException | None = None) -> dict[str, object]:
+                    inject_before_commit: BaseException | None = None,
+                    concurrency: BatchConcurrency = SEQUENTIAL) -> dict[str, object]:
         target = payload.get("target_completed_videos")
         if not isinstance(target, int) or isinstance(target, bool) or target <= 0:
             raise ValueError("target_completed_videos must be a positive integer")
+        max_videos = resolve(payload, concurrency)
         logical = {"workspace_id": workspace_id, "command_name": "StartProductionBatch",
                    "payload": payload}
         with self._uow_factory() as uow:
@@ -112,15 +115,18 @@ class ControlApiCommandService:
                 idempotency_key=idempotency_key, request_hash=digest,
                 receipt_id=receipt["receipt_id"],
             )
+            event_payload = {"batch_id": batch_id, "operation_id": operation_id,
+                             "receipt_id": str(receipt["receipt_id"]),
+                             "target_count": target, "status": "CREATED"}
+            if max_videos > 1:
+                event_payload["max_concurrent_videos"] = max_videos
             event = DomainEvent(
                 contract_name="controlplane.production_batch", contract_version=1,
                 message_id=str(uuid.uuid4()), workspace_id=workspace_id,
                 correlation_id=correlation_id, causation_id=None, trace_context=None,
                 occurred_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                 actor=actor_id, recovery_epoch=None,
-                payload={"batch_id": batch_id, "operation_id": operation_id,
-                         "receipt_id": str(receipt["receipt_id"]),
-                         "target_count": target, "status": "CREATED"},
+                payload=event_payload,
                 event_id=str(uuid.uuid4()), event_name="production_batch.start_accepted",
                 aggregate_type="production_batch", aggregate_id=batch_id,
                 aggregate_revision=1, producer="controlplane.control_api",

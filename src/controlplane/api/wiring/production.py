@@ -41,11 +41,12 @@ from controlplane.api.wiring.production_profile import (
 from controlplane.api.wiring.render import build_render_services
 from controlplane.api.wiring.storage import build_storage_services
 from controlplane.api.wiring.voice import build_voice_services
+from controlplane.application.control_api.batch_concurrency import BatchConcurrency
 from controlplane.application.projections.list_query import ListQuery, Page, build_page
 from controlplane.application.session_security import BootstrapCapabilityRegistry
 from controlplane.domain.orchestration.workflow_catalog import TaskQueue
 from controlplane.domain.statemachine import ForbiddenTransitionError
-from controlplane.infrastructure.capacity import ACTIVITY_QUEUE_CAPS
+from controlplane.infrastructure.capacity import ACTIVITY_QUEUE_CAPS, MAX_VIDEO_STREAMS
 from controlplane.infrastructure.read_screens.compose import compose_read_screens
 from source_ingestion.application.source_commands import IdempotencyConflictError, SourceCommandHandler, SourceNotFoundError
 from source_ingestion.domain.source import Source, SourcePolicy, SourceStatus
@@ -389,10 +390,14 @@ def build_production_app(*, manager: Any, config: WiringConfig, port: int,
                          dist_dir: Path | None = None) -> ProductionApp:
     if config.mode != PROFILE_PRODUCTION:
         raise ProductionProfileError('mode', 'not a production profile')
+    limits = config.production_parts()[0].parameters['batch.max_concurrent_videos']
+    if limits['max'] > MAX_VIDEO_STREAMS:
+        raise ProductionProfileError('batch.max_concurrent_videos', 'exceeds machine capacity')
     origins = production_origins(port)
     services = _build_services(manager, config)
     registry = BootstrapCapabilityRegistry()
     api_app = create_app(manager=manager, allowed_origins=origins, bootstrap_registry=registry)
+    api_app.state.batch_concurrency = BatchConcurrency(limits['default'], limits['max'])
     api_app.state.module_services['sources'] = compose_sources_module(services, config)
     api_app.state.module_services['hooks'] = compose_hooks_module(manager)
     api_app.state.module_services.update(compose_read_screens(manager))

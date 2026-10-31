@@ -118,13 +118,20 @@ class OutboxRelay:
         if not isinstance(batch_id, str) or not batch_id or isinstance(target, bool) or not isinstance(target, int) or target <= 0:
             _LOG.warning('outbox event %s has an invalid start payload; skipped', event_id)
             return None
-        return {
+        concurrency = payload.get('max_concurrent_videos', 1)
+        if isinstance(concurrency, bool) or not isinstance(concurrency, int) or concurrency < 1:
+            _LOG.warning('outbox event %s has an invalid start payload; skipped', event_id)
+            return None
+        request = {
             'batch_id': batch_id,
             'target_videos': target,
             'jobs': [],
             'settings': dict(self._settings_payload),
             'worker_lease_id': lease,
         }
+        if concurrency > 1:
+            request['max_concurrent_videos'] = concurrency
+        return request
 
     def _ack(self, connection: Any, event_id: Any) -> None:
         connection.execute(ACK_SQL, (self._clock(), event_id))

@@ -15,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 
 from controlplane.api.routes.modules.problem_detail import problem_response
 from controlplane.api.routes.modules.read_only_listing import build_listing_router
+from controlplane.application.control_api.batch_concurrency import SEQUENTIAL, BatchFieldError
 from controlplane.application.control_api.command_catalog import COMMAND_SPECS, CommandSpec
 from controlplane.application.control_api.errors import CapabilityUnavailableError
 from controlplane.application.control_api.receipts import accepted_receipt
@@ -94,12 +95,23 @@ async def start_batch(request: Request) -> JSONResponse:
     if not isinstance(payload, dict):
         raise ValueError("batch payload must be an object")
     identity = _identity(request)
-    receipt = request.app.state.command_service.start_batch(
-        workspace_id=identity["workspace_id"], actor_id=identity["actor_id"],
-        correlation_id=request.state.correlation_id,
-        idempotency_key=request.headers["idempotency-key"], payload=payload,
-    )
+    limits = getattr(request.app.state, "batch_concurrency", SEQUENTIAL)
+    try:
+        receipt = request.app.state.command_service.start_batch(
+            workspace_id=identity["workspace_id"], actor_id=identity["actor_id"],
+            correlation_id=request.state.correlation_id,
+            idempotency_key=request.headers["idempotency-key"], payload=payload,
+            concurrency=limits,
+        )
+    except BatchFieldError as exc:
+        return problem_response(request, "VALIDATION_FAILED", field_errors=exc.field_errors)
     return JSONResponse(jsonable_encoder(receipt), status_code=202)
+
+
+@router.get("/batch-settings")
+def batch_settings(request: Request) -> dict[str, object]:
+    limits = getattr(request.app.state, "batch_concurrency", SEQUENTIAL)
+    return {"max_concurrent_videos": {"default": limits.default, "min": 1, "max": limits.maximum}}
 
 
 @router.get("/jobs")

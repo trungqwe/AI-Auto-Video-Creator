@@ -278,6 +278,26 @@ def test_production_profile_builds_app_on_postgres(database, tmp_path, monkeypat
         built.manager.close()
 
 
+def test_production_app_carries_batch_concurrency_from_profile(app):
+    bc = importlib.import_module('controlplane.application.control_api.batch_concurrency')
+    assert app.api_app.state.batch_concurrency == bc.BatchConcurrency(6, 10)
+
+
+def test_batch_max_above_machine_capacity_does_not_start(manager, config):
+    import dataclasses
+    from types import MappingProxyType
+
+    pp = wiring('production_profile')
+    profile = dataclasses.replace(
+        config.profile,
+        parameters=MappingProxyType({**config.profile.parameters, 'batch.max_concurrent_videos': {'default': 6, 'max': 11}}),
+    )
+    bad = pp.WiringConfig(mode='production', workspace_id=config.workspace_id, profile=profile, runtime=config.runtime)
+    with pytest.raises(pp.ProductionProfileError) as info:
+        wiring('production').build_production_app(manager=manager, config=bad, port=PORT)
+    assert info.value.parameter == 'batch.max_concurrent_videos'
+
+
 def test_test_driver_routes_return_404(app):
     c = client(app)
     assert c.get('/test-driver/health').status_code == 404
