@@ -6,7 +6,7 @@
       "basis": "DECIDED"
     },
     "revision": {
-      "value": 3,
+      "value": 2,
       "reason": "Revision cấu hình theo kết quả đo CP7 (docs/implementation/adapt/plan.md mục giá trị production: kết quả đo thay giá trị bằng revision cấu hình mới, không đổi mã).",
       "basis": "DECIDED"
     }

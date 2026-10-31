@@ -47,7 +47,7 @@
 - src/voice/adapters/activity_inputs.py: `VoiceSettings.speed_fit` truyền vào command.
 - src/controlplane/api/wiring/production_profile.py: `voice.speed_fit` vào REQUIRED_PARAMETERS (84), `VoiceConfig` thêm ba trường, kiểm tra dạng và biên.
 - src/controlplane/api/wiring/voice.py: dựng `SpeedFitPolicy` từ ba trường cho `VoiceSettings`.
-- tools/launcher/prod/profile.json: thêm `voice.speed_fit` (0.85, 1.15, 0.56, basis DECIDED), `meta.revision` 2 thành 3.
+- tools/launcher/prod/profile.json: thêm `voice.speed_fit` (0.85, 1.15, 0.56, basis DECIDED); `meta.revision` giữ nguyên 2 vì lệnh kiểm gói PW-W2-FIX5 ghim revision 2 (test wire đọc revision từ profile.json, không ghim hằng).
 - docs/implementation/e/plan.md: đính chính (n), ghi chú TEST-OPEN-003 và dòng D8 Khớp tốc độ voice.
 - tests/integration/voice/test_e16_voice_timing_pipeline.py, tests/unit/voice/test_e14_tts_route_invocation.py, tests/integration/adapt/e/test_adapt_e_tts_joins.py, tests/integration/adapt/config/test_adapt_config_profile.py, tests/integration/adapt/wire/test_adapt_wire_services.py: test mới và test sửa theo yêu cầu.
 - docs/delivery-evidence/e-16-fix2/report.md: báo cáo này.
@@ -66,6 +66,7 @@
 | 8 | probe `plan.md` có `speed_fit`, `0,85`, `1,15` | 0 | đạt |
 | 9 | probe test wire không ghim revision 2 hay 3 | 0 | đạt |
 | 10 | probe `report.md` có `E-16-FIX2` và `R32` | 0 | đạt |
+| 11 | probe PW-W2-FIX5 (profile.json có render.ass_style, layout, sections, output_stream, qc.quality_thresholds và meta.revision.value == 2) | 0 | đạt |
 
 ## Ánh xạ phản ví dụ -> test
 
@@ -87,3 +88,4 @@
 ## Mục mở
 
 - `duration_slope` 0,56 chỉ đo trên 2 script và giọng af_heart; đổi giọng (hoặc đổi engine) phải đo lại độ dốc rồi cập nhật `voice.speed_fit` bằng revision profile mới.
+- Nâng `meta.revision` lên 3 cho khoá `voice.speed_fit` mới bị hoãn vì lệnh kiểm PW-W2-FIX5 còn ghim revision 2; khi gói PW-W2-FIX5 đổi lệnh kiểm thì nâng revision bằng slice riêng.
