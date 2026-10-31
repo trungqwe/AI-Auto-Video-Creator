@@ -47,6 +47,20 @@ Quy trình thực hiện gồm 4 bước rõ ràng:
 - **Bước 3.** Đăng nhập đúng một tài khoản Google Drive và chấp thuận phạm vi quyền tối thiểu `drive.file` một lần duy nhất.
 - **Bước 4.** Chờ thông báo đã nhận xác nhận trên trình duyệt rồi đóng tab. Refresh token được mã hóa an toàn vào kho DPAPI cục bộ (`vault/`) và không bao giờ hiển thị trên màn hình.
 
+### Tài nguyên cho tối đa 10 luồng video (ADAPT-PROD-FIX4)
+
+Theo quyết định của user ngày 31/10/2026, một lô chạy tối đa 10 luồng video cùng lúc. Các trần dưới đây nằm trong `src/controlplane/infrastructure/capacity.py`, không đọc từ hồ sơ cấu hình:
+
+| Tài nguyên | Giá trị | Cách tính |
+| :--- | :--- | :--- |
+| Pool kết nối PostgreSQL của tiến trình `_serve` (API và worker dùng chung) | 36 kết nối, chờ tối đa 30 giây | 2 kết nối cho mỗi luồng gọi AI (20), 8 cho API/SSE, 8 cho thu thập/enrichment |
+| Executor mặc định của event loop worker | 48 luồng, tên bắt đầu `aiavc-activity` | 10 video, 16 cloud-io, 8 cloud-ai, 8 control, 3 nền, 3 dư |
+| Trần activity đồng thời trên queue `cloud-io` | 16 | các queue khác giữ mặc định của SDK |
+| Trần activity đồng thời trên queue `cloud-ai` | 8 | các queue khác giữ mặc định của SDK |
+| `max_connections` của PostgreSQL trong Docker | 200 (mặc định 100) | pool 36, kết nối trực tiếp của launcher/worker và Temporal dùng chung máy chủ |
+
+`max_connections=200` chỉ có hiệu lực khi launcher tạo lại container `aiavc-postgres` (ví dụ `python tools/launcher/launcher.py down` rồi `start`); container đang chạy giữ giá trị cũ cho tới lúc đó. Kokoro và Whisper nạp mô hình đúng một lần cho mỗi tiến trình dù nhiều luồng cùng gọi lần đầu.
+
 ## 2. Dừng
 
 Hệ thống hỗ trợ hai cấp độ dừng tùy theo mục đích vận hành:

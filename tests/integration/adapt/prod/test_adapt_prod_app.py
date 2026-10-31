@@ -20,6 +20,7 @@ import psycopg
 import pytest
 
 from controlplane.domain.orchestration.workflow_catalog import WORKFLOW_NAMES
+from controlplane.infrastructure.capacity import DB_POOL_MAX_SIZE
 from controlplane.infrastructure.db.migration_runner import MigrationRunner
 from controlplane.infrastructure.db.uow import TransactionManager
 
@@ -140,8 +141,9 @@ def stub_manager():
     created = []
 
     class StubManager:
-        def __init__(self, dsn):
+        def __init__(self, dsn, *, pool_max_size=None):
             self.dsn = dsn
+            self.pool_max_size = pool_max_size
             self.closed = False
             created.append(self)
 
@@ -260,6 +262,7 @@ def test_builder_failure_closes_manager(tmp_path, monkeypatch, stub_manager):
     with pytest.raises(RuntimeError, match='builder failed'):
         main.build_app(prod_env('postgresql://u@h/d', str(uuid.uuid4())), runtime_factory=runtime_factory(tmp_path))
     assert len(created) == 1 and created[0].closed is True
+    assert created[0].pool_max_size == DB_POOL_MAX_SIZE
 
 
 def test_production_profile_builds_app_on_postgres(database, tmp_path, monkeypatch):

@@ -45,6 +45,7 @@ from controlplane.application.projections.list_query import ListQuery, Page, bui
 from controlplane.application.session_security import BootstrapCapabilityRegistry
 from controlplane.domain.orchestration.workflow_catalog import TaskQueue
 from controlplane.domain.statemachine import ForbiddenTransitionError
+from controlplane.infrastructure.capacity import ACTIVITY_QUEUE_CAPS
 from controlplane.infrastructure.read_screens.compose import compose_read_screens
 from source_ingestion.application.source_commands import IdempotencyConflictError, SourceCommandHandler, SourceNotFoundError
 from source_ingestion.domain.source import Source, SourcePolicy, SourceStatus
@@ -416,6 +417,18 @@ def serve_production_tls(app: Any, *, port: int, certfile: Path | str, keyfile: 
     uvicorn.Server(loopback_config(app, port=port, certfile=certfile, keyfile=keyfile)).run()
 
 
+def capped_worker_factory(worker_cls: Callable[..., Any] = Worker) -> Callable[..., Any]:
+    """Factory cho TemporalWorkerGroup: thêm max_concurrent_activities theo ACTIVITY_QUEUE_CAPS chỉ cho queue có trần; queue khác giữ mặc định của SDK (không truyền None)."""
+
+    def factory(client: Any, *, task_queue: str, **kwargs: Any) -> Any:
+        cap = ACTIVITY_QUEUE_CAPS.get(task_queue)
+        if cap is not None:
+            kwargs['max_concurrent_activities'] = cap
+        return worker_cls(client, task_queue=task_queue, **kwargs)
+
+    return factory
+
+
 class TemporalWorkerGroup:
     """Một Worker cho mỗi task queue; sáu workflow đăng ký ở queue control-workflows.
 
@@ -423,16 +436,17 @@ class TemporalWorkerGroup:
     """
 
     def __init__(self, client: Any, registration: Any, *, graceful_shutdown_seconds: float,
-                 worker_factory: Callable[..., Any] = Worker) -> None:
+                 worker_factory: Callable[..., Any] | None = None) -> None:
         if (isinstance(graceful_shutdown_seconds, bool)
                 or not isinstance(graceful_shutdown_seconds, (int, float))
                 or graceful_shutdown_seconds <= 0):
             raise ValueError('graceful_shutdown_seconds must be positive')
+        factory = capped_worker_factory() if worker_factory is None else worker_factory
         control = TaskQueue.CONTROL_WORKFLOWS.value
         queues = dict(registration.activities_by_queue)
         queues.setdefault(control, ())
         self._workers = {
-            queue: worker_factory(
+            queue: factory(
                 client,
                 task_queue=queue,
                 workflows=list(registration.workflows) if queue == control else [],
@@ -468,6 +482,7 @@ __all__ = [
     'SourceModuleService',
     'TemporalWorkerGroup',
     'build_production_app',
+    'capped_worker_factory',
     'compose_hooks_module',
     'compose_sources_module',
     'load_wiring_config',

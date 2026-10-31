@@ -307,6 +307,27 @@ def test_launcher_top_level_imports_stdlib_only():
     assert "from src." not in text
     assert "0.0.0.0" not in text
 
+def test_install_activity_executor_gives_the_loop_48_named_threads(launcher):
+    import asyncio
+    import threading
+    launcher.ensure_src_on_path()
+    from controlplane.infrastructure.capacity import ACTIVITY_THREADS
+    assert ACTIVITY_THREADS == 48
+    loop = asyncio.new_event_loop()
+    executor = launcher.install_activity_executor(loop)
+    barrier = threading.Barrier(ACTIVITY_THREADS, timeout=10)
+
+    async def scenario():
+        name = await asyncio.to_thread(lambda: threading.current_thread().name)
+        assert name.startswith("aiavc-activity")
+        await asyncio.gather(*(asyncio.to_thread(barrier.wait) for _ in range(ACTIVITY_THREADS)))
+
+    try:
+        loop.run_until_complete(scenario())
+    finally:
+        executor.shutdown(wait=True)
+        loop.close()
+
 def test_commands_are_the_seven(launcher):
     assert launcher.COMMANDS == ("start", "stop", "down", "status", "backup", "restore", "oauth")
 

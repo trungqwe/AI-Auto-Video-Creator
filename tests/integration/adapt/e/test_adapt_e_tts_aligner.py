@@ -9,6 +9,8 @@ import hashlib
 import importlib.metadata
 import json
 import socket
+import threading
+import time
 import wave
 from io import BytesIO
 from pathlib import Path
@@ -507,3 +509,85 @@ def test_adapters_use_the_chosen_libraries_locally():
     assert 'kokoro_onnx' in tts_text
     assert 'faster_whisper' in aligner_text and 'word_timestamps=True' in aligner_text and 'local_files_only=True' in aligner_text
     assert 'faster_whisper.vad' in aligner_text and 'get_speech_timestamps' in aligner_text and 'vad_filter=False' in aligner_text and 'condition_on_previous_text=False' in aligner_text
+
+
+class SlowFactory:
+    """Factory chậm, ghi số lần gọi; fail_first thì lần gọi đầu ném RuntimeError."""
+    def __init__(self, model, *, delay, fail_first=False):
+        self.model, self.delay, self.fail_first = model, delay, fail_first
+        self.calls = []
+
+    def __call__(self, *args):
+        self.calls.append(args)
+        time.sleep(self.delay)
+        if self.fail_first and len(self.calls) == 1:
+            raise RuntimeError('first load failed')
+        return self.model
+
+
+def load_concurrently(loader, count=10):
+    barrier = threading.Barrier(count, timeout=10)
+    results, errors = [], []
+
+    def call():
+        barrier.wait()
+        try:
+            results.append(loader())
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=call) for _ in range(count)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+    assert not any(thread.is_alive() for thread in threads)
+    return results, errors
+
+
+def test_concurrent_first_load_builds_the_kokoro_model_once(tts_env):
+    factory = SlowFactory(FakeKokoroModel(), delay=0.2)
+    engine = RealKokoroTts(tts_env.config, model_factory=factory)
+    results, errors = load_concurrently(engine._load)
+    assert errors == []
+    assert len(results) == 10
+    assert len(factory.calls) == 1
+    assert all(item is factory.model for item in results)
+
+
+def test_failed_kokoro_load_can_be_retried(tts_env):
+    factory = SlowFactory(FakeKokoroModel(), delay=0, fail_first=True)
+    engine = RealKokoroTts(tts_env.config, model_factory=factory)
+    with pytest.raises(TtsProviderError) as caught:
+        engine._load()
+    assert caught.value.code == 'tts_runtime_error'
+    assert engine._load() is factory.model
+    assert len(factory.calls) == 2
+
+
+def whisper_aligner(align_env, factory):
+    config = WhisperAlignerConfig(
+        model_dir=align_env.model_dir, lock_path=align_env.lock, resolve_audio=lambda ref: align_env.voice,
+        tokenization_policy=POLICY, max_unmatched_word_ratio=0.2,
+    )
+    return RealWhisperAligner(config, model_factory=factory)
+
+
+def test_concurrent_first_load_builds_the_whisper_model_once(align_env):
+    factory = SlowFactory(FakeWhisperModel([]), delay=0.2)
+    aligner = whisper_aligner(align_env, factory)
+    results, errors = load_concurrently(aligner._load)
+    assert errors == []
+    assert len(results) == 10
+    assert len(factory.calls) == 1
+    assert all(item is factory.model for item in results)
+
+
+def test_failed_whisper_load_can_be_retried(align_env):
+    factory = SlowFactory(FakeWhisperModel([]), delay=0, fail_first=True)
+    aligner = whisper_aligner(align_env, factory)
+    with pytest.raises(AlignerError) as caught:
+        aligner._load()
+    assert caught.value.code == 'aligner_runtime_error'
+    assert aligner._load() is factory.model
+    assert len(factory.calls) == 2

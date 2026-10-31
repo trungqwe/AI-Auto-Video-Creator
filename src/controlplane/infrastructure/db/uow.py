@@ -1,12 +1,14 @@
 """Pooled PostgreSQL transaction boundaries for M2-P1."""
 from __future__ import annotations
 
+import math
 from types import TracebackType
 from typing import Any, Self
 
 from psycopg import Connection
 from psycopg_pool import ConnectionPool
 
+from ..capacity import DB_POOL_MAX_SIZE
 from .repositories import ActorRepository, AuthSessionRepository, WorkspaceRepository
 
 
@@ -80,13 +82,17 @@ class SqlUnitOfWork:
 class TransactionManager:
     """Factory/coordinator for UoWs; repositories never acquire the pool."""
 
-    def __init__(self, dsn: str, *, pool_max_size: int | None = None) -> None:
+    def __init__(self, dsn: str, *, pool_max_size: int | None = None, pool_timeout: float = 30.0) -> None:
+        if isinstance(pool_timeout, bool) or not isinstance(pool_timeout, (int, float)) or not math.isfinite(pool_timeout) or pool_timeout <= 0:
+            raise ValueError('pool_timeout must be a finite positive number')
         self.dsn = dsn
         self.pool_max_size = pool_max_size or 4
+        self.pool_timeout = pool_timeout
         self._pool: Any = ConnectionPool(
             conninfo=dsn,
             min_size=0,
             max_size=self.pool_max_size,
+            timeout=pool_timeout,
             open=True,
         )
 
@@ -98,3 +104,6 @@ class TransactionManager:
 
     def close(self) -> None:
         self._pool.close()
+
+
+__all__ = ['DB_POOL_MAX_SIZE', 'SqlUnitOfWork', 'TransactionManager']
