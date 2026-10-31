@@ -35,6 +35,14 @@ export interface BatchItem {
   created_at: string;
 }
 
+export interface BatchSettings {
+  max_concurrent_videos: {
+    default: number;
+    min: number;
+    max: number;
+  };
+}
+
 export interface CommandReceipt {
   receipt_id: string;
   command_id: string;
