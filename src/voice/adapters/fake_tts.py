@@ -145,6 +145,8 @@ class FakeTtsEngine:
         decision: ProviderRouteDecision,
         script_text: ScriptText,
         request: Mapping[str, object],
+        *,
+        speed_scale: float = 1.0,
     ) -> TtsSynthesis:
         if not isinstance(decision, ProviderRouteDecision):
             raise TypeError('decision must be ProviderRouteDecision')
@@ -152,6 +154,8 @@ class FakeTtsEngine:
             raise TypeError('script_text must be ScriptText')
         if not isinstance(request, Mapping):
             raise TypeError('request must be Mapping')
+        if isinstance(speed_scale, bool) or not isinstance(speed_scale, (int, float)) or not speed_scale > 0:
+            raise ValueError('speed_scale must be a number > 0')
         verify_script_binding(request, script_text)
         self._route.role_for_reservation(decision.capacity_reservation_ref)
         self.synthesize_calls += 1
@@ -169,10 +173,13 @@ class FakeTtsEngine:
                 retryable=outcome.retryable,
                 known_secrets=self._known_secrets,
             )
-        wav = _silent_wav(self._duration_ms, self._sample_rate)
+        wav = _silent_wav(max(1, round(self._duration_ms / speed_scale)), self._sample_rate)
+        metrics = {'characters': len(script_text.text)}
+        if speed_scale != 1.0:
+            metrics['speed_scale'] = speed_scale
         return TtsSynthesis(
             audio_bytes=wav,
             voice_revision=self._voice_revision,
-            usage_metrics=UsageMetrics({'characters': len(script_text.text)}),
+            usage_metrics=UsageMetrics(metrics),
             latency_ms=self._latency_ms,
         )

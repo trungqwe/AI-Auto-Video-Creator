@@ -48,6 +48,7 @@ from voice.application.media_pipeline import MediaPipeline, VerifiedOutput
 from voice.application.voice_pipeline import VoicePipeline
 from voice.domain.audio_bed import AudioCue, LoudnessReport
 from voice.domain.image_safety import ImageSafetyAssessment, SafetyOutcome, assess_image_safety
+from voice.domain.speed_fit import SpeedFitPolicy
 from voice.worker.activity_handler import VoiceActivityDeps, validate_activity_request
 
 _TOKEN_KEYS = (
@@ -560,6 +561,11 @@ def voice_activity_deps(
             duration_policy=duration_policy,
             tokenization_policy=_tokenization(runtime),
             attempt_policy={'max_attempts': 2, 'max_attempts_per_provider': 2},
+            speed_fit=SpeedFitPolicy(
+                min_scale=profile.voice.speed_fit_min_scale,
+                max_scale=profile.voice.speed_fit_max_scale,
+                duration_slope=profile.voice.speed_fit_duration_slope,
+            ),
         ),
         clock=clock,
     )

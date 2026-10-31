@@ -45,6 +45,7 @@ from voice.domain.audio_bed import AudioBedRequest, AudioCue
 from voice.domain.image_safety import IMAGE_KIND, ImageSafetyAssessment, SafetyOutcome
 from voice.domain.image_transform import TransformRegion, TransformResult
 from voice.domain.processing import ArtifactRef
+from voice.domain.speed_fit import SpeedFitPolicy
 from voice.domain.timing_coverage import TokenizationPolicy
 from voice.ports.repositories import KIND_VOICE, EventContext, OutputRepository
 from voice.ports.script_text import ScriptTextPort
@@ -105,6 +106,7 @@ class VoiceSettings:
     duration_policy: tuple[int, int]
     tokenization_policy: TokenizationPolicy
     attempt_policy: Mapping[str, object] | None = None
+    speed_fit: SpeedFitPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -261,7 +263,8 @@ class ProductionActivityInputs:
         }
         return {'command': CreateVoiceTrackCommand(
             track_key=_track_key(frame.job_id), voice_request=self._voice_request(frame, grant), route_request=route_request,
-            attempt_policy=settings.attempt_policy, duration_policy=settings.duration_policy, context=context)}
+            attempt_policy=settings.attempt_policy, duration_policy=settings.duration_policy, context=context,
+            speed_fit=settings.speed_fit)}
 
     def _word_timing(self, frame: _Frame, grant: ExecutionGrant, context: EventContext) -> dict[str, Any]:
         return {'command': CreateWordTimingCommand(
