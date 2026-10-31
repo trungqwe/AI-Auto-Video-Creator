@@ -6,7 +6,7 @@
       "basis": "DECIDED"
     },
     "revision": {
-      "value": 3,
+      "value": 4,
       "reason": "Revision cấu hình theo kết quả đo CP7 (docs/implementation/adapt/plan.md mục giá trị production: kết quả đo thay giá trị bằng revision cấu hình mới, không đổi mã).",
       "basis": "DECIDED"
     }
@@ -224,9 +224,9 @@
       "basis": "DECIDED"
     },
     "speech_rate_wpm": {
-      "value": 150,
-      "reason": "Tốc độ đọc chọn mức thấp 150 từ mỗi phút để script không vượt 70 giây khi chưa đo.",
-      "basis": "CONSERVATIVE_DEFAULT"
+      "value": 136,
+      "reason": "Đo trên giọng production (Kokoro af_heart, engine.speed 1.0) ở 15 lượt TTS thật của RG-09 ngày 31/10/2026: 128-158 từ/phút, gộp khoảng 136 (serve.log). Hiệu chỉnh theo CP7-D-04 và quyết định user (CLOSURE_NOTE CP7/RG-09, 31/10/2026); không dùng 121 của corpus RG-05 vì từ dài đọc chậm hơn script tin production.",
+      "basis": "MEASURED"
     },
     "tts_timeout_seconds": {
       "value": 180,

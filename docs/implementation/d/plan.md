@@ -195,7 +195,7 @@ Chỉ chạy sau khi user duyệt D5; tài khoản/credential chỉ qua secret b
 - CP7-D-01: gọi provider/model thật qua route J cho từng vai trò (analysis, angle, script, selection, metadata); benchmark chất lượng, latency, chi phí, timeout/retry (roadmap §11 mục mở 4, TEST-OPEN-003).
 - CP7-D-02: đánh giá G06 phần content: topic, media/thumbnail, hook combination đạt ngưỡng 90% trên mẫu user chấm; locked holdout tách prompt-development set; không dùng model tự tạo làm judge duy nhất.
 - CP7-D-03: local fallback Ollama/llama.cpp trên desktop GPU 12 GB, giữ queue/history.
-- CP7-D-04: đối chiếu thời lượng ước lượng với `actual_duration_ms` của voice thật (E) để hiệu chỉnh policy tốc độ đọc.
+- CP7-D-04: đối chiếu thời lượng ước lượng với `actual_duration_ms` của voice thật (E) để hiệu chỉnh policy tốc độ đọc. Đã hiệu chỉnh `voice.speech_rate_wpm` = 136 trên giọng production (Kokoro af_heart, 15 lượt TTS thật của RG-09 ngày 31/10/2026, từng script 128-158 từ/phút; ADAPT-CONFIG-FIX3), không theo corpus RG-05. Khớp tốc độ ở E (`voice.speed_fit`, kẹp 0,85-1,15) chỉ cứu phần lệch còn lại sau ước lượng của D; D vẫn phải cho script nằm trong khoảng thời lượng theo 136.
 - CP7-D-05: quota/chi phí thật theo route J (G03); không tự thêm dịch vụ trả phí.
 
 ## 10. Yêu cầu gửi IMPL-PLAN-CONVERGENCE

@@ -64,6 +64,7 @@ from creative.application.roles import (
     ROLE_SCRIPT,
     ROLE_SELECTION,
 )
+from creative.domain.script import count_words
 from render.adapters.config_render_sources import seed_render_config
 from render.ports.lease import GpuLease, GpuLeasePort
 from source_ingestion.adapters.real_http_transport import RealHttpTransport
@@ -511,6 +512,22 @@ class FakeNineRouterHttp:
             seg2_text = "Union representatives praised the commitment of all participating delegates while management reiterated their collective dedication to establishing sustainable labor practices for every shift going forward. Economic analysts noted that the swift resolution prevented major supply chain bottlenecks from compounding ahead of retail surges."
             seg3_text = "Freight operators across international distribution hubs confirmed that logistics networks returned to normal schedules with priority given to perishable goods and urgent medical supplies. Terminal directors reported zero incidents during the reopening process as safety inspections were completed in record time."
             seg4_text = "Both parties agreed to reconvene next quarter to review workplace standards and maintain constructive dialogue between workers and leadership. Maritime authorities thanked the community for their remarkable patience and cooperation throughout this critical period of negotiations and recovery."
+            wpm = float(self.profile.parameters["voice.speech_rate_wpm"])
+            dur_range = self.profile.parameters["voice.duration_range_ms"]
+            target = round((dur_range["min"] + dur_range["max"]) / 2000 * wpm / 60)
+            assert dur_range["min"] * wpm / 60000 <= target <= dur_range["max"] * wpm / 60000, "số từ đích ngoài cửa sổ thời lượng của D"
+            fixed_words = count_words(seg1_text) + count_words(seg2_text) + count_words(seg3_text)
+            need = target - fixed_words
+            assert need >= 1, "seg1-seg3 đã vượt số từ đích"
+            seg4_words = seg4_text.split()
+            if need <= len(seg4_words):
+                seg4_words = seg4_words[:need]
+            else:
+                pad = ("overall", "today", "again")
+                seg4_words = seg4_words + [pad[i % 3] for i in range(need - len(seg4_words))]
+            seg4_words[-1] = seg4_words[-1].rstrip(".,;:") + "."
+            seg4_text = " ".join(seg4_words)
+            assert fixed_words + count_words(seg4_text) == target
 
             if self.script_mode == "inference":
                 s2_claim = "inference"

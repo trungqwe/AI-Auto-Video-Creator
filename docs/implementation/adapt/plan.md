@@ -182,7 +182,8 @@ Mục này cho giá trị production của mọi tham số mà kế hoạch phâ
 | --- | --- | --- |
 | `voice.engine` | Kokoro cục bộ (`kokoro-onnx`), giọng `af_heart`, `lang` `en-us`, `speed` 1.0, WAV mono 24000 Hz PCM 16-bit | C3; giọng mặc định của Kokoro v1.0; chốt lại sau nghe thử (CP7-E-01) |
 | `voice.duration_range_ms` | 61000 đến 70000 | CT-AI-004 |
-| `speech_rate_wpm` | 150 | Kokoro tốc độ 1.0 đọc khoảng 150 đến 170 từ mỗi phút; chọn mức thấp để script không vượt 70 s; hiệu chỉnh ở CP7-D-04 (chưa đo) |
+| `speech_rate_wpm` | 136 (MEASURED) | đo trên giọng production Kokoro af_heart ở 15 lượt TTS thật của RG-09 (31/10/2026): 128-158 từ/phút, gộp khoảng 136; hiệu chỉnh theo CP7-D-04, không dùng 121 của corpus RG-05 (ADAPT-CONFIG-FIX3) |
+| `voice.speed_fit` | `min_scale` 0,85, `max_scale` 1,15, `duration_slope` 0,56 | quyết định của user 31/10/2026 (RG-09): E đọc lại đúng một lần với tốc độ khớp; kẹp tính tương đối với `voice.engine.speed` (hiện 1.0), đổi engine.speed thì đổi kẹp để tốc độ thật vẫn trong 0,85-1,15 |
 | `aligner` | `faster-whisper` model `small.en`, `device` cpu, `compute_type` int8, `beam_size` 5, `word_timestamps` true | không cần runtime CUDA; nhường GPU cho NVENC; đủ chính xác cho giọng TTS sạch |
 | `word_timing.tolerance_ms` | 150 | Whisper lệch từng từ khoảng 100 ms; karaoke chấp nhận dưới 150 ms; đo ở CP7-E-02 |
 | `aligner.max_unmatched_word_ratio` | 0.05 | quá 5% từ không khớp là lỗi, không nội suy trừ hai ngoại lệ ở mục Aligner; từ được chia mốc (ADAPT-E-FIX3, ADAPT-E-FIX4) cũng ≤ 5% |
