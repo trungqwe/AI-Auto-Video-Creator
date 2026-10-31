@@ -119,7 +119,7 @@ def by_gate(report) -> dict:
 
 
 class QcRig:
-    def __init__(self, *, measurements=None, evidence_value=None, grants=None, fail_render: bool = False) -> None:
+    def __init__(self, *, measurements=None, evidence_value=None, grants=None, fail_render: bool = False, probe_for=None) -> None:
         self.rr = RenderRig()
         if fail_render:
             self.rr.renderer.fail_text = 'encoder rejected input'
@@ -130,7 +130,7 @@ class QcRig:
         self.inspector = FakeInspector(evidence() if evidence_value is None else evidence_value)
         self.pipeline = OutputPipeline(
             uow=self.uow, probe=self.probe, inspector=self.inspector, observer=self.rr.storage,
-            grants=self.rr.base.grants if grants is None else grants,
+            grants=self.rr.base.grants if grants is None else grants, probe_for=probe_for,
         )
 
     def inspect_command(self, key: str = 'op-inspect-1', **changes) -> InspectOutputCommand:
@@ -281,6 +281,46 @@ def test_same_operation_key_replays_without_ports_or_writes():
     with pytest.raises(IdempotencyConflict) as caught:
         rig.inspect(policy=POLICY_WITH_WARNING)
     assert caught.value.problem.code == 'IDEMPOTENCY_CONFLICT' and snapshot(rig.uow) == before
+
+
+def test_probe_for_measures_audio_when_the_shared_probe_cannot():
+    seen = []
+    per_package = FakeProbe(measured())
+
+    def probe_for(package):
+        seen.append(package)
+        return per_package
+
+    rig = QcRig(measurements=measured(audio_level=None, severe_audio_errors=None), probe_for=probe_for)
+    outcome = rig.inspect()
+    assert outcome.report.passed is True
+    assert by_gate(outcome.report)[GateName.VOICE_AUDIBLE].status is GateStatus.PASSED
+    assert [p.render_package_id for p in seen] == [rig.package.render_package_id]
+    assert per_package.calls == [out_ref(1)]
+    assert rig.probe.calls == []
+
+
+def test_probe_for_is_not_called_again_on_replay():
+    seen = []
+
+    def probe_for(package):
+        seen.append(package)
+        return FakeProbe(measured())
+
+    rig = QcRig(measurements=measured(audio_level=None, severe_audio_errors=None), probe_for=probe_for)
+    rig.inspect()
+    again = rig.inspect()
+    assert again.replayed is True
+    assert len(seen) == 1
+    assert rig.probe.calls == []
+
+
+def test_without_probe_for_the_shared_probe_missing_audio_level_fails_voice_audible():
+    rig = QcRig(measurements=measured(audio_level=None, severe_audio_errors=None))
+    report = rig.inspect().report
+    gate = by_gate(report)[GateName.VOICE_AUDIBLE]
+    assert report.passed is False
+    assert gate.status is GateStatus.FAILED and gate.reason == 'missing_measurement'
 
 
 def test_new_key_with_identical_content_reuses_the_stored_report_and_the_event():

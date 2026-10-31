@@ -317,6 +317,11 @@ async def test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch
     qr = rig.quality_report(job_id)
     gate = next(g for g in qr["gates"] if g["gate"] == "INFERENCE_DISCLOSURE_PRESENT")
     assert gate["status"].upper() == "PASSED"
+    voice = next(g for g in qr["gates"] if g["gate"] == "VOICE_AUDIBLE")
+    assert voice["status"].upper() == "PASSED"
+    assert voice["reason"] is None
+    assert isinstance(voice["measured_value"], (int, float)) and not isinstance(voice["measured_value"], bool)
+    assert qr["passed"] is True
 
     # (6) Second batch: source_backed disclosure gate NOT_APPLICABLE
     rig.router.script_mode = "source_backed"
@@ -334,6 +339,11 @@ async def test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch
     qr_2 = rig.quality_report(job_id_2)
     gate_2 = next(g for g in qr_2["gates"] if g["gate"] == "INFERENCE_DISCLOSURE_PRESENT")
     assert gate_2["status"].upper() == "NOT_APPLICABLE"
+    voice_2 = next(g for g in qr_2["gates"] if g["gate"] == "VOICE_AUDIBLE")
+    assert voice_2["status"].upper() == "PASSED"
+    assert voice_2["reason"] is None
+    assert isinstance(voice_2["measured_value"], (int, float)) and not isinstance(voice_2["measured_value"], bool)
+    assert qr_2["passed"] is True
 
     cand_1 = scalar(
         rig.database,

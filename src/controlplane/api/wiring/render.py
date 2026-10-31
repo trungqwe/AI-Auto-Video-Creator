@@ -260,6 +260,19 @@ class StagingResolvingProbe:
         return self._probe.probe(str(p))
 
 
+def build_qc_probe(runtime: Any, *, timeout_seconds: float, voice_windows: Sequence[tuple[int, int]]) -> StagingResolvingProbe:
+    return StagingResolvingProbe(
+        RealFfprobeProbe(
+            ffprobe_path=str(runtime.ffprobe_path),
+            timeout_seconds=timeout_seconds,
+            ffmpeg_path=runtime.ffmpeg_path,
+            lock_path=runtime.runtime_lock_path,
+            voice_windows=voice_windows,
+        ),
+        runtime.staging_root,
+    )
+
+
 class StagingResolvingInspector:
     def __init__(self, inner_factory: Any, staging_root: Path) -> None:
         self._inner_factory = inner_factory
@@ -857,9 +870,18 @@ def render_activity_deps(
         )
 
     inspector = StagingResolvingInspector(inspector_factory, runtime.staging_root)
+
+    def qc_probe_for(package: RenderPackageRecord) -> StagingResolvingProbe:
+        return build_qc_probe(
+            runtime,
+            timeout_seconds=_build_inspector_settings(profile).timeout_seconds,
+            voice_windows=inspector_factory(package).speech_windows(package),
+        )
+
     output_pipe = OutputPipeline(
         uow=uow,
         probe=probe,
+        probe_for=qc_probe_for,
         inspector=inspector,
         observer=renderer,
         grants=grants,
@@ -923,6 +945,7 @@ def render_activity_handlers(
 
 __all__ = [
     'RenderServices',
+    'build_qc_probe',
     'build_render_services',
     'render_activity_deps',
     'render_activity_handlers',

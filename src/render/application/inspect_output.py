@@ -10,7 +10,7 @@ coveredIds: CT-QC-001, CT-RND-005, TST-E2E-INV-009, TST-QC-INV-019, TST-E2E-001 
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from controlplane.application.idempotency.canonicalization import request_hash
@@ -255,10 +255,11 @@ def _quality_event(uow: Any, attempt: RenderAttempt, report: QualityReport, revi
 class OutputPipeline:
     def __init__(
         self, *, uow: PackageUnitOfWork, probe: OutputProbePort, inspector: OutputInspectorPort, observer: OutputObservationPort,
-        grants: GrantCurrencyPort,
+        grants: GrantCurrencyPort, probe_for: Callable[[RenderPackageRecord], OutputProbePort] | None = None,
     ) -> None:
         self._uow = uow
         self._probe = probe
+        self._probe_for = probe_for
         self._inspector = inspector
         self._observer = observer
         self._grants = grants
@@ -295,7 +296,8 @@ class OutputPipeline:
         """Probe once (F-13) and inspect once (F-14), then add the warning results; INFERENCE_DISCLOSURE_PRESENT is marked not applicable only when F-14 says so."""
         output_ref = attempt.output_artifact_ref
         flat, profile = _technical_inputs(command.policy)
-        technical = evaluate_technical_gates(self._probe, output_ref, policy=flat, expected_profile=profile, threshold_revision=command.policy.revision)
+        probe = self._probe if self._probe_for is None else self._probe_for(package)
+        technical = evaluate_technical_gates(probe, output_ref, policy=flat, expected_profile=profile, threshold_revision=command.policy.revision)
         content = evaluate_content_gates(self._inspector, output_ref, package, command.policy, command.expected_language, command.word_timings, command.segments)
         applicability = {item.gate: False for item in content if item.gate is GateName.INFERENCE_DISCLOSURE_PRESENT and item.status is GateStatus.NOT_APPLICABLE}
         results = (*(_report_gate(item) for item in technical), *content, *command.warning_results)
