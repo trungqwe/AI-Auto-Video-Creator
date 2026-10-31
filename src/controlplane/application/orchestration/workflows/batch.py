@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -44,8 +44,25 @@ def candidate_fingerprint(candidate_ref: str, source_set_ref: str | None) -> str
     return _sha256_text(json.dumps([candidate_ref, source_set_ref], separators=(',', ':'), ensure_ascii=False))
 
 
+class ChildHandle(Protocol):
+    def done(self) -> bool:
+        ...
+
+    def result(self) -> Mapping[str, Any]:
+        ...
+
+    def cancel(self) -> Any:
+        ...
+
+
 class BatchGateway(Protocol):
     async def run_child(self, workflow_name: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        ...
+
+    async def start_child(self, workflow_name: str, payload: Mapping[str, Any]) -> ChildHandle:
+        ...
+
+    async def wait_first(self, handles: Sequence[ChildHandle]) -> None:
         ...
 
     async def issue_grant(
@@ -66,6 +83,7 @@ class BatchParams:
     worker_lease_id: str = ''
     production_mode: str = DEFAULT_PRODUCTION_MODE
     workflow_run_id: str = ''
+    max_concurrent_videos: int = 1
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> BatchParams:
@@ -95,6 +113,9 @@ class BatchParams:
         run_id = payload.get('workflow_run_id', '')
         if not isinstance(run_id, str):
             raise ValueError('workflow_run_id must be a string')
+        concurrency = payload.get('max_concurrent_videos', 1)
+        if isinstance(concurrency, bool) or not isinstance(concurrency, int) or concurrency <= 0:
+            raise ValueError('max_concurrent_videos must be a positive int')
         return cls(
             batch_id=batch_id,
             target_videos=target_videos,
@@ -103,6 +124,7 @@ class BatchParams:
             worker_lease_id=lease,
             production_mode=mode,
             workflow_run_id=run_id,
+            max_concurrent_videos=concurrency,
         )
 
 
@@ -130,6 +152,12 @@ class ProductionBatchFlow:
         self._problem: dict[str, Any] | None = None
 
     async def run(self) -> dict[str, Any]:
+        limit = self._params.max_concurrent_videos
+        if limit <= 1:
+            return await self._run_sequential()
+        return await self._run_concurrent(limit)
+
+    async def _run_sequential(self) -> dict[str, Any]:
         queue = list(self._params.jobs)
         static_jobs = bool(queue)
         completed = 0
@@ -194,6 +222,116 @@ class ProductionBatchFlow:
                 except Exception:
                     d_status = STATUS_FAILED
                 children.append({'child_id': child_id, 'status': d_status})
+
+        final_status = (
+            BATCH_TARGET_REACHED if completed >= self._params.target_videos else BATCH_EXHAUSTED
+        )
+        finalized = await self._finalize(final_status, completed, failed)
+        return {
+            'status': final_status,
+            'completed': completed,
+            'failed': failed,
+            'allocated': allocated,
+            'finalized': finalized,
+            'problem': self._problem,
+            'children': children,
+        }
+
+    async def _run_concurrent(self, limit: int) -> dict[str, Any]:
+        queue = list(self._params.jobs)
+        static_jobs = bool(queue)
+        completed = 0
+        failed = 0
+        queued = 0
+        allocated = 0
+        video_seq = 0
+        debug_seq = 0
+        children: list[dict[str, Any]] = []
+        running: list[tuple[str, ChildHandle]] = []
+        stopped = False
+
+        try:
+            while True:
+                while (
+                    not stopped
+                    and len(running) < limit
+                    and completed + len(running) < self._params.target_videos
+                ):
+                    while self._variant_inbox:
+                        queue.append(self._variant_inbox.pop(0))
+
+                    if queued < len(queue):
+                        base = queue[queued]
+                        queued += 1
+                    elif static_jobs:
+                        stopped = True
+                        break
+                    else:
+                        allocation = await self._allocate(allocated + 1)
+                        if allocation is None:
+                            stopped = True
+                            break
+                        allocated += 1
+                        base = allocation
+
+                    job = {
+                        **base,
+                        'settings': dict(self._params.settings_payload),
+                        'child_id': f'{self._params.batch_id}:video:{video_seq}',
+                        'hold_on_failure': False,
+                    }
+                    video_seq += 1
+
+                    try:
+                        handle = await self._gateway.start_child('VideoProductionWorkflow', job)
+                    except Exception:
+                        failed += 1
+                        children.append({'child_id': job['child_id'], 'status': STATUS_FAILED})
+                        continue
+                    running.append((job['child_id'], handle))
+
+                if not running:
+                    break
+
+                await self._gateway.wait_first([handle for _, handle in running])
+                pending: list[tuple[str, ChildHandle]] = []
+                for child_id, handle in running:
+                    if not handle.done():
+                        pending.append((child_id, handle))
+                        continue
+                    try:
+                        status = handle.result().get('status')
+                    except Exception:
+                        status = STATUS_FAILED
+                    if status == STATUS_COMPLETED:
+                        completed += 1
+                    else:
+                        failed += 1
+                    children.append({'child_id': child_id, 'status': status})
+                running = pending
+
+                debug_items = list(self._debug_inbox)
+                self._debug_inbox.clear()
+                for payload in debug_items:
+                    child_id = f'{self._params.batch_id}:debug:{debug_seq}'
+                    debug_seq += 1
+                    try:
+                        out = await self._gateway.run_child(
+                            'DebugStageWorkflow',
+                            {
+                                **payload,
+                                'settings': dict(self._params.settings_payload),
+                                'child_id': child_id,
+                            },
+                        )
+                        d_status = out.get('status')
+                    except Exception:
+                        d_status = STATUS_FAILED
+                    children.append({'child_id': child_id, 'status': d_status})
+        except BaseException:
+            for _, handle in running:
+                handle.cancel()
+            raise
 
         final_status = (
             BATCH_TARGET_REACHED if completed >= self._params.target_videos else BATCH_EXHAUSTED
@@ -314,6 +452,7 @@ __all__ = [
     'BATCH_TARGET_REACHED',
     'BatchGateway',
     'BatchParams',
+    'ChildHandle',
     'DEFAULT_PRODUCTION_MODE',
     'NO_MORE_JOBS_CANDIDATES_EXHAUSTED',
     'NO_MORE_JOBS_TARGET_REACHED',
