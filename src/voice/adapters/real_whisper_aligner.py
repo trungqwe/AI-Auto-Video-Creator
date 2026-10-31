@@ -1,6 +1,6 @@
 """Real AlignerPort: local faster_whisper word timestamps matched to the script text (CT-SUB-001).
 
-Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count under the max_unmatched_word_ratio cap.
+Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count under the max_unmatched_word_ratio cap. A second exception (ADAPT-E-FIX4): Whisper pieces that rejoin into exactly one script token (long + -term, 9 + -year + -old) take the span of the pieces, and a cluster of script words and Whisper pieces that read the same value and unit (dollars, cents, percent, decimals, up to trillion) shares the heard span by character count, counted in split_word_count under the same cap.
 """
 from __future__ import annotations
 
@@ -10,9 +10,11 @@ import importlib.metadata
 import json
 import math
 import re
+import unicodedata
 import wave
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 
 from voice.domain.timing_coverage import TokenizationPolicy, tokenize_script
@@ -134,7 +136,7 @@ def _voice_artifact_path(voice_root: Path, ref: str) -> Path:
 
 @dataclass(frozen=True)
 class AlignmentReport:
-    """Counts of the last align call; unmatched_ratio = (missing script words + extra model words) / (script words + model words); split_word_count = script words that took a share of one heard span (ADAPT-E-FIX3 number groups)."""
+    """Counts of the last align call; unmatched_ratio = (missing script words + extra model words) / (script words + model words); split_word_count = script words that took a share of one heard span (ADAPT-E-FIX3 number groups, ADAPT-E-FIX4 amount clusters)."""
 
     script_token_count: int
     transcript_word_count: int
@@ -151,6 +153,7 @@ class _Heard:
     start_ms: int
     end_ms: int
     probability: float
+    raw: str = ''
 
 
 @dataclass(frozen=True)
@@ -164,17 +167,20 @@ class _Slot:
 
 
 def _heard_words(segments: list, policy: TokenizationPolicy) -> list[_Heard]:
-    """Flatten model words; punctuation-only words are dropped and a word that splits into several tokens never matches."""
+    """Flatten model words; punctuation-only words are dropped (ADAPT-E-FIX4: a '%' piece glued to the word before it joins that word's raw text and end) and a word that splits into several tokens never matches."""
     heard: list[_Heard] = []
     for segment in segments:
         for item in getattr(segment, 'words', None) or ():
             tokens = tokenize_script(item.word, policy)
             if not tokens:
+                if heard and '%' in item.word and not item.word[:1].isspace():
+                    last = heard[-1]
+                    heard[-1] = _Heard(last.normalized, last.start_ms, max(last.end_ms, _ms(item.end)), last.probability, last.raw + item.word)
                 continue
             probability = item.probability
             if isinstance(probability, bool) or not isinstance(probability, (int, float)) or not math.isfinite(probability):
                 raise _fail(ERROR_MODEL_OUTPUT_INVALID, 'model returned an invalid word probability')
-            heard.append(_Heard(tokens[0] if len(tokens) == 1 else None, _ms(item.start), _ms(item.end), min(max(float(probability), 0.0), 1.0)))
+            heard.append(_Heard(tokens[0] if len(tokens) == 1 else None, _ms(item.start), _ms(item.end), min(max(float(probability), 0.0), 1.0), item.word))
     return heard
 
 
@@ -191,10 +197,10 @@ def _segment_boundaries(segments: list, duration_ms: int) -> tuple[dict[str, int
 
 
 _NUMBER_RE = re.compile(r'[1-9][0-9]{0,2}(?:,[0-9]{3}){1,3}|[1-9][0-9]{0,11}')
-_SCALE_WORDS = ('hundred', 'thousand', 'million', 'billion')
+_SCALE_WORDS = ('hundred', 'thousand', 'million', 'billion', 'trillion')
 _SMALL = ('zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen')
 _TENS = ('', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety')
-_SCALES = ((10 ** 9, 'billion'), (10 ** 6, 'million'), (1000, 'thousand'), (100, 'hundred'))
+_SCALES = ((10 ** 12, 'trillion'), (10 ** 9, 'billion'), (10 ** 6, 'million'), (1000, 'thousand'), (100, 'hundred'))
 
 
 def _cardinal(value: int) -> list[str]:
@@ -224,14 +230,120 @@ def _same_number(digits: Sequence[str], words: Sequence[str]) -> bool:
     return tokens in forms
 
 
-def _match_script(expected: list[str], heard: list[_Heard]) -> list[tuple[int, int, int, int]]:
-    """Return (first script index, last script index, first heard index, last heard index); equal blocks match word by word, a replace block only as a split compound, a same-size respelling or (ADAPT-E-FIX3 exception) one whole number written as digits on one side and as words on the other."""
+_MULTIPLIERS = {'thousand': 10 ** 3, 'million': 10 ** 6, 'billion': 10 ** 9, 'trillion': 10 ** 12}
+_UNITS = {'$': '$', 'dollar': '$', 'dollars': '$', 'cent': 'c', 'cents': 'c', '%': '%', 'percent': '%'}
+_AMOUNT_WORDS = frozenset((*_SMALL, *_TENS[2:], *_SCALE_WORDS, *_UNITS, 'point', 'a', 'and'))
+_ATOM_RE = re.compile(r'[0-9][0-9,.]*[0-9]|[0-9]|[a-z]+|[^0-9a-z]')
+_DECIMAL_RE = re.compile(r'(?:0|[1-9][0-9]{0,2}(?:,[0-9]{3})+|[1-9][0-9]*)(?:[.][0-9]+)?')
+
+
+def _atoms(text: str) -> list[str]:
+    """ADAPT-E-FIX4: letter runs, number runs and symbols of text; punctuation (except '%'), spaces and control characters are dropped."""
+    return [x for x in _ATOM_RE.findall(text.casefold()) if x == '%' or unicodedata.category(x[0])[0] not in 'PZC']
+
+
+def _amount_atom(atom: str) -> bool:
+    return atom[0].isdigit() or atom in _AMOUNT_WORDS
+
+
+def _amount_token(token: str) -> bool:
+    atoms = _atoms(token)
+    return bool(atoms) and all(_amount_atom(x) for x in atoms)
+
+
+def _amount(text: str) -> tuple[Fraction, str | None] | None:
+    """ADAPT-E-FIX4: (value, unit) of one amount written in digits or English words, unit '$', '%' or None (cents become dollars); None when text is not one readable amount."""
+    a = _atoms(text)
+    head = bool(a) and a[0] == '$'
+    tail = bool(a) and a[-1] in _UNITS
+    if head and tail:
+        return None
+    unit = None
+    if head:
+        unit, a = '$', a[1:]
+    elif tail:
+        unit, a = _UNITS[a[-1]], a[:-1]
+    scale = 1
+    if len(a) > 1 and a[-1] in _MULTIPLIERS and ('point' in a or a[0][0].isdigit()):
+        scale, a = _MULTIPLIERS[a[-1]], a[:-1]
+    if len(a) == 1 and _DECIMAL_RE.fullmatch(a[0]):
+        value = Fraction(a[0].replace(',', ''))
+    else:
+        k = a.index('point') if 'point' in a else len(a)
+        whole, frac = a[:k], a[k + 1:]
+        if len(whole) > 1:
+            if whole[0] == 'a' and whole[1] in _SCALE_WORDS:
+                whole = ['one', *whole[1:]]
+            whole = [x for n, x in enumerate(whole) if not (x == 'and' and 0 < n < len(whole) - 1 and whole[n - 1] in _SCALE_WORDS)]
+        total = part = 0
+        for x in whole:
+            if x in _SMALL:
+                part += _SMALL.index(x)
+            elif x in _TENS[2:]:
+                part += 10 * _TENS.index(x)
+            elif x == 'hundred':
+                part *= 100
+            elif x in _MULTIPLIERS:
+                total, part = total + part * _MULTIPLIERS[x], 0
+            else:
+                return None
+        if not whole or _cardinal(total + part) != whole:
+            return None
+        value = Fraction(total + part)
+        if k < len(a):
+            if not frac or any(x not in _SMALL[:10] for x in frac):
+                return None
+            value += Fraction(int(''.join(str(_SMALL.index(x)) for x in frac)), 10 ** len(frac))
+    if unit == 'c':
+        value, unit = value / 100, '$'
+    return value * scale, unit
+
+
+def _key(token: str) -> tuple:
+    """ADAPT-E-FIX4: atoms of a token where every run of amount atoms is replaced by its (value, unit) when readable."""
+    key: list = []
+    run: list[str] = []
+    for atom in [*_atoms(token), None]:
+        if atom is not None and _amount_atom(atom):
+            run.append(atom)
+            continue
+        if run:
+            amount = _amount(' '.join(run))
+            key.extend([amount] if amount is not None else run)
+            run = []
+        if atom is not None:
+            key.append(atom)
+    return tuple(key)
+
+
+def _rejoined(tokens: Sequence[str], items: Sequence[_Heard], policy: TokenizationPolicy) -> list[tuple[int, int]] | None:
+    """ADAPT-E-FIX4: for each script token the shortest run of consecutive heard items whose joined raw text tokenizes to exactly that token (same _key); (first, last) item offsets per token, or None when a token has no such run or items are left over."""
+    spans: list[tuple[int, int]] = []
+    j = 0
+    for token in tokens:
+        want = [_key(token)]
+        for k in range(j + 1, len(items) + 1):
+            if [_key(x) for x in tokenize_script(''.join(i.raw for i in items[j:k]), policy)] == want:
+                spans.append((j, k - 1))
+                j = k
+                break
+        else:
+            return None
+    return spans if j == len(items) else None
+
+
+def _match_script(expected: list[str], heard: list[_Heard], raws: list[str], policy: TokenizationPolicy) -> list[tuple[int, int, int, int]]:
+    """Return (first script index, last script index, first heard index, last heard index); equal blocks match word by word, a replace block only as a split compound, a same-size respelling, (ADAPT-E-FIX3) one whole number written as digits on one side and as words on the other, or (ADAPT-E-FIX4) Whisper pieces that rejoin into the script tokens; a run of adjacent amount words and pieces that read the same value and unit becomes one group."""
     names = [item.normalized for item in heard]
     matches: list[tuple[int, int, int, int]] = []
+    units: list[tuple[int, int, int, int, str]] = []
     for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, expected, names, autojunk=False).get_opcodes():
         if tag == 'equal':
             matches.extend((i1 + k, i1 + k, j1 + k, j1 + k) for k in range(i2 - i1))
-        elif tag == 'replace' and None not in names[j1:j2]:
+            units.extend((i1 + k, i1 + k + 1, j1 + k, j1 + k + 1, 'pair') for k in range(i2 - i1))
+            continue
+        before = len(matches)
+        if tag == 'replace' and None not in names[j1:j2]:
             if i2 - i1 == 1 and j2 - j1 > 1 and ''.join(names[j1:j2]) == expected[i1]:
                 matches.append((i1, i1, j1, j2 - 1))
             elif i2 - i1 == j2 - j1:
@@ -240,7 +352,29 @@ def _match_script(expected: list[str], heard: list[_Heard]) -> list[tuple[int, i
                 matches.append((i1, i2 - 1, j1, j1))
             elif _same_number(expected[i1:i2], names[j1:j2]):
                 matches.append((i1, i1, j1, j2 - 1))
-    return matches
+            elif (g := _rejoined(expected[i1:i2], heard[j1:j2], policy)) is not None:
+                matches.extend((i1 + k, i1 + k, j1 + a, j1 + b) for k, (a, b) in enumerate(g))
+        units.append((i1, i2, j1, j2, 'open' if len(matches) == before else 'done'))
+
+    def joinable(unit: tuple[int, int, int, int, str]) -> bool:
+        i1, i2, j1, j2, kind = unit
+        return not (kind == 'pair' and expected[i1] in ('a', 'and')) and None not in names[j1:j2] and all(_amount_token(t) for t in (*expected[i1:i2], *names[j1:j2]))
+
+    k = 0
+    while k < len(units):
+        end = k
+        while end < len(units) and joinable(units[end]):
+            end += 1
+        run, k = units[k:end], max(end, k + 1)
+        if not any(u[4] == 'open' for u in run):
+            continue
+        s1, h1, s2, h2 = run[0][0], run[0][2], run[-1][1], run[-1][3]
+        if s1 < s2 and h1 < h2 and heard[h2 - 1].end_ms - heard[h1].start_ms >= s2 - s1:
+            want = _amount(' '.join(raws[s1:s2]))
+            if want is not None and want == _amount(''.join(item.raw for item in heard[h1:h2])):
+                matches = [m for m in matches if not s1 <= m[0] < s2]
+                matches.append((s1, s2 - 1, h1, h2 - 1))
+    return sorted(matches)
 
 
 def _run_at_start(runs: Sequence[tuple[int, int]], ms: int) -> tuple[int, int] | None:
@@ -416,7 +550,7 @@ class RealWhisperAligner:
         slots: list[_Slot] = []
         previous_end = 0
         split_count = 0
-        for i, i_last, first, last in _match_script(expected, heard):
+        for i, i_last, first, last in _match_script(expected, heard, [raw for raw, _ in pairs], policy):
             start = max(heard[first].start_ms, previous_end)
             end = min(heard[last].end_ms, duration)
             if i_last > i:
