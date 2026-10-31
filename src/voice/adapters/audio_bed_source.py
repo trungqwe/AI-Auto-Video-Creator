@@ -7,6 +7,7 @@ import ipaddress
 import json
 import logging
 import re
+import uuid
 import wave
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -145,11 +146,25 @@ def _iso(moment: datetime.datetime) -> str:
     return moment.astimezone(datetime.timezone.utc).replace(microsecond=0).isoformat()
 
 
+def _same_bytes(path: Path, digest: str) -> bool:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    except OSError:
+        return False
+
+
 def _atomic_write(path: Path, data: bytes) -> None:
-    part = path.with_name(path.name + '.part')
+    digest = hashlib.sha256(data).hexdigest()
+    if _same_bytes(path, digest):
+        return
+    part = path.with_name(f'{path.name}.{uuid.uuid4().hex[:12]}.part')
     try:
         part.write_bytes(data)
-        part.replace(path)
+        try:
+            part.replace(path)
+        except OSError:
+            if not _same_bytes(path, digest):
+                raise
     finally:
         part.unlink(missing_ok=True)
 

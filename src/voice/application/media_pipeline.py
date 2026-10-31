@@ -10,6 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Protocol, runtime_checkable
 
 from controlplane.application.idempotency.canonicalization import request_hash
+from controlplane.domain.concurrency import RevisionConflictError
 from controlplane.domain.events.contracts import DomainEvent
 from controlplane.domain.interfaces.outbox import IOutboxWriter
 from voice.domain.audio_bed import (
@@ -88,6 +89,7 @@ ERR_OUTPUT_REPLACES_ORIGINAL = 'output_replaces_original'
 ERR_OUTPUT_HASHES_MISMATCH = 'output_hashes_mismatch'
 ERR_TOOL_BAD_RESULT = 'tool_bad_result'
 ERR_RECEIPT_COMMIT_FAILED = 'receipt_commit_failed'
+RECEIPT_APPEND_ATTEMPTS = 5
 
 _SHA256_RE = re.compile(r'[0-9a-f]{64}')
 
@@ -294,9 +296,15 @@ def _completed_event(context: EventContext, operation_key: str, refs: list[str],
 
 def _append_receipt(uow: MediaUnitOfWork, receipt: OperationReceipt) -> None:
     uow.outputs.append(KIND_RECEIPT, receipt.operation_key, 1, receipt)
-    latest = uow.outputs.latest(KIND_RECEIPT_BY_REQUEST, receipt.request_fingerprint)
-    revision = 1 if latest is None else latest.revision + 1
-    uow.outputs.append(KIND_RECEIPT_BY_REQUEST, receipt.request_fingerprint, revision, receipt)
+    for attempt in range(RECEIPT_APPEND_ATTEMPTS):
+        latest = uow.outputs.latest(KIND_RECEIPT_BY_REQUEST, receipt.request_fingerprint)
+        revision = 1 if latest is None else latest.revision + 1
+        try:
+            uow.outputs.append(KIND_RECEIPT_BY_REQUEST, receipt.request_fingerprint, revision, receipt)
+            return
+        except RevisionConflictError:
+            if attempt == RECEIPT_APPEND_ATTEMPTS - 1:
+                raise
 
 class MediaPipeline:
     """Media commands over one UnitOfWork; ports are injected and may be None until a command needs them."""

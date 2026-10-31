@@ -9,7 +9,9 @@ import ast
 import base64
 import hashlib
 import json
+import re
 import subprocess
+import threading
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -72,6 +74,9 @@ class FakeRun:
         returncode: int = 0,
         raise_timeout: bool = False,
         output_bytes: bytes = b'rendered',
+        fail_calls: int = 0,
+        timeout_calls: int = 0,
+        barrier: threading.Barrier | None = None,
     ) -> None:
         self.calls: list[tuple[list[str], dict]] = []
         self.version_line = version_line
@@ -79,6 +84,10 @@ class FakeRun:
         self.returncode = returncode
         self.raise_timeout = raise_timeout
         self.output_bytes = output_bytes
+        self.fail_calls = fail_calls
+        self.timeout_calls = timeout_calls
+        self.barrier = barrier
+        self.ffmpeg_calls = 0
 
     def __call__(self, args: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
         self.calls.append((args, kwargs))
@@ -92,10 +101,19 @@ class FakeRun:
         if self.raise_timeout:
             raise subprocess.TimeoutExpired(args, kwargs['timeout'])
 
+        self.ffmpeg_calls += 1
+        call_no = self.ffmpeg_calls
         out_path = Path(args[-1])
+        if '-n' in args and out_path.exists():
+            return subprocess.CompletedProcess(args, 1, stdout='', stderr='File exists')
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_bytes(self.output_bytes)
-        return subprocess.CompletedProcess(args, self.returncode, stdout='', stderr='secret-stderr')
+        if self.barrier is not None:
+            self.barrier.wait(timeout=10)
+        if call_no <= self.timeout_calls:
+            raise subprocess.TimeoutExpired(args, kwargs['timeout'])
+        returncode = 1 if call_no <= self.fail_calls else self.returncode
+        return subprocess.CompletedProcess(args, returncode, stdout='', stderr='secret-stderr')
 
 
 def build(
@@ -106,6 +124,7 @@ def build(
     pin_sha: str | None = None,
     fake: FakeRun | None = None,
     reassess=None,
+    archive: str = ARCHIVE,
 ):
     if fake is None:
         fake = FakeRun()
@@ -122,7 +141,7 @@ def build(
             'ffmpeg': {
                 'sha256': pin_sha or sha(FFMPEG_BYTES),
                 'status': status,
-                'archive_name': ARCHIVE,
+                'archive_name': archive,
                 'measured_artifact': 'ffmpeg.exe',
             }
         }
@@ -156,6 +175,14 @@ def make_plan(output_ref: str = 'rendition:out-1', steps: tuple[NormalizeStep, .
         'image',
         output_ref=output_ref,
     )
+
+
+def ffmpeg_argvs(fake: FakeRun) -> list[list[str]]:
+    return [call[0] for call in fake.calls if Path(call[0][0]).stem == 'ffmpeg']
+
+
+def leftovers(directory: Path) -> list[str]:
+    return sorted(path.name for path in directory.glob('*.part*'))
 
 
 def test_pin_match_runs_absolute_argv_without_shell(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -235,9 +262,34 @@ def test_existing_output_never_overwritten(tmp_path: Path, monkeypatch: pytest.M
     existing.write_bytes(b'keep')
     outcome = tool.run(plan)
     assert outcome.status is Disposition.FAILED
-    assert outcome.error == 'output_exists'
+    assert outcome.error == 'output_conflict'
     assert existing.read_bytes() == b'keep'
-    assert not any(Path(call[0][0]).stem == 'ffmpeg' for call in fake.calls)
+    assert leftovers(tmp_path) == []
+    assert len(ffmpeg_argvs(fake)) == 1
+
+
+def test_existing_output_with_same_bytes_succeeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    tool, fake, paths = build(tmp_path, monkeypatch)
+    plan = make_plan(output_ref='rendition:same-bytes')
+    existing = tmp_path / 'rendition_same-bytes.png'
+    existing.write_bytes(b'rendered')
+    outcome = tool.run(plan)
+    assert outcome.status is Disposition.SUCCEEDED
+    assert outcome.output_sha256 == sha(b'rendered')
+    verify_tool_outcome(plan, outcome)
+    assert existing.read_bytes() == b'rendered'
+    assert leftovers(tmp_path) == []
+
+
+def test_same_plan_twice_succeeds_with_one_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    tool, fake, paths = build(tmp_path, monkeypatch)
+    plan = make_plan(output_ref='rendition:twice')
+    first = tool.run(plan)
+    second = tool.run(plan)
+    assert first.status is Disposition.SUCCEEDED and second.status is Disposition.SUCCEEDED
+    assert first.output_sha256 == second.output_sha256 == sha(b'rendered')
+    assert sorted(p.name for p in tmp_path.glob('rendition_twice*')) == ['rendition_twice.png']
+    assert leftovers(tmp_path) == []
 
 
 def test_output_equal_to_input_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -295,6 +347,68 @@ def test_nonzero_exit_fails_and_discards_partial(tmp_path: Path, monkeypatch: py
     assert outcome.error == 'ffmpeg_exit_1'
     assert not (tmp_path / 'rendition_fail-1.png').exists()
     assert 'secret-stderr' not in (outcome.error or '')
+
+
+def test_nonzero_exit_after_temp_write_leaves_no_destination_and_retry_succeeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    tool, fake, paths = build(tmp_path, monkeypatch, fake=FakeRun(fail_calls=1))
+    plan = make_plan(output_ref='rendition:retry-exit')
+    destination = tmp_path / 'rendition_retry-exit.png'
+    first = tool.run(plan)
+    assert first.status is Disposition.FAILED and first.error == 'ffmpeg_exit_1'
+    assert not destination.exists()
+    assert leftovers(tmp_path) == []
+    second = tool.run(plan)
+    assert second.status is Disposition.SUCCEEDED and second.output_sha256 == sha(b'rendered')
+    assert destination.read_bytes() == b'rendered'
+    assert leftovers(tmp_path) == []
+
+
+def test_timeout_after_temp_write_leaves_no_destination_and_retry_succeeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    tool, fake, paths = build(tmp_path, monkeypatch, fake=FakeRun(timeout_calls=1))
+    plan = make_plan(output_ref='rendition:retry-timeout')
+    destination = tmp_path / 'rendition_retry-timeout.png'
+    first = tool.run(plan)
+    assert first.status is Disposition.OUTCOME_UNKNOWN and first.error == 'ffmpeg_timeout'
+    assert not destination.exists()
+    assert leftovers(tmp_path) == []
+    second = tool.run(plan)
+    assert second.status is Disposition.SUCCEEDED and second.output_sha256 == sha(b'rendered')
+    assert leftovers(tmp_path) == []
+
+
+def test_ffmpeg_writes_to_unique_temp_with_real_extension(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    tool, fake, paths = build(tmp_path, monkeypatch)
+    plan = make_plan(output_ref='rendition:tmp-name')
+    assert tool.run(plan).status is Disposition.SUCCEEDED
+    argv = ffmpeg_argvs(fake)[0]
+    assert '-n' in argv
+    assert Path(argv[-1]).parent == tmp_path
+    assert re.fullmatch(r'rendition_tmp-name\.[0-9a-f]{12}\.part\.png', Path(argv[-1]).name)
+    assert (tmp_path / 'rendition_tmp-name.png').read_bytes() == b'rendered'
+    assert leftovers(tmp_path) == []
+
+
+def test_two_threads_with_the_same_plan_both_succeed_with_one_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    tool, fake, paths = build(tmp_path, monkeypatch, fake=FakeRun(barrier=threading.Barrier(2)))
+    plan = make_plan(output_ref='rendition:race')
+    outcomes, errors = [], []
+
+    def work():
+        try:
+            outcomes.append(tool.run(plan))
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=work) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+    assert errors == [] and len(outcomes) == 2
+    assert [item.status for item in outcomes] == [Disposition.SUCCEEDED, Disposition.SUCCEEDED]
+    assert {item.output_sha256 for item in outcomes} == {sha(b'rendered')}
+    assert sorted(p.name for p in tmp_path.glob('rendition_race*')) == ['rendition_race.png']
+    assert leftovers(tmp_path) == []
 
 
 def test_plan_operations_build_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -386,6 +500,28 @@ def test_transform_blur_builds_boxblur_filtergraph(tmp_path: Path, monkeypatch: 
     assert paths['in'].read_bytes() == IMAGE_BYTES
     for c_args, c_kwargs in fake.calls:
         assert c_kwargs.get('shell') is False
+
+
+def test_transform_twice_with_the_same_request_gives_the_same_sha(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    tool, fake, paths = build(tmp_path, monkeypatch, fake=FakeRun(probe_json=PROBE))
+    first = tool.transform(make_request())
+    second = tool.transform(make_request())
+    assert first.processed_ref == second.processed_ref
+    assert first.processed_ref.content_sha256 == sha(b'rendered')
+    expected = first.processed_ref.ref.replace(':', '_') + '.png'
+    assert sorted(p.name for p in tmp_path.glob('processed_*')) == [expected]
+    assert leftovers(tmp_path) == []
+
+
+def test_transform_processed_ref_depends_on_the_archive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    other = '2026-01-01-git-abcdef1234-essentials_build'
+    tool_a, _, _ = build(tmp_path / 'a', monkeypatch, fake=FakeRun(probe_json=PROBE))
+    ref_a = tool_a.transform(make_request()).processed_ref.ref
+    fake_b = FakeRun(version_line=f'ffprobe version {other}-www.gyan.dev', probe_json=PROBE)
+    tool_b, _, _ = build(tmp_path / 'b', monkeypatch, archive=other, fake=fake_b)
+    ref_b = tool_b.transform(make_request()).processed_ref.ref
+    assert ref_a.startswith('processed:') and ref_b.startswith('processed:')
+    assert ref_a != ref_b
 
 
 def test_transform_through_domain_success_with_reassess_and_warning_without(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
