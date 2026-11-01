@@ -146,15 +146,61 @@ def test_number_forms(tmp_path, x, y, matched):
         assert report.split_word_count == 0
 
 
-@pytest.mark.parametrize('n, a, b', [(57, 5.7, 7.6), (56, 5.6, 7.5)])
-def test_split_capped(tmp_path, n, a, b):
+@pytest.mark.parametrize('n, a, b', [(57, 5.7, 7.6), (56, 5.6, 7.5), (19, 1.9, 3.8)])
+def test_split_counts_groups_not_words(tmp_path, n, a, b):
     names = [f'w{k}' for k in range(n)]
     text = ' '.join(names) + ' one hundred fifty-six'
     heard = steps(names, step=0.1) + [word(' 156', a, b)]
-    if n == 57:
-        result, aligner, payload = run_align(tmp_path, text, heard, max_ratio=0.05)
-        assert aligner.last_report.split_word_count == 3
-    else:
-        with pytest.raises(AlignerError) as caught:
-            run_align(tmp_path, text, heard, max_ratio=0.05)
-        assert caught.value.code == 'alignment_split_ratio_exceeded' and caught.value.retryable is False
+    result, aligner, payload = run_align(tmp_path, text, heard, max_ratio=0.05)
+    report = aligner.last_report
+    assert report.split_word_count == 3 and report.split_group_count == 1
+    assert report.missing_script_indices == () and report.extra_transcript_indices == ()
+
+
+def grouped(n, groups):
+    names = [f'w{k}' for k in range(n)]
+    text = ' '.join(names) + ''.join(f' one hundred fifty-six s{g}' for g in range(groups))
+    heard = steps(names, step=0.1)
+    cursor = n / 10
+    for g in range(groups):
+        heard.append(word(' 156', cursor, cursor + 1.9))
+        heard.append(word(f' s{g}', cursor + 1.9, cursor + 2.0))
+        cursor += 2.0
+    return text, heard
+
+
+def test_split_groups_capped(tmp_path):
+    text, heard = grouped(48, 3)
+    result, aligner, payload = run_align(tmp_path, text, heard, max_ratio=0.05)
+    report = aligner.last_report
+    assert report.script_token_count == 60 and report.split_word_count == 9 and report.split_group_count == 3
+    text, heard = grouped(47, 3)
+    under = tmp_path / 'under'
+    under.mkdir()
+    with pytest.raises(AlignerError) as caught:
+        run_align(under, text, heard, max_ratio=0.05)
+    assert caught.value.code == 'alignment_split_ratio_exceeded' and caught.value.retryable is False
+
+
+def test_cp7_10_three_number_groups_pass(tmp_path):
+    names = [f'w{k}' for k in range(140)]
+    inserts = {40: 'one hundred thousand', 80: 'three hundred thousand', 120: 'one hundred'}
+    heard_pieces = {40: [' 100', ',000'], 80: [' 300', ',000'], 120: [' 100']}
+    text_parts: list[str] = []
+    heard = []
+    cursor = 0.0
+    for k, name in enumerate(names):
+        if k in inserts:
+            text_parts.append(inserts[k])
+            for piece in heard_pieces[k]:
+                heard.append(word(piece, cursor, cursor + 0.4))
+                cursor += 0.4
+        text_parts.append(name)
+        heard.append(word(' ' + name, cursor, cursor + 0.1))
+        cursor += 0.1
+    text = ' '.join(text_parts)
+    result, aligner, payload = run_align(tmp_path, text, heard, max_ratio=0.05, duration_ms=20000)
+    report = aligner.last_report
+    assert report.script_token_count == 148 and report.split_word_count == 8 and report.split_group_count == 3
+    assert report.missing_script_indices == () and report.extra_transcript_indices == ()
+    assert_contract(text, payload)
