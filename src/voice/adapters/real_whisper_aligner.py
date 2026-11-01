@@ -1,6 +1,6 @@
 """Real AlignerPort: local faster_whisper word timestamps matched to the script text (CT-SUB-001).
 
-Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count under the max_unmatched_word_ratio cap. A second exception (ADAPT-E-FIX4): Whisper pieces that rejoin into exactly one script token (long + -term, 9 + -year + -old) take the span of the pieces, and a cluster of script words and Whisper pieces that read the same value and unit (dollars, cents, percent, decimals, up to trillion) shares the heard span by character count, counted in split_word_count under the same cap.
+Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count. A second exception (ADAPT-E-FIX4): Whisper pieces that rejoin into exactly one script token (long + -term, 9 + -year + -old) take the span of the pieces, and a cluster of script words and Whisper pieces that read the same value and unit (dollars, cents, percent, decimals, up to trillion) shares the heard span by character count, counted in split_word_count. The max_unmatched_word_ratio cap applies to split_group_count, one per shared heard span (ADAPT-E-FIX5): the two ends of a group are model times, only the inner word edges are shared.
 """
 from __future__ import annotations
 
@@ -137,7 +137,7 @@ def _voice_artifact_path(voice_root: Path, ref: str) -> Path:
 
 @dataclass(frozen=True)
 class AlignmentReport:
-    """Counts of the last align call; unmatched_ratio = (missing script words + extra model words) / (script words + model words); split_word_count = script words that took a share of one heard span (ADAPT-E-FIX3 number groups, ADAPT-E-FIX4 amount clusters)."""
+    """Counts of the last align call; unmatched_ratio = (missing script words + extra model words) / (script words + model words); split_word_count = script words that took a share of one heard span (ADAPT-E-FIX3 number groups, ADAPT-E-FIX4 amount clusters); split_group_count = shared heard spans that were split (ADAPT-E-FIX5), the count the max_unmatched_word_ratio cap applies to."""
 
     script_token_count: int
     transcript_word_count: int
@@ -146,6 +146,7 @@ class AlignmentReport:
     extra_transcript_indices: tuple[int, ...]
     unmatched_ratio: float
     split_word_count: int = 0
+    split_group_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -554,6 +555,7 @@ class RealWhisperAligner:
         slots: list[_Slot] = []
         previous_end = 0
         split_count = 0
+        split_groups = 0
         for i, i_last, first, last in _match_script(expected, heard, [raw for raw, _ in pairs], policy):
             start = max(heard[first].start_ms, previous_end)
             end = min(heard[last].end_ms, duration)
@@ -563,6 +565,7 @@ class RealWhisperAligner:
                 if all(b[n] < b[n + 1] for n in range(len(w))):
                     slots.extend(_Slot(i + n, first, last, b[n], b[n + 1], False) for n in range(len(w)))
                     split_count += len(w)
+                    split_groups += 1
                     previous_end = end
                 continue
             rescued = end <= start
@@ -592,13 +595,13 @@ class RealWhisperAligner:
         extra = tuple(j for j in range(len(heard)) if j not in timed_heard)
         total = len(expected) + len(heard)
         ratio = (len(missing) + len(extra)) / total if total else 1.0
-        self.last_report = AlignmentReport(len(expected), len(heard), len(words), missing, extra, ratio, split_count)
+        self.last_report = AlignmentReport(len(expected), len(heard), len(words), missing, extra, ratio, split_count, split_groups)
         if not words:
             raise _fail(ERROR_NO_ALIGNED_WORDS, 'no script word could be aligned to a model word')
         if ratio > config.max_unmatched_word_ratio:
             raise _fail(ERROR_UNMATCHED_RATIO_EXCEEDED, f'unmatched word ratio {ratio:.4f} exceeds {config.max_unmatched_word_ratio}')
-        if split_count / len(expected) > config.max_unmatched_word_ratio:
-            raise _fail(ERROR_SPLIT_RATIO_EXCEEDED, f'split word ratio {split_count / len(expected):.4f} exceeds {config.max_unmatched_word_ratio}')
+        if split_groups / len(expected) > config.max_unmatched_word_ratio:
+            raise _fail(ERROR_SPLIT_RATIO_EXCEEDED, f'split group ratio {split_groups / len(expected):.4f} exceeds {config.max_unmatched_word_ratio} ({split_count} split words)')
         language =getattr(info, 'language', None)
         return AlignmentResult(
             words=tuple(words),

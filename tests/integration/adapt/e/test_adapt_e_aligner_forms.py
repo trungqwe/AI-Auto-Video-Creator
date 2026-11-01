@@ -140,13 +140,26 @@ def test_amount_without_room(tmp_path):
 
 
 @pytest.mark.parametrize('n', [38, 37])
-def test_forms_split_capped(tmp_path, n):
+def test_forms_split_counts_one_group(tmp_path, n):
     names = [f'w{k}' for k in range(n)]
     text = ' '.join(names) + ' five dollars'
     heard = steps(names, step=0.1) + [word(' $5', n / 10, n / 10 + 0.5)]
-    if n == 38:
+    result, aligner, payload = run_align(tmp_path, text, heard, max_ratio=0.05)
+    assert aligner.last_report.split_word_count == 2 and aligner.last_report.split_group_count == 1
+
+
+@pytest.mark.parametrize('n', [34, 33])
+def test_forms_split_groups_capped(tmp_path, n):
+    names = [f'w{k}' for k in range(n)]
+    text = ' '.join(names) + ' five dollars s0 five dollars s1'
+    cursor = n / 10
+    heard = steps(names, step=0.1) + [
+        word(' $5', cursor, cursor + 0.5), word(' s0', cursor + 0.5, cursor + 0.6),
+        word(' $5', cursor + 0.6, cursor + 1.1), word(' s1', cursor + 1.1, cursor + 1.2),
+    ]
+    if n == 34:
         result, aligner, payload = run_align(tmp_path, text, heard, max_ratio=0.05)
-        assert aligner.last_report.split_word_count == 2
+        assert aligner.last_report.split_word_count == 4 and aligner.last_report.split_group_count == 2
     else:
         with pytest.raises(AlignerError) as caught:
             run_align(tmp_path, text, heard, max_ratio=0.05)
