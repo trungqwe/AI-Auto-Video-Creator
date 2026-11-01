@@ -51,6 +51,7 @@ ELIGIBLE_WAIT_SECONDS = 600
 TRACE_KEYS = ('snapshot_id', 'snapshot_payload_sha256', 'model_refs', 'prompt_refs', 'config_revision', 'profile_sha256',
               'script_version_id', 'script_sha256', 'input_revisions')
 CLEANUP_STATES = ('CLEANUP_ELIGIBLE', 'CLEANUP_AUTHORIZED', 'DELETED')
+DRIVE_EVIDENCE_PREFIX = 'drive:'
 TERMINAL_JOB = ('COMPLETED', 'FAILED_FINAL')
 RENDER_CONFIG_SCOPES = (('preset', 'bold-yellow'), ('preset', 'output-profile'), ('policy', 'quality'))
 TEMPORAL_PORT = 7233
@@ -484,14 +485,55 @@ class ReadOnlyDb:
         return [dict(zip(keys, r)) for r in rows]
 
     def ledger_row(self, job_id):
-        rows = self.query('SELECT completed_at, output_artifact_version_id::text, output_artifact_hash FROM controlplane.cp_completion_ledger WHERE workspace_id = %s AND job_id = %s', job_id)
+        rows = self.query('SELECT completed_at, output_artifact_version_id::text, output_artifact_hash, cloud_location_ref, cloud_location_verification_ref FROM controlplane.cp_completion_ledger WHERE workspace_id = %s AND job_id = %s', job_id)
         if not rows:
             return None
-        return dict(zip(('completed_at', 'output_artifact_version_id', 'output_artifact_hash'), rows[0]))
+        return dict(zip(('completed_at', 'output_artifact_version_id', 'output_artifact_hash', 'cloud_location_ref', 'cloud_location_verification_ref'), rows[0]))
+
+
+def _cloud_backend():
+    from controlplane.application.storage_meta.handlers import CLOUD_BACKEND
+    return CLOUD_BACKEND
 
 
 def is_drive(location):
-    return 'drive' in str(location['backend_ref']).lower()
+    """Location đám mây (production ghi backend_ref = CLOUD_BACKEND = 'cloud'; Drive nằm ở provider_object_ref)."""
+    return str(location['backend_ref']) == _cloud_backend()
+
+
+def _to_second(value):
+    from datetime import datetime, timezone
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except ValueError:
+            return None
+    if not isinstance(value, datetime):
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.replace(microsecond=0)
+
+
+def ordering_proof(location, ledger, sampled=False):
+    """Chứng minh location đám mây VERIFIED trước khi đếm: ledger trỏ đúng location và evidence xác minh; thêm mốc thời gian (cắt về giây) khi có. Trả None nếu không chứng minh được."""
+    if ledger is None:
+        return None
+    refs_ok = (ledger.get('cloud_location_ref') == location['location_id']
+               and ledger.get('cloud_location_verification_ref') == location['verification_evidence_ref']
+               and location['state'] == 'VERIFIED'
+               and str(location['verification_evidence_ref'] or '').startswith(DRIVE_EVIDENCE_PREFIX))
+    if not refs_ok:
+        return None
+    if sampled:
+        return 'sampled'
+    done = _to_second(ledger.get('completed_at'))
+    seen = _to_second(location.get('updated_at'))
+    if done is None or seen is None:
+        return 'ledger_refs'
+    if seen <= done:
+        return 'ledger_refs_timestamps'
+    return None
 
 
 # --- kiểm composition production ---------------------------------------------------------------------------------
@@ -600,8 +642,8 @@ class CostWatch:
 
 
 def drive_bytes(db, job_id):
-    """Tổng byte Drive của job: artifact có owner_ref = job_id hoặc là đầu ra ở sổ hoàn tất của job."""
-    rows = db.query("SELECT coalesce(sum(v.size_bytes), 0) FROM controlplane.cp_artifact_locations l JOIN controlplane.cp_artifact_versions v ON v.workspace_id = l.workspace_id AND v.artifact_version_id = l.artifact_version_id WHERE l.workspace_id = %s AND position('drive' in lower(l.backend_ref)) > 0 AND (v.owner_ref = %s OR l.artifact_version_id IN (SELECT output_artifact_version_id FROM controlplane.cp_completion_ledger WHERE workspace_id = %s AND job_id = %s))", job_id, db.workspace_id, job_id)
+    """Tổng byte của location đám mây (Drive) của job: artifact có owner_ref = job_id hoặc là đầu ra ở sổ hoàn tất của job."""
+    rows = db.query("SELECT coalesce(sum(v.size_bytes), 0) FROM controlplane.cp_artifact_locations l JOIN controlplane.cp_artifact_versions v ON v.workspace_id = l.workspace_id AND v.artifact_version_id = l.artifact_version_id WHERE l.workspace_id = %s AND l.backend_ref = '" + _cloud_backend() + "' AND (v.owner_ref = %s OR l.artifact_version_id IN (SELECT output_artifact_version_id FROM controlplane.cp_completion_ledger WHERE workspace_id = %s AND job_id = %s))", job_id, db.workspace_id, job_id)
     return int(rows[0][0])
 
 
@@ -805,6 +847,58 @@ def collect_qc_evidence(db, job_id):
         return 'qc_evidence_error=' + type(exc).__name__
 
 
+def _find_key(obj, name):
+    if isinstance(obj, dict):
+        if obj.get(name) is not None:
+            return obj[name]
+        children = obj.values()
+    elif isinstance(obj, (list, tuple)):
+        children = obj
+    else:
+        return None
+    for child in children:
+        found = _find_key(child, name)
+        if found is not None:
+            return found
+    return None
+
+
+def collect_media_audio_evidence(db, job_id, plan=None):
+    """Chỉ đọc; dòng thông tin thêm (ảnh bài, an toàn ảnh, bed nhạc), không chấm RG-09 và không bao giờ raise."""
+    try:
+        ids = list((plan or {}).get('media_asset_ids') or [])
+
+        def rows(table):
+            seen, out = set(), []
+            for needle in [job_id] + ids:
+                for key, revision, payload in db.query('SELECT record_key, revision, payload FROM controlplane.' + table + ' WHERE workspace_id = %s AND position(%s in record_key) > 0 ORDER BY created_at', needle):
+                    if (key, revision) not in seen:
+                        seen.add((key, revision))
+                        out.append(payload)
+            return out
+
+        outcomes = {}
+        for payload in rows('cp_image_safety_assessments'):
+            outcome = str(_find_key(payload, 'outcome') or 'unknown')
+            outcomes[outcome] = outcomes.get(outcome, 0) + 1
+        bed_kind, cues = None, None
+        for payload in rows('cp_audio_bed_results'):
+            if bed_kind is None:
+                bed_kind = _find_key(payload, 'bed_kind')
+            if cues is None:
+                timings = _find_key(payload, 'cue_timings')
+                if isinstance(timings, list):
+                    cues = sum(1 for cue in timings if isinstance(cue, dict) and str(cue.get('kind')).lower() == 'music')
+        media_count = len(ids) if plan is not None else 'not_measured'
+        safety = ','.join(f'{k}={v}' for k, v in sorted(outcomes.items())) or 'not_measured'
+        has_music = 'not_measured' if cues is None else str(cues > 0)
+        text = (f'media_audio_evidence=[media_count={media_count} media_ids=[{",".join(str(i)[:6] for i in ids)}] image_safety=[{safety}] '
+                f'bed_kind={bed_kind if bed_kind is not None else "not_measured"} music_cues={"not_measured" if cues is None else cues} mp4_has_music={has_music}]')
+        return c.redact(text)[:600]
+    except Exception as exc:
+        return 'media_audio_evidence_error=' + type(exc).__name__
+
+
 # --- chạy lô -----------------------------------------------------------------------------------------------------
 
 @dataclass
@@ -844,10 +938,11 @@ class RunResult:
     record_prefix: str = ''
     qc_evidence: str = ''
     batch_after_run: str = ''
+    media_audio_evidence: str = ''
 
 
 def _drive_verified(locations):
-    return [loc for loc in locations if is_drive(loc) and loc['state'] == 'VERIFIED']
+    return [loc for loc in locations if is_drive(loc) and loc['state'] == 'VERIFIED' and str(loc['verification_evidence_ref'] or '').startswith(DRIVE_EVIDENCE_PREFIX)]
 
 
 def run_batch(work_dir, deadline):
@@ -943,6 +1038,7 @@ def run_batch(work_dir, deadline):
         result.trace = build_trace(db, job_id)
         result.qc = qc_gates(db, job_id)
         result.qc_evidence = collect_qc_evidence(db, job_id)
+        result.media_audio_evidence = collect_media_audio_evidence(db, job_id, result.plan_after)
         result.batch_after_run = collect_batch_running(db, batch_id)
         result.ai_calls = watch.calls()
         result.spent_usd = watch.spent()

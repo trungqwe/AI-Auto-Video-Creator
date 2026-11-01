@@ -398,6 +398,82 @@ def test_unit_locations_and_drive_bytes_filter_by_job():
         assert params.count('job-1') == 2
 
 
+def test_unit_is_drive_follows_cloud_backend_and_evidence_prefix():
+    cloud = {'backend_ref': 'cloud', 'state': 'VERIFIED', 'verification_evidence_ref': 'drive:abc123:sha256Checksum'}
+    assert d.is_drive(cloud) is True
+    assert d.is_drive({**cloud, 'backend_ref': 'local-staging'}) is False
+    assert d.is_drive({**cloud, 'backend_ref': 'drive'}) is False
+    assert d._drive_verified([cloud]) == [cloud]
+    for change in ({'state': 'DECLARED'}, {'verification_evidence_ref': None}, {'verification_evidence_ref': 'local:x'}):
+        assert d._drive_verified([{**cloud, **change}]) == []
+
+
+def test_unit_drive_bytes_filters_backend_cloud():
+    db = _RecordingDb([(5,)])
+    assert d.drive_bytes(db, 'job-1') == 5
+    sql = db.calls[0][0]
+    assert "l.backend_ref = 'cloud'" in sql and "'drive'" not in sql
+
+
+def test_unit_ledger_row_selects_cloud_refs():
+    db = _RecordingDb([('t', 'v', 'h', 'loc', 'drive:x')])
+    row = db.ledger_row('job-1')
+    assert 'cloud_location_ref' in db.calls[0][0] and 'cloud_location_verification_ref' in db.calls[0][0]
+    assert row['cloud_location_ref'] == 'loc' and row['cloud_location_verification_ref'] == 'drive:x'
+
+
+def test_unit_ordering_proof():
+    from datetime import datetime, timezone
+    loc = {'location_id': 'L1', 'state': 'VERIFIED', 'verification_evidence_ref': 'drive:abc123:sha256Checksum',
+           'updated_at': datetime(2026, 11, 1, 9, 30, 5, 900000, tzinfo=timezone.utc)}
+    ledger = {'completed_at': '2026-11-01T09:30:05Z', 'cloud_location_ref': 'L1',
+              'cloud_location_verification_ref': 'drive:abc123:sha256Checksum'}
+    assert d.ordering_proof(loc, ledger) == 'ledger_refs_timestamps'
+    assert d.ordering_proof(loc, ledger, True) == 'sampled'
+    assert d.ordering_proof(loc, {**ledger, 'completed_at': None}) == 'ledger_refs'
+    assert d.ordering_proof(loc, {**ledger, 'completed_at': '2026-11-01T09:30:04Z'}) is None
+    assert d.ordering_proof(loc, {**ledger, 'cloud_location_ref': 'L2'}) is None
+    assert d.ordering_proof(loc, {**ledger, 'cloud_location_verification_ref': 'drive:zzz'}) is None
+    assert d.ordering_proof(loc, None) is None
+    assert d.ordering_proof({**loc, 'state': 'DECLARED'}, ledger) is None
+
+
+def test_unit_collect_media_audio_evidence_read_only():
+    class _Db:
+        def __init__(self):
+            self.sqls = []
+
+        def query(self, sql, *params):
+            self.sqls.append(sql)
+            if 'cp_image_safety_assessments' in sql:
+                return [('k1', 1, {'outcome': 'safe'}), ('k2', 1, {'outcome': 'safe'})]
+            if 'cp_audio_bed_results' in sql:
+                return [('b1', 1, {'provenance': {'bed_kind': 'music'}, 'cue_timings': [{'kind': 'music'}, {'kind': 'sfx'}]})]
+            return []
+
+    class _Empty:
+        def query(self, sql, *params):
+            return []
+
+    db = _Db()
+    text = d.collect_media_audio_evidence(db, 'b:job:1', {'media_asset_ids': ['aaaaaa-1111', 'bbbbbb-2222']})
+    assert 'media_count=2' in text and 'media_ids=[aaaaaa,bbbbbb]' in text and 'image_safety=[safe=2]' in text
+    assert 'bed_kind=music' in text and 'music_cues=1' in text and 'mp4_has_music=True' in text
+    assert 'aaaaaa-1111' not in text
+    assert db.sqls and all(s.lstrip().upper().startswith('SELECT') for s in db.sqls)
+    empty = d.collect_media_audio_evidence(_Empty(), 'b:job:1')
+    assert 'media_count=not_measured' in empty and 'image_safety=[not_measured]' in empty
+    assert 'bed_kind=not_measured' in empty and 'mp4_has_music=not_measured' in empty
+
+
+def test_unit_collect_media_audio_evidence_never_raises():
+    class _Broken:
+        def query(self, sql, *params):
+            raise OSError('x')
+
+    assert d.collect_media_audio_evidence(_Broken(), 'b:job:1') == 'media_audio_evidence_error=OSError'
+
+
 def test_unit_build_trace_filters_by_record_key_prefix():
     seen = []
 
@@ -552,28 +628,25 @@ def test_rg09_qc_hard_gates(batch_run, emit):
 
 
 def test_rg09_cloud_verified_before_count(batch_run, emit):
-    drive = [loc for loc in batch_run.locations if 'drive' in loc['backend_ref'].lower()]
-    assert len(drive) == 1 and drive[0]['state'] == 'VERIFIED' and drive[0]['verification_evidence_ref']
-    assert batch_run.drive_check['md5_match'] and batch_run.drive_check['sha256_match']
-    assert batch_run.ledger_row['output_artifact_hash'] == drive[0]['sha256_hash']
-    if batch_run.verified_before_complete:
-        ordering = 'sampled'
-    elif drive[0]['updated_at'] <= batch_run.ledger_row['completed_at']:
-        ordering = 'timestamps'
-    else:
-        pytest.fail('BLOCKED: chưa chứng minh được thứ tự verified trước khi đếm')
-    _pass(emit, 'cloud_verified_before_count', f'md5_match=True sha256_match=True ledger_count=1 ordering={ordering}')
+    cloud = [loc for loc in batch_run.locations if d.is_drive(loc)]
+    assert len(cloud) == 1 and cloud[0]['state'] == 'VERIFIED' and cloud[0]['verification_evidence_ref'], f'cloud_locations={len(cloud)}'
+    assert d._drive_verified(batch_run.locations) == cloud
+    assert batch_run.drive_check is not None and batch_run.drive_check['md5_match'] and batch_run.drive_check['sha256_match']
+    assert batch_run.ledger_row['output_artifact_hash'] == cloud[0]['sha256_hash']
+    ordering = d.ordering_proof(cloud[0], batch_run.ledger_row, batch_run.verified_before_complete)
+    if ordering is None:
+        pytest.fail('BLOCKED: chưa chứng minh được thứ tự verified trước khi đếm (ledger cloud_location_ref/cloud_location_verification_ref không khớp location VERIFIED hoặc location cập nhật sau completed_at, so theo giây)')
+    _pass(emit, 'cloud_verified_before_count', f'md5_match=True sha256_match=True ledger_count=1 ordering={ordering} ledger_refs_match=True drive_ref={str(cloud[0]["provider_object_ref"])[:6]}***')
 
 
 def test_rg09_cleanup_after_verify(batch_run, emit):
     assert not batch_run.cleanup_before_verified
-    verified = {loc['artifact_version_id'] for loc in batch_run.locations
-                if 'drive' in loc['backend_ref'].lower() and loc['state'] == 'VERIFIED' and loc['verification_evidence_ref']}
-    cleaned = [loc for loc in batch_run.locations if 'drive' not in loc['backend_ref'].lower()
-               and loc['state'] in d.CLEANUP_STATES]
+    verified = {loc['artifact_version_id'] for loc in d._drive_verified(batch_run.locations)}
+    cleaned = [loc for loc in batch_run.locations if not d.is_drive(loc) and loc['state'] in d.CLEANUP_STATES]
     for loc in cleaned:
         assert loc['artifact_version_id'] in verified
-    _pass(emit, 'cleanup_after_verify', f'cleaned_locations={len(cleaned)} cleanup_before_verified=False')
+    reason = 'cleaned_only_after_verified' if cleaned else 'production_chua_co_duong_don_local; rang_buoc_chi_cam_don_truoc_VERIFIED'
+    _pass(emit, 'cleanup_after_verify', f'cleaned_locations={len(cleaned)} cleanup_before_verified=False', 'reason=' + reason)
 
 
 def test_rg09_plan_unchanged(batch_run, emit):
@@ -632,3 +705,4 @@ def test_rg09_budget_envelope(batch_run, emit):
     emit('- ai_calls_source: dem cp_ai_invocation_records record_key bat dau <ws>:<batch>:video: ai_calls=' + str(batch_run.ai_calls) + ' ledger_usd=' + str(batch_run.spent_usd) + ' (route_cost_per_request=0 nen ledger luon 0)')
     emit('- ' + batch_run.batch_after_run + ' (OI-PW-E2E-01: trang thai dong lo la muc mo, RG-09 khong cham theo no)')
     emit('- qc_evidence: ' + batch_run.qc_evidence)
+    emit('- ' + batch_run.media_audio_evidence)
