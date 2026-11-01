@@ -117,7 +117,7 @@ class _SnapshotDb:
 
 
 def test_unit_build_trace_uses_ledger_snapshot_id():
-    trace = d.build_trace(_SnapshotDb(), 'job-1', 'since')
+    trace = d.build_trace(_SnapshotDb(), 'job-1')
     assert trace['snapshot_id'] == 'snap-real'
     assert d.trace_missing(trace) == []
     assert trace['input_revisions']['snapshot_sources'] == [{'ref_id': 's1'}]
@@ -125,7 +125,7 @@ def test_unit_build_trace_uses_ledger_snapshot_id():
 
 def test_unit_build_trace_blocks_without_ledger_snapshot():
     with pytest.raises(d.BlockedError):
-        d.build_trace(_SnapshotDb(ledger=False), 'job-1', 'since')
+        d.build_trace(_SnapshotDb(ledger=False), 'job-1')
 
 
 def test_unit_render_matches_plan_uses_ledger_snapshot_id():
@@ -328,23 +328,34 @@ def test_unit_collect_script_length_read_only():
             raise OSError('x')
 
     db = _Db()
-    text = d.collect_script_length(db, 'since')
+    text = d.collect_script_length(db, 'job-1')
     assert 'words=62' in text and 'verdict=too_short' in text
     assert db.sqls and all(sql.lstrip().upper().startswith('SELECT') for sql in db.sqls)
-    assert d.collect_script_length(_Broken(), 'since') == 'script_length_error=OSError'
+    assert d.collect_script_length(_Broken(), 'job-1') == 'script_length_error=OSError'
 
 
 def test_unit_blocked_message_reports_script_length():
     text = DRIVER_FILE.read_text(encoding='utf-8')
     body = text[text.index('def run_batch('):]
-    assert "+ ' ' + collect_script_length(db, result.record_prefix) + ' ' + diag)" in body
+    assert "+ ' ' + collect_script_length(db, job_id) + ' ' + diag)" in body
     assert "' ai_calls=' + str(result.ai_calls)" in body
-    assert 'collect_qc_evidence(db, result.record_prefix)' in body and 'collect_batch_running(db, batch_id)' in body
+    assert 'collect_qc_evidence(db, job_id)' in body and 'collect_batch_running(db, batch_id)' in body
+    assert 'plan_digest(db, job_id)' in body and 'build_trace(db, job_id)' in body
+    assert 'result.record_prefix' not in body.replace('watch.bind_prefix(result.record_prefix)', '').replace('result.record_prefix = video_key_prefix(db.workspace_id, batch_id)', '')
+    assert 'run_ids=[batch_id=' in body
     assert text.count('session.post_batch(1)') == 1
 
 
 def test_unit_video_key_prefix():
     assert d.video_key_prefix('ws1', 'b-1') == 'ws1:b-1:video:'
+
+
+def test_unit_creative_key_prefixes_use_job_id():
+    """record_key creative là id `<loại>:<job_id>:r<rev>` do D sinh, job_id là `<B>:job:<ordinal>`."""
+    assert d.plan_key_prefix('b-1:job:1') == 'plan:b-1:job:1:r'
+    assert d.analysis_key_prefix('b-1:job:1') == 'analysis:b-1:job:1:r'
+    assert 'plan:b-1:job:1:r2'.startswith(d.plan_key_prefix('b-1:job:1'))
+    assert not 'plan:b-1:job:10:r1'.startswith(d.plan_key_prefix('b-1:job:1'))
 
 
 class _RecordingDb(d.ReadOnlyDb):
@@ -370,10 +381,10 @@ def test_unit_ai_invocation_count_uses_record_key_prefix():
 
 def test_unit_plan_row_filters_by_record_key_prefix():
     db = _RecordingDb([])
-    assert d._plan_row(db, 'w:b:video:') is None
+    assert d._plan_row(db, 'b:job:1') is None
     sql, params = db.calls[0]
     assert 'starts_with(record_key, %s)' in sql and 'created_at >=' not in sql
-    assert params == ('w:b:video:',)
+    assert params == ('plan:b:job:1:r',)
 
 
 def test_unit_locations_and_drive_bytes_filter_by_job():
@@ -395,12 +406,12 @@ def test_unit_build_trace_filters_by_record_key_prefix():
             seen.append((sql, params))
             return super().query(sql, *params)
 
-    d.build_trace(_Db(), 'job-1', 'w:b:video:')
+    d.build_trace(_Db(), 'b:job:1')
     analyses = [(s, p) for s, p in seen if 'FROM controlplane.cp_content_analyses' in s]
     assert len(analyses) == 1
-    assert 'starts_with(record_key, %s)' in analyses[0][0] and analyses[0][1] == ('w:b:video:',)
+    assert 'starts_with(record_key, %s)' in analyses[0][0] and analyses[0][1] == ('analysis:b:job:1:r',)
     plans = [p for s, p in seen if 'FROM controlplane.cp_production_plans' in s]
-    assert plans and all(p == ('w:b:video:',) for p in plans)
+    assert plans and all(p == ('plan:b:job:1:r',) for p in plans)
 
 
 def test_unit_require_no_other_workflows():
@@ -466,11 +477,11 @@ def test_unit_collect_qc_evidence_read_only():
             raise OSError('x')
 
     db = _Db()
-    text = d.collect_qc_evidence(db, 'w:b:video:')
+    text = d.collect_qc_evidence(db, 'b:job:1')
     assert 'DURATION_RANGE=failed/out_of_range' in text and 'delta_ms=-11000' in text
     assert db.sqls and all(sql.lstrip().upper().startswith('SELECT') for sql in db.sqls)
     assert any("payload->>'production_plan_ref' = %s" in sql for sql in db.sqls)
-    assert d.collect_qc_evidence(_Broken(), 'w:b:video:') == 'qc_evidence_error=OSError'
+    assert d.collect_qc_evidence(_Broken(), 'b:job:1') == 'qc_evidence_error=OSError'
 
 
 def test_unit_collect_batch_running():

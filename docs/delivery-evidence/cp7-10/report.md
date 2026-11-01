@@ -1,28 +1,27 @@
 # CP7-10 — R4 Video Alpha có giám sát trên ngăn xếp thật (RG-09)
 
 - Ngày kiểm: 01/11/2026.
-- HEAD cơ sở: `4431fe29148680466925db26e1b479dfffc1bf4c`.
+- HEAD cơ sở: `1f872a5d9eec3ae910d5e07a200e644692885a92`.
 - Interpreter khoá: `C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\8715e538\venv\Scripts\python.exe`.
 
 ## Kết luận trung thực
 
-Lượt này **BLOCKED**. Ba nhóm sửa của CTRL-CP7-10-F6 đã làm xong, test unit xanh (37 passed). Lần chạy ngăn xếp thật duy nhất (bước 21) qua được kiểm Temporal (`other_workflows_running` không chặn) và tạo lô, nhưng dừng ở `plan_digest` với `BLOCKED: thiếu khoá plan trong cp_production_plans`: truy vấn `_plan_row` lọc theo `starts_with(record_key, '<ws>:<B>:video:')` không trả dòng nào khi stage `plan` đã SUCCEEDED. Nghĩa là record_key của `cp_production_plans` không bắt đầu bằng tiền tố `<ws>:<B>:video:` như giả định của lệnh làm việc. Không chạy lại, không tạo lô khác. Vì fixture lỗi lúc setup nên 11 test RG-09 chưa chạy (11 errors); không mục RG-09 nào có evidence PASS.
+Lượt này **BLOCKED**. Sửa F7 đã làm xong và test unit xanh (38 passed). Lần chạy ngăn xếp thật duy nhất (bước 16) dừng ngay ở kiểm chỉ đọc giữa stop và start với `BLOCKED: OTHER_WORKFLOWS_RUNNING count=2`: trên Temporal vẫn còn `ProductionBatchWorkflow=2a1e2434-456a-42b7-84ad-14e77565736c` và `VideoProductionWorkflow=2a1e2434-456a-42b7-84ad-14e77565736c:video:0` đang RUNNING. Đây không phải lô do lượt này tạo (driver dừng trước khi tạo lô); nhiều khả năng là lô B của lượt trước (plan_digest BLOCKED) chưa được terminate. Theo lệnh làm việc, driver không cancel, terminate hay signal workflow và không chạy lại. Không có lô mới, nên chưa kiểm chứng được sửa F7 trên ngăn xếp thật; không mục RG-09 nào có evidence PASS.
 
 ## Nguyên nhân và sửa
 
-1. Kiểm chỉ đọc Temporal giữa stop và start: `require_no_other_workflows` liệt kê workflow RUNNING (`ExecutionStatus = "Running"`, 127.0.0.1:7233, namespace default); có `ProductionBatchWorkflow`, `VideoProductionWorkflow` hay `DebugStageWorkflow` thì BLOCKED `OTHER_WORKFLOWS_RUNNING` kèm id. Driver không cancel, terminate hay signal.
-2. Lời gọi AI = số dòng `cp_ai_invocation_records` có record_key bắt đầu `<ws>:<B>:video:` (`ai_invocation_count`, `CostWatch.bind_prefix`); ledger chi phí luôn 0 vì `route_cost_per_request=0`. `drive_bytes` và `locations` lọc theo job J (`owner_ref` hoặc sổ hoàn tất); plan và prompt lọc theo tiền tố record_key của lô B.
-3. Report ghi `blocking_gates`, thời lượng mp4 so với giọng (`format_qc_evidence`, `collect_qc_evidence`) và trạng thái lô sau lượt (`collect_batch_running`); thông điệp BLOCKED của job không COMPLETED có đủ các trường này.
+1. F7: record_key của bảng creative là id do D sinh: `plan:<job_id>:r<rev>`, `analysis:<job_id>:r<rev>`, với job_id = `<B>:job:<ordinal>`. Driver trước lọc theo `<ws>:<B>:video:` nên không thấy dòng nào. Đã sửa: `plan_key_prefix(job_id)` và `analysis_key_prefix(job_id)`; `_plan_row`, `build_trace`, `plan_digest`, `collect_script_length`, `collect_qc_evidence` nhận job_id.
+2. Đếm lời gọi AI vẫn theo `<ws>:<B>:video:` (`video_key_prefix`, `CostWatch.bind_prefix`) vì operation_key của `cp_ai_invocation_records` bắt đầu bằng workflow_id con `<B>:video:<seq>`.
+3. BLOCKED phát sinh sau khi lô đã tạo mang thêm ` run_ids=[batch_id=<B> job_id=<J>]` (`run_batch`, `except BlockedError`), để Control biết lô cần terminate. BLOCKED trước khi có lô giữ nguyên.
 
 ## Lệnh đã chạy
 
-1. RED (bước 7): `python -m pytest tests/real/test_cp7_video_alpha_e2e.py -q -p no:cacheprovider -k unit` — exit 1, 12 failed, 25 passed. Hỏng: test_unit_blocked_message_reports_script_length, test_unit_plan_row_filters_by_record_key_prefix, test_unit_locations_and_drive_bytes_filter_by_job, test_unit_build_trace_filters_by_record_key_prefix, test_unit_driver_checks_temporal_between_stop_and_start_read_only (oracle hợp lệ), cùng 7 test dùng ký hiệu mới (AttributeError).
-2. Probe bước 18 (không còn lọc theo cửa sổ thời gian): exit 0.
-3. GREEN (bước 19): lần 1 exit 1 (1 failed, 36 passed) do `test_unit_cost_watch_counts_ai_calls_from_invocation_records` tự mâu thuẫn thứ tự gọi (trước `bind_prefix` không có truy vấn DB); đã dời assert `db.prefixes` xuống sau `check()` cuối trong chính test mới. Lần 2: exit 0, 37 passed, 11 deselected.
-4. `git diff --check` (bước 20): exit 0.
-5. Chạy thật (bước 21), đúng một lần: `python -m pytest tests/real/test_cp7_video_alpha_e2e.py -q -p no:cacheprovider` — exit 1, `37 passed, 11 errors in 246.12s`, từ 02:47:46Z đến 02:51:54Z.
-6. Probe 10 mục RG-09 (bước 23): đỏ như kỳ vọng vì các mục ở dưới là BLOCKED; không chỉnh report để qua probe.
-7. `git diff --check` lần cuối (bước 24): exit 0.
+1. RED (bước 6): `python -m pytest tests/real/test_cp7_video_alpha_e2e.py -q -p no:cacheprovider -k unit` — exit 1, 6 failed, 32 passed, 11 deselected. Hỏng: test_unit_plan_row_filters_by_record_key_prefix (oracle tham số truy vấn `('b:job:1',)` khác `('plan:b:job:1:r',)`); test_unit_build_trace_uses_ledger_snapshot_id, test_unit_build_trace_blocks_without_ledger_snapshot, test_unit_build_trace_filters_by_record_key_prefix (TypeError chữ ký, thiếu `prefix`); test_unit_blocked_message_reports_script_length (assert nguồn văn bản); test_unit_creative_key_prefixes_use_job_id (AttributeError ký hiệu mới).
+2. GREEN (bước 14): cùng lệnh — exit 0, `38 passed, 11 deselected`.
+3. `git diff --check` (bước 15): exit 0, không output.
+4. Chạy thật (bước 16), đúng một lần: `python -m pytest tests/real/test_cp7_video_alpha_e2e.py -q -p no:cacheprovider -s` — exit 1, `38 passed, 11 errors in 1.95s` (khoảng 3 giây tổng). Mọi lỗi là `BLOCKED: OTHER_WORKFLOWS_RUNNING` ở fixture `batch_run`.
+5. Probe 10 mục RG-09 (bước 18): đỏ như kỳ vọng vì các mục là BLOCKED thật; không chỉnh report để qua probe.
+6. `git diff --check` lần cuối (bước 19): exit 0.
 
 ## Kết quả
 
@@ -39,19 +38,18 @@ RG-09.secret_scan: BLOCKED
 
 ## Chi tiết đo
 
-- Lỗi nguyên văn (đã che): `BLOCKED: thiếu khoá plan trong cp_production_plans`, phát sinh ở `plan_digest(db, job_id, result.record_prefix)` khi stage `plan` đạt SUCCEEDED (tools/real/cp7_batch_driver.py, `_plan_row`).
-- Kiểm Temporal trước start: qua (`other_workflows_running` không gây BLOCKED, do đó là 0); driver chỉ đọc.
-- Các dòng `- ` (ai_calls, qc_evidence, batch_after_run, elapsed, md5/sha256, ready_seconds) không được phát ra vì fixture lỗi trước khi test RG-09 chạy; không có số đo nào được bịa thêm.
-- Id lô B không được in ra trong output của fixture (BlockedError ném trước khi trả kết quả). Lô này có thể còn RUNNING trên Temporal sau lượt: Control cần liệt kê workflow `ProductionBatchWorkflow` mới nhất và xin terminate trước lượt kế (theo quyết định của user ngày 01/11/2026).
-- Đề xuất cho Control (không tự sửa vì ngoài lệnh làm việc): kiểm record_key thực của `cp_production_plans` cho lô B, hoặc lọc plan theo `job_id`/snapshot thay cho tiền tố `<ws>:<B>:video:`; rồi cấp lượt mới. Ngoài ra nên cho driver gắn trạng thái lô và id lô vào thông điệp BLOCKED khi lỗi xảy ra trước cổng job FAILED.
+- Thông điệp nguyên văn: `BLOCKED: OTHER_WORKFLOWS_RUNNING count=2 ids=[ProductionBatchWorkflow=2a1e2434-456a-42b7-84ad-14e77565736c, VideoProductionWorkflow=2a1e2434-456a-42b7-84ad-14e77565736c:video:0]`.
+- Không tạo lô mới ở lượt này nên không có `run_ids`; không có số đo ai_calls, qc_evidence, batch_after_run, elapsed, md5, ready_seconds. Không số nào được bịa.
+- Workflow còn RUNNING cần Control xin user terminate trước lượt kế: `ProductionBatchWorkflow=2a1e2434-456a-42b7-84ad-14e77565736c` (con `:video:0`). Tiền tố `2a1e2434` khác lô `cc2f3457` đã terminate lúc 02:17Z, nên đây là lô tạo sau đó (lượt Worker trước, BLOCKED ở plan_digest).
 
 ## Open item
 
 - OI-PW-E2E-01: lô không rời CREATED nên FinalizeBatch trả FORBIDDEN_TRANSITION; do gói PW-G4-FIX2 sửa, chưa gộp. RG-09 không chấm theo trạng thái dòng lô.
-- OI-CP7-10-F7: record_key của `cp_production_plans` không khớp tiền tố `<ws>:<B>:video:` (xem Chi tiết đo); cần quyết định cách lọc plan theo lô.
+- OI-CP7-10-F7: đã sửa trong driver (lọc plan và analysis theo job_id); chưa kiểm chứng trên ngăn xếp thật.
+- OI-CP7-10-F8: lô `2a1e2434-456a-42b7-84ad-14e77565736c` còn RUNNING trên Temporal chặn pre-check; cần terminate (quyết định của user) rồi cấp lượt mới.
 
 ## Giới hạn trung thực
 
 - Không hạ ngưỡng RG-09; trần 25 lời gọi AI, 3 USD, 200 MiB, 2 giờ giữ nguyên.
-- Không SQL ghi; không sửa `src/**`; không đọc `Credentials/`.
+- Không SQL ghi; không cancel, terminate hay signal workflow; không sửa `src/**`; không đọc `Credentials/`.
 - Ngăn xếp thật chạy đúng một lần, không thử lại, không tạo lô khác.

@@ -218,9 +218,9 @@ def format_script_length(payload, profile):
     return f'script_length=[segments={len(segments)} words={words} wpm={wpm} est_ms={est_ms} range_ms={low}-{high} verdict={verdict}]'
 
 
-def collect_script_length(db, prefix):
+def collect_script_length(db, job_id):
     try:
-        plan = _plan_row(db, prefix)
+        plan = _plan_row(db, job_id)
         script = None if plan is None else _script_row(db, plan[0].get('script_version_id'))
         profile = json.loads(PROFILE_JSON.read_text(encoding='utf-8'))
         return format_script_length(None if script is None else script[0], profile)
@@ -229,8 +229,18 @@ def collect_script_length(db, prefix):
 
 
 def video_key_prefix(workspace_id, batch_id):
-    """Tiền tố record_key của mọi bản ghi creative do các video con của lô ghi: <ws>:<batch_id>:video:."""
+    """Tiền tố record_key của cp_ai_invocation_records do các video con của lô ghi: <ws>:<batch_id>:video: (operation_key bắt đầu bằng workflow_id con <batch_id>:video:<seq>). Không dùng cho bảng creative khác."""
     return f'{workspace_id}:{batch_id}:video:'
+
+
+def plan_key_prefix(job_id):
+    """record_key của cp_production_plans do D sinh: plan:<job_id>:r<rev>; job_id là <batch_id>:job:<ordinal>, không bắt đầu bằng <ws>:<batch_id>:video:."""
+    return f'plan:{job_id}:r'
+
+
+def analysis_key_prefix(job_id):
+    """record_key của cp_content_analyses do D sinh: analysis:<job_id>:r<rev>; job_id là <batch_id>:job:<ordinal>, không bắt đầu bằng <ws>:<batch_id>:video:."""
+    return f'analysis:{job_id}:r'
 
 
 def list_running_workflows(host=HOST, port=TEMPORAL_PORT, namespace=TEMPORAL_NAMESPACE):
@@ -642,8 +652,8 @@ def drive_md5_check(db, location):
 
 # --- trace, kế hoạch, QC -----------------------------------------------------------------------------------------
 
-def _plan_row(db, prefix):
-    rows = db.query('SELECT payload, production_plan_id FROM controlplane.cp_production_plans WHERE workspace_id = %s AND starts_with(record_key, %s) ORDER BY created_at DESC LIMIT 1', prefix)
+def _plan_row(db, job_id):
+    rows = db.query('SELECT payload, production_plan_id FROM controlplane.cp_production_plans WHERE workspace_id = %s AND starts_with(record_key, %s) ORDER BY created_at DESC LIMIT 1', plan_key_prefix(job_id))
     return rows[0] if rows else None
 
 
@@ -664,17 +674,17 @@ def job_snapshot_id(db, job_id):
     return _need(rows[0][0] if rows else None, 'snapshot_ref', 'cp_completion_ledger')
 
 
-def build_trace(db, job_id, prefix):
+def build_trace(db, job_id):
     snapshot_id = job_snapshot_id(db, job_id)
     snap = db.query('SELECT payload FROM controlplane.cp_production_snapshots WHERE workspace_id = %s AND snapshot_id = %s', snapshot_id)
     snap_payload = _need(snap[0][0] if snap else None, 'payload', 'cp_production_snapshots')
-    plan = _need(_plan_row(db, prefix), 'plan', 'cp_production_plans')
+    plan = _need(_plan_row(db, job_id), 'plan', 'cp_production_plans')
     script_id = _need(plan[0].get('script_version_id'), 'script_version_id', 'cp_production_plans')
     script = _need(_script_row(db, script_id), 'script', 'cp_script_versions')
     profile = json.loads(PROFILE_JSON.read_text(encoding='utf-8'))
     models = profile['ai']['route_model_refs']['value']
     config_revision = profile['meta']['revision']['value']
-    prompts = db.query('SELECT DISTINCT record_key, revision FROM controlplane.cp_content_analyses WHERE workspace_id = %s AND starts_with(record_key, %s)', prefix)
+    prompts = db.query('SELECT DISTINCT record_key, revision FROM controlplane.cp_content_analyses WHERE workspace_id = %s AND starts_with(record_key, %s)', analysis_key_prefix(job_id))
     prompt_refs = [{'id': 'analysis', 'revision': r[1]} for r in prompts]
     cfg = snap_payload.get('configuration_revision_refs') or []
     prompt_refs += [ref for ref in cfg if 'prompt' in json.dumps(ref).lower()]
@@ -701,8 +711,8 @@ def _plan_media_ids(plan_payload):
     return ids
 
 
-def plan_digest(db, job_id, prefix):
-    plan = _need(_plan_row(db, prefix), 'plan', 'cp_production_plans')
+def plan_digest(db, job_id):
+    plan = _need(_plan_row(db, job_id), 'plan', 'cp_production_plans')
     payload = plan[0]
     script = _need(_script_row(db, payload.get('script_version_id')), 'script', 'cp_script_versions')
     media = sorted(_plan_media_ids(payload))
@@ -778,10 +788,10 @@ def format_qc_evidence(gate_payload, package_payload):
     return f'blocking_gates=[{blocking}] duration=[mp4_ms={mp4} voice_ms={voice} delta_ms={delta}]'
 
 
-def collect_qc_evidence(db, prefix):
-    """Chỉ đọc; dùng được cả khi job FAILED_FINAL (chưa có sổ hoàn tất): tìm render package theo production_plan_ref của kế hoạch thuộc lô."""
+def collect_qc_evidence(db, job_id):
+    """Chỉ đọc; dùng được cả khi job FAILED_FINAL (chưa có sổ hoàn tất): tìm render package theo production_plan_ref của kế hoạch thuộc job."""
     try:
-        plan = _plan_row(db, prefix)
+        plan = _plan_row(db, job_id)
         if plan is None:
             return 'qc_evidence=[no_plan]'
         pkg = db.query("SELECT package_fingerprint, payload FROM controlplane.cp_render_packages WHERE workspace_id = %s AND payload->>'production_plan_ref' = %s ORDER BY created_at DESC LIMIT 1", plan[1])
@@ -883,7 +893,7 @@ def run_batch(work_dir, deadline):
                     seen_pairs.add(pair)
                     result.timeline.append((round(time.monotonic() - t0, 1), name, row['status']))
             if result.plan_before is None and stages.get('plan', {}).get('status') == 'SUCCEEDED':
-                result.plan_before = plan_digest(db, job_id, result.record_prefix)
+                result.plan_before = plan_digest(db, job_id)
             locations = db.locations(job_id)
             ledger = db.ledger_row(job_id)
             verified = _drive_verified(locations)
@@ -918,27 +928,31 @@ def run_batch(work_dir, deadline):
             failed = db.failed_stage(job_id)
             result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': str(result.final_job_status), 'failed_stage': None if failed is None else failed[0], 'activity': None if failed is None else failed[3], 'code': None if failed is None else failed[2]})
             result.ai_calls = watch.calls()
-            result.qc_evidence = collect_qc_evidence(db, result.record_prefix)
+            result.qc_evidence = collect_qc_evidence(db, job_id)
             result.batch_after_run = collect_batch_running(db, batch_id)
             diag = collect_diagnostic(db, job_id)
-            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; other_workflows_running=' + str(result.other_workflows_running) + ' ai_calls=' + str(result.ai_calls) + ' ' + result.qc_evidence + ' ' + result.batch_after_run + ' ' + collect_render_config(db) + ' launcher_seed=[' + result.launcher_seed_line + '] seed_counts=' + json.dumps(result.seed_counts, sort_keys=True) + ' ' + collect_script_length(db, result.record_prefix) + ' ' + diag)
+            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; other_workflows_running=' + str(result.other_workflows_running) + ' ai_calls=' + str(result.ai_calls) + ' ' + result.qc_evidence + ' ' + result.batch_after_run + ' ' + collect_render_config(db) + ' launcher_seed=[' + result.launcher_seed_line + '] seed_counts=' + json.dumps(result.seed_counts, sort_keys=True) + ' ' + collect_script_length(db, job_id) + ' ' + diag)
         result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': 'COMPLETED'})
         result.final_batch_status = db.batch_status(batch_id) or ''
         result.locations = db.locations(job_id)
         result.ledger_row = db.ledger_row(job_id)
         verified = _drive_verified(result.locations)
         result.drive_check = drive_md5_check(db, verified[0]) if verified else None
-        result.plan_after = plan_digest(db, job_id, result.record_prefix)
+        result.plan_after = plan_digest(db, job_id)
         result.render_matches = render_matches_plan(db, job_id, result.plan_after)
-        result.trace = build_trace(db, job_id, result.record_prefix)
+        result.trace = build_trace(db, job_id)
         result.qc = qc_gates(db, job_id)
-        result.qc_evidence = collect_qc_evidence(db, result.record_prefix)
+        result.qc_evidence = collect_qc_evidence(db, job_id)
         result.batch_after_run = collect_batch_running(db, batch_id)
         result.ai_calls = watch.calls()
         result.spent_usd = watch.spent()
         result.drive_bytes = drive_bytes(db, job_id)
         result.elapsed_seconds = time.monotonic() - t0
         return result
+    except BlockedError as exc:
+        if result.batch_id and 'run_ids=[' not in str(exc):
+            raise BlockedError(f'{exc} run_ids=[batch_id={result.batch_id} job_id={result.job_id or "-"}]') from None
+        raise
     finally:
         try:
             stop_until_exited()
