@@ -5,6 +5,7 @@ Production profile (plan.md 7.4): 1080x1920 (scale increase then crop), 30 fps, 
 Each attempt writes a temporary file next to the output; only exit code 0 renames it atomically to output_ref (the output path of the spec), and an existing output is never overwritten.
 LOCK-DESKTOP-GPU is held by the caller: RenderPipeline.render_video acquires one slot and returns it; run() receives that held GpuLease and never acquires or releases it, so one render takes exactly one slot. The encoder used is written to the metrics (gpu_metrics encoder_h264_nvenc or cpu_metrics encoder_libx264) and to last_encoder.
 command_prefix exists for tests only (an interpreter that runs a fake ffmpeg script); the pin check always applies to ffmpeg_path.
+Loudness (CT-RND-004): a graph with one loudnorm in the audio chain is run in two passes; the measurement pass calls the pinned ffmpeg directly (command_prefix wraps only the render pass), a failed or silent measurement is FAILED loudness_measure_failed and writes no file, and a graph with two loudnorm, loudnorm outside the audio chain or an unmapped output label is FAILED spec_shape_invalid before anything runs. Without loudnorm one command runs as before.
 
 coveredIds: CT-RND-004, CT-STATE-011
 """
@@ -13,11 +14,14 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import os
+import re
 import subprocess
 import time
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
@@ -50,6 +54,14 @@ REASON_SPEC_SHAPE = 'spec_shape_invalid'
 REASON_EXECUTABLE = 'executable_not_pinned'
 REASON_OUTPUT_EXISTS = 'output_already_exists'
 REASON_NO_OUTPUT = 'output_missing_after_exit_0'
+REASON_LOUDNESS = 'loudness_measure_failed'
+LOUDNORM = 'loudnorm'
+MEASURE_LIMITS = (('input_i', -99.0, 0.0), ('input_tp', -99.0, 99.0), ('input_lra', 0.0, 99.0), ('input_thresh', -99.0, 0.0), ('target_offset', -99.0, 99.0))
+_AUDIO_INPUT = re.compile(r'\[\d+:a:\d+\]')
+_EDGE_LABELS = re.compile(r'^(?:\[[^\[\]]*\])+|(?:\[[^\[\]]*\])+$')
+_END_LABEL = re.compile(r'\[([^\[\]]+)\]$')
+_LOUDNORM_ARGS = re.compile(r'loudnorm=[^,\[]*')
+_JSON_BLOCK = re.compile(r'\{[^{}]*\}')
 
 
 class FfmpegPinRejected(RuntimeError):
@@ -83,6 +95,122 @@ def verify_ffmpeg_pin(ffmpeg_path: Path, lock_path: Path) -> None:
         raise FfmpegPinRejected(f'ffmpeg_unreadable: {type(error).__name__}') from None
     if not hmac.compare_digest(actual, expected.lower()):
         raise FfmpegPinRejected('ffmpeg_sha256_mismatch')
+
+
+@dataclass(frozen=True)
+class LoudnessMeasurement:
+    """Figures of the loudnorm measurement pass (input_* are loudnorm's own field names)."""
+
+    input_i: float
+    input_tp: float
+    input_lra: float
+    input_thresh: float
+    target_offset: float
+
+
+class LoudnessMeasureFailed(RuntimeError):
+    """The measurement pass failed (exit code not 0, unreadable JSON or an unusable figure); the message is the reason after 'loudness_measure_failed: '."""
+
+
+def _filter_name(piece: str) -> str:
+    bare = _EDGE_LABELS.sub('', piece.strip())
+    return bare.split('=', 1)[0]
+
+
+def _loudnorm_shape(argv: Sequence[str]) -> tuple[int, list[str], int] | None:
+    """(graph index, chains, loudnorm chain index) of a graph with one loudnorm in an audio chain whose label is mapped; None without loudnorm; _SpecRejected otherwise."""
+    try:
+        graph_index = list(argv).index('-filter_complex') + 1
+        graph = argv[graph_index]
+    except (ValueError, IndexError):
+        raise _SpecRejected(REASON_SPEC_SHAPE) from None
+    chains = graph.split(';')
+    hits = [i for i, chain in enumerate(chains) for piece in chain.split(',') if _filter_name(piece) == LOUDNORM]
+    if not hits:
+        return None
+    if len(hits) > 1:
+        raise _SpecRejected(REASON_SPEC_SHAPE)
+    chain = chains[hits[0]]
+    end = _END_LABEL.search(chain)
+    mapped = {argv[i + 1] for i, item in enumerate(argv[:-1]) if item == '-map'}
+    if _AUDIO_INPUT.match(chain) is None or end is None or f'[{end.group(1)}]' not in mapped:
+        raise _SpecRejected(REASON_SPEC_SHAPE)
+    return graph_index, chains, hits[0]
+
+
+def build_measure_argv(spec_argv: Sequence[str], ffmpeg: str) -> list[str] | None:
+    """Argv of the measurement pass: every spec input, only the audio chains with print_format=json on loudnorm, the loudnorm label, the spec output length, null output; None when the spec has no loudnorm."""
+    shape = _loudnorm_shape(spec_argv)
+    if shape is None:
+        return None
+    graph_index, chains, index = shape
+    chains = list(chains)
+    chains[index], count = _LOUDNORM_ARGS.subn(lambda found: found.group(0) + ':print_format=json', chains[index], count=1)
+    if count != 1:
+        raise _SpecRejected(REASON_SPEC_SHAPE)
+    audio = [chain for chain in chains if _AUDIO_INPUT.match(chain)]
+    label = '[' + _END_LABEL.search(chains[index]).group(1) + ']'
+    tail = ['-map', label]
+    if '-shortest' in spec_argv:
+        at = list(spec_argv).index('-shortest')
+        if at + 2 < len(spec_argv) and spec_argv[at + 1] == '-t':
+            tail += ['-t', spec_argv[at + 2]]
+    return [ffmpeg, '-nostats', *spec_argv[1:graph_index - 1], '-filter_complex', ';'.join(audio), *tail, '-f', 'null', '-']
+
+
+def parse_loudness_json(stderr: str) -> LoudnessMeasurement:
+    """The last JSON block of loudnorm's stderr as finite figures inside the measured_* and offset domains; LoudnessMeasureFailed otherwise."""
+    blocks = _JSON_BLOCK.findall(stderr)
+    if not blocks:
+        raise LoudnessMeasureFailed('no_json')
+    try:
+        data = json.loads(blocks[-1])
+    except ValueError:
+        raise LoudnessMeasureFailed('json_unparsable') from None
+    values = []
+    for key, low, high in MEASURE_LIMITS:
+        raw = data.get(key)
+        try:
+            number = float(raw)
+        except (TypeError, ValueError):
+            raise LoudnessMeasureFailed(f'{key}_unusable') from None
+        if isinstance(raw, bool) or not math.isfinite(number) or not low <= number <= high:
+            raise LoudnessMeasureFailed(f'{key}_out_of_range')
+        values.append(number)
+    return LoudnessMeasurement(*values)
+
+
+def measure_loudness(ffmpeg: str | Path, spec_argv: Sequence[str], *, timeout_seconds: float) -> LoudnessMeasurement | None:
+    """Run the measurement pass straight on the pinned ffmpeg (no command_prefix, nothing written); None when the spec has no loudnorm."""
+    command = build_measure_argv(spec_argv, str(ffmpeg))
+    if command is None:
+        return None
+    try:
+        done = subprocess.run(
+            command, capture_output=True, stdin=subprocess.DEVNULL, text=True, encoding='utf-8', errors='replace',
+            timeout=timeout_seconds, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise RendererTimeout('ffmpeg exceeded the render timeout during the loudness measurement') from None
+    stderr = done.stderr or ''
+    if done.returncode != 0:
+        raise LoudnessMeasureFailed(f'ffmpeg_exit_{done.returncode}: {stderr[-ERROR_TAIL_CHARS:]}')
+    return parse_loudness_json(stderr)
+
+
+def apply_measurement(spec_argv: Sequence[str], measurement: LoudnessMeasurement) -> list[str]:
+    """Spec argv whose loudnorm carries the measured figures with linear=true."""
+    argv = list(spec_argv)
+    shape = _loudnorm_shape(argv)
+    if shape is None:
+        return argv
+    graph_index, chains, index = shape
+    figures = (('measured_I', measurement.input_i), ('measured_TP', measurement.input_tp), ('measured_LRA', measurement.input_lra), ('measured_thresh', measurement.input_thresh), ('offset', measurement.target_offset))
+    suffix = ''.join(f':{name}={value:.2f}' for name, value in figures) + ':linear=true'
+    chains = list(chains)
+    chains[index] = _LOUDNORM_ARGS.sub(lambda found: found.group(0) + suffix, chains[index], count=1)
+    argv[graph_index] = ';'.join(chains)
+    return argv
 
 
 def _rewrite_graph(graph: str) -> str:
@@ -195,10 +323,15 @@ class RealFfmpegRenderer:
             return RendererOutcome(status=RendererStatus.FAILED, error=str(rejected))
 
     def _run_attempts(self, spec: RenderCommandSpec, output_ref: str, encoders: tuple[str, ...]) -> RendererOutcome:
-        """NVENC first; one retry on libx264 only when ffmpeg reports that NVENC could not start. A temporary file never outlives its attempt."""
+        """NVENC first; one retry on libx264 only when ffmpeg reports that NVENC could not start. A temporary file never outlives its attempt. When the graph has a loudnorm, the measurement pass runs first on the pinned ffmpeg (no command_prefix, same deadline) and every attempt, the libx264 retry included, carries its figures with linear=true."""
+        started = time.monotonic()
+        try:
+            measured = measure_loudness(self._ffmpeg, spec.argv, timeout_seconds=self._timeout)
+        except LoudnessMeasureFailed as failed:
+            return RendererOutcome(status=RendererStatus.FAILED, error=f'{REASON_LOUDNESS}: {failed}')
+        argv = spec.argv if measured is None else apply_measurement(spec.argv, measured)
         output = Path(output_ref)
         output.parent.mkdir(parents=True, exist_ok=True)
-        started = time.monotonic()
         failure = REASON_NO_OUTPUT
         for encoder in encoders:
             remaining = self._timeout - (time.monotonic() - started)
@@ -206,7 +339,7 @@ class RealFfmpegRenderer:
                 raise RendererTimeout('render deadline reached before the next attempt')
             temp = output.with_name(f'{output.name}.{uuid.uuid4().hex[:12]}.part')
             try:
-                code, stderr = self._execute(spec.argv, encoder, temp, remaining)
+                code, stderr = self._execute(argv, encoder, temp, remaining)
                 if code == 0:
                     return self._publish(temp, output_ref, encoder, started)
             finally:
@@ -239,4 +372,7 @@ class RealFfmpegRenderer:
         )
 
 
-__all__ = ['FfmpegPinRejected', 'RealFfmpegRenderer', 'build_final_argv', 'sha256_file', 'verify_ffmpeg_pin']
+__all__ = [
+    'FfmpegPinRejected', 'LoudnessMeasureFailed', 'LoudnessMeasurement', 'RealFfmpegRenderer', 'apply_measurement', 'build_final_argv',
+    'build_measure_argv', 'measure_loudness', 'parse_loudness_json', 'sha256_file', 'verify_ffmpeg_pin',
+]

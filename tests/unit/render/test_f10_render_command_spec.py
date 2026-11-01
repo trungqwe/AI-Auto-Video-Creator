@@ -709,6 +709,105 @@ def test_fingerprint_follows_voice_duration_ms():
     assert '7.250' in other.redacted_argv
 
 
+LOUDNESS = {'integrated_lufs': -16, 'true_peak_dbtp': -1.5, 'lra': 11, 'warn_tolerance_lu': 1.5, 'enforcement': 'warn_only'}
+LOUD_KEYS = ('integrated_lufs', 'true_peak_dbtp', 'lra')
+LOUD_FLAGS = {'integrated_lufs': 'I', 'true_peak_dbtp': 'TP', 'lra': 'LRA'}
+AMIX = '[2:a:0][ahook]amix=inputs=2:duration=first:normalize=0'
+
+
+def mix_preset(mix_rules):
+    section = {'note': 'x'}
+    return build_preset_revision({
+        'preset_key': 'p1', 'revision': 1, 'visual_rhythm': section, 'layout_rules': section,
+        'thumbnail_overlay_style': section, 'typography_karaoke_style': section, 'hook_treatment': section,
+        'mix_rules': mix_rules, 'color_effect_rules': section, 'output_profile_ref': 'profile-1',
+        'fallback_constraints': section, 'compatibility_requirements': section,
+    })
+
+
+def loud_preset(loudness=LOUDNESS):
+    return mix_preset({'loudness': loudness, 'bed_gain_db': -18})
+
+
+def graph_of(spec):
+    return value_after(spec.argv, '-filter_complex')
+
+
+def test_loudnorm_follows_amix_with_the_preset_values():
+    base = graph_of(render()).split(chr(59))
+    chains = graph_of(render(preset=loud_preset())).split(chr(59))
+    assert chains[3] == AMIX + ',loudnorm=I=-16:TP=-1.5:LRA=11,asetpts=N/SR/TB[aout]'
+    assert chains[:3] == base[:3] and chains[4:] == base[4:]
+    other = graph_of(render(preset=loud_preset({**LOUDNESS, 'integrated_lufs': -14.5, 'true_peak_dbtp': -2, 'lra': 9.5})))
+    assert AMIX + ',loudnorm=I=-14.5:TP=-2:LRA=9.5,asetpts=N/SR/TB[aout]' in other
+
+
+def test_loudness_rule_keeps_the_rest_of_the_command():
+    rec = record(timeline=voice_timeline())
+    plain = render(record=rec, voice_duration_ms=7250)
+    loud = render(record=rec, preset=loud_preset(), voice_duration_ms=7250)
+    graph = loud.argv.index('-filter_complex') + 1
+    assert loud.argv[:graph] == plain.argv[:graph] and loud.argv[graph + 1:] == plain.argv[graph + 1:]
+    assert 'normalize=0' in loud.argv[graph] and 'tpad=stop_mode=clone:stop=-1' in loud.argv[graph]
+    assert output_t_after_shortest(loud.argv) == ['7.250']
+    assert loud.redacted_argv[graph].count('loudnorm=') == 1
+
+
+@pytest.mark.parametrize('key,value', [('integrated_lufs', -70), ('integrated_lufs', -5), ('true_peak_dbtp', -9), ('true_peak_dbtp', 0), ('lra', 1), ('lra', 50)])
+def test_loudness_domain_bounds_are_accepted(key, value):
+    assert f'{LOUD_FLAGS[key]}={value}' in graph_of(render(preset=loud_preset({**LOUDNESS, key: value})))
+
+
+def test_without_a_loudness_rule_graph_and_fingerprint_stay_as_before():
+    plain = render()
+    bedless = render(preset=mix_preset({'bed_gain_db': -18}))
+    assert 'loudnorm' not in ' '.join(plain.argv) and 'loudnorm' not in ' '.join(bedless.argv)
+    assert graph_of(bedless) == graph_of(plain)
+    assert AMIX + '[aout]' in graph_of(plain)
+
+
+def test_fingerprint_follows_the_loudness_values():
+    first = render(preset=loud_preset())
+    assert render(preset=loud_preset()).spec_fingerprint == first.spec_fingerprint
+    assert render(preset=loud_preset({**LOUDNESS, 'integrated_lufs': -14})).spec_fingerprint != first.spec_fingerprint
+    assert first.spec_fingerprint != render(preset=mix_preset({'bed_gain_db': -18})).spec_fingerprint
+    assert 'loudnorm=I=-16:TP=-1.5:LRA=11' in ' '.join(first.redacted_argv)
+
+
+@pytest.mark.parametrize('key', LOUD_KEYS)
+@pytest.mark.parametrize('how', ['absent', 'none'])
+def test_missing_loudness_key_is_input_not_ready(key, how):
+    rule = {name: value for name, value in LOUDNESS.items() if name != key}
+    if how == 'none':
+        rule[key] = None
+    assert_rejected(lambda: render(preset=loud_preset(rule)), INPUT_NOT_READY, f'missing_preset.mix_rules.loudness.{key}')
+
+
+BAD_LOUDNESS = [
+    ('integrated_lufs', -70.5), ('integrated_lufs', -4.9), ('integrated_lufs', True), ('integrated_lufs', '-16'),
+    ('true_peak_dbtp', -9.5), ('true_peak_dbtp', 0.5), ('true_peak_dbtp', False), ('true_peak_dbtp', '-1.5'),
+    ('lra', 0.5), ('lra', 51), ('lra', True), ('lra', [11]),
+]
+
+
+@pytest.mark.parametrize('key,value', BAD_LOUDNESS)
+def test_loudness_value_out_of_domain_or_not_a_number_is_invalid_input(key, value):
+    assert_rejected(lambda: render(preset=loud_preset({**LOUDNESS, key: value})), INVALID_INPUT, f'invalid_preset.mix_rules.loudness.{key}')
+
+
+@pytest.mark.parametrize('value', ['loud', 5, True, None, [1, 2]])
+def test_loudness_that_is_not_a_mapping_is_invalid_input(value):
+    assert_rejected(lambda: render(preset=loud_preset(value)), INVALID_INPUT, 'invalid_preset.mix_rules.loudness')
+
+
+def test_module_holds_no_loudness_target_and_no_measurement_pass():
+    source = SOURCE.read_text(encoding='utf-8')
+    assert 'loudnorm' in source and 'asetpts=N/SR/TB' in source
+    assert re.search('(I|TP|LRA)=-?[0-9]', source) is None
+    for token in ('measured_', 'print_format'):
+        assert token not in source
+
+
 FFMPEG = DEFAULT_FFMPEG_PATH
 FPS = 30
 VOICE_SECONDS = 3.0
