@@ -297,13 +297,19 @@ def _loudnorm_chain(rule: dict[str, int | float] | None) -> str:
     return ',loudnorm=' + args + ',asetpts=N/SR/TB'
 
 
-def _filter_graph(count: int, values: dict[str, object], ass_path: str, hook: _HookPlan, loudnorm: str = '') -> str:
+def _filter_graph(count: int, values: dict[str, object], ass_path: str, hook: _HookPlan, loudnorm: str = '', beds: Sequence[_Bed] = ()) -> str:
     voice, visual, audio, thumbnail = count, count + 1, count + 2, count + 3
+    first_bed = thumbnail + (1 if hook.thumbnail_path is not None else 0)
     chains = [_normalise(index, values) for index in range(count)]
     labels = ''.join(f'[v{index}]' for index in range(count))
+    chains.append(f'[{audio}:a:0]adelay={hook.hook_range[0]}:all=1[ahook]')
     chains += [
-        f'[{audio}:a:0]adelay={hook.hook_range[0]}:all=1[ahook]',
-        f'[{voice}:a:0][ahook]amix=inputs=2:duration=first:normalize=0{loudnorm}[aout]',
+        f'[{first_bed + index}:a:0]volume={bed.gain_db:.2f}dB,adelay={bed.start_ms}:all=1[abed{index}]'
+        for index, bed in enumerate(beds)
+    ]
+    mixed = '[ahook]' + ''.join(f'[abed{index}]' for index in range(len(beds)))
+    chains += [
+        f'[{voice}:a:0]{mixed}amix=inputs={2 + len(beds)}:duration=first:normalize=0{loudnorm}[aout]',
         labels + f'concat=n={count}:v=1:a=0,tpad=stop_mode=clone:stop=-1[base]',
         _shifted(f'{visual}:v:0', values, hook.hook_range[0], 'vhook', False),
     ]
@@ -374,6 +380,38 @@ def _hook_plan(record: RenderPackageRecord, root: str) -> _HookPlan:
     return _HookPlan(visual_ref, audio_ref, thumbnail_ref, visual, audio, thumbnail if separate else None, hook, thumb)
 
 
+@dataclass(frozen=True)
+class _Bed:
+    rendition_ref: str
+    path: str
+    start_ms: int
+    end_ms: int
+    gain_db: float
+
+
+def _bed_plan(record: RenderPackageRecord, root: str) -> list[_Bed]:
+    """mix_plan.beds of the package as checked beds sorted by (start_ms, end_ms, rendition_ref); empty without beds."""
+    plan = record.mix_plan
+    beds = plan.get('beds') if isinstance(plan, Mapping) else None
+    if beds is None:
+        return []
+    if isinstance(beds, (str, bytes)) or not isinstance(beds, (list, tuple)):
+        raise RenderCommandRejected(INVALID_INPUT, 'invalid_mix_plan.beds')
+    found: list[_Bed] = []
+    for index, item in enumerate(beds):
+        name = f'mix_plan.beds[{index}]'
+        if not isinstance(item, Mapping):
+            raise RenderCommandRejected(INVALID_INPUT, f'invalid_{name}')
+        start, end, gain = item.get('start_ms'), item.get('end_ms'), item.get('gain_db')
+        if not (_is_int(start) and _is_int(end) and 0 <= start < end):
+            raise RenderCommandRejected(INVALID_INPUT, f'invalid_{name}.range')
+        if isinstance(gain, bool) or not isinstance(gain, (int, float)) or not math.isfinite(gain):
+            raise RenderCommandRejected(INVALID_INPUT, f'invalid_{name}.gain_db')
+        ref = item.get('rendition_ref')
+        found.append(_Bed(ref, _local_path(record, root, ref, f'{name}.rendition_ref'), start, end, float(gain)))
+    return sorted(found, key=lambda bed: (bed.start_ms, bed.end_ms, bed.rendition_ref))
+
+
 def _make_spec(kind: str, pairs: list[tuple[str, str]], tool_identity: ToolIdentity, tool: dict[str, str], details: dict[str, object]) -> RenderCommandSpec:
     argv = tuple(real for real, _ in pairs)
     for index, item in enumerate(argv):
@@ -408,7 +446,7 @@ def _timed_input(record: RenderPackageRecord, ref: object, path: str, token: str
 
 
 def build_render_command(record: object, preset: object, profile: object, ass_ref: object, tool_identity: object, materialized: object, *, voice_duration_ms: int | None = None) -> RenderCommandSpec:
-    """Build the spec of the main render: each segment's first visual looped (still image) or trimmed (other media) to its timeline duration and normalised to the profile size, concat, the visual hook overlaid over hook_time_range, a distinct thumbnail asset's first frame overlaid over thumbnail_time_range, ASS subtitles, and the voice mixed with the audio hook delayed to hook start (amix, first input sets the length, normalize off). The output is exactly voice_duration_ms long (-t after -shortest), the last frame held by tpad when the timeline is shorter than the voice; without voice_duration_ms the output length is the timeline end. When preset.mix_rules has a loudness rule the mix chain continues with loudnorm and asetpts from that rule; without it the graph and the fingerprint are unchanged."""
+    """Build the spec of the main render: each segment's first visual looped (still image) or trimmed (other media) to its timeline duration and normalised to the profile size, concat, the visual hook overlaid over hook_time_range, a distinct thumbnail asset's first frame overlaid over thumbnail_time_range, ASS subtitles, and the voice mixed with the audio hook delayed to hook start (amix, first input sets the length, normalize off). The output is exactly voice_duration_ms long (-t after -shortest), the last frame held by tpad when the timeline is shorter than the voice; without voice_duration_ms the output length is the timeline end. When preset.mix_rules has a loudness rule the mix chain continues with loudnorm and asetpts from that rule; without it the graph and the fingerprint are unchanged. When record.mix_plan has beds, each bed (sorted by start, end, ref) is one more input after the hook and thumbnail inputs (-t window length), set to its gain_db and delayed to its start, and joins the same amix before loudnorm; the package carries the gain, nothing is decided here; fingerprint includes the beds; without beds the argv, the graph and the fingerprint are unchanged."""
     _require(record, RenderPackageRecord, 'record')
     _require(preset, RenderPresetRevision, 'preset')
     if voice_duration_ms is not None and not (_is_int(voice_duration_ms) and 0 < voice_duration_ms <= _MAX_NUMBER):
@@ -426,6 +464,7 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
         assets.append((paths[0], refs[0], duration_ms))
     voice = _local_path(record, root, record.voice_artifact_ref, 'voice_artifact_ref')
     hook = _hook_plan(record, root)
+    beds = _bed_plan(record, root)
     ass = _ass_path(record, root, ass_ref)
     output = _staged_path(root, materialized.output_path, 'materialized.output_path')
     count = len(assets)
@@ -439,8 +478,10 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
     if hook.thumbnail_path is not None:
         thumb_ms = hook.thumbnail_range[1] - hook.thumbnail_range[0]
         pairs += _timed_input(record, hook.thumbnail_ref, hook.thumbnail_path, '{thumbnail_asset}', values, thumb_ms)
+    for index, bed in enumerate(beds):
+        pairs += [*_plain('-t', _seconds(bed.end_ms - bed.start_ms), '-i'), (bed.path, f'{{bed:{index}}}')]
     pairs += _plain('-filter_complex')
-    pairs.append((_filter_graph(count, values, _filter_path(ass), hook, loudnorm), _filter_graph(count, values, '{ass}', hook, loudnorm)))
+    pairs.append((_filter_graph(count, values, _filter_path(ass), hook, loudnorm, beds), _filter_graph(count, values, '{ass}', hook, loudnorm, beds)))
     pairs += _plain('-map', '[vout]', '-map', '[aout]', '-shortest')
     output_ms = voice_duration_ms if voice_duration_ms is not None else _timeline_end_ms(record)
     if output_ms > 0:
@@ -466,6 +507,8 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
     }
     if rule is not None:
         details['loudness'] = dict(rule)
+    if beds:
+        details['beds'] = [{'rendition_ref': bed.rendition_ref, 'start_ms': bed.start_ms, 'end_ms': bed.end_ms, 'gain_db': bed.gain_db} for bed in beds]
     return _make_spec(KIND_RENDER, pairs, tool_identity, tool, details)
 
 

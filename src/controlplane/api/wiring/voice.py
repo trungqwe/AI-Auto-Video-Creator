@@ -49,7 +49,7 @@ from voice.adapters.local_voice_route import LocalVoiceRoute
 from voice.adapters.postgres_script_text import PostgresScriptText
 from voice.adapters.profile_media_policy import build_image_safety_policy, build_image_safety_rules, build_voice_duration_policy
 from voice.adapters.wav_duration import measure_wav_duration_ms
-from voice.application.media_pipeline import MediaPipeline, VerifiedOutput
+from voice.application.media_pipeline import KIND_AUDIO_BED, MediaPipeline, VerifiedOutput
 from voice.application.voice_pipeline import VoicePipeline
 from voice.domain.audio_bed import AudioCue
 from voice.domain.image_safety import ImageSafetyAssessment, SafetyOutcome, assess_image_safety
@@ -662,6 +662,33 @@ def voice_activity_deps(
     return deps, inputs
 
 
+REF_AUDIO_BED_CUE = 'audio_bed_cue'
+
+
+def _audio_bed_cue_refs(services: VoiceServices, operation_key: str, locate: Callable[[str], Path | None], staging_root: Path) -> list[dict[str, str]]:
+    with services.uow_factory() as uow:
+        stored = uow.outputs.latest(KIND_AUDIO_BED, operation_key)
+    if stored is None:
+        return []
+    result = stored.record
+    renditions = {item.cue_index: item.rendition_ref for item in result.renditions}
+    staging = staging_root.resolve()
+    refs: list[dict[str, str]] = []
+    for timing in result.cue_timings:
+        rendition_ref = renditions.get(timing.cue_index)
+        if rendition_ref is None:
+            continue
+        ref = {'ref_type': REF_AUDIO_BED_CUE, 'ref_id': f'{operation_key}#{timing.cue_index}', 'rendition_ref': rendition_ref, 'start_ms': str(timing.start_ms), 'end_ms': str(timing.end_ms)}
+        path = locate(rendition_ref)
+        if path is not None:
+            try:
+                ref['staged_ref'] = path.relative_to(staging).as_posix()
+            except ValueError:
+                pass
+        refs.append(ref)
+    return refs
+
+
 def voice_activity_handlers(
     services: VoiceServices,
     *,
@@ -671,6 +698,8 @@ def voice_activity_handlers(
     runtime: Any,
     grants: Any,
     clock: Callable[[], datetime.datetime],
+    music_sources: Sequence[MusicSource] | None = None,
+    music_transport: Any = None,
 ) -> dict[str, Any]:
     deps, inputs = voice_activity_deps(
         services,
@@ -680,8 +709,11 @@ def voice_activity_handlers(
         runtime=runtime,
         grants=grants,
         clock=clock,
+        music_sources=music_sources,
+        music_transport=music_transport,
     )
     base = voice_handler(deps, workspace_id=workspace_id)
+    locate = locate_media_file(manager, workspace_id, runtime.staging_root)
 
     def assess_handler(request: Mapping[str, Any], claims: Any) -> dict[str, Any]:
         result = base(request, claims)
@@ -726,6 +758,14 @@ def voice_activity_handlers(
             return {**result, 'output_refs': [{**ref, 'source_ref_id': item['ref_id']} for ref in result['output_refs']]}
         return result
 
+    def audio_bed_handler(request: Mapping[str, Any], claims: Any) -> dict[str, Any]:
+        result = base(request, claims)
+        if result.get('disposition') == 'succeeded':
+            cues = _audio_bed_cue_refs(services, request['operation_key'], locate, runtime.staging_root)
+            if cues:
+                return {**result, 'output_refs': [*result.get('output_refs', ()), *cues]}
+        return result
+
     return {
         'CreateVoiceTrack': base,
         'CreateWordTiming': base,
@@ -733,7 +773,7 @@ def voice_activity_handlers(
         'AssessImageSafety': assess_handler,
         'TransformSensitiveImage': transform_handler,
         'NormalizeMedia': normalize_handler,
-        'PrepareAudioBed': base,
+        'PrepareAudioBed': audio_bed_handler,
     }
 
 

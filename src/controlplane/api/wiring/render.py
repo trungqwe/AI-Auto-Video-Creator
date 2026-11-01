@@ -11,11 +11,14 @@ from typing import Any
 import datetime
 import hashlib
 import json
+import math
 import re
 import threading
+import wave
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from controlplane.api.wiring._shared import resolve_under_root
 from controlplane.api.wiring.workflow import RenderImage, render_handler, render_image_sources
 from controlplane.infrastructure.db.control_api_commands import PostgresConfigScope, compose_command_service
 from controlplane.infrastructure.production_ports.gpu_lease import LocalGpuLease
@@ -77,8 +80,8 @@ from controlplane.api.wiring.production_profile import (
 )
 from render.adapters.fake_renderer import FakeOutputStorage, FakeRenderer
 from render.adapters.memory import InMemoryUnitOfWork
-from render.adapters.real_ffmpeg_renderer import RealFfmpegRenderer
-from render.adapters.real_ffprobe_probe import RealFfprobeProbe
+from render.adapters.real_ffmpeg_renderer import RealFfmpegRenderer, sha256_file, verify_ffmpeg_pin
+from render.adapters.real_ffprobe_probe import RealFfprobeProbe, measure_loudness
 from render.persistence.unit_of_work import PostgresRenderUnitOfWork
 
 
@@ -246,6 +249,79 @@ def _image_fallback_rule(media: str, original: str, image: RenderImage) -> dict[
         'artifact_version_id': image.artifact_version_id,
         'reason': image.reason,
     }
+
+_REF_AUDIO_BED_CUE = 'audio_bed_cue'
+_MUSIC_RENDITION = re.compile(r'music-[0-9a-f]{64}')
+_BED_NONE_RENDITION = re.compile(r'bed-none-[0-9a-f]{64}')
+_MILLISECONDS = re.compile(r'[0-9]{1,9}')
+_BED_ABSOLUTE_GATE_LUFS = -70.0
+_BED_ROLE = 'music_bed'
+_BED_MEDIA_TYPE = 'audio/wav'
+
+
+@dataclass(frozen=True)
+class _BedCue:
+    rendition_ref: str
+    start_ms: int
+    end_ms: int
+    staged_ref: str | None
+
+
+def _bed_not_ready(ref: str) -> ActivityInputError:
+    return ActivityInputError('INPUT_NOT_READY', f'audio_bed_not_ready:{ref}')
+
+
+def _bed_cues(input_refs: Sequence[Mapping[str, Any]]) -> list[_BedCue]:
+    """Music cues of the audio_bed_cue refs; bed-none cues are silent and dropped; any malformed ref is INVALID_INPUT."""
+    cues: list[_BedCue] = []
+    for item in input_refs:
+        if not isinstance(item, Mapping) or item.get('ref_type') != _REF_AUDIO_BED_CUE:
+            continue
+        rendition, start, end, staged = item.get('rendition_ref'), item.get('start_ms'), item.get('end_ms'), item.get('staged_ref')
+        valid = (
+            isinstance(rendition, str)
+            and bool(_MUSIC_RENDITION.fullmatch(rendition) or _BED_NONE_RENDITION.fullmatch(rendition))
+            and isinstance(start, str) and bool(_MILLISECONDS.fullmatch(start))
+            and isinstance(end, str) and bool(_MILLISECONDS.fullmatch(end))
+            and int(start) < int(end)
+            and (staged is None or isinstance(staged, str))
+        )
+        if not valid:
+            raise ActivityInputError('INVALID_INPUT', f"audio_bed_cue:{item.get('ref_id')}")
+        if _MUSIC_RENDITION.fullmatch(rendition):
+            cues.append(_BedCue(rendition, int(start), int(end), staged or None))
+    return cues
+
+
+def _wav_duration_ms(path: Path, ref: str) -> int:
+    try:
+        with wave.open(str(path), 'rb') as stream:
+            frames, rate = stream.getnframes(), stream.getframerate()
+    except (wave.Error, EOFError, OSError):
+        raise _bed_not_ready(ref) from None
+    if frames < 1 or rate < 1:
+        raise _bed_not_ready(ref)
+    return frames * 1000 // rate
+
+
+def _bed_windows(cues: Sequence[_BedCue], durations: Mapping[str, int]) -> list[tuple[str, int, int]]:
+    """One bed at a time, each window plays its rendition from the start: the same rendition touching or overlapping the previous window extends it while the window fits the WAV; otherwise the previous window stops where the next cue starts."""
+    windows: list[list[Any]] = []
+    for cue in sorted(cues, key=lambda item: (item.start_ms, item.end_ms, item.rendition_ref)):
+        if windows:
+            last = windows[-1]
+            if cue.rendition_ref == last[0] and cue.start_ms <= last[2]:
+                end = max(last[2], cue.end_ms)
+                if end - last[1] <= durations[cue.rendition_ref]:
+                    last[2] = end
+                    continue
+            if cue.start_ms < last[2]:
+                last[2] = cue.start_ms
+                if last[2] <= last[1]:
+                    windows.pop()
+        windows.append([cue.rendition_ref, cue.start_ms, cue.end_ms])
+    return [(ref, start, end) for ref, start, end in windows]
+
 
 def _output_name(render_attempt_id: str) -> str:
     return _OUTPUT_NAME_UNSAFE.sub('_', render_attempt_id)
@@ -479,6 +555,67 @@ class ProductionRenderSources:
             )
         return list(resolved.values())
 
+    def _flat_bed(self, rendition: str, staged_ref: str | None) -> Path:
+        if staged_ref is None:
+            raise _bed_not_ready(rendition)
+        expected = rendition[len('music-'):]
+        root = Path(self._runtime.staging_root)
+        try:
+            source = resolve_under_root(root, staged_ref)
+            flat = resolve_under_root(root, f'{rendition}.wav')
+            if flat.is_file() and sha256_file(flat) == expected:
+                return flat
+            data = source.read_bytes()
+            if hashlib.sha256(data).hexdigest() != expected:
+                raise _bed_not_ready(rendition)
+            part = flat.with_name(flat.name + '.part')
+            part.write_bytes(data)
+            part.replace(flat)
+        except (OSError, ValueError):
+            raise _bed_not_ready(rendition) from None
+        return flat
+
+    def _bed_level(self, path: Path, ref: str) -> float:
+        timeout = _build_inspector_settings(self._profile).timeout_seconds
+        lufs = measure_loudness(Path(self._runtime.ffmpeg_path), path, timeout_seconds=timeout).integrated_lufs
+        if lufs is None or not math.isfinite(lufs) or lufs <= _BED_ABSOLUTE_GATE_LUFS:
+            raise _bed_not_ready(ref)
+        return lufs
+
+    def _bed_mix(self, input_refs: Sequence[Mapping[str, Any]], voice_ref: str, voice_local: str, mix_rules: Any) -> tuple[dict[str, Any], list[ResolvedAsset], list[LocalMaterialRef]]:
+        cues = _bed_cues(input_refs)
+        if not cues:
+            return {}, [], []
+        gain = mix_rules.get('bed_gain_db') if isinstance(mix_rules, Mapping) else None
+        if isinstance(gain, bool) or not isinstance(gain, (int, float)) or not math.isfinite(gain):
+            raise ActivityInputError('INPUT_NOT_READY', 'bed_gain_db_missing')
+        try:
+            voice_path = resolve_under_root(Path(self._runtime.staging_root), voice_local)
+        except ValueError:
+            raise _bed_not_ready(voice_ref) from None
+        verify_ffmpeg_pin(Path(self._runtime.ffmpeg_path), Path(self._runtime.runtime_lock_path))
+        voice_lufs = self._bed_level(voice_path, voice_ref)
+        flats: dict[str, Path] = {}
+        levels: dict[str, float] = {}
+        durations: dict[str, int] = {}
+        for cue in cues:
+            ref = cue.rendition_ref
+            if ref in flats:
+                continue
+            staged = next((c.staged_ref for c in cues if c.rendition_ref == ref and c.staged_ref), None)
+            flats[ref] = self._flat_bed(ref, staged)
+            levels[ref] = self._bed_level(flats[ref], ref)
+            durations[ref] = _wav_duration_ms(flats[ref], ref)
+        beds: list[dict[str, Any]] = []
+        assets: list[ResolvedAsset] = []
+        entries: list[LocalMaterialRef] = []
+        for ref, start, end in _bed_windows(cues, durations):
+            beds.append({'rendition_ref': ref, 'start_ms': start, 'end_ms': end, 'integrated_lufs': round(levels[ref], 2), 'gain_db': round(gain + voice_lufs - levels[ref], 1)})
+            if all(asset.artifact_version_id != ref for asset in assets):
+                assets.append(ResolvedAsset(artifact_version_id=ref, sha256=ref[len('music-'):], size_bytes=flats[ref].stat().st_size, media_type=_BED_MEDIA_TYPE, role=_BED_ROLE))
+                entries.append(LocalMaterialRef(artifact_version_id=ref, local_ref=f'{ref}.wav'))
+        return {'bed_gain_db': gain, 'voice_integrated_lufs': round(voice_lufs, 2), 'beds': beds}, assets, entries
+
     def resolve_inputs(self, input_refs: Sequence[Mapping[str, str]]) -> ResolveInputs:
         output_path_ref = next((r['ref_id'] for r in input_refs if r.get('ref_type') == 'output_path'), 'out-default')
         script_ref = next((r['ref_id'] for r in input_refs if r.get('ref_type') == 'script_version'), None)
@@ -583,6 +720,10 @@ class ProductionRenderSources:
             input_artifacts.append(hook_asset)
             manifest_entries.append(hook_entry)
 
+        mix_plan, bed_assets, bed_entries = self._bed_mix(input_refs, voice_ref, voice_version.artifact_version_id, preset_pin.preset.mix_rules)
+        input_artifacts.extend(bed_assets)
+        manifest_entries.extend(bed_entries)
+
         if timing_ref is None:
             raise ActivityInputError(INPUT_REF_MISSING, 'word_timing')
         timing_payload = self._read_timing_payload(timing_ref)
@@ -619,7 +760,7 @@ class ProductionRenderSources:
             timeline=_timeline_for_render(timeline),
             hook_placement=hook_placement,
             subtitle_config=subtitle_config,
-            mix_plan={},
+            mix_plan=mix_plan,
             allowed_fallbacks=allowed_fallbacks,
             materialization_manifest=entries,
             output_path_ref=output_path_ref,
@@ -673,6 +814,8 @@ class ProductionRenderSources:
         )
 
         art_info = PostgresArtifactInfo(self._manager, workspace_id=self._workspace_id)
+        bed_items = package.mix_plan.get('beds') if isinstance(package.mix_plan, Mapping) else None
+        bed_refs = {item.get('rendition_ref') for item in bed_items if isinstance(item, Mapping)} if isinstance(bed_items, (list, tuple)) else set()
         verified: dict[str, VerifiedArtifact] = {}
         manifest = package.materialization_manifest
         for art in package.input_artifacts:
@@ -683,6 +826,15 @@ class ProductionRenderSources:
                     size_bytes=timing_size,
                     state=ArtifactLocationState.VERIFIED,
                 )
+                continue
+            if ref in bed_refs:
+                bed_entry = manifest.get(ref) if isinstance(manifest, Mapping) else None
+                bed_local = bed_entry.get('local_ref') if isinstance(bed_entry, Mapping) else None
+                try:
+                    flat = resolve_under_root(Path(self._runtime.staging_root), bed_local)
+                    verified[ref] = VerifiedArtifact(sha256=sha256_file(flat), size_bytes=flat.stat().st_size, state=ArtifactLocationState.VERIFIED)
+                except (OSError, ValueError):
+                    pass
                 continue
             entry = manifest.get(ref) if isinstance(manifest, Mapping) else None
             local = entry.get('local_ref') if isinstance(entry, Mapping) else None
