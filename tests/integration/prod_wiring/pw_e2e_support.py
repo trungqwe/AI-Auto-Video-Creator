@@ -7,6 +7,7 @@ No src. prefix imports and no pw_support import.
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import dataclasses
 from decimal import Decimal
@@ -249,8 +250,9 @@ class FakeRouteCatalog:
 
 
 class FakeVisionRoute:
-    def __init__(self) -> None:
+    def __init__(self, excluded_sha256: frozenset[str] = frozenset()) -> None:
         self.calls: list[dict[str, Any]] = []
+        self.excluded_sha256 = frozenset(excluded_sha256)
 
     def invoke_vision(
         self,
@@ -267,7 +269,9 @@ class FakeVisionRoute:
             "media_type": media_type,
             "timeout_seconds": timeout_seconds,
         })
-        return json.dumps({"confidence": 0.0, "detections": []})
+        digest = hashlib.sha256(base64.b64decode(image_base64)).hexdigest()
+        confidence = 0.0 if digest in self.excluded_sha256 else 0.9
+        return json.dumps({"confidence": confidence, "detections": []})
 
 
 class _RefusingArtifactSource:
