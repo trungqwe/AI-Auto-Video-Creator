@@ -46,7 +46,7 @@ Chép từ các dòng `- ` mà pytest in ra trong lượt này (batch_id `3563cf
 - no_rerun_completed: `completed_before_stop=7 reruns=0 attempts_unchanged=True`.
 - trace_complete: `snapshot_id_present=True model_refs=3 prompt_refs=7 config_revision=5 profile_sha256=aa9b6f8f`.
 - secret_scan: `match_count=0 khong_doc_Credentials=True capability_khong_ghi=True`.
-- budget: `attempts=1 ai_calls=6 cap=25 spent_usd=0 ceiling_usd=3 drive_bytes=5099423 cap_bytes=209715200 elapsed_s=340 limit_s=7200 remaining_s=6857`.
+- budget: `attempts=1 ai_calls=6 tran_ai_calls=25 spent_usd=0 ceiling_usd=3 drive_bytes=5099423 cap_bytes=209715200 elapsed_s=340 limit_s=7200 remaining_s=6857`.
 - seed_counts: `{"hooks": 10, "media_assets": 455, "sources": 7}`; render_config: `preset/bold-yellow=PUBLISHED preset/output-profile=PUBLISHED policy/quality=PUBLISHED`.
 - media_audio_evidence (từ repr của `RunResult` trong lỗi pytest): `image_safety=[not_measured] bed_kind=not_measured music_cues=not_measured mp4_has_music=not_measured`.
 - Số từ align đã chia (so với trần 5%): stage align SUCCEEDED nhưng pytest không in dòng nào về số từ đã chia, nên không có số liệu.
