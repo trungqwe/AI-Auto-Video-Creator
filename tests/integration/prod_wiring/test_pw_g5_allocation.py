@@ -342,7 +342,7 @@ async def test_batch_workflow_allocates_runs_children_and_finalizes_on_temporal(
     handlers['AllocateJob'] = logged('AllocateJob', allocate, log)
     handlers['FinalizeBatch'] = logged('FinalizeBatch', finalize, log)
     services = build_workflow_services(parameters=PARAMETERS, handlers=handlers, clock=lambda: NOW, timezone_approved=False)
-    services = replace(services, dispatcher=GrantRevokingDispatcher(services.dispatcher, pw_database.connect, ws))
+    services = replace(services, dispatcher=GrantRevokingDispatcher(services.dispatcher, pw_database.connect, ws), batch_lifecycle=BatchLifecycle(pw_database.connect, lambda: NOW, workspace_id=ws))
     registration = build_temporal_registration(
         services,
         grant_issuer=build_grant_issuer(pw_database.connect, ws, None, lambda: NOW),

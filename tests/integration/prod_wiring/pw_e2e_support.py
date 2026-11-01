@@ -1314,16 +1314,13 @@ class E2ERig:
         batch_id = body['resource_ref']['batch_id']
         with self.database.connect() as conn:
             row = conn.execute(
-                'SELECT status FROM controlplane.cp_production_batches WHERE workspace_id = %s AND batch_id = %s',
-                (self.database.workspace_id, batch_id),
+                'SELECT payload FROM controlplane.cp_outbox_events WHERE workspace_id = %s AND event_name = %s AND aggregate_id = %s',
+                (self.database.workspace_id, 'production_batch.start_accepted', batch_id),
             ).fetchone()
-            self.batch_status_before_setup[batch_id] = row[0] if row else None
-            # OI-PW-E2E-01: production code has no writer to move CREATED to RUNNING
-            conn.execute(
-                "UPDATE controlplane.cp_production_batches SET status = 'RUNNING' WHERE workspace_id = %s AND batch_id = %s AND status = 'CREATED'",
-                (self.database.workspace_id, batch_id),
-            )
-            conn.commit()
+        payload = {}
+        if row is not None:
+            payload = json.loads(row[0]) if isinstance(row[0], str) else dict(row[0])
+        self.batch_status_before_setup[batch_id] = payload.get('status')
         return batch_id
 
     def quality_report(self, job_id: str) -> dict[str, Any]:

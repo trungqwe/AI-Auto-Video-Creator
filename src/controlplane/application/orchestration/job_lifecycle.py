@@ -106,5 +106,10 @@ class BatchLifecycle:
             with connection.transaction():
                 return PostgresBatchStates(connection, self._workspace_id).finish(batch_id, outcome, reason, self._clock())
 
+    def start(self, batch_id: str) -> bool:
+        with self._connection_factory() as connection:
+            with connection.transaction():
+                return PostgresBatchStates(connection, self._workspace_id).start(batch_id)
+
 
 __all__ = ['BatchLifecycle', 'JobLifecycleListener', 'OUTPUT_ACTIVITY', 'SNAPSHOT_ACTIVITY']

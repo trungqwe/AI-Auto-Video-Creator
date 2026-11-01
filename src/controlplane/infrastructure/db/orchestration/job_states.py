@@ -10,7 +10,7 @@ from typing import Any
 from controlplane.domain.orchestration import OrchestrationContractError
 from controlplane.domain.orchestration.batch_outcome import BatchOutcome, plan_batch_transition
 from controlplane.domain.orchestration.job_waiting import Proceed, Wait, plan_job_transition
-from controlplane.domain.statemachine import BatchState, JobState, TransitionResult, transition_job
+from controlplane.domain.statemachine import BatchState, JobState, TransitionResult, transition_batch, transition_job
 
 JOB_NOT_FOUND = 'JOB_NOT_FOUND'
 JOB_REVISION_CONFLICT = 'JOB_REVISION_CONFLICT'
@@ -66,6 +66,24 @@ class PostgresBatchStates:
     def __init__(self, connection: Any, workspace_id: str) -> None:
         self._connection = connection
         self._workspace_id = workspace_id
+
+    def start(self, batch_id: str) -> bool:
+        row = self._connection.execute(
+            'SELECT status FROM controlplane.cp_production_batches WHERE workspace_id = %s AND batch_id = %s FOR UPDATE',
+            (self._workspace_id, batch_id),
+        ).fetchone()
+        if row is None:
+            raise OrchestrationContractError(BATCH_NOT_FOUND)
+        current = BatchState(row[0])
+        if current in (BatchState.RUNNING, BatchState.WAITING_CAPABILITY):
+            return False
+        # same fixed revision pair as finish; a finished batch has no edge to RUNNING, so transition_batch raises ForbiddenTransitionError before any write.
+        plan = transition_batch(current_state=current, current_revision=0, expected_revision=0, requested_state=BatchState.RUNNING)
+        self._connection.execute(
+            'UPDATE controlplane.cp_production_batches SET status = %s WHERE workspace_id = %s AND batch_id = %s AND status = %s',
+            (BatchState(plan.state).value, self._workspace_id, batch_id, current.value),
+        )
+        return True
 
     def finish(self, batch_id: str, outcome: BatchOutcome, reason: str, now: datetime.datetime) -> bool:
         if not isinstance(outcome, BatchOutcome) or outcome == BatchOutcome.CONTINUE:

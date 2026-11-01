@@ -433,7 +433,7 @@ class Vertical:
         dispatcher = ResultRecordingDispatcher(services.dispatcher, database.connect, clock, [self.job_trace], workspace_id=ws)
         if self._revoke_grants:
             dispatcher = GrantRevokingDispatcher(dispatcher, database.connect, ws)
-        self.services = replace(services, dispatcher=dispatcher)
+        self.services = replace(services, dispatcher=dispatcher, batch_lifecycle=BatchLifecycle(database.connect, clock, workspace_id=ws))
 
         reader = CapabilityReader({
             'app_session_active': self._app_session_active,
@@ -482,8 +482,6 @@ class Vertical:
         await self.stop()
 
     def start_batch(self, target: int = 1) -> str:
-        # start_batch records the batch in CREATED status; no production writer transitions CREATED to RUNNING,
-        # while FinalizeBatch requires RUNNING or WAITING_CAPABILITY. This UPDATE is test setup (OI-PW-VERT-01).
         service = compose_command_service(self.manager.unit_of_work)
         receipt = service.start_batch(
             workspace_id=self.database.workspace_id,
@@ -493,11 +491,6 @@ class Vertical:
             payload={'target_completed_videos': target},
         )
         batch_id = receipt['resource_ref']['batch_id']
-        with self.database.connect() as conn:
-            conn.execute(
-                "UPDATE controlplane.cp_production_batches SET status = 'RUNNING' WHERE workspace_id = %s AND batch_id = %s AND status = 'CREATED'",
-                (self.database.workspace_id, batch_id),
-            )
         return batch_id
 
     def relay(self) -> OutboxRelay:

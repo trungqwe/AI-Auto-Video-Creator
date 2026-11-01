@@ -37,6 +37,7 @@ with workflow.unsafe.imports_passed_through():
 
 JOB_TERMINAL_PATCH_ID = 'job-terminal-on-failure'
 BATCH_CONCURRENCY_PATCH_ID = 'batch-concurrent-videos'
+BATCH_START_PATCH_ID = 'batch-running-on-start'
 
 
 class TemporalGateway:
@@ -90,6 +91,13 @@ class TemporalGateway:
             'FailVideoJob',
             INTERNAL_ACTIVITIES['FailVideoJob'],
             dict(request),
+        )
+
+    async def start_batch(self, batch_id: str) -> Any:
+        return await self._call(
+            'StartBatch',
+            INTERNAL_ACTIVITIES['StartBatch'],
+            {'batch_id': batch_id},
         )
 
     async def execute(self, name: str, request: Any) -> Any:
@@ -274,10 +282,13 @@ class ProductionBatchWorkflow:
         )
         if params.max_concurrent_videos > 1 and not workflow.patched(BATCH_CONCURRENCY_PATCH_ID):
             params = replace(params, max_concurrent_videos=1)
+        gateway = TemporalGateway(settings)
+        if workflow.patched(BATCH_START_PATCH_ID):
+            await gateway.start_batch(params.batch_id)
         flow = ProductionBatchFlow(
             get_workflow('ProductionBatchWorkflow'),
             params,
-            TemporalGateway(settings),
+            gateway,
             self._variants,
             self._debug,
         )

@@ -23,7 +23,7 @@ from controlplane.api.wiring.ingestion import build_ingestion_services, ingestio
 from controlplane.api.wiring.production_profile import PROFILE_PRODUCTION, WiringConfig
 from controlplane.api.wiring.storage import storage_activity_services
 from controlplane.application.orchestration.grant_runtime import ExecutionGrantCurrency, GrantRevokingDispatcher
-from controlplane.application.orchestration.job_lifecycle import JobLifecycleListener
+from controlplane.application.orchestration.job_lifecycle import BatchLifecycle, JobLifecycleListener
 from controlplane.application.orchestration.job_terminal import FailJobRequest, JobTerminator
 from controlplane.application.orchestration.result_recorder import ResultRecordingDispatcher
 from controlplane.application.orchestration.workflows.activities import (
@@ -53,6 +53,7 @@ from controlplane.application.orchestration.workflows.settings import (
 from controlplane.application.storage_meta.handlers import register_staged_artifact
 from controlplane.domain.orchestration.fencing import GrantClaims
 from controlplane.domain.orchestration import OrchestrationContractError
+from controlplane.domain.statemachine import ForbiddenTransitionError
 from controlplane.infrastructure.db.control_api_commands import compose_command_service
 from controlplane.infrastructure.db.orchestration.stage_runs import parse_stage_run_id
 from creative.worker.activity_handler import handle_activity as handle_creative_activity
@@ -193,6 +194,7 @@ class WorkflowServices:
     bound_activities: frozenset[str]
     schedule_state: str
     job_terminator: Any = None
+    batch_lifecycle: Any = None
 
 
 def build_workflow_services(
@@ -289,9 +291,23 @@ def build_temporal_registration(
         result = await asyncio.to_thread(terminator.fail, fail_request)
         return {'code': result.code, 'job_state': result.job_state}
 
+    @activity.defn(name='StartBatch')
+    async def _start_batch_activity(request: dict) -> dict:
+        lifecycle = services.batch_lifecycle
+        if lifecycle is None:
+            raise ApplicationError('BATCH_LIFECYCLE_UNBOUND', non_retryable=True)
+        batch_id = request.get('batch_id') if isinstance(request, Mapping) else None
+        if not isinstance(batch_id, str) or not batch_id.strip():
+            raise ApplicationError('INVALID_ACTIVITY_REQUEST', non_retryable=True)
+        try:
+            changed = await asyncio.to_thread(lifecycle.start, batch_id)
+        except (OrchestrationContractError, ForbiddenTransitionError) as exc:
+            raise ApplicationError(exc.code, non_retryable=True) from exc
+        return {'batch_id': batch_id, 'changed': changed}
+
     control_queue = INTERNAL_ACTIVITIES['IssueExecutionGrant'].value
     activities_map.setdefault(control_queue, []).extend(
-        [_issue_grant_activity, _read_capability_view_activity, _fail_video_job_activity]
+        [_issue_grant_activity, _read_capability_view_activity, _fail_video_job_activity, _start_batch_activity]
     )
 
     activities_by_queue = {
@@ -407,6 +423,7 @@ def wrap_dispatcher(
         services,
         dispatcher=GrantRevokingDispatcher(recording, connection_factory, workspace_id),
         job_terminator=JobTerminator(connection_factory, clock, workspace_id=workspace_id),
+        batch_lifecycle=BatchLifecycle(connection_factory, clock, workspace_id=workspace_id),
     )
 
 
