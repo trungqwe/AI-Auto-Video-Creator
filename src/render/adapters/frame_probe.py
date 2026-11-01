@@ -1,25 +1,37 @@
-"""PW-F1: frame measurements over the pinned ffmpeg (signalstats band difference and media duration); read-only, never writes a file.
+"""PW-F1: frame measurements over the pinned ffmpeg (one sample frame against itself after the staged ASS is drawn again, and media duration); read-only, never writes a file.
 
 coveredIds: PW-F1-01, CT-QC-001
 """
 import re
+import string
 import subprocess
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_TIMEOUT_SECONDS = 60
+SEEK_LEAD_MS = 1000
 _YAVG_RE = re.compile(r'lavfi\.signalstats\.YAVG=([0-9]+(?:\.[0-9]+)?)')
 _DURATION_RE = re.compile(r'Duration:\s*(\d+):(\d{2}):(\d{2})\.(\d{2})')
+_BACKSLASH = chr(92)
+_FILTER_PATH_CHARS = frozenset(string.ascii_letters + string.digits + '_-./:' + _BACKSLASH)
 
 
 def seek_arg(ms: int) -> str:
     return f'{ms / 1000:.3f}'
 
 
-def band_pixels(height: int, top: float, bottom: float) -> tuple[int, int] | None:
-    y = int(height * top) // 2 * 2
-    end = int(height * bottom) // 2 * 2
-    return (y, end - y) if end - y >= 2 else None
+@dataclass(frozen=True)
+class OverlayDifference:
+    residual: float
+    ink: float
+
+
+def subtitles_filter_path(path: str | Path) -> str | None:
+    text = str(path)
+    if not text or not all(ch in _FILTER_PATH_CHARS for ch in text):
+        return None
+    return text.replace(_BACKSLASH, '/').replace(':', _BACKSLASH * 2 + ':')
 
 
 class FrameProbe:
@@ -54,46 +66,34 @@ class FrameProbe:
         h, m_, s, cs = (int(x) for x in m.groups())
         return ((h * 60 + m_) * 60 + s) * 1000 + cs * 10
 
-    def band_difference(
-        self,
-        media: Path,
-        *,
-        sample_ms: int,
-        baseline_ms: int,
-        width: int,
-        height: int,
-        top: float,
-        bottom: float,
-    ) -> float | None:
-        band = band_pixels(height, top, bottom)
-        if band is None:
-            return None
-        prep = f'scale={width}:{height},crop={width}:{band[1]}:0:{band[0]},setpts=PTS-STARTPTS'
-        graph = f'[0:v]{prep}[a];[1:v]{prep}[b];[a][b]blend=all_mode=difference,signalstats,metadata=mode=print:key=lavfi.signalstats.YAVG'
-        args = [
-            '-ss',
-            seek_arg(sample_ms),
-            '-i',
-            str(media),
-            '-ss',
-            seek_arg(baseline_ms),
-            '-i',
-            str(media),
-            '-filter_complex',
-            graph,
-            '-frames:v',
-            '1',
-            '-f',
-            'null',
-            '-',
-        ]
+    def _band_yavg(self, media: Path, *, sample_ms: int, subtitles: str, top: float, bottom: float, gray: bool) -> float | None:
+        y = f'trunc(ih*{top:.6f}/2)*2'
+        h = f'trunc(ih*{bottom:.6f}/2)*2-{y}'
+        frame = f"select='gte(t,{sample_ms / 1000:.3f})',trim=end_frame=1,format=yuv420p"
+        if gray:
+            frame += ',drawbox=x=0:y=0:w=iw:h=ih:color=gray:t=fill'
+        graph = (
+            f'[0:v]{frame},split=2[a][b];[b]subtitles=filename={subtitles}[s];'
+            f'[a][s]blend=all_mode=difference,crop=w=iw:h={h}:x=0:y={y},signalstats,'
+            'metadata=mode=print:key=lavfi.signalstats.YAVG'
+        )
+        args = ['-copyts', '-ss', seek_arg(max(0, sample_ms - SEEK_LEAD_MS)), '-i', str(media), '-an', '-filter_complex', graph, '-frames:v', '1', '-f', 'null', '-']
         res = self._run(args)
         if res is None or res[0] != 0:
             return None
         m = _YAVG_RE.search(res[1])
-        if not m:
+        return float(m.group(1)) if m else None
+
+    def overlay_difference(self, media: Path, *, sample_ms: int, subtitles_path: str | Path, top: float, bottom: float) -> OverlayDifference | None:
+        subtitles = subtitles_filter_path(subtitles_path)
+        if subtitles is None or sample_ms < 0 or not 0 <= top < bottom <= 1:
             return None
-        return float(m.group(1))
+        common = {'sample_ms': sample_ms, 'subtitles': subtitles, 'top': top, 'bottom': bottom}
+        residual = self._band_yavg(media, gray=False, **common)
+        if residual is None:
+            return None
+        ink = self._band_yavg(media, gray=True, **common)
+        return None if ink is None else OverlayDifference(residual=residual, ink=ink)
 
 
-__all__ = ['FrameProbe', 'band_pixels', 'seek_arg']
+__all__ = ['FrameProbe', 'OverlayDifference', 'seek_arg', 'subtitles_filter_path']

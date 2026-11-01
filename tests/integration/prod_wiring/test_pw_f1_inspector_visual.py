@@ -5,12 +5,23 @@ coveredIds: PW-F1-01, CT-QC-001
 import dataclasses
 import json
 import pathlib
+import re
 import subprocess
 import pytest
 
-from render.adapters.frame_probe import FrameProbe
+from render.adapters.frame_probe import FrameProbe, subtitles_filter_path
 from render.adapters.real_ffmpeg_renderer import FfmpegPinRejected, build_final_argv, sha256_file
-from render.adapters.real_output_inspector import Band, InspectionInputs, InspectorSettings, RealOutputInspector, disclosure_band_from_ass
+from render.adapters.real_output_inspector import (
+    AssDialogue,
+    Band,
+    InspectionInputs,
+    InspectorSettings,
+    RealOutputInspector,
+    disclosure_band_from_ass,
+    karaoke_sample_ms,
+    parse_ass_dialogues,
+    style_band_from_ass,
+)
 from render.domain.content_gates import (
     check_inference_disclosure_present,
     check_karaoke_timing_valid,
@@ -39,10 +50,8 @@ SETTINGS = InspectorSettings(
     compare_height=160,
     thumbnail_min_ssim=0.8,
     subtitle_band=Band(top=0.70, bottom=0.80),
-    subtitle_min_difference=5.0,
     disclosure_band=Band(top=0.10, bottom=0.25),
-    disclosure_min_difference=5.0,
-    baseline_min_gap_ms=400,
+    overlay_max_missing_share=0.25,
     max_subtitle_samples=4,
     timeout_seconds=60,
 )
@@ -78,6 +87,8 @@ def ffmpeg(*args: str) -> None:
 
 ASS_TEMPLATE = r"""[Script Info]
 ScriptType: v4.00+
+PlayResX: 180
+PlayResY: 320
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
@@ -91,76 +102,52 @@ Dialogue: 0,0:00:03.00,0:00:04.00,Karaoke,,0,0,0,,{\k50}good {\k50}day
 Dialogue: 0,0:00:04.50,0:00:05.50,Disclosure,seg-2,0,0,0,,AI inference
 """
 
+BACKSLASH = chr(92)
+BURN_PATH_CHARS = frozenset('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-./:' + BACKSLASH)
 
-def build_sample(
-    root: pathlib.Path,
-    *,
-    background: str = 'testsrc',
-    karaoke_boxes: bool = True,
-    disclosure_box: bool = True,
-    thumb: str = 'ok',
-    ass: str = 'full',
-    first_k: str = '50',
-) -> dict:
-    staging_media = root / 'staging' / 'media'
-    staging_subs = root / 'staging' / 'subs'
-    out_dir = root / 'out'
-    staging_media.mkdir(parents=True, exist_ok=True)
-    staging_subs.mkdir(parents=True, exist_ok=True)
-    out_dir.mkdir(parents=True, exist_ok=True)
 
-    hook_path = staging_media / 'hook.png'
-    ffmpeg('-f', 'lavfi', '-i', 'testsrc=s=180x320:r=1:d=1', '-frames:v', '1', str(hook_path))
+def burn_filter(ass_path: pathlib.Path) -> str:
+    text = str(ass_path)
+    assert all(ch in BURN_PATH_CHARS for ch in text), text
+    return 'subtitles=filename=' + text.replace(BACKSLASH, '/').replace(':', BACKSLASH * 2 + ':')
 
-    bg_path = root / 'bg.png'
-    if background == 'testsrc':
-        bg_path.write_bytes(hook_path.read_bytes())
-    elif background == 'smptebars':
-        ffmpeg('-f', 'lavfi', '-i', 'smptebars=s=180x320:r=1:d=1', '-frames:v', '1', str(bg_path))
 
-    thumb_path = staging_media / 'thumb.png'
-    if thumb == 'ok':
-        thumb_path.write_bytes(hook_path.read_bytes())
-    elif thumb == 'corrupt':
-        thumb_path.write_bytes(b'not a png')
+def shift_clock(match: re.Match, delta_ms: int) -> str:
+    h, m, s, cs = (int(x) for x in match.groups())
+    total = ((h * 60 + m) * 60 + s) * 100 + cs + delta_ms // 10
+    seconds, centis = divmod(total, 100)
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    return f'{hours}:{minutes:02d}:{seconds:02d}.{centis:02d}'
 
-    vf_filters = ['format=yuv420p']
-    if karaoke_boxes:
-        vf_filters.append("drawbox=x=10:y=230:w=160:h=20:color=white:t=fill:enable='between(t,1,2.5)'")
-        vf_filters.append("drawbox=x=10:y=230:w=160:h=20:color=white:t=fill:enable='between(t,3,4)'")
-    if disclosure_box:
-        vf_filters.append("drawbox=x=10:y=45:w=160:h=20:color=white:t=fill:enable='between(t,4.5,5.5)'")
-    vf = ','.join(vf_filters)
 
-    out_path = out_dir / 'final.mp4'
-    ffmpeg(
-        '-loop',
-        '1',
-        '-framerate',
-        '30',
-        '-i',
-        str(bg_path),
-        '-t',
-        '6',
-        '-vf',
-        vf,
-        '-c:v',
-        'libx264',
-        '-preset',
-        'ultrafast',
-        '-crf',
-        '18',
-        '-pix_fmt',
-        'yuv420p',
-        '-an',
-        str(out_path),
-    )
+def burn_ass_text(kind: str, first_k: str = '50') -> str | None:
+    """ASS text drawn into the video: 'same' as the staged one, 'karaoke_only' without the Disclosure dialogue, 'other' with different words, 'shifted' two seconds later, 'none' for no text at all."""
+    if kind == 'none':
+        return None
+    text = ASS_TEMPLATE.replace('@@FIRST@@', first_k)
+    lines = text.splitlines(keepends=True)
+    if kind == 'same':
+        return text
+    if kind == 'karaoke_only':
+        return ''.join(x for x in lines if not (x.startswith('Dialogue:') and ',Disclosure,' in x))
+    if kind == 'other':
+        swaps = (('Hello', 'Qxz'), ('world', 'jvk'), ('good', 'wqy'), ('day', 'kzx'), ('AI inference', 'ZQJ XVK'))
+        out = []
+        for x in lines:
+            if x.startswith('Dialogue:'):
+                for old, new in swaps:
+                    x = x.replace(old, new)
+            out.append(x)
+        return ''.join(out)
+    if kind == 'shifted':
+        pattern = r'(\d+):(\d{2}):(\d{2})\.(\d{2})'
+        return ''.join(re.sub(pattern, lambda m: shift_clock(m, 2000), x, count=2) if x.startswith('Dialogue:') else x for x in lines)
+    raise ValueError(kind)
 
-    if ass != 'none':
-        ass_content = ASS_TEMPLATE.replace('@@FIRST@@', first_k)
-        (staging_subs / 'captions.ass').write_text(ass_content, encoding='utf-8')
 
-    package = validate_render_package_payload({
+def sample_package():
+    return validate_render_package_payload({
         'render_package_id': 'pkg-f1',
         'package_fingerprint': 'a' * 64,
         'production_snapshot_ref': 'snap',
@@ -191,6 +178,75 @@ def build_sample(
         },
         'output_path_ref': 'ref-output',
     })
+
+
+def build_sample(
+    root: pathlib.Path,
+    *,
+    background: str = 'testsrc',
+    burn: str = 'same',
+    thumb: str = 'ok',
+    ass: str = 'full',
+    first_k: str = '50',
+) -> dict:
+    staging_media = root / 'staging' / 'media'
+    staging_subs = root / 'staging' / 'subs'
+    out_dir = root / 'out'
+    staging_media.mkdir(parents=True, exist_ok=True)
+    staging_subs.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    hook_path = staging_media / 'hook.png'
+    ffmpeg('-f', 'lavfi', '-i', 'testsrc=s=180x320:r=1:d=1', '-frames:v', '1', str(hook_path))
+
+    bg_path = root / 'bg.png'
+    if background == 'testsrc':
+        bg_path.write_bytes(hook_path.read_bytes())
+    elif background == 'smptebars':
+        ffmpeg('-f', 'lavfi', '-i', 'smptebars=s=180x320:r=1:d=1', '-frames:v', '1', str(bg_path))
+
+    thumb_path = staging_media / 'thumb.png'
+    if thumb == 'ok':
+        thumb_path.write_bytes(hook_path.read_bytes())
+    elif thumb == 'corrupt':
+        thumb_path.write_bytes(b'not a png')
+
+    vf = 'format=yuv420p'
+    burn_text = burn_ass_text(burn, first_k)
+    if burn_text is not None:
+        burn_path = root / 'burn.ass'
+        burn_path.write_text(burn_text, encoding='utf-8')
+        vf += ',' + burn_filter(burn_path)
+
+    out_path = out_dir / 'final.mp4'
+    ffmpeg(
+        '-loop',
+        '1',
+        '-framerate',
+        '30',
+        '-i',
+        str(bg_path),
+        '-t',
+        '6',
+        '-vf',
+        vf,
+        '-c:v',
+        'libx264',
+        '-preset',
+        'ultrafast',
+        '-crf',
+        '18',
+        '-pix_fmt',
+        'yuv420p',
+        '-an',
+        str(out_path),
+    )
+
+    if ass != 'none':
+        ass_content = ASS_TEMPLATE.replace('@@FIRST@@', first_k)
+        (staging_subs / 'captions.ass').write_text(ass_content, encoding='utf-8')
+
+    package = sample_package()
 
     return {
         'root': root,
@@ -261,7 +317,7 @@ def test_pw_f1_replaced_hook_fails_visual_hook_gate(tmp_path: pathlib.Path) -> N
 
 def test_pw_f1_missing_burned_in_subtitles_fails_subtitle_gate(tmp_path: pathlib.Path) -> None:
     require_ffmpeg()
-    sample = build_sample(tmp_path, karaoke_boxes=False)
+    sample = build_sample(tmp_path, burn='none')
     evidence = inspect_sample(sample, SEGMENTS_INFERENCE)
     results = gates(evidence, sample['package'], SEGMENTS_INFERENCE)
     assert evidence.subtitle.frames_with_text == 0
@@ -292,7 +348,7 @@ def test_pw_f1_karaoke_offset_beyond_tolerance_fails_karaoke_gate(tmp_path: path
 
 def test_pw_f1_missing_disclosure_band_fails_with_segment_id(tmp_path: pathlib.Path) -> None:
     require_ffmpeg()
-    sample = build_sample(tmp_path, disclosure_box=False)
+    sample = build_sample(tmp_path, burn='karaoke_only')
     evidence = inspect_sample(sample, SEGMENTS_INFERENCE)
     results = gates(evidence, sample['package'], SEGMENTS_INFERENCE)
     assert results['disclosure'].status is GateStatus.FAILED
@@ -323,11 +379,69 @@ def test_pw_f1_missing_ass_measures_nothing_and_never_passes(tmp_path: pathlib.P
     assert results['disclosure'].reason == 'disclosure_missing:seg-2'
 
 
+SCENE_SOURCES = ('testsrc2', 'smptebars', 'rgbtestsrc')
+SCENE_DIALOGUES = (
+    r'Dialogue: 0,0:00:00.20,0:00:01.80,Karaoke,,0,0,0,,{\k60}Alpha {\k60}beta',
+    r'Dialogue: 0,0:00:02.20,0:00:03.80,Karaoke,,0,0,0,,{\k60}Gamma {\k60}delta',
+    r'Dialogue: 0,0:00:04.20,0:00:05.80,Karaoke,,0,0,0,,{\k60}Omega {\k60}sigma',
+    'Dialogue: 0,0:00:02.20,0:00:03.80,Disclosure,seg-2,0,0,0,,AI inference',
+)
+SCENE_ASS = ASS_TEMPLATE.split('Dialogue:', 1)[0] + chr(10).join(SCENE_DIALOGUES) + chr(10)
+
+
+def build_scene_sample(root: pathlib.Path, *, burn: bool) -> dict:
+    subs = root / 'staging' / 'subs'
+    subs.mkdir(parents=True, exist_ok=True)
+    (root / 'out').mkdir(parents=True, exist_ok=True)
+    (subs / 'captions.ass').write_text(SCENE_ASS, encoding='utf-8')
+    graph = '[0:v][1:v][2:v]concat=n=3:v=1:a=0,format=yuv420p'
+    if burn:
+        burn_path = root / 'burn.ass'
+        burn_path.write_text(SCENE_ASS, encoding='utf-8')
+        graph += ',' + burn_filter(burn_path)
+    inputs: list[str] = []
+    for source in SCENE_SOURCES:
+        inputs += ['-f', 'lavfi', '-i', f'{source}=s=180x320:r=30:d=2']
+    out_path = root / 'out' / 'final.mp4'
+    ffmpeg(*inputs, '-filter_complex', graph + '[v]', '-map', '[v]', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', '-pix_fmt', 'yuv420p', '-an', str(out_path))
+    return {'root': root, 'output_ref': str(out_path), 'package': sample_package()}
+
+
+def test_pw_f1_fix3_scene_sample_without_text_fails_both_gates(tmp_path: pathlib.Path) -> None:
+    require_ffmpeg()
+    evidence = inspect_sample(build_scene_sample(tmp_path, burn=False), SEGMENTS_INFERENCE)
+    subtitle = check_subtitle_burned_in(evidence, POLICY)
+    disclosure = check_inference_disclosure_present(evidence, SEGMENTS_INFERENCE)
+    assert evidence.subtitle.frames_with_text == 0
+    assert (subtitle.status, subtitle.reason) == (GateStatus.FAILED, 'subtitle_frames_below_threshold')
+    assert (disclosure.status, disclosure.reason) == (GateStatus.FAILED, 'disclosure_missing:seg-2')
+
+
+def test_pw_f1_fix3_scene_sample_with_text_passes_three_of_three(tmp_path: pathlib.Path) -> None:
+    require_ffmpeg()
+    evidence = inspect_sample(build_scene_sample(tmp_path, burn=True), SEGMENTS_INFERENCE)
+    assert evidence.subtitle.frames_with_text == 3
+    assert check_subtitle_burned_in(evidence, POLICY).status is GateStatus.PASSED
+    assert check_inference_disclosure_present(evidence, SEGMENTS_INFERENCE).status is GateStatus.PASSED
+
+
+@pytest.mark.parametrize('burn', ['none', 'other', 'shifted'])
+def test_pw_f1_fix3_no_text_other_text_or_shifted_text_fails_both_gates(tmp_path: pathlib.Path, burn: str) -> None:
+    require_ffmpeg()
+    sample = build_sample(tmp_path, burn=burn)
+    evidence = inspect_sample(sample, SEGMENTS_INFERENCE)
+    assert evidence.subtitle.frames_with_text == 0
+    assert check_subtitle_burned_in(evidence, POLICY).status is GateStatus.FAILED
+    assert [(o.segment_id, o.visible) for o in evidence.disclosure.observations] == [('seg-2', False)]
+    assert check_inference_disclosure_present(evidence, SEGMENTS_INFERENCE).status is GateStatus.FAILED
+
+
 def test_pw_f1_thresholds_come_from_settings_not_code(tmp_path: pathlib.Path) -> None:
     require_ffmpeg()
-    settings = dataclasses.replace(SETTINGS, subtitle_min_difference=1000.0)
+    settings = dataclasses.replace(SETTINGS, overlay_max_missing_share=1e-6)
     evidence = inspect_sample(build_sample(tmp_path), SEGMENTS_INFERENCE, settings=settings)
     assert evidence.subtitle.frames_with_text == 0
+    assert evidence.disclosure.observations[0].visible is False
     with pytest.raises(TypeError):
         InspectorSettings()
 
@@ -344,36 +458,29 @@ def test_pw_f1_unpinned_ffmpeg_is_refused_before_any_run(tmp_path: pathlib.Path)
         inspect_sample(sample, SEGMENTS_INFERENCE, lock_path=bad_lock)
 
 
-def test_pw_f1_frame_probe_reads_duration_and_band_difference(tmp_path: pathlib.Path) -> None:
+def test_pw_f1_frame_probe_reads_duration_and_overlay_difference(tmp_path: pathlib.Path) -> None:
     require_ffmpeg()
-    sample = build_sample(tmp_path)
+    shown = build_sample(tmp_path / 'shown')
+    hidden = build_sample(tmp_path / 'hidden', burn='none')
+    ass = shown['root'] / 'staging' / 'subs' / 'captions.ass'
     probe = FrameProbe(ffmpeg_path=FFMPEG)
-    media = pathlib.Path(sample['output_ref'])
+    media = pathlib.Path(shown['output_ref'])
     duration = probe.duration_ms(media)
-    assert duration is not None
-    assert 5900 <= duration <= 6100
-    diff_box = probe.band_difference(
-        media,
-        sample_ms=1750,
-        baseline_ms=500,
-        width=90,
-        height=160,
-        top=0.70,
-        bottom=0.80,
-    )
-    assert diff_box is not None
-    assert diff_box >= 5.0
-    diff_base = probe.band_difference(
-        media,
-        sample_ms=500,
-        baseline_ms=500,
-        width=90,
-        height=160,
-        top=0.70,
-        bottom=0.80,
-    )
-    assert diff_base is not None
-    assert diff_base < 5.0
+    assert duration is not None and 5900 <= duration <= 6100
+    band = style_band_from_ass(ass.read_text(encoding='utf-8'), 'Karaoke')
+    assert band is not None
+    at = dict(subtitles_path=ass, top=band.top, bottom=band.bottom)
+    with_text = probe.overlay_difference(media, sample_ms=1750, **at)
+    without = probe.overlay_difference(pathlib.Path(hidden['output_ref']), sample_ms=1750, **at)
+    idle = probe.overlay_difference(media, sample_ms=500, **at)
+    assert with_text is not None and without is not None and idle is not None
+    assert with_text.ink > 0 and without.ink == pytest.approx(with_text.ink)
+    assert with_text.residual <= 0.1 * with_text.ink
+    assert without.residual >= 0.75 * without.ink
+    assert idle.ink == 0
+    assert probe.overlay_difference(media, sample_ms=60000, **at) is None
+    assert probe.overlay_difference(media, sample_ms=1750, subtitles_path=tmp_path / 'a b' / 'x.ass', top=band.top, bottom=band.bottom) is None
+    assert probe.overlay_difference(media, sample_ms=1750, subtitles_path=ass, top=0.5, bottom=0.5) is None
 
 
 MOTION_CLIP = "color=c=gray:s=180x320:r=30:d={d},format=yuv420p,geq=lum='128+100*sin(2*PI*(X/45+T+{phase}))':cb=128:cr=128"
@@ -541,10 +648,10 @@ FIX2_SEGMENTS = (
 FIX2_PROFILE = OutputProfile(width=1080, height=1920, fps=30, video_codec='h264', audio_codec='aac', container='mp4', pixel_format='yuv420p', encoder='libx264', bitrate=None)
 
 
-def fix2_ass_text() -> str:
+def fix2_ass_text(max_words: int = 4) -> str:
     words = [TimedWord(text, i * 500, i * 500 + 500) for i, text in enumerate(FIX2_WORDS)]
     safe_area = {'margin_left': 60, 'margin_right': 60, 'margin_vertical': 360}
-    limits = {'max_words_per_line': 4, 'max_chars_per_line': 28, 'play_res_x': 1080, 'play_res_y': 1920}
+    limits = {'max_words_per_line': max_words, 'max_chars_per_line': 28, 'play_res_x': 1080, 'play_res_y': 1920}
     disclosure_style = {'font_size': 40, 'alignment': 8, 'margin_v': 240}
     return build_ass_text(words, FIX2_TYPOGRAPHY, safe_area, limits, disclosure_style, FIX2_SEGMENTS)
 
@@ -597,6 +704,13 @@ def fix2_render(staging, ass_local, name):
     return out
 
 
+def with_alignment_5(line: str) -> str:
+    parts = line.rstrip(chr(10)).split(',')
+    assert parts[0] == 'Style: Disclosure'
+    parts[18] = '5'
+    return ','.join(parts) + chr(10)
+
+
 @pytest.fixture(scope='module')
 def fix2_world(tmp_path_factory):
     require_ffmpeg()
@@ -610,7 +724,15 @@ def fix2_world(tmp_path_factory):
     assert len(variants['without_dialogue.ass']) == len(lines) - 1 and len(variants['without_style.ass']) == len(lines) - 1
     for name, kept in variants.items():
         (staging / 'subs' / name).write_text(''.join(kept), encoding='utf-8')
-    return {'staging': staging, 'video_with': fix2_render(staging, 'subs/with.ass', 'with.mp4'), 'video_without': fix2_render(staging, 'subs/without_dialogue.ass', 'without.mp4')}
+    (staging / 'subs' / 'continuous.ass').write_text(fix2_ass_text(max_words=3), encoding='utf-8')
+    (staging / 'subs' / 'center.ass').write_text(''.join(with_alignment_5(x) if x.startswith('Style: Disclosure,') else x for x in lines), encoding='utf-8')
+    return {
+        'staging': staging,
+        'video_with': fix2_render(staging, 'subs/with.ass', 'with.mp4'),
+        'video_without': fix2_render(staging, 'subs/without_dialogue.ass', 'without.mp4'),
+        'video_continuous': fix2_render(staging, 'subs/continuous.ass', 'continuous.mp4'),
+        'video_center': fix2_render(staging, 'subs/center.ass', 'center.mp4'),
+    }
 
 
 def fix2_inspect(world, video, ass_local, settings=SETTINGS):
@@ -625,12 +747,27 @@ def test_pw_f1_fix2_static_background_disclosure_passes_with_production_band(fix
     assert result.status is GateStatus.PASSED
 
 
-def test_pw_f1_fix2_premise_wide_band_dilutes_the_disclosure_row(fix2_world) -> None:
+def test_pw_f1_fix3_continuous_speech_render_passes_both_gates(fix2_world) -> None:
+    text = (fix2_world['staging'] / 'subs' / 'continuous.ass').read_text(encoding='utf-8')
+    spans = sorted((d.start_ms, d.end_ms) for d in parse_ass_dialogues(text) if d.style == 'Karaoke')
+    assert len(spans) == 3
+    assert all(nxt[0] - prev[1] < 400 for prev, nxt in zip(spans, spans[1:])) and spans[0][0] < 400 and 4000 - spans[-1][1] < 400
+    evidence, disclosure = fix2_inspect(fix2_world, fix2_world['video_continuous'], 'subs/continuous.ass')
+    assert evidence.subtitle is not None, 'subtitle_not_observed'
+    assert evidence.subtitle.frames_with_text == 3
+    assert check_subtitle_burned_in(evidence, POLICY).status is GateStatus.PASSED
+    assert disclosure.status is GateStatus.PASSED
+
+
+def test_pw_f1_fix3_premise_same_frame_ratio_holds_for_narrow_and_wide_band(fix2_world) -> None:
     probe = FrameProbe(ffmpeg_path=FFMPEG, timeout_seconds=60)
-    wide = probe.band_difference(fix2_world['video_with'], sample_ms=3000, baseline_ms=1000, width=90, height=160, top=0.10, bottom=0.25)
-    row = probe.band_difference(fix2_world['video_with'], sample_ms=3000, baseline_ms=1000, width=90, height=160, top=0.125, bottom=0.175)
-    assert wide is not None and row is not None
-    assert wide < 5.0 <= row
+    ass = fix2_world['staging'] / 'subs' / 'with.ass'
+    for top, bottom in ((0.125, 0.175), (0.10, 0.25)):
+        shown = probe.overlay_difference(fix2_world['video_with'], sample_ms=3000, subtitles_path=ass, top=top, bottom=bottom)
+        hidden = probe.overlay_difference(fix2_world['video_without'], sample_ms=3000, subtitles_path=ass, top=top, bottom=bottom)
+        assert shown is not None and hidden is not None
+        assert shown.ink > 0 and shown.residual <= 0.1 * shown.ink
+        assert hidden.residual >= 0.75 * hidden.ink
 
 
 def test_pw_f1_fix2_render_without_disclosure_dialogue_fails(fix2_world) -> None:
@@ -641,17 +778,18 @@ def test_pw_f1_fix2_render_without_disclosure_dialogue_fails(fix2_world) -> None
 
 
 @pytest.mark.parametrize(
-    ('ass_local', 'band', 'visible'),
+    ('video', 'ass_local', 'band', 'visible'),
     [
-        ('subs/without_style.ass', Band(top=0.50, bottom=0.60), False),
-        ('subs/without_style.ass', Band(top=0.12, bottom=0.18), True),
-        ('subs/with.ass', Band(top=0.50, bottom=0.60), True),
+        ('video_with', 'subs/without_style.ass', Band(top=0.12, bottom=0.18), False),
+        ('video_with', 'subs/with.ass', Band(top=0.50, bottom=0.60), True),
+        ('video_center', 'subs/center.ass', Band(top=0.45, bottom=0.55), True),
+        ('video_center', 'subs/center.ass', Band(top=0.10, bottom=0.25), False),
     ],
-    ids=['fallback_other_band_not_visible', 'fallback_row_band_visible', 'style_band_beats_settings_band'],
+    ids=['missing_style_row_not_visible', 'style_band_beats_settings_band', 'alignment_5_uses_settings_band', 'alignment_5_other_settings_band_not_visible'],
 )
-def test_pw_f1_fix2_disclosure_band_source(fix2_world, ass_local: str, band: Band, visible: bool) -> None:
+def test_pw_f1_fix2_disclosure_band_source(fix2_world, video: str, ass_local: str, band: Band, visible: bool) -> None:
     settings = dataclasses.replace(SETTINGS, disclosure_band=band)
-    evidence, _ = fix2_inspect(fix2_world, fix2_world['video_with'], ass_local, settings=settings)
+    evidence, _ = fix2_inspect(fix2_world, fix2_world[video], ass_local, settings=settings)
     assert evidence.disclosure.observations[0].visible is visible
 
 STYLE_FORMAT = 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding'
@@ -719,3 +857,47 @@ def test_pw_f1_fix2_band_follows_the_section_format_order() -> None:
     band = disclosure_band_from_ass(text)
     assert band is not None
     assert (band.top, band.bottom) == pytest.approx((0.125, 0.175))
+
+
+def karaoke_line(text: str, start_ms: int = 1000, end_ms: int = 2500) -> AssDialogue:
+    return AssDialogue(style='Karaoke', name='', start_ms=start_ms, end_ms=end_ms, text=text)
+
+
+@pytest.mark.parametrize(
+    ('text', 'expected'),
+    [
+        (r'{\k50}Hello {\k100}world', 2000),
+        (r'{\k50}good {\k50}day', 1250),
+        (r'{\k20}{\k30}hi {\k90}there', 1950),
+        ('plain text without tags', 1750),
+        (r'{\k0}zero', 1750),
+    ],
+    ids=['longest_word', 'tie_takes_first', 'gap_tag_is_skipped', 'no_tag_uses_line_middle', 'zero_length_uses_line_middle'],
+)
+def test_pw_f1_fix3_karaoke_sample_ms(text: str, expected: int) -> None:
+    assert karaoke_sample_ms(karaoke_line(text)) == expected
+
+
+def test_pw_f1_fix3_style_band_from_ass_reads_the_karaoke_row() -> None:
+    band = style_band_from_ass(style_ass(), 'Karaoke')
+    assert band is not None
+    assert (band.top, band.bottom) == pytest.approx((1 - 360 / 1920 - 2 * (72 + 8) / 1920, 1 - 360 / 1920))
+    assert style_band_from_ass(style_ass(), 'Missing') is None
+
+
+@pytest.mark.parametrize('value', [0, 0.0, 1, 1.0, -0.25, 1.5, True, False, float('nan'), float('inf'), '0.25', None])
+def test_pw_f1_fix3_overlay_max_missing_share_is_validated(value) -> None:
+    with pytest.raises(ValueError):
+        dataclasses.replace(SETTINGS, overlay_max_missing_share=value)
+
+
+def test_pw_f1_fix3_overlay_max_missing_share_has_no_default() -> None:
+    field = {f.name: f for f in dataclasses.fields(InspectorSettings)}['overlay_max_missing_share']
+    assert field.default is dataclasses.MISSING and field.default_factory is dataclasses.MISSING
+
+
+def test_pw_f1_fix3_subtitles_filter_path_escapes_like_the_renderer() -> None:
+    assert subtitles_filter_path('C:' + BACKSLASH + 'a' + BACKSLASH + 'b.ass') == 'C' + BACKSLASH * 2 + ':/a/b.ass'
+    assert subtitles_filter_path('C:/a b/x.ass') is None
+    assert subtitles_filter_path('C:/a,b/x.ass') is None
+    assert subtitles_filter_path('') is None
