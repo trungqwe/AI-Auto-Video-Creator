@@ -298,7 +298,11 @@ def ssim_between(
     width: int,
     height: int,
     timeout_seconds: float,
+    canvas: tuple[int, int] | None = None,
 ) -> float | None:
+    """SSIM of one frame of left against one frame of right, both scaled to width x height.
+
+    PW-F1-FIX4: the render places every still and clip on the output canvas with scale increase + crop; with canvas=(W, H) the right input (still or sample clip) goes through that same placement before the shrink, so near-black stills keep the level the render gave them. canvas=None keeps the old filter chain; the left input (output frame) is never re-placed."""
     argv = [str(ffmpeg), '-hide_banner', '-nostdin', '-v', 'info']
     if left_ms is not None:
         argv.extend(['-ss', seek_arg(left_ms)])
@@ -307,9 +311,12 @@ def ssim_between(
         argv.extend(['-ss', seek_arg(right_ms)])
     argv.extend(['-i', str(right)])
     prep = f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},format=gray'
+    right_prep = prep
+    if canvas is not None:
+        right_prep = f'scale={canvas[0]}:{canvas[1]}:force_original_aspect_ratio=increase,crop={canvas[0]}:{canvas[1]},{prep}'
     argv.extend([
         '-filter_complex',
-        f'[0:v]{prep}[a];[1:v]{prep}[b];[a][b]ssim',
+        f'[0:v]{prep}[a];[1:v]{right_prep}[b];[a][b]ssim',
         '-frames:v',
         '1',
         '-f',
@@ -516,6 +523,7 @@ class RealOutputInspector:
             width=self._settings.compare_width,
             height=self._settings.compare_height,
             timeout_seconds=self._settings.timeout_seconds,
+            canvas=self._probe.frame_size(media),
         )
         if sim is None:
             return None
@@ -558,6 +566,7 @@ class RealOutputInspector:
             width=self._settings.compare_width,
             height=self._settings.compare_height,
             timeout_seconds=self._settings.timeout_seconds,
+            canvas=self._probe.frame_size(media),
         )
         if sim is None:
             return None

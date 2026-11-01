@@ -13,6 +13,7 @@ DEFAULT_TIMEOUT_SECONDS = 60
 SEEK_LEAD_MS = 1000
 _YAVG_RE = re.compile(r'lavfi\.signalstats\.YAVG=([0-9]+(?:\.[0-9]+)?)')
 _DURATION_RE = re.compile(r'Duration:\s*(\d+):(\d{2}):(\d{2})\.(\d{2})')
+_FRAME_SIZE_RE = re.compile(r'Video:[^\n]*?\b(\d{2,5})x(\d{2,5})\b')
 _BACKSLASH = chr(92)
 _FILTER_PATH_CHARS = frozenset(string.ascii_letters + string.digits + '_-./:' + _BACKSLASH)
 
@@ -65,6 +66,14 @@ class FrameProbe:
             return None
         h, m_, s, cs = (int(x) for x in m.groups())
         return ((h * 60 + m_) * 60 + s) * 1000 + cs * 10
+
+    def frame_size(self, media: Path) -> tuple[int, int] | None:
+        """PW-F1-FIX4: width x height of the first video stream; None when unreadable."""
+        res = self._run(['-i', str(media)])
+        if res is None:
+            return None
+        m = _FRAME_SIZE_RE.search(res[1])
+        return (int(m.group(1)), int(m.group(2))) if m else None
 
     def _band_yavg(self, media: Path, *, sample_ms: int, subtitles: str, top: float, bottom: float, gray: bool) -> float | None:
         y = f'trunc(ih*{top:.6f}/2)*2'
