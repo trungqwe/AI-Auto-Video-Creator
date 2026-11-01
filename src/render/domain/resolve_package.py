@@ -1,6 +1,8 @@
 """F-05: ResolveRenderPackage from locked refs (CT-RND-002).
 
 coveredIds: CT-RND-002, acceptance §8 mục 6 (phía resolve)
+
+mix_plan.beds[].rendition_ref enters the input like voice and word timing; one missing from input_artifacts is MISSING_REQUIRED at its field.
 """
 from __future__ import annotations
 
@@ -168,6 +170,21 @@ def _referenced(timeline: Mapping, hook_placement: Mapping) -> list[tuple[str, s
     return result
 
 
+def _bed_refs(mix_plan: Mapping) -> list[tuple[str, str]]:
+    beds = mix_plan.get('beds')
+    if beds is None:
+        return []
+    if isinstance(beds, (str, bytes)) or not isinstance(beds, (list, tuple)):
+        raise ResolveError(WRONG_TYPE, 'mix_plan.beds')
+    found: list[tuple[str, str]] = []
+    for index, bed in enumerate(beds):
+        field = f'mix_plan.beds[{index}]'
+        if not isinstance(bed, Mapping):
+            raise ResolveError(WRONG_TYPE, field)
+        found.append((_text(bed.get('rendition_ref'), f'{field}.rendition_ref'), f'{field}.rendition_ref'))
+    return found
+
+
 def resolve_render_package(inputs: ResolveInputs, plan_assets: PlanAssetPort) -> RenderPackageRecord:
     """Build the immutable RenderPackageRecord from locked refs; raises ResolveError(code, field) and never invents text, URLs or paths."""
     if not isinstance(inputs, ResolveInputs):
@@ -195,11 +212,17 @@ def resolve_render_package(inputs: ResolveInputs, plan_assets: PlanAssetPort) ->
     payload['materialization_manifest'] = _manifest(_sequence(inputs.materialization_manifest, 'materialization_manifest'))
     payload['output_path_ref'] = _text(inputs.output_path_ref, 'output_path_ref')
 
-    allowed = _plan_ids(plan_assets, payload['production_plan_ref']) | fallback_ids | {payload['voice_artifact_ref'], payload['word_timing_ref']}
+    bed_refs = _bed_refs(payload['mix_plan'])
+    allowed = _plan_ids(plan_assets, payload['production_plan_ref']) | fallback_ids | {payload['voice_artifact_ref'], payload['word_timing_ref']} | {ref for ref, _ in bed_refs}
 
     for index, asset in enumerate(assets):
         if asset['artifact_version_id'] not in allowed:
             raise ResolveError(ASSET_OUTSIDE_PLAN_OR_FALLBACK, f'input_artifacts[{index}]')
+
+    present = {asset['artifact_version_id'] for asset in assets}
+    for ref, field in bed_refs:
+        if ref not in present:
+            raise ResolveError(MISSING_REQUIRED, field)
 
     for ref, field in _referenced(payload['timeline'], payload['hook_placement']):
         if ref not in allowed:
