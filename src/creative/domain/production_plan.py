@@ -32,6 +32,7 @@ RENDER_PACKAGE_INPUT_TYPES = MappingProxyType({
 FORBIDDEN_FIELDS = ('shell_command', 'arbitrary_url', 'url', 'uri', 'command', 'path', 'file_path')
 FALLBACK_REPLACE_ASSET = 'replace_asset'
 FALLBACK_KINDS = (FALLBACK_REPLACE_ASSET, 'drop_overlay_effect', 'simplify_transition')
+HOOK_LEAD_IN_MS = 500
 _SCENE_KEYS = ('scene_id', 'start_ms', 'end_ms', 'transition_intent', 'visuals')
 _VISUAL_KEYS = ('media_asset_id', 'start_ms', 'end_ms', 'crop_intent', 'overlay_intent', 'effect_intent')
 _TOP_REQUIRED = ('timeline', 'hook_placement', 'voice_profile_intent', 'music_cues', 'sfx_cues', 'subtitle_style_intent', 'allowed_fallbacks')
@@ -224,6 +225,17 @@ def _parse_timeline(raw, selection: CreativeAssetSelection) -> dict[str, object]
         _reject(HALLUCINATED_REF, 'scene_mismatch', 'timeline.segments')
     return {'duration_ms': cursor, 'segments': parsed}
 
+
+def _thumbnail_after_lead_in(hook: dict[str, int], thumbnail: dict[str, int]) -> dict[str, int]:
+    """Dời thumbnail sang sau lead-in để clip visual hook hiện ở đầu hook; giữ độ dài, cắt ở cuối hook. Idempotent."""
+    lead_in = min(HOOK_LEAD_IN_MS, (hook['end_ms'] - hook['start_ms']) // 2)
+    earliest = hook['start_ms'] + lead_in
+    if thumbnail['start_ms'] >= earliest:
+        return thumbnail
+    shift = earliest - thumbnail['start_ms']
+    return {'start_ms': earliest, 'end_ms': min(hook['end_ms'], thumbnail['end_ms'] + shift)}
+
+
 def _parse_hook_placement(raw, selection: CreativeAssetSelection, duration_ms: int) -> dict[str, object]:
     source = _check_keys(raw, ('hook_time_range', 'thumbnail_time_range'), (), 'hook_placement')
     hook = _range_object(source['hook_time_range'], 'hook_placement.hook_time_range')
@@ -232,6 +244,7 @@ def _parse_hook_placement(raw, selection: CreativeAssetSelection, duration_ms: i
         _reject(INVALID_HOOK_PLACEMENT, 'hook_outside_timeline', 'hook_placement.hook_time_range')
     if thumbnail['start_ms'] < hook['start_ms'] or thumbnail['end_ms'] > hook['end_ms']:
         _reject(INVALID_HOOK_PLACEMENT, 'thumbnail_outside_hook', 'hook_placement.thumbnail_time_range')
+    thumbnail = _thumbnail_after_lead_in(hook, thumbnail)
     return {
         'visual_hook_ref': selection.visual_hook.ref_id, 'audio_hook_ref': selection.audio_hook.ref_id,
         'thumbnail_ref': selection.thumbnail.ref_id, 'hook_time_range': hook, 'thumbnail_time_range': thumbnail,
@@ -359,7 +372,7 @@ class ProductionPlan:
 def build_production_plan(raw, *, production_plan_id, script, selection, preset_revision_ref) -> ProductionPlan:
     """Dựng ProductionPlan (CT-AI-007) từ raw không tin cậy; chỉ chứa intent.
 
-    Ref asset/rendition/hook/thumbnail lấy từ selection (D-09), không từ raw; thumbnail phải nằm trọn trong hook;
+    Ref asset/rendition/hook/thumbnail lấy từ selection (D-09), không từ raw; thumbnail phải nằm trọn trong hook và được chuẩn hoá bắt đầu sau lead-in (HOOK_LEAD_IN_MS, tối đa nửa hook);
     mọi khoảng timeline có visual. Raise PlanRejected(code, reason, field). coveredIds: CT-AI-007, CT-RND-003
     """
     if not isinstance(script, ScriptVersion):
