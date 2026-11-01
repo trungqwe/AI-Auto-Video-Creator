@@ -1,6 +1,6 @@
 """Real AlignerPort: local faster_whisper word timestamps matched to the script text (CT-SUB-001).
 
-Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count. A second exception (ADAPT-E-FIX4): Whisper pieces that rejoin into exactly one script token (long + -term, 9 + -year + -old) take the span of the pieces, and a cluster of script words and Whisper pieces that read the same value and unit (dollars, cents, percent, decimals, up to trillion) shares the heard span by character count, counted in split_word_count. A third exception (ADAPT-E-FIX6): a model word that ends where the word before it ends (Whisper gave it no time of its own, e.g. a zero-length word) shares the span of the word before it by character count, counted in split_word_count. The max_unmatched_word_ratio cap applies to split_group_count, one per shared heard span (ADAPT-E-FIX5): the two ends of a group are model times, only the inner word edges are shared.
+Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count. A second exception (ADAPT-E-FIX4): Whisper pieces that rejoin into exactly one script token (long + -term, 9 + -year + -old) take the span of the pieces, and a cluster of script words and Whisper pieces that read the same value and unit (dollars, cents, percent, decimals, up to trillion) shares the heard span by character count, counted in split_word_count. A third exception (ADAPT-E-FIX6): a model word that ends where the word before it ends (Whisper gave it no time of its own, e.g. a zero-length word) shares the span of the word before it by character count, counted in split_word_count. A fourth exception (ADAPT-E-FIX7): a run of at most four script words with no model word of their own, between two matched words, takes the model words left unused between those two words, or, when there are none, joins the span of the matched word next to it; the shared span is split by character count and counted in split_word_count and split_group_count. The max_unmatched_word_ratio cap applies to split_group_count, one per shared heard span (ADAPT-E-FIX5): the two ends of a group are model times, only the inner word edges are shared.
 """
 from __future__ import annotations
 
@@ -334,6 +334,42 @@ def _rejoined(tokens: Sequence[str], items: Sequence[_Heard], policy: Tokenizati
     return spans if j == len(items) else None
 
 
+FALLBACK_MAX_SCRIPT = 4
+FALLBACK_MAX_HEARD = 6
+
+
+def _cover_gaps(matches: list[tuple[int, int, int, int]], expected: list[str], heard: list[_Heard]) -> list[tuple[int, int, int, int]]:
+    """ADAPT-E-FIX7: a run of at most FALLBACK_MAX_SCRIPT unmatched script words without an amount word, next to at least one matched word, takes the unused heard words between its neighbours (at most FALLBACK_MAX_HEARD, none with a digit or an amount word), or, when no heard word is left, joins the span of the matched word after it (before it at the end of the script). The model times stay the only time source; align() splits the shared span by character count and counts the group."""
+    found = list(matches)
+    covered = {n for m in found for n in range(m[0], m[1] + 1)}
+    n = 0
+    while n < len(expected):
+        if n in covered:
+            n += 1
+            continue
+        s1 = n
+        while n < len(expected) and n not in covered:
+            n += 1
+        s2 = n
+        if s2 - s1 > FALLBACK_MAX_SCRIPT or any(_amount_token(expected[k]) for k in range(s1, s2)):
+            continue
+        before = next((m for m in found if m[1] == s1 - 1), None)
+        after = next((m for m in found if m[0] == s2), None)
+        if before is None and after is None:
+            continue
+        used = {j for m in found for j in range(m[2], m[3] + 1)}
+        free = [j for j in range(before[3] + 1 if before is not None else 0, after[2] if after is not None else len(heard)) if j not in used]
+        if free:
+            if len(free) > FALLBACK_MAX_HEARD or any(any(c.isdigit() for c in heard[j].raw) or (heard[j].normalized is not None and _amount_token(heard[j].normalized)) for j in free):
+                continue
+            found.append((s1, s2 - 1, free[0], free[-1]))
+        elif after is not None:
+            found[found.index(after)] = (s1, after[1], after[2], after[3])
+        else:
+            found[found.index(before)] = (before[0], s2 - 1, before[2], before[3])
+    return sorted(found)
+
+
 def _match_script(expected: list[str], heard: list[_Heard], raws: list[str], policy: TokenizationPolicy) -> list[tuple[int, int, int, int]]:
     """Return (first script index, last script index, first heard index, last heard index); equal blocks match word by word, a replace block only as a split compound, a same-size respelling, (ADAPT-E-FIX3) one whole number written as digits on one side and as words on the other, or (ADAPT-E-FIX4) Whisper pieces that rejoin into the script tokens; a run of adjacent amount words and pieces that read the same value and unit becomes one group."""
     names = [item.normalized for item in heard]
@@ -376,7 +412,7 @@ def _match_script(expected: list[str], heard: list[_Heard], raws: list[str], pol
             if want is not None and want == _amount(''.join(item.raw for item in heard[h1:h2])):
                 matches = [m for m in matches if not s1 <= m[0] < s2]
                 matches.append((s1, s2 - 1, h1, h2 - 1))
-    return sorted(matches)
+    return _cover_gaps(sorted(matches), expected, heard)
 
 
 def _run_at_start(runs: Sequence[tuple[int, int]], ms: int) -> tuple[int, int] | None:
