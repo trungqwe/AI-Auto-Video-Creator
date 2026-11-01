@@ -479,7 +479,7 @@ def _hook(hook, thumb):
     [
         ((0, 5000), (1200, 2400)),
         ((2000, 6000), (3500, 4500)),
-        ((0, 5000), (0, 5000)),
+        ((0, 5000), (500, 1500)),
         ((4000, 9000), (8000, 9000)),
         ((0, 12000), (9000, 11000)),
     ],
@@ -490,6 +490,45 @@ def test_thumbnail_inside_hook_is_accepted(hook, thumb):
     payload = plan.to_payload()
     assert payload['hook_placement']['hook_time_range'] == {'start_ms': hook[0], 'end_ms': hook[1]}
     assert payload['hook_placement']['thumbnail_time_range'] == {'start_ms': thumb[0], 'end_ms': thumb[1]}
+
+
+@pytest.mark.parametrize(
+    'hook, thumb, expected',
+    [
+        ((0, 5000), (0, 5000), (500, 5000)),
+        ((0, 5000), (0, 600), (500, 1100)),
+        ((0, 5000), (200, 800), (500, 1100)),
+        ((0, 5000), (499, 2000), (500, 2001)),
+        ((0, 5000), (0, 4800), (500, 5000)),
+        ((2000, 6000), (2000, 3000), (2500, 3500)),
+        ((0, 1000), (0, 1000), (500, 1000)),
+        ((0, 600), (0, 600), (300, 600)),
+        ((0, 3), (0, 3), (1, 3)),
+        ((0, 1), (0, 1), (0, 1)),
+    ],
+)
+def test_thumbnail_starting_inside_the_lead_in_is_moved_after_it(hook, thumb, expected):
+    plan = _build(_hook(hook, thumb))
+    want = {'start_ms': expected[0], 'end_ms': expected[1]}
+    placement = plan.to_payload()['hook_placement']
+    assert placement['thumbnail_time_range'] == want
+    assert placement['hook_time_range'] == {'start_ms': hook[0], 'end_ms': hook[1]}
+    assert sorted(placement) == ['audio_hook_ref', 'hook_time_range', 'thumbnail_ref', 'thumbnail_time_range', 'visual_hook_ref']
+    assert plan.to_render_package_inputs()['hook_placement'] == placement
+    assert hook[0] <= want['start_ms'] < want['end_ms'] <= hook[1]
+    again = _build(_hook(hook, expected))
+    assert again.to_payload()['hook_placement']['thumbnail_time_range'] == want
+    assert again.plan_fingerprint == plan.plan_fingerprint
+
+
+@pytest.mark.parametrize('start', [0, 2000])
+@pytest.mark.parametrize('length', [1, 2, 3, 600, 999, 1000, 1001, 5000, 12000])
+def test_lead_in_never_exceeds_the_constant_nor_half_the_hook(start, length):
+    assert module.HOOK_LEAD_IN_MS == 500
+    plan = _build(_hook((start, start + length), (start, start + length)))
+    moved = plan.to_payload()['hook_placement']['thumbnail_time_range']
+    assert moved['start_ms'] - start == min(500, length // 2)
+    assert moved['end_ms'] == start + length
 
 
 @pytest.mark.parametrize(
