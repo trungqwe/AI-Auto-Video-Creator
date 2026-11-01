@@ -34,6 +34,7 @@ def staged(tmp_path):
     shutil.copyfile(sample['output_ref'], staging / 'out' / 'qc-fix7.mp4')
     stats = measure_loudness(FFMPEG, pathlib.Path(sample['output_ref']))
     assert stats.integrated_lufs is not None and stats.true_peak_dbtp is not None
+    print(f'AUDIO_MIX_EVIDENCE measured integrated_lufs={stats.integrated_lufs} true_peak_dbtp={stats.true_peak_dbtp}')
     return sample, staging, stats
 
 
@@ -44,6 +45,7 @@ def gate_of(staging, lock_path=LOCK_PATH) -> AudioMixGate:
 def only(results):
     assert len(results) == 1
     (item,) = results
+    print(f'AUDIO_MIX_EVIDENCE gate status={item.status.value} reason={item.reason} measured_value={item.measured_value} evidence_ref={item.evidence_ref}')
     assert item.gate is GateName.AUDIO_MIX_QUALITY and item.threshold_revision == REVISION
     return item
 

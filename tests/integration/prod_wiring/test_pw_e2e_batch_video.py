@@ -52,6 +52,7 @@ async def rig(pw_database: Any, pw_temporal: Any, tmp_path: pathlib.Path, monkey
 
 def assert_audio_mix_measured(qr: dict[str, Any]) -> None:
     mix = next(g for g in qr["gates"] if g["gate"] == "AUDIO_MIX_QUALITY")
+    print(f"AUDIO_MIX_EVIDENCE e2e status={mix['status']} reason={mix.get('reason')} measured_value={mix['measured_value']} evidence_ref={mix['evidence_ref']}")
     assert mix["status"].upper() in ("PASSED", "FAILED")
     assert isinstance(mix["measured_value"], (int, float)) and not isinstance(mix["measured_value"], bool)
     assert "LUFS" in mix["evidence_ref"]

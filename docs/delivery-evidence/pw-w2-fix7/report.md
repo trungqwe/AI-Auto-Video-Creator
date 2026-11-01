@@ -40,6 +40,8 @@ Nhóm lỗi R39, RG-09 thật của CP7-10 ngày 31/10/2026: QC của ba job `0f
 | 20-23 | bốn probe `python -c` (adapter, wiring, pipeline và e2e, bố cục CP2A-LAYOUT) | 0 | không có đầu ra |
 | 25 | probe report | 0 | xem bước 25 trong lệnh kiểm |
 | 26 | `git diff --check` | 0 | không cảnh báo (chạy lại sau khi ghi report, trước commit) |
+| 27 | `python -m pytest tests/integration/prod_wiring/test_pw_w2_fix7_audio_mix.py tests/integration/prod_wiring/test_pw_e2e_batch_video.py -q -rP -p no:cacheprovider` | 0 | `18 passed, 1 warning in 147.41s (0:02:27)`; chạy lại sau khi thêm dòng in AUDIO_MIX_EVIDENCE, khắc phục F1 |
+| 28 | `git diff --check` | 0 | không cảnh báo (chạy sau khi sửa report khắc phục F1) |
 
 ## Dòng tổng kết nguyên văn của pytest
 
@@ -50,7 +52,23 @@ Nhóm lỗi R39, RG-09 thật của CP7-10 ngày 31/10/2026: QC của ba job `0f
 - e2e (bước 18): `10 passed in 182.35s (0:03:02)`
 - tests/unit (bước 19): `7572 passed, 2561 subtests passed in 30.49s`
 
-Số LUFS và dBTP: test FFmpeg thật so khớp tương đối với số đo của chính mẫu (target = I đo, tolerance 0,5; TP tối đa = TP đo ± 1), không in giá trị tuyệt đối ra đầu ra, nên báo cáo này không ghi số cụ thể. Trong e2e, test khẳng định `AUDIO_MIX_QUALITY` là passed hoặc failed, `measured_value` là số, `evidence_ref` chứa `LUFS`; không in trạng thái cụ thể (passed hay failed) và mọi lệnh ngoài danh sách đều không được chạy.
+## Bằng chứng số đo AUDIO_MIX_QUALITY (khắc phục F1)
+
+Test fix7 và e2e nay in dòng `AUDIO_MIX_EVIDENCE`; các dòng dưới đây lấy từ lần chạy `-rP` ở bước 4 (mã thoát 0). Chỉ phần đường dẫn thư mục tạm tuyệt đối trong `evidence_ref` được thay bằng `<tmp>`; mọi số và trạng thái giữ nguyên văn.
+
+```text
+AUDIO_MIX_EVIDENCE measured integrated_lufs=-28.4 true_peak_dbtp=-26.9
+AUDIO_MIX_EVIDENCE gate status=passed reason=None measured_value=-28.4 evidence_ref=<tmp>\test_measured_loudness_inside_0\sample\out\final.mp4:I=-28.4LUFS:TP=-26.9dBTP
+AUDIO_MIX_EVIDENCE gate status=failed reason=loudness_out_of_target measured_value=-28.4 evidence_ref=<tmp>\test_loudness_far_from_target_0\sample\out\final.mp4:I=-28.4LUFS:TP=-26.9dBTP
+AUDIO_MIX_EVIDENCE gate status=failed reason=true_peak_above_limit measured_value=-28.4 evidence_ref=<tmp>\test_true_peak_above_the_limit0\sample\out\final.mp4:I=-28.4LUFS:TP=-26.9dBTP
+AUDIO_MIX_EVIDENCE gate status=passed reason=None measured_value=-28.4 evidence_ref=out/qc-fix7.mp4:I=-28.4LUFS:TP=-26.9dBTP
+AUDIO_MIX_EVIDENCE gate status=not_evaluated reason=loudness_not_measured measured_value=None evidence_ref=<tmp>\test_a_wrong_pin_or_a_missing_0\sample\out\final.mp4
+AUDIO_MIX_EVIDENCE gate status=not_evaluated reason=loudness_not_measured measured_value=None evidence_ref=<tmp>\test_a_wrong_pin_or_a_missing_0\missing.mp4
+AUDIO_MIX_EVIDENCE e2e status=failed reason=loudness_out_of_target measured_value=-17.8 evidence_ref=out/422650a2-eec4-4334-87dd-5f710813dea7_video_0_render_render_video_0_r1.mp4:I=-17.8LUFS:TP=-12.7dBTP
+AUDIO_MIX_EVIDENCE e2e status=failed reason=loudness_out_of_target measured_value=-17.8 evidence_ref=out/7ab77e26-cb23-4ca1-982e-615f61308708_video_0_render_render_video_0_r1.mp4:I=-17.8LUFS:TP=-12.7dBTP
+```
+
+Mẫu lavfi của test FFmpeg thật đo được -28.4 LUFS và -26.9 dBTP. Trong e2e, `AUDIO_MIX_QUALITY` đo được ở lô 1 và lô 2 đều là failed `loudness_out_of_target` (cảnh báo, -17.8 LUFS, -12.7 dBTP); video vẫn COMPLETED và `qr['passed']` vẫn True vì cổng chỉ là WARNING.
 
 ## Mục mở
 
