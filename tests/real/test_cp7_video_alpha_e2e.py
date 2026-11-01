@@ -453,10 +453,10 @@ def test_unit_format_qc_evidence():
         {'gate': 'INFERENCE_DISCLOSURE_PRESENT', 'status': 'not_applicable'},
         {'gate': 'VISUAL_CONTINUITY', 'status': 'failed', 'reason': 'x'}]}
     text = d.format_qc_evidence(gates, {'timeline': {'voice_duration_ms': 66000}})
-    assert text == 'blocking_gates=[DURATION_RANGE=failed/out_of_range] duration=[mp4_ms=55000 voice_ms=66000 delta_ms=-11000]'
+    assert text == 'blocking_gates=[DURATION_RANGE=failed/out_of_range] duration=[mp4_ms=55000 voice_est_ms=66000 delta_ms=-11000]'
     ok = d.format_qc_evidence({'gates': [{'gate': 'FILE_PLAYABLE', 'status': 'passed'}]}, {'timeline': {'duration_ms': 64000}})
-    assert ok == 'blocking_gates=[none] duration=[mp4_ms=None voice_ms=64000 delta_ms=None]'
-    assert d.format_qc_evidence({}, None) == 'blocking_gates=[none] duration=[mp4_ms=None voice_ms=None delta_ms=None]'
+    assert ok == 'blocking_gates=[none] duration=[mp4_ms=None voice_est_ms=64000 delta_ms=None]'
+    assert d.format_qc_evidence({}, None) == 'blocking_gates=[none] duration=[mp4_ms=None voice_est_ms=None delta_ms=None]'
 
 
 def test_unit_collect_qc_evidence_read_only():

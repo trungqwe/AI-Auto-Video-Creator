@@ -778,14 +778,14 @@ def qc_gates(db, job_id):
 
 
 def format_qc_evidence(gate_payload, package_payload):
-    """Một dòng: cổng cứng không passed (blocking_gates) và thời lượng mp4 đo được (measured_value của DURATION_RANGE) so với thời lượng giọng trong timeline của render package."""
+    """Một dòng: cổng cứng không passed (blocking_gates) và thời lượng mp4 đo được (measured_value của DURATION_RANGE) so với thời lượng giọng ƯỚC LƯỢNG trong timeline của render package (timeline.voice_duration_ms, không phải số đo ffprobe của voice artifact; nhãn voice_est_ms)."""
     summary = summarize_gates(gate_payload)
     blocking = ' '.join(g['gate'] + '=' + str(g['status']) + ('/' + str(g['reason']) if g.get('reason') else '') for g in summary['failed_gates']) or 'none'
     mp4 = next((g.get('measured_value') for g in (gate_payload or {}).get('gates', []) if g.get('gate') == 'DURATION_RANGE'), None)
     timeline = (package_payload or {}).get('timeline') or {}
     voice = next((timeline[key] for key in ('voice_duration_ms', 'duration_ms') if type(timeline.get(key)) is int), None)
     delta = mp4 - voice if type(mp4) is int and type(voice) is int else None
-    return f'blocking_gates=[{blocking}] duration=[mp4_ms={mp4} voice_ms={voice} delta_ms={delta}]'
+    return f'blocking_gates=[{blocking}] duration=[mp4_ms={mp4} voice_est_ms={voice} delta_ms={delta}]'
 
 
 def collect_qc_evidence(db, job_id):
