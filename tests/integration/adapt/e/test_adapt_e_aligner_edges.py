@@ -92,14 +92,22 @@ def test_zero_length_sentence_start_gets_vad_onset_and_model_end(tmp_path, monke
 
 
 @pytest.mark.parametrize('words, runs', [
-    ([word(' one', 1.0, 1.5), word(' two', 1.5, 1.5), word(' three', 1.5, 2.0)], [(800, 2200)]),
     ([word(' one', 1.0, 1.5), word(' two', 2.0, 2.0), word(' three', 2.5, 3.0)], [(1000, 1600)]),
-], ids=['previous-word-ends-at-t', 'no-run-contains-t-minus-1'])
+], ids=['no-run-contains-t-minus-1'])
 def test_zero_length_word_without_speech_evidence_stays_unmatched(tmp_path, monkeypatch, words, runs):
     result, aligner, payload = run_align(tmp_path, monkeypatch, 'one two three', words, runs)
     assert aligner.last_report.missing_script_indices == (1,)
     assert 'two' not in [w['normalized_text'] for w in result.words]
     assert_contract('one two three', payload, complete=False)  # the word is missing by design, so only boundary validity is asserted
+
+
+def test_zero_length_word_ending_with_the_word_before_shares_its_span(tmp_path, monkeypatch):
+    words = [word(' one', 1.0, 1.5), word(' two', 1.5, 1.5), word(' three', 1.5, 2.0)]
+    result, aligner, payload = run_align(tmp_path, monkeypatch, 'one two three', words, [(800, 2200)])
+    assert [w['normalized_text'] for w in result.words] == ['one', 'two', 'three']
+    assert aligner.last_report.missing_script_indices == ()
+    assert aligner.last_report.split_group_count == 1
+    assert_contract('one two three', payload)
 
 
 def test_spelling_variant_split_compound_and_numeral_take_model_times(tmp_path, monkeypatch):

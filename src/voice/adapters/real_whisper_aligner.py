@@ -1,6 +1,6 @@
 """Real AlignerPort: local faster_whisper word timestamps matched to the script text (CT-SUB-001).
 
-Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count. A second exception (ADAPT-E-FIX4): Whisper pieces that rejoin into exactly one script token (long + -term, 9 + -year + -old) take the span of the pieces, and a cluster of script words and Whisper pieces that read the same value and unit (dollars, cents, percent, decimals, up to trillion) shares the heard span by character count, counted in split_word_count. The max_unmatched_word_ratio cap applies to split_group_count, one per shared heard span (ADAPT-E-FIX5): the two ends of a group are model times, only the inner word edges are shared.
+Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count. A second exception (ADAPT-E-FIX4): Whisper pieces that rejoin into exactly one script token (long + -term, 9 + -year + -old) take the span of the pieces, and a cluster of script words and Whisper pieces that read the same value and unit (dollars, cents, percent, decimals, up to trillion) shares the heard span by character count, counted in split_word_count. A third exception (ADAPT-E-FIX6): a model word that ends where the word before it ends (Whisper gave it no time of its own, e.g. a zero-length word) shares the span of the word before it by character count, counted in split_word_count. The max_unmatched_word_ratio cap applies to split_group_count, one per shared heard span (ADAPT-E-FIX5): the two ends of a group are model times, only the inner word edges are shared.
 """
 from __future__ import annotations
 
@@ -568,6 +568,17 @@ class RealWhisperAligner:
                     split_groups += 1
                     previous_end = end
                 continue
+            if end <= previous_end and slots and not slots[-1].rescued:  # ADAPT-E-FIX6: a word with no time of its own shares the span of the word before it
+                prev = slots[-1]
+                own, mine = len(expected[prev.script_index]), len(expected[i])
+                cut = prev.start_ms + (prev.end_ms - prev.start_ms) * own // (own + mine)
+                if prev.start_ms < cut < prev.end_ms:
+                    shared = any(s.first == prev.first and s.last == prev.last for s in slots[:-1])
+                    slots[-1] = _Slot(prev.script_index, prev.first, prev.last, prev.start_ms, cut, False)
+                    slots.append(_Slot(i, first, last, cut, prev.end_ms, False))
+                    split_count += 1 if shared else 2
+                    split_groups += 1
+                    continue
             rescued = end <= start
             if rescued:
                 run = _run_at_end(runs, end)  # the speech run holding t - 1 ms
