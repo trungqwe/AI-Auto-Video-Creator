@@ -819,6 +819,16 @@ def qc_gates(db, job_id):
     return summary
 
 
+def _failed_detail(gates):
+    """Chi tiết từng cổng cứng không passed: giá trị đo, khoảng thời gian (ms) và revision ngưỡng; không ghi evidence_ref."""
+    parts = []
+    for g in gates:
+        span = g.get('time_range')
+        rng = f'{span[0]}-{span[1]}' if isinstance(span, (list, tuple)) and len(span) == 2 else '-'
+        parts.append(f"{g['gate']}:measured={g.get('measured_value')} range={rng} rev={g.get('threshold_revision') or '-'}")
+    return ';'.join(parts)
+
+
 def format_qc_evidence(gate_payload, package_payload):
     """Một dòng: cổng cứng không passed (blocking_gates) và thời lượng mp4 đo được (measured_value của DURATION_RANGE) so với thời lượng giọng ƯỚC LƯỢNG trong timeline của render package (timeline.voice_duration_ms, không phải số đo ffprobe của voice artifact; nhãn voice_est_ms)."""
     summary = summarize_gates(gate_payload)
@@ -827,7 +837,10 @@ def format_qc_evidence(gate_payload, package_payload):
     timeline = (package_payload or {}).get('timeline') or {}
     voice = next((timeline[key] for key in ('voice_duration_ms', 'duration_ms') if type(timeline.get(key)) is int), None)
     delta = mp4 - voice if type(mp4) is int and type(voice) is int else None
-    return f'blocking_gates=[{blocking}] duration=[mp4_ms={mp4} voice_est_ms={voice} delta_ms={delta}]'
+    text = f'blocking_gates=[{blocking}] duration=[mp4_ms={mp4} voice_est_ms={voice} delta_ms={delta}]'
+    if summary['failed_gates']:
+        text += ' failed_detail=[' + _failed_detail(summary['failed_gates']) + ']'
+    return text
 
 
 def collect_qc_evidence(db, job_id):
@@ -1024,9 +1037,10 @@ def run_batch(work_dir, deadline):
             result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': str(result.final_job_status), 'failed_stage': None if failed is None else failed[0], 'activity': None if failed is None else failed[3], 'code': None if failed is None else failed[2]})
             result.ai_calls = watch.calls()
             result.qc_evidence = collect_qc_evidence(db, job_id)
+            result.media_audio_evidence = collect_media_audio_evidence(db, job_id, result.plan_before)
             result.batch_after_run = collect_batch_running(db, batch_id)
             diag = collect_diagnostic(db, job_id)
-            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; other_workflows_running=' + str(result.other_workflows_running) + ' ai_calls=' + str(result.ai_calls) + ' ' + result.qc_evidence + ' ' + result.batch_after_run + ' ' + collect_render_config(db) + ' launcher_seed=[' + result.launcher_seed_line + '] seed_counts=' + json.dumps(result.seed_counts, sort_keys=True) + ' ' + collect_script_length(db, job_id) + ' ' + diag)
+            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; other_workflows_running=' + str(result.other_workflows_running) + ' ai_calls=' + str(result.ai_calls) + ' ' + result.qc_evidence + ' ' + result.batch_after_run + ' ' + collect_render_config(db) + ' ' + result.media_audio_evidence + ' launcher_seed=[' + result.launcher_seed_line + '] seed_counts=' + json.dumps(result.seed_counts, sort_keys=True) + ' ' + collect_script_length(db, job_id) + ' ' + diag)
         result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': 'COMPLETED'})
         result.final_batch_status = db.batch_status(batch_id) or ''
         result.locations = db.locations(job_id)

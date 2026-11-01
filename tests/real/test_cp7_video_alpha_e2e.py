@@ -340,6 +340,8 @@ def test_unit_blocked_message_reports_script_length():
     assert "+ ' ' + collect_script_length(db, job_id) + ' ' + diag)" in body
     assert "' ai_calls=' + str(result.ai_calls)" in body
     assert 'collect_qc_evidence(db, job_id)' in body and 'collect_batch_running(db, batch_id)' in body
+    assert 'result.media_audio_evidence = collect_media_audio_evidence(db, job_id, result.plan_before)' in body
+    assert "+ ' ' + result.media_audio_evidence + ' launcher_seed=['" in body
     assert 'plan_digest(db, job_id)' in body and 'build_trace(db, job_id)' in body
     assert 'result.record_prefix' not in body.replace('watch.bind_prefix(result.record_prefix)', '').replace('result.record_prefix = video_key_prefix(db.workspace_id, batch_id)', '')
     assert 'run_ids=[batch_id=' in body
@@ -529,10 +531,17 @@ def test_unit_format_qc_evidence():
         {'gate': 'INFERENCE_DISCLOSURE_PRESENT', 'status': 'not_applicable'},
         {'gate': 'VISUAL_CONTINUITY', 'status': 'failed', 'reason': 'x'}]}
     text = d.format_qc_evidence(gates, {'timeline': {'voice_duration_ms': 66000}})
-    assert text == 'blocking_gates=[DURATION_RANGE=failed/out_of_range] duration=[mp4_ms=55000 voice_est_ms=66000 delta_ms=-11000]'
+    assert text == 'blocking_gates=[DURATION_RANGE=failed/out_of_range] duration=[mp4_ms=55000 voice_est_ms=66000 delta_ms=-11000] failed_detail=[DURATION_RANGE:measured=55000 range=- rev=-]'
     ok = d.format_qc_evidence({'gates': [{'gate': 'FILE_PLAYABLE', 'status': 'passed'}]}, {'timeline': {'duration_ms': 64000}})
     assert ok == 'blocking_gates=[none] duration=[mp4_ms=None voice_est_ms=64000 delta_ms=None]'
     assert d.format_qc_evidence({}, None) == 'blocking_gates=[none] duration=[mp4_ms=None voice_est_ms=None delta_ms=None]'
+
+
+def test_unit_format_qc_evidence_failed_detail_visual_hook():
+    gates = {'gates': [{'gate': 'VISUAL_HOOK_PRESENT', 'status': 'failed', 'reason': 'visual_hook_similarity_below_threshold', 'measured_value': 0.31, 'time_range': [0, 3000], 'threshold_revision': 'r7', 'evidence_ref': 'secret-ref-should-not-appear'}]}
+    text = d.format_qc_evidence(gates, {'timeline': {'duration_ms': 64000}})
+    assert text == 'blocking_gates=[VISUAL_HOOK_PRESENT=failed/visual_hook_similarity_below_threshold] duration=[mp4_ms=None voice_est_ms=64000 delta_ms=None] failed_detail=[VISUAL_HOOK_PRESENT:measured=0.31 range=0-3000 rev=r7]'
+    assert 'secret-ref-should-not-appear' not in text
 
 
 def test_unit_collect_qc_evidence_read_only():

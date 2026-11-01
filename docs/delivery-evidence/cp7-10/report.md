@@ -1,7 +1,7 @@
 # CP7-10 — R4 Video Alpha có giám sát trên ngăn xếp thật (RG-09)
 
 - Ngày kiểm: 01/11/2026.
-- HEAD cơ sở: `f304d747518a8571b2403959ded2a530aed6f2e0` (HEAD ngay sau rebase; lane đã rebase lên `6972626f7a280f69293662f5d1d9446211234e9d`, kết quả kiểm của lần mở trước không còn dùng được). Các thay đổi của lượt này nằm ở cây làm việc, được commit sau HEAD này.
+- HEAD cơ sở: `fce0e44bc8a3392d3df71be4b1c546af4046c525` (candidate của lượt chạy thật trên ngăn xếp thật, đã rebase lên `6972626f7a280f69293662f5d1d9446211234e9d`). Các thay đổi của lượt lập lại lệnh nằm ở cây làm việc, được commit sau HEAD này.
 - Interpreter khoá: `C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\8715e538\venv\Scripts\python.exe`.
 
 ## Kết luận trung thực
@@ -16,6 +16,10 @@ Lượt này **BLOCKED**: job J đi qua 8 stage đầu (analyze, script, media_s
 4. Bản sửa F11 chưa được kiểm chứng trên ngăn xếp thật vì job không tới được stage sync/complete ở lượt này.
 5. Nguyên nhân lượt này: cổng QC `VISUAL_HOOK_PRESENT` fail (`visual_hook_similarity_below_threshold`). Đây là hành vi production/QC ngoài owned paths; cần chủ mã QC/render hoặc Control quyết định.
 
+## Lượt lập lại lệnh (WORKER_BLOCKED)
+
+Lượt này KHÔNG chạy lại ngăn xếp thật (đúng ràng buộc một lần chạy thật: không thử lại, không tạo lô khác, không vá production, không hạ ngưỡng). Cổng `VISUAL_HOOK_PRESENT` thuộc production/QC ngoài owned paths nên cả 10 mục RG-09 vẫn BLOCKED. Các thay đổi trong owned paths: `format_qc_evidence` ghi thêm `failed_detail=[GATE:measured=... range=... rev=...]` cho cổng cứng hỏng (không ghi evidence_ref); nhánh BLOCKED của `run_batch` thu thêm `media_audio_evidence`; thêm 1 unit test và sửa 2 test. Lượt chạy thật đã diễn ra trước bản vá này nên chưa có số đo `measured_value` của `VISUAL_HOOK_PRESENT`; lượt kế sẽ có.
+
 ## Lệnh đã chạy
 
 1. Bước 1: `git rebase 6972626f7a280f69293662f5d1d9446211234e9d` — thành công, không xung đột, cây sạch.
@@ -25,6 +29,8 @@ Lượt này **BLOCKED**: job J đi qua 8 stage đầu (analyze, script, media_s
 5. Bước 11 (đúng một lần, bắt đầu 2026-11-01T17:03:41Z, kết thúc 2026-11-01T17:10:41Z): `python -m pytest tests/real/test_cp7_video_alpha_e2e.py -q -p no:cacheprovider` (thêm `-rA` để lấy tóm tắt) — exit 1, `44 passed, 11 errors in 418.17s (0:06:58)`.
 6. Bước 12: ghi lại report.md này bằng công cụ sửa tệp (UTF-8).
 7. Bước 13-14: `git diff --check` và probe 10 mục RG-09 — xem báo cáo worker_done (probe đỏ đúng kỳ vọng vì mục BLOCKED).
+8. Lượt lập lại: `python -m pytest tests/real/test_cp7_video_alpha_e2e.py -q -p no:cacheprovider -k unit` — exit 0, `45 passed, 11 deselected in 0.34s`.
+9. Lượt lập lại: `git diff --check` — exit 0.
 
 ## Kết quả
 
@@ -49,7 +55,7 @@ Cả 10 mục ghi BLOCKED vì fixture `batch_run` lỗi (driver raise BlockedErr
 - Script: segments=5, words=144, wpm=136, est_ms=63529, khoảng 61000-70000, verdict=within_range.
 - Seed: hooks=10, media_assets=432, sources=7; render_config `preset/bold-yellow`, `preset/output-profile`, `policy/quality` đều PUBLISHED. Trước chạy `other_workflows_running=0`.
 - Chi phí: ai_calls=6 (trần 25); spent_usd, drive_bytes, elapsed_s của run_batch không đo được vì driver dừng sớm (drive_bytes thực tế 0 do chưa upload; thời gian pytest 418 giây, trần 7200).
-- Mục ghi thêm (không chấm RG-09): `media_audio_evidence` (số ảnh bài, an toàn ảnh, bed_kind, mp4 có nhạc), số ảnh bài và seed được chọn (`media_ids`), số từ align được chia — không đo được (driver chỉ thu thập ở nhánh COMPLETED).
+- Mục ghi thêm (không chấm RG-09): `media_audio_evidence` (số ảnh bài, an toàn ảnh, bed_kind, mp4 có nhạc), số ảnh bài và seed được chọn (`media_ids`), số từ align được chia — không đo được ở lượt chạy thật vì khi đó driver chỉ thu ở nhánh COMPLETED; bản vá của lượt lập lại đã thu cả ở nhánh BLOCKED nhưng chưa có lượt chạy thật nào sau bản vá.
 - resume_300s (ready_seconds) và no_rerun (completed_before_stop): không đo được ở lượt này vì lỗi xảy ra trước khi test ghi kết quả; trạng thái stop/start trong lượt chạy không được báo cáo.
 - md5 và sha256 local/cloud: không đo được (chưa có location Drive).
 - Thăm dò `drive_md5_check` lô 8d357809: không chạy được trước lượt thật (lệnh kiểm không cho chạy `python <tệp>.py` hay import driver qua `python -c`); `drive_md5_check` được chạy trong lượt thật qua `batch_run.drive_check` nhưng lượt này chưa tới bước đó.
@@ -57,6 +63,6 @@ Cả 10 mục ghi BLOCKED vì fixture `batch_run` lỗi (driver raise BlockedErr
 ## Open item
 
 - OI-CP7-10-F11: **giữ mở** — bản sửa driver/test đã có và unit test pass, nhưng `cloud_verified_before_count` chưa được chứng minh trên ngăn xếp thật vì job FAILED_FINAL ở qc trước khi tới sync.
-- OI-CP7-10-F12 (mới): cổng QC `VISUAL_HOOK_PRESENT` fail (`visual_hook_similarity_below_threshold`) ở lượt này; ngoài owned paths, cần Control/chủ mã QC xử lý.
+- OI-CP7-10-F12 (mới): cổng QC `VISUAL_HOOK_PRESENT` fail (`visual_hook_similarity_below_threshold`) ở lượt này; ngoài owned paths, cần Control/chủ mã QC xử lý. Lượt kế cần Control xử lý cổng QC VISUAL_HOOK_PRESENT (ngoài owned paths) trước khi mở lại lượt chạy thật; probe 10 mục RG-09 đỏ cho tới khi lượt chạy thật đạt, đó là kết quả trung thực.
 - Lô còn RUNNING: `db_status=RUNNING temporal_running=2`, run_ids=[batch_id=640438e3-8cb6-43b3-ac55-d645ae25fdfe job_id=640438e3-8cb6-43b3-ac55-d645ae25fdfe:job:1]. Control cần xin user terminate lô này trước lượt kế.
 - OI-PW-E2E-01: giữ nguyên — production chưa có writer CREATED->RUNNING; RG-09 không chấm theo trạng thái dòng lô.
