@@ -27,6 +27,7 @@ from render.adapters.activity_inputs import (
     QualityInputs,
 )
 from render.adapters.ass_manifest import build_ass_material, with_ass_entry
+from render.adapters.audio_mix_gate import AudioMixGate
 from render.adapters.config_render_sources import ConfigRenderSources, ass_inputs, seed_render_config
 from render.adapters.ffmpeg_capability import read_tool_capability
 from render.adapters.postgres_plan_assets import (
@@ -889,6 +890,12 @@ def render_activity_deps(
         uow=uow,
         probe=probe,
         probe_for=qc_probe_for,
+        warning_gates=AudioMixGate(
+            ffmpeg_path=runtime.ffmpeg_path,
+            lock_path=runtime.runtime_lock_path,
+            staging_root=runtime.staging_root,
+            timeout_seconds=_build_inspector_settings(profile).timeout_seconds,
+        ),
         inspector=inspector,
         observer=renderer,
         grants=grants,

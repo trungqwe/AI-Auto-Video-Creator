@@ -50,6 +50,13 @@ async def rig(pw_database: Any, pw_temporal: Any, tmp_path: pathlib.Path, monkey
         await r.close()
 
 
+def assert_audio_mix_measured(qr: dict[str, Any]) -> None:
+    mix = next(g for g in qr["gates"] if g["gate"] == "AUDIO_MIX_QUALITY")
+    assert mix["status"].upper() in ("PASSED", "FAILED")
+    assert isinstance(mix["measured_value"], (int, float)) and not isinstance(mix["measured_value"], bool)
+    assert "LUFS" in mix["evidence_ref"]
+
+
 @pytest.mark.asyncio
 async def test_the_launcher_composition_binds_every_activity_and_has_no_private_assembly(rig: Any) -> None:
     await rig.start_worker()
@@ -321,6 +328,7 @@ async def test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch
     assert voice["status"].upper() == "PASSED"
     assert voice["reason"] is None
     assert isinstance(voice["measured_value"], (int, float)) and not isinstance(voice["measured_value"], bool)
+    assert_audio_mix_measured(qr)
     assert qr["passed"] is True
 
     # (6) Second batch: source_backed disclosure gate NOT_APPLICABLE
@@ -343,6 +351,7 @@ async def test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch
     assert voice_2["status"].upper() == "PASSED"
     assert voice_2["reason"] is None
     assert isinstance(voice_2["measured_value"], (int, float)) and not isinstance(voice_2["measured_value"], bool)
+    assert_audio_mix_measured(qr_2)
     assert qr_2["passed"] is True
 
     cand_1 = scalar(
