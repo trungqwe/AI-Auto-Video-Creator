@@ -337,8 +337,180 @@ def test_unit_collect_script_length_read_only():
 def test_unit_blocked_message_reports_script_length():
     text = DRIVER_FILE.read_text(encoding='utf-8')
     body = text[text.index('def run_batch('):]
-    assert "+ ' ' + collect_script_length(db, window_start) + ' ' + diag)" in body
+    assert "+ ' ' + collect_script_length(db, result.record_prefix) + ' ' + diag)" in body
+    assert "' ai_calls=' + str(result.ai_calls)" in body
+    assert 'collect_qc_evidence(db, result.record_prefix)' in body and 'collect_batch_running(db, batch_id)' in body
     assert text.count('session.post_batch(1)') == 1
+
+
+def test_unit_video_key_prefix():
+    assert d.video_key_prefix('ws1', 'b-1') == 'ws1:b-1:video:'
+
+
+class _RecordingDb(d.ReadOnlyDb):
+    """ReadOnlyDb không kết nối: ghi lại (sql, params) và trả về `rows`."""
+
+    def __init__(self, rows):
+        self.workspace_id = 'w'
+        self.rows = rows
+        self.calls = []
+
+    def query(self, sql, *params):
+        self.calls.append((sql, params))
+        return self.rows
+
+
+def test_unit_ai_invocation_count_uses_record_key_prefix():
+    db = _RecordingDb([(7,)])
+    assert db.ai_invocation_count('w:b:video:') == 7
+    sql, params = db.calls[0]
+    assert 'FROM controlplane.cp_ai_invocation_records' in sql and 'starts_with(record_key, %s)' in sql
+    assert params == ('w:b:video:',)
+
+
+def test_unit_plan_row_filters_by_record_key_prefix():
+    db = _RecordingDb([])
+    assert d._plan_row(db, 'w:b:video:') is None
+    sql, params = db.calls[0]
+    assert 'starts_with(record_key, %s)' in sql and 'created_at >=' not in sql
+    assert params == ('w:b:video:',)
+
+
+def test_unit_locations_and_drive_bytes_filter_by_job():
+    db = _RecordingDb([(0,)])
+    db.locations('job-1')
+    d.drive_bytes(db, 'job-1')
+    assert len(db.calls) == 2
+    for sql, params in db.calls:
+        assert 'owner_ref = %s' in sql and 'FROM controlplane.cp_completion_ledger' in sql
+        assert 'created_at >=' not in sql
+        assert params.count('job-1') == 2
+
+
+def test_unit_build_trace_filters_by_record_key_prefix():
+    seen = []
+
+    class _Db(_SnapshotDb):
+        def query(self, sql, *params):
+            seen.append((sql, params))
+            return super().query(sql, *params)
+
+    d.build_trace(_Db(), 'job-1', 'w:b:video:')
+    analyses = [(s, p) for s, p in seen if 'FROM controlplane.cp_content_analyses' in s]
+    assert len(analyses) == 1
+    assert 'starts_with(record_key, %s)' in analyses[0][0] and analyses[0][1] == ('w:b:video:',)
+    plans = [p for s, p in seen if 'FROM controlplane.cp_production_plans' in s]
+    assert plans and all(p == ('w:b:video:',) for p in plans)
+
+
+def test_unit_require_no_other_workflows():
+    assert d.require_no_other_workflows(lambda: []) == 0
+    assert d.require_no_other_workflows(lambda: [('MaintenanceWorkflow', 'm1'), ('DailyCollectionWorkflow', 'c1')]) == 0
+    busy = [('VideoProductionWorkflow', 'b1:video:1'), ('ProductionBatchWorkflow', 'b1'), ('DebugStageWorkflow', 'dbg'), ('MaintenanceWorkflow', 'm1')]
+    with pytest.raises(d.BlockedError) as info:
+        d.require_no_other_workflows(lambda: busy)
+    message = str(info.value)
+    assert message.startswith('BLOCKED: OTHER_WORKFLOWS_RUNNING count=3 ids=[')
+    assert 'VideoProductionWorkflow=b1:video:1' in message and 'ProductionBatchWorkflow=b1' in message
+    assert 'DebugStageWorkflow=dbg' in message and 'm1' not in message
+
+    def unreachable():
+        raise OSError('x')
+
+    with pytest.raises(d.BlockedError) as info:
+        d.require_no_other_workflows(unreachable)
+    assert str(info.value) == 'BLOCKED: TEMPORAL_UNREACHABLE: OSError'
+
+
+def test_unit_driver_checks_temporal_between_stop_and_start_read_only():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    body = text[text.index('def run_batch('):]
+    stop = body.index('result.pre_stop_attempts = stop_until_exited()')
+    check = body.index('result.other_workflows_running = require_no_other_workflows()')
+    assert stop < check < body.index("start_capturing(work_dir, 'first')")
+    assert d.WATCHED_WORKFLOWS == ('ProductionBatchWorkflow', 'VideoProductionWorkflow', 'DebugStageWorkflow')
+    assert (d.TEMPORAL_PORT, d.TEMPORAL_NAMESPACE) == (7233, 'default')
+    assert 'ExecutionStatus = "Running"' in text
+    for name in ('.terminate(', '.cancel(', '.signal(', '.start_workflow(', 'terminate_workflow'):
+        assert name not in text, name
+
+
+def test_unit_format_qc_evidence():
+    gates = {'gates': [
+        {'gate': 'FILE_PLAYABLE', 'status': 'passed'},
+        {'gate': 'DURATION_RANGE', 'status': 'failed', 'reason': 'out_of_range', 'measured_value': 55000},
+        {'gate': 'INFERENCE_DISCLOSURE_PRESENT', 'status': 'not_applicable'},
+        {'gate': 'VISUAL_CONTINUITY', 'status': 'failed', 'reason': 'x'}]}
+    text = d.format_qc_evidence(gates, {'timeline': {'voice_duration_ms': 66000}})
+    assert text == 'blocking_gates=[DURATION_RANGE=failed/out_of_range] duration=[mp4_ms=55000 voice_ms=66000 delta_ms=-11000]'
+    ok = d.format_qc_evidence({'gates': [{'gate': 'FILE_PLAYABLE', 'status': 'passed'}]}, {'timeline': {'duration_ms': 64000}})
+    assert ok == 'blocking_gates=[none] duration=[mp4_ms=None voice_ms=64000 delta_ms=None]'
+    assert d.format_qc_evidence({}, None) == 'blocking_gates=[none] duration=[mp4_ms=None voice_ms=None delta_ms=None]'
+
+
+def test_unit_collect_qc_evidence_read_only():
+    class _Db:
+        def __init__(self):
+            self.sqls = []
+
+        def query(self, sql, *params):
+            self.sqls.append(sql)
+            if 'cp_production_plans' in sql:
+                return [({'script_version_id': 'sv1'}, 'plan1')]
+            if 'cp_render_packages' in sql:
+                return [('fp1', {'timeline': {'voice_duration_ms': 66000}})]
+            return [({'gates': [{'gate': 'DURATION_RANGE', 'status': 'failed', 'reason': 'out_of_range', 'measured_value': 55000}]},)]
+
+    class _Broken:
+        def query(self, sql, *params):
+            raise OSError('x')
+
+    db = _Db()
+    text = d.collect_qc_evidence(db, 'w:b:video:')
+    assert 'DURATION_RANGE=failed/out_of_range' in text and 'delta_ms=-11000' in text
+    assert db.sqls and all(sql.lstrip().upper().startswith('SELECT') for sql in db.sqls)
+    assert any("payload->>'production_plan_ref' = %s" in sql for sql in db.sqls)
+    assert d.collect_qc_evidence(_Broken(), 'w:b:video:') == 'qc_evidence_error=OSError'
+
+
+def test_unit_collect_batch_running():
+    rows = [('ProductionBatchWorkflow', 'b1'), ('VideoProductionWorkflow', 'b1:video:1'), ('ProductionBatchWorkflow', 'b10'), ('MaintenanceWorkflow', 'm1')]
+
+    class _Db:
+        def batch_status(self, batch_id):
+            return 'CREATED'
+
+    assert d.collect_batch_running(_Db(), 'b1', lambda: rows) == "batch_after_run=[db_status=CREATED temporal_running=2 ids=['b1', 'b1:video:1']]"
+    assert d.collect_batch_running(_Db(), 'b1', lambda: []) == 'batch_after_run=[db_status=CREATED temporal_running=0 ids=[]]'
+
+    def unreachable():
+        raise OSError('x')
+
+    assert d.collect_batch_running(_Db(), 'b1', unreachable) == 'batch_after_run_error=OSError'
+
+
+def test_unit_cost_watch_counts_ai_calls_from_invocation_records():
+    class _Db:
+        def __init__(self):
+            self.prefixes = []
+
+        def ai_invocation_count(self, prefix):
+            self.prefixes.append(prefix)
+            return 26
+
+    class _Watch(d.CostWatch):
+        def guard(self):
+            return c.CostGuard(d.LEDGER_CEILING_USD, lambda: 0)
+
+    db = _Db()
+    watch = _Watch(db, 'since')
+    assert watch.calls() == 0
+    watch.check()
+    watch.bind_prefix('w:b:video:')
+    assert watch.calls() == 26
+    with pytest.raises(c.CostCeilingExceeded):
+        watch.check()
+    assert db.prefixes == ['w:b:video:', 'w:b:video:']
 
 
 # --- RG-09 trên ngăn xếp thật ------------------------------------------------------------------------------------
@@ -364,8 +536,8 @@ def test_rg09_no_fake_adapters(batch_run, emit):
 
 def test_rg09_qc_hard_gates(batch_run, emit):
     qc = batch_run.qc
-    assert qc['hard_total'] > 0 and qc['hard_failed'] == 0 and qc['hard_passed'] == qc['hard_total']
-    _pass(emit, 'qc_hard_gates', f'hard_total={qc["hard_total"]} hard_passed={qc["hard_passed"]} not_applicable={qc["not_applicable"]}')
+    assert qc['hard_total'] > 0 and qc['hard_failed'] == 0 and qc['hard_passed'] == qc['hard_total'], batch_run.qc_evidence
+    _pass(emit, 'qc_hard_gates', f'hard_total={qc["hard_total"]} hard_passed={qc["hard_passed"]} not_applicable={qc["not_applicable"]} {batch_run.qc_evidence}')
 
 
 def test_rg09_cloud_verified_before_count(batch_run, emit):
@@ -445,3 +617,7 @@ def test_rg09_budget_envelope(batch_run, emit):
          f'limit_s=7200 remaining_s={DEADLINE.remaining():.0f}')
     emit('- seed: launcher_line=' + batch_run.launcher_seed_line + ' seed_counts=' + json.dumps(batch_run.seed_counts, sort_keys=True) + ' render_config=' + batch_run.render_config)
     emit('- start: pre_stop_attempts=' + str(batch_run.pre_stop_attempts))
+    emit('- pre_check: other_workflows_running=' + str(batch_run.other_workflows_running) + ' (Temporal 127.0.0.1:7233 namespace default, chi doc)')
+    emit('- ai_calls_source: dem cp_ai_invocation_records record_key bat dau <ws>:<batch>:video: ai_calls=' + str(batch_run.ai_calls) + ' ledger_usd=' + str(batch_run.spent_usd) + ' (route_cost_per_request=0 nen ledger luon 0)')
+    emit('- ' + batch_run.batch_after_run + ' (OI-PW-E2E-01: trang thai dong lo la muc mo, RG-09 khong cham theo no)')
+    emit('- qc_evidence: ' + batch_run.qc_evidence)

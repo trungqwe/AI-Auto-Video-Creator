@@ -53,6 +53,9 @@ TRACE_KEYS = ('snapshot_id', 'snapshot_payload_sha256', 'model_refs', 'prompt_re
 CLEANUP_STATES = ('CLEANUP_ELIGIBLE', 'CLEANUP_AUTHORIZED', 'DELETED')
 TERMINAL_JOB = ('COMPLETED', 'FAILED_FINAL')
 RENDER_CONFIG_SCOPES = (('preset', 'bold-yellow'), ('preset', 'output-profile'), ('policy', 'quality'))
+TEMPORAL_PORT = 7233
+TEMPORAL_NAMESPACE = 'default'
+WATCHED_WORKFLOWS = ('ProductionBatchWorkflow', 'VideoProductionWorkflow', 'DebugStageWorkflow')
 
 
 class BatchDriverError(RuntimeError):
@@ -215,14 +218,56 @@ def format_script_length(payload, profile):
     return f'script_length=[segments={len(segments)} words={words} wpm={wpm} est_ms={est_ms} range_ms={low}-{high} verdict={verdict}]'
 
 
-def collect_script_length(db, since):
+def collect_script_length(db, prefix):
     try:
-        plan = _plan_row(db, since)
+        plan = _plan_row(db, prefix)
         script = None if plan is None else _script_row(db, plan[0].get('script_version_id'))
         profile = json.loads(PROFILE_JSON.read_text(encoding='utf-8'))
         return format_script_length(None if script is None else script[0], profile)
     except Exception as exc:
         return 'script_length_error=' + type(exc).__name__
+
+
+def video_key_prefix(workspace_id, batch_id):
+    """Tiền tố record_key của mọi bản ghi creative do các video con của lô ghi: <ws>:<batch_id>:video:."""
+    return f'{workspace_id}:{batch_id}:video:'
+
+
+def list_running_workflows(host=HOST, port=TEMPORAL_PORT, namespace=TEMPORAL_NAMESPACE):
+    """Chỉ đọc: [(workflow_type, workflow_id)] của mọi workflow RUNNING trên Temporal. Driver không cancel, terminate hay signal."""
+    import asyncio
+    from temporalio.client import Client
+
+    async def _list():
+        client = await Client.connect(f'{host}:{port}', namespace=namespace)
+        return [(item.workflow_type, item.id) async for item in client.list_workflows(query='ExecutionStatus = "Running"')]
+
+    return asyncio.run(asyncio.wait_for(_list(), 90))
+
+
+def require_no_other_workflows(lister=list_running_workflows):
+    """Điều kiện chặn giữa stop và start: không workflow lô, video hay debug nào đang RUNNING; trả 0. Ngược lại BLOCKED kèm id (tối đa 20)."""
+    try:
+        rows = lister()
+    except Exception as exc:
+        raise BlockedError('BLOCKED: TEMPORAL_UNREACHABLE: ' + type(exc).__name__) from None
+    busy = sorted(f'{kind}={ident}' for kind, ident in rows if kind in WATCHED_WORKFLOWS)
+    if busy:
+        raise BlockedError('BLOCKED: OTHER_WORKFLOWS_RUNNING count=' + str(len(busy)) + ' ids=[' + ', '.join(busy[:20]) + ']')
+    return 0
+
+
+def format_batch_running(batch_id, rows, db_status):
+    """Một dòng trạng thái lô B sau lượt: workflow của lô (id == B hoặc bắt đầu bằng B + ':') còn RUNNING trên Temporal và trạng thái dòng lô trong DB."""
+    ids = sorted(ident for _, ident in rows if ident == batch_id or ident.startswith(batch_id + ':'))
+    return f'batch_after_run=[db_status={db_status} temporal_running={len(ids)} ids={ids}]'
+
+
+def collect_batch_running(db, batch_id, lister=list_running_workflows):
+    try:
+        return format_batch_running(batch_id, lister(), db.batch_status(batch_id))
+    except Exception as exc:
+        return 'batch_after_run_error=' + type(exc).__name__
 
 
 # --- điều khiển launcher -----------------------------------------------------------------------------------------
@@ -409,15 +454,21 @@ class ReadOnlyDb:
         rows = self.query('SELECT DISTINCT ON (stage_name) stage_name, status, attempt, stage_run_id, recovery_epoch FROM controlplane.cp_stage_runs WHERE workspace_id = %s AND job_id = %s ORDER BY stage_name, attempt DESC', job_id)
         return {r[0]: {'status': r[1], 'attempt': r[2], 'stage_run_id': r[3], 'recovery_epoch': r[4]} for r in rows}
 
-    def locations(self, job_id, since):
+    def ai_invocation_count(self, prefix):
+        """Số lời gọi AI của một lô: số dòng cp_ai_invocation_records có record_key bắt đầu bằng prefix (<ws>:<batch_id>:video:). Ledger chi phí luôn 0 vì route_cost_per_request=0 nên không dùng làm số lời gọi."""
+        rows = self.query('SELECT count(*) FROM controlplane.cp_ai_invocation_records WHERE workspace_id = %s AND starts_with(record_key, %s)', prefix)
+        return int(rows[0][0])
+
+    def locations(self, job_id):
+        """Vị trí lưu của artifact thuộc job (owner_ref = job_id) và artifact đầu ra ở sổ hoàn tất của job; chỉ đọc."""
         rows = self.query(
             'SELECT l.location_id::text, l.backend_ref, l.provider_object_ref, l.state, l.observed_hash, l.observed_size_bytes, '
             'l.verification_evidence_ref, l.updated_at, l.artifact_version_id::text, v.sha256_hash, v.size_bytes '
             'FROM controlplane.cp_artifact_locations l JOIN controlplane.cp_artifact_versions v '
             'ON v.workspace_id = l.workspace_id AND v.artifact_version_id = l.artifact_version_id '
-            'WHERE l.workspace_id = %s AND (l.created_at >= %s OR l.artifact_version_id IN '
+            'WHERE l.workspace_id = %s AND (v.owner_ref = %s OR l.artifact_version_id IN '
             '(SELECT output_artifact_version_id FROM controlplane.cp_completion_ledger WHERE workspace_id = %s AND job_id = %s)) '
-            'ORDER BY l.created_at', since, self.workspace_id, job_id)
+            'ORDER BY l.created_at', job_id, self.workspace_id, job_id)
         keys = ('location_id', 'backend_ref', 'provider_object_ref', 'state', 'observed_hash', 'observed_size_bytes',
                 'verification_evidence_ref', 'updated_at', 'artifact_version_id', 'sha256_hash', 'size_bytes')
         return [dict(zip(keys, r)) for r in rows]
@@ -504,6 +555,11 @@ class CostWatch:
     def __init__(self, db, window_start):
         self._db = db
         self._start = window_start
+        self._prefix = None
+
+    def bind_prefix(self, prefix):
+        """Từ lúc có lô: lời gọi AI = số dòng cp_ai_invocation_records theo prefix của lô, không phải số bản ghi ledger chi phí (luôn 0 vì route_cost_per_request=0)."""
+        self._prefix = prefix
 
     def _records(self):
         import psycopg
@@ -514,7 +570,7 @@ class CostWatch:
             return PostgresCostLedger(conn).records(self._db.workspace_id, self._start, end)
 
     def calls(self):
-        return len(self._records())
+        return 0 if self._prefix is None else self._db.ai_invocation_count(self._prefix)
 
     def spent(self):
         total = Decimal(0)
@@ -533,8 +589,9 @@ class CostWatch:
             raise c.CostCeilingExceeded('AI call cap exceeded')
 
 
-def drive_bytes(db, window_start):
-    rows = db.query("SELECT coalesce(sum(v.size_bytes), 0) FROM controlplane.cp_artifact_locations l JOIN controlplane.cp_artifact_versions v ON v.workspace_id = l.workspace_id AND v.artifact_version_id = l.artifact_version_id WHERE l.workspace_id = %s AND l.created_at >= %s AND position('drive' in lower(l.backend_ref)) > 0", window_start)
+def drive_bytes(db, job_id):
+    """Tổng byte Drive của job: artifact có owner_ref = job_id hoặc là đầu ra ở sổ hoàn tất của job."""
+    rows = db.query("SELECT coalesce(sum(v.size_bytes), 0) FROM controlplane.cp_artifact_locations l JOIN controlplane.cp_artifact_versions v ON v.workspace_id = l.workspace_id AND v.artifact_version_id = l.artifact_version_id WHERE l.workspace_id = %s AND position('drive' in lower(l.backend_ref)) > 0 AND (v.owner_ref = %s OR l.artifact_version_id IN (SELECT output_artifact_version_id FROM controlplane.cp_completion_ledger WHERE workspace_id = %s AND job_id = %s))", job_id, db.workspace_id, job_id)
     return int(rows[0][0])
 
 
@@ -585,8 +642,8 @@ def drive_md5_check(db, location):
 
 # --- trace, kế hoạch, QC -----------------------------------------------------------------------------------------
 
-def _plan_row(db, since):
-    rows = db.query('SELECT payload, production_plan_id FROM controlplane.cp_production_plans WHERE workspace_id = %s AND created_at >= %s ORDER BY created_at DESC LIMIT 1', since)
+def _plan_row(db, prefix):
+    rows = db.query('SELECT payload, production_plan_id FROM controlplane.cp_production_plans WHERE workspace_id = %s AND starts_with(record_key, %s) ORDER BY created_at DESC LIMIT 1', prefix)
     return rows[0] if rows else None
 
 
@@ -607,17 +664,17 @@ def job_snapshot_id(db, job_id):
     return _need(rows[0][0] if rows else None, 'snapshot_ref', 'cp_completion_ledger')
 
 
-def build_trace(db, job_id, since):
+def build_trace(db, job_id, prefix):
     snapshot_id = job_snapshot_id(db, job_id)
     snap = db.query('SELECT payload FROM controlplane.cp_production_snapshots WHERE workspace_id = %s AND snapshot_id = %s', snapshot_id)
     snap_payload = _need(snap[0][0] if snap else None, 'payload', 'cp_production_snapshots')
-    plan = _need(_plan_row(db, since), 'plan', 'cp_production_plans')
+    plan = _need(_plan_row(db, prefix), 'plan', 'cp_production_plans')
     script_id = _need(plan[0].get('script_version_id'), 'script_version_id', 'cp_production_plans')
     script = _need(_script_row(db, script_id), 'script', 'cp_script_versions')
     profile = json.loads(PROFILE_JSON.read_text(encoding='utf-8'))
     models = profile['ai']['route_model_refs']['value']
     config_revision = profile['meta']['revision']['value']
-    prompts = db.query('SELECT DISTINCT record_key, revision FROM controlplane.cp_content_analyses WHERE workspace_id = %s AND created_at >= %s', since)
+    prompts = db.query('SELECT DISTINCT record_key, revision FROM controlplane.cp_content_analyses WHERE workspace_id = %s AND starts_with(record_key, %s)', prefix)
     prompt_refs = [{'id': 'analysis', 'revision': r[1]} for r in prompts]
     cfg = snap_payload.get('configuration_revision_refs') or []
     prompt_refs += [ref for ref in cfg if 'prompt' in json.dumps(ref).lower()]
@@ -644,8 +701,8 @@ def _plan_media_ids(plan_payload):
     return ids
 
 
-def plan_digest(db, job_id, since):
-    plan = _need(_plan_row(db, since), 'plan', 'cp_production_plans')
+def plan_digest(db, job_id, prefix):
+    plan = _need(_plan_row(db, prefix), 'plan', 'cp_production_plans')
     payload = plan[0]
     script = _need(_script_row(db, payload.get('script_version_id')), 'script', 'cp_script_versions')
     media = sorted(_plan_media_ids(payload))
@@ -673,19 +730,16 @@ def render_matches_plan(db, job_id, plan):
     return used <= set(plan['media_asset_ids'])
 
 
-def qc_gates(db, job_id):
-    snapshot_id = job_snapshot_id(db, job_id)
-    pkg = db.query("SELECT package_fingerprint FROM controlplane.cp_render_packages WHERE workspace_id = %s AND payload->>'production_snapshot_ref' = %s ORDER BY created_at DESC LIMIT 1", snapshot_id)
-    if not pkg:
-        raise BlockedError('BLOCKED: không có render package cho job')
+_GATE_RESULT_SQL = "SELECT g.payload FROM controlplane.cp_quality_gate_results g JOIN controlplane.cp_render_attempts a ON a.workspace_id = g.workspace_id AND a.record_key = g.record_key WHERE g.workspace_id = %s AND a.payload->>'package_fingerprint' = %s ORDER BY g.created_at DESC, g.revision DESC LIMIT 1"
+
+
+def summarize_gates(payload):
+    """Đếm cổng cứng của một kết quả QC; failed_gates giữ nguyên từng mục cổng cứng không passed."""
     from render.domain.quality_report import GATE_KINDS, GateKind
     kinds = {name.value: kind for name, kind in GATE_KINDS.items()}
-    rows = db.query("SELECT g.payload FROM controlplane.cp_quality_gate_results g JOIN controlplane.cp_render_attempts a ON a.workspace_id = g.workspace_id AND a.record_key = g.record_key WHERE g.workspace_id = %s AND a.payload->>'package_fingerprint' = %s ORDER BY g.created_at DESC, g.revision DESC LIMIT 1", pkg[0][0])
-    if not rows:
-        raise BlockedError('BLOCKED: không có kết quả QC')
-    total = passed = 0
-    failed, na = [], 0
-    for gate in rows[0][0].get('gates', []):
+    total = passed = na = 0
+    failed = []
+    for gate in (payload or {}).get('gates', []):
         kind = kinds.get(gate['gate'])
         if kind is GateKind.WARNING or kind is None:
             continue
@@ -696,8 +750,49 @@ def qc_gates(db, job_id):
         if gate['status'] == 'passed':
             passed += 1
         else:
-            failed.append(gate['gate'])
-    return {'hard_total': total, 'hard_passed': passed, 'hard_failed': total - passed, 'not_applicable': na, 'failed_ids': failed}
+            failed.append(gate)
+    return {'hard_total': total, 'hard_passed': passed, 'hard_failed': total - passed, 'not_applicable': na, 'failed_gates': failed}
+
+
+def qc_gates(db, job_id):
+    snapshot_id = job_snapshot_id(db, job_id)
+    pkg = db.query("SELECT package_fingerprint FROM controlplane.cp_render_packages WHERE workspace_id = %s AND payload->>'production_snapshot_ref' = %s ORDER BY created_at DESC LIMIT 1", snapshot_id)
+    if not pkg:
+        raise BlockedError('BLOCKED: không có render package cho job')
+    rows = db.query(_GATE_RESULT_SQL, pkg[0][0])
+    if not rows:
+        raise BlockedError('BLOCKED: không có kết quả QC')
+    summary = summarize_gates(rows[0][0])
+    summary['failed_ids'] = [gate['gate'] for gate in summary.pop('failed_gates')]
+    return summary
+
+
+def format_qc_evidence(gate_payload, package_payload):
+    """Một dòng: cổng cứng không passed (blocking_gates) và thời lượng mp4 đo được (measured_value của DURATION_RANGE) so với thời lượng giọng trong timeline của render package."""
+    summary = summarize_gates(gate_payload)
+    blocking = ' '.join(g['gate'] + '=' + str(g['status']) + ('/' + str(g['reason']) if g.get('reason') else '') for g in summary['failed_gates']) or 'none'
+    mp4 = next((g.get('measured_value') for g in (gate_payload or {}).get('gates', []) if g.get('gate') == 'DURATION_RANGE'), None)
+    timeline = (package_payload or {}).get('timeline') or {}
+    voice = next((timeline[key] for key in ('voice_duration_ms', 'duration_ms') if type(timeline.get(key)) is int), None)
+    delta = mp4 - voice if type(mp4) is int and type(voice) is int else None
+    return f'blocking_gates=[{blocking}] duration=[mp4_ms={mp4} voice_ms={voice} delta_ms={delta}]'
+
+
+def collect_qc_evidence(db, prefix):
+    """Chỉ đọc; dùng được cả khi job FAILED_FINAL (chưa có sổ hoàn tất): tìm render package theo production_plan_ref của kế hoạch thuộc lô."""
+    try:
+        plan = _plan_row(db, prefix)
+        if plan is None:
+            return 'qc_evidence=[no_plan]'
+        pkg = db.query("SELECT package_fingerprint, payload FROM controlplane.cp_render_packages WHERE workspace_id = %s AND payload->>'production_plan_ref' = %s ORDER BY created_at DESC LIMIT 1", plan[1])
+        if not pkg:
+            return 'qc_evidence=[no_render_package]'
+        rows = db.query(_GATE_RESULT_SQL, pkg[0][0])
+        if not rows:
+            return 'qc_evidence=[no_qc_result]'
+        return c.redact(format_qc_evidence(rows[0][0], pkg[0][1]))[:600]
+    except Exception as exc:
+        return 'qc_evidence_error=' + type(exc).__name__
 
 
 # --- chạy lô -----------------------------------------------------------------------------------------------------
@@ -735,6 +830,10 @@ class RunResult:
     seed_counts: dict = field(default_factory=dict)
     render_config: str = ''
     pre_stop_attempts: int = 0
+    other_workflows_running: int = -1
+    record_prefix: str = ''
+    qc_evidence: str = ''
+    batch_after_run: str = ''
 
 
 def _drive_verified(locations):
@@ -752,6 +851,7 @@ def run_batch(work_dir, deadline):
     try:
         # Đưa về trạng thái đã biết: stop idempotent, không đụng container hay dữ liệu; worker cũ còn sống thì start in 'Worker đang chạy' và không cấp URL /launch.
         result.pre_stop_attempts = stop_until_exited()
+        result.other_workflows_running = require_no_other_workflows()
         launch_path, _, launcher_out = start_capturing(work_dir, 'first')
         result.composition = composition_audit(launcher, db)
         result.launcher_seed_line = launcher_seed_line(launcher_out)
@@ -760,6 +860,8 @@ def run_batch(work_dir, deadline):
         session = ApiSession(db.layout.cert_file)
         session.open(launch_path)
         batch_id = result.batch_id = session.post_batch(1)
+        result.record_prefix = video_key_prefix(db.workspace_id, batch_id)
+        watch.bind_prefix(result.record_prefix)
         job = None
         wait_end = time.monotonic() + ELIGIBLE_WAIT_SECONDS
         while job is None:
@@ -781,8 +883,8 @@ def run_batch(work_dir, deadline):
                     seen_pairs.add(pair)
                     result.timeline.append((round(time.monotonic() - t0, 1), name, row['status']))
             if result.plan_before is None and stages.get('plan', {}).get('status') == 'SUCCEEDED':
-                result.plan_before = plan_digest(db, job_id, window_start)
-            locations = db.locations(job_id, window_start)
+                result.plan_before = plan_digest(db, job_id, result.record_prefix)
+            locations = db.locations(job_id)
             ledger = db.ledger_row(job_id)
             verified = _drive_verified(locations)
             complete_done = stages.get('complete', {}).get('status') == 'SUCCEEDED'
@@ -815,21 +917,26 @@ def run_batch(work_dir, deadline):
         if result.final_job_status != 'COMPLETED':
             failed = db.failed_stage(job_id)
             result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': str(result.final_job_status), 'failed_stage': None if failed is None else failed[0], 'activity': None if failed is None else failed[3], 'code': None if failed is None else failed[2]})
+            result.ai_calls = watch.calls()
+            result.qc_evidence = collect_qc_evidence(db, result.record_prefix)
+            result.batch_after_run = collect_batch_running(db, batch_id)
             diag = collect_diagnostic(db, job_id)
-            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; ' + collect_render_config(db) + ' launcher_seed=[' + result.launcher_seed_line + '] seed_counts=' + json.dumps(result.seed_counts, sort_keys=True) + ' ' + collect_script_length(db, window_start) + ' ' + diag)
+            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; other_workflows_running=' + str(result.other_workflows_running) + ' ai_calls=' + str(result.ai_calls) + ' ' + result.qc_evidence + ' ' + result.batch_after_run + ' ' + collect_render_config(db) + ' launcher_seed=[' + result.launcher_seed_line + '] seed_counts=' + json.dumps(result.seed_counts, sort_keys=True) + ' ' + collect_script_length(db, result.record_prefix) + ' ' + diag)
         result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': 'COMPLETED'})
         result.final_batch_status = db.batch_status(batch_id) or ''
-        result.locations = db.locations(job_id, window_start)
+        result.locations = db.locations(job_id)
         result.ledger_row = db.ledger_row(job_id)
         verified = _drive_verified(result.locations)
         result.drive_check = drive_md5_check(db, verified[0]) if verified else None
-        result.plan_after = plan_digest(db, job_id, window_start)
+        result.plan_after = plan_digest(db, job_id, result.record_prefix)
         result.render_matches = render_matches_plan(db, job_id, result.plan_after)
-        result.trace = build_trace(db, job_id, window_start)
+        result.trace = build_trace(db, job_id, result.record_prefix)
         result.qc = qc_gates(db, job_id)
+        result.qc_evidence = collect_qc_evidence(db, result.record_prefix)
+        result.batch_after_run = collect_batch_running(db, batch_id)
         result.ai_calls = watch.calls()
         result.spent_usd = watch.spent()
-        result.drive_bytes = drive_bytes(db, window_start)
+        result.drive_bytes = drive_bytes(db, job_id)
         result.elapsed_seconds = time.monotonic() - t0
         return result
     finally:
@@ -848,7 +955,7 @@ def main(argv):
     try:
         result = run_batch(out, c.Deadline(RUN_DEADLINE_SECONDS))
     except BlockedError as exc:
-        print(json.dumps({'status': 'BLOCKED', 'reason': c.redact(str(exc))[:2000]}))
+        print(json.dumps({'status': 'BLOCKED', 'reason': c.redact(str(exc))[:4000]}))
         return 1
     data = {k: getattr(result, k) for k in result.__dataclass_fields__}
     (out / 'trace.json').write_text(c.redact(json.dumps(data, default=str, ensure_ascii=False)), encoding='utf-8')
