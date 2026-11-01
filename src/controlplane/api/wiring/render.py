@@ -672,7 +672,13 @@ class ProductionRenderSources:
             output_path=f'out/{output_name}.mp4',
             thumbnail_path=f'out/{output_name}.jpg',
         )
-        ass_ref = self.ass_material(package).ass_ref
+        timing_payload = self._read_timing_payload(package.word_timing_ref)
+        if timing_payload is None:
+            raise ActivityInputError('INPUT_NOT_READY', 'word_timing_not_found')
+        voice_ms = timing_payload.get('voice_duration_ms')
+        if isinstance(voice_ms, bool) or not isinstance(voice_ms, int) or voice_ms <= 0:
+            raise ActivityInputError('INPUT_NOT_READY', 'voice_duration_missing')
+        ass_ref = self._build_ass_material(timing_payload, package.script_version_ref).ass_ref
         spec = build_render_command(
             package,
             preset_obj,
@@ -680,6 +686,7 @@ class ProductionRenderSources:
             ass_ref,
             tool,
             materialized,
+            voice_duration_ms=voice_ms,
         )
         return RenderPlan(command_spec=spec, output_artifact_ref=f'out/{output_name}.mp4')
 
