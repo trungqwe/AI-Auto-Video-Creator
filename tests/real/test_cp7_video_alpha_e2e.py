@@ -92,6 +92,55 @@ def test_unit_trace_missing():
         assert d.trace_missing({**full, 'model_refs': empty}) == ['model_refs']
 
 
+class _SnapshotDb:
+    """Db giả chỉ đọc: cp_video_jobs.snapshot_ref giữ chỗ 'allocation:slot-1' như AllocateJob; id snapshot thật chỉ có ở cp_completion_ledger."""
+
+    def __init__(self, ledger=True):
+        self.ledger = ledger
+
+    def query(self, sql, *params):
+        if 'FROM controlplane.cp_completion_ledger' in sql:
+            return [('snap-real',)] if self.ledger else []
+        if 'FROM controlplane.cp_video_jobs' in sql:
+            return [('allocation:slot-1',)]
+        if 'FROM controlplane.cp_production_snapshots' in sql:
+            return [({'source_refs': [{'ref_id': 's1'}], 'index_revision_refs': [{'ref_id': 'i1'}], 'configuration_revision_refs': [{'ref_id': 'c1'}]},)] if params[0] == 'snap-real' else []
+        if 'FROM controlplane.cp_production_plans' in sql:
+            return [({'script_version_id': 'sv1'}, 'plan1')]
+        if 'FROM controlplane.cp_script_versions' in sql:
+            return [({'segments': []}, 3)]
+        if 'FROM controlplane.cp_content_analyses' in sql:
+            return [('analysis-1', 1)]
+        if 'FROM controlplane.cp_render_packages' in sql:
+            return [({'script_version_ref': 'sv1', 'production_plan_ref': 'plan1', 'timeline': {}},)] if params[0] == 'snap-real' else []
+        return []
+
+
+def test_unit_build_trace_uses_ledger_snapshot_id():
+    trace = d.build_trace(_SnapshotDb(), 'job-1', 'since')
+    assert trace['snapshot_id'] == 'snap-real'
+    assert d.trace_missing(trace) == []
+    assert trace['input_revisions']['snapshot_sources'] == [{'ref_id': 's1'}]
+
+
+def test_unit_build_trace_blocks_without_ledger_snapshot():
+    with pytest.raises(d.BlockedError):
+        d.build_trace(_SnapshotDb(ledger=False), 'job-1', 'since')
+
+
+def test_unit_render_matches_plan_uses_ledger_snapshot_id():
+    plan = {'script_sha256': d._sha({'segments': []}), 'production_plan_id': 'plan1', 'media_asset_ids': []}
+    assert d.render_matches_plan(_SnapshotDb(), 'job-1', plan) is True
+
+
+def test_unit_qc_gates_uses_ledger_snapshot_id():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    body = text[text.index('def qc_gates('):text.index('# --- chạy lô')]
+    assert 'job_snapshot_id(db, job_id)' in body
+    assert 'FROM controlplane.cp_video_jobs' not in body
+    assert 'SELECT snapshot_ref FROM controlplane.cp_video_jobs' not in text
+
+
 def test_unit_no_batch_retry_loop():
     text = DRIVER_FILE.read_text(encoding='utf-8')
     for name in ('MAX_BATCH_ATTEMPTS', 'AI_CALLS_PER_JOB_RESERVE', 'RETRY_STAGES', 'RETRY_CODES', 'should_retry_batch'):

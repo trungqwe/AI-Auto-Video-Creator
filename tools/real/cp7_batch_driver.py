@@ -601,9 +601,14 @@ def _need(value, name, table):
     return value
 
 
+def job_snapshot_id(db, job_id):
+    """Id snapshot sản xuất thật của job. cp_video_jobs.snapshot_ref chỉ là chỗ giữ 'allocation:<slot>' do AllocateJob ghi; id thật ghi ở sổ hoàn tất (snapshot_ref = REF_PRODUCTION_SNAPSHOT), trùng production_snapshot_ref của render package."""
+    rows = db.query('SELECT snapshot_ref FROM controlplane.cp_completion_ledger WHERE workspace_id = %s AND job_id = %s', job_id)
+    return _need(rows[0][0] if rows else None, 'snapshot_ref', 'cp_completion_ledger')
+
+
 def build_trace(db, job_id, since):
-    job = db.query('SELECT snapshot_ref FROM controlplane.cp_video_jobs WHERE workspace_id = %s AND job_id = %s', job_id)
-    snapshot_id = _need(job[0][0] if job else None, 'snapshot_ref', 'cp_video_jobs')
+    snapshot_id = job_snapshot_id(db, job_id)
     snap = db.query('SELECT payload FROM controlplane.cp_production_snapshots WHERE workspace_id = %s AND snapshot_id = %s', snapshot_id)
     snap_payload = _need(snap[0][0] if snap else None, 'payload', 'cp_production_snapshots')
     plan = _need(_plan_row(db, since), 'plan', 'cp_production_plans')
@@ -654,8 +659,8 @@ def plan_digest(db, job_id, since):
 
 
 def render_matches_plan(db, job_id, plan):
-    job = db.query('SELECT snapshot_ref FROM controlplane.cp_video_jobs WHERE workspace_id = %s AND job_id = %s', job_id)
-    rows = db.query("SELECT payload FROM controlplane.cp_render_packages WHERE workspace_id = %s AND payload->>'production_snapshot_ref' = %s ORDER BY created_at DESC LIMIT 1", job[0][0])
+    snapshot_id = job_snapshot_id(db, job_id)
+    rows = db.query("SELECT payload FROM controlplane.cp_render_packages WHERE workspace_id = %s AND payload->>'production_snapshot_ref' = %s ORDER BY created_at DESC LIMIT 1", snapshot_id)
     if not rows:
         return False
     package = rows[0][0]
@@ -669,8 +674,8 @@ def render_matches_plan(db, job_id, plan):
 
 
 def qc_gates(db, job_id):
-    job = db.query('SELECT snapshot_ref FROM controlplane.cp_video_jobs WHERE workspace_id = %s AND job_id = %s', job_id)
-    pkg = db.query("SELECT package_fingerprint FROM controlplane.cp_render_packages WHERE workspace_id = %s AND payload->>'production_snapshot_ref' = %s ORDER BY created_at DESC LIMIT 1", job[0][0])
+    snapshot_id = job_snapshot_id(db, job_id)
+    pkg = db.query("SELECT package_fingerprint FROM controlplane.cp_render_packages WHERE workspace_id = %s AND payload->>'production_snapshot_ref' = %s ORDER BY created_at DESC LIMIT 1", snapshot_id)
     if not pkg:
         raise BlockedError('BLOCKED: không có render package cho job')
     from render.domain.quality_report import GATE_KINDS, GateKind
