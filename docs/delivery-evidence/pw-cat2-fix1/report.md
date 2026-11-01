@@ -86,3 +86,15 @@ Mã đối chiếu R38 theo lệnh kiểm của task; các giới hạn còn l�
 ## 8. Tính toàn vẹn ký tự
 
 Tệp được ghi bằng công cụ ghi tệp (UTF-8, LF) và đọc lại sau khi ghi; chữ có dấu còn nguyên, không có ký tự `?` thay thế.
+
+## Rebase lên 7a45f61
+
+- `git rebase 7a45f6179fe9d2841b458e0176bde7749b78ad5b`: exit 0, kết quả no-op (`Current branch trungqwe/lane-pw-cat2-fix1 is up to date.`). HEAD sau rebase vẫn là `ba430ae` (commit `fix(pw-cat2-fix1)`) nằm trên `7a45f61`.
+- `git diff --check`: exit 0, không cảnh báo khoảng trắng.
+- Test đơn vị mới + convergence (static/catalog/video flow): `39 passed in 2.49s`, exit 0.
+- prod_wiring của gói (cat2_fix1, cat2_flow, g7, g4_fix1, g5_fix1): `74 passed in 48.85s`, exit 0.
+- `test_pw_vert_video_flow.py` + `test_pw_g3_grants.py`: `49 passed in 46.16s`, exit 0 ngay lần chạy đầu. Lượt trước hỏng do thời gian/tải, không tái hiện.
+- `test_pw_e2e_batch_video.py`: `10 passed in 127.78s (0:02:07)`, exit 0.
+- collection, creative, voice, render: `544 passed, 25 subtests passed in 4.06s`, exit 0.
+- `tests/unit`: `7572 passed, 2561 subtests passed in 22.35s`, exit 0.
+- Probe `flow.py`, probe `definitions.py`, probe CP2A-LAYOUT: cả ba exit 0.
