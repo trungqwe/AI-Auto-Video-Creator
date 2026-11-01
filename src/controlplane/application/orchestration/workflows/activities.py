@@ -86,6 +86,7 @@ INTERNAL_ACTIVITIES: Mapping[str, TaskQueue] = MappingProxyType({
     'IssueExecutionGrant': TaskQueue.CONTROL_WORKFLOWS,
     'ReadCapabilityView': TaskQueue.CONTROL_WORKFLOWS,
     'FailVideoJob': TaskQueue.CONTROL_WORKFLOWS,
+    'StartBatch': TaskQueue.CONTROL_WORKFLOWS,
 })
 
 VIDEO_STAGE_ACTIVITIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
