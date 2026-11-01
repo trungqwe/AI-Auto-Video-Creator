@@ -126,6 +126,15 @@ class HttpsTransport(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class PreparedMusic:
+    """Music after normalisation to the profile loudness: WAV bytes, duration read from the WAV header, loudness re-measured on those same bytes."""
+
+    data: bytes
+    duration_ms: int
+    report: LoudnessReport
+
+
 SILENCE_RATE_HZ = 8000
 
 
@@ -181,6 +190,7 @@ class CollectedTrack:
     attribution: str
     author: str
     sha256: str
+    rendition_sha256: str
     collected_at: str
     duration_ms: int
     moods: tuple[str, ...]
@@ -195,7 +205,7 @@ class CollectedTrack:
         return {
             'cue_index': cue_index, 'source_id': self.source_id, 'url': self.url, 'license': self.license,
             'attribution': self.attribution, 'author': self.author, 'collected_at': self.collected_at,
-            'sha256': self.sha256, 'duration_ms': self.duration_ms, 'moods': list(self.moods),
+            'sha256': self.sha256, 'rendition_sha256': self.rendition_sha256, 'duration_ms': self.duration_ms, 'moods': list(self.moods),
         }
 
     def to_sidecar(self) -> bytes:
@@ -207,28 +217,31 @@ class CollectedTrack:
 def track_from_sidecar(data: bytes) -> CollectedTrack | None:
     try:
         raw = json.loads(data.decode('utf-8'))
-        return CollectedTrack(
+        track = CollectedTrack(
             source_id=raw['source_id'], url=raw['url'], license=raw['license'], attribution=raw['attribution'],
-            author=raw['author'], sha256=raw['sha256'], collected_at=raw['collected_at'], duration_ms=int(raw['duration_ms']),
-            moods=tuple(raw['moods']), integrated_lufs=float(raw['integrated_lufs']), true_peak_dbtp=float(raw['true_peak_dbtp']),
+            author=raw['author'], sha256=raw['sha256'], rendition_sha256=raw['rendition_sha256'], collected_at=raw['collected_at'],
+            duration_ms=int(raw['duration_ms']), moods=tuple(raw['moods']), integrated_lufs=float(raw['integrated_lufs']),
+            true_peak_dbtp=float(raw['true_peak_dbtp']),
         )
+        if not all(isinstance(value, str) and _SHA256_RE.fullmatch(value) for value in (track.sha256, track.rendition_sha256)):
+            return None
+        return track
     except (ValueError, KeyError, TypeError):
         return None
 
 
 class AudioBedSource:
-    """AudioBedPort: collected library first (mood and duration), then the pinned sources, primary before fallback; otherwise a bed of kind none."""
+    """AudioBedPort: music cues look in the collected library (mood and duration), then in the pinned sources, primary before fallback; sfx cues get a silent bed of kind none for their span; a music cue without usable music turns the whole bed into kind none."""
 
     def __init__(
         self, *, sources: Sequence[MusicSource], library_dir: Path | str, transport: HttpsTransport,
-        duration_probe: Callable[[bytes], int], loudness_meter: Callable[[bytes], LoudnessReport],
+        prepare_music: Callable[[bytes], PreparedMusic],
         clock: Callable[[], datetime.datetime], max_bytes: int = DEFAULT_MAX_BYTES, timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         self._sources = tuple(sources)
         self._library = Path(library_dir)
         self._transport = transport
-        self._duration_probe = duration_probe
-        self._loudness_meter = loudness_meter
+        self._prepare_music = prepare_music
         self._clock = clock
         self._max_bytes = max_bytes
         self._timeout = timeout_seconds
@@ -238,18 +251,19 @@ class AudioBedSource:
         if limits is None or limits.min_lufs is None or limits.max_lufs is None or limits.max_true_peak_dbtp is None:
             raise AudioBedRejected(INPUT_NOT_READY, 'missing_loudness_constraints')
         errors: list[str] = []
-        chosen: list[CollectedTrack] = []
-        for cue in request.cues:
+        tracks: dict[int, CollectedTrack] = {}
+        for index, cue in enumerate(request.cues):
+            if cue.kind != 'music':
+                continue
             track = self._track_for(cue, limits, errors)
             if track is None:
                 return self._none_outcome(request, errors)
-            chosen.append(track)
-        return self._music_outcome(request, chosen)
+            tracks[index] = track
+        if not tracks:
+            return self._none_outcome(request, ['no_music_cue'])
+        return self._music_outcome(request, tracks)
 
     def _track_for(self, cue, limits, errors: list[str]) -> CollectedTrack | None:
-        if cue.kind != 'music':
-            errors.append('cue_kind_not_music')
-            return None
         span = cue.end_ms - cue.start_ms
         found = self._from_library(cue.mood, span, limits)
         if found is not None:
@@ -269,15 +283,15 @@ class AudioBedSource:
                 track = track_from_sidecar(sidecar.read_bytes())
             except OSError:
                 continue
-            if track is None or sidecar.name != f'music-{track.sha256}.json' or pinned.get(track.url) != track.sha256:
+            if track is None or sidecar.name != f'music-{track.rendition_sha256}.json' or pinned.get(track.url) != track.sha256:
                 continue
             if not _mood_matches(track.moods, mood) or track.duration_ms < span or validate_loudness_report(track.report, limits):
                 continue
             try:
-                intact = hashlib.sha256((self._library / f'music-{track.sha256}.audio').read_bytes()).hexdigest() == track.sha256
+                intact = hashlib.sha256((self._library / f'music-{track.rendition_sha256}.audio').read_bytes()).hexdigest() == track.rendition_sha256
             except OSError:
                 continue
-            if intact and (best is None or (track.duration_ms, track.sha256) < (best.duration_ms, best.sha256)):
+            if intact and (best is None or (track.duration_ms, track.rendition_sha256) < (best.duration_ms, best.rendition_sha256)):
                 best = track
         return best
 
@@ -304,44 +318,69 @@ class AudioBedSource:
             errors.append('music_sha256_mismatch')
             return None
         try:
-            duration_ms = self._duration_probe(body)
-            report = self._loudness_meter(body)
+            prepared = self._prepare_music(body)
         except Exception:
             errors.append('music_unreadable')
             return None
-        if type(duration_ms) is not int or duration_ms <= 0 or not isinstance(report, LoudnessReport):
+        if (
+            not isinstance(prepared, PreparedMusic) or not isinstance(prepared.data, bytes) or not prepared.data
+            or type(prepared.duration_ms) is not int or prepared.duration_ms <= 0 or not isinstance(prepared.report, LoudnessReport)
+        ):
             errors.append('music_unreadable')
             return None
-        if duration_ms < span:
+        if prepared.duration_ms < span:
             errors.append('music_too_short')
             return None
-        if validate_loudness_report(report, limits):
+        if validate_loudness_report(prepared.report, limits):
             errors.append('loudness_out_of_target')
             return None
+        rendition = hashlib.sha256(prepared.data).hexdigest()
         track = CollectedTrack(
             source_id=source.source_id, url=source.url, license=source.license, attribution=source.attribution, author=source.author,
-            sha256=digest, collected_at=_iso(self._clock()), duration_ms=duration_ms, moods=source.moods,
-            integrated_lufs=float(report.integrated_lufs), true_peak_dbtp=float(report.true_peak_dbtp),
+            sha256=digest, rendition_sha256=rendition, collected_at=_iso(self._clock()), duration_ms=prepared.duration_ms, moods=source.moods,
+            integrated_lufs=float(prepared.report.integrated_lufs), true_peak_dbtp=float(prepared.report.true_peak_dbtp),
         )
         try:
             self._library.mkdir(parents=True, exist_ok=True)
-            _atomic_write(self._library / f'music-{digest}.audio', body)
-            _atomic_write(self._library / f'music-{digest}.json', track.to_sidecar())
+            _atomic_write(self._library / f'music-{rendition}.audio', prepared.data)
+            _atomic_write(self._library / f'music-{rendition}.json', track.to_sidecar())
         except OSError:
             errors.append('music_store_failed')
             return None
         return track
 
-    def _music_outcome(self, request: AudioBedRequest, chosen: list[CollectedTrack]) -> AudioBedOutcome:
-        renditions = tuple(
-            PreparedRendition(cue_index=index, rendition_ref=f'music-{track.sha256}', source_artifact_ref=cue.artifact_ref, mood=cue.mood)
-            for index, (cue, track) in enumerate(zip(request.cues, chosen))
-        )
-        reports = [track.report for track in chosen]
+    def _store_silence(self, cue) -> str | None:
+        audio = silent_wav(cue.end_ms - cue.start_ms)
+        digest = hashlib.sha256(audio).hexdigest()
+        try:
+            self._library.mkdir(parents=True, exist_ok=True)
+            _atomic_write(self._library / f'bed-none-{digest}.wav', audio)
+        except OSError:
+            return None
+        return digest
+
+    def _music_outcome(self, request: AudioBedRequest, tracks: dict[int, CollectedTrack]) -> AudioBedOutcome:
+        renditions = []
+        hashes = []
+        sfx = []
+        for index, cue in enumerate(request.cues):
+            track = tracks.get(index)
+            if track is not None:
+                digest = track.rendition_sha256
+                ref = f'music-{digest}'
+            else:
+                digest = self._store_silence(cue)
+                if digest is None:
+                    return AudioBedOutcome(status=Disposition.FAILED, error='bed_none_store_failed')
+                ref = f'bed-none-{digest}'
+                sfx.append({'cue_index': index, 'bed_kind': BED_KIND_NONE, 'reason': 'no_sfx_source'})
+            renditions.append(PreparedRendition(cue_index=index, rendition_ref=ref, source_artifact_ref=cue.artifact_ref, mood=cue.mood))
+            hashes.append(digest)
+        reports = [tracks[index].report for index in sorted(tracks)]
         return AudioBedOutcome(
-            status=Disposition.SUCCEEDED, renditions=renditions, output_hashes=tuple(track.sha256 for track in chosen),
+            status=Disposition.SUCCEEDED, renditions=tuple(renditions), output_hashes=tuple(hashes),
             loudness_report=LoudnessReport(integrated_lufs=min(r.integrated_lufs for r in reports), true_peak_dbtp=max(r.true_peak_dbtp for r in reports)),
-            provenance={'bed_kind': BED_KIND_MUSIC, 'ai_generated': False, 'tracks': [track.provenance(index) for index, track in enumerate(chosen)]},
+            provenance={'bed_kind': BED_KIND_MUSIC, 'ai_generated': False, 'tracks': [tracks[index].provenance(index) for index in sorted(tracks)], 'sfx': sfx},
             risk_metadata={'bed_kind': BED_KIND_MUSIC, 'ai_generated': False, 'license_checked': True, 'pinned_sha256_verified': True},
         )
 
@@ -350,12 +389,8 @@ class AudioBedSource:
         renditions = []
         hashes = []
         for index, cue in enumerate(request.cues):
-            audio = silent_wav(cue.end_ms - cue.start_ms)
-            digest = hashlib.sha256(audio).hexdigest()
-            try:
-                self._library.mkdir(parents=True, exist_ok=True)
-                _atomic_write(self._library / f'bed-none-{digest}.wav', audio)
-            except OSError:
+            digest = self._store_silence(cue)
+            if digest is None:
                 return AudioBedOutcome(status=Disposition.FAILED, error='bed_none_store_failed')
             renditions.append(PreparedRendition(cue_index=index, rendition_ref=f'bed-none-{digest}', source_artifact_ref=cue.artifact_ref, mood=cue.mood))
             hashes.append(digest)
@@ -368,4 +403,4 @@ class AudioBedSource:
         )
 
 
-__all__ = ('AudioBedSource', 'CollectedTrack', 'HttpsResponse', 'HttpsTransport', 'MusicSource', 'MusicSourceError', 'check_music_url', 'load_music_sources', 'silent_wav', 'track_from_sidecar')
+__all__ = ('AudioBedSource', 'CollectedTrack', 'HttpsResponse', 'HttpsTransport', 'MusicSource', 'MusicSourceError', 'PreparedMusic', 'check_music_url', 'load_music_sources', 'silent_wav', 'track_from_sidecar')

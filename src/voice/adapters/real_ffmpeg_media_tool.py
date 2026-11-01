@@ -16,6 +16,9 @@ import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+from voice.adapters.audio_bed_source import PreparedMusic
+from voice.adapters.wav_duration import read_wav_info
+from voice.domain.audio_bed import LoudnessReport
 from voice.domain.image_safety import ImageSafetyAssessment, SafetyOutcome
 from voice.domain.image_transform import TransformOutput, TransformRequest
 from voice.domain.normalize import RenditionPlan
@@ -31,6 +34,8 @@ _SHA256_RE = re.compile(r'[0-9a-f]{64}')
 _EXTENSION_RE = re.compile(r'[a-z0-9]{1,8}')
 _COLOR_RE = re.compile(r'#[0-9a-fA-F]{6}')
 _PIXEL_FORMAT_RE = re.compile(r'[a-z0-9_]+')
+_LOUDNESS_RANGES = ((-70.0, -5.0), (-9.0, 0.0), (1.0, 50.0))
+_LOUDNORM_JSON_RE = re.compile(r'\{[^{}]*\}')
 
 
 class FfmpegToolError(RuntimeError):
@@ -76,6 +81,13 @@ def _file_sha256(path: Path) -> str:
         while chunk := f.read(1024 * 1024):
             hasher.update(chunk)
     return hasher.hexdigest()
+
+
+def _loudness_target(integrated_lufs: object, true_peak_dbtp: object, lra: object) -> tuple[float, float, float]:
+    for (low, high), value in zip(_LOUDNESS_RANGES, (integrated_lufs, true_peak_dbtp, lra)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not low <= value <= high:
+            raise FfmpegToolError('loudness_target_invalid')
+    return (float(integrated_lufs), float(true_peak_dbtp), float(lra))
 
 
 class _FfprobeRunner:
@@ -441,6 +453,76 @@ class RealFfmpegMediaTool:
             processor_version=f'ffmpeg-{archive}',
             post_assessment=self._post_assessment(request, processed),
         )
+
+    def _run_audio(self, args: list[str]) -> subprocess.CompletedProcess[str]:
+        try:
+            completed = self._run([str(self._ffmpeg), '-nostdin', '-hide_banner', '-nostats', *args])
+        except subprocess.TimeoutExpired:
+            raise FfmpegToolError('ffmpeg_timeout') from None
+        except OSError:
+            raise FfmpegToolError('ffmpeg_not_started') from None
+        if completed.returncode != 0:
+            raise FfmpegToolError(f'ffmpeg_exit_{completed.returncode}')
+        return completed
+
+    def _music_sample_rate(self, path: Path) -> int:
+        streams = self._ffprobe(['-select_streams', 'a:0', '-show_entries', 'stream=sample_rate'], path).get('streams')
+        raw = streams[0].get('sample_rate') if isinstance(streams, list) and streams and isinstance(streams[0], dict) else None
+        try:
+            rate = int(raw)
+        except (TypeError, ValueError):
+            raise FfmpegToolError('music_no_audio') from None
+        if rate <= 0:
+            raise FfmpegToolError('music_no_audio')
+        return rate
+
+    def _measure_music(self, path: Path, target: tuple[float, float, float]) -> dict[str, float]:
+        i, tp, lra = target
+        completed = self._run_audio(['-i', str(path), '-vn', '-map', '0:a:0', '-af', f'loudnorm=I={i:.2f}:TP={tp:.2f}:LRA={lra:.2f}:print_format=json', '-f', 'null', '-'])
+        try:
+            raw = json.loads(_LOUDNORM_JSON_RE.findall(completed.stderr)[-1])
+            measured = {name: float(raw[name]) for name in ('input_i', 'input_tp', 'input_lra', 'input_thresh', 'target_offset')}
+        except (IndexError, KeyError, ValueError, TypeError):
+            raise FfmpegToolError('music_unmeasurable') from None
+        if not all(math.isfinite(value) for value in measured.values()):
+            raise FfmpegToolError('music_unmeasurable')
+        return measured
+
+    def prepare_music(self, body: bytes, *, integrated_lufs: float, true_peak_dbtp: float, lra: float, work_dir: Path | str) -> PreparedMusic:
+        target = _loudness_target(integrated_lufs, true_peak_dbtp, lra)
+        i, tp, lra_target = target
+        if not isinstance(body, bytes) or not body:
+            raise FfmpegToolError('music_empty')
+        self._verify_pin()
+        work = Path(work_dir)
+        work.mkdir(parents=True, exist_ok=True)
+        stem = f'prep-{uuid.uuid4().hex}'
+        source = work / f'{stem}.src'
+        normalized = work / f'{stem}.norm.wav'
+        lowered = work / f'{stem}.low.wav'
+        try:
+            source.write_bytes(body)
+            rate = self._music_sample_rate(source)
+            m = self._measure_music(source, target)
+            m_i, m_tp, m_lra, m_thresh, m_offset = m['input_i'], m['input_tp'], m['input_lra'], m['input_thresh'], m['target_offset']
+            graph = ':'.join([
+                f'loudnorm=I={i:.2f}', f'TP={tp:.2f}', f'LRA={lra_target:.2f}', f'measured_I={m_i:.2f}', f'measured_TP={m_tp:.2f}',
+                f'measured_LRA={m_lra:.2f}', f'measured_thresh={m_thresh:.2f}', f'offset={m_offset:.2f}', 'linear=true',
+            ])
+            self._run_audio(['-i', str(source), '-vn', '-map', '0:a:0', '-af', graph, '-ar', str(rate), '-c:a', 'pcm_s16le', str(normalized)])
+            after = self._measure_music(normalized, target)
+            final = normalized
+            excess = after['input_tp'] - tp
+            if excess > 0:
+                self._run_audio(['-i', str(normalized), '-af', f'volume=-{excess:.4f}dB', '-c:a', 'pcm_s16le', str(lowered)])
+                after = self._measure_music(lowered, target)
+                final = lowered
+            data = final.read_bytes()
+            info = read_wav_info(data)
+            return PreparedMusic(data=data, duration_ms=info.duration_ms, report=LoudnessReport(integrated_lufs=after['input_i'], true_peak_dbtp=after['input_tp']))
+        finally:
+            for path in (source, normalized, lowered):
+                self._discard(path)
 
     def probe(self, artifact_ref: ArtifactRef) -> dict[str, object]:
         try:
