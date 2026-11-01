@@ -1,12 +1,12 @@
 # CP7-10 — R4 Video Alpha có giám sát trên ngăn xếp thật (RG-09)
 
 - Ngày kiểm: 01/11/2026.
-- HEAD cơ sở: `bb8c43b8e637788c1174693c213d8b654b522fb8`.
+- HEAD cơ sở: `fb3a7f28cf37a5e6cdd25250de21e4230d3561b3`.
 - Interpreter khoá: `C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\8715e538\venv\Scripts\python.exe`.
 
 ## Kết luận trung thực
 
-Lượt này **BLOCKED**. Sau rebase lên `2687822f8841fcda7c38c692cdd997c16494b1a3`, `git diff --check` exit 0 và test unit xanh (38 passed, 11 deselected). Lần chạy ngăn xếp thật duy nhất dừng ở `launcher start` (rc=1): `Ứng dụng chưa mở cổng; xem logs/serve.log`. Dòng cuối của `serve.log` ghi `BLOCKED: cổng production chưa sẵn: DrivePlacementError: Drive access token is unavailable`, tức broker không cấp được Drive access token cho tiến trình production. Driver dừng trước khi tạo lô nên không có batch id B, job id J hay `run_ids` của lượt này. Không mục RG-09 nào có số đo; chưa kiểm chứng được sửa F7 trên ngăn xếp thật. Việc cần user hoặc Control xử lý: khôi phục Drive OAuth token trong broker DPAPI của phân hệ J (worker không đọc hay in bí mật).
+Lượt này **BLOCKED** (nhánh A, token Drive chưa được khôi phục). Ở HEAD `fb3a7f28cf37a5e6cdd25250de21e4230d3561b3`, `git diff --check` exit 0 và test unit xanh (38 passed, 11 deselected). Lần chạy ngăn xếp thật duy nhất dừng ở `launcher start` (rc=1): `Ứng dụng chưa mở cổng; xem logs/serve.log`. Dòng cuối của `serve.log` vẫn là `BLOCKED: cổng production chưa sẵn: DrivePlacementError: Drive access token is unavailable`, tức broker không cấp được Drive access token cho tiến trình production. Driver dừng trước khi tạo lô nên không có batch id B, job id J hay `run_ids` của lượt này. Không mục RG-09 nào có số đo; chưa kiểm chứng được sửa F7 trên ngăn xếp thật. OI-CP7-10-F9 vẫn mở: cần user hoặc phân hệ J khôi phục Drive OAuth token trong broker DPAPI (worker không đọc hay in bí mật).
 
 ## Nguyên nhân và sửa
 
@@ -17,13 +17,12 @@ Lượt này **BLOCKED**. Sau rebase lên `2687822f8841fcda7c38c692cdd997c16494b
 
 ## Lệnh đã chạy
 
-1. Bước 1: `git rebase 2687822f8841fcda7c38c692cdd997c16494b1a3` — exit 0, `Successfully rebased and updated refs/heads/trungqwe/lane-cp7-10` (18 commit), HEAD là hậu duệ của đầu tích hợp, cây làm việc sạch.
-2. Bước 2: `git diff --check` — exit 0, không output.
-3. Bước 3: `python -m pytest tests/real/test_cp7_video_alpha_e2e.py -q -p no:cacheprovider -k unit` — exit 0, `38 passed, 11 deselected in 0.16s`.
-4. Bước 4 (đúng một lần, bắt đầu 05:53:15Z): `python -m pytest tests/real/test_cp7_video_alpha_e2e.py -q -p no:cacheprovider` — exit 1, `38 passed, 11 errors in 126.37s (0:02:06)`. Cả 11 lỗi là `BLOCKED: launcher start rc=1` ở fixture `batch_run`.
-5. Bước 5: ghi lại report.md này bằng công cụ sửa tệp (UTF-8).
-6. Bước 6: probe 10 mục RG-09 — đỏ đúng kỳ vọng vì các mục là BLOCKED thật (exit code và danh sách mục đỏ nằm trong báo cáo worker_done).
-7. Bước 7: `git diff --check` sau khi ghi report — kết quả nằm trong báo cáo worker_done.
+1. Bước 1: `git diff --check` ở HEAD `fb3a7f28cf37a5e6cdd25250de21e4230d3561b3` (cây sạch) — exit 0, không output.
+2. Bước 2: `python -m pytest tests/real/test_cp7_video_alpha_e2e.py -q -p no:cacheprovider -k unit` — exit 0, `38 passed, 11 deselected in 0.08s`.
+3. Bước 3 (đúng một lần, bắt đầu 2026-11-01T06:00:10Z): `python -m pytest tests/real/test_cp7_video_alpha_e2e.py -q -p no:cacheprovider` — exit 1, `38 passed, 11 errors in 126.24s (0:02:06)`. Cả 11 lỗi là `BLOCKED: launcher start rc=1` ở fixture `batch_run`.
+4. Bước 4: ghi lại report.md này bằng công cụ sửa tệp (UTF-8).
+5. Bước 5: `git diff --check` sau khi ghi report — xem báo cáo worker_done.
+6. Bước 6: probe 10 mục RG-09 — xem báo cáo worker_done (đỏ đúng kỳ vọng vì các mục là BLOCKED thật).
 
 ## Kết quả
 
@@ -45,7 +44,7 @@ RG-09.secret_scan: BLOCKED
 - Trước dòng đó launcher đã nạp namespace Temporal, nguồn, prompt mặc định và bộ media seed (idempotent); Kokoro TTS chạy ở giai đoạn khởi tạo cổng production.
 - Batch id B, job id J: không có (driver dừng trước khi tạo lô). Không có `run_ids`.
 - Không đo được vì BLOCKED trước khi tạo lô: `- budget:`, `- seed:`, `- start:`, `- pre_check:`, `- ai_calls_source:`, `- batch_after_run=[...]`, `- qc_evidence:` (blocking_gates, mp4_ms, voice_ms, delta_ms), ai_calls (trần 25), ledger delta (trần 3 USD), Drive bytes (trần 200 MiB), md5 local và cloud, ready_seconds của resume (ngưỡng 300 giây), attempt trước và sau resume, số từ align được chia. Không số nào được bịa.
-- Thời gian chạy của lần pytest duy nhất: 126,37 giây (trần 2 giờ).
+- Thời gian chạy của lần pytest duy nhất: 126,24 giây (trần 2 giờ).
 
 ## Open item
 
