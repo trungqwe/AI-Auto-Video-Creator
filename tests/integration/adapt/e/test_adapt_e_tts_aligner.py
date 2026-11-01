@@ -405,8 +405,9 @@ def test_overlap_zero_length_and_overrun_are_bounded_not_invented(align_env):
     segments = [segment(0.0, 9.0, [word(' alpha', 0.0, 1.0), word(' beta', 0.9, 1.5), word(' gamma', 1.5, 1.5), word(' delta', 1.6, 9.0)])]
     aligner, _ = make_aligner(align_env, segments, max_ratio=0.3)
     result = aligner.align(make_request(align_env, 'alpha beta gamma delta', duration_ms=3000))
-    assert [(w['normalized_text'], w['start_ms'], w['end_ms']) for w in result.words] == [('alpha', 0, 1000), ('beta', 1000, 1500), ('delta', 1600, 3000)]
-    assert aligner.last_report.missing_script_indices == (2,) and aligner.last_report.extra_transcript_indices == (2,)
+    assert [(w['normalized_text'], w['start_ms'], w['end_ms']) for w in result.words] == [('alpha', 0, 1000), ('beta', 1000, 1222), ('gamma', 1222, 1500), ('delta', 1600, 3000)]
+    assert aligner.last_report.missing_script_indices == () and aligner.last_report.extra_transcript_indices == ()
+    assert aligner.last_report.split_group_count == 1
     assert result.segment_boundaries == ({'start_ms': 0, 'end_ms': 3000},)
 
 
