@@ -668,6 +668,47 @@ def test_invalid_hook_ranges_are_rejected_by_the_render_command(changes, code, r
 def test_hook_window_is_bound_into_the_fingerprint():
     assert render(record=record(hook_placement=hook_placement(hook_time_range={'start_ms': 0, 'end_ms': 2500}))).spec_fingerprint != render().spec_fingerprint
 
+
+def voice_timeline():
+    return {'duration_ms': 6000, 'segments': [
+        {'start_ms': 0, 'end_ms': 3000, 'visual_asset_refs': ['ref-visual-a']},
+        {'start_ms': 3000, 'end_ms': 6000, 'visual_asset_refs': ['ref-visual-b']},
+    ]}
+
+
+def output_t_after_shortest(argv):
+    shortest = argv.index('-shortest')
+    return [argv[i + 1] for i in range(shortest + 1, len(argv) - 1) if argv[i] == '-t']
+
+
+@pytest.mark.parametrize('voice_ms,expected', [(7250, ['7.250']), (4100, ['4.100']), (6000, ['6.000'])])
+def test_output_length_is_the_voice_duration_not_the_timeline_end(voice_ms, expected):
+    spec = render(record=record(timeline=voice_timeline()), voice_duration_ms=voice_ms)
+    assert output_t_after_shortest(spec.argv) == expected
+    assert spec.argv.count('-t') == 5
+
+
+def test_without_voice_duration_ms_the_output_length_stays_the_timeline_end():
+    assert output_t_after_shortest(render(record=record(timeline=voice_timeline())).argv) == ['6.000']
+
+
+@pytest.mark.parametrize('value', [0, -1, True, 1.5, '7000', 2 ** 31], ids=['zero', 'negative', 'bool', 'float', 'text', 'over_max'])
+def test_invalid_voice_duration_ms_is_invalid_input(value):
+    assert_rejected(lambda: render(voice_duration_ms=value), INVALID_INPUT, 'invalid_voice_duration_ms')
+
+
+def test_voice_duration_ms_accepts_the_upper_bound():
+    assert output_t_after_shortest(render(voice_duration_ms=2 ** 31 - 1).argv) == ['2147483.647']
+
+
+def test_fingerprint_follows_voice_duration_ms():
+    first = render(voice_duration_ms=7000)
+    other = render(voice_duration_ms=7250)
+    assert other.spec_fingerprint != first.spec_fingerprint
+    assert render(voice_duration_ms=7000).spec_fingerprint == first.spec_fingerprint
+    assert '7.250' in other.redacted_argv
+
+
 FFMPEG = DEFAULT_FFMPEG_PATH
 FPS = 30
 VOICE_SECONDS = 3.0
@@ -764,7 +805,7 @@ def test_pinned_ffmpeg_renders_mixed_size_stills_to_the_voice_length(tmp_path, s
     for folder in ('media', 'subs', 'out'):
         (root / folder).mkdir(parents=True)
     write_png(root / 'media' / 'small.png', 640, 480, (200, 40, 40))
-    write_png(root / 'media' / 'tall.png', 1080, 1920, (40, 40, 200))
+    write_stripes_png(root / 'media' / 'tall.png', 1080, 1920, 120)
     write_wav(root / 'media' / 'voice.wav', VOICE_SECONDS)
     (root / 'subs' / 'karaoke.ass').write_text(ASS_TEXT, encoding='utf-8')
     locals_ = {'ref-small': 'media/small.png', 'ref-tall': 'media/tall.png', 'ref-voice': 'media/voice.wav', 'ref-ass': 'subs/karaoke.ass'}
@@ -773,17 +814,19 @@ def test_pinned_ffmpeg_renders_mixed_size_stills_to_the_voice_length(tmp_path, s
         voice_artifact_ref='ref-voice',
         input_artifacts=[artifact('ref-small', 'image/png'), artifact('ref-tall', 'image/png')],
         timeline={
-            'duration_ms': int(VOICE_SECONDS * 1000),
+            'duration_ms': first + second,
             'segments': [
                 {'start_ms': 0, 'end_ms': first, 'visual_asset_refs': ['ref-small']},
                 {'start_ms': first, 'end_ms': first + second, 'visual_asset_refs': ['ref-tall']},
             ],
         },
-        hook_placement=hook_placement(visual_hook_ref='ref-small', audio_hook_ref='ref-voice', thumbnail_ref='ref-small'),
+        hook_placement=hook_placement(visual_hook_ref='ref-small', audio_hook_ref='ref-voice', thumbnail_ref='ref-small', hook_time_range={'start_ms': 0, 'end_ms': 1000}, thumbnail_time_range={'start_ms': 200, 'end_ms': 800}),
         materialization_manifest={ref: {'local_ref': local} for ref, local in locals_.items()},
     )
-    spec = render(record=rec, tool_identity=tool(executable=FFMPEG), materialized=materialized(staging_root=str(root)))
+    spec = render(record=rec, tool_identity=tool(executable=FFMPEG), materialized=materialized(staging_root=str(root)), voice_duration_ms=int(VOICE_SECONDS * 1000))
     assert 'ass=filename=' in value_after(spec.argv, '-filter_complex') and spec.argv.count('-loop') == 3
+    shortest = spec.argv.index('-shortest')
+    assert spec.argv[shortest + 1:shortest + 3] == ('-t', '3.000')
     output = root / 'out' / 'attempt.mp4'
     done = run_process(build_final_argv(spec.argv, FFMPEG, 'libx264', str(output)))
     assert done.returncode == 0, done.stderr[-2000:]
@@ -794,6 +837,11 @@ def test_pinned_ffmpeg_renders_mixed_size_stills_to_the_voice_length(tmp_path, s
     assert abs(float(info['format']['duration']) - VOICE_SECONDS) <= frame
     assert abs(float(stream['duration']) - VOICE_SECONDS) <= frame
     assert abs(int(stream['nb_read_frames']) - VOICE_SECONDS * FPS) <= 1
+    tall = root / 'media' / 'tall.png'
+    small = root / 'media' / 'small.png'
+    assert similarity(output, 2800, tall, None) >= 0.85
+    assert similarity(output, 2800, small, None) < 0.85
+    print(f'F10FIX3 timeline_ms={first + second} output_t={spec.argv[shortest + 2]} mp4_s={info["format"]["duration"]} frames={stream["nb_read_frames"]}')
 
 
 def render_hook_scene(tmp_path, thumb_ref, thumb_range):

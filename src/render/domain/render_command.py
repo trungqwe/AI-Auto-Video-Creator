@@ -357,7 +357,7 @@ def _make_spec(kind: str, pairs: list[tuple[str, str]], tool_identity: ToolIdent
     return RenderCommandSpec(kind=kind, argv=argv, redacted_argv=redacted, spec_fingerprint=request_hash(basis), tool_identity=tool_identity)
 
 
-def _voice_duration_ms(record: RenderPackageRecord) -> int:
+def _timeline_end_ms(record: RenderPackageRecord) -> int:
     timeline = record.timeline
     if isinstance(timeline, Mapping):
         val = timeline.get('duration_ms') or timeline.get('voice_duration_ms')
@@ -378,10 +378,12 @@ def _timed_input(record: RenderPackageRecord, ref: object, path: str, token: str
     return pairs + [*_plain('-t', _seconds(duration_ms), '-i'), (path, token)]
 
 
-def build_render_command(record: object, preset: object, profile: object, ass_ref: object, tool_identity: object, materialized: object) -> RenderCommandSpec:
-    """Build the spec of the main render: each segment's first visual looped (still image) or trimmed (other media) to its timeline duration and normalised to the profile size, concat, the visual hook overlaid over hook_time_range, a distinct thumbnail asset's first frame overlaid over thumbnail_time_range, ASS subtitles, and the voice mixed with the audio hook delayed to hook start (amix, first input sets the length, normalize off)."""
+def build_render_command(record: object, preset: object, profile: object, ass_ref: object, tool_identity: object, materialized: object, *, voice_duration_ms: int | None = None) -> RenderCommandSpec:
+    """Build the spec of the main render: each segment's first visual looped (still image) or trimmed (other media) to its timeline duration and normalised to the profile size, concat, the visual hook overlaid over hook_time_range, a distinct thumbnail asset's first frame overlaid over thumbnail_time_range, ASS subtitles, and the voice mixed with the audio hook delayed to hook start (amix, first input sets the length, normalize off). The output is exactly voice_duration_ms long (-t after -shortest), the last frame held by tpad when the timeline is shorter than the voice; without voice_duration_ms the output length is the timeline end."""
     _require(record, RenderPackageRecord, 'record')
     _require(preset, RenderPresetRevision, 'preset')
+    if voice_duration_ms is not None and not (_is_int(voice_duration_ms) and 0 < voice_duration_ms <= _MAX_NUMBER):
+        raise RenderCommandRejected(INVALID_INPUT, 'invalid_voice_duration_ms')
     values = _checked_profile(profile)
     tool = _checked_tool(tool_identity)
     root = _checked_root(materialized)
@@ -409,9 +411,9 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
     pairs += _plain('-filter_complex')
     pairs.append((_filter_graph(count, values, _filter_path(ass), hook), _filter_graph(count, values, '{ass}', hook)))
     pairs += _plain('-map', '[vout]', '-map', '[aout]', '-shortest')
-    voice_ms = _voice_duration_ms(record)
-    if voice_ms > 0:
-        pairs += _plain('-t', _seconds(voice_ms))
+    output_ms = voice_duration_ms if voice_duration_ms is not None else _timeline_end_ms(record)
+    if output_ms > 0:
+        pairs += _plain('-t', _seconds(output_ms))
     pairs += _plain('-c:v', values['encoder'], '-c:a', values['audio_codec'])
     if values['bitrate'] is not None:
         pairs += _plain('-b:v', str(values['bitrate']))
