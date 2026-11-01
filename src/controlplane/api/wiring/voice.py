@@ -34,19 +34,24 @@ import hashlib
 import json
 import re
 import threading
-import urllib.request
+import http.client
+import ipaddress
+import math
+import socket
+import ssl
 from collections.abc import Sequence
+from urllib.parse import urlsplit
 from controlplane.api.wiring.workflow import voice_handler
 from controlplane.application.orchestration.workflows.activities import ActivityRejected, MISSING_EXECUTION_GRANT, to_execution_grant
 from voice.adapters.activity_inputs import ActivityInputError, MediaArtifact, PlanAudio, ProductionActivityInputs, REF_SELECTED_MEDIA, VoiceSettings, _first_ref
-from voice.adapters.audio_bed_source import AudioBedSource, HttpsResponse, MusicSource, check_music_url, load_music_sources
+from voice.adapters.audio_bed_source import AudioBedSource, HttpsResponse, MusicSource, MusicSourceError, load_music_sources
 from voice.adapters.local_voice_route import LocalVoiceRoute
 from voice.adapters.postgres_script_text import PostgresScriptText
 from voice.adapters.profile_media_policy import build_image_safety_policy, build_image_safety_rules, build_voice_duration_policy
 from voice.adapters.wav_duration import measure_wav_duration_ms
 from voice.application.media_pipeline import MediaPipeline, VerifiedOutput
 from voice.application.voice_pipeline import VoicePipeline
-from voice.domain.audio_bed import AudioCue, LoudnessReport
+from voice.domain.audio_bed import AudioCue
 from voice.domain.image_safety import ImageSafetyAssessment, SafetyOutcome, assess_image_safety
 from voice.domain.speed_fit import SpeedFitPolicy
 from voice.worker.activity_handler import VoiceActivityDeps, validate_activity_request
@@ -267,7 +272,7 @@ class PlanAudioFromPlans:
                             start_ms=int(m['start_ms']),
                             end_ms=int(m['end_ms']),
                             artifact_ref=str(m.get('artifact_ref') or m.get('cue') or 'music-1'),
-                            mood=str(m.get('mood')) if m.get('mood') else 'calm',
+                            mood=str(m.get('mood') or '').strip() or None,
                         )
                     )
         sfx_cues = payload.get('sfx_cues')
@@ -284,7 +289,7 @@ class PlanAudioFromPlans:
                         )
                     )
         if not cues:
-            cues.append(AudioCue(kind='music', start_ms=0, end_ms=5000, artifact_ref='music-default', mood='calm'))
+            cues.append(AudioCue(kind='music', start_ms=0, end_ms=5000, artifact_ref='music-default', mood=None))
 
         preset_audio = str(payload.get('preset_audio_policy_revision') or 'audio-pol-1')
         mix_constraints = payload.get('mix_constraints')
@@ -448,15 +453,89 @@ def read_media_image(locate: Callable[[str], Path | None]) -> Callable[[str], tu
     return read_image
 
 
+class _PinnedTlsConnection(http.client.HTTPSConnection):
+    """TCP goes only to addresses already checked; TLS uses SNI and certificate verification against the host name."""
+
+    def __init__(self, host: str, addresses: Sequence[tuple], timeout: float) -> None:
+        self._tls_context = ssl.create_default_context()
+        super().__init__(host, 443, timeout=timeout, context=self._tls_context)
+        self._pinned = tuple(addresses)
+
+    def connect(self) -> None:
+        last_error: OSError = ConnectionError('NO_PINNED_ADDRESS')
+        for family, sockaddr in self._pinned:
+            sock = socket.socket(family, socket.SOCK_STREAM)
+            try:
+                sock.settimeout(self.timeout)
+                sock.connect(sockaddr)
+                self.sock = self._tls_context.wrap_socket(sock, server_hostname=self.host)
+            except OSError as error:
+                sock.close()
+                last_error = error
+                continue
+            return
+        raise last_error
+
+
 class ProductionHttpsTransport:
+    """Resolves the host itself, refuses a name that resolves to nothing or to any non-global address, connects only to the checked address, one GET, no redirect, no proxy."""
+
+    def __init__(self, *, resolve: Callable[..., Sequence[tuple]] = socket.getaddrinfo, user_agent: str = 'AI-Auto-Video-Creator/1.0') -> None:
+        self._resolve = resolve
+        self._user_agent = user_agent
+
+    @staticmethod
+    def _policy(url: str) -> tuple[str, str]:
+        try:
+            parts = urlsplit(url)
+            host, port = parts.hostname, parts.port
+        except (ValueError, AttributeError, TypeError):
+            raise MusicSourceError('music_url_not_allowed', 'unparsable') from None
+        if parts.scheme != 'https' or not host or parts.username or parts.password or port not in (None, 443):
+            raise MusicSourceError('music_url_not_allowed', 'policy')
+        return host, (parts.path or '/') + ('?' + parts.query if parts.query else '')
+
+    def _checked_addresses(self, host: str) -> list[tuple]:
+        infos = self._resolve(host, 443, type=socket.SOCK_STREAM)
+        addresses = []
+        for family, _kind, _proto, _name, sockaddr in infos:
+            try:
+                is_global = ipaddress.ip_address(str(sockaddr[0]).split('%')[0]).is_global
+            except ValueError:
+                is_global = False
+            if not is_global:
+                raise MusicSourceError('music_url_not_allowed', 'non_global_address')
+            addresses.append((family, sockaddr))
+        if not addresses:
+            raise MusicSourceError('music_url_not_allowed', 'no_address')
+        return addresses
+
     def fetch(self, url: str, *, max_bytes: int, timeout_seconds: float) -> HttpsResponse:
-        check_music_url(url)
-        req = urllib.request.Request(url, headers={'User-Agent': 'AI-Auto-Video-Creator/1.0'})
-        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-            body = resp.read(max_bytes + 1)
-            if len(body) > max_bytes:
-                raise ValueError('max_bytes_exceeded')
-            return HttpsResponse(resp.status, body, resp.geturl())
+        host, target = self._policy(url)
+        addresses = self._checked_addresses(host)
+        connection = _PinnedTlsConnection(host, addresses, timeout_seconds)
+        try:
+            connection.request('GET', target, headers={'User-Agent': self._user_agent, 'Accept': '*/*', 'Accept-Encoding': 'identity', 'Connection': 'close'})
+            response = connection.getresponse()
+            body = response.read(max_bytes + 1) if response.status == 200 else b''
+            return HttpsResponse(response.status, body, url)
+        finally:
+            connection.close()
+
+
+def _music_loudness_target(parameters: Any) -> dict[str, float]:
+    value = parameters.get('audio.loudness') if isinstance(parameters, Mapping) else None
+    if not isinstance(value, Mapping):
+        raise ProductionProfileError('audio.loudness', 'missing parameter')
+    target: dict[str, float] = {}
+    for key in ('integrated_lufs', 'true_peak_dbtp', 'lra'):
+        if key not in value:
+            raise ProductionProfileError(f'audio.loudness.{key}', 'missing parameter')
+        item = value[key]
+        if isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(item):
+            raise ProductionProfileError(f'audio.loudness.{key}', 'invalid parameter')
+        target[key] = float(item)
+    return target
 
 
 def voice_activity_deps(
@@ -468,6 +547,8 @@ def voice_activity_deps(
     runtime: Any,
     grants: Any,
     clock: Callable[[], datetime.datetime],
+    music_sources: Sequence[MusicSource] | None = None,
+    music_transport: Any = None,
 ) -> tuple[VoiceActivityDeps, ProductionActivityInputs]:
     uow = ThreadLocalVoiceUow(services.uow_factory)
 
@@ -490,21 +571,22 @@ def voice_activity_deps(
             )
         services.media_tool._reassess = reassess
 
-    sources_path = Path('tools/launcher/prod/music_sources.json')
-    sources: tuple[MusicSource, ...] = ()
-    if sources_path.is_file():
-        try:
-            sources = tuple(load_music_sources(sources_path))
-        except Exception:
-            sources = ()
+    if music_sources is None:
+        music_sources = ()
+        sources_path = Path('tools/launcher/prod/music_sources.json')
+        if sources_path.is_file():
+            try:
+                music_sources = tuple(load_music_sources(sources_path))
+            except Exception:
+                music_sources = ()
 
+    loudness = _music_loudness_target(profile.parameters)
     library_dir = runtime.staging_root / 'audio_library'
     audio_bed = AudioBedSource(
-        sources=sources,
+        sources=tuple(music_sources),
         library_dir=library_dir,
-        transport=ProductionHttpsTransport(),
-        duration_probe=measure_wav_duration_ms,
-        loudness_meter=lambda body: LoudnessReport(integrated_lufs=-16.0, true_peak_dbtp=-2.0),
+        transport=music_transport if music_transport is not None else ProductionHttpsTransport(),
+        prepare_music=partial(services.media_tool.prepare_music, work_dir=library_dir, **loudness),
         clock=clock,
     )
 

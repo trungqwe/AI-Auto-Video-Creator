@@ -17,7 +17,7 @@ from collections.abc import Mapping
 import pytest
 
 from controlplane.infrastructure.db.uow import TransactionManager
-from voice.adapters.audio_bed_source import AudioBedSource, HttpsResponse, MusicSource, MusicSourceError, check_music_url, load_music_sources, silent_wav
+from voice.adapters.audio_bed_source import AudioBedSource, HttpsResponse, MusicSource, MusicSourceError, PreparedMusic, check_music_url, load_music_sources, silent_wav
 from voice.adapters.wav_duration import measure_wav_duration_ms
 from voice.application import media_pipeline as mp
 from voice.domain.audio_bed import AudioBedRequest, AudioCue, LoudnessConstraints, LoudnessReport
@@ -117,7 +117,10 @@ def rig_factory(pw_database, tmp_path):
 
     def build(transport: FakeTransport, sources) -> Rig:
         library = tmp_path / 'library'
-        bed = AudioBedSource(sources=sources, library_dir=library, transport=transport, duration_probe=measure_wav_duration_ms, loudness_meter=lambda body: LoudnessReport(integrated_lufs=-16.0, true_peak_dbtp=-2.0), clock=lambda: NOW)
+        def prepare_music(body: bytes) -> PreparedMusic:
+            return PreparedMusic(data=body, duration_ms=measure_wav_duration_ms(body), report=LoudnessReport(integrated_lufs=-16.0, true_peak_dbtp=-2.0))
+
+        bed = AudioBedSource(sources=sources, library_dir=library, transport=transport, prepare_music=prepare_music, clock=lambda: NOW)
         rigs.append(Rig(pw_database, bed, library))
         return rigs[-1]
 
