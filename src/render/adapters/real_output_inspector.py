@@ -1,6 +1,6 @@
 """PW-F1, PW-F2: OutputInspectorPort over the pinned ffmpeg.
 
-PW-F1 measures VISUAL_HOOK, THUMBNAIL, SUBTITLE_BURNED_IN, KARAOKE_TIMING and INFERENCE_DISCLOSURE_PRESENT. PW-F2 adds the audio and language side:
+PW-F1 measures VISUAL_HOOK, THUMBNAIL, SUBTITLE_BURNED_IN, KARAOKE_TIMING and INFERENCE_DISCLOSURE_PRESENT. SUBTITLE_BURNED_IN and INFERENCE_DISCLOSURE_PRESENT compare each sample frame with itself after the staged ASS is drawn again (FrameProbe.overlay_difference), never with a frame taken at another moment. PW-F2 adds the audio and language side:
 AUDIO_HOOK (mean level inside hook_time_range, evidence audio_hook), ENGLISH_OUTPUT (evidence language from E and D plus the burned-in subtitle),
 VOICE_AUDIBLE and OUTPUT_PROFILE (technical gates fed by RealFfprobeProbe, see GATE_SOURCES; speech_windows gives the probe the spoken ranges)
 and audio_mix_result (loudness and true peak recorded as a warning, never a hard failure).
@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
-from render.adapters.frame_probe import FrameProbe, seek_arg
+from render.adapters.frame_probe import FrameProbe, OverlayDifference, seek_arg
 from render.adapters.real_ffmpeg_renderer import DEFAULT_FFMPEG_PATH, DEFAULT_LOCK_PATH, verify_ffmpeg_pin
 from render.adapters.real_ffprobe_probe import LoudnessStats, measure_audio
 from render.domain.content_gates import INFERENCE_CLAIM_MODES
@@ -78,15 +78,13 @@ class InspectorSettings:
     compare_height: int
     thumbnail_min_ssim: float
     subtitle_band: Band
-    subtitle_min_difference: float
     disclosure_band: Band
-    disclosure_min_difference: float
-    baseline_min_gap_ms: int
+    overlay_max_missing_share: float
     max_subtitle_samples: int
     timeout_seconds: float
 
     def __post_init__(self) -> None:
-        for name in ('compare_width', 'compare_height', 'baseline_min_gap_ms', 'max_subtitle_samples'):
+        for name in ('compare_width', 'compare_height', 'max_subtitle_samples'):
             val = getattr(self, name)
             if isinstance(val, bool) or not isinstance(val, int) or val <= 0:
                 raise ValueError(name)
@@ -94,10 +92,9 @@ class InspectorSettings:
             raise ValueError('timeout_seconds')
         if isinstance(self.thumbnail_min_ssim, bool) or not isinstance(self.thumbnail_min_ssim, (int, float)) or not (0 < self.thumbnail_min_ssim <= 1):
             raise ValueError('thumbnail_min_ssim')
-        for name in ('subtitle_min_difference', 'disclosure_min_difference'):
-            val = getattr(self, name)
-            if isinstance(val, bool) or not isinstance(val, (int, float)) or val < 0:
-                raise ValueError(name)
+        share = self.overlay_max_missing_share
+        if isinstance(share, bool) or not isinstance(share, (int, float)) or not math.isfinite(share) or not (0 < share < 1):
+            raise ValueError('overlay_max_missing_share')
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -198,8 +195,8 @@ def _ass_number(value: str) -> float | None:
     return number if math.isfinite(number) else None
 
 
-def disclosure_band_from_ass(text: str) -> Band | None:
-    """Vertical row of the Disclosure style: PlayResY from [Script Info]; Fontsize, Outline, Alignment, MarginV from its [V4+ Styles] row (read by the section Format). None when any value is missing or invalid, Alignment is 4/5/6, or the clipped band is empty; the caller then keeps settings.disclosure_band."""
+def style_band_from_ass(text: str, style: str) -> Band | None:
+    """Vertical row of the named style: PlayResY from [Script Info]; Fontsize, Outline, Alignment, MarginV from its [V4+ Styles] row (read by the section Format). None when any value is missing or invalid, Alignment is 4/5/6, or the clipped band is empty; the caller then keeps its settings band."""
     play_res_y: float | None = None
     fields: list[str] | None = None
     row: dict[str, str] | None = None
@@ -218,7 +215,7 @@ def disclosure_band_from_ass(text: str) -> Band | None:
             elif raw_line.startswith('Style:') and fields and row is None:
                 parts = raw_line[len('Style:'):].split(',', len(fields) - 1)
                 values = dict(zip(fields, (p.strip() for p in parts)))
-                if len(parts) == len(fields) and values.get('Name') == DISCLOSURE_STYLE:
+                if len(parts) == len(fields) and values.get('Name') == style:
                     row = values
     if row is None or play_res_y is None or play_res_y <= 0:
         return None
@@ -243,6 +240,10 @@ def disclosure_band_from_ass(text: str) -> Band | None:
         return None
 
 
+def disclosure_band_from_ass(text: str) -> Band | None:
+    return style_band_from_ass(text, DISCLOSURE_STYLE)
+
+
 _K_TAG = re.compile(r'\{\\k(\d+)\}([^{]*)')
 
 
@@ -264,41 +265,18 @@ def karaoke_observations(dialogues: Sequence[AssDialogue]) -> tuple[KaraokeWordO
     return tuple(observations)
 
 
-def baseline_ms(windows: Sequence[tuple[int, int]], duration_ms: int | None, min_gap_ms: int) -> int | None:
-    if duration_ms is None or duration_ms <= 0:
-        return None
-    clamped: list[tuple[int, int]] = []
-    for start, end in windows:
-        s = max(0, min(start, duration_ms))
-        e = max(0, min(end, duration_ms))
-        if s < e:
-            clamped.append((s, e))
-    clamped.sort()
-    merged: list[tuple[int, int]] = []
-    for s, e in clamped:
-        if not merged:
-            merged.append((s, e))
-        else:
-            prev_s, prev_e = merged[-1]
-            if s <= prev_e:
-                merged[-1] = (prev_s, max(prev_e, e))
-            else:
-                merged.append((s, e))
-    gaps: list[tuple[int, int]] = []
-    if not merged:
-        gaps.append((0, duration_ms))
-    else:
-        if merged[0][0] > 0:
-            gaps.append((0, merged[0][0]))
-        for i in range(len(merged) - 1):
-            gaps.append((merged[i][1], merged[i + 1][0]))
-        if merged[-1][1] < duration_ms:
-            gaps.append((merged[-1][1], duration_ms))
-    candidates = [g for g in gaps if (g[1] - g[0]) >= min_gap_ms]
-    if not candidates:
-        return None
-    longest = max(candidates, key=lambda g: g[1] - g[0])
-    return (longest[0] + longest[1]) // 2
+def karaoke_sample_ms(dialogue: AssDialogue) -> int:
+    """Sample moment of a Karaoke line: the middle of its longest timed word (the k tag with the longest duration that carries text); the middle of the line when no tag does."""
+    cursor = dialogue.start_ms // 10
+    best: tuple[int, int] | None = None
+    for dur, word in _K_TAG.findall(dialogue.text):
+        length = int(dur)
+        if word.strip() and length > 0 and (best is None or length > best[1]):
+            best = (cursor, length)
+        cursor += length
+    if best is None:
+        return (dialogue.start_ms + dialogue.end_ms) // 2
+    return best[0] * 10 + best[1] * 5
 
 
 def evenly_sampled(items: Sequence[int], limit: int) -> list[int]:
@@ -417,17 +395,17 @@ class RealOutputInspector:
         media = Path(output_ref)
         if not media.is_file():
             return OutputEvidence()
-        duration = self._probe.duration_ms(media)
+        ass_path = self._ass_path(package)
         ass_text = self._ass_text(package)
         dialogues = () if ass_text is None else parse_ass_dialogues(ass_text)
         return OutputEvidence(
             visual_hook=self._visual_hook(media, package),
             audio_hook=self._audio_hook(media, package),
             thumbnail=self._thumbnail(media, package),
-            subtitle=self._subtitle(media, dialogues, duration),
+            subtitle=self._subtitle(media, dialogues, ass_path, self._subtitle_band(ass_text)),
             karaoke=self._karaoke(dialogues),
             language=self._language(package, dialogues),
-            disclosure=self._disclosure(media, dialogues, duration, self._disclosure_band(ass_text)),
+            disclosure=self._disclosure(media, dialogues, ass_path, self._disclosure_band(ass_text)),
         )
 
     def _asset(self, package: RenderPackageRecord, ref: str | None) -> Path | None:
@@ -466,9 +444,15 @@ class RealOutputInspector:
             return (start, end)
         return None
 
-    def _ass_text(self, package: RenderPackageRecord) -> str | None:
+    def _ass_path(self, package: RenderPackageRecord) -> Path | None:
         path = self._asset(package, self._inputs.ass_ref)
         if path is None or path.suffix.lower() != '.ass':
+            return None
+        return path
+
+    def _ass_text(self, package: RenderPackageRecord) -> str | None:
+        path = self._ass_path(package)
+        if path is None:
             return None
         try:
             return path.read_text(encoding='utf-8')
@@ -584,36 +568,23 @@ class RealOutputInspector:
             asset_ref=asset_ref,
         )
 
-    def _subtitle(
-        self,
-        media: Path,
-        dialogues: Sequence[AssDialogue],
-        duration: int | None,
-    ) -> SubtitleEvidence | None:
+    def _has_text(self, diff: OverlayDifference | None) -> bool:
+        return diff is not None and diff.ink > 0 and diff.residual <= self._settings.overlay_max_missing_share * diff.ink
+
+    def _subtitle_band(self, ass_text: str | None) -> Band:
+        derived = None if ass_text is None else style_band_from_ass(ass_text, KARAOKE_STYLE)
+        return self._settings.subtitle_band if derived is None else derived
+
+    def _subtitle(self, media: Path, dialogues: Sequence[AssDialogue], ass_path: Path | None, band: Band) -> SubtitleEvidence | None:
         karaoke = [d for d in dialogues if d.style == KARAOKE_STYLE]
-        if not karaoke:
+        if not karaoke or ass_path is None:
             return None
-        base = baseline_ms([(d.start_ms, d.end_ms) for d in dialogues], duration, self._settings.baseline_min_gap_ms)
-        if base is None:
-            return None
-        samples = evenly_sampled([(d.start_ms + d.end_ms) // 2 for d in karaoke], self._settings.max_subtitle_samples)
-        frames = 0
-        for t in samples:
-            diff = self._probe.band_difference(
-                media,
-                sample_ms=t,
-                baseline_ms=base,
-                width=self._settings.compare_width,
-                height=self._settings.compare_height,
-                top=self._settings.subtitle_band.top,
-                bottom=self._settings.subtitle_band.bottom,
-            )
-            if diff is not None and diff >= self._settings.subtitle_min_difference:
-                frames += 1
-        return SubtitleEvidence(
-            evidence_ref=f'{GATE_SUBTITLE}:{media.name}',
-            frames_with_text=frames,
+        picked = evenly_sampled(list(range(len(karaoke))), self._settings.max_subtitle_samples)
+        frames = sum(
+            self._has_text(self._probe.overlay_difference(media, sample_ms=karaoke_sample_ms(karaoke[i]), subtitles_path=ass_path, top=band.top, bottom=band.bottom))
+            for i in picked
         )
+        return SubtitleEvidence(evidence_ref=f'{GATE_SUBTITLE}:{media.name}', frames_with_text=frames)
 
     def _karaoke(self, dialogues: Sequence[AssDialogue]) -> KaraokeEvidence | None:
         obs = karaoke_observations(dialogues)
@@ -625,14 +596,14 @@ class RealOutputInspector:
         )
 
     def _disclosure_band(self, ass_text: str | None) -> Band:
-        derived = None if ass_text is None else disclosure_band_from_ass(ass_text)
+        derived = None if ass_text is None else style_band_from_ass(ass_text, DISCLOSURE_STYLE)
         return self._settings.disclosure_band if derived is None else derived
 
     def _disclosure(
         self,
         media: Path,
         dialogues: Sequence[AssDialogue],
-        duration: int | None,
+        ass_path: Path | None,
         band: Band,
     ) -> DisclosureEvidence | None:
         required: list[str] = []
@@ -648,23 +619,13 @@ class RealOutputInspector:
         if not required:
             return None
         windows = [d for d in dialogues if d.style == DISCLOSURE_STYLE]
-        base = baseline_ms([(w.start_ms, w.end_ms) for w in windows], duration, self._settings.baseline_min_gap_ms)
         observations: list[DisclosureObservation] = []
         for segment_id in required:
             own = [w for w in windows if w.name == segment_id]
             visible = False
-            if own and base is not None:
+            if own and ass_path is not None:
                 mid = (own[0].start_ms + own[0].end_ms) // 2
-                diff = self._probe.band_difference(
-                    media,
-                    sample_ms=mid,
-                    baseline_ms=base,
-                    width=self._settings.compare_width,
-                    height=self._settings.compare_height,
-                    top=band.top,
-                    bottom=band.bottom,
-                )
-                visible = diff is not None and diff >= self._settings.disclosure_min_difference
+                visible = self._has_text(self._probe.overlay_difference(media, sample_ms=mid, subtitles_path=ass_path, top=band.top, bottom=band.bottom))
             observations.append(DisclosureObservation(segment_id=segment_id, visible=visible))
         return DisclosureEvidence(
             evidence_ref=f'{GATE_DISCLOSURE}:{media.name}',
@@ -681,11 +642,12 @@ __all__ = [
     'LanguageSource',
     'RealOutputInspector',
     'audio_mix_result',
-    'baseline_ms',
     'disclosure_band_from_ass',
     'evenly_sampled',
     'karaoke_observations',
+    'karaoke_sample_ms',
     'observed_subtitle_locale',
     'parse_ass_dialogues',
     'ssim_between',
+    'style_band_from_ass',
 ]

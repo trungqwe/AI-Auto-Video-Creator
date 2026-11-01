@@ -47,10 +47,8 @@ SETTINGS = InspectorSettings(
     compare_height=160,
     thumbnail_min_ssim=0.8,
     subtitle_band=Band(top=0.70, bottom=0.80),
-    subtitle_min_difference=5.0,
     disclosure_band=Band(top=0.10, bottom=0.25),
-    disclosure_min_difference=5.0,
-    baseline_min_gap_ms=400,
+    overlay_max_missing_share=0.25,
     max_subtitle_samples=4,
     timeout_seconds=60,
 )
