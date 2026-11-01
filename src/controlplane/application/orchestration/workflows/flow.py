@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any, Protocol
 
 from controlplane.application.orchestration.workflows.activities import BINDINGS_BY_NAME, FAN_OUT_FROM_OUTPUT
@@ -26,7 +27,15 @@ DEBUG_STAGE_NOT_ALLOWED = 'DEBUG_STAGE_NOT_ALLOWED'
 OUTCOME_SUCCEEDED = 'succeeded'
 OUTCOME_FAILED = 'failed'
 OUTCOME_WAITING = 'waiting'
+OUTCOME_REVALIDATE = 'revalidate'
 WAIT_REASON_VALUES = frozenset(reason.value for reason in WaitReason)
+
+VARIANT_REVALIDATE_PATCH_ID = 'variant-stale-revalidate'
+# (activity bị stale, problem.code) -> (stage chứa ValidateVariant cần chạy lại, activity)
+REVALIDATE_ON_STALE: Mapping[tuple[str, str], tuple[str, str]] = MappingProxyType({
+    ('ReserveVariant', 'VARIANT_VALIDATION_STALE'): ('plan', 'ValidateVariant'),
+    ('CommitVideoCompletion', 'VARIANT_REGISTRY_STALE'): ('qc', 'ValidateVariant'),
+})
 
 
 class FlowGateway(Protocol):
@@ -42,6 +51,9 @@ class FlowGateway(Protocol):
         ...
 
     async def sleep(self, seconds: float) -> None:
+        ...
+
+    def patched(self, patch_id: str) -> bool:
         ...
 
 
@@ -132,6 +144,7 @@ class StageGraphFlow:
         self.rejected_signals: list[dict[str, Any]] = []
         self._succeeded: set[tuple[str, str, int, int]] = set()
         self._input_refs: dict[tuple[str, str, int, int], list[dict[str, str]]] = {}
+        self._revalidations: dict[tuple[str, str, int, int], int] = {}
 
     def signal_retry_stage(self, stage_type: str) -> None:
         self._inbox.append((SIGNAL_RETRY, stage_type))
@@ -296,9 +309,47 @@ class StageGraphFlow:
                 if (stage, name, index, self.revision) in self._succeeded:
                     continue
                 outcome = await self._run_activity(stage, BINDINGS_BY_NAME[name], index, refs)
+                while outcome == OUTCOME_REVALIDATE:
+                    outcome = await self._revalidate_then_rerun(stage, name, index, refs)
                 if outcome != OUTCOME_SUCCEEDED:
                     return outcome
         return OUTCOME_SUCCEEDED
+
+    # Chạy lại ValidateVariant của stage đích với input_refs đã đóng băng, operation_key thêm ':v{n}',
+    # rồi gọi lại activity vừa stale; số vòng bị chặn theo workflow.retry.
+    async def _revalidate_then_rerun(
+        self, stage: str, name: str, index: int, refs: Sequence[Mapping[str, str]]
+    ) -> str:
+        problem = self.last_problem or {}
+        target_stage, target_name = REVALIDATE_ON_STALE[(problem.get('activity'), problem.get('code'))]
+        counter_key = (stage, name, index, self.revision)
+        round_no = self._revalidations.get(counter_key, 0) + 1
+        self._revalidations[counter_key] = round_no
+        if not should_retry(round_no, True, self._settings.retry):
+            return OUTCOME_FAILED
+        outcome = await self._run_activity(
+            target_stage, BINDINGS_BY_NAME[target_name], 0, (), revalidation_round=round_no
+        )
+        if outcome != OUTCOME_SUCCEEDED:
+            return outcome
+        return await self._run_activity(stage, BINDINGS_BY_NAME[name], index, refs)
+
+    def _store_outputs(
+        self, stage: str, refs: Sequence[Mapping[str, str]], *, replace: bool
+    ) -> None:
+        stored = self.output_refs.setdefault(stage, [])
+        for ref in refs:
+            new_ref = dict(ref)
+            if replace:
+                identity = (new_ref.get('ref_type'), new_ref.get('ref_id'))
+                position = next(
+                    (i for i, old in enumerate(stored) if (old.get('ref_type'), old.get('ref_id')) == identity),
+                    None,
+                )
+                if position is not None:
+                    stored[position] = new_ref
+                    continue
+            stored.append(new_ref)
 
     async def _run_activity(
         self,
@@ -306,10 +357,14 @@ class StageGraphFlow:
         binding: Any,
         index: int,
         refs: Sequence[Mapping[str, str]],
+        *,
+        revalidation_round: int = 0,
     ) -> str:
         owner = self._params.video_job_id or self._params.workflow_id
         stage_run_id = f'{owner}:{stage}:r{self.revision}'
         operation_key = f'{self._params.workflow_id}:{stage}:{binding.name}:{index}:r{self.revision}'
+        if revalidation_round:
+            operation_key = f'{operation_key}:v{revalidation_round}'
         key = (stage, binding.name, index, self.revision)
         input_refs = self._frozen_input_refs(key, refs)
         attempt = 1
@@ -345,9 +400,7 @@ class StageGraphFlow:
 
             disposition = result.get('disposition')
             if disposition == 'succeeded':
-                self.output_refs.setdefault(stage, []).extend(
-                    dict(r) for r in result.get('output_refs', ())
-                )
+                self._store_outputs(stage, result.get('output_refs', ()), replace=revalidation_round > 0)
                 self._succeeded.add(key)
                 self.last_problem = None
                 return OUTCOME_SUCCEEDED
@@ -359,6 +412,13 @@ class StageGraphFlow:
                 'code': problem.get('code'),
             }
             if disposition == 'waiting':
+                target = REVALIDATE_ON_STALE.get((binding.name, problem.get('code')))
+                if (
+                    target is not None
+                    and (target[0], target[1], 0, self.revision) in self._succeeded
+                    and self._gateway.patched(VARIANT_REVALIDATE_PATCH_ID)
+                ):
+                    return OUTCOME_REVALIDATE
                 return OUTCOME_WAITING
             retryable = disposition == 'stale' or problem.get('retryable') is True
             if disposition == 'outcome_unknown' or not retryable or not should_retry(attempt, True, self._settings.retry):
@@ -393,6 +453,7 @@ __all__ = [
     'DEBUG_STAGE_NOT_ALLOWED',
     'FlowGateway',
     'FlowParams',
+    'REVALIDATE_ON_STALE',
     'SIGNAL_REGENERATE',
     'SIGNAL_RETRY',
     'STATUS_COMPLETED',
@@ -401,5 +462,6 @@ __all__ = [
     'STATUS_STAGE_OBSERVED',
     'STATUS_WAITING_CAPABILITY',
     'StageGraphFlow',
+    'VARIANT_REVALIDATE_PATCH_ID',
     'build_debug_flow',
 ]
