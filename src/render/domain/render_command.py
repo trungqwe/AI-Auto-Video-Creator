@@ -102,6 +102,7 @@ _BACKSLASH = chr(92)
 _IDENTIFIER_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]*')
 _FILTER_PATH_CHARS = frozenset(string.ascii_letters + string.digits + '_-./:' + _BACKSLASH)
 _MAX_NUMBER = 2 ** 31 - 1
+_LOUDNESS_LIMITS = (('integrated_lufs', 'I', -70, -5), ('true_peak_dbtp', 'TP', -9, 0), ('lra', 'LRA', 1, 50))
 _PROFILE_TEXT_FIELDS = ('video_codec', 'audio_codec', 'container', 'pixel_format', 'encoder')
 _TOOL_FIELDS = ('name', 'version', 'build', 'executable')
 
@@ -268,13 +269,41 @@ def _shifted(source: str, values: dict[str, object], start_ms: int, label: str, 
     return f'{_chain(source, values)}{trim},setpts=PTS-STARTPTS+{_seconds(start_ms)}/TB[{label}]'
 
 
-def _filter_graph(count: int, values: dict[str, object], ass_path: str, hook: _HookPlan) -> str:
+def _loudness_rule(preset: RenderPresetRevision) -> dict[str, int | float] | None:
+    """preset.mix_rules['loudness'] checked against the loudnorm domain; None when the preset has no such rule."""
+    rules = preset.mix_rules
+    if 'loudness' not in rules:
+        return None
+    rule = rules['loudness']
+    if not isinstance(rule, Mapping):
+        raise RenderCommandRejected(INVALID_INPUT, 'invalid_preset.mix_rules.loudness')
+    checked: dict[str, int | float] = {}
+    for key, _, low, high in _LOUDNESS_LIMITS:
+        name = f'preset.mix_rules.loudness.{key}'
+        value = rule.get(key)
+        if value is None:
+            raise RenderCommandRejected(INPUT_NOT_READY, f'missing_{name}')
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not low <= value <= high:
+            raise RenderCommandRejected(INVALID_INPUT, f'invalid_{name}')
+        checked[key] = value
+    return checked
+
+
+def _loudnorm_chain(rule: dict[str, int | float] | None) -> str:
+    """',loudnorm=...,asetpts=N/SR/TB' appended to the mix chain, or '' without a rule; asetpts renumbers pts because loudnorm flushes its last buffer with jumping pts."""
+    if rule is None:
+        return ''
+    args = ':'.join(flag + '=' + format(rule[key], 'g') for key, flag, _, _ in _LOUDNESS_LIMITS)
+    return ',loudnorm=' + args + ',asetpts=N/SR/TB'
+
+
+def _filter_graph(count: int, values: dict[str, object], ass_path: str, hook: _HookPlan, loudnorm: str = '') -> str:
     voice, visual, audio, thumbnail = count, count + 1, count + 2, count + 3
     chains = [_normalise(index, values) for index in range(count)]
     labels = ''.join(f'[v{index}]' for index in range(count))
     chains += [
         f'[{audio}:a:0]adelay={hook.hook_range[0]}:all=1[ahook]',
-        f'[{voice}:a:0][ahook]amix=inputs=2:duration=first:normalize=0[aout]',
+        f'[{voice}:a:0][ahook]amix=inputs=2:duration=first:normalize=0{loudnorm}[aout]',
         labels + f'concat=n={count}:v=1:a=0,tpad=stop_mode=clone:stop=-1[base]',
         _shifted(f'{visual}:v:0', values, hook.hook_range[0], 'vhook', False),
     ]
@@ -379,11 +408,13 @@ def _timed_input(record: RenderPackageRecord, ref: object, path: str, token: str
 
 
 def build_render_command(record: object, preset: object, profile: object, ass_ref: object, tool_identity: object, materialized: object, *, voice_duration_ms: int | None = None) -> RenderCommandSpec:
-    """Build the spec of the main render: each segment's first visual looped (still image) or trimmed (other media) to its timeline duration and normalised to the profile size, concat, the visual hook overlaid over hook_time_range, a distinct thumbnail asset's first frame overlaid over thumbnail_time_range, ASS subtitles, and the voice mixed with the audio hook delayed to hook start (amix, first input sets the length, normalize off). The output is exactly voice_duration_ms long (-t after -shortest), the last frame held by tpad when the timeline is shorter than the voice; without voice_duration_ms the output length is the timeline end."""
+    """Build the spec of the main render: each segment's first visual looped (still image) or trimmed (other media) to its timeline duration and normalised to the profile size, concat, the visual hook overlaid over hook_time_range, a distinct thumbnail asset's first frame overlaid over thumbnail_time_range, ASS subtitles, and the voice mixed with the audio hook delayed to hook start (amix, first input sets the length, normalize off). The output is exactly voice_duration_ms long (-t after -shortest), the last frame held by tpad when the timeline is shorter than the voice; without voice_duration_ms the output length is the timeline end. When preset.mix_rules has a loudness rule the mix chain continues with loudnorm and asetpts from that rule; without it the graph and the fingerprint are unchanged."""
     _require(record, RenderPackageRecord, 'record')
     _require(preset, RenderPresetRevision, 'preset')
     if voice_duration_ms is not None and not (_is_int(voice_duration_ms) and 0 < voice_duration_ms <= _MAX_NUMBER):
         raise RenderCommandRejected(INVALID_INPUT, 'invalid_voice_duration_ms')
+    rule = _loudness_rule(preset)
+    loudnorm = _loudnorm_chain(rule)
     values = _checked_profile(profile)
     tool = _checked_tool(tool_identity)
     root = _checked_root(materialized)
@@ -409,7 +440,7 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
         thumb_ms = hook.thumbnail_range[1] - hook.thumbnail_range[0]
         pairs += _timed_input(record, hook.thumbnail_ref, hook.thumbnail_path, '{thumbnail_asset}', values, thumb_ms)
     pairs += _plain('-filter_complex')
-    pairs.append((_filter_graph(count, values, _filter_path(ass), hook), _filter_graph(count, values, '{ass}', hook)))
+    pairs.append((_filter_graph(count, values, _filter_path(ass), hook, loudnorm), _filter_graph(count, values, '{ass}', hook, loudnorm)))
     pairs += _plain('-map', '[vout]', '-map', '[aout]', '-shortest')
     output_ms = voice_duration_ms if voice_duration_ms is not None else _timeline_end_ms(record)
     if output_ms > 0:
@@ -433,6 +464,8 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
             'thumbnail_time_range': list(hook.thumbnail_range),
         },
     }
+    if rule is not None:
+        details['loudness'] = dict(rule)
     return _make_spec(KIND_RENDER, pairs, tool_identity, tool, details)
 
 
