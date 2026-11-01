@@ -51,7 +51,18 @@ def _stage(name, row):
     return f'{name}({d.STAGE_LABELS[name]})={row["status"]}/attempt{row["attempt"]}'
 
 
+def _ascii_line(line):
+    """Chuỗi in ra console Windows chỉ gồm ASCII."""
+    return str(line).encode('ascii', 'backslashreplace').decode('ascii')
+
+
 # --- test thuần (không chạm ngăn xếp thật) -----------------------------------------------------------------------
+
+def test_unit_ascii_line_is_console_safe():
+    assert _ascii_line('Đ ok x=1') == '\\u0110 ok x=1'
+    assert _ascii_line('plain') == 'plain'
+    assert _ascii_line('Đ').isascii()
+
 
 def test_unit_resume_rejects_late_ready():
     assert d.evaluate_resume({}, {}, 300)['ready_ok'] is True
@@ -740,13 +751,13 @@ def test_rg09_secret_scan(batch_run, emit):
 
 def test_rg09_budget_envelope(batch_run, emit):
     assert d.budget_violations(batch_run.ai_calls, batch_run.spent_usd, batch_run.drive_bytes, batch_run.elapsed_seconds) == []
-    emit(f'- budget: attempts={len(batch_run.attempts)} ai_calls={batch_run.ai_calls} cap=25 spent_usd={batch_run.spent_usd} ceiling_usd=3 '
-         f'drive_bytes={batch_run.drive_bytes} cap_bytes=209715200 elapsed_s={batch_run.elapsed_seconds:.0f} '
-         f'limit_s=7200 remaining_s={DEADLINE.remaining():.0f}')
-    emit('- seed: launcher_line=' + batch_run.launcher_seed_line + ' seed_counts=' + json.dumps(batch_run.seed_counts, sort_keys=True) + ' render_config=' + batch_run.render_config)
-    emit('- start: pre_stop_attempts=' + str(batch_run.pre_stop_attempts))
-    emit('- pre_check: other_workflows_running=' + str(batch_run.other_workflows_running) + ' (Temporal 127.0.0.1:7233 namespace default, chi doc)')
-    emit('- ai_calls_source: dem cp_ai_invocation_records record_key bat dau <ws>:<batch>:video: ai_calls=' + str(batch_run.ai_calls) + ' ledger_usd=' + str(batch_run.spent_usd) + ' (route_cost_per_request=0 nen ledger luon 0)')
-    emit('- ' + batch_run.batch_after_run + ' (OI-PW-E2E-01: trang thai dong lo la muc mo, RG-09 khong cham theo no)')
-    emit('- qc_evidence: ' + batch_run.qc_evidence)
-    emit('- ' + batch_run.media_audio_evidence)
+    emit(_ascii_line(f'- budget: attempts={len(batch_run.attempts)} ai_calls={batch_run.ai_calls} cap=25 spent_usd={batch_run.spent_usd} ceiling_usd=3 '
+                     f'drive_bytes={batch_run.drive_bytes} cap_bytes=209715200 elapsed_s={batch_run.elapsed_seconds:.0f} '
+                     f'limit_s=7200 remaining_s={DEADLINE.remaining():.0f}'))
+    emit(_ascii_line('- seed: launcher_line=' + batch_run.launcher_seed_line + ' seed_counts=' + json.dumps(batch_run.seed_counts, sort_keys=True) + ' render_config=' + batch_run.render_config))
+    emit(_ascii_line('- start: pre_stop_attempts=' + str(batch_run.pre_stop_attempts)))
+    emit(_ascii_line('- pre_check: other_workflows_running=' + str(batch_run.other_workflows_running) + ' (Temporal 127.0.0.1:7233 namespace default, chi doc)'))
+    emit(_ascii_line('- ai_calls_source: dem cp_ai_invocation_records record_key bat dau <ws>:<batch>:video: ai_calls=' + str(batch_run.ai_calls) + ' ledger_usd=' + str(batch_run.spent_usd) + ' (route_cost_per_request=0 nen ledger luon 0)'))
+    emit(_ascii_line('- ' + batch_run.batch_after_run + ' (OI-PW-E2E-01: trang thai dong lo la muc mo, RG-09 khong cham theo no)'))
+    emit(_ascii_line('- qc_evidence: ' + batch_run.qc_evidence))
+    emit(_ascii_line('- ' + batch_run.media_audio_evidence))
