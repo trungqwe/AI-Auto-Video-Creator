@@ -16,7 +16,7 @@ import threading
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from controlplane.api.wiring.workflow import render_handler
+from controlplane.api.wiring.workflow import RenderImage, render_handler, render_image_sources
 from controlplane.infrastructure.db.control_api_commands import PostgresConfigScope, compose_command_service
 from controlplane.infrastructure.production_ports.gpu_lease import LocalGpuLease
 from render.adapters.activity_inputs import (
@@ -186,6 +186,67 @@ def _visual_version_ref(timeline: Mapping[str, Any], media_asset_id: str) -> str
     return None
 
 
+_SELECTED_MEDIA_REF = 'selected_media'
+
+
+def _visual_version_refs(timeline: Mapping[str, Any]) -> set[str]:
+    refs: set[str] = set()
+    segments = timeline.get('segments')
+    if isinstance(segments, list):
+        for segment in segments:
+            if isinstance(segment, Mapping):
+                visuals = segment.get('visuals')
+                if isinstance(visuals, list):
+                    for visual in visuals:
+                        if isinstance(visual, Mapping):
+                            ref = visual.get('artifact_version_ref')
+                            if isinstance(ref, str) and ref:
+                                refs.add(ref.lower())
+    return refs
+
+
+def _image_safe_timeline(
+    timeline: Mapping[str, Any],
+    images: Mapping[str, RenderImage],
+) -> tuple[dict[str, Any], dict[str, tuple[str, RenderImage]]]:
+    if not isinstance(timeline, Mapping) or not isinstance(timeline.get('segments'), list):
+        return (dict(timeline) if isinstance(timeline, Mapping) else {}, {})
+    replaced: dict[str, tuple[str, RenderImage]] = {}
+    mapped = []
+    for segment in timeline.get('segments', []):
+        if not isinstance(segment, Mapping) or not isinstance(segment.get('visuals'), list):
+            mapped.append(segment)
+            continue
+        new_visuals = []
+        for visual in segment.get('visuals', []):
+            media = visual.get('media_asset_id') if isinstance(visual, Mapping) else None
+            if not isinstance(media, str) or not media:
+                new_visuals.append(visual)
+                continue
+            image = images.get(media)
+            if image is None:
+                raise ActivityInputError('INPUT_NOT_READY', f'image_not_assessed:{media}')
+            if image.artifact_version_id is None:
+                raise ActivityInputError('INPUT_NOT_READY', f'image_excluded:{image.reason}:{media}')
+            original = visual.get('artifact_version_ref')
+            if isinstance(original, str) and original.lower() != image.artifact_version_id.lower():
+                replaced.setdefault(media, (original, image))
+                visual = {**visual, 'artifact_version_ref': image.artifact_version_id}
+            new_visuals.append(visual)
+        mapped.append({**segment, 'visuals': new_visuals})
+    return ({**timeline, 'segments': mapped}, replaced)
+
+
+def _image_fallback_rule(media: str, original: str, image: RenderImage) -> dict[str, str]:
+    return {
+        'rule_id': f'image-safety:{media}',
+        'kind': 'replace_asset',
+        'replaced_media_asset_id': media,
+        'replaced_artifact_version_ref': original,
+        'artifact_version_id': image.artifact_version_id,
+        'reason': image.reason,
+    }
+
 def _output_name(render_attempt_id: str) -> str:
     return _OUTPUT_NAME_UNSAFE.sub('_', render_attempt_id)
 
@@ -315,6 +376,20 @@ class ProductionRenderSources:
         self._profile = profile
         self._runtime = runtime
         self._clock = clock
+        self._image_sources: Callable[[Sequence[Mapping[str, Any]]], dict[str, RenderImage]] | None = None
+
+    def _image_decisions(self, input_refs: Sequence[Mapping[str, str]]) -> dict[str, RenderImage] | None:
+        if not any(isinstance(ref, Mapping) and ref.get('ref_type') == _SELECTED_MEDIA_REF for ref in input_refs):
+            return None
+        if self._image_sources is None:
+            self._image_sources = render_image_sources(
+                self._manager,
+                workspace_id=self._workspace_id,
+                profile=self._profile,
+                staging_root=self._runtime.staging_root,
+                clock=self._clock,
+            )
+        return self._image_sources(input_refs)
 
     def _read_timing_payload(self, timing_ref: str) -> Mapping[str, Any] | None:
         timing_sql = (
@@ -447,14 +522,34 @@ class ProductionRenderSources:
         if refs_in_plan is None:
             refs_in_plan = ()
 
+        images = self._image_decisions(input_refs)
+        replaced: dict[str, tuple[str, RenderImage]] = {}
+        if images is not None:
+            timeline, replaced = _image_safe_timeline(timeline, images)
+            allowed_fallbacks = (
+                *allowed_fallbacks,
+                *(_image_fallback_rule(media, original, image) for media, (original, image) in replaced.items()),
+            )
+
         input_artifacts = []
         hook_refs = {hook_placement.get(key) for key in _HOOK_PLACEMENT_REFS} if isinstance(hook_placement, Mapping) else set()
+        dropped = {original.lower() for original, _ in replaced.values()} - _visual_version_refs(timeline)
         for aref in refs_in_plan:
-            if aref in hook_refs:
+            if aref in hook_refs or aref.lower() in dropped:
                 continue
             asset = art_info.get_asset(aref)
             if asset is not None:
                 input_artifacts.append(asset)
+
+        present = {art.artifact_version_id.lower() for art in input_artifacts}
+        for media, (_original, image) in replaced.items():
+            replacement = art_info.get_asset(image.artifact_version_id)
+            if replacement is None:
+                raise ActivityInputError('INPUT_NOT_READY', f'image_version_not_verified:{media}')
+            if replacement.artifact_version_id.lower() not in present:
+                input_artifacts.append(replacement)
+                present.add(replacement.artifact_version_id.lower())
+
         manifest_entries = [
             LocalMaterialRef(artifact_version_id=art.artifact_version_id, local_ref=art.artifact_version_id)
             for art in input_artifacts

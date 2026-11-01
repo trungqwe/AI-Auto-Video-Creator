@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 import datetime
 import hashlib
 import json
+import uuid
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -60,9 +61,12 @@ from creative.worker.activity_handler import handle_activity as handle_creative_
 from creative.application.prompts import seed_default_prompts
 from ingestion.application.activity_handler import handle_resolve_activity
 from render.worker.activity_handler import handle_activity as handle_render_activity
+from render.adapters.activity_inputs import ActivityInputError as RenderInputError
 from render.ports.lease import GpuLeaseUnavailable
 from source_ingestion.worker.activity_handler import handle_collect_source_activity
 from voice.worker.activity_handler import handle_activity as handle_voice_activity
+from voice.adapters.activity_inputs import ActivityInputError as VoiceInputError, ProductionActivityInputs
+from voice.persistence.unit_of_work import PostgresVoiceUnitOfWork
 
 
 def collect_source_handler(deps: Any, clock: Callable[[], datetime.datetime]) -> ActivityHandler:
@@ -367,6 +371,101 @@ def staged_artifact_registrar(manager: Any, workspace_id: str, staging_root: Pat
     return register
 
 
+RENDER_IMAGE_TOOL_VERSION = 'render-image-sources'
+REF_TYPE_SELECTED_MEDIA = 'selected_media'
+
+
+@dataclass(frozen=True)
+class RenderImage:
+    """Ảnh render lấy cho một media đã chọn: version mà NormalizeMedia của E dùng, hoặc None khi E loại và hết seed."""
+
+    media_asset_id: str
+    artifact_version_id: str | None
+    reason: str
+
+
+def render_image_sources(
+    manager: Any,
+    *,
+    workspace_id: str,
+    profile: Any,
+    staging_root: Path,
+    clock: Callable[[], datetime.datetime],
+) -> Callable[[Sequence[Mapping[str, Any]]], dict[str, RenderImage]]:
+    from controlplane.api.wiring.voice import ArtifactRows, SelectionSeedFallback, locate_media_file
+
+    root = Path(staging_root)
+    inputs = ProductionActivityInputs(
+        parameters=profile.parameters,
+        tool_version=RENDER_IMAGE_TOOL_VERSION,
+        scripts=None,
+        outputs=PostgresVoiceUnitOfWork(manager, workspace_id=workspace_id).outputs,
+        media=ArtifactRows(manager, workspace_id),
+        plans=None,
+        selections=SelectionSeedFallback(manager, workspace_id),
+        vision=None,
+        read_image=None,
+        verify_output=None,
+        settings=None,
+        clock=clock,
+    )
+    locate = locate_media_file(manager, workspace_id, root)
+
+    def version_id_of(ref: str) -> str | None:
+        try:
+            return str(uuid.UUID(ref))
+        except ValueError:
+            return None
+
+    def blurred_version(media_asset_id: str, artifact: Any) -> str:
+        path = locate(artifact.ref)
+        if path is None:
+            raise RenderInputError('INPUT_NOT_READY', f'image_processed_missing:{media_asset_id}')
+        if hashlib.sha256(path.read_bytes()).hexdigest() != artifact.content_sha256:
+            raise RenderInputError('INPUT_NOT_READY', f'image_processed_sha256_mismatch:{media_asset_id}')
+        try:
+            version = register_staged_artifact(
+                manager,
+                workspace_id=workspace_id,
+                staging_root=root,
+                owner_ref=media_asset_id,
+                relative_ref=path.resolve().relative_to(root.resolve()).as_posix(),
+                retention_ref=DURABLE_RETENTION,
+            )
+        except RuntimeError as error:
+            raise RenderInputError('INPUT_NOT_READY', f'image_processed_not_registered:{media_asset_id}') from error
+        return version.artifact_version_id
+
+    def decide(refs: Sequence[Mapping[str, Any]]) -> dict[str, RenderImage]:
+        decisions: dict[str, RenderImage] = {}
+        for item in refs:
+            media_id = item.get('ref_id')
+            if (
+                item.get('ref_type') != REF_TYPE_SELECTED_MEDIA
+                or not isinstance(media_id, str)
+                or not media_id
+                or media_id in decisions
+            ):
+                continue
+            ordered = [
+                dict(item),
+                *(dict(ref) for ref in refs if (ref.get('ref_type'), ref.get('ref_id')) != (REF_TYPE_SELECTED_MEDIA, media_id)),
+            ]
+            try:
+                source = inputs.normalize_source(workspace_id, ordered)
+            except VoiceInputError as error:
+                raise RenderInputError(error.code, error.reason) from error
+            artifact = source.artifact
+            if artifact is None:
+                decisions[media_id] = RenderImage(media_id, None, source.reason)
+                continue
+            version_id = version_id_of(artifact.ref) or blurred_version(media_id, artifact)
+            decisions[media_id] = RenderImage(media_id, version_id, source.reason)
+        return decisions
+
+    return decide
+
+
 def assemble_activity_handlers(
     *,
     manager: Any,
@@ -491,6 +590,7 @@ def seed_production_defaults(
 __all__ = [
     'ExecutionClaimsCurrency',
     'ExecutionGrantCurrency',
+    'RenderImage',
     'StoreBackedClaimsCurrency',
     'TemporalRegistration',
     'WorkflowServices',
@@ -502,6 +602,7 @@ __all__ = [
     'creative_handler',
     'media_assets_opener',
     'render_handler',
+    'render_image_sources',
     'resolve_document_handler',
     'seed_production_defaults',
     'service_handler',
