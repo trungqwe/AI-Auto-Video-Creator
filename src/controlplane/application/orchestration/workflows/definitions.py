@@ -98,6 +98,9 @@ class TemporalGateway:
     async def sleep(self, seconds: float) -> None:
         await workflow.sleep(timedelta(seconds=seconds))
 
+    def patched(self, patch_id: str) -> bool:
+        return workflow.patched(patch_id)
+
     async def run_child(self, workflow_name: str, payload: Any) -> Any:
         return await workflow.execute_child_workflow(
             workflow_name,
