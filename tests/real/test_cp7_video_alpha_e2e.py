@@ -569,6 +569,41 @@ def test_unit_collect_qc_evidence_read_only():
     assert d.collect_qc_evidence(_Broken(), 'b:job:1') == 'qc_evidence_error=OSError'
 
 
+def test_unit_format_hook_placement():
+    plan = {'hook_placement': {'visual_hook_ref': 'ma-4d8aaaaa-1', 'thumbnail_ref': 'seed-b-xyz', 'hook_time_range': {'start_ms': 0, 'end_ms': 3000}, 'thumbnail_time_range': {'start_ms': 1500, 'end_ms': 2500}}}
+    assert d.format_hook_placement(plan) == 'hook_placement=[visual=ma-4d8aa thumbnail=seed-b-x same_ref=False hook_range=0-3000 thumbnail_range=1500-2500]'
+    same = {'hook_placement': dict(plan['hook_placement'], thumbnail_ref='ma-4d8aaaaa-1')}
+    assert 'same_ref=True' in d.format_hook_placement(same)
+    assert d.format_hook_placement({}) == 'hook_placement=[visual=- thumbnail=- same_ref=False hook_range=- thumbnail_range=-]'
+
+
+def test_unit_collect_hook_placement_evidence_read_only():
+    class _Db:
+        def __init__(self):
+            self.sqls = []
+
+        def query(self, sql, *params):
+            self.sqls.append(sql)
+            return [({'hook_placement': {'visual_hook_ref': 'ma-4d8aaaaa-1', 'thumbnail_ref': 'ma-4d8aaaaa-1', 'hook_time_range': {'start_ms': 0, 'end_ms': 3000}, 'thumbnail_time_range': {'start_ms': 1500, 'end_ms': 2500}}}, 'plan1')]
+
+    db = _Db()
+    assert 'same_ref=True' in d.collect_hook_placement_evidence(db, 'b:job:1')
+    assert db.sqls and all(sql.lstrip().upper().startswith('SELECT') for sql in db.sqls)
+
+
+def test_unit_collect_hook_placement_evidence_never_raises():
+    class _Empty:
+        def query(self, sql, *params):
+            return []
+
+    class _Broken:
+        def query(self, sql, *params):
+            raise OSError('x')
+
+    assert d.collect_hook_placement_evidence(_Empty(), 'b:job:1') == 'hook_placement=[no_plan]'
+    assert d.collect_hook_placement_evidence(_Broken(), 'b:job:1') == 'hook_placement_error=OSError'
+
+
 def test_unit_collect_batch_running():
     rows = [('ProductionBatchWorkflow', 'b1'), ('VideoProductionWorkflow', 'b1:video:1'), ('ProductionBatchWorkflow', 'b10'), ('MaintenanceWorkflow', 'm1')]
 

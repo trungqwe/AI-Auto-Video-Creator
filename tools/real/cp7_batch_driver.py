@@ -860,6 +860,33 @@ def collect_qc_evidence(db, job_id):
         return 'qc_evidence_error=' + type(exc).__name__
 
 
+def format_hook_placement(plan_payload):
+    """Một dòng chẩn đoán THUMBNAIL_PRESENT: 8 ký tự đầu của ref hook hình và thumbnail, khoảng thời gian hook/thumbnail của kế hoạch; không chấm RG-09."""
+    placement = (plan_payload or {}).get('hook_placement') or {}
+
+    def short(key):
+        value = placement.get(key)
+        return str(value)[:8] if value else '-'
+
+    def span(key):
+        value = placement.get(key)
+        return f"{value.get('start_ms')}-{value.get('end_ms')}" if isinstance(value, dict) else '-'
+
+    visual, thumb = placement.get('visual_hook_ref'), placement.get('thumbnail_ref')
+    return f"hook_placement=[visual={short('visual_hook_ref')} thumbnail={short('thumbnail_ref')} same_ref={bool(visual) and visual == thumb} hook_range={span('hook_time_range')} thumbnail_range={span('thumbnail_time_range')}]"
+
+
+def collect_hook_placement_evidence(db, job_id):
+    """Chỉ đọc; không bao giờ raise."""
+    try:
+        plan = _plan_row(db, job_id)
+        if plan is None:
+            return 'hook_placement=[no_plan]'
+        return c.redact(format_hook_placement(plan[0]))[:300]
+    except Exception as exc:
+        return 'hook_placement_error=' + type(exc).__name__
+
+
 def _find_key(obj, name):
     if isinstance(obj, dict):
         if obj.get(name) is not None:
@@ -1040,7 +1067,7 @@ def run_batch(work_dir, deadline):
             result.media_audio_evidence = collect_media_audio_evidence(db, job_id, result.plan_before)
             result.batch_after_run = collect_batch_running(db, batch_id)
             diag = collect_diagnostic(db, job_id)
-            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; other_workflows_running=' + str(result.other_workflows_running) + ' ai_calls=' + str(result.ai_calls) + ' ' + result.qc_evidence + ' ' + result.batch_after_run + ' ' + collect_render_config(db) + ' ' + result.media_audio_evidence + ' launcher_seed=[' + result.launcher_seed_line + '] seed_counts=' + json.dumps(result.seed_counts, sort_keys=True) + ' ' + collect_script_length(db, job_id) + ' ' + diag)
+            raise BlockedError('BLOCKED: job kết thúc ở ' + str(result.final_job_status) + ' ' + format_failed_stage(failed) + '; không thử lại, không tạo lô khác; other_workflows_running=' + str(result.other_workflows_running) + ' ai_calls=' + str(result.ai_calls) + ' ' + result.qc_evidence + ' ' + collect_hook_placement_evidence(db, job_id) + ' ' + result.batch_after_run + ' ' + collect_render_config(db) + ' ' + result.media_audio_evidence + ' launcher_seed=[' + result.launcher_seed_line + '] seed_counts=' + json.dumps(result.seed_counts, sort_keys=True) + ' ' + collect_script_length(db, job_id) + ' ' + diag)
         result.attempts.append({'attempt': 1, 'batch_id': batch_id, 'job_id': job_id, 'outcome': 'COMPLETED'})
         result.final_batch_status = db.batch_status(batch_id) or ''
         result.locations = db.locations(job_id)
