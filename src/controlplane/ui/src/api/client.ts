@@ -1,5 +1,6 @@
 import {
   BatchItem,
+  BatchSettings,
   CommandReceipt,
   JobItem,
   ModulePage,
@@ -162,19 +163,28 @@ export async function patchModuleItem(
   });
 }
 
+export async function fetchBatchSettings(): Promise<BatchSettings> {
+  return request<BatchSettings>('/v1/batch-settings');
+}
+
 export async function startProductionBatch(
   targetCount: number,
-  idempotencyKey: string
+  idempotencyKey: string,
+  maxConcurrentVideos?: number
 ): Promise<CommandReceipt> {
+  const body: Record<string, unknown> = {
+    target_completed_videos: targetCount,
+  };
+  if (maxConcurrentVideos !== undefined) {
+    body.max_concurrent_videos = maxConcurrentVideos;
+  }
   return request<CommandReceipt>('/v1/batches', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Idempotency-Key': idempotencyKey,
     },
-    body: JSON.stringify({
-      target_completed_videos: targetCount,
-    }),
+    body: JSON.stringify(body),
   });
 }
 

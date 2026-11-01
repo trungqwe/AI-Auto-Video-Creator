@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
-import { CommandReceipt } from '../types/api.ts';
-import { startProductionBatch } from '../api/client.ts';
+import React, { useEffect, useState } from 'react';
+import { BatchSettings, CommandReceipt } from '../types/api.ts';
+import { fetchBatchSettings, startProductionBatch } from '../api/client.ts';
 
 interface CommandFormProps {
   onSuccess: (receipt: CommandReceipt) => void;
   onError: (err: unknown) => void;
 }
+
+type ConcurrencyLimits = BatchSettings['max_concurrent_videos'];
 
 export const CommandForm: React.FC<CommandFormProps> = ({ onSuccess, onError }) => {
   const [targetCount, setTargetCount] = useState<number>(1);
@@ -13,12 +15,51 @@ export const CommandForm: React.FC<CommandFormProps> = ({ onSuccess, onError }) 
   const [loading, setLoading] = useState<boolean>(false);
   const [lastReceipt, setLastReceipt] = useState<CommandReceipt | null>(null);
 
+  const [settingsLoading, setSettingsLoading] = useState<boolean>(true);
+  const [limits, setLimits] = useState<ConcurrencyLimits | null>(null);
+  const [maxConcurrent, setMaxConcurrent] = useState<number>(1);
+
+  useEffect(() => {
+    let active = true;
+    const loadSettings = async () => {
+      try {
+        const settings = await fetchBatchSettings();
+        const loaded = settings.max_concurrent_videos;
+        if (
+          active &&
+          Number.isInteger(loaded.min) &&
+          Number.isInteger(loaded.max) &&
+          Number.isInteger(loaded.default) &&
+          loaded.min >= 1 &&
+          loaded.max > 1 &&
+          loaded.min <= loaded.max
+        ) {
+          setLimits(loaded);
+          setMaxConcurrent(Math.min(Math.max(loaded.default, loaded.min), loaded.max));
+        }
+      } catch {
+        // Settings unavailable: hide the select and never send max_concurrent_videos in this page session
+      } finally {
+        if (active) {
+          setSettingsLoading(false);
+        }
+      }
+    };
+    void loadSettings();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const handleGenerateNewKey = () => {
     setIdempotencyKey(`key-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (settingsLoading) {
+      return;
+    }
     if (targetCount <= 0) {
       alert('Số lượng video cần hoàn thành phải lớn hơn 0');
       return;
@@ -30,7 +71,7 @@ export const CommandForm: React.FC<CommandFormProps> = ({ onSuccess, onError }) 
 
     setLoading(true);
     try {
-      const receipt = await startProductionBatch(targetCount, idempotencyKey.trim());
+      const receipt = await startProductionBatch(targetCount, idempotencyKey.trim(), limits ? maxConcurrent : undefined);
       setLastReceipt(receipt);
       onSuccess(receipt);
     } catch (err) {
@@ -93,13 +134,34 @@ export const CommandForm: React.FC<CommandFormProps> = ({ onSuccess, onError }) 
               </button>
             </div>
           </div>
+
+          {limits && (
+            <div className="form-group">
+              <label className="form-label" htmlFor="max-concurrent-select">
+                Số luồng video song song (mặc định {limits.default}, tối đa {limits.max} theo tài nguyên máy)
+              </label>
+              <select
+                id="max-concurrent-select"
+                data-testid="max-concurrent-select"
+                className="form-input"
+                value={maxConcurrent}
+                onChange={(e) => setMaxConcurrent(parseInt(e.target.value, 10))}
+              >
+                {Array.from({ length: limits.max - limits.min + 1 }, (_, i) => limits.min + i).map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={loading}
+            disabled={loading || settingsLoading}
             data-testid="submit-batch-btn"
           >
             {loading ? 'Đang gửi lệnh...' : 'Khởi chạy Lô Sản xuất'}
