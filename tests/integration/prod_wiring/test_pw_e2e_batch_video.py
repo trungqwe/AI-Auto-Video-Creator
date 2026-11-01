@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import base64
+import hashlib
 import json
 import pathlib
 import re
@@ -18,6 +20,8 @@ from typing import Any
 import pytest
 import pytest_asyncio
 
+from catalog.domain.identity import CanonicalFingerprint
+from catalog.persistence.assets import PostgresMediaAssetRepository
 from tests.integration.prod_wiring.pw_e2e_support import (
     BASE,
     FFMPEG,
@@ -216,6 +220,18 @@ async def test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch
 
     await wait_until(two_articles, timeout=300.0, interval=0.5, what="two articles collected")
 
+    feed_sha = {slug: hashlib.sha256(rig.site.routes[f"/img/{slug}.jpg"][2]).hexdigest() for slug in ("a", "b")}
+
+    def enclosures_registered() -> bool:
+        with rig.database.connect() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT sha256_hash FROM controlplane.cp_artifact_versions WHERE workspace_id = %s AND sha256_hash = ANY(%s)",
+                (rig.database.workspace_id, list(feed_sha.values())),
+            ).fetchall()
+        return len(rows) == 2
+
+    await wait_until(enclosures_registered, timeout=300.0, interval=0.5, what="enclosure images of both articles registered as artifacts")
+
     # (2) First batch: inference disclosure
     rig.router.script_mode = "inference"
     batch_id = await asyncio.to_thread(rig.post_batch, 1)
@@ -266,6 +282,40 @@ async def test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch
     assert child["rejected_signals"] == []
     assert sorted(child["completed"]) == sorted(VIDEO_STAGES)
     assert child["attempts"] == EXPECTED_ACTIVITIES
+
+    # Scene 1 image of the first batch (before the second batch overwrites rig.router.selected_media)
+    ws = rig.database.workspace_id
+    with rig.database.connect() as conn:
+        candidate_ref = conn.execute(
+            "SELECT candidate_ref FROM controlplane.cp_job_candidates WHERE workspace_id = %s AND batch_id = %s",
+            (ws, batch_id),
+        ).fetchone()[0]
+        documents = conn.execute(
+            "SELECT payload->>'collected_document_id' FROM controlplane.cp_article_revisions WHERE workspace_id = %s AND article_id = %s",
+            (ws, candidate_ref),
+        ).fetchall()
+    assert len(documents) == 1
+    document_id = documents[0][0]
+    scene1_id = rig.router.selected_media[0]
+    with rig.database.connect() as conn:
+        repository = PostgresMediaAssetRepository(conn, ws)
+        assets = [repository.find_by_fingerprint(CanonicalFingerprint(sha)) for sha in feed_sha.values()]
+        assert all(asset is not None for asset in assets)
+        scene1 = next(asset for asset in assets if asset.media_asset_id == scene1_id)
+        assert any(entry.article_ref == document_id for entry in scene1.provenance)
+        sha1 = scene1.fingerprint.value
+        assert sha1 in feed_sha.values()
+    seen = [hashlib.sha256(base64.b64decode(call["image_base64"])).hexdigest() for call in rig.runtime.vision_route.calls]
+    assert sha1 in seen
+    with rig.database.connect() as conn:
+        safety_rows = conn.execute(
+            "SELECT record_key, payload FROM controlplane.cp_image_safety_assessments WHERE workspace_id = %s",
+            (ws,),
+        ).fetchall()
+    job_safety = [key for key, _ in safety_rows if key.startswith(f"{batch_id}:video:0:") and "AssessImageSafety" in key]
+    # The stored assessment carries no image reference, so the evidence is the pair: vision received the scene 1 bytes and the job has AssessImageSafety records.
+    assert len(job_safety) >= 1
+    print(f"PW_D3_FIX2_EVIDENCE scene1_media_asset_id={scene1_id} sha256={sha1} document_id={document_id} assess_image_safety_records={job_safety}")
 
     # (3) CSDL
     job_id = f"{batch_id}:job:1"

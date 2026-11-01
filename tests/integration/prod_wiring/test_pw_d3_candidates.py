@@ -328,11 +328,22 @@ def test_candidates_feed_select_creative_assets_with_a_seed_fallback(launcher, p
     assert_registered_version(pw_database, selection.assignments[0].artifact_version_ref, 'img-article-1-hero')
 
 
+def documents_of(article_id, revision_id):
+    return ()
+
+
 def test_media_port_requires_a_callable_resolve_version():
-    with pytest.raises(TypeError):
-        PostgresMediaCandidates(lambda workspace_id: None, safety_policy_revision=POLICY_REVISION)
-    with pytest.raises(TypeError):
-        PostgresMediaCandidates(lambda workspace_id: None, resolve_version='x', safety_policy_revision=POLICY_REVISION)
+    with pytest.raises(TypeError, match='resolve_version'):
+        PostgresMediaCandidates(lambda workspace_id: None, resolve_documents=documents_of, safety_policy_revision=POLICY_REVISION)
+    with pytest.raises(TypeError, match='resolve_version must be callable'):
+        PostgresMediaCandidates(lambda workspace_id: None, resolve_version='x', resolve_documents=documents_of, safety_policy_revision=POLICY_REVISION)
+
+
+def test_media_port_requires_a_callable_resolve_documents():
+    with pytest.raises(TypeError, match='resolve_documents'):
+        PostgresMediaCandidates(lambda workspace_id: None, resolve_version=lambda sha: None, safety_policy_revision=POLICY_REVISION)
+    with pytest.raises(TypeError, match='resolve_documents must be callable'):
+        PostgresMediaCandidates(lambda workspace_id: None, resolve_version=lambda sha: None, resolve_documents='x', safety_policy_revision=POLICY_REVISION)
 
 
 def test_seed_images_without_a_registered_version_are_dropped(launcher, pw_database, imported, staging):
@@ -402,6 +413,8 @@ def test_adapters_keep_the_boundary_to_c_and_name_their_ports():
     assert 'rights_cleared' in texts['media_candidates'] and 'rights_cleared' in texts['hook_candidates']
     launcher_text = LAUNCHER.read_text(encoding='utf-8')
     assert 'verified_version_for_sha' in launcher_text and 'resolve_version=' in launcher_text
+    assert 'resolve_documents=' in launcher_text and 'article_revision_id' in launcher_text
+    assert 'resolve_documents' in texts['media_candidates'] and 'ingestion' not in texts['media_candidates'].lower()
 
 
 def test_module_docstring_declares_covered_ids():

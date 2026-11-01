@@ -754,14 +754,26 @@ def build_media_candidates(manager: typing.Any, *, workspace_id: str, safety_pol
     handlers = importlib.import_module('controlplane.application.storage_meta.handlers')
     workflow = importlib.import_module('controlplane.api.wiring.workflow')
     media_candidates = importlib.import_module('creative.adapters.media_candidates')
+    ingestion_uow = importlib.import_module('ingestion.persistence.uow')
+    PostgresIngestionUnitOfWork = ingestion_uow.PostgresIngestionUnitOfWork
 
     def resolve_version(sha: str) -> str | None:
         version = handlers.verified_version_for_sha(manager, workspace_id=workspace_id, sha256=sha)
         return None if version is None else version.artifact_version_id
 
+    def resolve_documents(article_id: str, revision_id: str) -> tuple[str, ...]:
+        with PostgresIngestionUnitOfWork(manager, workspace_id=workspace_id) as uow:
+            article = uow.articles.get(article_id)
+            if article is None:
+                return ()
+            return tuple(
+                revision.collected_document_id for revision in article.revisions if revision.article_revision_id == revision_id
+            )
+
     return media_candidates.PostgresMediaCandidates(
         workflow.media_assets_opener(manager),
         resolve_version=resolve_version,
+        resolve_documents=resolve_documents,
         safety_policy_revision=safety_policy_revision,
     )
 

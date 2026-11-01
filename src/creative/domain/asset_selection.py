@@ -641,7 +641,10 @@ def select_creative_assets(
     overall_rationale = _required_text(proposal, 'rationale', 'rationale')
     components = {item.media_asset_id: _score_components(item, weights) for item in eligible_media}
     used = {assignment.media_asset_id for assignment in assignments}
-    ranked = sorted((item for item in eligible_media if item.media_asset_id not in used), key=lambda item: (-components[item.media_asset_id]['total'], item.media_asset_id))
+    # DQ-11: an image that still needs AssessImageSafety is chosen for a scene only, never offered as a fallback replacement.
+    ranked = sorted(
+        (item for item in eligible_media if item.media_asset_id not in used and item.safety_rights_status.get('needs_image_safety') is not True),
+        key=lambda item: (-components[item.media_asset_id]['total'], item.media_asset_id))
     selection = CreativeAssetSelection(
         snapshot_ref=snapshot_ref, script_ref=script_ref, angle_ref=angle_ref,
         safety_policy_revision=safety_policy.revision, music_sfx_policy_revision=music_sfx_policy_revision,
