@@ -46,7 +46,24 @@ POLICY = QualityPolicy(revision='qc-policy-v1', thresholds={
     'ENGLISH_OUTPUT_VALID': {'required_language': 'en'},
 })
 POLICY_WITH_WARNING = QualityPolicy(revision='qc-policy-v1', thresholds={**POLICY.thresholds, 'VISUAL_CONTINUITY': {'max_gap_ms': 500}})
-EXPECTED = ExpectedLanguageRevisions(script_fingerprint=SCRIPT_FP, voice_hash=VOICE_HASH, subtitle_text_hash=SUBTITLE_HASH)
+POLICY_WITH_AUDIO = QualityPolicy(revision='qc-policy-v1', thresholds={**POLICY.thresholds, 'AUDIO_MIX_QUALITY': {'target_lufs': -14.0, 'tolerance_lu': 0.5, 'max_true_peak_dbtp': -1.0}})
+AUDIO_FAILED = GateResult(
+    gate=GateName.AUDIO_MIX_QUALITY, status=GateStatus.FAILED, evidence_ref='out/render-1.mp4:I=-22.0LUFS:TP=-3.0dBTP', measured_value=-22.0,
+    threshold_revision='qc-policy-v1', reason='loudness_out_of_target',
+)
+
+
+class RecordingWarningGate:
+    def __init__(self, *results) -> None:
+        self.results = results
+        self.calls: list[tuple[str, str, QualityPolicy]] = []
+
+    def __call__(self, output_ref, package, policy):
+        self.calls.append((output_ref, package.render_package_id, policy))
+        return self.results
+
+
+EXPECTED =ExpectedLanguageRevisions(script_fingerprint=SCRIPT_FP, voice_hash=VOICE_HASH, subtitle_text_hash=SUBTITLE_HASH)
 
 
 def measured(**changes) -> OutputMeasurements:
@@ -119,7 +136,7 @@ def by_gate(report) -> dict:
 
 
 class QcRig:
-    def __init__(self, *, measurements=None, evidence_value=None, grants=None, fail_render: bool = False, probe_for=None) -> None:
+    def __init__(self, *, measurements=None, evidence_value=None, grants=None, fail_render: bool = False, probe_for=None, warning_gates=None) -> None:
         self.rr = RenderRig()
         if fail_render:
             self.rr.renderer.fail_text = 'encoder rejected input'
@@ -130,7 +147,7 @@ class QcRig:
         self.inspector = FakeInspector(evidence() if evidence_value is None else evidence_value)
         self.pipeline = OutputPipeline(
             uow=self.uow, probe=self.probe, inspector=self.inspector, observer=self.rr.storage,
-            grants=self.rr.base.grants if grants is None else grants, probe_for=probe_for,
+            grants=self.rr.base.grants if grants is None else grants, probe_for=probe_for, warning_gates=warning_gates,
         )
 
     def inspect_command(self, key: str = 'op-inspect-1', **changes) -> InspectOutputCommand:
@@ -262,6 +279,50 @@ def test_failed_warning_gate_is_recorded_and_never_blocks():
     assert gates[GateName.VISUAL_CONTINUITY].status is GateStatus.FAILED and gates[GateName.AUDIO_MIX_QUALITY].status is GateStatus.NOT_EVALUATED
     with pytest.raises(ValueError):
         rig.inspect_command(warning_results=(GateResult(gate=GateName.FILE_PLAYABLE, status=GateStatus.PASSED),))
+
+
+def test_warning_gate_audio_mix_is_recorded_and_never_blocks():
+    gate = RecordingWarningGate(AUDIO_FAILED)
+    rig = QcRig(warning_gates=gate)
+    report = rig.inspect(policy=POLICY_WITH_AUDIO).report
+    item = by_gate(report)[GateName.AUDIO_MIX_QUALITY]
+    assert report.passed is True and report.blocking_gates == () and GateName.AUDIO_MIX_QUALITY not in report.blocking_gates
+    assert (item.status, item.reason, item.measured_value) == (GateStatus.FAILED, 'loudness_out_of_target', -22.0)
+    assert gate.calls == [(out_ref(1), rig.package.render_package_id, POLICY_WITH_AUDIO)]
+    (event,) = rig.quality_events()
+    assert event.payload['passed'] is True and event.payload['gate_statuses']['AUDIO_MIX_QUALITY'] == 'failed'
+
+
+def test_warning_gate_is_not_called_again_on_replay():
+    gate = RecordingWarningGate(AUDIO_FAILED)
+    rig = QcRig(warning_gates=gate)
+    first = rig.inspect(policy=POLICY_WITH_AUDIO)
+    again = rig.inspect(policy=POLICY_WITH_AUDIO)
+    assert again.replayed is True and again.report == first.report and len(gate.calls) == 1
+
+
+def test_without_a_threshold_the_warning_gate_gives_nothing_and_audio_mix_is_not_evaluated():
+    gate = RecordingWarningGate()
+    rig = QcRig(warning_gates=gate)
+    report = rig.inspect().report
+    item = by_gate(report)[GateName.AUDIO_MIX_QUALITY]
+    assert report.passed is True and (item.status, item.reason) == (GateStatus.NOT_EVALUATED, 'INPUT_NOT_READY') and len(gate.calls) == 1
+
+
+@pytest.mark.parametrize('bad', [GateResult(gate=GateName.FILE_PLAYABLE, status=GateStatus.PASSED), {'gate': 'AUDIO_MIX_QUALITY'}])
+def test_warning_gate_output_must_hold_warning_gate_results_only(bad):
+    rig = QcRig(warning_gates=RecordingWarningGate(bad))
+    before = snapshot(rig.uow)
+    with pytest.raises(ValueError):
+        rig.inspect(policy=POLICY_WITH_AUDIO)
+    assert snapshot(rig.uow) == before and rig.uow.active is False
+
+
+def test_warning_results_of_the_caller_win_over_the_warning_gate():
+    given = GateResult(gate=GateName.AUDIO_MIX_QUALITY, status=GateStatus.PASSED, measured_value=-14.0, threshold_revision='qc-policy-v1')
+    rig = QcRig(warning_gates=RecordingWarningGate(AUDIO_FAILED))
+    item = by_gate(rig.inspect(policy=POLICY_WITH_AUDIO, warning_results=(given,)).report)[GateName.AUDIO_MIX_QUALITY]
+    assert (item.status, item.measured_value) == (GateStatus.PASSED, -14.0)
 
 
 def test_inference_disclosure_is_not_applicable_without_inference_segments():

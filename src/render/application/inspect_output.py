@@ -256,10 +256,12 @@ class OutputPipeline:
     def __init__(
         self, *, uow: PackageUnitOfWork, probe: OutputProbePort, inspector: OutputInspectorPort, observer: OutputObservationPort,
         grants: GrantCurrencyPort, probe_for: Callable[[RenderPackageRecord], OutputProbePort] | None = None,
+        warning_gates: Callable[[str, RenderPackageRecord, QualityPolicy], Sequence[GateResult]] | None = None,
     ) -> None:
         self._uow = uow
         self._probe = probe
         self._probe_for = probe_for
+        self._warning_gates = warning_gates
         self._inspector = inspector
         self._observer = observer
         self._grants = grants
@@ -292,15 +294,26 @@ class OutputPipeline:
             raise _reject(OutputNotInspectable, ATTEMPT_NOT_SUCCEEDED, 'Attempt not succeeded', 'Only a SUCCEEDED render attempt has an output to inspect.', command_name, command.context)
         return attempt, package
 
+    def _measured_warnings(self, command: InspectOutputCommand, package: RenderPackageRecord, output_ref: str) -> tuple[GateResult, ...]:
+        """Call warning_gates once with (output_ref, package, policy); every item must be a GateResult of a WARNING gate, and a gate already given in command.warning_results keeps the caller's result."""
+        if self._warning_gates is None:
+            return ()
+        measured = tuple(self._warning_gates(output_ref, package, command.policy))
+        if not all(isinstance(item, GateResult) and GATE_KINDS[item.gate] is GateKind.WARNING for item in measured):
+            raise ValueError('warning_gates must return warning gates only')
+        given = {item.gate for item in command.warning_results}
+        return tuple(item for item in measured if item.gate not in given)
+
     def _build_report(self, command: InspectOutputCommand, attempt: RenderAttempt, package: RenderPackageRecord) -> QualityReport:
-        """Probe once (F-13) and inspect once (F-14), then add the warning results; INFERENCE_DISCLOSURE_PRESENT is marked not applicable only when F-14 says so."""
+        """Probe once (F-13) and inspect once (F-14), then add the caller-given warning results and the measured warning gates (warning_gates, called once); INFERENCE_DISCLOSURE_PRESENT is marked not applicable only when F-14 says so."""
         output_ref = attempt.output_artifact_ref
         flat, profile = _technical_inputs(command.policy)
         probe = self._probe if self._probe_for is None else self._probe_for(package)
         technical = evaluate_technical_gates(probe, output_ref, policy=flat, expected_profile=profile, threshold_revision=command.policy.revision)
         content = evaluate_content_gates(self._inspector, output_ref, package, command.policy, command.expected_language, command.word_timings, command.segments)
         applicability = {item.gate: False for item in content if item.gate is GateName.INFERENCE_DISCLOSURE_PRESENT and item.status is GateStatus.NOT_APPLICABLE}
-        results = (*(_report_gate(item) for item in technical), *content, *command.warning_results)
+        measured = self._measured_warnings(command, package, output_ref)
+        results = (*(_report_gate(item) for item in technical), *content, *command.warning_results, *measured)
         return build_quality_report(results, applicability, policy=command.policy)
 
     def _verdict(self, command: PrepareOutputReadyCommand, attempt: RenderAttempt, package: RenderPackageRecord, report: QualityReport, observed_sha256: str | None) -> tuple[VideoOutput | None, tuple[str, ...]]:
