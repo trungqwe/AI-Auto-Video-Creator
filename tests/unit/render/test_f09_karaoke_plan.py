@@ -352,7 +352,7 @@ TAG_RE = re.compile(re.escape('{' + BS + 'k') + '([0-9]+)' + re.escape('}'))
 BLOCK_RE = re.compile('[{][^}]*[}]')
 HEADER_LINES = 13
 EXPECTED_ASS = NL.join([
-    '[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 360', 'PlayResY: 640', 'WrapStyle: 2',
+    '[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 360', 'PlayResY: 640', 'WrapStyle: 0',
     'ScaledBorderAndShadow: yes', '', '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, '
     'Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, '

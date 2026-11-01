@@ -447,7 +447,7 @@ def render_ass(plan: KaraokePlan) -> str:
         'ScriptType: v4.00+',
         f'PlayResX: {plan.play_res_x}',
         f'PlayResY: {plan.play_res_y}',
-        'WrapStyle: 2',
+        'WrapStyle: 0',
         'ScaledBorderAndShadow: yes',
         '',
         '[V4+ Styles]',
