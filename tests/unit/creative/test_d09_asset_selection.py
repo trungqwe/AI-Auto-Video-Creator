@@ -438,6 +438,37 @@ def test_policy_is_caller_input_not_hardcoded() -> None:
     assert result.safety_policy_revision == 'relaxed-v1'
 
 
+FLAGGED = {'rights_cleared': True, 'needs_image_safety': True}
+
+
+def test_fallback_candidates_exclude_unused_images_that_still_need_image_safety() -> None:
+    inputs = _inputs()
+    inputs['media_candidates'] = [*inputs['media_candidates'], _media('m-flagged', safety_rights_status=FLAGGED, semantic_match_components={'entity': 1.0, 'topic': 1.0})]
+    result = select_creative_assets(**inputs)
+    assert [f.media_asset_id for f in result.fallback_candidates] == ['m-3']
+    assert 'm-flagged' in result.score_components
+
+
+def test_fallback_candidates_keep_score_order_when_needs_image_safety_is_false() -> None:
+    cleared = {'rights_cleared': True, 'needs_image_safety': False}
+    inputs = _inputs()
+    inputs['media_candidates'] = [*inputs['media_candidates'], _media('m-cleared', safety_rights_status=cleared, semantic_match_components={'entity': 1.0, 'topic': 1.0})]
+    result = select_creative_assets(**inputs)
+    totals = result.score_components
+    assert totals['m-cleared']['total'] != totals['m-3']['total']
+    expected = sorted(['m-3', 'm-cleared'], key=lambda item: (-totals[item]['total'], item))
+    assert [f.media_asset_id for f in result.fallback_candidates] == expected
+
+
+def test_an_image_that_needs_image_safety_can_still_be_chosen_for_a_scene() -> None:
+    inputs = _inputs()
+    inputs['media_candidates'] = [*inputs['media_candidates'], _media('m-flagged', safety_rights_status=FLAGGED)]
+    inputs['proposal'] = _proposal(scenes=[_scene('s-1', 'm-flagged'), _scene('s-2', 'm-1')])
+    result = select_creative_assets(**inputs)
+    assert [a.media_asset_id for a in result.assignments] == ['m-flagged', 'm-1']
+    assert 'm-flagged' not in [f.media_asset_id for f in result.fallback_candidates]
+
+
 @pytest.mark.parametrize('slot', ['visual_hook', 'audio_hook', 'thumbnail'])
 @pytest.mark.parametrize('absent', [True, False], ids=['absent', 'none'])
 def test_missing_required_hook_is_rejected(slot: str, absent: bool) -> None:

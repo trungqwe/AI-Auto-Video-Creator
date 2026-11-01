@@ -1149,6 +1149,7 @@ class E2ERig:
         self.seen: dict[str, Any] = {}
         self.handle: Any = None
         self.router: Any = None
+        self.runtime: Any = None
         self.app: Any = None
         self.layout: Any = None
 
@@ -1175,6 +1176,7 @@ class E2ERig:
         profile = load_production_profile(PROFILE_PATH)
         self.profile = profile
         runtime = make_e2e_runtime(self.tmp_path, gpu=self.gpu, broker=self.broker, profile=profile)
+        self.runtime = runtime
         self.router = FakeNineRouterHttp(profile, refs_provider=self.article_revisions)
         install_edge_adapters(
             self.monkeypatch,
