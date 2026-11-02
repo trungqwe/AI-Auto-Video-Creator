@@ -12,6 +12,8 @@ Cả 16 tệp được chép nguyên văn từng byte từ D:/AIAVC_IMGPROTO/ref
 
 Đính chính IMGGEN-PIPE-REFERENCE-LF: bản tham chiếu nay là LF và repo lưu LF; 7 tệp (illustrations.py, pw_vertical.py, pw_e2e_support.py, test_pw_cat2_flow.py, test_pw_e2e_batch_video.py, test_pw_vert_video_flow.py, test_pw_w2_launcher_def.py) trước đó là CRLF đã được chép lại từ bản tham chiếu; probe sha256 đổi CRLF thành LF trước khi băm. Mã và test không đổi nội dung.
 
+Rebase REBASE lên c362df8bc96fb4ffaec8b9aeda66b7ae3f444665: HEAD đã chứa c362df8 trong lịch sử nên lệnh rebase không đổi gì; 15 tệp mã và test (mọi tệp trong phạm vi trừ report.md) vẫn trùng sha256 bản tham chiếu LF D:/AIAVC_IMGPROTO/ref/imggen-pipe sau khi đổi CRLF thành LF; các lệnh kiểm ở mục 3 đã chạy lại.
+
 ### 6 tệp tạo mới
 
 1. `src/controlplane/api/wiring/illustrations.py`: d509ac88654a406719209c62a32c1aa264a33a4e4ab4d44b40c5660dea0158d5
@@ -38,22 +40,22 @@ Cả 16 tệp được chép nguyên văn từng byte từ D:/AIAVC_IMGPROTO/ref
 
 | STT | Lệnh nguyên văn | Mã thoát | Kết quả |
 | --- | --- | --- | --- |
-| 1 | `python -m pytest tests/integration/prod_wiring/test_imggen_pipe_client.py tests/integration/prod_wiring/test_imggen_pipe_activity.py tests/integration/prod_wiring/test_imggen_pipe_replay.py -q -p no:cacheprovider` | 0 | 23 passed in 22.32s |
-| 2 | `python -m pytest tests/integration/prod_wiring/test_pw_cat1_catalog.py tests/integration/prod_wiring/test_pw_cat2_flow.py tests/integration/prod_wiring/test_pw_vert_video_flow.py tests/integration/prod_wiring/test_pw_w2_launcher_def.py tests/integration/prod_wiring/test_pw_cat2_fix1_variant_revalidate.py tests/integration/prod_wiring/test_pw_g4_fix1_job_terminal.py tests/integration/convergence/test_cp6_workflow_catalog.py tests/integration/convergence/test_cp6_video_production_flow.py -q -p no:cacheprovider` | 0 | 106 passed in 71.27s (0:01:11) |
-| 3 | `python -m pytest tests/unit/orchestration -q -p no:cacheprovider` | 0 | 1134 passed, 307 subtests passed in 0.95s |
-| 4 | `python -m pytest tests/integration/prod_wiring/test_pw_f4_render_worker.py tests/integration/adapt/launch/test_adapt_launch_cli.py tests/integration/adapt/launch/test_imggen_launch.py -q -p no:cacheprovider` | 0 | 79 passed in 58.32s |
-| 5 | `python -m pytest tests/integration/prod_wiring/test_pw_e2e_batch_video.py -q -p no:cacheprovider` | 0 | 12 passed, 1 warning in 203.20s (0:03:23) |
+| 1 | `python -m pytest tests/integration/prod_wiring/test_imggen_pipe_client.py tests/integration/prod_wiring/test_imggen_pipe_activity.py tests/integration/prod_wiring/test_imggen_pipe_replay.py -q -p no:cacheprovider` | 0 | 23 passed in 18.10s |
+| 2 | `python -m pytest tests/integration/prod_wiring/test_pw_cat1_catalog.py tests/integration/prod_wiring/test_pw_cat2_flow.py tests/integration/prod_wiring/test_pw_vert_video_flow.py tests/integration/prod_wiring/test_pw_w2_launcher_def.py tests/integration/prod_wiring/test_pw_cat2_fix1_variant_revalidate.py tests/integration/prod_wiring/test_pw_g4_fix1_job_terminal.py tests/integration/convergence/test_cp6_workflow_catalog.py tests/integration/convergence/test_cp6_video_production_flow.py -q -p no:cacheprovider` | 0 | 106 passed in 62.29s (0:01:02) |
+| 3 | `python -m pytest tests/unit/orchestration -q -p no:cacheprovider` | 0 | 1134 passed, 307 subtests passed in 0.96s |
+| 4 | `python -m pytest tests/integration/prod_wiring/test_pw_f4_render_worker.py tests/integration/adapt/launch/test_adapt_launch_cli.py tests/integration/adapt/launch/test_imggen_launch.py -q -p no:cacheprovider` | 0 | 79 passed in 58.88s |
+| 5 | `python -m pytest tests/integration/prod_wiring/test_pw_e2e_batch_video.py -q -p no:cacheprovider` | 0 | 12 passed, 1 warning in 201.78s (0:03:21) |
 | 6 | Probe `python -c` so sha256 của 16 tệp mã và test với D:/AIAVC_IMGPROTO/ref/imggen-pipe/SHA256SUMS (lệnh nguyên văn là mục probe hashlib trong danh sách lệnh kiểm bắt buộc của task) | 0 | Đạt, 16 tệp trùng sha256 |
 | 7 | `git diff --check` | 0 | Không có lỗi khoảng trắng |
 | 8 | Các probe `python -c` cấu trúc còn lại trong danh sách lệnh kiểm bắt buộc của task (activities, definitions, illustrations, imagegen_client, launcher gồm assemble_dfe_handlers và start_worker, test và rig, pyproject) | 0 | Worker đã chạy ở vòng trước, mã thoát 0; Control chạy lại ở bước checks |
 
 ## 4. Dòng tổng kết nguyên văn của pytest
 
-- Lệnh 1 (test_imggen_pipe_client.py, test_imggen_pipe_activity.py, test_imggen_pipe_replay.py): 23 passed in 22.32s (mã thoát 0)
-- Lệnh 2 (test_pw_cat1_catalog.py, test_pw_cat2_flow.py, test_pw_vert_video_flow.py, test_pw_w2_launcher_def.py, test_pw_cat2_fix1_variant_revalidate.py, test_pw_g4_fix1_job_terminal.py, test_cp6_workflow_catalog.py, test_cp6_video_production_flow.py): 106 passed in 71.27s (0:01:11) (mã thoát 0)
-- Lệnh 3 (tests/unit/orchestration): 1134 passed, 307 subtests passed in 0.95s (mã thoát 0)
-- Lệnh 4 (test_pw_f4_render_worker.py, test_adapt_launch_cli.py, test_imggen_launch.py): 79 passed in 58.32s (mã thoát 0)
-- Lệnh 5 (test_pw_e2e_batch_video.py): 12 passed, 1 warning in 203.20s (0:03:23) (mã thoát 0)
+- Lệnh 1 (test_imggen_pipe_client.py, test_imggen_pipe_activity.py, test_imggen_pipe_replay.py): 23 passed in 18.10s (mã thoát 0)
+- Lệnh 2 (test_pw_cat1_catalog.py, test_pw_cat2_flow.py, test_pw_vert_video_flow.py, test_pw_w2_launcher_def.py, test_pw_cat2_fix1_variant_revalidate.py, test_pw_g4_fix1_job_terminal.py, test_cp6_workflow_catalog.py, test_cp6_video_production_flow.py): 106 passed in 62.29s (0:01:02) (mã thoát 0)
+- Lệnh 3 (tests/unit/orchestration): 1134 passed, 307 subtests passed in 0.96s (mã thoát 0)
+- Lệnh 4 (test_pw_f4_render_worker.py, test_adapt_launch_cli.py, test_imggen_launch.py): 79 passed in 58.88s (mã thoát 0)
+- Lệnh 5 (test_pw_e2e_batch_video.py): 12 passed, 1 warning in 201.78s (0:03:21) (mã thoát 0)
 
 ## 5. Giới hạn kỹ thuật và quyết định Control
 
