@@ -6,8 +6,8 @@
       "basis": "DECIDED"
     },
     "revision": {
-      "value": 6,
-      "reason": "Revision cấu hình theo kết quả đo CP7 (docs/implementation/adapt/plan.md mục giá trị production: kết quả đo thay giá trị bằng revision cấu hình mới, không đổi mã).",
+      "value": 7,
+      "reason": "Revision cấu hình theo kết quả đo CP7 (docs/implementation/adapt/plan.md mục giá trị production: kết quả đo thay giá trị bằng revision cấu hình mới, không đổi mã). Revision 7 thêm vai trò illustration vào ai.route_model_refs theo quyết định user 02/11/2026 (CLOSURE_NOTE CP7/RG-13 và D4: FLUX 3 Image Klein chạy trên máy).",
       "basis": "DECIDED"
     }
   },
@@ -126,9 +126,10 @@
         "script": "ag/gemini-3.8-flash-high",
         "selection": "ag/gemini-3.8-flash-high",
         "metadata": "ag/gemini-3.8-flash-high",
-        "image_safety": "ag/gemini-3.8-flash-high"
+        "image_safety": "ag/gemini-3.8-flash-high",
+        "illustration": "ag/gemini-3.8-flash-high"
       },
-      "reason": "Tuyến Gemini đang dùng theo U1 cho mọi vai trò AI, có thể đổi bằng revision cấu hình.",
+      "reason": "Tuyến Gemini đang dùng theo U1 cho mọi vai trò AI, có thể đổi bằng revision cấu hình. Vai trò illustration (viết chú thích cho ảnh AI minh hoạ) dùng cùng model với image_safety theo quyết định user 02/11/2026 (CLOSURE_NOTE CP7/RG-13 và D4).",
       "basis": "DECIDED"
     },
     "request_timeout_seconds": {

@@ -46,6 +46,7 @@ ENDPOINT = 'http://127.0.0.1:20128/v1'
 MODEL = 'ag/gemini-3.8-flash-high'
 
 ROLES = ('analysis', 'angle', 'script', 'selection', 'metadata', 'image_safety')
+PROFILE_ONLY_ROLES = ('illustration',)
 TEXT_ROLES = ROLES[:5]
 PER_ROLE = 10
 CALL_CAP = 60
@@ -368,7 +369,7 @@ def _build_stack():
     profile = load_production_profile(PROFILE_PATH)
     assert profile.profile_name == 'production'
     assert profile.ai.route_endpoint == ENDPOINT
-    assert set(profile.ai.route_model_refs) == set(ROLES)
+    assert set(profile.ai.route_model_refs) == set(ROLES) | set(PROFILE_ONLY_ROLES)
     assert all(v == MODEL for v in profile.ai.route_model_refs.values())
 
     router = json.loads(PORTS_PATH.read_text(encoding='utf-8'))['router']
