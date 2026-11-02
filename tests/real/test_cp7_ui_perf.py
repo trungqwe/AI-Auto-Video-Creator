@@ -30,6 +30,8 @@ import cp7_overnight_monitor as m
 DEADLINE = c.Deadline(90 * 60)
 SCREENS = ('jobs', 'batches', 'artifacts', 'cost')
 SAMPLES = 30
+MIN_STREAM_IDS = 320
+SSE_SEED_SCOPE = 'policy:cp7-rg11-sse'
 UI_P95_MS = 2000
 ACK_P95_MS = 1000
 ACK_SCOPE = 'policy:cp7-rg11-ack'
@@ -114,9 +116,27 @@ async function openApp(browser) {
 }
 
 async function measure(page, id) {
+  const respPromise = page.waitForResponse(
+    (r) => r.request().method() === 'GET' && new URL(r.url()).pathname === '/v1/' + id,
+    { timeout: 30000 }
+  );
   const t0 = performance.now();
   await page.click(`[data-testid="screen-nav-${id}"]`);
-  await page.waitForSelector(`[data-testid="module-row-${id}-0"]`, { timeout: 30000 });
+  await respPromise;
+  if (cfg.emptyOk.includes(id)) {
+    await page.waitForFunction(
+      (sid) => {
+        const root = document.querySelector(`[data-testid="module-list-${sid}"]`);
+        if (!root) return false;
+        if (root.textContent.includes('Đang tải')) return false;
+        return !!root.querySelector(`[data-testid="module-row-${sid}-0"]`) || !!root.querySelector('tbody td[colspan]');
+      },
+      id,
+      { timeout: 30000 }
+    );
+  } else {
+    await page.waitForSelector(`[data-testid="module-row-${id}-0"]`, { timeout: 30000 });
+  }
   const ms = performance.now() - t0;
   const rows = await page.locator(`[data-testid^="module-row-${id}-"]`).count();
   return { ms, rows };
@@ -183,6 +203,7 @@ def _run_ui(live: Any, mode: str) -> dict[str, Any]:
         'baseUrl': f'https://{d.HOST}:{d.PORT}',
         'cookies': live.cookies,
         'screens': list(SCREENS),
+        'emptyOk': ['cost'] if live.counts['cp_cost_records'] == 0 else [],
         'samples': SAMPLES,
         'playwrightDir': _playwright_dir(),
         'out': str(out_file),
@@ -203,7 +224,10 @@ def _run_ui(live: Any, mode: str) -> dict[str, Any]:
     data = json.loads(out_file.read_text(encoding='utf-8'))
     for sid in SCREENS:
         assert len(data['samples'][sid]) == SAMPLES, f'{sid} samples len != {SAMPLES}'
-        assert data['rows'][sid] >= 1, f'{sid} rows < 1'
+        if sid == 'cost' and live.counts['cp_cost_records'] == 0:
+            assert data['rows'][sid] == 0, f'{sid} rows != 0 trong khi cp_cost_records = 0'
+        else:
+            assert data['rows'][sid] >= 1, f'{sid} rows < 1'
     assert data['viewport'] == {'width': 1920, 'height': 1080}, f'viewport mismatch: {data["viewport"]}'
     return data
 
@@ -217,7 +241,9 @@ def live() -> Any:
         t: int(db.query(f'SELECT count(*) FROM controlplane.{t} WHERE workspace_id = %s')[0][0])
         for t in COUNT_TABLES
     }
-    if counts['cp_video_jobs'] < 100 or any(counts[t] <= 0 for t in COUNT_TABLES if t != 'cp_video_jobs'):
+    # cp_cost_records is empty by design ($0 AI via 9Router); cp_operation_stream is verified and seeded in SSE test.
+    must_have = ('cp_production_batches', 'cp_artifact_versions', 'cp_artifact_locations', 'cp_completion_ledger')
+    if counts['cp_video_jobs'] < 100 or any(counts[t] <= 0 for t in must_have):
         pytest.fail('BLOCKED: dữ liệu rỗng hoặc dưới 100 video job')
     counts_sha = hashlib.sha256(json.dumps(counts, sort_keys=True).encode('utf-8')).hexdigest()
     d.stop_until_exited()
@@ -418,7 +444,7 @@ def _sse(
         conn.close()
 
 
-def test_rg11_sse_resync(live: Any, emit: Any) -> None:
+def _stream_ids(live: Any) -> list[int]:
     ids = sorted(
         r[0]
         for r in live.db.query(
@@ -430,8 +456,26 @@ def test_rg11_sse_resync(live: Any, emit: Any) -> None:
     )
     if wm:
         ids = [i for i in ids if i >= wm[0][0]]
-    if len(ids) < 300:
-        pytest.fail(f'BLOCKED: cp_operation_stream có {len(ids)} ids < 300')
+    return ids
+
+
+def test_rg11_sse_resync(live: Any, emit: Any) -> None:
+    ids = _stream_ids(live)
+    seed_writes = 0
+    while len(ids) < MIN_STREAM_IDS and seed_writes < 400:
+        for _ in range(20):
+            _, rev, _h = _latest_config(live.db, 'policy', 'cp7-rg11-sse')
+            status, _ms, text = live.session.put_config(
+                SSE_SEED_SCOPE, {'cp7_sse_seed': seed_writes, 'nonce': uuid.uuid4().hex}, rev
+            )
+            assert status in (200, 202), f'status={status} body={c.redact(text[:200])}'
+            seed_writes += 1
+        time.sleep(3)
+        ids = _stream_ids(live)
+    if len(ids) < MIN_STREAM_IDS:
+        pytest.fail(
+            f'BLOCKED: cp_operation_stream có {len(ids)} ids < {MIN_STREAM_IDS} sau {seed_writes} thao tác ghi thật'
+        )
     expected = ids[1:]
 
     status1, frames1, _ = _sse(live, '?cursor=' + str(ids[0]), max_events=150)
@@ -496,4 +540,5 @@ def test_rg11_sse_resync(live: Any, emit: Any) -> None:
         emit,
         'sse_resync',
         f'replay_events={len(seen1)}+{len(seen2)} duplicates=0 gaps=0 expired_cursor_event=resync_required recovery_first_id_ok=True watermark_restored=True',
+        f'stream_ids_used={len(ids)} seed_writes={seed_writes} min_required={MIN_STREAM_IDS}',
     )
