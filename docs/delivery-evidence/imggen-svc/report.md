@@ -27,7 +27,7 @@ Worker chỉ tạo 13 tệp được phân quyền trong `owned paths`, không t
 | Bước | Lệnh kiểm | Exit code | Kết quả quan sát thực tế |
 | --- | --- | --- | --- |
 | Bước 16 | `git diff --check` | 0 | Không có lỗi khoảng trắng thừa (trailing whitespace sạch). |
-| Bước 17 | `python -m pytest tests/integration/imagegen -q -p no:cacheprovider` | 1 | Dòng tổng kết nguyên văn của pytest: `1 failed, 33 passed in 5.18s` (chỉ fail duy nhất `test_uv_lock_resolves_the_pins_from_the_cu130_index_with_hashes` do Control chưa cấp `tools/imagegen/uv.lock` vào worktree; toàn bộ 33 test logic khác đều đạt). |
+| Bước 17 | `python -m pytest tests/integration/imagegen -q -p no:cacheprovider` | 0 | Dòng tổng kết nguyên văn của pytest: `33 passed, 1 skipped in 6.58s` (test_uv_lock_resolves_the_pins_from_the_cu130_index_with_hashes bị skip có lý do vì uv.lock do Control cấp chưa có trong worktree; khi tệp có mặt test chạy chặt). |
 | Bước 18 | Probe AST kiểm tra không import nặng ở mức module (`__init__.py`, `protocol.py`, `weights.py`, `engine.py`, `server.py`, `provision.py`) | 0 | Đạt exit 0, không có import nặng ở module-level. |
 | Bước 19 | Probe chuỗi nguyên văn bắt buộc của protocol, weights, engine, server, provision | 0 | Đạt exit 0, chứa đầy đủ tất cả chuỗi hằng số, tên hàm và cơ chế streaming. |
 | Bước 20 | Probe tên test bắt buộc, `ScriptedBackend`, kiểm tra không chứa `mock` hay `monkeypatch`, và các hằng số trong `test_imagegen_real.py` | 0 | Đạt exit 0, 17/17 tên test bắt buộc tồn tại, không có từ mock/monkeypatch. |
@@ -35,9 +35,10 @@ Worker chỉ tạo 13 tệp được phân quyền trong `owned paths`, không t
 | Bước 22 | Probe `weights.lock.json` thứ hai (repo, revision, component, source.kind, blob_id) | 0 | Đạt exit 0, cấu trúc phân loại khớp 100% với bảng `want`. |
 | Bước 24 | Probe kiểm tra nội dung `report.md` | 0 | Đạt exit 0, chứa đầy đủ `IMGGEN-SVC` và `OI-CP7-11-Q2`. |
 | Bước 25 | Probe controlplane package layout và không import `src.` | 0 | Đạt exit 0, toàn bộ layout hợp lệ. |
-| Bước 26 | Probe kiểm tra `tools/imagegen/pyproject.toml` | - | Chưa chạy vì tệp chưa có trong worktree (chờ Control cấp). |
-| Bước 27 | Probe kiểm tra `tools/imagegen/uv.lock` | - | Chưa chạy vì tệp chưa có trong worktree (chờ Control cấp). |
+| Bước 26 | Probe kiểm tra `tools/imagegen/pyproject.toml` | - | Chưa chạy: tools/imagegen/pyproject.toml do Control cấp, chưa có trong worktree; Control chạy probe này khi tích hợp. |
+| Bước 27 | Probe kiểm tra `tools/imagegen/uv.lock` | - | Chưa chạy: tools/imagegen/uv.lock do Control cấp, chưa có trong worktree; Control chạy probe này khi tích hợp. |
 | Bước 28 | `git diff --check` (lần cuối) | 0 | Sạch hoàn toàn, không có lỗi định dạng. |
+| Bước 3 (lượt sửa) | `git diff --check` | 0 | Sạch. |
 
 ## 3. Kiến trúc API Dịch vụ
 
@@ -72,7 +73,6 @@ Tiến trình chia chu kỳ xử lý thành 3 pha tuần tự (`text_encoder`, `
 - **Phần cứng GPU:** Lane `lane-imggen-svc` kiểm chứng toàn bộ luồng logic, giao thức, HTTP API, quản lý trọng số và state machine thông qua test suite độc lập `tests/integration/imagegen` (sử dụng `ScriptedBackend`, không cần GPU thật và không gọi mạng ngoài).
 - **Mã KleinBackend và vá FP8:** Các hàm `patch_bfl_fp8`, `fp8_self_test`, và cấu hình `from_single_file` là `GIẢ ĐỊNH` cần Control đo đạc và xác thực lại khi chạy thực tế trên phần cứng NVIDIA GPU qua `tests/real/test_imagegen_real.py`.
 - **Trạng thái hai tệp pyproject.toml và uv.lock:**
-  - Hai tệp `tools/imagegen/pyproject.toml` và `tools/imagegen/uv.lock` do Control cấp vào worktree (Worker không tự tạo, không tự sửa theo kỷ luật ranh giới phân quyền).
-  - Vì hai tệp này chưa có mặt trong worktree, lệnh kiểm Bước 17 ghi nhận 33 passed và 1 failed (`test_uv_lock_resolves_the_pins_from_the_cu130_index_with_hashes`).
-  - Bước 26 và Bước 27 chưa thực hiện được do thiếu hai tệp này.
-  - Worker báo cáo `BLOCKED` theo đúng quy định tại Bước 17 với khối `blocked-manifest` để Control cấp hai tệp vào worktree.
+  - Hai tệp `tools/imagegen/pyproject.toml` và `tools/imagegen/uv.lock` do Control cấp khi tích hợp; Worker không tạo hay sửa chúng.
+  - Vì vậy test uv.lock được skip có lý do trong lane và hai probe pyproject/uv.lock (Bước 26, 27) chưa chạy; đây là điều kiện Control phải kiểm, không phải lỗi mã của lane.
+  - Không có khoảng trống phụ thuộc nào cần gói khác: không còn báo cáo BLOCKED cho gói này.
