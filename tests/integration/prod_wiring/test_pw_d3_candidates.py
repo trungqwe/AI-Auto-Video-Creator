@@ -322,10 +322,38 @@ def test_candidates_feed_select_creative_assets_with_a_seed_fallback(launcher, p
         music_sfx_policy_revision='music-v1', preset_registry_revision='preset-v1',
         weights=ScoringWeights(semantic=0.6, technical=0.4, recent_usage_penalty=0.1))
     assert selection.assignments[0].media_asset_id == 'img-article-1-hero'
+    assert selection.assignments[0].origin == 'article'
     assert [item.media_asset_id for item in selection.fallback_candidates] == SEED_IDS
     assert (selection.visual_hook.ref_id, selection.audio_hook.ref_id) == ('vh-01', 'ah-01')
     assert selection.thumbnail.ref_id == 'thumb:vh-01' and selection.thumbnail_overlay_intent == 'headline_text'
     assert_registered_version(pw_database, selection.assignments[0].artifact_version_ref, 'img-article-1-hero')
+
+
+def test_a_seed_scene_is_refused_while_an_article_image_is_eligible(launcher, pw_database, seeded, staging):
+    ws = pw_database.workspace_id
+    register_article_image(seeded, ws, 'img-article-1-hero', 'article-1', 'https://img.example/news/article-1/hero.jpg', root=staging)
+    media = media_port(launcher, seeded, ws).media_candidates(workspace_id=ws, snapshot=SNAPSHOT)
+    visual = hook_port(seeded).visual_hook_candidates(workspace_id=ws, snapshot_ref='snap-1')
+    audio = hook_port(seeded).audio_hook_candidates(workspace_id=ws, snapshot_ref='snap-1')
+    thumbnails = ThumbnailCandidates().thumbnail_candidates(visual_hooks=visual, media_candidates=media)
+    thumb = thumbnails[0]
+    seed = next(item for item in media if item.provenance['origin'] == 'seed')
+    proposal = {
+        'visual_hook': ref(ws, 'visual_hook', visual[0].hook_id, visual[0].revision_id),
+        'audio_hook': ref(ws, 'audio_hook', audio[0].hook_id, audio[0].revision_id),
+        'thumbnail': ref(ws, 'thumbnail', thumb.thumbnail_id, thumb.revision_id),
+        'scenes': [{'scene_id': 'sc-1', 'ref': ref(ws, 'media_asset', seed.media_asset_id, seed.artifact_version_ref), 'rationale': 'plain background'}],
+        'music_intents': [{'cue': 'intro_pad', 'description': 'soft pad'}],
+        'sfx_intents': [{'cue': 'whoosh', 'description': 'short whoosh'}],
+        'rationale': 'article image first, seed images as fallback'}
+    with pytest.raises(SelectionRejected) as caught:
+        select_creative_assets(
+            workspace_id=ws, snapshot_ref='snap-1', script_ref='script-1', angle_ref='angle-a', media_candidates=media,
+            visual_hook_candidates=visual, audio_hook_candidates=audio, thumbnail_candidates=thumbnails, proposal=proposal,
+            safety_policy=real_policy(),
+            music_sfx_policy_revision='music-v1', preset_registry_revision='preset-v1',
+            weights=ScoringWeights(semantic=0.6, technical=0.4, recent_usage_penalty=0.1))
+    assert (caught.value.code, caught.value.reason, caught.value.field) == ('invalid_proposal', 'seed_scene_while_illustration_eligible', 'scenes[0].ref')
 
 
 def documents_of(article_id, revision_id):

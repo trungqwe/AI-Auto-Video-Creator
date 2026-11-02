@@ -190,6 +190,10 @@ def _visual_version_ref(timeline: Mapping[str, Any], media_asset_id: str) -> str
 
 
 _SELECTED_MEDIA_REF = 'selected_media'
+NO_ILLUSTRATION_AVAILABLE = 'no_illustration_available'
+_SEED_FALLBACK_REASON = 'seed_fallback'
+_SEED_ORIGIN = 'seed'
+_SEED_SHARE_MAX_PERCENT = 15
 
 
 def _visual_version_refs(timeline: Mapping[str, Any]) -> set[str]:
@@ -249,6 +253,60 @@ def _image_fallback_rule(media: str, original: str, image: RenderImage) -> dict[
         'artifact_version_id': image.artifact_version_id,
         'reason': image.reason,
     }
+
+
+# Wiring không import creative: bốn hàm dưới giữ khớp bản ở creative.domain.production_plan (có test đối chiếu).
+def _union_ms(spans: list[tuple[int, int]]) -> int:
+    total = 0
+    reach = 0
+    for start, end in sorted(spans):
+        start = max(start, reach)
+        if end > start:
+            total += end - start
+            reach = end
+    return total
+
+
+def _int_ms(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def seed_time_ms(segments, shows_seed) -> tuple[int, int]:
+    scenes: list[tuple[int, int]] = []
+    seeds: list[tuple[int, int]] = []
+    for scene in segments:
+        if not isinstance(scene, Mapping) or not _int_ms(scene.get('start_ms')) or not _int_ms(scene.get('end_ms')):
+            continue
+        start, end = scene['start_ms'], scene['end_ms']
+        scenes.append((start, end))
+        visuals = scene.get('visuals')
+        for visual in visuals if isinstance(visuals, (list, tuple)) else ():
+            if not isinstance(visual, Mapping) or not _int_ms(visual.get('start_ms')) or not _int_ms(visual.get('end_ms')):
+                continue
+            if shows_seed(visual):
+                seeds.append((max(start, visual['start_ms']), min(end, visual['end_ms'])))
+    return _union_ms(seeds), _union_ms(scenes)
+
+
+def seed_share_within_limit(seed_ms: int, timeline_ms: int) -> bool:
+    return seed_ms * 100 <= _SEED_SHARE_MAX_PERCENT * timeline_ms
+
+
+def require_illustration(timeline: Mapping[str, Any], images: Mapping[str, RenderImage] | None) -> None:
+    """Từ chối job khi timeline cuối quá mức ảnh seed cho phép (kể cả toàn seed): không có video chỉ có ảnh nền (RG-13)."""
+    segments = timeline.get('segments') if isinstance(timeline, Mapping) else None
+    if not isinstance(segments, (list, tuple)):
+        return
+    chosen = images or {}
+
+    def shows_seed(visual: Mapping[str, Any]) -> bool:
+        image = chosen.get(visual.get('media_asset_id'))
+        return visual.get('origin') == _SEED_ORIGIN or (image is not None and image.reason == _SEED_FALLBACK_REASON)
+
+    seed_ms, timeline_ms = seed_time_ms(segments, shows_seed)
+    if not seed_share_within_limit(seed_ms, timeline_ms):
+        raise ActivityInputError(NO_ILLUSTRATION_AVAILABLE, f'seed_share_above_max:{seed_ms}/{timeline_ms}')
+
 
 _REF_AUDIO_BED_CUE = 'audio_bed_cue'
 _MUSIC_RENDITION = re.compile(r'music-[0-9a-f]{64}')
@@ -686,6 +744,8 @@ class ProductionRenderSources:
             if replacement.artifact_version_id.lower() not in present:
                 input_artifacts.append(replacement)
                 present.add(replacement.artifact_version_id.lower())
+
+        require_illustration(timeline, images)
 
         manifest_entries = [
             LocalMaterialRef(artifact_version_id=art.artifact_version_id, local_ref=art.artifact_version_id)

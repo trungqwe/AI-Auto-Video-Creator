@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from types import MappingProxyType
 
 from controlplane.application.idempotency.canonicalization import request_hash
-from creative.domain.asset_selection import CreativeAssetSelection
+from creative.domain.asset_selection import ORIGIN_SEED, CreativeAssetSelection
 from creative.domain.script import ScriptVersion
 
 INPUT_NOT_READY = 'INPUT_NOT_READY'
@@ -21,6 +21,8 @@ TIMELINE_GAP = 'timeline_gap'
 INVALID_HOOK_PLACEMENT = 'invalid_hook_placement'
 HALLUCINATED_REF = 'hallucinated_ref'
 CONTEXT_MISMATCH = 'plan_context_mismatch'
+SEED_SHARE_EXCEEDED = 'seed_share_exceeded'
+SEED_SHARE_MAX_PERCENT = 15
 BINDING_ENTITY = 'RenderPackage'
 RENDER_PACKAGE_INPUT_TYPES = MappingProxyType({
     'production_plan_ref': 'string',
@@ -177,12 +179,15 @@ def _parse_visuals(value, scene_path: str, scene_start: int, scene_end: int, ass
         start, end = _range(item, vpath)
         if start < scene_start or end > scene_end:
             _reject(INVALID_TIME_RANGE, 'outside_scene', vpath)
-        visuals.append({
+        visual: dict[str, object] = {
             'media_asset_id': asset_id, 'rendition_ref': assignment.rendition_ref,
             'artifact_version_ref': assignment.artifact_version_ref, 'start_ms': start, 'end_ms': end,
             'crop_intent': _text(item, 'crop_intent', vpath), 'overlay_intent': _text(item, 'overlay_intent', vpath),
             'effect_intent': _text(item, 'effect_intent', vpath),
-        })
+        }
+        if assignment.origin is not None:
+            visual['origin'] = assignment.origin
+        visuals.append(visual)
     cursor = scene_start
     for visual in sorted(visuals, key=lambda v: (v['start_ms'], v['end_ms'])):
         if visual['start_ms'] > cursor:
@@ -224,6 +229,54 @@ def _parse_timeline(raw, selection: CreativeAssetSelection) -> dict[str, object]
     if [s['scene_id'] for s in parsed] != [a.scene_id for a in selection.assignments]:
         _reject(HALLUCINATED_REF, 'scene_mismatch', 'timeline.segments')
     return {'duration_ms': cursor, 'segments': parsed}
+
+
+def _union_ms(spans: list[tuple[int, int]]) -> int:
+    """Tổng thời lượng của hợp các khoảng (không đếm hai lần phần chồng nhau)."""
+    total = 0
+    reach = 0
+    for start, end in sorted(spans):
+        start = max(start, reach)
+        if end > start:
+            total += end - start
+            reach = end
+    return total
+
+
+def _int_ms(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def seed_time_ms(segments, shows_seed) -> tuple[int, int]:
+    """Trả (seed_ms, timeline_ms): hợp khoảng các cảnh và hợp khoảng visual seed cắt trong cảnh."""
+    scenes: list[tuple[int, int]] = []
+    seeds: list[tuple[int, int]] = []
+    for scene in segments:
+        if not isinstance(scene, Mapping) or not _int_ms(scene.get('start_ms')) or not _int_ms(scene.get('end_ms')):
+            continue
+        start, end = scene['start_ms'], scene['end_ms']
+        scenes.append((start, end))
+        visuals = scene.get('visuals')
+        for visual in visuals if isinstance(visuals, (list, tuple)) else ():
+            if not isinstance(visual, Mapping) or not _int_ms(visual.get('start_ms')) or not _int_ms(visual.get('end_ms')):
+                continue
+            if shows_seed(visual):
+                seeds.append((max(start, visual['start_ms']), min(end, visual['end_ms'])))
+    return _union_ms(seeds), _union_ms(scenes)
+
+
+def seed_share_within_limit(seed_ms: int, timeline_ms: int) -> bool:
+    """Ảnh seed chiếm không quá SEED_SHARE_MAX_PERCENT thời lượng timeline."""
+    return seed_ms * 100 <= SEED_SHARE_MAX_PERCENT * timeline_ms
+
+
+def _limit_seed_time(timeline: Mapping[str, object], selection: CreativeAssetSelection) -> None:
+    """Selection có ảnh không phải seed thì seed không được vượt mức trên timeline."""
+    if all(assignment.origin == ORIGIN_SEED for assignment in selection.assignments):
+        return
+    seed_ms, timeline_ms = seed_time_ms(timeline['segments'], lambda visual: visual.get('origin') == ORIGIN_SEED)
+    if not seed_share_within_limit(seed_ms, timeline_ms):
+        _reject(SEED_SHARE_EXCEEDED, 'seed_share_above_max', 'timeline.segments')
 
 
 def _thumbnail_after_lead_in(hook: dict[str, int], thumbnail: dict[str, int]) -> dict[str, int]:
@@ -391,6 +444,7 @@ def build_production_plan(raw, *, production_plan_id, script, selection, preset_
     if ('output_metadata_ref' in source) == ('output_metadata_requirement' in source):
         _reject(SCHEMA_VIOLATION, 'exactly_one_required', 'output_metadata')
     timeline = _parse_timeline(source['timeline'], selection)
+    _limit_seed_time(timeline, selection)
     duration_ms = timeline['duration_ms']
     hook_placement = _parse_hook_placement(source['hook_placement'], selection, duration_ms)
     voice = _parse_text_object(source['voice_profile_intent'], ('direction', 'pace', 'emotion'), 'voice_profile_intent')

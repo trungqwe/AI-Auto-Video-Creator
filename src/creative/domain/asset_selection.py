@@ -23,7 +23,9 @@ MISSING_REQUIRED_HOOK = 'missing_required_hook'
 HALLUCINATED_REF = 'hallucinated_ref'
 CANDIDATE_BLOCKED = 'candidate_blocked'
 INVALID_PROPOSAL = 'invalid_proposal'
+SEED_SCENE_WITH_ILLUSTRATION = 'seed_scene_while_illustration_eligible'
 BINDING_VERSION = '1.0.0'
+ORIGIN_SEED = 'seed'
 
 REF_TYPE_MEDIA = 'media_asset'
 REF_TYPE_VISUAL_HOOK = 'visual_hook'
@@ -407,9 +409,10 @@ class SceneAssignment:
     rendition_ref: str
     artifact_version_ref: str
     rationale: str
+    origin: str | None = None
 
     def to_payload(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             'order': self.order,
             'scene_id': self.scene_id,
             'media_asset_id': self.media_asset_id,
@@ -417,6 +420,9 @@ class SceneAssignment:
             'artifact_version_ref': self.artifact_version_ref,
             'rationale': self.rationale,
         }
+        if self.origin is not None:
+            payload['origin'] = self.origin
+        return payload
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -558,6 +564,12 @@ def _score_components(candidate: MediaCandidate, weights: ScoringWeights) -> dic
     return {'semantic': round(semantic, 6), 'technical': round(technical, 6), 'recent_usage': round(recent_usage, 6), 'total': round(total, 6)}
 
 
+def _origin_of(candidate: MediaCandidate) -> str | None:
+    """Provenance origin text of a media candidate; None when it has none."""
+    origin = candidate.provenance.get('origin')
+    return origin if isinstance(origin, str) and origin else None
+
+
 def select_creative_assets(
     *,
     workspace_id: str,
@@ -579,6 +591,7 @@ def select_creative_assets(
     Candidates failing safety_policy are dropped; every proposed ref must resolve through the D-03 RefResolver built from the
     eligible candidates only. Raises SelectionRejected (INPUT_NOT_READY, missing_required_hook, hallucinated_ref,
     candidate_blocked, invalid_proposal); TypeError/ValueError for malformed candidates.
+    A scene on a seed image is rejected (invalid_proposal, seed_scene_while_illustration_eligible) when an eligible candidate has an origin other than seed.
     """
     for name, value in (('workspace_id', workspace_id), ('snapshot_ref', snapshot_ref), ('script_ref', script_ref), ('angle_ref', angle_ref)):
         _text(name, value)
@@ -617,6 +630,7 @@ def select_creative_assets(
     thumbnail_ref = _resolve_pick(resolver, blocked, proposal['thumbnail'], REF_TYPE_THUMBNAIL, 'thumbnail')
     thumbnail = next(item for item in eligible_thumbnails if item.ref_id == thumbnail_ref.ref_id)
     media_by_id = {item.media_asset_id: item for item in eligible_media}
+    illustrated = any(_origin_of(item) != ORIGIN_SEED for item in eligible_media)
     scenes = proposal.get('scenes')
     if not isinstance(scenes, list) or not scenes:
         raise SelectionRejected(INVALID_PROPOSAL, 'scenes_missing', 'scenes')
@@ -633,9 +647,13 @@ def select_creative_assets(
         rationale = _required_text(scene, 'rationale', f'{field}.rationale')
         ref = _resolve_pick(resolver, blocked, scene.get('ref'), REF_TYPE_MEDIA, f'{field}.ref')
         candidate = media_by_id[ref.ref_id]
+        origin = _origin_of(candidate)
+        if illustrated and origin == ORIGIN_SEED:
+            raise SelectionRejected(INVALID_PROPOSAL, SEED_SCENE_WITH_ILLUSTRATION, f'{field}.ref')
         assignments.append(SceneAssignment(
             order=index, scene_id=scene_id, media_asset_id=candidate.media_asset_id,
-            rendition_ref=candidate.rendition_ref, artifact_version_ref=candidate.artifact_version_ref, rationale=rationale))
+            rendition_ref=candidate.rendition_ref, artifact_version_ref=candidate.artifact_version_ref, rationale=rationale,
+            origin=origin))
     music_intents = _intents(proposal, 'music_intents')
     sfx_intents = _intents(proposal, 'sfx_intents')
     overall_rationale = _required_text(proposal, 'rationale', 'rationale')

@@ -87,6 +87,7 @@ DEFAULT_PROMPTS: Mapping[str, str] = MappingProxyType({
         + 'scenes (non-empty list of objects with scene_id, ref and rationale; scene_id is unique non-empty text, ref is the reference object of a media candidate, rationale is non-empty text); '
         + 'music_intents and sfx_intents (lists, may be empty, of objects with cue and description, both non-empty text); '
         + 'rationale (non-empty text). '
+        + 'A media candidate whose provenance origin is seed is a plain background image, not a picture of the story. Media candidates whose provenance origin is not seed must fill every scene: when at least one exists, every scene uses one of them, each of them once before any of them is used again, and they are used again when there are more scenes than such candidates. Use a seed media candidate only when no media candidate has a provenance origin other than seed. '
         + 'A reference object has exactly four text members: workspace_id, ref_type, ref_id and revision_id. '
         + 'Take workspace_id unchanged from the ref member of any data item that has one. '
         + 'For a media candidate use ref_type media_asset, its media_asset_id as ref_id and its artifact_version_ref as revision_id. '
@@ -125,7 +126,10 @@ PREVIOUS_DEFAULT_PROMPT_HASHES: Mapping[str, tuple[str, ...]] = MappingProxyType
     ROLE_ANALYSIS: ('4084716134088fcfc1a1ff9a2b71ec7fc90299952822fac3bb64c40dddf362b0',),
     ROLE_ANGLES: ('4e50d79baded40e0ab945e64ad12cc5a4439cfb0bd8855b5c493816a5d0d87d8',),
     ROLE_SCRIPT: ('cfe414943cef039c17b5b35c3c5e0b51a188dd04efa24f51b074960278d2b3be',),
-    ROLE_SELECTION: ('f0bb43142d3e6e6ddd5f6ffac0b6b51f76b9a41df3d4c34b32acacd5de28f793',),
+    ROLE_SELECTION: (
+        'f0bb43142d3e6e6ddd5f6ffac0b6b51f76b9a41df3d4c34b32acacd5de28f793',
+        '8ae5a9037674ba38f9e028951c08e52617d6d43c6ee101a3c588f9f9409a5658',
+    ),
     ROLE_PLAN: ('89cbc7ae46ade6f3d4959f421433c9dc06ff6ea57c5ca6864b6ad37e10a4a2ed',),
     ROLE_METADATA: ('3ef7ede4d145f6566bb102e4853cad45e27832f2928b5b2c6d1cff2b3b172cf3',),
 })

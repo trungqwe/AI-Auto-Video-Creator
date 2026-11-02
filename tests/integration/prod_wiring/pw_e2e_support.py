@@ -84,7 +84,7 @@ from tests.integration.prod_wiring.pw_vertical import (
     wait_until,
 )
 
-EXPECTED_ACTIVITIES = dict(_BASE_EXPECTED_ACTIVITIES, process=8)
+EXPECTED_ACTIVITIES = dict(_BASE_EXPECTED_ACTIVITIES, process=5)
 
 ROOT = Path(__file__).resolve().parents[3]
 LAUNCHER_PATH = ROOT / "tools" / "launcher" / "launcher.py"
@@ -439,6 +439,13 @@ def speech_factories(ledger: dict[str, str], profile: Any) -> tuple[Any, Any]:
     return kokoro_factory, whisper_factory
 
 
+def scene_media(candidates: list[dict[str, Any]], scenes: int, default: dict[str, Any]) -> list[dict[str, Any]]:
+    """Media candidate mà model kịch bản đặt vào `scenes` cảnh: ảnh có provenance origin khác seed lần lượt; chỉ khi không có ảnh nào như vậy mới lấy ứng viên đầu (CLOSURE_NOTE CP7/RG-13)."""
+    images = [item for item in candidates if (item.get("provenance") or {}).get("origin") != "seed"]
+    pool = images or list(candidates[:1]) or [default]
+    return [pool[index % len(pool)] for index in range(scenes)]
+
+
 class FakeNineRouterHttp:
     def __init__(self, profile: Any, refs_provider: Any) -> None:
         self.profile = profile
@@ -571,8 +578,7 @@ class FakeNineRouterHttp:
             vh = v_hooks[0] if v_hooks else {"hook_id": "vh-01", "revision_id": "vh-01-r1"}
             ah = a_hooks[0] if a_hooks else {"hook_id": "ah-01", "revision_id": "ah-01-r1"}
             th = t_cands[0] if t_cands else {"thumbnail_id": "thumb:seed-bg-01", "revision_id": "th-r1"}
-            m1_obj = m_cands[0] if m_cands else {"media_asset_id": "seed-bg-01", "artifact_version_ref": "ver-1"}
-            m2_obj = m_cands[1] if len(m_cands) > 1 else m1_obj
+            m1_obj, m2_obj = scene_media(m_cands, 2, {"media_asset_id": "seed-bg-01", "artifact_version_ref": "ver-1"})
             m1 = m1_obj["media_asset_id"]
             m2 = m2_obj["media_asset_id"]
             self.selected_media = [m1, m2]
