@@ -14,6 +14,7 @@ from voice.domain.normalize import NormalizeSpec, NormalizeStep
 BLOCKED = 'BLOCKED'
 BLUR_ACTION = 'blur'
 REJECT_ACTION = 'reject'
+USE_ORIGINAL_ACTION = 'use_original'
 USABLE = 'usable'
 TRANSFORM = 'transform'
 EXCLUDED = 'excluded'
@@ -106,12 +107,12 @@ def build_image_safety_rules(parameters: Mapping[str, object]) -> ImageSafetyRul
     if not 0 < low < high <= 1:
         raise ProfileParameterMissing(f'{name}.uncertain_range', 'invalid parameter')
     actions = (
-        (f'{name}.blur_without_region_action', _member(thresholds, name, 'blur_without_region_action')),
-        (f'{name}.uncertain_range.action', _member(uncertain, f'{name}.uncertain_range', 'action')),
-        (f'{name}.detector_failure_action', _member(thresholds, name, 'detector_failure_action')),
+        (f'{name}.blur_without_region_action', _member(thresholds, name, 'blur_without_region_action'), REJECT_ACTION),
+        (f'{name}.uncertain_range.action', _member(uncertain, f'{name}.uncertain_range', 'action'), USE_ORIGINAL_ACTION),
+        (f'{name}.detector_failure_action', _member(thresholds, name, 'detector_failure_action'), REJECT_ACTION),
     )
-    for action_name, action in actions:
-        if action != REJECT_ACTION:
+    for action_name, action, expected in actions:
+        if action != expected:
             raise ProfileParameterMissing(action_name, 'unsupported action')
     if set(reject) & set(blur) or set(reject) | set(blur) != set(categories):
         raise ProfileParameterMissing(name, 'categories not covered')
@@ -198,6 +199,8 @@ def image_disposition(assessment: ImageSafetyAssessment, rules: ImageSafetyRules
     outcome = assessment.outcome
     if outcome is SafetyOutcome.SAFE:
         return (USABLE, 'safe')
+    if outcome is SafetyOutcome.UNCERTAIN:
+        return (USABLE, 'uncertain')
     if outcome is SafetyOutcome.TRANSFORM_REQUIRED:
         categories = set(assessment.categories)
         if categories & rules.reject_categories:
@@ -219,6 +222,7 @@ __all__ = (
     'REJECT_ACTION',
     'TRANSFORM',
     'USABLE',
+    'USE_ORIGINAL_ACTION',
     'build_image_safety_policy',
     'build_image_safety_rules',
     'build_loudness_constraints',

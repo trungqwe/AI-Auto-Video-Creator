@@ -1,6 +1,6 @@
 """Production ActivityInputPort of E (PW-E3): input_refs of an ActivityRequest to the typed arguments of the one E command, and the output refs of the image safety chain (DQ-11).
 
-Fan-out item rule: the item of an activity is the first ref of its ref_type in input_refs (the flow puts the item right after the workflow refs). Only an image that AssessImageSafety judged SAFE, or a blurred copy whose post assessment is SAFE, reaches NormalizeMedia; an excluded image is replaced by the next media seed of the selection, and without a seed the activity succeeds with no output. TransformSensitiveImage follows the same rule: a request without a sensitive_image ref (no image needs the blur) succeeds with no output.
+Fan-out item rule: the item of an activity is the first ref of its ref_type in input_refs (the flow puts the item right after the workflow refs). An image that AssessImageSafety judged SAFE or UNCERTAIN reaches NormalizeMedia as the original, and a blurred copy reaches it unless its transform failed (a post assessment that is not SAFE is only a warning); an excluded image is replaced by the next media seed of the selection, and without a seed the activity succeeds with no output. TransformSensitiveImage follows the same rule: a request without a sensitive_image ref (no image needs the blur) succeeds with no output.
 """
 from __future__ import annotations
 
@@ -43,8 +43,8 @@ from voice.application.voice_pipeline import (
     CreateWordTimingCommand,
 )
 from voice.domain.audio_bed import AudioBedRequest, AudioCue
-from voice.domain.image_safety import IMAGE_KIND, ImageSafetyAssessment, SafetyOutcome
-from voice.domain.image_transform import TransformRegion, TransformResult
+from voice.domain.image_safety import IMAGE_KIND, ImageSafetyAssessment
+from voice.domain.image_transform import TransformRegion, TransformResult, TransformStatus
 from voice.domain.normalize import compute_plan_fingerprint, compute_spec_fingerprint
 from voice.domain.processing import ArtifactRef
 from voice.domain.speed_fit import SpeedFitPolicy
@@ -282,7 +282,7 @@ class ProductionActivityInputs:
 
     def _assess(self, frame: _Frame, grant: ExecutionGrant, context: EventContext) -> dict[str, Any]:
         art = self._artifact(frame.workspace_id, _first_ref(frame.refs, REF_SELECTED_MEDIA))
-        detector = LlmImageSafetyDetector(self._vision, art.ref, self._read_image, categories=self._rules.categories, timeout_seconds=self._vision_timeout, uncertain_min=self._rules.uncertain_min)
+        detector = LlmImageSafetyDetector(self._vision, art.ref, self._read_image, categories=self._rules.categories, timeout_seconds=self._vision_timeout, uncertain_min=self._rules.uncertain_min, transform_min=self._rules.uncertain_max_exclusive, region_categories=tuple(sorted(self._rules.blur_categories)))
         self._detectors[frame.operation_key] = detector
         return {'context': context, 'artifact_ref': art.ref, 'media_kind': IMAGE_KIND, 'detector': detector, 'policy': self._safety_policy}
 
@@ -293,7 +293,7 @@ class ProductionActivityInputs:
         return stored.record
 
     def _verdict(self, refs: Sequence[Mapping[str, Any]], media_id: str) -> tuple[str, str, ArtifactRef | None]:
-        """(kind, reason, processed): only SAFE, or a blurred copy that is SAFE after the transform, is usable (DQ-11)."""
+        """(kind, reason, processed): SAFE and UNCERTAIN images are usable as the original; a blurred copy is usable unless the transform failed, and a post assessment that is not SAFE is only a warning (RG-13)."""
         link = next((ref for ref in _refs_of(refs, REF_ASSESSMENT) if ref.get('source_ref_id') == media_id), None)
         if link is None:
             return (EXCLUDED, 'not_assessed', None)
@@ -305,9 +305,9 @@ class ProductionActivityInputs:
         made = next((ref for ref in _refs_of(refs, REF_MEDIA) if ref.get('produced_by') == OP_TRANSFORM_SENSITIVE_IMAGE and ref.get('source_ref_id') == media_id), None)
         stored = None if made is None else self._outputs.latest(KIND_PROCESSED_MEDIA, made['operation_key'])
         record = None if stored is None else stored.record
-        if not isinstance(record, TransformResult) or record.outcome is not SafetyOutcome.SAFE:
-            return (EXCLUDED, 'not_blurred_safe', None)
-        return (TRANSFORM, 'blurred', record.processed_ref)
+        if not isinstance(record, TransformResult) or record.status is TransformStatus.FAILURE:
+            return (EXCLUDED, 'transform_failed', None)
+        return (TRANSFORM, 'blurred' if record.status is TransformStatus.SUCCESS else 'blurred_with_warning', record.processed_ref)
 
     def normalize_source(self, workspace_id: str, refs: Sequence[Mapping[str, Any]]) -> NormalizeSource:
         """The image NormalizeMedia may take for the first selected_media item: the original when SAFE, the blurred copy when SAFE after the transform, else the media seed of the selection with the same rank among the excluded images, else nothing."""

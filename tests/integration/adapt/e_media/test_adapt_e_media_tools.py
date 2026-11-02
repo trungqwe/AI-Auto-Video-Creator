@@ -429,7 +429,7 @@ def test_plan_operations_build_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert outcome.status is Disposition.SUCCEEDED
     ffmpeg_args = fake.calls[1][0]
     vf_idx = ffmpeg_args.index('-vf')
-    assert ffmpeg_args[vf_idx + 1] == 'crop=100:100:0:0,scale=1080:1920,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:0x000000'
+    assert ffmpeg_args[vf_idx + 1] == "crop=100:100:0:0,scale='min(1080,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:0x000000"
     cv_idx = ffmpeg_args.index('-c:v')
     assert ffmpeg_args[cv_idx + 1] == 'libx264'
     af_idx = ffmpeg_args.index('-af')
@@ -489,7 +489,7 @@ def test_transform_blur_builds_boxblur_filtergraph(tmp_path: Path, monkeypatch: 
     output = tool.transform(make_request())
     ffmpeg_call = fake.calls[-1]
     fc_idx = ffmpeg_call[0].index('-filter_complex')
-    assert ffmpeg_call[0][fc_idx + 1] == '[0:v]split=2[b0][t0];[t0]crop=200:100:100:50,boxblur=luma_radius=25:luma_power=3[k0];[b0][k0]overlay=100:50[b1]'
+    assert ffmpeg_call[0][fc_idx + 1] == '[0:v]split=2[b0][t0];[t0]crop=200:100:100:50,boxblur=luma_radius=16:luma_power=1[k0];[b0][k0]overlay=100:50:format=auto[b1]'
     map_idx = ffmpeg_call[0].index('-map')
     assert ffmpeg_call[0][map_idx + 1] == '[b1]'
     assert output.processed_ref.ref.startswith('processed:') and output.processed_ref.ref != 'src-1'

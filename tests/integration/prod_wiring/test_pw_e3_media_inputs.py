@@ -186,13 +186,14 @@ def test_pw_e3_only_a_safe_image_is_usable_and_nothing_uncertain_becomes_safe() 
     required = {'categories': ('weapon',)}
     cases = [
         (assessment(SafetyOutcome.SAFE, True, 'no_sensitive_category'), True, (pmp.USABLE, 'safe')),
-        (assessment(SafetyOutcome.UNCERTAIN, True, 'confidence_below_threshold', **warn), True, (pmp.EXCLUDED, 'uncertain')),
+        (assessment(SafetyOutcome.UNCERTAIN, True, 'confidence_below_threshold', **warn), True, (pmp.USABLE, 'uncertain')),
         (assessment(SafetyOutcome.DETECTION_FAILED, True, 'detector_failed', **warn), True, (pmp.EXCLUDED, 'detection_failed')),
         (assessment(SafetyOutcome.TRANSFORM_FAILED, True, 'transform_failed', **warn), True, (pmp.EXCLUDED, 'transform_failed')),
         (assessment(SafetyOutcome.UNREADABLE, False, 'unreadable_file'), True, (pmp.EXCLUDED, 'unreadable')),
         (assessment(SafetyOutcome.TRANSFORM_REQUIRED, False, 'categories_require_transform', **required), True, (pmp.TRANSFORM, 'blur_required')),
         (assessment(SafetyOutcome.TRANSFORM_REQUIRED, False, 'categories_require_transform', **required), False, (pmp.EXCLUDED, 'blur_without_region')),
-        (assessment(SafetyOutcome.TRANSFORM_REQUIRED, False, 'categories_require_transform', categories=('minor_child', 'weapon')), True, (pmp.EXCLUDED, 'reject_category')),
+        (assessment(SafetyOutcome.TRANSFORM_REQUIRED, False, 'categories_require_transform', categories=('nudity_sexual', 'weapon')), True, (pmp.EXCLUDED, 'reject_category')),
+        (assessment(SafetyOutcome.TRANSFORM_REQUIRED, False, 'categories_require_transform', categories=('minor_child',)), True, (pmp.TRANSFORM, 'blur_required')),
     ]
     for item, regions, expected in cases:
         assert pmp.image_disposition(item, rules, has_regions=regions) == expected
@@ -415,13 +416,12 @@ def run_chain(world: World, workflow_id: str = 'wf-e3', selected: list | None = 
         'safe': {'confidence': 0.9, 'detections': []},
         'uncertain': {'confidence': 0.4, 'detections': []},
         'blur': {'confidence': 0.9, 'detections': [{'category': 'weapon', 'confidence': 0.9, 'region': region}]},
-        'reject': {'confidence': 0.9, 'detections': [{'category': 'minor_child', 'confidence': 0.9, 'region': region}]},
+        'reject': {'confidence': 0.9, 'detections': [{'category': 'nudity_sexual', 'confidence': 0.9, 'region': region}]},
         'failed': 'not json',
     }
     if selected is None:
         selected = [world.add_image(name, index, answer) for index, (name, answer) in enumerate(answers.items(), start=1)]
         world.add_seed('s0', 20)
-        world.add_seed('s1', 21)
     produced: list[dict] = []
 
     def run(name, index, item):
@@ -466,10 +466,10 @@ def test_pw_e3_safety_chain_excludes_unsafe_images_and_blurs_with_the_pinned_ffm
         for index, item in enumerate(selected):
             stored = world.uow.outputs.latest('processed_media', f'wf-e3:process:NormalizeMedia:{index}:r1')
             used[item['ref_id']] = None if stored is None else stored.record.input_ref.ref
-        assert used == {'media-safe': 'art-safe', 'media-uncertain': 'art-seed-s0', 'media-blur': blurred, 'media-reject': 'art-seed-s1', 'media-failed': None}
+        assert used == {'media-safe': 'art-safe', 'media-uncertain': 'art-uncertain', 'media-blur': blurred, 'media-reject': 'art-seed-s0', 'media-failed': None}
         failed = chain['normalized']['media-failed']
         assert failed['output_refs'] == [] and failed['warnings'] == ['image_excluded:detection_failed']
-        assert not set(used.values()) & {'art-uncertain', 'art-reject', 'art-failed', 'art-blur'}
+        assert not set(used.values()) & {'art-reject', 'art-failed', 'art-blur'}
         for key in ('media-safe', 'media-uncertain', 'media-blur', 'media-reject'):
             assert [ref['source_ref_id'] for ref in chain['normalized'][key]['output_refs']] == [key]
         blurred_file = world.out / (blurred.replace(':', '_') + '.png')

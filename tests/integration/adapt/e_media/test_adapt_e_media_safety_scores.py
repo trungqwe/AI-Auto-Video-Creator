@@ -1,4 +1,4 @@
-"""ADAPT-E-MEDIA-FIX2: prompt v2 và chấm điểm từng danh mục theo ngưỡng hồ sơ."""
+"""ADAPT-E-MEDIA-FIX2: prompt v3 (RG-13) và chấm điểm từng danh mục theo ngưỡng hồ sơ."""
 from __future__ import annotations
 
 import base64
@@ -46,10 +46,11 @@ EXPECTED_PROMPT = '\n'.join([
     '- graphic_violence: blood, gore or bodily injury from any cause: open, bleeding or stitched wounds, cuts, burns, surgical incisions, staples or sutures, injuries in medical, emergency or accident photos, mutilation, dead bodies, and violence against people or animals. Medical and accidental injuries count even when nothing violent is happening.',
     '- weapon: firearms, knives or blades shown as weapons, explosives and other weapons, and any object that looks like one: toy guns, replicas, water guns, cap or pop guns, airsoft guns, homemade or improvised guns, gun-shaped lighters and other gun-shaped objects, antique or museum weapons, weapons in display cases, and drawings or models of weapons.',
     '- hate_symbol: symbols, flags, insignia, gestures or graffiti of hate or extremist groups, such as a swastika or SS runes.',
+    '- logo_watermark: logos of news outlets, channels, brands or companies, watermarks, and photo credit or attribution text stamped on the image.',
     'Answer with one JSON object only, no markdown, with exactly these keys:',
-    '{"scores": {"minor_child": 0..1, "nudity_sexual": 0..1, "graphic_violence": 0..1, "weapon": 0..1, "hate_symbol": 0..1}, "detections": [{"category": one of the categories, "confidence": 0..1, "region": null or {"x": 0..1, "y": 0..1, "width": 0..1, "height": 0..1}}], "confidence": 0..1}',
+    '{"scores": {"minor_child": 0..1, "nudity_sexual": 0..1, "graphic_violence": 0..1, "weapon": 0..1, "hate_symbol": 0..1, "logo_watermark": 0..1}, "detections": [{"category": one of the categories, "confidence": 0..1, "region": null or {"x": 0..1, "y": 0..1, "width": 0..1, "height": 0..1}}], "confidence": 0..1}',
     'scores: give every category a score and never omit one. The score is how likely it is that the image shows that category as defined above (0 = certainly not, 1 = certainly). Use 0 only when nothing in the image matches the definition; a partial, unclear, small, look-alike, toy or replica match is not 0. An area that has been blurred or pixelated so that its content can no longer be recognized counts as 0.',
-    'detections: one entry for each category whose score is above 0, with confidence equal to its score and region set to the matching area normalized to 0..1 of the image (x, y = top-left corner), or null when the area cannot be located.',
+    'detections: one entry for each separate area that matches a category whose score is above 0 (one entry per face, per weapon, per logo and so on), with confidence equal to the score of its category and region set to that area normalized to 0..1 of the image (x, y = top-left corner), or null when the area cannot be located. For minor_child the area is the face of that person, not the whole body.',
     'confidence: how sure you are that the image shows none of the categories above.',
 ])
 
@@ -88,10 +89,11 @@ def make(raw: object, **kwargs: object) -> tuple[LlmImageSafetyDetector, FakeRou
     return detector, route
 
 
-def test_prompt_v2_is_verbatim() -> None:
-    assert safety_module.PROMPT_REVISION == 'image-safety-prompt-v2'
+def test_prompt_v3_is_verbatim() -> None:
+    assert safety_module.PROMPT_REVISION == 'image-safety-prompt-v3'
     assert safety_module.build_instructions(DEFAULT_CATEGORIES) == EXPECTED_PROMPT
-    assert len(EXPECTED_PROMPT.split('\n')) == 12
+    assert len(EXPECTED_PROMPT.split('\n')) == 13
+    assert safety_module.DEFAULT_CATEGORIES[-1] == 'logo_watermark' and len(safety_module.DEFAULT_CATEGORIES) == 6
     assert 'Empty detections when nothing sensitive' not in EXPECTED_PROMPT
 
 
@@ -103,7 +105,7 @@ def test_prompt_category_without_definition() -> None:
     assert '{"scores": {"weapon": 0..1, "cat": 0..1}, "detections"' in lines[5]
 
 
-def test_detector_sends_v2_prompt() -> None:
+def test_detector_sends_v3_prompt() -> None:
     detector, route = make(answer(ZERO))
     detector()
     assert route.calls[0][1] == safety_module.build_instructions(DEFAULT_CATEGORIES)
@@ -414,3 +416,51 @@ def test_activity_floor_follows_the_profile_not_a_constant() -> None:
     assert isinstance(detector, LlmImageSafetyDetector)
     assert detector.uncertain_min == 0.4
     assert assess_image_safety('image', detector, resolved['policy']).outcome is SafetyOutcome.SAFE
+
+
+def test_transform_min_keeps_only_the_confirmed_groups() -> None:
+    raw = answer(scores(weapon=0.9, logo_watermark=0.4), [DET('weapon', 0.9), DET('logo_watermark', 0.4)])
+    both, _ = parse_vision_output(raw, DEFAULT_CATEGORIES, uncertain_min=0.3)
+    only, regions = parse_vision_output(raw, DEFAULT_CATEGORIES, uncertain_min=0.3, transform_min=0.5)
+    assert both.categories == ('logo_watermark', 'weapon')
+    assert only.categories == ('weapon',)
+    assert only.confidence == pytest.approx(0.9)
+    assert [r.category for r in regions] == ['weapon']
+    unsure, _ = parse_vision_output(
+        answer(scores(weapon=0.4, logo_watermark=0.35)), DEFAULT_CATEGORIES, uncertain_min=0.3, transform_min=0.5
+    )
+    assert unsure.categories == ('logo_watermark', 'weapon')
+
+
+def test_region_instructions_ask_only_for_regions() -> None:
+    text = safety_module.build_region_instructions(('hate_symbol',))
+    assert '"regions"' in text and '"scores"' not in text
+    assert ('- hate_symbol: ' + safety_module.CATEGORY_DEFINITIONS['hate_symbol']) in text and '- weapon' not in text
+
+
+def test_detector_asks_for_missing_regions_once_and_blurs_nothing_when_one_is_still_missing() -> None:
+    raw = answer(scores(weapon=0.9, hate_symbol=0.9), [DET('weapon', 0.9), DET('hate_symbol', 0.9, None)])
+    detector, route = make(raw, uncertain_min=0.3, transform_min=0.5, region_categories=('weapon', 'hate_symbol'))
+    detector()
+    assert len(route.calls) == 2
+    assert detector.regions == ()
+    assert detector.missing_regions == ('hate_symbol',)
+    ok, ok_route = make(
+        answer(scores(weapon=0.9), [DET('weapon', 0.9)]),
+        uncertain_min=0.3,
+        transform_min=0.5,
+        region_categories=('weapon',),
+    )
+    ok()
+    assert len(ok_route.calls) == 1 and len(ok.regions) == 1 and ok.missing_regions == ()
+    plain, plain_route = make(answer(scores(weapon=0.9), [DET('weapon', 0.9, None)]), uncertain_min=0.3)
+    plain()
+    assert len(plain_route.calls) == 1 and plain.regions == ()
+    nudity, nudity_route = make(
+        answer(scores(nudity_sexual=0.9, weapon=0.9), [DET('nudity_sexual', 0.9), DET('weapon', 0.9, None)]),
+        uncertain_min=0.3,
+        transform_min=0.5,
+        region_categories=('weapon',),
+    )
+    nudity()
+    assert len(nudity_route.calls) == 1
