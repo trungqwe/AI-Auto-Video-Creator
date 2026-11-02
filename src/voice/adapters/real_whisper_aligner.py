@@ -1,6 +1,6 @@
 """Real AlignerPort: local faster_whisper word timestamps matched to the script text (CT-SUB-001).
 
-Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count. A second exception (ADAPT-E-FIX4): Whisper pieces that rejoin into exactly one script token (long + -term, 9 + -year + -old) take the span of the pieces, and a cluster of script words and Whisper pieces that read the same value and unit (dollars, cents, percent, decimals, up to trillion) shares the heard span by character count, counted in split_word_count. A third exception (ADAPT-E-FIX6): a model word that ends where the word before it ends (Whisper gave it no time of its own, e.g. a zero-length word) shares the span of the word before it by character count, counted in split_word_count. A fourth exception (ADAPT-E-FIX7): a run of at most four script words with no model word of their own, between two matched words, takes the model words left unused between those two words, or, when there are none, joins the span of the matched word next to it; the shared span is split by character count and counted in split_word_count and split_group_count. The max_unmatched_word_ratio cap applies to split_group_count, one per shared heard span (ADAPT-E-FIX5): the two ends of a group are model times, only the inner word edges are shared.
+Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count. A second exception (ADAPT-E-FIX4): Whisper pieces that rejoin into exactly one script token (long + -term, 9 + -year + -old) take the span of the pieces, and a cluster of script words and Whisper pieces that read the same value and unit (dollars, cents, percent, decimals, up to trillion) shares the heard span by character count, counted in split_word_count. A third exception (ADAPT-E-FIX6): a model word that ends where the word before it ends (Whisper gave it no time of its own, e.g. a zero-length word) shares the span of the word before it by character count, counted in split_word_count. A fourth exception (ADAPT-E-FIX7): a run of at most four script words with no model word of their own, between two matched words, takes the model words left unused between those two words, or, when there are none, joins the span of the matched word next to it; the shared span is split by character count and counted in split_word_count and split_group_count. Last (ADAPT-E-FIX8): a run of script words that still has no time after every rule above, at most 5% of the script words in all, takes the span between the two timed words around it (or, with no room there, a share of the span of the word next to it), split by character count, with confidence 0.0; these words still count as unmatched in unmatched_ratio and are counted in split_word_count and split_group_count. The max_unmatched_word_ratio cap applies to split_group_count, one per shared heard span (ADAPT-E-FIX5): the two ends of a group are model times, only the inner word edges are shared.
 """
 from __future__ import annotations
 
@@ -496,6 +496,68 @@ def _library_version() -> str:
         return 'unknown'
 
 
+FILL_MIN_MS = 40
+FILL_MAX_RATIO = 0.05
+
+
+def _fill_stragglers(words: list[dict[str, object]], indices: list[int], pairs: list[tuple[str, str]], expected: list[str], timed: set[int], cap_ratio: float) -> tuple[int, int]:
+    """ADAPT-E-FIX8: script words still without a time after every other rule, at most int(min(cap_ratio, FILL_MAX_RATIO) * script words) in all, take the span between the two timed words around their run (confidence 0.0, still counted as unmatched); with less than FILL_MIN_MS per word between the neighbours they share the span of the word before, else of the word after, by character count. Returns (words filled, runs filled)."""
+    present = set(indices)
+    runs: list[tuple[int, int]] = []
+    n = 0
+    while n < len(expected):
+        if n in present:
+            n += 1
+            continue
+        s1 = n
+        while n < len(expected) and n not in present:
+            n += 1
+        runs.append((s1, n))
+    if not runs or sum(s2 - s1 for s1, s2 in runs) > int(min(cap_ratio, FILL_MAX_RATIO) * len(expected)):
+        return 0, 0
+    order = list(indices)
+    filled = groups = 0
+    for s1, s2 in reversed(runs):
+        count = s2 - s1
+        pos = sum(1 for x in order if x < s1)
+        before = words[pos - 1] if pos > 0 else None
+        after = words[pos] if pos < len(words) else None
+        if before is None and after is None:
+            continue
+        lo = before['end_ms'] if before is not None else after['start_ms']
+        hi = after['start_ms'] if after is not None else before['end_ms']
+        w = [len(expected[k]) for k in range(s1, s2)]
+        side = 'gap'
+        if hi - lo < FILL_MIN_MS * count:
+            if before is not None and before['end_ms'] - before['start_ms'] >= FILL_MIN_MS * (count + 1):
+                side = 'before'
+            elif after is not None and after['end_ms'] - after['start_ms'] >= FILL_MIN_MS * (count + 1):
+                side = 'after'
+            else:
+                continue
+        if side == 'before':
+            start, end, weights = before['start_ms'], before['end_ms'], [len(expected[order[pos - 1]]), *w]
+        elif side == 'after':
+            start, end, weights = after['start_ms'], after['end_ms'], [*w, len(expected[order[pos]])]
+        else:
+            start, end, weights = lo, hi, w
+        b = [start + (end - start) * sum(weights[:k]) // sum(weights) for k in range(len(weights))] + [end]
+        if not all(b[k] < b[k + 1] for k in range(len(weights))):
+            continue
+        marks = b
+        if side == 'before':
+            before['end_ms'], marks = b[1], b[1:]
+        elif side == 'after':
+            after['start_ms'], marks = b[count], b[:count + 1]
+        for k in range(count):
+            words.insert(pos + k, {'start_ms': marks[k], 'end_ms': marks[k + 1], 'text': pairs[s1 + k][0], 'normalized_text': expected[s1 + k], 'confidence': 0.0})
+        order[pos:pos] = range(s1, s2)
+        timed.update(range(s1, s2))
+        filled += count
+        groups += 1
+    return filled, groups
+
+
 class RealWhisperAligner:
     """AlignerPort over a local faster_whisper model; weights are verified once and the model is loaded once."""
 
@@ -638,10 +700,13 @@ class RealWhisperAligner:
             timed_script.add(slot.script_index)
             timed_heard.update(range(slot.first, slot.last + 1))
             final_end = end
+        filled, fill_runs = _fill_stragglers(words, [slot.script_index for slot in slots], pairs, expected, timed_script, config.max_unmatched_word_ratio)
+        split_count += filled
+        split_groups += fill_runs
         missing = tuple(i for i in range(len(expected)) if i not in timed_script)
         extra = tuple(j for j in range(len(heard)) if j not in timed_heard)
         total = len(expected) + len(heard)
-        ratio = (len(missing) + len(extra)) / total if total else 1.0
+        ratio = (len(missing) + filled + len(extra)) / total if total else 1.0
         self.last_report = AlignmentReport(len(expected), len(heard), len(words), missing, extra, ratio, split_count, split_groups)
         if not words:
             raise _fail(ERROR_NO_ALIGNED_WORDS, 'no script word could be aligned to a model word')
