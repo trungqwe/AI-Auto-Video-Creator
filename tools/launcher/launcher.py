@@ -834,8 +834,11 @@ def assemble_dfe_handlers(
     runtime: typing.Any,
     connection_factory: typing.Callable[[], typing.Any],
     clock: typing.Callable[[], datetime.datetime],
+    imagegen_endpoint_file: Path | None = None,
+    hf_hub_dir: Path | None = None,
 ) -> dict[str, typing.Any]:
     ensure_src_on_path()
+    from controlplane.api.wiring.illustrations import illustration_activity_handlers
     from controlplane.api.wiring.creative import (
         ProductionSelectionInputs,
         build_creative_services,
@@ -946,12 +949,27 @@ def assemble_dfe_handlers(
         combined.update(c_handlers)
         combined.update(v_handlers)
         combined.update(r_handlers)
+        # IMGGEN-PIPE: GenerateIllustrations uses the media candidates of SelectCreativeAssets and reads the sidecar endpoint
+        # (<data>/imagegen/endpoint.json, IMGGEN-LAUNCH) and the pinned caption prompt (<data>/models/hf-hub) on every run.
+        combined.update(illustration_activity_handlers(
+            manager=manager,
+            workspace_id=workspace_id,
+            profile=profile,
+            runtime=runtime,
+            creative_uow_factory=creative_svc.uow_factory,
+            media=media_cand,
+            grants=grants,
+            clock=clock,
+            endpoint_file=imagegen_endpoint_file,
+            hub_dir=hf_hub_dir,
+        ))
 
         expected_names = {
             'BuildProductionSnapshot',
             'AnalyzeContent',
             'GenerateStoryAngles',
             'GenerateScript',
+            'GenerateIllustrations',
             'SelectCreativeAssets',
             'BuildProductionPlan',
             'ValidateVariant',
@@ -1045,6 +1063,8 @@ def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
             runtime=runtime,
             connection_factory=grant_connection,
             clock=clock,
+            imagegen_endpoint_file=None if layout is None else layout.imagegen_endpoint_file,
+            hf_hub_dir=None if layout is None else layout.hf_hub_dir,
         )
     )
     services = build_workflow_services(

@@ -372,7 +372,7 @@ def test_pw_vertical_assembles_the_real_g_components_without_in_memory_stores():
             assert forbidden not in lower, f'forbidden substring {forbidden} in {name}'
     assert set(FAKE_ACTIVITIES).isdisjoint(G_ACTIVITIES)
     assert set(VIDEO_ACTIVITIES) - set(FAKE_ACTIVITIES) == {'ReserveVariant', 'CommitVideoCompletion'}
-    assert sum(EXPECTED_ACTIVITIES.values()) == 26
+    assert sum(EXPECTED_ACTIVITIES.values()) == 27  # IMGGEN-PIPE: GenerateIllustrations runs first in media_select
 
 
 def test_module_docstring_declares_covered_ids():

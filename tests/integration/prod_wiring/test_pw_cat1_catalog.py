@@ -72,6 +72,18 @@ def test_video_stage_activities_follow_the_v2_plan():
     assert VIDEO_STAGE_ACTIVITIES['process'] == ('ProbeMedia', 'AssessImageSafety', 'TransformSensitiveImage', 'NormalizeMedia', 'PrepareAudioBed')
 
 
+def test_generate_illustrations_runs_first_in_media_select_and_the_legacy_map_keeps_the_old_commands():
+    binding = BINDINGS_BY_NAME['GenerateIllustrations']
+    assert (binding.owner, binding.stage_type, binding.side_effect, binding.extra_stage_types) == ('D', 'media_select', True, ())
+    assert binding.queue == route_stage('media_select') == TaskQueue.DESKTOP_CPU
+    assert VIDEO_STAGE_ACTIVITIES['media_select'] == ('GenerateIllustrations', 'SelectCreativeAssets')
+    assert STAGE_ACTIVITIES_BY_WORKFLOW['VideoProductionWorkflow'] is VIDEO_STAGE_ACTIVITIES
+    assert activities.LEGACY_VIDEO_STAGE_ACTIVITIES['media_select'] == ('SelectCreativeAssets',)
+    assert dict(activities.LEGACY_VIDEO_STAGE_ACTIVITIES, media_select=VIDEO_STAGE_ACTIVITIES['media_select']) == dict(VIDEO_STAGE_ACTIVITIES)
+    assert binding_mismatches({'VideoProductionWorkflow': activities.LEGACY_VIDEO_STAGE_ACTIVITIES}) == []
+    assert get_workflow('VideoProductionWorkflow').workflow_version == 2
+
+
 def test_new_and_moved_bindings():
     expected = {
         'ReserveVariant': ('G', 'plan'), 'reconcile_render': ('F', 'render'), 'prepare_output_ready': ('F', 'qc'),

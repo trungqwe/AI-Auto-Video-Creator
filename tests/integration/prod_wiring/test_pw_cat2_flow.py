@@ -374,12 +374,13 @@ async def test_waiting_waits_on_the_temporal_timer_and_resumes_at_the_same_stage
     assert snapshot['wait_reason'] is None
     counts = Counter(log)
     assert counts['SelectCreativeAssets'] == 2
+    assert counts['GenerateIllustrations'] == 1  # IMGGEN-PIPE: done before the wait, not run again
     assert counts['AnalyzeContent'] == 1
     assert counts['GenerateScript'] == 1
     assert counts['BuildProductionPlan'] == 1
     assert snapshot['attempts']['analyze'] == 2
     assert snapshot['attempts']['script'] == 2
-    assert snapshot['attempts']['media_select'] == 2
+    assert snapshot['attempts']['media_select'] == 3
     timers = [e for e in history.events if e.event_type == EventType.EVENT_TYPE_TIMER_STARTED]
     assert len(timers) == 1
     assert timers[0].timer_started_event_attributes.start_to_fire_timeout.seconds == 60

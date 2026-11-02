@@ -162,6 +162,7 @@ EDGE_PATCH_ALLOWLIST = frozenset({
     "temporalio.client, 'Client'",
     "production_wiring, 'TemporalWorkerGroup'",
     "workflow_wiring, b_tr_name",
+    "illustrations_wiring, 'PUP_SYSTEM_PROMPTS_SHA256'",
 })
 PRODUCTION_LOGIC_TOKENS = ("rights_cleared", "VerifiedArtifact", "output_hash", "ProductionVariantContext", "ProductionSelectionInputs", "ProductionRenderSources", "RenderActivityInputs", "handle_collect_source_activity", "handle_voice_activity", "materialize_artifact_set_handler", "RealFfmpegMediaTool", "verify_media_output", "start_workflow", "business_date")
 
@@ -284,7 +285,20 @@ async def test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch
     assert child["unbound"] == []
     assert child["rejected_signals"] == []
     assert sorted(child["completed"]) == sorted(VIDEO_STAGES)
-    assert child["attempts"] == EXPECTED_ACTIVITIES
+    # IMGGEN-PIPE: the second scene is an AI illustration, so process fans out over two distinct images (ProbeMedia, AssessImageSafety, NormalizeMedia twice).
+    expected = dict(EXPECTED_ACTIVITIES, process=8)
+    assert child["attempts"] == expected
+
+    # IMGGEN-PIPE: four script segments and one article image, so GenerateIllustrations made three AI illustrations before the
+    # selection; the second scene uses one of them, and image safety assessed its bytes before the render.
+    ai_refs = [ref for ref in child["output_refs"]["media_select"] if ref["ref_type"] == "ai_illustration"]
+    assert len(ai_refs) == 3 and len(rig.imagegen.jobs) == 1
+    assert [len(job["items"]) for job in rig.imagegen.jobs.values()] == [3]
+    assert rig.router.selected_media[1] in {ref["ref_id"] for ref in ai_refs}
+    assert set(rig.imagegen.generated) & set(rig.runtime.vision_route.assessed_sha256)
+    plans = [call for call in rig.runtime.vision_route.chat_calls if call["system"].startswith("You plan documentary photographs")]
+    assert len(plans) == 1 and plans[0]["ai_role"] == "illustration" and plans[0]["images"] == 1
+    assert len(rig.runtime.vision_route.chat_calls) == 4
 
     # Scene 1 image of the first batch (before the second batch overwrites rig.router.selected_media)
     ws = rig.database.workspace_id
@@ -340,7 +354,7 @@ async def test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch
     grants = grants_by_stage(rig.database)
     for stage in VIDEO_STAGES:
         entries = grants[f"{job_id}:{stage}:r1"]
-        assert len(entries) == EXPECTED_ACTIVITIES[stage]
+        assert len(entries) == expected[stage]
         assert all(e[2] for e in entries)
     assert live_grants(rig.database) == 0
     assert len(rig.gpu.render_owners) == 1
@@ -419,6 +433,8 @@ async def test_one_batch_posted_to_the_api_reaches_completion_and_a_second_batch
         job_id_2,
     )
     assert cand_1 != cand_2, f"Expected distinct candidates, got {cand_1} and {cand_2}"
+    # AI illustrations are shared by the videos of an article: the second video makes a job only when its article has none yet.
+    assert len(rig.imagegen.jobs) in (1, 2) and all(len(job["items"]) == 3 for job in rig.imagegen.jobs.values())
 
     # (7) Write timings JSON
     timings_path = pathlib.Path(tempfile.gettempdir()) / "pw-e2e-stage-timings.json"
@@ -484,6 +500,8 @@ async def test_an_article_image_e_excludes_is_rendered_as_the_seed_of_its_rank(
 
     rig.runtime.vision_route.excluded_sha256 = frozenset(feed_sha.values())
     rig.router.script_mode = "inference"
+    # IMGGEN-PIPE: no illustration sidecar, so GenerateIllustrations skips with a warning (the job has an article image) and adds no image.
+    rig.stop_imagegen()
     batch_id = await asyncio.to_thread(rig.post_batch, 1)
 
     # RG-13: cả hai ảnh bài bị loại, job chỉ còn ảnh seed nên render từ chối no_illustration_available
@@ -528,6 +546,52 @@ async def test_an_article_image_e_excludes_is_rendered_as_the_seed_of_its_rank(
     finally:
         mgr.close()
     assert e_inputs and not e_inputs & article_versions, "E phải lấy ảnh seed_fallback thay cho ảnh bài bị loại"
+    assert rig.imagegen.jobs == {}
+
+
+@pytest.mark.asyncio
+async def test_an_excluded_article_image_gives_way_to_the_ai_illustrations_of_its_article(rig: Any, pw_temporal: Any) -> None:
+    """IMGGEN-PIPE: with the illustration sidecar up, the AI illustrations of the article fill the video when image safety excludes the article image."""
+    await rig.start_worker()
+    ws = rig.database.workspace_id
+
+    def articles_with_images() -> bool:
+        with rig.database.connect() as conn:
+            row = conn.execute(
+                "SELECT count(DISTINCT sha256_hash) FROM controlplane.cp_artifact_versions WHERE workspace_id = %s AND left(artifact_id, 6) = 'media/' AND right(artifact_id, 4) = '.jpg'",
+                (ws,),
+            ).fetchone()
+        return bool(row and row[0] >= 2)
+
+    await wait_until(articles_with_images, timeout=300.0, interval=0.5, what="enclosure images of both articles registered as artifacts")
+    feed_sha = {slug: hashlib.sha256(rig.site.routes[f"/img/{slug}.jpg"][2]).hexdigest() for slug in ("a", "b")}
+    rig.runtime.vision_route.excluded_sha256 = frozenset(feed_sha.values())
+    rig.router.script_mode = "inference"
+    batch_id = await asyncio.to_thread(rig.post_batch, 1)
+    handle = await wait_for_workflow(pw_temporal, batch_id)
+    batch_result = await wait_for_workflow_result(handle, 900.0, rig=rig)
+    assert (batch_result["status"], batch_result["completed"]) == ("TARGET_REACHED", 1)
+    assert [len(job["items"]) for job in rig.imagegen.jobs.values()] == [3]
+    with rig.database.connect() as conn:
+        def versions(shas: list[str]) -> set[str]:
+            return {r[0] for r in conn.execute(
+                "SELECT artifact_version_id::text FROM controlplane.cp_artifact_versions WHERE workspace_id = %s AND sha256_hash = ANY(%s)",
+                (ws, shas)).fetchall()}
+        article_versions = versions(list(feed_sha.values()))
+        ai_versions = versions(list(rig.imagegen.generated))
+        keys = [r[0] for r in conn.execute(
+            "SELECT DISTINCT record_key FROM controlplane.cp_processed_media WHERE workspace_id = %s AND record_key LIKE %s",
+            (ws, f"{batch_id}:video:0:%NormalizeMedia%")).fetchall()]
+    mgr = TransactionManager(rig.database.dsn, pool_max_size=4)
+    try:
+        uow = PostgresVoiceUnitOfWork(mgr, workspace_id=ws)
+        e_inputs = {record.input_ref.ref for record in (uow.outputs.latest("processed_media", key).record for key in keys)
+                    if getattr(record, "input_ref", None) is not None}
+    finally:
+        mgr.close()
+    assert e_inputs & ai_versions and not e_inputs & article_versions
+    assert set(rig.imagegen.generated) & set(rig.runtime.vision_route.assessed_sha256)
+    assert len(list((rig.tmp_path / "staging" / "out").glob("*.mp4"))) == 1
 
 
 @pytest.mark.asyncio

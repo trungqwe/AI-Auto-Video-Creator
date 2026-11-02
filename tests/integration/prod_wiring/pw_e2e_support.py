@@ -249,10 +249,33 @@ class FakeRouteCatalog:
         return [cand]
 
 
+ILLUSTRATION_CAPTION = (
+    "A wide documentary photograph of a quiet container terminal at dawn, with rows of plain gray shipping containers stacked "
+    "three high under a pale overcast sky. Two small anonymous figures in plain dark jackets walk away from the camera along the "
+    "edge of the water, far in the middle distance, their faces turned away. Wet asphalt reflects the soft cool light, and a calm "
+    "sea fills the background with a faint haze over the horizon. The palette is muted blue and gray with a little warm light near "
+    "the cranes, the contrast is gentle, fine grain covers the frame, and a moderate wide lens keeps the foreground, the middle "
+    "ground and the background in clear focus across the tall vertical frame."
+)
+ILLUSTRATION_SHOTS = ("wide", "medium", "close_detail", "object", "aftermath")
+
+
 class FakeVisionRoute:
     def __init__(self, excluded_sha256: frozenset[str] = frozenset()) -> None:
         self.calls: list[dict[str, Any]] = []
+        self.chat_calls: list[dict[str, Any]] = []
+        self.assessed_sha256: list[str] = []
         self.excluded_sha256 = frozenset(excluded_sha256)
+
+    def invoke_chat(self, ai_role: str, system: str, text: str, images: Any = (), *, timeout: float) -> str:
+        """Illustration role (IMGGEN-PIPE): the plan call answers a style card and the asked number of shots, every other call one caption."""
+        self.chat_calls.append({"ai_role": ai_role, "system": system, "text": text, "images": len(tuple(images)), "timeout": timeout})
+        if not system.startswith("You plan documentary photographs"):
+            return ILLUSTRATION_CAPTION
+        count = int(text.split("Plan exactly ", 1)[1].split(" ", 1)[0])
+        card = {name: f"{name} of an overcast harbor morning" for name in ("palette", "light", "contrast", "grain", "lens", "depth_of_field", "weather", "mood")}
+        shots = [{"shot": shot, "scene_intent": "scene one", "description": f"A {shot} view of an empty quay."} for shot in ILLUSTRATION_SHOTS[:count]]
+        return json.dumps({"style_card": card, "requests": shots})
 
     def invoke_vision(
         self,
@@ -270,6 +293,7 @@ class FakeVisionRoute:
             "timeout_seconds": timeout_seconds,
         })
         digest = hashlib.sha256(base64.b64decode(image_base64)).hexdigest()
+        self.assessed_sha256.append(digest)
         if digest in self.excluded_sha256:
             return json.dumps({
                 "confidence": 0.9,
@@ -1146,6 +1170,106 @@ def cookie_value(response: Any, name: str) -> str:
     raise AssertionError('missing cookie ' + name)
 
 
+def solid_png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    row = b"\x00" + bytes(rgb) * width
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(row * height, 1)) + chunk(b"IEND", b""))
+
+
+class StaticImagegenSidecar(http.server.ThreadingHTTPServer):
+    """Static generator in place of the GPU sidecar (IMGGEN-SVC protocol on 127.0.0.1): every posted item is done at once with a
+    solid PNG of the asked size, coloured by its seed. The rig writes its endpoint file where the launcher would (IMGGEN-LAUNCH)."""
+
+    daemon_threads = True
+    TOKEN = "s" * 43
+
+    def __init__(self) -> None:
+        self.jobs: dict[str, dict[str, Any]] = {}
+        self.generated: dict[str, bytes] = {}
+        self._lock = threading.Lock()
+        sidecar = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args: Any) -> None:
+                pass
+
+            def _send(self, status: int, data: bytes, kind: str = "application/json", extra: dict[str, str] | None = None) -> None:
+                self.send_response(status)
+                self.send_header("Content-Type", kind)
+                self.send_header("Content-Length", str(len(data)))
+                for name, value in (extra or {}).items():
+                    self.send_header(name, value)
+                self.end_headers()
+                self.wfile.write(data)
+
+            def _json(self, status: int, value: Any) -> None:
+                self._send(status, json.dumps(value).encode("utf-8"))
+
+            def _authorized(self) -> bool:
+                return self.headers.get("Authorization") == "Bearer " + sidecar.TOKEN
+
+            def do_GET(self) -> None:  # noqa: N802
+                parts = self.path.split("/")
+                if self.path == "/v1/health":
+                    self._json(200, {"service": "aiavc-imagegen", "state": "idle", "queue": {"jobs": 0, "items": 0}})
+                elif not self._authorized():
+                    self._json(401, {"error": {"code": "UNAUTHORIZED"}})
+                elif len(parts) == 4 and parts[3] in sidecar.jobs:
+                    self._json(200, sidecar.jobs[parts[3]])
+                elif len(parts) == 6 and parts[3] in sidecar.jobs:
+                    item = next((i for i in sidecar.jobs[parts[3]]["items"] if i["item_id"] == parts[5]), None)
+                    if item is None:
+                        self._json(404, {"error": {"code": "NOT_FOUND"}})
+                    else:
+                        self._send(200, sidecar.generated[item["sha256"]], "image/png", {"X-Content-SHA256": item["sha256"]})
+                else:
+                    self._json(404, {"error": {"code": "NOT_FOUND"}})
+
+            def do_POST(self) -> None:  # noqa: N802
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))).decode("utf-8"))
+                if not self._authorized():
+                    self._json(401, {"error": {"code": "UNAUTHORIZED"}})
+                    return
+                with sidecar._lock:
+                    created = body["job_id"] not in sidecar.jobs
+                    if created:
+                        items = []
+                        for item in body["items"]:
+                            seed = item["seed"]
+                            png = solid_png(item["width"], item["height"], (40 + seed % 180, 40 + (seed >> 8) % 180, 40 + (seed >> 16) % 180))
+                            sha = hashlib.sha256(png).hexdigest()
+                            sidecar.generated[sha] = png
+                            items.append({"item_id": item["item_id"], "state": "done", "sha256": sha, "error": None})
+                        sidecar.jobs[body["job_id"]] = {"job_id": body["job_id"], "state": "done", "items": items}
+                    view = dict(sidecar.jobs[body["job_id"]], created=created)
+                self._json(202, view)
+
+        super().__init__(("127.0.0.1", 0), Handler)
+        self._thread = threading.Thread(target=self.serve_forever, daemon=True)
+        self._thread.start()
+
+    def write_endpoint(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"url": f"http://127.0.0.1:{self.server_address[1]}", "token": self.TOKEN, "pid": os.getpid()}), encoding="utf-8")
+
+
+def install_caption_prompt(monkeypatch: Any, hub_dir: Path) -> None:
+    """Puts a stand-in t2i system prompt at the pinned pup path of the hub and pins its digest (the real file is never in Git)."""
+    from controlplane.api.wiring import illustrations as illustrations_wiring
+
+    path = hub_dir / "models--black-forest-labs--flux-3-image-klein-pup" / "snapshots" / illustrations_wiring.PUP_REVISION / "system_prompts.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = json.dumps({"t2i": "You expand a short request into one detailed photograph description (e2e stand-in)."}).encode("utf-8")
+    path.write_bytes(data)
+    monkeypatch.setattr(illustrations_wiring, "PUP_SYSTEM_PROMPTS_SHA256", hashlib.sha256(data).hexdigest())
+
+
 class E2ERig:
     def __init__(self, database: Any, temporal: Any, tmp_path: Path, monkeypatch: Any) -> None:
         self.database = database
@@ -1237,6 +1361,9 @@ class E2ERig:
             'CONTROLPLANE_WORKSPACE_ID': self.database.workspace_id,
         }
         self.layout = self.launcher.Layout(self.tmp_path / 'data')
+        self.imagegen = StaticImagegenSidecar()
+        self.imagegen.write_endpoint(self.layout.imagegen_endpoint_file)
+        install_caption_prompt(self.monkeypatch, self.layout.hf_hub_dir)
         self.app = self.launcher.load_app(environ, self.layout)
 
     async def start_worker(self) -> None:
@@ -1316,6 +1443,10 @@ class E2ERig:
                 self.database.workspace_id,
                 self.current_session_ref,
             )
+
+    def stop_imagegen(self) -> None:
+        """Like a sidecar the launcher could not start: no endpoint file (IMGGEN-LAUNCH removes it when the sidecar stops)."""
+        self.layout.imagegen_endpoint_file.unlink(missing_ok=True)
 
     def launch_headers(self) -> dict[str, str]:
         path = self.app.launch_url(actor_id=self.database.actor_id, ttl_seconds=60)[len(BASE):]
@@ -1401,5 +1532,8 @@ class E2ERig:
         if hasattr(self, 'site') and self.site:
             self.site.shutdown()
             self.site.server_close()
+        if getattr(self, 'imagegen', None) is not None:
+            self.imagegen.shutdown()
+            self.imagegen.server_close()
         if hasattr(self, 'app') and self.app and hasattr(self.app, 'manager'):
             self.app.manager.close()
