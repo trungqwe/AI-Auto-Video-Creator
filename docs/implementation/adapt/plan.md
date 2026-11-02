@@ -273,7 +273,7 @@ Tất cả do chính hệ thống tự tạo (không rủi ro bản quyền), si
 | Hook âm thanh `ah-01` đến `ah-05` | 1,5 giây, WAV 24000 Hz mono, quét tần số 220 đến 880 Hz với năm hình bao khác nhau, sinh bằng `wave` | tránh nhạc có bản quyền |
 | Ảnh nền `bg-01` đến `bg-12` | PNG 1080x1920 chuyển màu theo 12 sắc, sinh bằng stdlib | 10 video mỗi video 3 ảnh vẫn chọn được không lặp |
 
-Năm hook hình nhân năm hook âm thanh cho 25 tổ hợp, đủ cho 10 video mẫu khác nhau. **Quyền ảnh từ bài**: ảnh tải kèm bài được đăng ký với nguồn gốc nhưng `rights_status` mặc định `UNVERIFIED` và không vào video mẫu; chỉ tài sản seed được dùng cho tới khi user quyết (OI-ADAPT-10, pendingUserCheckpoint).
+Năm hook hình nhân năm hook âm thanh cho 25 tổ hợp, đủ cho 10 video mẫu khác nhau. **Quyền ảnh từ bài** (ADAPT-SEED-FIX3): ảnh tải kèm bài được đăng ký với nguồn gốc và giữ nhãn `rights_status` `UNVERIFIED` (nhãn, không phải điều kiện loại); user đã quyết (OI-ADAPT-10 ngày 25/10/2026; CLOSURE_NOTE CP7/RG-13 ngày 02/11/2026) cho ảnh vào video sau khi che mờ tối thiểu logo và chi tiết nhạy cảm, lấy tối đa ảnh trên trang, không video nào chỉ có ảnh nền, thiếu ảnh thì sinh ảnh AI cùng phong cách với ảnh trong bài. Khối `rights` của `hooks.json` ghi `article_images_in_sample_video` là true, không còn `pending_user_checkpoint` và có `article_image_decision_refs`.
 
 ### 7.9. Trọng số model và tài nguyên test
 
@@ -307,7 +307,7 @@ Mọi mục dưới đây cần Drive, OAuth, AI thật, GPU hoặc chạy dài;
 
 ## 9. Mục mở và quyết định D8
 
-Không mục nào là đã duyệt; mục cần user vẫn ở `pendingUserCheckpoint`.
+Mục mặc định D8 chưa được user duyệt vẫn ở `pendingUserCheckpoint`; riêng OI-ADAPT-10 đã được user quyết (25/10/2026; CLOSURE_NOTE CP7/RG-13 02/11/2026).
 
 | Mã | Nội dung | Mặc định đã chọn | Lý do |
 | --- | --- | --- | --- |
@@ -320,7 +320,7 @@ Không mục nào là đã duyệt; mục cần user vẫn ở `pendingUserCheck
 | OI-ADAPT-07 | Chứng chỉ TLS tự ký | Trình duyệt cảnh báo lần đầu; runbook hướng dẫn tin cậy chứng chỉ | Không có CA cục bộ |
 | OI-ADAPT-08 | Font phụ đề | `Arial` hệ thống Windows; nếu libass không tìm thấy thì `BLOCKED`, Control ghim font mở sau | Tránh thêm tệp lớn và rủi ro giấy phép |
 | OI-ADAPT-09 | `DEFAULT_APPROVED_ENDPOINTS` còn host `mock-9router` | Giữ làm nền test; production dùng danh sách từ cấu hình (D8-ADAPT-01) | Giữ `test_http_router_adapter.py` xanh |
-| OI-ADAPT-10 | Quyền dùng ảnh tải kèm bài | `UNVERIFIED`, chỉ tài sản seed vào video mẫu | pendingUserCheckpoint; roadmap cấm media không rõ quyền |
+| OI-ADAPT-10 | Quyền dùng ảnh tải kèm bài | Nhãn `UNVERIFIED` giữ nguyên; ảnh vào video sau khi che mờ tối thiểu; `hooks.json` ghi `article_image_decision_refs` | Đã quyết: user 25/10/2026 (OI-ADAPT-10) và CLOSURE_NOTE CP7/RG-13 02/11/2026 |
 | OI-ADAPT-11 | Khóa `temporal_server_binary` mang digest image Temporal | Giữ tên khóa, đổi nghĩa, ghi vào report của `CP-2B-DEPS` | Tương thích probe của `CP-2B-DEPS` |
 | OI-ADAPT-12 | Kokoro chỉ hỗ trợ tiếng Anh trong phạm vi v1 | `qc.required_language` là `en` | Đúng yêu cầu `ENGLISH_OUTPUT_VALID` |
 
@@ -329,7 +329,7 @@ Không mục nào là đã duyệt; mục cần user vẫn ở `pendingUserCheck
 - Điểm dừng user thứ nhất (U2): user làm OAuth một lần với tài khoản Drive thật.
 - Điểm dừng cuối (U4): nghiệm thu mẫu 10 video, gồm checkpoint M2 (M2-P8 và M2-P9 đã có Auditor PASS nhưng chưa ghi checkpoint user).
 - D5 cho mọi slice CP7 (mục 8) và `USER-CKPT-D9-D10` cho bốn gói của mục 3.
-- OI-ADAPT-10 (quyền ảnh từ bài) và duyệt năm preset (ROADMAP-OPEN-009) khi nghiệm thu.
+- Duyệt năm preset (ROADMAP-OPEN-009) khi nghiệm thu. OI-ADAPT-10 (quyền ảnh từ bài) đã được user quyết (25/10/2026; CLOSURE_NOTE CP7/RG-13 02/11/2026), không còn chờ.
 
 ### 9.2. Quyết định D8 của kế hoạch này
 

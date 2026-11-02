@@ -173,6 +173,8 @@ def test_hooks_structure_and_recipes():
     assert hooks['storage']['in_git'] is False
     assert hooks['rights']['seed_rights_status'] == 'SELF_GENERATED'
     assert hooks['rights']['article_image_rights_status'] == 'UNVERIFIED'
+    assert hooks['rights']['article_images_in_sample_video'] is True
+    assert 'pending_user_checkpoint' not in hooks['rights']
 
 
 def test_weights_lock_structure():

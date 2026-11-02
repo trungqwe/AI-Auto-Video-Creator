@@ -15,8 +15,11 @@
   "rights": {
     "seed_rights_status": "SELF_GENERATED",
     "article_image_rights_status": "UNVERIFIED",
-    "article_images_in_sample_video": false,
-    "pending_user_checkpoint": "OI-ADAPT-10"
+    "article_images_in_sample_video": true,
+    "article_image_decision_refs": [
+      "OI-ADAPT-10 25/10/2026",
+      "CLOSURE_NOTE CP7/RG-13 02/11/2026"
+    ]
   },
   "recipe_templates": {
     "lavfi_gradient_pulse_v1": {

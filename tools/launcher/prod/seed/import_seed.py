@@ -30,6 +30,7 @@ RECOVERY_EPOCH = 'adapt-seed-1'
 SOURCE_TOPICS = ('news',)
 SEED_OBSERVED_AT = '2026-10-22T00:00:00Z'
 ARTICLE_IMAGE_RIGHTS_STATUS = 'UNVERIFIED'
+ARTICLE_IMAGE_DECISION_REFS = ('OI-ADAPT-10', 'CLOSURE_NOTE CP7/RG-13')
 STAGED_MEDIA_DIR = 'media'
 STAGED_OWNER_REF = 'adapt-seed'
 STAGED_RETENTION_REF = 'durable'
@@ -82,9 +83,19 @@ def _require_https(sources):
 
 
 def _require_rights(hooks):
-    rights = hooks['rights']
-    if rights['article_image_rights_status'] != ARTICLE_IMAGE_RIGHTS_STATUS or rights['article_images_in_sample_video'] is not False:
-        raise SeedError('article images must stay UNVERIFIED and out of the sample video')
+    '''ADAPT-SEED-FIX3: kiểm khối rights theo quyết định của user (OI-ADAPT-10 ngày 25/10/2026, CLOSURE_NOTE CP7/RG-13 ngày 02/11/2026): ảnh bài giữ nhãn UNVERIFIED nhưng được vào video mẫu sau khi che mờ tối thiểu; khối cũ (cờ false hoặc còn pending_user_checkpoint) bị từ chối trước khi ghi dòng nào.'''
+    rights = hooks.get('rights')
+    if not isinstance(rights, dict):
+        raise SeedError('hooks.json must declare a rights block')
+    if rights.get('article_image_rights_status') != ARTICLE_IMAGE_RIGHTS_STATUS:
+        raise SeedError('article images must keep the UNVERIFIED label')
+    if rights.get('article_images_in_sample_video') is not True:
+        raise SeedError('article images must be allowed in the sample video (OI-ADAPT-10, CLOSURE_NOTE CP7/RG-13)')
+    if 'pending_user_checkpoint' in rights:
+        raise SeedError('pending_user_checkpoint must be removed: OI-ADAPT-10 is decided')
+    refs = rights.get('article_image_decision_refs')
+    if not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs) or not all(any(ref.startswith(code) for ref in refs) for code in ARTICLE_IMAGE_DECISION_REFS):
+        raise SeedError('article_image_decision_refs must cite OI-ADAPT-10 and CLOSURE_NOTE CP7/RG-13')
 
 
 def _collect_items(hooks, seed_dir):
