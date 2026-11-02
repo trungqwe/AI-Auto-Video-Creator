@@ -1,6 +1,6 @@
 """Real AlignerPort: local faster_whisper word timestamps matched to the script text (CT-SUB-001).
 
-Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count. A second exception (ADAPT-E-FIX4): Whisper pieces that rejoin into exactly one script token (long + -term, 9 + -year + -old) take the span of the pieces, and a cluster of script words and Whisper pieces that read the same value and unit (dollars, cents, percent, decimals, up to trillion) shares the heard span by character count, counted in split_word_count. A third exception (ADAPT-E-FIX6): a model word that ends where the word before it ends (Whisper gave it no time of its own, e.g. a zero-length word) shares the span of the word before it by character count, counted in split_word_count. A fourth exception (ADAPT-E-FIX7): a run of at most four script words with no model word of their own, between two matched words, takes the model words left unused between those two words, or, when there are none, joins the span of the matched word next to it; the shared span is split by character count and counted in split_word_count and split_group_count. Last (ADAPT-E-FIX8): a run of script words that still has no time after every rule above, at most 5% of the script words in all, takes the span between the two timed words around it (or, with no room there, a share of the span of the word next to it), split by character count, with confidence 0.0; these words still count as unmatched in unmatched_ratio and are counted in split_word_count and split_group_count. Before all these rules (ADAPT-E-FIX9): when the first pass fails the coverage or the ratio gate because Whisper skipped a whole clause (a run of script words with no model word), the audio around that run (RELISTEN_CONTEXT matched words on each side, at most RELISTEN_MAX_MS long) is transcribed again with clip_timestamps, at most RELISTEN_MAX_WINDOWS times, and the model words of the window replace the first-pass words there only when they cover more script words; a job that passes both gates in the first pass is never transcribed again, and a failed second pass keeps the first pass. The max_unmatched_word_ratio cap applies to split_group_count, one per shared heard span (ADAPT-E-FIX5): the two ends of a group are model times, only the inner word edges are shared.
+Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count. A second exception (ADAPT-E-FIX4): Whisper pieces that rejoin into exactly one script token (long + -term, 9 + -year + -old) take the span of the pieces, and a cluster of script words and Whisper pieces that read the same value and unit (dollars, cents, percent, decimals, up to trillion) shares the heard span by character count, counted in split_word_count. A third exception (ADAPT-E-FIX6): a model word that ends where the word before it ends (Whisper gave it no time of its own, e.g. a zero-length word) shares the span of the word before it by character count, counted in split_word_count. A fourth exception (ADAPT-E-FIX7): a run of at most four script words with no model word of their own, between two matched words, takes the model words left unused between those two words, or, when there are none, joins the span of the matched word next to it; the shared span is split by character count and counted in split_word_count and split_group_count. Last (ADAPT-E-FIX8): a run of script words that still has no time after every rule above, at most 5% of the script words in all, takes the span between the two timed words around it (or, with no room there, a share of the span of the word next to it), split by character count, with confidence 0.0; these words still count as unmatched in unmatched_ratio and are counted in split_word_count and split_group_count. Before all these rules (ADAPT-E-FIX9): when the first pass fails the coverage or the ratio gate because Whisper skipped a whole clause (a run of script words with no model word), the audio around that run (RELISTEN_CONTEXT matched words on each side, at most RELISTEN_MAX_MS long) is transcribed again with clip_timestamps, at most RELISTEN_MAX_WINDOWS times, and the model words of the window replace the first-pass words there only when they cover more script words; a job that passes both gates in the first pass is never transcribed again, and a failed second pass keeps the first pass. The max_unmatched_word_ratio cap applies to split_group_count, one per shared heard span (ADAPT-E-FIX5): the two ends of a group are model times, only the inner word edges are shared. A last exception (ADAPT-E-FIX10): when the match is still short of the gates after the second pass, a run of two or more numbers that the script writes in words (a score, a clock time, a decimal, a range: sixty-six to forty-five, eight thirty, five and oh) and the digits Whisper wrote for the same value sequence (66-45, 8.30, 5-0) share the heard span, split by character count and counted in split_word_count and split_group_count; spoken_group_count counts them. A single number stays with ADAPT-E-FIX3 and ADAPT-E-FIX4, and a job that is within both gates is never regrouped.
 """
 from __future__ import annotations
 
@@ -137,7 +137,7 @@ def _voice_artifact_path(voice_root: Path, ref: str) -> Path:
 
 @dataclass(frozen=True)
 class AlignmentReport:
-    """Counts of the last align call; unmatched_ratio = (missing script words + extra model words) / (script words + model words); split_word_count = script words that took a share of one heard span (ADAPT-E-FIX3 number groups, ADAPT-E-FIX4 amount clusters); split_group_count = shared heard spans that were split (ADAPT-E-FIX5), the count the max_unmatched_word_ratio cap applies to. relisten_count = clause windows transcribed again whose model words were kept (ADAPT-E-FIX9)."""
+    """Counts of the last align call; unmatched_ratio = (missing script words + extra model words) / (script words + model words); split_word_count = script words that took a share of one heard span (ADAPT-E-FIX3 number groups, ADAPT-E-FIX4 amount clusters); split_group_count = shared heard spans that were split (ADAPT-E-FIX5), the count the max_unmatched_word_ratio cap applies to. relisten_count = clause windows transcribed again whose model words were kept (ADAPT-E-FIX9). spoken_group_count = runs of spoken numbers that took the heard digits of the same values (ADAPT-E-FIX10)."""
 
     script_token_count: int
     transcript_word_count: int
@@ -148,6 +148,7 @@ class AlignmentReport:
     split_word_count: int = 0
     split_group_count: int = 0
     relisten_count: int = 0
+    spoken_group_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -371,8 +372,8 @@ def _cover_gaps(matches: list[tuple[int, int, int, int]], expected: list[str], h
     return sorted(found)
 
 
-def _match_script(expected: list[str], heard: list[_Heard], raws: list[str], policy: TokenizationPolicy) -> list[tuple[int, int, int, int]]:
-    """Return (first script index, last script index, first heard index, last heard index); equal blocks match word by word, a replace block only as a split compound, a same-size respelling, (ADAPT-E-FIX3) one whole number written as digits on one side and as words on the other, or (ADAPT-E-FIX4) Whisper pieces that rejoin into the script tokens; a run of adjacent amount words and pieces that read the same value and unit becomes one group."""
+def _match_script(expected: list[str], heard: list[_Heard], raws: list[str], policy: TokenizationPolicy, groups: Sequence[tuple[int, int, int, int]] = ()) -> list[tuple[int, int, int, int]]:
+    """Return (first script index, last script index, first heard index, last heard index); equal blocks match word by word, a replace block only as a split compound, a same-size respelling, (ADAPT-E-FIX3) one whole number written as digits on one side and as words on the other, or (ADAPT-E-FIX4) Whisper pieces that rejoin into the script tokens; a run of adjacent amount words and pieces that read the same value and unit becomes one group; (ADAPT-E-FIX10) each of groups, from _spoken_groups, replaces every match that shares a script or heard index with it."""
     names = [item.normalized for item in heard]
     matches: list[tuple[int, int, int, int]] = []
     units: list[tuple[int, int, int, int, str]] = []
@@ -413,6 +414,9 @@ def _match_script(expected: list[str], heard: list[_Heard], raws: list[str], pol
             if want is not None and want == _amount(''.join(item.raw for item in heard[h1:h2])):
                 matches = [m for m in matches if not s1 <= m[0] < s2]
                 matches.append((s1, s2 - 1, h1, h2 - 1))
+    for group in groups:
+        matches = [m for m in matches if not (m[0] <= group[1] and group[0] <= m[1]) and not (m[2] <= group[3] and group[2] <= m[3])]
+        matches.append(group)
     return _cover_gaps(sorted(matches), expected, heard)
 
 
@@ -618,6 +622,210 @@ def _short_of_gates(matches: Sequence[tuple[int, int, int, int]], script_count: 
     return missing > int(min(cap_ratio, FILL_MAX_RATIO) * script_count) or (total > 0 and (missing + extra) / total > cap_ratio)
 
 
+SPOKEN_NUMBER_WORDS = frozenset((*_SMALL, *_TENS[2:], *_SCALE_WORDS))
+SPOKEN_ZERO_WORDS = frozenset(('oh', 'nothing', 'nil'))
+SPOKEN_LINK_WORDS = frozenset(('to', 'and', 'point', 'a'))
+SPOKEN_UNITS = frozenset(('%', 'percent', '$', 'dollar', 'dollars'))
+SPOKEN_MAX_READINGS = 8
+_SPOKEN_PART_RE = re.compile(r'[0-9][0-9,.]*[0-9]|[0-9]|[a-z]+|[^\s-]')
+
+
+def _words_value(words: Sequence[str]) -> int | None:
+    """ADAPT-E-FIX10: the whole number that _cardinal writes as exactly these words (zero = 0), else None."""
+    total = part = 0
+    for x in words:
+        if x in _SMALL:
+            part += _SMALL.index(x)
+        elif x in _TENS[2:]:
+            part += 10 * _TENS.index(x)
+        elif x == 'hundred':
+            part *= 100
+        elif x in _MULTIPLIERS:
+            total, part = total + part * _MULTIPLIERS[x], 0
+        else:
+            return None
+    value = total + part
+    return value if words and value < 10 ** 12 and _cardinal(value) == list(words) else None
+
+
+def _split_cardinals(words: Sequence[str]) -> tuple[int, ...] | None:
+    """ADAPT-E-FIX10: words read as consecutive whole numbers, the longest number first (eight thirty = 8, 30; twenty twenty-six = 20, 26); None when a word starts no number."""
+    values: list[int] = []
+    k = 0
+    while k < len(words):
+        for end in range(len(words), k, -1):
+            value = _words_value(words[k:end])
+            if value is not None:
+                values.append(value)
+                k = end
+                break
+        else:
+            return None
+    return tuple(values)
+
+
+def _digit_readings(atom: str) -> tuple[tuple[int, ...], ...]:
+    """ADAPT-E-FIX10: the ways a digit atom is read aloud: 3,700 = (3700,); 8.30 = (8, 30) or (8, 3, 0); 2026 = (2026,) or (20, 26); () when it is not a plain number."""
+    if len(atom) > 15 or _DECIMAL_RE.fullmatch(atom) is None:
+        return ()
+    whole, _, frac = atom.replace(',', '').partition('.')
+    found = [(int(whole),)]
+    if frac:
+        found = [(int(whole), *(int(c) for c in frac))]
+        if frac[0] != '0':
+            found.append((int(whole), int(frac)))
+    elif ',' not in atom and len(whole) == 4 and whole[2] != '0':
+        found.append((int(whole[:2]), int(whole[2:])))
+    return tuple(dict.fromkeys(found))
+
+
+def _spoken(text: str) -> frozenset[tuple] | None:
+    """ADAPT-E-FIX10: every value sequence text reads as aloud (sixty-six to forty-five = (66, 45); 8.30 = (8, 30) or (8, 3, 0)), a unit kept right after its number ('$5' and five dollars = (5, '$')); number words join across spaces and hyphens, a link word, a zero word, a unit or any punctuation ends the number; None for any other word, a unit without a number, more than SPOKEN_MAX_READINGS readings or no number."""
+    items: list[tuple[tuple, ...]] = []
+    words: list[str] = []
+    prefix = tail = False
+    count = 0
+
+    def number(readings: tuple[tuple, ...]) -> None:
+        nonlocal prefix, tail, count
+        items.append(readings)
+        count += 1
+        tail = not prefix
+        if prefix:
+            items.append((('$',),))
+            prefix = False
+
+    for part in [*_SPOKEN_PART_RE.findall(text.casefold()), '']:
+        if part in SPOKEN_NUMBER_WORDS:
+            words.append(part)
+            continue
+        if words:
+            values = _split_cardinals(words)
+            if values is None:
+                return None
+            number((values,))
+            words = []
+        if not part:
+            break
+        if part[0].isdigit():
+            readings = _digit_readings(part)
+            if not readings:
+                return None
+            number(readings)
+        elif part in SPOKEN_ZERO_WORDS:
+            number(((0,),))
+        elif part == '$':
+            if prefix:
+                return None
+            prefix, tail = True, False
+        elif part in SPOKEN_UNITS:
+            if not tail:
+                return None
+            items.append((('%' if part in ('%', 'percent') else '$',),))
+            tail = False
+        elif part in SPOKEN_LINK_WORDS:
+            tail = False
+        elif part.isalnum():
+            return None
+        else:
+            tail = False
+    if prefix or not count:
+        return None
+    combos: set[tuple] = {()}
+    for readings in items:
+        combos = {head + read for head in combos for read in readings}
+        if len(combos) > SPOKEN_MAX_READINGS:
+            return None
+    return frozenset(combos)
+
+
+def _spoken_names(text: str) -> list[str]:
+    """ADAPT-E-FIX10: the words, digit runs and unit symbols of text, punctuation dropped."""
+    return [p for p in _SPOKEN_PART_RE.findall(text.casefold()) if p[0].isalnum() or p in SPOKEN_UNITS]
+
+
+def _link_only(text: str) -> bool:
+    names = _spoken_names(text)
+    return bool(names) and all(p in SPOKEN_LINK_WORDS for p in names)
+
+
+def _readable(text: str) -> bool:
+    names = _spoken_names(text)
+    return _spoken(text) is not None or (bool(names) and all(p in SPOKEN_LINK_WORDS or p in SPOKEN_UNITS or p in SPOKEN_NUMBER_WORDS for p in names))
+
+
+def _has_number(text: str) -> bool:
+    return any(p[0].isdigit() or p in SPOKEN_NUMBER_WORDS for p in _spoken_names(text))
+
+
+def _count_numbers(reading: tuple) -> int:
+    return sum(isinstance(v, int) for v in reading)
+
+
+def _spoken_runs(texts: Sequence[str]) -> list[tuple[int, int]]:
+    """ADAPT-E-FIX10: (first, end) runs, end exclusive, of consecutive texts that each read as a number (_spoken), a link word or a unit, cut of link words at both ends, with at least one digit or number word."""
+    runs: list[tuple[int, int]] = []
+    begin: int | None = None
+    for n in range(len(texts) + 1):
+        if n < len(texts) and _readable(texts[n]):
+            if begin is None:
+                begin = n
+            continue
+        if begin is not None:
+            first, end = begin, n
+            begin = None
+            while first < end and _link_only(texts[first]):
+                first += 1
+            while end > first and _link_only(texts[end - 1]):
+                end -= 1
+            if first < end and any(_has_number(texts[k]) for k in range(first, end)):
+                runs.append((first, end))
+    return runs
+
+
+def _heard_slice(texts: Sequence[str], want: frozenset[tuple]) -> tuple[int, int] | None:
+    """ADAPT-E-FIX10: (first, last) offsets of the longest, then earliest, slice of consecutive texts inside one number run whose reading shares a sequence of two or more numbers with want, or None."""
+    for x, y in _spoken_runs(texts):
+        for size in range(y - x, 0, -1):
+            for p in range(x, y - size + 1):
+                if _link_only(texts[p]) or _link_only(texts[p + size - 1]):
+                    continue
+                have = _spoken(' '.join(texts[p:p + size]))
+                if have is not None and any(_count_numbers(r) >= 2 for r in want & have):
+                    return p, p + size - 1
+    return None
+
+
+def _spoken_groups(expected: list[str], heard: list[_Heard], raws: list[str], policy: TokenizationPolicy, cap_ratio: float) -> tuple[tuple[int, int, int, int], ...]:
+    """ADAPT-E-FIX10: () when the plain _match_script is within the gates (_short_of_gates false). Otherwise, for each script run of two or more spoken numbers that no match covers in full, look between the two matches around it for a slice of heard words that reads as the same value sequence; return (first script, last script, first heard, last heard) groups, each kept only when _match_script with it covers more script words."""
+    matches = _match_script(expected, heard, raws, policy)
+    if not _short_of_gates(matches, len(expected), len(heard), cap_ratio):
+        return ()
+    covered = {n for m in matches for n in range(m[0], m[1] + 1)}
+    best = _covered_count(matches)
+    groups: list[tuple[int, int, int, int]] = []
+    floor = 0
+    for a, b in _spoken_runs(raws):
+        if all(n in covered for n in range(a, b)):
+            continue
+        want = _spoken(' '.join(raws[a:b]))
+        if want is None or not any(_count_numbers(r) >= 2 for r in want):
+            continue
+        before = [m for m in matches if m[1] < a]
+        after = [m for m in matches if m[0] >= b]
+        lo = max(before[-1][3] + 1 if before else 0, floor)
+        hi = after[0][2] if after else len(heard)
+        found = _heard_slice([item.raw for item in heard[lo:hi]], want)
+        if found is None:
+            continue
+        group = (a, b - 1, lo + found[0], lo + found[1])
+        trial = _covered_count(_match_script(expected, heard, raws, policy, (*groups, group)))
+        if trial > best:
+            groups.append(group)
+            best, floor = trial, group[3] + 1
+    return tuple(groups)
+
+
 class RealWhisperAligner:
     """AlignerPort over a local faster_whisper model; weights are verified once and the model is loaded once."""
 
@@ -748,11 +956,12 @@ class RealWhisperAligner:
         expected = [token for _, token in pairs]
         duration = request.voice_duration_ms
         heard, relistened = self._relisten(model, audio, expected, heard, [raw for raw, _ in pairs], duration)
+        spoken = _spoken_groups(expected, heard, [raw for raw, _ in pairs], policy, config.max_unmatched_word_ratio)
         slots: list[_Slot] = []
         previous_end = 0
         split_count = 0
         split_groups = 0
-        for i, i_last, first, last in _match_script(expected, heard, [raw for raw, _ in pairs], policy):
+        for i, i_last, first, last in _match_script(expected, heard, [raw for raw, _ in pairs], policy, spoken):
             start = max(heard[first].start_ms, previous_end)
             end = min(heard[last].end_ms, duration)
             if i_last > i:
@@ -805,7 +1014,7 @@ class RealWhisperAligner:
         extra = tuple(j for j in range(len(heard)) if j not in timed_heard)
         total = len(expected) + len(heard)
         ratio = (len(missing) + filled + len(extra)) / total if total else 1.0
-        self.last_report = AlignmentReport(len(expected), len(heard), len(words), missing, extra, ratio, split_count, split_groups, relistened)
+        self.last_report = AlignmentReport(len(expected), len(heard), len(words), missing, extra, ratio, split_count, split_groups, relistened, len(spoken))
         if not words:
             raise _fail(ERROR_NO_ALIGNED_WORDS, 'no script word could be aligned to a model word')
         if ratio > config.max_unmatched_word_ratio:
