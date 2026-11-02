@@ -15,6 +15,7 @@ import pytest
 from render.adapters import real_ffmpeg_renderer as renderer_module
 from render.adapters.real_ffmpeg_renderer import FfmpegPinRejected, RealFfmpegRenderer
 from render.adapters.real_ffprobe_probe import RealFfprobeProbe, measurements_from_ffprobe
+from render.domain import render_command
 from render.domain.package_contract import validate_render_package_payload
 from render.domain.preset import build_preset_revision
 from render.domain.render_command import MaterializedPaths, OutputProfile, ToolIdentity, build_render_command
@@ -179,7 +180,7 @@ def test_command_is_an_argument_list_with_production_parameters(rig, monkeypatch
     ):
         assert fragment in joined
     graph = value_after(args, '-filter_complex')
-    assert 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30' in graph
+    assert render_command.frame_placement(1080, 1920, 's0') + ',setsar=1,fps=30' in graph
     assert 'subtitles=filename=' in graph and 'ass=filename=' not in graph
     assert args[-1].startswith(rig.output_ref + '.') and args[-1].endswith('.part')
 

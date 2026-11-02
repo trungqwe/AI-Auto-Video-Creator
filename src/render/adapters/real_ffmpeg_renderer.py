@@ -1,7 +1,7 @@
 """ADAPT-F: FFmpeg adapter of RendererPort and OutputObservationPort (CT-RND-004, CT-STATE-011).
 
 run() executes one render RenderCommandSpec with subprocess.run and an argument list on the ffmpeg binary whose sha256 equals pins.ffmpeg.sha256 of tools/runtime/runtime.lock.json; a missing pin, a BLOCKED pin or a different hash is refused before anything runs.
-Production profile (plan.md 7.4): 1080x1920 (scale increase then crop), 30 fps, h264_nvenc with one retry on libx264 when NVENC cannot start, AAC 192k 48 kHz stereo, MP4 +faststart, ASS burned in by the subtitles filter.
+Production profile (plan.md 7.4): 1080x1920 (frame placement built by render_command.frame_placement), 30 fps, h264_nvenc with one retry on libx264 when NVENC cannot start, AAC 192k 48 kHz stereo, MP4 +faststart, ASS burned in by the subtitles filter.
 Each attempt writes a temporary file next to the output; only exit code 0 renames it atomically to output_ref (the output path of the spec), and an existing output is never overwritten.
 LOCK-DESKTOP-GPU is held by the caller: RenderPipeline.render_video acquires one slot and returns it; run() receives that held GpuLease and never acquires or releases it, so one render takes exactly one slot. The encoder used is written to the metrics (gpu_metrics encoder_h264_nvenc or cpu_metrics encoder_libx264) and to last_encoder.
 command_prefix exists for tests only (an interpreter that runs a fake ffmpeg script); the pin check always applies to ffmpeg_path.
@@ -214,12 +214,10 @@ def apply_measurement(spec_argv: Sequence[str], measurement: LoudnessMeasurement
 
 
 def _rewrite_graph(graph: str) -> str:
-    """The spec chain has scale and ass; production needs scale with increase plus crop, and the subtitles filter (libass)."""
+    """F-10-FIX6: the only rewrite of the spec chain is ass turned into the subtitles filter (libass); frame placement comes from render_command.frame_placement and is never touched here."""
     parts = []
     for part in graph.split(','):
-        if part.startswith('scale='):
-            parts += [f'{part}:force_original_aspect_ratio=increase', 'crop=' + part[len('scale='):]]
-        elif part.startswith('ass='):
+        if part.startswith('ass='):
             sub_part = 'subtitles=' + part[len('ass='):]
             if '\\:' in sub_part and '\\\\:' not in sub_part:
                 sub_part = sub_part.replace('\\:', '\\\\:')
