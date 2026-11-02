@@ -27,6 +27,7 @@ from render.domain.content_gates import INFERENCE_CLAIM_MODES
 from render.domain.karaoke_plan import STYLE_NAME as KARAOKE_STYLE
 from render.domain.package_contract import RenderPackageRecord
 from render.domain.quality_report import GateName, GateResult, GateStatus
+from render.domain.render_command import frame_placement
 from render.ports.output_inspector import (
     AudioHookEvidence,
     DisclosureEvidence,
@@ -302,7 +303,7 @@ def ssim_between(
 ) -> float | None:
     """SSIM of one frame of left against one frame of right, both scaled to width x height.
 
-    PW-F1-FIX4: the render places every still and clip on the output canvas with scale increase + crop; with canvas=(W, H) the right input (still or sample clip) goes through that same placement before the shrink, so near-black stills keep the level the render gave them. canvas=None keeps the old filter chain; the left input (output frame) is never re-placed."""
+    PW-F1-FIX4 and F-10-FIX6: the render places every still and clip on the output canvas with render_command.frame_placement (the single builder); with canvas=(W, H) the right input (still or sample clip) goes through that same builder before the shrink, so the QC compares what the render drew. canvas=None keeps the old filter chain; the left input (output frame) is never re-placed."""
     argv = [str(ffmpeg), '-hide_banner', '-nostdin', '-v', 'info']
     if left_ms is not None:
         argv.extend(['-ss', seek_arg(left_ms)])
@@ -313,7 +314,7 @@ def ssim_between(
     prep = f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},format=gray'
     right_prep = prep
     if canvas is not None:
-        right_prep = f'scale={canvas[0]}:{canvas[1]}:force_original_aspect_ratio=increase,crop={canvas[0]}:{canvas[1]},{prep}'
+        right_prep = frame_placement(canvas[0], canvas[1], 'qc') + ',' + prep
     argv.extend([
         '-filter_complex',
         f'[0:v]{prep}[a];[1:v]{right_prep}[b];[a][b]ssim',

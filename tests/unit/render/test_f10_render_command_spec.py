@@ -17,6 +17,7 @@ import pytest
 from render.adapters.real_ffmpeg_renderer import DEFAULT_FFMPEG_PATH, DEFAULT_LOCK_PATH, build_final_argv, verify_ffmpeg_pin
 from render.adapters.real_ffprobe_probe import DEFAULT_FFPROBE_PATH
 from render.adapters.real_output_inspector import ssim_between
+from render.domain import render_command
 from render.domain.package_contract import validate_render_package_payload
 from render.domain.preset import build_preset_revision
 from render.domain.render_command import (
@@ -165,6 +166,18 @@ def value_after(argv, flag):
     return argv[argv.index(flag) + 1]
 
 
+def still_motion(frames, fps=30):
+    inset = f'0.03*(in-1)*2/{frames}/(1+0.06*(in-1)*2/{frames})'
+    return (f",loop=loop={frames - 1}:size=1,setpts=N/{fps}/TB,select='not(mod(n,2))',"
+            + f"perspective=x0='W*{inset}':y0='H*{inset}':x1='W-W*{inset}':y1='H*{inset}':x2='W*{inset}':y2='H-H*{inset}':x3='W-W*{inset}':y3='H-H*{inset}':eval=frame")
+
+
+def scene_chain(source, prefix, frames=None, width=1080, height=1920, fps=30, pixel_format='yuv420p'):
+    head = 'trim=end_frame=1,' if frames else ''
+    motion = still_motion(frames, fps) if frames else ''
+    return f'[{source}]{head}{render_command.frame_placement(width, height, prefix)}{motion},setsar=1,fps={fps},format={pixel_format}'
+
+
 def assert_rejected(call, code, reason=None):
     with pytest.raises(RenderCommandRejected) as info:
         call()
@@ -194,25 +207,24 @@ def test_render_command_structure():
 
 def test_filter_graph_is_built_from_structured_parts():
     graph = value_after(render().argv, '-filter_complex')
-    chain = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p'
     ass = 'ass=filename=C' + BACKSLASH + ':/staging/job1/subs/karaoke.ass[vout]'
     expected = ';'.join([
-        f'[0:v:0]{chain}[v0]',
-        f'[1:v:0]{chain}[v1]',
+        scene_chain('0:v:0', 's0', 90) + '[v0]',
+        scene_chain('1:v:0', 's1') + '[v1]',
         '[4:a:0]adelay=0:all=1[ahook]',
         '[2:a:0][ahook]amix=inputs=2:duration=first:normalize=0[aout]',
         '[v0][v1]concat=n=2:v=1:a=0,tpad=stop_mode=clone:stop=-1[base]',
-        f'[3:v:0]{chain},setpts=PTS-STARTPTS+0.000/TB[vhook]',
+        scene_chain('3:v:0', 'vhook') + ',setpts=PTS-STARTPTS+0.000/TB[vhook]',
         "[base][vhook]overlay=eof_action=repeat:enable='between(t,0.000,3.000)'," + ass,
     ])
     assert graph == expected
-    assert graph.count(chr(59)) == 6
+    assert graph.count(chr(59)) == 15
 
 
 def test_profile_values_come_only_from_the_profile_input():
     other = profile(width=720, height=1280, fps=24, video_codec='vcodec2', audio_codec='acodec2', container='cont2', pixel_format='pix2', encoder='enc2')
     spec = render(profile=other)
-    assert '[0:v:0]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=24,format=pix2[v0]' in value_after(spec.argv, '-filter_complex')
+    assert scene_chain('0:v:0', 's0', 72, 720, 1280, 24, 'pix2') + '[v0]' in value_after(spec.argv, '-filter_complex')
     assert value_after(spec.argv, '-c:v') == 'enc2'
     assert value_after(spec.argv, '-c:a') == 'acodec2'
     assert value_after(spec.argv, '-f') == 'cont2'
@@ -435,12 +447,13 @@ def test_fingerprint_and_redacted_argv_follow_durations_and_media_types():
 def test_every_input_is_normalised_before_concat():
     graph = value_after(render(record=record(timeline=with_segments((0, 1000), (1000, 2000), (2000, 3000)))).argv, '-filter_complex')
     concat = graph.index('concat=')
-    assert graph.count('scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p') == 4
+    assert graph.count(',setsar=1,fps=30,format=yuv420p') == 4
     for index in range(3):
-        assert f'[{index}:v:0]scale=' in graph[:concat] and f'[v{index}]' in graph[:concat]
+        assert f'[{index}:v:0]' in graph[:concat] and f'[v{index}]' in graph[:concat]
+        assert f'[s{index}in0][s{index}in1]' in graph[:concat]
     base = graph.index('[base]')
-    assert 'scale=' not in graph[concat:base] and 'crop=' not in graph[concat:base]
-    assert '[4:v:0]scale=' in graph[base:]
+    assert 'split=' not in graph[concat:base] and 'crop=' not in graph[concat:base]
+    assert '[4:v:0]split=2[vhookin0][vhookin1]' in graph[base:]
     assert '[v0][v1][v2]concat=n=3:v=1:a=0' in graph
 
 
@@ -448,7 +461,7 @@ def test_tpad_follows_concat_and_precedes_ass_and_shortest_is_added_next_to_segm
     argv = render().argv
     graph = value_after(argv, '-filter_complex')
     assert graph.index('concat=') < graph.index('tpad=stop_mode=clone:stop=-1') < graph.index('ass=filename=')
-    assert graph.index('tpad=stop_mode=clone:stop=-1') < graph.index('overlay=') < graph.index('ass=filename=')
+    assert graph.index('tpad=stop_mode=clone:stop=-1') < graph.index('overlay=eof_action=repeat') < graph.index('ass=filename=')
     assert graph.endswith('[vout]')
     assert '-shortest' in argv and argv.index('-shortest') > argv.index('-filter_complex')
     assert argv.count('-t') == 5
@@ -594,12 +607,12 @@ def test_hook_inputs_follow_the_voice_and_are_bounded_to_the_hook_length():
     assert argv[hook_video - 3:hook_video] == ('-t', '2.500', '-i')
     assert argv[hook_audio - 3:hook_audio] == ('-t', '2.500', '-i')
     graph = value_after(argv, '-filter_complex')
-    assert '[3:v:0]scale=' in graph
+    assert '[3:v:0]split=2[vhookin0][vhookin1]' in graph
     assert ',setpts=PTS-STARTPTS+1.000/TB[vhook]' in graph
     assert "overlay=eof_action=repeat:enable='between(t,1.000,3.500)'" in graph
     assert '[4:a:0]adelay=1000:all=1[ahook]' in graph
     assert '[2:a:0][ahook]amix=inputs=2:duration=first:normalize=0[aout]' in graph
-    assert graph.count('overlay=') == 1
+    assert graph.count('overlay=eof_action=repeat') == 1
     assert '{hook_visual}' in spec.redacted_argv and '{hook_audio}' in spec.redacted_argv
     assert '{thumbnail_asset}' not in spec.redacted_argv
 
@@ -616,11 +629,11 @@ def test_distinct_thumbnail_is_overlaid_on_top_of_the_hook():
     thumb = argv.index(staged('media/thumb.png'))
     assert argv[thumb - 7:thumb] == ('-loop', '1', '-framerate', '30', '-t', '1.000', '-i')
     graph = value_after(argv, '-filter_complex')
-    assert '[5:v:0]scale=' in graph
+    assert '[5:v:0]split=2[vthumbin0][vthumbin1]' in graph
     assert ',trim=end_frame=1,setpts=PTS-STARTPTS+0.500/TB[vthumb]' in graph
     assert "[base][vhook]overlay=eof_action=repeat:enable='between(t,0.000,3.000)'[vtop]" in graph
     assert "[vtop][vthumb]overlay=eof_action=repeat:enable='between(t,0.500,1.500)',ass=filename=" in graph
-    assert graph.count('overlay=') == 2
+    assert graph.count('overlay=eof_action=repeat') == 2
     assert '{thumbnail_asset}' in render(record=thumb_record('image/png')).redacted_argv
 
 
@@ -634,14 +647,14 @@ def test_thumbnail_clip_takes_only_its_first_frame():
 
 def test_thumbnail_with_the_same_path_as_the_hook_adds_no_second_overlay():
     base = render()
-    assert value_after(base.argv, '-filter_complex').count('overlay=') == 1
+    assert value_after(base.argv, '-filter_complex').count('overlay=eof_action=repeat') == 1
     assert '{thumbnail_asset}' not in base.redacted_argv
     rec = record(
         hook_placement=hook_placement(thumbnail_ref='ref-thumb'),
         materialization_manifest=manifest(**{'ref-thumb': {'local_ref': 'media/a.mp4'}}),
     )
     same_path = render(record=rec)
-    assert value_after(same_path.argv, '-filter_complex').count('overlay=') == 1
+    assert value_after(same_path.argv, '-filter_complex').count('overlay=eof_action=repeat') == 1
     assert '{thumbnail_asset}' not in same_path.redacted_argv
 
 
@@ -736,8 +749,9 @@ def graph_of(spec):
 def test_loudnorm_follows_amix_with_the_preset_values():
     base = graph_of(render()).split(chr(59))
     chains = graph_of(render(preset=loud_preset())).split(chr(59))
-    assert chains[3] == AMIX + ',loudnorm=I=-16:TP=-1.5:LRA=11,asetpts=N/SR/TB[aout]'
-    assert chains[:3] == base[:3] and chains[4:] == base[4:]
+    mix = next(index for index, chain in enumerate(base) if chain.startswith(AMIX))
+    assert chains[mix] == AMIX + ',loudnorm=I=-16:TP=-1.5:LRA=11,asetpts=N/SR/TB[aout]'
+    assert chains[:mix] == base[:mix] and chains[mix + 1:] == base[mix + 1:]
     other = graph_of(render(preset=loud_preset({**LOUDNESS, 'integrated_lufs': -14.5, 'true_peak_dbtp': -2, 'lra': 9.5})))
     assert AMIX + ',loudnorm=I=-14.5:TP=-2:LRA=9.5,asetpts=N/SR/TB[aout]' in other
 
@@ -938,8 +952,8 @@ def test_pinned_ffmpeg_renders_mixed_size_stills_to_the_voice_length(tmp_path, s
     assert abs(int(stream['nb_read_frames']) - VOICE_SECONDS * FPS) <= 1
     tall = root / 'media' / 'tall.png'
     small = root / 'media' / 'small.png'
-    assert similarity(output, 2800, tall, None) >= 0.85
-    assert similarity(output, 2800, small, None) < 0.85
+    assert similarity(output, first + 33, tall, None) >= 0.85
+    assert similarity(output, first + 33, small, None) < 0.85
     print(f'F10FIX3 timeline_ms={first + second} output_t={spec.argv[shortest + 2]} mp4_s={info["format"]["duration"]} frames={stream["nb_read_frames"]}')
 
 
@@ -1006,3 +1020,27 @@ def test_pinned_ffmpeg_overlays_a_distinct_thumbnail_image_inside_the_thumbnail_
     assert similarity(output, 2250, thumb, None) < 0.85
     assert similarity(output, 1200, hook, 200) >= 0.85
     assert similarity(output, 2250, hook, 1250) >= 0.85
+
+
+def test_frame_placement_is_pinned():
+    expected = (
+        'split=2[pin0][pin1];'
+        + "[pin0]crop=w='min(iw,ih*1080/1920)':h='min(ih,iw*1920/1080)',scale=135:240,gblur=sigma=6,colorchannelmixer=rr=0.5:gg=0.5:bb=0.5,scale=1080:1920:flags=bilinear[pback];"
+        + "[pin1]scale=w='if(lt(abs(a*1920/1080-1),0.06),max(1080,1920*a),min(1018,1811*a))':h='if(lt(abs(a*1920/1080-1),0.06),max(1920,1080/a),min(1811,1018/a))',crop=w='min(iw,1080)':h='min(ih,1920)'[ppic];"
+        + "[pback][ppic]overlay=x='(W-w)/2':y='(H-h)/2'"
+    )
+    assert render_command.frame_placement(1080, 1920, 'p') == expected
+    assert 'between(' not in expected and 'eval=frame' not in expected
+    small = render_command.frame_placement(8, 8, 'q')
+    assert 'scale=2:2,gblur=sigma=6' in small and 'min(7,7*a)' in small
+    assert (render_command.COVER_ASPECT_TOLERANCE, render_command.SCENE_ZOOM, render_command.ZOOM_FRAME_STEP, render_command.BACKDROP_SHRINK, render_command.BACKDROP_BLUR_SIGMA, render_command.BACKDROP_LEVEL) == (0.06, 0.06, 2, 8, 6, 0.5)
+
+
+@pytest.mark.parametrize('duration_ms,fps,frames', [(3000, 30, 90), (1234, 30, 37), (1250, 30, 38), (1350, 30, 41), (1766, 30, 53), (20, 30, 1), (1001, 29.97, 30), (3000, 24, 72)])
+def test_still_scene_frame_count(duration_ms, fps, frames):
+    assert render_command._segment_frames(duration_ms, fps) == frames
+    spec = render(record=record(timeline=with_segments((0, duration_ms))), profile=profile(fps=fps))
+    graph = value_after(spec.argv, '-filter_complex')
+    assert graph.count('loop=loop=') == 1
+    assert f',loop=loop={frames - 1}:size=1,setpts=N/{fps}/TB,' in graph
+    assert still_motion(frames, fps) in graph

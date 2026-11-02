@@ -14,6 +14,7 @@ import re
 import string
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from fractions import Fraction
 from pathlib import PureWindowsPath
 
 from controlplane.application.idempotency.canonicalization import request_hash
@@ -29,6 +30,12 @@ PATH_OUTSIDE_STAGING_ROOT = 'path_outside_staging_root'
 KIND_RENDER = 'render'
 KIND_THUMBNAIL = 'thumbnail'
 IMAGE_MEDIA_PREFIX = 'image/'
+COVER_ASPECT_TOLERANCE = 0.06
+SCENE_ZOOM = 0.06
+ZOOM_FRAME_STEP = 2
+BACKDROP_SHRINK = 8
+BACKDROP_BLUR_SIGMA = 6
+BACKDROP_LEVEL = 0.5
 
 
 class RenderCommandRejected(ValueError):
@@ -248,16 +255,50 @@ def _filter_path(path: str) -> str:
     return path.replace(_BACKSLASH, '/').replace(':', _BACKSLASH + ':')
 
 
-def _chain(source: str, values: dict[str, object]) -> str:
-    width, height, fps, pixel_format = values['width'], values['height'], values['fps'], values['pixel_format']
+def frame_placement(width: int, height: int, prefix: str) -> str:
+    """The single builder that places one input on a width x height frame (scene, hook, thumbnail and the QC SSIM all call it); it has no time expression."""
+    zoomed = 1 + SCENE_ZOOM
+    fit_w, fit_h = int(width / zoomed), int(height / zoomed)
+    back_w, back_h = max(2, width // BACKDROP_SHRINK), max(2, height // BACKDROP_SHRINK)
+    cover = f'lt(abs(a*{height}/{width}-1),{COVER_ASPECT_TOLERANCE})'
+    back = (
+        f"[{prefix}in0]crop=w='min(iw,ih*{width}/{height})':h='min(ih,iw*{height}/{width})',scale={back_w}:{back_h},"
+        f'gblur=sigma={BACKDROP_BLUR_SIGMA},colorchannelmixer=rr={BACKDROP_LEVEL}:gg={BACKDROP_LEVEL}:bb={BACKDROP_LEVEL},'
+        f'scale={width}:{height}:flags=bilinear[{prefix}back]'
+    )
+    pic = (
+        f"[{prefix}in1]scale=w='if({cover},max({width},{height}*a),min({fit_w},{fit_h}*a))':"
+        f"h='if({cover},max({height},{width}/a),min({fit_h},{fit_w}/a))',"
+        f"crop=w='min(iw,{width})':h='min(ih,{height})'[{prefix}pic]"
+    )
+    return f"split=2[{prefix}in0][{prefix}in1];{back};{pic};[{prefix}back][{prefix}pic]overlay=x='(W-w)/2':y='(H-h)/2'"
+
+
+def _segment_frames(duration_ms: int, fps: int | float) -> int:
+    return max(1, math.floor(Fraction(duration_ms, 1000) * Fraction(str(fps)) + Fraction(1, 2)))
+
+
+def _scene_zoom(frames: int, fps: int | float) -> str:
+    """Slow 1.00 to 1.06 zoom of a still scene: perspective every ZOOM_FRAME_STEP frames, the odd frames repeated by the fps filter."""
+    progress = f'(in-1)*{ZOOM_FRAME_STEP}/{frames}'
+    inset = f'{SCENE_ZOOM / 2:g}*{progress}/(1+{SCENE_ZOOM:g}*{progress})'
     return (
-        f'[{source}]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},'
-        f'setsar=1,fps={fps},format={pixel_format}'
+        f",loop=loop={frames - 1}:size=1,setpts=N/{fps}/TB,select='not(mod(n,{ZOOM_FRAME_STEP}))',"
+        f"perspective=x0='W*{inset}':y0='H*{inset}':x1='W-W*{inset}':y1='H*{inset}':x2='W*{inset}':y2='H-H*{inset}':x3='W-W*{inset}':y3='H-H*{inset}':eval=frame"
     )
 
 
-def _normalise(index: int, values: dict[str, object]) -> str:
-    return _chain(f'{index}:v:0', values) + f'[v{index}]'
+def _chain(source: str, values: dict[str, object], prefix: str, head: str = '', motion: str = '') -> str:
+    width, height, fps, pixel_format = values['width'], values['height'], values['fps'], values['pixel_format']
+    return f'[{source}]{head}{frame_placement(width, height, prefix)}{motion},setsar=1,fps={fps},format={pixel_format}'
+
+
+def _normalise(index: int, values: dict[str, object], still: bool, duration_ms: int) -> str:
+    prefix = f's{index}'
+    if not still:
+        return _chain(f'{index}:v:0', values, prefix) + f'[v{index}]'
+    motion = _scene_zoom(_segment_frames(duration_ms, values['fps']), values['fps'])
+    return _chain(f'{index}:v:0', values, prefix, 'trim=end_frame=1,', motion) + f'[v{index}]'
 
 
 def _overlay(base: str, top: str, window: tuple[int, int]) -> str:
@@ -266,7 +307,7 @@ def _overlay(base: str, top: str, window: tuple[int, int]) -> str:
 
 def _shifted(source: str, values: dict[str, object], start_ms: int, label: str, first_frame_only: bool) -> str:
     trim = ',trim=end_frame=1' if first_frame_only else ''
-    return f'{_chain(source, values)}{trim},setpts=PTS-STARTPTS+{_seconds(start_ms)}/TB[{label}]'
+    return f'{_chain(source, values, label)}{trim},setpts=PTS-STARTPTS+{_seconds(start_ms)}/TB[{label}]'
 
 
 def _loudness_rule(preset: RenderPresetRevision) -> dict[str, int | float] | None:
@@ -297,10 +338,11 @@ def _loudnorm_chain(rule: dict[str, int | float] | None) -> str:
     return ',loudnorm=' + args + ',asetpts=N/SR/TB'
 
 
-def _filter_graph(count: int, values: dict[str, object], ass_path: str, hook: _HookPlan, loudnorm: str = '', beds: Sequence[_Bed] = ()) -> str:
+def _filter_graph(scenes: Sequence[tuple[bool, int]], values: dict[str, object], ass_path: str, hook: _HookPlan, loudnorm: str = '', beds: Sequence[_Bed] = ()) -> str:
+    count = len(scenes)
     voice, visual, audio, thumbnail = count, count + 1, count + 2, count + 3
     first_bed = thumbnail + (1 if hook.thumbnail_path is not None else 0)
-    chains = [_normalise(index, values) for index in range(count)]
+    chains = [_normalise(index, values, still, duration_ms) for index, (still, duration_ms) in enumerate(scenes)]
     labels = ''.join(f'[v{index}]' for index in range(count))
     chains.append(f'[{audio}:a:0]adelay={hook.hook_range[0]}:all=1[ahook]')
     chains += [
@@ -467,7 +509,7 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
     beds = _bed_plan(record, root)
     ass = _ass_path(record, root, ass_ref)
     output = _staged_path(root, materialized.output_path, 'materialized.output_path')
-    count = len(assets)
+    scenes = [(_is_still_image(record, ref), duration_ms) for _, ref, duration_ms in assets]
     pairs = [(tool['executable'], '{tool}'), *_plain('-hide_banner', '-nostdin', '-n')]
     for index, (path, ref, duration_ms) in enumerate(assets):
         pairs += _timed_input(record, ref, path, f'{{asset:{index}}}', values, duration_ms)
@@ -481,7 +523,7 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
     for index, bed in enumerate(beds):
         pairs += [*_plain('-t', _seconds(bed.end_ms - bed.start_ms), '-i'), (bed.path, f'{{bed:{index}}}')]
     pairs += _plain('-filter_complex')
-    pairs.append((_filter_graph(count, values, _filter_path(ass), hook, loudnorm, beds), _filter_graph(count, values, '{ass}', hook, loudnorm, beds)))
+    pairs.append((_filter_graph(scenes, values, _filter_path(ass), hook, loudnorm, beds), _filter_graph(scenes, values, '{ass}', hook, loudnorm, beds)))
     pairs += _plain('-map', '[vout]', '-map', '[aout]', '-shortest')
     output_ms = voice_duration_ms if voice_duration_ms is not None else _timeline_end_ms(record)
     if output_ms > 0:
