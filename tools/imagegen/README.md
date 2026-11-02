@@ -6,7 +6,7 @@ Tài liệu kỹ thuật và hướng dẫn vận hành tiến trình sidecar si
 
 Sidecar phục vụ tạo ảnh minh hoạ cục bộ trên GPU bằng mô hình FLUX 3 Image Klein:
 - **Tiến trình độc lập:** Chạy dưới dạng tiến trình riêng biệt ngoài runtime sản phẩm và Keeper.
-- **Môi trường uv riêng (`cu130`):** Sử dụng cấu hình `tools/imagegen/pyproject.toml` và `uv.lock` do Control cấp riêng biệt; tuyệt đối không đưa PyTorch, torchvision, diffusers vào runtime khoá của sản phẩm.
+- **Môi trường uv riêng (`cu130`):** Sử dụng cấu hình `tools/imagegen/pyproject.toml` và `uv.lock` do gói IMGGEN-DEPS (dependency_slice, mở sau gói này) tạo; gói IMGGEN-SVC không tạo hay sửa hai tệp này; tuyệt đối không đưa PyTorch, torchvision, diffusers vào runtime khoá của sản phẩm.
 - **Bảo mật và loopback:** Chỉ lắng nghe trên giao diện nội bộ `127.0.0.1` với cờ `SO_EXCLUSIVEADDRUSE`, yêu cầu xác thực qua Bearer Token.
 
 ## 2. Dựng Môi trường Thực thi (Dành cho Control)

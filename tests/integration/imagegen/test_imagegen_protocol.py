@@ -30,7 +30,7 @@ def test_no_imagegen_module_imports_torch_or_other_heavy_libraries_at_load_time(
 def test_uv_lock_resolves_the_pins_from_the_cu130_index_with_hashes():
     uv_lock = TOOLS / 'uv.lock'
     if not uv_lock.exists():
-        pytest.skip('uv.lock do Control cấp vào worktree, lane không tự tạo; Control kiểm sha256 ghim khi tích hợp')
+        pytest.skip('uv.lock thuộc gói IMGGEN-DEPS (dependency_slice), chưa có trong worktree; test chạy chặt khi tệp có mặt')
     data = tomllib.loads(uv_lock.read_text(encoding='utf-8'))
     packages = {p['name']: p for p in data.get('package', [])}
     assert 'torch' in packages, 'torch missing in uv.lock'
