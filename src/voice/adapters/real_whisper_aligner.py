@@ -1,6 +1,6 @@
 """Real AlignerPort: local faster_whisper word timestamps matched to the script text (CT-SUB-001).
 
-Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count. A second exception (ADAPT-E-FIX4): Whisper pieces that rejoin into exactly one script token (long + -term, 9 + -year + -old) take the span of the pieces, and a cluster of script words and Whisper pieces that read the same value and unit (dollars, cents, percent, decimals, up to trillion) shares the heard span by character count, counted in split_word_count. A third exception (ADAPT-E-FIX6): a model word that ends where the word before it ends (Whisper gave it no time of its own, e.g. a zero-length word) shares the span of the word before it by character count, counted in split_word_count. A fourth exception (ADAPT-E-FIX7): a run of at most four script words with no model word of their own, between two matched words, takes the model words left unused between those two words, or, when there are none, joins the span of the matched word next to it; the shared span is split by character count and counted in split_word_count and split_group_count. Last (ADAPT-E-FIX8): a run of script words that still has no time after every rule above, at most 5% of the script words in all, takes the span between the two timed words around it (or, with no room there, a share of the span of the word next to it), split by character count, with confidence 0.0; these words still count as unmatched in unmatched_ratio and are counted in split_word_count and split_group_count. The max_unmatched_word_ratio cap applies to split_group_count, one per shared heard span (ADAPT-E-FIX5): the two ends of a group are model times, only the inner word edges are shared.
+Word times come from the model (Whisper); an edge that sits in a pause is adjusted to the Silero VAD speech runs of the same audio. Nothing is interpolated or spread evenly: a script word without model or VAD evidence stays unmatched and gets no time. One exception (ADAPT-E-FIX3): a script group and a heard group that write the same whole number differently (words vs digits, several tokens vs one token) share the heard span, split by character count and counted in split_word_count. A second exception (ADAPT-E-FIX4): Whisper pieces that rejoin into exactly one script token (long + -term, 9 + -year + -old) take the span of the pieces, and a cluster of script words and Whisper pieces that read the same value and unit (dollars, cents, percent, decimals, up to trillion) shares the heard span by character count, counted in split_word_count. A third exception (ADAPT-E-FIX6): a model word that ends where the word before it ends (Whisper gave it no time of its own, e.g. a zero-length word) shares the span of the word before it by character count, counted in split_word_count. A fourth exception (ADAPT-E-FIX7): a run of at most four script words with no model word of their own, between two matched words, takes the model words left unused between those two words, or, when there are none, joins the span of the matched word next to it; the shared span is split by character count and counted in split_word_count and split_group_count. Last (ADAPT-E-FIX8): a run of script words that still has no time after every rule above, at most 5% of the script words in all, takes the span between the two timed words around it (or, with no room there, a share of the span of the word next to it), split by character count, with confidence 0.0; these words still count as unmatched in unmatched_ratio and are counted in split_word_count and split_group_count. Before all these rules (ADAPT-E-FIX9): when the first pass fails the coverage or the ratio gate because Whisper skipped a whole clause (a run of script words with no model word), the audio around that run (RELISTEN_CONTEXT matched words on each side, at most RELISTEN_MAX_MS long) is transcribed again with clip_timestamps, at most RELISTEN_MAX_WINDOWS times, and the model words of the window replace the first-pass words there only when they cover more script words; a job that passes both gates in the first pass is never transcribed again, and a failed second pass keeps the first pass. The max_unmatched_word_ratio cap applies to split_group_count, one per shared heard span (ADAPT-E-FIX5): the two ends of a group are model times, only the inner word edges are shared.
 """
 from __future__ import annotations
 
@@ -137,7 +137,7 @@ def _voice_artifact_path(voice_root: Path, ref: str) -> Path:
 
 @dataclass(frozen=True)
 class AlignmentReport:
-    """Counts of the last align call; unmatched_ratio = (missing script words + extra model words) / (script words + model words); split_word_count = script words that took a share of one heard span (ADAPT-E-FIX3 number groups, ADAPT-E-FIX4 amount clusters); split_group_count = shared heard spans that were split (ADAPT-E-FIX5), the count the max_unmatched_word_ratio cap applies to."""
+    """Counts of the last align call; unmatched_ratio = (missing script words + extra model words) / (script words + model words); split_word_count = script words that took a share of one heard span (ADAPT-E-FIX3 number groups, ADAPT-E-FIX4 amount clusters); split_group_count = shared heard spans that were split (ADAPT-E-FIX5), the count the max_unmatched_word_ratio cap applies to. relisten_count = clause windows transcribed again whose model words were kept (ADAPT-E-FIX9)."""
 
     script_token_count: int
     transcript_word_count: int
@@ -147,6 +147,7 @@ class AlignmentReport:
     unmatched_ratio: float
     split_word_count: int = 0
     split_group_count: int = 0
+    relisten_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -558,6 +559,65 @@ def _fill_stragglers(words: list[dict[str, object]], indices: list[int], pairs: 
     return filled, groups
 
 
+RELISTEN_CONTEXT = 2
+RELISTEN_MAX_WINDOWS = 3
+RELISTEN_MAX_MS = 28000
+
+
+def _covered_count(matches: Sequence[tuple[int, int, int, int]]) -> int:
+    """ADAPT-E-FIX9: number of script words that have a model word."""
+    return len({n for m in matches for n in range(m[0], m[1] + 1)})
+
+
+def _uncovered_runs(matches: Sequence[tuple[int, int, int, int]], count: int) -> list[tuple[int, int]]:
+    """ADAPT-E-FIX9: (first, end) script index runs, end exclusive, that no match covers."""
+    covered = {n for m in matches for n in range(m[0], m[1] + 1)}
+    runs: list[tuple[int, int]] = []
+    n = 0
+    while n < count:
+        if n in covered:
+            n += 1
+            continue
+        s1 = n
+        while n < count and n not in covered:
+            n += 1
+        runs.append((s1, n))
+    return runs
+
+
+def _relisten_window(matches: Sequence[tuple[int, int, int, int]], heard: list[_Heard], run: tuple[int, int], duration_ms: int) -> tuple[int, int, int, int] | None:
+    """ADAPT-E-FIX9: (start_ms, end_ms, first, end_index) of the audio around an uncovered run: from the heard start of the RELISTEN_CONTEXT-th match before the run (0 when there are fewer) to the heard end of the RELISTEN_CONTEXT-th match after it (the end of the voice when there are fewer); heard[first:end_index] is what a second pass replaces. None when the run is empty or the window is longer than RELISTEN_MAX_MS."""
+    s1, s2 = run
+    if s2 <= s1:
+        return None
+    ordered = sorted(matches)
+    before = [m for m in ordered if m[1] < s1]
+    after = [m for m in ordered if m[0] >= s2]
+    if len(before) >= RELISTEN_CONTEXT:
+        first = before[-RELISTEN_CONTEXT][2]
+        start = heard[first].start_ms
+    else:
+        first, start = 0, 0
+    if len(after) >= RELISTEN_CONTEXT:
+        end_index = after[RELISTEN_CONTEXT - 1][3] + 1
+        end = heard[end_index - 1].end_ms
+    else:
+        end_index, end = len(heard), duration_ms
+    end = min(end, duration_ms)
+    if end <= start or end - start > RELISTEN_MAX_MS or first > end_index:
+        return None
+    return start, end, first, end_index
+
+
+def _short_of_gates(matches: Sequence[tuple[int, int, int, int]], script_count: int, heard_count: int, cap_ratio: float) -> bool:
+    """ADAPT-E-FIX9: True when the matches leave more script words without a model word than the fill rule may take (int(min(cap_ratio, FILL_MAX_RATIO) * script_count)), or when (those words + unmatched model words) / (script words + model words) is above cap_ratio."""
+    missing = script_count - _covered_count(matches)
+    used = {j for m in matches for j in range(m[2], m[3] + 1)}
+    extra = heard_count - len(used)
+    total = script_count + heard_count
+    return missing > int(min(cap_ratio, FILL_MAX_RATIO) * script_count) or (total > 0 and (missing + extra) / total > cap_ratio)
+
+
 class RealWhisperAligner:
     """AlignerPort over a local faster_whisper model; weights are verified once and the model is loaded once."""
 
@@ -628,6 +688,43 @@ class RealWhisperAligner:
             raise _fail(ERROR_VOICE_HASH_MISMATCH, 'voice artifact hash differs from request')
         return path
 
+    def _relisten(self, model: object, audio: Path, expected: list[str], heard: list[_Heard], raws: list[str], duration_ms: int) -> tuple[list[_Heard], int]:
+        """ADAPT-E-FIX9: only when the first-pass match is short of the gates, transcribe the window around the longest untried uncovered run again (at most RELISTEN_MAX_WINDOWS calls); the model words of the second pass whose midpoint lies in the window replace heard[first:end_index], kept only when more script words are covered; any error of a second pass keeps what was heard before. Returns (heard, windows kept)."""
+        config = self._config
+        policy = config.tokenization_policy
+        cap = config.max_unmatched_word_ratio
+        matches = _match_script(expected, heard, raws, policy)
+        if not _short_of_gates(matches, len(expected), len(heard), cap):
+            return heard, 0
+        tried: set[tuple[int, int]] = set()
+        calls = kept = 0
+        while calls < RELISTEN_MAX_WINDOWS:
+            runs = [run for run in _uncovered_runs(matches, len(expected)) if run not in tried]
+            if not runs:
+                break
+            run = max(runs, key=lambda item: (item[1] - item[0], -item[0]))
+            tried.add(run)
+            window = _relisten_window(matches, heard, run, duration_ms)
+            if window is None:
+                continue
+            start, end, first, end_index = window
+            calls += 1
+            try:
+                segments, _ = model.transcribe(
+                    str(audio), language=config.language, word_timestamps=True, vad_filter=False, condition_on_previous_text=False,
+                    clip_timestamps=[start / 1000, end / 1000],
+                )
+                again = [item for item in _heard_words(list(segments), policy) if start <= (item.start_ms + item.end_ms) / 2 <= end]
+                candidate = [*heard[:first], *again, *heard[end_index:]]
+                found = _match_script(expected, candidate, raws, policy)
+            except Exception:
+                continue
+            if _covered_count(found) > _covered_count(matches):
+                heard, matches, kept = candidate, found, kept + 1
+                if not _short_of_gates(matches, len(expected), len(heard), cap):
+                    break
+        return heard, kept
+
     def align(self, request: AlignmentRequest) -> AlignmentResult:
         if not isinstance(request, AlignmentRequest):
             raise TypeError('request must be AlignmentRequest')
@@ -650,6 +747,7 @@ class RealWhisperAligner:
             raise self._runtime_error(exc) from None
         expected = [token for _, token in pairs]
         duration = request.voice_duration_ms
+        heard, relistened = self._relisten(model, audio, expected, heard, [raw for raw, _ in pairs], duration)
         slots: list[_Slot] = []
         previous_end = 0
         split_count = 0
@@ -707,7 +805,7 @@ class RealWhisperAligner:
         extra = tuple(j for j in range(len(heard)) if j not in timed_heard)
         total = len(expected) + len(heard)
         ratio = (len(missing) + filled + len(extra)) / total if total else 1.0
-        self.last_report = AlignmentReport(len(expected), len(heard), len(words), missing, extra, ratio, split_count, split_groups)
+        self.last_report = AlignmentReport(len(expected), len(heard), len(words), missing, extra, ratio, split_count, split_groups, relistened)
         if not words:
             raise _fail(ERROR_NO_ALIGNED_WORDS, 'no script word could be aligned to a model word')
         if ratio > config.max_unmatched_word_ratio:
