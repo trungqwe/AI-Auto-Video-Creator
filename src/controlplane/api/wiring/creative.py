@@ -26,7 +26,7 @@ from creative.adapters.prompt_source import ConfigPromptSource
 from creative.application.pipeline import CreativePipeline
 from creative.application.provider_failure import ProviderFailurePolicy
 from creative.domain.asset_selection import SafetyRightsPolicy, ScoringWeights
-from creative.domain.script import LanguageVoicePolicy, TargetRange, INPUT_NOT_READY
+from creative.domain.script import LanguageVoicePolicy, TargetRange, INPUT_NOT_READY, SCRIPT_CHARS_PER_SECOND
 from creative.worker.activity_handler import CreativeActivityDeps
 from zoneinfo import ZoneInfo
 
@@ -270,7 +270,7 @@ def creative_settings(profile: Any) -> CreativeSettings:
             except Exception:
                 pass
     speech_rate = max(0.1, wpm / 60.0)
-    language_policy = LanguageVoicePolicy(language=lang, speech_rate=speech_rate)
+    language_policy = LanguageVoicePolicy(language=lang, speech_rate=speech_rate, chars_per_second=SCRIPT_CHARS_PER_SECOND)
 
     rev = getattr(profile, 'revision', 1)
     variation_policy_revision = f'profile-{rev}'

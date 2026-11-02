@@ -42,6 +42,12 @@ VOICE_TRACK_INPUT_TYPES = MappingProxyType({
     'pronunciation_hints': 'array',
 })
 
+# Đo trên lô 71973394 (CP7-11 lượt 3), giọng Kokoro af_heart, 63 lần đọc ở tốc độ 1,0: 13,81 ký tự không kể dấu cách mỗi giây (R2 0,70, sai số sd 1,42 s); số từ chỉ có R2 0,005 (sd 2,75 s).
+SCRIPT_CHARS_PER_SECOND = 13.81
+# Cùng lô, 7 lần đọc lại: ở mức kẹp 0,85 thời lượng kéo dài ít nhất x1,1087; ở mức kẹp 1,15 rút còn x0,9226.
+FIRST_READ_SLOW_RATIO = 1.1087
+FIRST_READ_FAST_RATIO = 0.9226
+
 
 class ScriptRejected(Exception):
     def __init__(self, code: str, reason: str, field: str = '') -> None:
@@ -53,10 +59,11 @@ class ScriptRejected(Exception):
 
 @dataclass(frozen=True, kw_only=True)
 class LanguageVoicePolicy:
-    """Language and voice policy with speech rate in words per second."""
+    """Language and voice policy with speech rate in words per second; chars_per_second (optional) switches the duration estimate to non-space characters per second."""
 
     language: str
     speech_rate: float
+    chars_per_second: float | None = None
 
     def __post_init__(self) -> None:
         if self.language is None or self.language == '':
@@ -73,6 +80,15 @@ class LanguageVoicePolicy:
         ):
             raise ValueError('speech_rate must be a positive finite number')
         object.__setattr__(self, 'speech_rate', float(self.speech_rate))
+        if self.chars_per_second is not None:
+            if (
+                isinstance(self.chars_per_second, bool)
+                or not isinstance(self.chars_per_second, (int, float))
+                or not math.isfinite(self.chars_per_second)
+                or self.chars_per_second <= 0
+            ):
+                raise ValueError('chars_per_second must be a positive finite number')
+            object.__setattr__(self, 'chars_per_second', float(self.chars_per_second))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -168,6 +184,10 @@ def normalize_narration(text: str) -> str:
 
 def count_words(text: str) -> int:
     return len(normalize_narration(text).split())
+
+
+def count_chars(text: str) -> int:
+    return len(normalize_narration(text).replace(' ', ''))
 
 
 def _reject(field: str, reason: str) -> None:
@@ -309,6 +329,7 @@ def build_script_version(
         MISSING_SOURCE_REF: source_backed_requires_ref
         MISSING_DISCLOSURE: disclosure_required
         DURATION_OUT_OF_RANGE: below_target_range, above_target_range
+            (with language_policy.chars_per_second set the estimate is chars / chars_per_second and the accepted band is [min / FIRST_READ_SLOW_RATIO, max / FIRST_READ_FAST_RATIO])
 
     coveredIds: CT-AI-004, CT-TTS-001
     """
@@ -326,6 +347,7 @@ def build_script_version(
 
     built_segments: list[ScriptSegment] = []
     total_words = 0
+    total_chars = 0
 
     for i, seg in enumerate(data['segments']):
         resolved_refs: list[ResourceRef] = []
@@ -356,7 +378,12 @@ def build_script_version(
 
         words = count_words(seg['text'])
         total_words += words
-        est_seconds = round(words / language_policy.speech_rate, 6)
+        chars = count_chars(seg['text'])
+        total_chars += chars
+        if language_policy.chars_per_second is None:
+            est_seconds = round(words / language_policy.speech_rate, 6)
+        else:
+            est_seconds = round(chars / language_policy.chars_per_second, 6)
 
         built_segments.append(
             ScriptSegment(
@@ -372,10 +399,17 @@ def build_script_version(
             )
         )
 
-    estimated_duration = total_words / language_policy.speech_rate
-    if estimated_duration < target_range.min_seconds:
+    if language_policy.chars_per_second is None:
+        estimated_duration = total_words / language_policy.speech_rate
+        lower_bound = target_range.min_seconds
+        upper_bound = target_range.max_seconds
+    else:
+        estimated_duration = total_chars / language_policy.chars_per_second
+        lower_bound = target_range.min_seconds / FIRST_READ_SLOW_RATIO
+        upper_bound = target_range.max_seconds / FIRST_READ_FAST_RATIO
+    if estimated_duration < lower_bound:
         raise ScriptRejected(DURATION_OUT_OF_RANGE, 'below_target_range', 'segments')
-    if estimated_duration > target_range.max_seconds:
+    if estimated_duration > upper_bound:
         raise ScriptRejected(DURATION_OUT_OF_RANGE, 'above_target_range', 'segments')
 
     hints_proxy = tuple(
