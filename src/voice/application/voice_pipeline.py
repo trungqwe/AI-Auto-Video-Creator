@@ -19,6 +19,7 @@ from voice.domain.language_evidence import (
     build_language_evidence,
 )
 from voice.domain.speed_fit import SpeedFitPolicy, plan_speed_fit
+from voice.domain.tail_pad import pad_wav_tail, plan_tail_pad
 from voice.domain.timing_binding import TimingBinding, require_valid_timing
 from voice.domain.timing_coverage import (
     CoverageReport,
@@ -62,6 +63,7 @@ KIND_RECEIPT = 'receipt'
 KIND_TIMING_REPORT = 'timing_report'
 KIND_LANGUAGE_EVIDENCE = 'language_evidence'
 WARNING_SPEED_FIT_APPLIED = 'speed_fit_applied'
+WARNING_TAIL_PAD_APPLIED = 'tail_pad_applied'
 
 
 class IdempotencyConflict(ValueError):
@@ -265,6 +267,8 @@ class VoicePipeline:
         speed_fit = command.speed_fit
         records = _judged(run.records, finding, actual_duration_ms, record_duration=speed_fit is not None)
         speed_scale = None
+        tail_pad_ms = None
+        reread_duration_ms = None
         first_take_duration_ms = None
         if finding is not None and speed_fit is not None:
             first_finding = finding
@@ -286,7 +290,13 @@ class VoicePipeline:
             audio = retake.synthesis.audio_bytes
             actual_duration_ms = self._measure_duration_ms(audio)
             finding = check_duration(actual_duration_ms, command.duration_policy)
-            records = records + _judged(numbered, finding, actual_duration_ms, record_duration=True)
+            reread_duration_ms = actual_duration_ms
+            tail_pad_ms = plan_tail_pad(actual_duration_ms, command.duration_policy) if finding is not None else None
+            if tail_pad_ms is not None:
+                audio = pad_wav_tail(audio, tail_pad_ms)
+                actual_duration_ms = self._measure_duration_ms(audio)
+                finding = check_duration(actual_duration_ms, command.duration_policy)
+            records = records + _judged(numbered, finding, reread_duration_ms, record_duration=True)
             if finding is not None:
                 self._commit_invocations(command.track_key, records)
                 raise VoiceDurationRejected(finding, first_finding=first_finding)
@@ -302,7 +312,10 @@ class VoicePipeline:
         warnings: tuple[str, ...] = ()
         if speed_scale is not None:
             usage_metrics = {**usage_metrics, 'speed_scale': speed_scale, 'first_take_duration_ms': first_take_duration_ms}
+            usage_metrics = {**usage_metrics, 'tail_pad_ms': tail_pad_ms, 'reread_duration_ms': reread_duration_ms}
             warnings = (WARNING_SPEED_FIT_APPLIED,)
+            if tail_pad_ms is not None:
+                warnings = warnings + (WARNING_TAIL_PAD_APPLIED,)
         voice = VoiceTrack(
             voice_artifact_ref=artifact_ref,
             script_version_id=request['script_version_id'],
