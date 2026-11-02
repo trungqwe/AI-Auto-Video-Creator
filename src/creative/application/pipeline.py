@@ -54,6 +54,8 @@ REF_ARTICLE_REVISION = 'article_revision'
 SELECTION_ID_PREFIX = 'selection:'
 ARTICLE_ROLES = frozenset({ROLE_ANALYSIS, ROLE_ANGLES, ROLE_SCRIPT})
 SINGLE_ATTEMPT = 1  # failure_policy=None (D-14, PW-D1, PW-D2 tests that configure no retry): one model call, no retry; production always passes a policy from ai.retry.max_attempts
+ORIGIN_AI_GENERATED = 'ai_generated'
+AI_ILLUSTRATION_NOTE = 'Includes AI-generated illustrations.'
 
 
 class PipelineRejected(Exception):
@@ -146,6 +148,24 @@ def _plain(value: Any) -> Any:
         return [_plain(item) for item in value]
     return value
 
+
+def _uses_ai_illustration(plans: Sequence[Any]) -> bool:
+    """True when a plan timeline has a visual whose origin is ORIGIN_AI_GENERATED; the plan is the source, not the transient ai_illustration ref, because a second video of one article reuses an AI image already registered."""
+    for plan in plans:
+        timeline = plan.timeline
+        segments = timeline.get('segments') if isinstance(timeline, Mapping) else None
+        for segment in segments if isinstance(segments, (list, tuple)) else ():
+            visuals = segment.get('visuals') if isinstance(segment, Mapping) else None
+            for visual in visuals if isinstance(visuals, (list, tuple)) else ():
+                if isinstance(visual, Mapping) and visual.get('origin') == ORIGIN_AI_GENERATED:
+                    return True
+    return False
+
+
+def _with_illustration_note(metadata: OutputMetadata) -> OutputMetadata:
+    if AI_ILLUSTRATION_NOTE in metadata.caption:
+        return metadata
+    return dataclasses.replace(metadata, caption=metadata.caption.rstrip() + ' ' + AI_ILLUSTRATION_NOTE)
 
 
 class ArticleContextPort(Protocol):
@@ -777,6 +797,7 @@ class CreativePipeline:
         def work(uow: Any) -> _Outcome | _AiPlan:
             snapshot = self._committed_snapshot(uow, snapshot_id)
             plans =[stored.record for stored in (uow.plans.latest(ref) for ref in refs) if stored is not None]
+            illustrated = _uses_ai_illustration(plans)
             prior = [
                 self._prior_item(context.workspace_id, 'plan', 'production_plan', plan.production_plan_id, plan.plan_fingerprint, plan)
                 for plan in plans
@@ -791,6 +812,8 @@ class CreativePipeline:
                         source_job_ref=source_job_ref, source_output_refs=refs, metadata_revision=metadata_revision)
                 except (KeyError, TypeError, ValueError) as error:
                     raise PipelineRejected(SCHEMA_VIOLATION, 'invalid_output_metadata', 'output_metadata') from error
+                if illustrated:
+                    metadata = _with_illustration_note(metadata)
                 if sanitizer is not None:
                     metadata = metadata.with_filename_safe(sanitizer)
                 return metadata
