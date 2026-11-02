@@ -22,6 +22,7 @@ import feedparser
 import trafilatura
 
 from controlplane.domain.common.contracts import ProblemDetail
+from source_ingestion.adapters.article_images import decode_html, page_images
 from source_ingestion.adapters.secure_fetch import PROBLEM_TYPE_PREFIX, FetchPolicy, SecureFetcher
 from source_ingestion.domain.locator import canonicalize_locator
 from source_ingestion.ports.source_adapter import (
@@ -44,6 +45,7 @@ EXTRACTOR_VERSION = f'feedparser-{FEEDPARSER_VERSION}+trafilatura-{TRAFILATURA_V
 WARNING_FEED_MALFORMED = 'feed_malformed'
 WARNING_FEED_KIND_MISMATCH = 'feed_kind_mismatch'
 WARNING_NO_CONTENT = 'trafilatura_no_content'
+WARNING_PAGE_IMAGES_FAILED = 'page_images_failed'
 _FEED_VERSION_PREFIX = {'rss_feed': 'rss', 'atom_feed': 'atom'}
 
 
@@ -77,7 +79,7 @@ def _http_locator(base: str, raw: object) -> str | None:
 
 
 def _append_media(media: list[dict[str, object]], locator: str | None, role: str, element: str) -> None:
-    if locator is None or any(item['locator'] == locator and item['role'] == role for item in media):
+    if locator is None or any(item['locator'] == locator for item in media):
         return
     media.append({
         'locator': locator,
@@ -245,7 +247,11 @@ class RealFeedSource:
         warnings = [] if extracted else [WARNING_NO_CONTENT]
         hint = self._hints.get(observation.requested_locator) or self._hints.get(observation.final_locator)
         media = list(hint.media) if hint else []
-        _append_media(media, _http_locator(observation.final_locator, extracted.get('image')), 'hero', 'trafilatura_image')
+        try:
+            for image in page_images(decode_html(document.body, observation.safe_headers), observation.final_locator):
+                _append_media(media, image.locator, image.role, image.element)
+        except Exception:
+            warnings.append(WARNING_PAGE_IMAGES_FAILED)
         if hint and hint.language_tag:
             language, language_origin = hint.language_tag, 'feed'
         else:

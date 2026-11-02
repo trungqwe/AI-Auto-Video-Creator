@@ -1,7 +1,7 @@
 """Real image fetch and staging for source ingestion (ADAPT-A; A-RULE-013, CT-MED-001).
 
 Every image is loaded through SecureFetcher with the image FetchPolicy, so the SSRF policy runs on
-every hop and the size limit applies while the body streams. A loaded image is hashed with SHA-256,
+every hop and the size limit applies while the body streams. A loaded image needs a readable header and a short side of at least 360 px (read from the first bytes, never from Content-Type); it is then hashed with SHA-256,
 written under the configured staging root and handed to C as a DiscoveryObservation. A rejected or
 failed image is returned as a ProblemDetail and never raised.
 """
@@ -19,9 +19,13 @@ from pathlib import Path
 from catalog.application.discovery import DiscoveryObservation
 from catalog.domain.identity import CanonicalFingerprint, MediaKind, ProvenanceEntry, ProvenanceRelation
 from controlplane.domain.common.contracts import ProblemDetail
+from source_ingestion.adapters.image_header import read_image_size
 from source_ingestion.adapters.secure_fetch import PROBLEM_TYPE_PREFIX, FetchPolicy, SecureFetcher
 
 _LOG = logging.getLogger(__name__)
+
+MAX_IMAGES_PER_ARTICLE = 12
+MIN_SHORT_SIDE = 360
 
 _EXTENSIONS = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}
 _DISCOVERY_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, 'urn:source-ingestion:media-discovery')
@@ -47,6 +51,21 @@ def _staging_problem(correlation_id: str) -> ProblemDetail:
         category='internal',
         retryable=False,
         correlation_id=correlation_id,
+    )
+
+
+def _image_problem(code: str, detail: str, correlation_id: str, **facts: int) -> ProblemDetail:
+    _LOG.info('media fetch problem code=%s', code)
+    return ProblemDetail.create(
+        type=PROBLEM_TYPE_PREFIX + code.lower(),
+        title=code,
+        detail=detail,
+        instance=f'urn:source-ingestion:media:{correlation_id}',
+        code=code,
+        category='policy',
+        retryable=False,
+        correlation_id=correlation_id,
+        **facts,
     )
 
 
@@ -77,7 +96,7 @@ class RealMediaFetcher:
         *,
         image_policy: FetchPolicy,
         staging_root: str | Path,
-        max_images_per_article: int = 8,
+        max_images_per_article: int = MAX_IMAGES_PER_ARTICLE,
         utc_now: Callable[[], datetime] = _utc_now,
         correlation_id: Callable[[], str] = _new_correlation_id,
     ) -> None:
@@ -117,6 +136,18 @@ class RealMediaFetcher:
         if isinstance(fetched, ProblemDetail):
             return fetched
         observation = fetched.observation
+        size = read_image_size(fetched.body)
+        if size is None:
+            return _image_problem('IMAGE_HEADER_UNREADABLE', 'Image header could not be read.', correlation_id)
+        if min(size) < MIN_SHORT_SIDE:
+            return _image_problem(
+                'IMAGE_TOO_SMALL',
+                'Image short side is below the minimum.',
+                correlation_id,
+                width=size[0],
+                height=size[1],
+                min_short_side=MIN_SHORT_SIDE,
+            )
         digest = hashlib.sha256(fetched.body).hexdigest()
         try:
             path = self._stage(fetched.body, digest, observation.media_type)
