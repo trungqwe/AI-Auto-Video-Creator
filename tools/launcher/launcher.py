@@ -54,6 +54,8 @@ NAMESPACE_WAIT_SECONDS = 60
 # Nhịp kiểm của relay outbox và consumer enrichment trong tiến trình worker (mặc định D8, PW-W1) và thời hạn chờ các vòng nền dừng khi stop.
 OUTBOX_RELAY_INTERVAL_SECONDS = 2.0
 ENRICHMENT_INTERVAL_SECONDS = 5.0
+# Nhịp chiếu sự kiện outbox vào cp_operation_stream (OPSTREAM-WIRE): SSE và màn hình thao tác đọc luồng này.
+OPERATION_STREAM_INTERVAL_SECONDS = 2.0
 BACKGROUND_STOP_SECONDS = 10.0
 
 # Sidecar ảnh minh hoạ cục bộ (IMGGEN-LAUNCH, thiết kế đợt 42 mục 2): tiến trình riêng trong môi trường uv riêng, launcher chỉ khởi chạy, canh và dừng nó.
@@ -1028,6 +1030,7 @@ def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
     from controlplane.application.orchestration.grant_runtime import build_grant_issuer
     from controlplane.infrastructure.db.orchestration.collection_scheduler import CollectionScheduler, EnrichmentStarter
     from controlplane.infrastructure.db.orchestration.outbox_relay import OutboxRelay
+    from controlplane.infrastructure.db.projections.operation_stream_relay import OperationStreamRelay
 
     try:
         manager = app.manager
@@ -1101,10 +1104,12 @@ def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
                 collection_interval_minutes=interval_minutes, tier_order=tier_order,
             )
             starter = EnrichmentStarter(batch_connection, client, workspace_id, services.settings, clock)
+            stream_relay = OperationStreamRelay(batch_connection, workspace_id)
             background = [
                 asyncio.ensure_future(relay.run_forever(stop_event, OUTBOX_RELAY_INTERVAL_SECONDS)),
                 asyncio.ensure_future(scheduler.run_forever(stop_event)),
                 asyncio.ensure_future(starter.run_forever(stop_event, ENRICHMENT_INTERVAL_SECONDS)),
+                asyncio.ensure_future(stream_relay.run_forever(stop_event, OPERATION_STREAM_INTERVAL_SECONDS)),
             ]
             group_box.append(group)
             ready_evt.set()
