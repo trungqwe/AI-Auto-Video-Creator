@@ -1,0 +1,763 @@
+"""CP7-10 / RG-09: một lô 1 video trên ngăn xếp thật (launcher, PostgreSQL, Temporal, 9Router, Drive, GPU).
+
+Trần chi phí: <= 25 lời gọi AI, ledger +3 USD, Drive <= 200 MiB, <= 2 giờ. Cách dừng: `python tools/launcher/launcher.py stop`
+(driver luôn dừng ở cuối). Giữa lúc render chạy stop rồi start đúng một lần. Không mock; driver không ghi DB và không làm thay production: thư mục staging, media seed và render config do `launcher start` tự tạo, driver chỉ đọc.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import sys
+from pathlib import Path
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, 'reconfigure'):
+        _stream.reconfigure(encoding='utf-8')
+
+REPO = Path(__file__).resolve().parents[2]
+for _path in (REPO / 'tools' / 'real', REPO / 'src'):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
+
+import pytest  # noqa: E402
+
+import cp7_batch_driver as d  # noqa: E402
+import cp7_common as c  # noqa: E402
+
+REPORT = REPO / 'docs' / 'delivery-evidence' / 'cp7-10' / 'report.md'
+DRIVER_FILE = REPO / 'tools' / 'real' / 'cp7_batch_driver.py'
+SELF = Path(__file__).resolve()
+DEADLINE = c.Deadline(d.RUN_DEADLINE_SECONDS)
+
+
+@pytest.fixture(scope='module')
+def batch_run(tmp_path_factory):
+    work = tmp_path_factory.mktemp('cp7_rg09')
+    try:
+        return d.run_batch(work, DEADLINE)
+    except d.BlockedError as exc:
+        pytest.fail(str(exc))
+
+
+def _pass(emit, item, *details):
+    emit(c.report_line('RG-09', item, 'PASS'))
+    for detail in details:
+        assert detail.isascii()
+        emit('- ' + item + ': ' + detail)
+
+
+def _stage(name, row):
+    return f'{name}({d.STAGE_LABELS[name]})={row["status"]}/attempt{row["attempt"]}'
+
+
+def _ascii_line(line):
+    """Chuỗi in ra console Windows chỉ gồm ASCII."""
+    return str(line).encode('ascii', 'backslashreplace').decode('ascii')
+
+
+# --- test thuần (không chạm ngăn xếp thật) -----------------------------------------------------------------------
+
+def test_unit_ascii_line_is_console_safe():
+    assert _ascii_line('Đ ok x=1') == '\\u0110 ok x=1'
+    assert _ascii_line('plain') == 'plain'
+    assert _ascii_line('Đ').isascii()
+
+
+def test_unit_resume_rejects_late_ready():
+    assert d.evaluate_resume({}, {}, 300)['ready_ok'] is True
+    for bad in (301, 300.01, None, True, -1):
+        assert d.evaluate_resume({}, {}, bad)['ready_ok'] is False
+
+
+def test_unit_find_reruns_flags_attempt_change():
+    before = {'analyze': {'status': 'SUCCEEDED', 'attempt': 1, 'stage_run_id': 'a'},
+              'render': {'status': 'RUNNING', 'attempt': 1, 'stage_run_id': 'r'}}
+    same = {k: dict(v) for k, v in before.items()}
+    assert d.find_reruns(before, same) == []
+    for change in ({'attempt': 2}, {'status': 'RUNNING'}, {'stage_run_id': 'b'}):
+        after = {k: dict(v) for k, v in before.items()}
+        after['analyze'].update(change)
+        assert d.find_reruns(before, after) == ['analyze']
+    assert d.find_reruns(before, {'render': dict(before['render'])}) == ['analyze']
+    after = {k: dict(v) for k, v in before.items()}
+    after['render']['attempt'] = 3
+    assert d.find_reruns(before, after) == []
+
+
+def test_unit_budget_violations():
+    assert d.budget_violations(25, '3', d.DRIVE_CAP_BYTES, 7200) == []
+    assert d.budget_violations(26, 0, 0, 0) == ['ai_calls']
+    assert d.budget_violations(0, '3.01', 0, 0) == ['ledger_usd']
+    assert d.budget_violations(0, 0, d.DRIVE_CAP_BYTES + 1, 0) == ['drive_bytes']
+    assert d.budget_violations(0, 0, 0, 7201) == ['elapsed']
+
+
+def test_unit_trace_missing():
+    full = {k: 'x' for k in d.TRACE_KEYS}
+    assert d.trace_missing(full) == []
+    gone = dict(full)
+    del gone['snapshot_id']
+    assert d.trace_missing(gone) == ['snapshot_id']
+    for empty in ('', [], {}, None):
+        assert d.trace_missing({**full, 'model_refs': empty}) == ['model_refs']
+
+
+class _SnapshotDb:
+    """Db giả chỉ đọc: cp_video_jobs.snapshot_ref giữ chỗ 'allocation:slot-1' như AllocateJob; id snapshot thật chỉ có ở cp_completion_ledger."""
+
+    def __init__(self, ledger=True):
+        self.ledger = ledger
+
+    def query(self, sql, *params):
+        if 'FROM controlplane.cp_completion_ledger' in sql:
+            return [('snap-real',)] if self.ledger else []
+        if 'FROM controlplane.cp_video_jobs' in sql:
+            return [('allocation:slot-1',)]
+        if 'FROM controlplane.cp_production_snapshots' in sql:
+            return [({'source_refs': [{'ref_id': 's1'}], 'index_revision_refs': [{'ref_id': 'i1'}], 'configuration_revision_refs': [{'ref_id': 'c1'}]},)] if params[0] == 'snap-real' else []
+        if 'FROM controlplane.cp_production_plans' in sql:
+            return [({'script_version_id': 'sv1'}, 'plan1')]
+        if 'FROM controlplane.cp_script_versions' in sql:
+            return [({'segments': []}, 3)]
+        if 'FROM controlplane.cp_content_analyses' in sql:
+            return [('analysis-1', 1)]
+        if 'FROM controlplane.cp_render_packages' in sql:
+            return [({'script_version_ref': 'sv1', 'production_plan_ref': 'plan1', 'timeline': {}},)] if params[0] == 'snap-real' else []
+        return []
+
+
+def test_unit_build_trace_uses_ledger_snapshot_id():
+    trace = d.build_trace(_SnapshotDb(), 'job-1')
+    assert trace['snapshot_id'] == 'snap-real'
+    assert d.trace_missing(trace) == []
+    assert trace['input_revisions']['snapshot_sources'] == [{'ref_id': 's1'}]
+
+
+def test_unit_build_trace_blocks_without_ledger_snapshot():
+    with pytest.raises(d.BlockedError):
+        d.build_trace(_SnapshotDb(ledger=False), 'job-1')
+
+
+def test_unit_render_matches_plan_uses_ledger_snapshot_id():
+    plan = {'script_sha256': d._sha({'segments': []}), 'production_plan_id': 'plan1', 'media_asset_ids': []}
+    assert d.render_matches_plan(_SnapshotDb(), 'job-1', plan) is True
+
+
+def test_unit_qc_gates_uses_ledger_snapshot_id():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    body = text[text.index('def qc_gates('):text.index('# --- chạy lô')]
+    assert 'job_snapshot_id(db, job_id)' in body
+    assert 'FROM controlplane.cp_video_jobs' not in body
+    assert 'SELECT snapshot_ref FROM controlplane.cp_video_jobs' not in text
+
+
+def test_unit_no_batch_retry_loop():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    for name in ('MAX_BATCH_ATTEMPTS', 'AI_CALLS_PER_JOB_RESERVE', 'RETRY_STAGES', 'RETRY_CODES', 'should_retry_batch'):
+        assert name not in text
+    assert text.count('session.post_batch(1)') == 1
+
+
+def test_unit_format_failed_stage():
+    assert d.format_failed_stage(None) == 'stage=none'
+    assert d.format_failed_stage(('script', 'FAILED_FINAL', 'ai_output_schema_violation', 'GenerateScript', '{"hook": "required"}')) == 'stage=script status=FAILED_FINAL activity=GenerateScript code=ai_output_schema_violation field_errors={"hook": "required"}'
+
+
+def test_unit_format_render_config():
+    rows = [('preset', 'bold-yellow', 'PUBLISHED'), ('policy', 'quality', 'DRAFT')]
+    assert d.format_render_config(rows) == 'render_config=[preset/bold-yellow=PUBLISHED preset/output-profile=MISSING policy/quality=DRAFT]'
+    missing = 'render_config=[preset/bold-yellow=MISSING preset/output-profile=MISSING policy/quality=MISSING]'
+    assert d.format_render_config([]) == missing
+    assert d.format_render_config(None) == missing
+    assert d.RENDER_CONFIG_SCOPES == (('preset', 'bold-yellow'), ('preset', 'output-profile'), ('policy', 'quality'))
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    assert 'collect_render_config(db) + ' in text
+    assert text.count('session.post_batch(1)') == 1
+
+
+def test_unit_stage_labels_cover_all_stages():
+    assert len(d.STAGES) == 11
+    assert all(name in d.STAGE_LABELS for name in d.STAGES)
+
+
+def test_unit_driver_is_read_only():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    assert not re.search(r'(?i)\b(insert\s+into|update\s+controlplane|delete\s+from)\b', text)
+    assert not re.search(r'(?m)^\s*(from\s+\S+\s+)?import\s+.*\b(Fake|InMemory)', text)
+    assert 'default_transaction_read_only=on' in text
+    assert 'CERT_NONE' not in text and '_create_unverified_context' not in text
+
+
+def test_unit_driver_never_prints_launch_url():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    assert not re.search(r'print\([^)]*(launch_path|launch2|\burl\b|raw)', text)
+
+
+def test_unit_driver_does_not_call_import_seed():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    for name in ('import_seed', 'make_seed_media', 'ensure_seed_media', 'seed_import'):
+        assert name not in text, name
+    assert not hasattr(d, 'ensure_seed_media')
+
+
+def test_unit_driver_does_not_ensure_voice_staging():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    for name in ('ensure_voice_staging', 'staging_voice'):
+        assert name not in text, name
+    assert not hasattr(d, 'ensure_voice_staging')
+
+
+def test_unit_format_diagnostic():
+    token = 'ya29.' + 'A' * 30
+    diag = {'job': {'status': 'FAILED_FINAL', 'wait_reason': None, 'revision': 3},
+            'stages': [{'stage': 'media_select', 'attempt': 1, 'status': 'FAILED_FINAL', 'code': 'INPUT_NOT_READY',
+                        'wait_reason': None, 'message': 'seed_media_missing'}]}
+    text = d.format_diagnostic(diag, 'boom cap' + '=abc123 ' + token)
+    assert 'job=FAILED_FINAL' in text
+    assert 'media_select#1=FAILED_FINAL/INPUT_NOT_READY/msg=seed_media_missing' in text
+    assert 'abc123' not in text and token not in text
+    assert len(text) <= 1500
+    empty = d.format_diagnostic({'job': None, 'stages': []}, '')
+    assert 'no_stage_rows' in empty and 'job=None' in empty
+    assert d.serve_log_tail(SELF.parent / 'khong_co_tep.log') == 'no_serve_log'
+
+
+_FULL_RENDER_CONFIG = [('preset', 'bold-yellow', 'PUBLISHED'), ('preset', 'output-profile', 'PUBLISHED'), ('policy', 'quality', 'PUBLISHED')]
+
+
+def test_unit_render_config_published():
+    full = _FULL_RENDER_CONFIG
+    assert d.render_config_published(full) is True
+    assert d.render_config_published(full[:2]) is False
+    assert d.render_config_published(full[:2] + [('policy', 'quality', 'DRAFT')]) is False
+    assert d.render_config_published([]) is False
+    assert d.render_config_published(None) is False
+
+
+def test_unit_require_render_config_blocks():
+    class _Db:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def render_config_status(self):
+            return self.rows
+
+    class _Broken:
+        def render_config_status(self):
+            raise OSError('x')
+
+    full = _FULL_RENDER_CONFIG
+    assert d.require_render_config(_Db(full)) == 'render_config=[preset/bold-yellow=PUBLISHED preset/output-profile=PUBLISHED policy/quality=PUBLISHED]'
+    with pytest.raises(d.BlockedError) as info:
+        d.require_render_config(_Db(full[:1]))
+    assert str(info.value).startswith('BLOCKED: ')
+    assert 'preset/output-profile=MISSING' in str(info.value)
+    with pytest.raises(d.BlockedError):
+        d.require_render_config(_Broken())
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    assert text.index('result.render_config = require_render_config(db)') < text.index('session.post_batch(1)')
+
+
+def test_unit_launcher_seed_line():
+    token = 'ya29.' + 'A' * 30
+    out = 'start ok\nseed media loaded (idempotent)\nOpen https://x/launch?cap' + '=abc123\nSeed done ' + token
+    line = d.launcher_seed_line(out)
+    assert 'seed media loaded (idempotent)' in line and 'Seed done' in line
+    assert token not in line and 'start ok' not in line and 'abc123' not in line
+    assert d.launcher_seed_line('start ok') == 'no_seed_line'
+    assert d.launcher_seed_line('') == 'no_seed_line'
+
+
+def test_unit_seed_counts_read_only():
+    class _Db(d.ReadOnlyDb):
+        def __init__(self):
+            self.workspace_id = 'w'
+            self.calls = []
+
+        def query(self, sql, *params):
+            self.calls.append((sql, params))
+            return [(7, 10, 22)]
+
+    db = _Db()
+    assert db.seed_counts() == {'sources': 7, 'hooks': 10, 'media_assets': 22}
+    assert db.calls[0][0].lstrip().upper().startswith('SELECT')
+    assert len(db.calls[0][1]) == 2
+
+
+def test_unit_format_start_output():
+    token = 'ya29.' + 'A' * 30
+    out = 'Worker đang chạy; bỏ qua khởi động mới.\nOpen https://x/launch?cap' + '=abc123\n' + token
+    text = d.format_start_output(out)
+    assert text.startswith('worker_already_running launcher_start_output=[')
+    assert 'bỏ qua khởi động mới' in text
+    assert 'abc123' not in text and token not in text
+    other = d.format_start_output('Đã khởi động; trình duyệt sẽ mở tại /launch')
+    assert other.startswith('launcher_start_output=[') and 'worker_already_running' not in other
+    assert len(d.format_start_output('x' * 5000)) <= 450
+    assert d.format_start_output('') == 'launcher_start_output=[]'
+    assert d.format_start_output(None) == 'launcher_start_output=[]'
+
+
+def test_unit_driver_stops_stale_worker_before_first_start():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    body = text[text.index('def run_batch('):]
+    assert body.index('try:') < body.index('result.pre_stop_attempts = stop_until_exited()')
+    assert body.index('result.pre_stop_attempts = stop_until_exited()') < body.index("start_capturing(work_dir, 'first')")
+    assert "'BLOCKED: không bắt được URL /launch trong 120 giây; ' + format_start_output(text)" in text
+    assert text.count('session.post_batch(1)') == 1
+
+
+_PROFILE_VOICE = {'voice': {'speech_rate_wpm': {'value': 150}, 'duration_range_ms': {'value': {'min': 61000, 'max': 70000}}}}
+
+
+def test_unit_format_script_length():
+    short = {'segments': [{'word_count': 30}, {'word_count': 32}, {'word_count': True}, {'word_count': '9'}, 'x']}
+    assert d.format_script_length(short, _PROFILE_VOICE) == 'script_length=[segments=5 words=62 wpm=150 est_ms=24800 range_ms=61000-70000 verdict=too_short]'
+    assert 'verdict=too_long' in d.format_script_length({'segments': [{'word_count': 200}]}, _PROFILE_VOICE)
+    assert 'est_ms=62000' in d.format_script_length({'segments': [{'word_count': 155}]}, _PROFILE_VOICE)
+    assert 'verdict=within_range' in d.format_script_length({'segments': [{'word_count': 155}]}, _PROFILE_VOICE)
+    assert d.format_script_length({}, _PROFILE_VOICE) == 'script_length=[no_segments]'
+    assert d.format_script_length(None, _PROFILE_VOICE) == 'script_length=[no_segments]'
+    real = json.loads(d.PROFILE_JSON.read_text(encoding='utf-8'))
+    assert 'range_ms=61000-70000' in d.format_script_length({'segments': [{'word_count': 1}]}, real)
+
+
+def test_unit_collect_script_length_read_only():
+    class _Db:
+        def __init__(self):
+            self.sqls = []
+
+        def query(self, sql, *params):
+            self.sqls.append(sql)
+            if 'cp_production_plans' in sql:
+                return [({'script_version_id': 'sv1'}, 'plan1')]
+            return [({'segments': [{'word_count': 62}]}, 1)]
+
+    class _Broken:
+        def query(self, sql, *params):
+            raise OSError('x')
+
+    db = _Db()
+    text = d.collect_script_length(db, 'job-1')
+    assert 'words=62' in text and 'verdict=too_short' in text
+    assert db.sqls and all(sql.lstrip().upper().startswith('SELECT') for sql in db.sqls)
+    assert d.collect_script_length(_Broken(), 'job-1') == 'script_length_error=OSError'
+
+
+def test_unit_blocked_message_reports_script_length():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    body = text[text.index('def run_batch('):]
+    assert "+ ' ' + collect_script_length(db, job_id) + ' ' + diag)" in body
+    assert "' ai_calls=' + str(result.ai_calls)" in body
+    assert 'collect_qc_evidence(db, job_id)' in body and 'collect_batch_running(db, batch_id)' in body
+    assert 'result.media_audio_evidence = collect_media_audio_evidence(db, job_id, result.plan_before)' in body
+    assert "+ ' ' + result.media_audio_evidence + ' launcher_seed=['" in body
+    assert 'plan_digest(db, job_id)' in body and 'build_trace(db, job_id)' in body
+    assert 'result.record_prefix' not in body.replace('watch.bind_prefix(result.record_prefix)', '').replace('result.record_prefix = video_key_prefix(db.workspace_id, batch_id)', '')
+    assert 'run_ids=[batch_id=' in body
+    assert text.count('session.post_batch(1)') == 1
+
+
+def test_unit_video_key_prefix():
+    assert d.video_key_prefix('ws1', 'b-1') == 'ws1:b-1:video:'
+
+
+def test_unit_creative_key_prefixes_use_job_id():
+    """record_key creative là id `<loại>:<job_id>:r<rev>` do D sinh, job_id là `<B>:job:<ordinal>`."""
+    assert d.plan_key_prefix('b-1:job:1') == 'plan:b-1:job:1:r'
+    assert d.analysis_key_prefix('b-1:job:1') == 'analysis:b-1:job:1:r'
+    assert 'plan:b-1:job:1:r2'.startswith(d.plan_key_prefix('b-1:job:1'))
+    assert not 'plan:b-1:job:10:r1'.startswith(d.plan_key_prefix('b-1:job:1'))
+
+
+class _RecordingDb(d.ReadOnlyDb):
+    """ReadOnlyDb không kết nối: ghi lại (sql, params) và trả về `rows`."""
+
+    def __init__(self, rows):
+        self.workspace_id = 'w'
+        self.rows = rows
+        self.calls = []
+
+    def query(self, sql, *params):
+        self.calls.append((sql, params))
+        return self.rows
+
+
+def test_unit_ai_invocation_count_uses_record_key_prefix():
+    db = _RecordingDb([(7,)])
+    assert db.ai_invocation_count('w:b:video:') == 7
+    sql, params = db.calls[0]
+    assert 'FROM controlplane.cp_ai_invocation_records' in sql and 'starts_with(record_key, %s)' in sql
+    assert params == ('w:b:video:',)
+
+
+def test_unit_plan_row_filters_by_record_key_prefix():
+    db = _RecordingDb([])
+    assert d._plan_row(db, 'b:job:1') is None
+    sql, params = db.calls[0]
+    assert 'starts_with(record_key, %s)' in sql and 'created_at >=' not in sql
+    assert params == ('plan:b:job:1:r',)
+
+
+def test_unit_locations_and_drive_bytes_filter_by_job():
+    db = _RecordingDb([(0,)])
+    db.locations('job-1')
+    d.drive_bytes(db, 'job-1')
+    assert len(db.calls) == 2
+    for sql, params in db.calls:
+        assert 'owner_ref = %s' in sql and 'FROM controlplane.cp_completion_ledger' in sql
+        assert 'created_at >=' not in sql
+        assert params.count('job-1') == 2
+
+
+def test_unit_is_drive_follows_cloud_backend_and_evidence_prefix():
+    cloud = {'backend_ref': 'cloud', 'state': 'VERIFIED', 'verification_evidence_ref': 'drive:abc123:sha256Checksum'}
+    assert d.is_drive(cloud) is True
+    assert d.is_drive({**cloud, 'backend_ref': 'local-staging'}) is False
+    assert d.is_drive({**cloud, 'backend_ref': 'drive'}) is False
+    assert d._drive_verified([cloud]) == [cloud]
+    for change in ({'state': 'DECLARED'}, {'verification_evidence_ref': None}, {'verification_evidence_ref': 'local:x'}):
+        assert d._drive_verified([{**cloud, **change}]) == []
+
+
+def test_unit_drive_bytes_filters_backend_cloud():
+    db = _RecordingDb([(5,)])
+    assert d.drive_bytes(db, 'job-1') == 5
+    sql = db.calls[0][0]
+    assert "l.backend_ref = 'cloud'" in sql and "'drive'" not in sql
+
+
+def test_unit_ledger_row_selects_cloud_refs():
+    db = _RecordingDb([('t', 'v', 'h', 'loc', 'drive:x')])
+    row = db.ledger_row('job-1')
+    assert 'cloud_location_ref' in db.calls[0][0] and 'cloud_location_verification_ref' in db.calls[0][0]
+    assert row['cloud_location_ref'] == 'loc' and row['cloud_location_verification_ref'] == 'drive:x'
+
+
+def test_unit_ordering_proof():
+    from datetime import datetime, timezone
+    loc = {'location_id': 'L1', 'state': 'VERIFIED', 'verification_evidence_ref': 'drive:abc123:sha256Checksum',
+           'updated_at': datetime(2026, 11, 1, 9, 30, 5, 900000, tzinfo=timezone.utc)}
+    ledger = {'completed_at': '2026-11-01T09:30:05Z', 'cloud_location_ref': 'L1',
+              'cloud_location_verification_ref': 'drive:abc123:sha256Checksum'}
+    assert d.ordering_proof(loc, ledger) == 'ledger_refs_timestamps'
+    assert d.ordering_proof(loc, ledger, True) == 'sampled'
+    assert d.ordering_proof(loc, {**ledger, 'completed_at': None}) == 'ledger_refs'
+    assert d.ordering_proof(loc, {**ledger, 'completed_at': '2026-11-01T09:30:04Z'}) is None
+    assert d.ordering_proof(loc, {**ledger, 'cloud_location_ref': 'L2'}) is None
+    assert d.ordering_proof(loc, {**ledger, 'cloud_location_verification_ref': 'drive:zzz'}) is None
+    assert d.ordering_proof(loc, None) is None
+    assert d.ordering_proof({**loc, 'state': 'DECLARED'}, ledger) is None
+
+
+def test_unit_collect_media_audio_evidence_read_only():
+    class _Db:
+        def __init__(self):
+            self.sqls = []
+
+        def query(self, sql, *params):
+            self.sqls.append(sql)
+            if 'cp_image_safety_assessments' in sql:
+                return [('k1', 1, {'outcome': 'safe'}), ('k2', 1, {'outcome': 'safe'})]
+            if 'cp_audio_bed_results' in sql:
+                return [('b1', 1, {'provenance': {'bed_kind': 'music'}, 'cue_timings': [{'kind': 'music'}, {'kind': 'sfx'}]})]
+            return []
+
+    class _Empty:
+        def query(self, sql, *params):
+            return []
+
+    db = _Db()
+    text = d.collect_media_audio_evidence(db, 'b:job:1', {'media_asset_ids': ['aaaaaa-1111', 'bbbbbb-2222']})
+    assert 'media_count=2' in text and 'media_ids=[aaaaaa,bbbbbb]' in text and 'image_safety=[safe=2]' in text
+    assert 'bed_kind=music' in text and 'music_cues=1' in text and 'mp4_has_music=True' in text
+    assert 'aaaaaa-1111' not in text
+    assert db.sqls and all(s.lstrip().upper().startswith('SELECT') for s in db.sqls)
+    empty = d.collect_media_audio_evidence(_Empty(), 'b:job:1')
+    assert 'media_count=not_measured' in empty and 'image_safety=[not_measured]' in empty
+    assert 'bed_kind=not_measured' in empty and 'mp4_has_music=not_measured' in empty
+
+
+def test_unit_collect_media_audio_evidence_never_raises():
+    class _Broken:
+        def query(self, sql, *params):
+            raise OSError('x')
+
+    assert d.collect_media_audio_evidence(_Broken(), 'b:job:1') == 'media_audio_evidence_error=OSError'
+
+
+def test_unit_build_trace_filters_by_record_key_prefix():
+    seen = []
+
+    class _Db(_SnapshotDb):
+        def query(self, sql, *params):
+            seen.append((sql, params))
+            return super().query(sql, *params)
+
+    d.build_trace(_Db(), 'b:job:1')
+    analyses = [(s, p) for s, p in seen if 'FROM controlplane.cp_content_analyses' in s]
+    assert len(analyses) == 1
+    assert 'starts_with(record_key, %s)' in analyses[0][0] and analyses[0][1] == ('analysis:b:job:1:r',)
+    plans = [p for s, p in seen if 'FROM controlplane.cp_production_plans' in s]
+    assert plans and all(p == ('plan:b:job:1:r',) for p in plans)
+
+
+def test_unit_require_no_other_workflows():
+    assert d.require_no_other_workflows(lambda: []) == 0
+    assert d.require_no_other_workflows(lambda: [('MaintenanceWorkflow', 'm1'), ('DailyCollectionWorkflow', 'c1')]) == 0
+    busy = [('VideoProductionWorkflow', 'b1:video:1'), ('ProductionBatchWorkflow', 'b1'), ('DebugStageWorkflow', 'dbg'), ('MaintenanceWorkflow', 'm1')]
+    with pytest.raises(d.BlockedError) as info:
+        d.require_no_other_workflows(lambda: busy)
+    message = str(info.value)
+    assert message.startswith('BLOCKED: OTHER_WORKFLOWS_RUNNING count=3 ids=[')
+    assert 'VideoProductionWorkflow=b1:video:1' in message and 'ProductionBatchWorkflow=b1' in message
+    assert 'DebugStageWorkflow=dbg' in message and 'm1' not in message
+
+    def unreachable():
+        raise OSError('x')
+
+    with pytest.raises(d.BlockedError) as info:
+        d.require_no_other_workflows(unreachable)
+    assert str(info.value) == 'BLOCKED: TEMPORAL_UNREACHABLE: OSError'
+
+
+def test_unit_driver_checks_temporal_between_stop_and_start_read_only():
+    text = DRIVER_FILE.read_text(encoding='utf-8')
+    body = text[text.index('def run_batch('):]
+    stop = body.index('result.pre_stop_attempts = stop_until_exited()')
+    check = body.index('result.other_workflows_running = require_no_other_workflows()')
+    assert stop < check < body.index("start_capturing(work_dir, 'first')")
+    assert d.WATCHED_WORKFLOWS == ('ProductionBatchWorkflow', 'VideoProductionWorkflow', 'DebugStageWorkflow')
+    assert (d.TEMPORAL_PORT, d.TEMPORAL_NAMESPACE) == (7233, 'default')
+    assert 'ExecutionStatus = "Running"' in text
+    for name in ('.terminate(', '.cancel(', '.signal(', '.start_workflow(', 'terminate_workflow'):
+        assert name not in text, name
+
+
+def test_unit_format_qc_evidence():
+    gates = {'gates': [
+        {'gate': 'FILE_PLAYABLE', 'status': 'passed'},
+        {'gate': 'DURATION_RANGE', 'status': 'failed', 'reason': 'out_of_range', 'measured_value': 55000},
+        {'gate': 'INFERENCE_DISCLOSURE_PRESENT', 'status': 'not_applicable'},
+        {'gate': 'VISUAL_CONTINUITY', 'status': 'failed', 'reason': 'x'}]}
+    text = d.format_qc_evidence(gates, {'timeline': {'voice_duration_ms': 66000}})
+    assert text == 'blocking_gates=[DURATION_RANGE=failed/out_of_range] duration=[mp4_ms=55000 voice_est_ms=66000 delta_ms=-11000] failed_detail=[DURATION_RANGE:measured=55000 range=- rev=-]'
+    ok = d.format_qc_evidence({'gates': [{'gate': 'FILE_PLAYABLE', 'status': 'passed'}]}, {'timeline': {'duration_ms': 64000}})
+    assert ok == 'blocking_gates=[none] duration=[mp4_ms=None voice_est_ms=64000 delta_ms=None]'
+    assert d.format_qc_evidence({}, None) == 'blocking_gates=[none] duration=[mp4_ms=None voice_est_ms=None delta_ms=None]'
+
+
+def test_unit_format_qc_evidence_failed_detail_visual_hook():
+    gates = {'gates': [{'gate': 'VISUAL_HOOK_PRESENT', 'status': 'failed', 'reason': 'visual_hook_similarity_below_threshold', 'measured_value': 0.31, 'time_range': [0, 3000], 'threshold_revision': 'r7', 'evidence_ref': 'secret-ref-should-not-appear'}]}
+    text = d.format_qc_evidence(gates, {'timeline': {'duration_ms': 64000}})
+    assert text == 'blocking_gates=[VISUAL_HOOK_PRESENT=failed/visual_hook_similarity_below_threshold] duration=[mp4_ms=None voice_est_ms=64000 delta_ms=None] failed_detail=[VISUAL_HOOK_PRESENT:measured=0.31 range=0-3000 rev=r7]'
+    assert 'secret-ref-should-not-appear' not in text
+
+
+def test_unit_collect_qc_evidence_read_only():
+    class _Db:
+        def __init__(self):
+            self.sqls = []
+
+        def query(self, sql, *params):
+            self.sqls.append(sql)
+            if 'cp_production_plans' in sql:
+                return [({'script_version_id': 'sv1'}, 'plan1')]
+            if 'cp_render_packages' in sql:
+                return [('fp1', {'timeline': {'voice_duration_ms': 66000}})]
+            return [({'gates': [{'gate': 'DURATION_RANGE', 'status': 'failed', 'reason': 'out_of_range', 'measured_value': 55000}]},)]
+
+    class _Broken:
+        def query(self, sql, *params):
+            raise OSError('x')
+
+    db = _Db()
+    text = d.collect_qc_evidence(db, 'b:job:1')
+    assert 'DURATION_RANGE=failed/out_of_range' in text and 'delta_ms=-11000' in text
+    assert db.sqls and all(sql.lstrip().upper().startswith('SELECT') for sql in db.sqls)
+    assert any("payload->>'production_plan_ref' = %s" in sql for sql in db.sqls)
+    assert d.collect_qc_evidence(_Broken(), 'b:job:1') == 'qc_evidence_error=OSError'
+
+
+def test_unit_format_hook_placement():
+    plan = {'hook_placement': {'visual_hook_ref': 'ma-4d8aaaaa-1', 'thumbnail_ref': 'seed-b-xyz', 'hook_time_range': {'start_ms': 0, 'end_ms': 3000}, 'thumbnail_time_range': {'start_ms': 1500, 'end_ms': 2500}}}
+    assert d.format_hook_placement(plan) == 'hook_placement=[visual=ma-4d8aa thumbnail=seed-b-x same_ref=False hook_range=0-3000 thumbnail_range=1500-2500]'
+    same = {'hook_placement': dict(plan['hook_placement'], thumbnail_ref='ma-4d8aaaaa-1')}
+    assert 'same_ref=True' in d.format_hook_placement(same)
+    assert d.format_hook_placement({}) == 'hook_placement=[visual=- thumbnail=- same_ref=False hook_range=- thumbnail_range=-]'
+
+
+def test_unit_collect_hook_placement_evidence_read_only():
+    class _Db:
+        def __init__(self):
+            self.sqls = []
+
+        def query(self, sql, *params):
+            self.sqls.append(sql)
+            return [({'hook_placement': {'visual_hook_ref': 'ma-4d8aaaaa-1', 'thumbnail_ref': 'ma-4d8aaaaa-1', 'hook_time_range': {'start_ms': 0, 'end_ms': 3000}, 'thumbnail_time_range': {'start_ms': 1500, 'end_ms': 2500}}}, 'plan1')]
+
+    db = _Db()
+    assert 'same_ref=True' in d.collect_hook_placement_evidence(db, 'b:job:1')
+    assert db.sqls and all(sql.lstrip().upper().startswith('SELECT') for sql in db.sqls)
+
+
+def test_unit_collect_hook_placement_evidence_never_raises():
+    class _Empty:
+        def query(self, sql, *params):
+            return []
+
+    class _Broken:
+        def query(self, sql, *params):
+            raise OSError('x')
+
+    assert d.collect_hook_placement_evidence(_Empty(), 'b:job:1') == 'hook_placement=[no_plan]'
+    assert d.collect_hook_placement_evidence(_Broken(), 'b:job:1') == 'hook_placement_error=OSError'
+
+
+def test_unit_collect_batch_running():
+    rows = [('ProductionBatchWorkflow', 'b1'), ('VideoProductionWorkflow', 'b1:video:1'), ('ProductionBatchWorkflow', 'b10'), ('MaintenanceWorkflow', 'm1')]
+
+    class _Db:
+        def batch_status(self, batch_id):
+            return 'CREATED'
+
+    assert d.collect_batch_running(_Db(), 'b1', lambda: rows) == "batch_after_run=[db_status=CREATED temporal_running=2 ids=['b1', 'b1:video:1']]"
+    assert d.collect_batch_running(_Db(), 'b1', lambda: []) == 'batch_after_run=[db_status=CREATED temporal_running=0 ids=[]]'
+
+    def unreachable():
+        raise OSError('x')
+
+    assert d.collect_batch_running(_Db(), 'b1', unreachable) == 'batch_after_run_error=OSError'
+
+
+def test_unit_cost_watch_counts_ai_calls_from_invocation_records():
+    class _Db:
+        def __init__(self):
+            self.prefixes = []
+
+        def ai_invocation_count(self, prefix):
+            self.prefixes.append(prefix)
+            return 26
+
+    class _Watch(d.CostWatch):
+        def guard(self):
+            return c.CostGuard(d.LEDGER_CEILING_USD, lambda: 0)
+
+    db = _Db()
+    watch = _Watch(db, 'since')
+    assert watch.calls() == 0
+    watch.check()
+    watch.bind_prefix('w:b:video:')
+    assert watch.calls() == 26
+    with pytest.raises(c.CostCeilingExceeded):
+        watch.check()
+    assert db.prefixes == ['w:b:video:', 'w:b:video:']
+
+
+# --- RG-09 trên ngăn xếp thật ------------------------------------------------------------------------------------
+
+def test_rg09_stages_succeeded(batch_run, emit):
+    for name in d.STAGES:
+        assert batch_run.final_stages.get(name, {}).get('status') == 'SUCCEEDED', name
+    assert batch_run.final_job_status == 'COMPLETED'
+    assert batch_run.ledger_row is not None
+    detail = ' '.join(_stage(n, batch_run.final_stages[n]) for n in d.STAGES)
+    _pass(emit, 'stages_succeeded', detail,
+          f'elapsed_s={batch_run.elapsed_seconds:.0f} final_batch_status={batch_run.final_batch_status} '
+          '(so do, OI-PW-E2E-01: production chua co writer CREATED->RUNNING nen khong bat buoc COMPLETED_TARGET)')
+
+
+def test_rg09_no_fake_adapters(batch_run, emit):
+    composition = batch_run.composition
+    assert composition['violations'] == []
+    assert composition['objects_scanned'] > 0
+    _pass(emit, 'no_fake_adapters', f'objects_scanned={composition["objects_scanned"]} violations=0 source=launcher.load_app '
+          f'production_py_sha256={composition["production_py_sha256"]} read_only=True')
+
+
+def test_rg09_qc_hard_gates(batch_run, emit):
+    qc = batch_run.qc
+    assert qc['hard_total'] > 0 and qc['hard_failed'] == 0 and qc['hard_passed'] == qc['hard_total'], batch_run.qc_evidence
+    _pass(emit, 'qc_hard_gates', f'hard_total={qc["hard_total"]} hard_passed={qc["hard_passed"]} not_applicable={qc["not_applicable"]} {batch_run.qc_evidence}')
+
+
+def test_rg09_cloud_verified_before_count(batch_run, emit):
+    cloud = [loc for loc in batch_run.locations if d.is_drive(loc)]
+    assert len(cloud) == 1 and cloud[0]['state'] == 'VERIFIED' and cloud[0]['verification_evidence_ref'], f'cloud_locations={len(cloud)}'
+    assert d._drive_verified(batch_run.locations) == cloud
+    assert batch_run.drive_check is not None and batch_run.drive_check['md5_match'] and batch_run.drive_check['sha256_match']
+    assert batch_run.ledger_row['output_artifact_hash'] == cloud[0]['sha256_hash']
+    ordering = d.ordering_proof(cloud[0], batch_run.ledger_row, batch_run.verified_before_complete)
+    if ordering is None:
+        pytest.fail('BLOCKED: chưa chứng minh được thứ tự verified trước khi đếm (ledger cloud_location_ref/cloud_location_verification_ref không khớp location VERIFIED hoặc location cập nhật sau completed_at, so theo giây)')
+    _pass(emit, 'cloud_verified_before_count', f'md5_match=True sha256_match=True ledger_count=1 ordering={ordering} ledger_refs_match=True drive_ref={str(cloud[0]["provider_object_ref"])[:6]}***')
+
+
+def test_rg09_cleanup_after_verify(batch_run, emit):
+    assert not batch_run.cleanup_before_verified
+    verified = {loc['artifact_version_id'] for loc in d._drive_verified(batch_run.locations)}
+    cleaned = [loc for loc in batch_run.locations if not d.is_drive(loc) and loc['state'] in d.CLEANUP_STATES]
+    for loc in cleaned:
+        assert loc['artifact_version_id'] in verified
+    reason = 'cleaned_only_after_verified' if cleaned else 'production_chua_co_duong_don_local; rang_buoc_chi_cam_don_truoc_VERIFIED'
+    _pass(emit, 'cleanup_after_verify', f'cleaned_locations={len(cleaned)} cleanup_before_verified=False', 'reason=' + reason)
+
+
+def test_rg09_plan_unchanged(batch_run, emit):
+    assert batch_run.plan_before and batch_run.plan_before == batch_run.plan_after
+    assert batch_run.render_matches is True
+    plan = batch_run.plan_after
+    _pass(emit, 'plan_unchanged', f'digest_equal=True script_sha256={plan["script_sha256"][:8]} '
+          f'media_count={len(plan["media_sha256s"])} render_matches_plan=True')
+
+
+def test_rg09_resume_300s(batch_run, emit):
+    if not batch_run.render_seen_running:
+        pytest.fail('BLOCKED: render không được thấy ở RUNNING; chưa chứng minh resume giữa lúc render')
+    verdict = d.evaluate_resume(batch_run.before_stop, batch_run.final_stages, batch_run.ready_seconds)
+    assert verdict['ready_ok'], f'resume ready {batch_run.ready_seconds}s > {d.READY_LIMIT_SECONDS}s'
+    assert verdict['completed_stages'] >= 7
+    _pass(emit, 'resume_300s', f'ready_seconds={batch_run.ready_seconds:.1f} limit=300 '
+          f'stop_attempts={batch_run.stop_attempts} stopped_in_render=True')
+
+
+def test_rg09_no_rerun_completed(batch_run, emit):
+    assert batch_run.render_seen_running, 'BLOCKED: render không được thấy ở RUNNING'
+    verdict = d.evaluate_resume(batch_run.before_stop, batch_run.final_stages, batch_run.ready_seconds)
+    assert verdict['reruns'] == []
+    assert d.find_reruns(batch_run.before_stop, batch_run.after_start) == []
+    _pass(emit, 'no_rerun_completed', f'completed_before_stop={verdict["completed_stages"]} reruns=0 attempts_unchanged=True')
+
+
+def test_rg09_trace_complete(batch_run, emit):
+    trace = batch_run.trace
+    assert d.trace_missing(trace) == []
+    _pass(emit, 'trace_complete', f'snapshot_id_present=True model_refs={len(trace["model_refs"])} '
+          f'prompt_refs={len(trace["prompt_refs"])} config_revision={trace["config_revision"]} '
+          f'profile_sha256={trace["profile_sha256"][:8]}')
+
+
+def test_rg09_secret_scan(batch_run, emit):
+    texts = [SELF.read_text(encoding='utf-8'), DRIVER_FILE.read_text(encoding='utf-8')]
+    if REPORT.exists():
+        texts.append(REPORT.read_text(encoding='utf-8'))
+    for text in texts:
+        assert c.scan_secrets(text) == []
+        assert not re.search(r'[?&]cap=', text)
+        assert 'cp_session' + '=' not in text
+    _pass(emit, 'secret_scan', 'match_count=0 khong_doc_Credentials=True capability_khong_ghi=True')
+
+
+def test_rg09_budget_envelope(batch_run, emit):
+    assert d.budget_violations(batch_run.ai_calls, batch_run.spent_usd, batch_run.drive_bytes, batch_run.elapsed_seconds) == []
+    emit(_ascii_line(f'- budget: attempts={len(batch_run.attempts)} ai_calls={batch_run.ai_calls} cap=25 spent_usd={batch_run.spent_usd} ceiling_usd=3 '
+                     f'drive_bytes={batch_run.drive_bytes} cap_bytes=209715200 elapsed_s={batch_run.elapsed_seconds:.0f} '
+                     f'limit_s=7200 remaining_s={DEADLINE.remaining():.0f}'))
+    emit(_ascii_line('- seed: launcher_line=' + batch_run.launcher_seed_line + ' seed_counts=' + json.dumps(batch_run.seed_counts, sort_keys=True) + ' render_config=' + batch_run.render_config))
+    emit(_ascii_line('- start: pre_stop_attempts=' + str(batch_run.pre_stop_attempts)))
+    emit(_ascii_line('- pre_check: other_workflows_running=' + str(batch_run.other_workflows_running) + ' (Temporal 127.0.0.1:7233 namespace default, chi doc)'))
+    emit(_ascii_line('- ai_calls_source: dem cp_ai_invocation_records record_key bat dau <ws>:<batch>:video: ai_calls=' + str(batch_run.ai_calls) + ' ledger_usd=' + str(batch_run.spent_usd) + ' (route_cost_per_request=0 nen ledger luon 0)'))
+    emit(_ascii_line('- ' + batch_run.batch_after_run + ' (OI-PW-E2E-01: trang thai dong lo la muc mo, RG-09 khong cham theo no)'))
+    emit(_ascii_line('- qc_evidence: ' + batch_run.qc_evidence))
+    emit(_ascii_line('- ' + batch_run.media_audio_evidence))
