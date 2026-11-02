@@ -10,12 +10,13 @@ import math
 import re
 import urllib.error
 import urllib.request
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from controlplane.application.config_security.route_resolver import CREDENTIAL_METHOD
 from controlplane.config.adapter import ApprovedEndpointRegistry
 
 MAX_RESPONSE_BYTES = 1048576
+MAX_CHAT_IMAGES = 4
 COMPLETIONS_PATH = '/chat/completions'
 _IMAGE_BASE64 = re.compile(r'[A-Za-z0-9+/]+={0,2}')
 _MEDIA_TYPE = re.compile(r'image/[A-Za-z0-9][A-Za-z0-9.+-]*')
@@ -61,6 +62,24 @@ def _extract_content(raw: bytes) -> str:
     if not isinstance(content, str) or not content.strip():
         raise VisionRouteError('bad_response')
     return content
+
+
+def _chat_image_parts(images: Sequence[tuple[str, str]]) -> list[dict]:
+    if isinstance(images, (str, bytes, bytearray, Mapping)) or not isinstance(images, Sequence):
+        raise ValueError('images must be a sequence of (image_base64, media_type) pairs')
+    if len(images) > MAX_CHAT_IMAGES:
+        raise ValueError(f'images must hold at most {MAX_CHAT_IMAGES} pairs')
+    parts = []
+    for pair in images:
+        if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+            raise ValueError('each image must be an (image_base64, media_type) pair')
+        image_base64, media_type = pair
+        if not isinstance(image_base64, str) or _IMAGE_BASE64.fullmatch(image_base64) is None:
+            raise ValueError('image_base64 must be a base64 string')
+        if not isinstance(media_type, str) or _MEDIA_TYPE.fullmatch(media_type) is None:
+            raise ValueError('media_type must be an image media type')
+        parts.append({'type': 'image_url', 'image_url': {'url': f'data:{media_type};base64,{image_base64}'}})
+    return parts
 
 
 class RouterVisionRoute:
@@ -123,6 +142,42 @@ class RouterVisionRoute:
             raw = self._post(url, body, key, float(timeout_seconds))
         return _extract_content(raw)
 
+    def invoke_chat(
+        self,
+        ai_role: str,
+        system: str,
+        text: str,
+        images: Sequence[tuple[str, str]] = (),
+        *,
+        timeout: float,
+    ) -> str:
+        if not isinstance(ai_role, str) or ai_role not in self._model_refs:
+            raise VisionRouteError('unknown_role')
+        _require_text(system, 'system')
+        _require_text(text, 'text')
+        parts = _chat_image_parts(images)
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout)
+            or timeout <= 0
+        ):
+            raise ValueError('timeout must be a positive finite number')
+        url = self._registry.validate(self._endpoint) + COMPLETIONS_PATH
+        content = [{'type': 'text', 'text': text}, *parts] if parts else text
+        body = json.dumps({
+            'model': self._model_refs[ai_role],
+            'messages': [
+                {'role': 'system', 'content': system},
+                {'role': 'user', 'content': content},
+            ],
+        }).encode('utf-8')
+        with self._credentials.acquire(CREDENTIAL_METHOD, self._account_ref) as key:
+            if not isinstance(key, str) or _BEARER_KEY.fullmatch(key) is None:
+                raise VisionRouteError('bad_credential')
+            raw = self._post(url, body, key, float(timeout))
+        return _extract_content(raw)
+
     def _post(self, url: str, body: bytes, key: str, timeout: float) -> bytes:
         request = urllib.request.Request(
             url,
@@ -158,4 +213,4 @@ class RouterVisionRoute:
         return f'RouterVisionRoute(endpoint={self._endpoint!r}, account_ref={self._account_ref!r})'
 
 
-__all__ = ['MAX_RESPONSE_BYTES', 'RouterVisionRoute', 'VisionRouteError', 'VisionRouteTimeoutError']
+__all__ = ['MAX_CHAT_IMAGES', 'MAX_RESPONSE_BYTES','RouterVisionRoute', 'VisionRouteError', 'VisionRouteTimeoutError']
