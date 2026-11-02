@@ -43,7 +43,7 @@ PARAMETERS = {
 }
 SETTINGS = settings_from_parameters(PARAMETERS)
 VIDEO_STAGES = ('analyze', 'script', 'plan', 'media_select', 'tts', 'align', 'process', 'render', 'qc', 'sync', 'complete')
-EXPECTED_ACTIVITIES = {'analyze': 2, 'script': 2, 'plan': 4, 'media_select': 1, 'tts': 1, 'align': 1, 'process': 5, 'render': 5, 'qc': 3, 'sync': 1, 'complete': 1}
+EXPECTED_ACTIVITIES = {'analyze': 2, 'script': 2, 'plan': 4, 'media_select': 2, 'tts': 1, 'align': 1, 'process': 5, 'render': 5, 'qc': 3, 'sync': 1, 'complete': 1}
 G_ACTIVITIES = ('AllocateJob', 'FinalizeBatch', 'ReserveVariant', 'CommitVideoCompletion')
 VIDEO_ACTIVITIES = tuple(sorted({name for names in VIDEO_STAGE_ACTIVITIES.values() for name in names}))
 FAKE_ACTIVITIES = tuple(name for name in VIDEO_ACTIVITIES if name not in G_ACTIVITIES)
@@ -196,6 +196,7 @@ REFS = {
     'AnalyzeContent': ('content_analysis', 'analysis'),
     'GenerateStoryAngles': ('story_angle_set', 'angles'),
     'GenerateScript': ('script_version', 'script'),
+    'GenerateIllustrations': ('ai_illustration', 'illustration'),
     'BuildProductionPlan': ('production_plan', 'plan'),
     'CreateVoiceTrack': ('voice_track', 'voice'),
     'CreateWordTiming': ('word_timing', 'timing'),

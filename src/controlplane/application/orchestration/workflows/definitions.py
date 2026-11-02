@@ -13,7 +13,7 @@ with workflow.unsafe.imports_passed_through():
         BINDINGS_BY_NAME,
         INTERNAL_ACTIVITIES,
         STAGE_ACTIVITIES_BY_WORKFLOW,
-        VIDEO_STAGE_ACTIVITIES,
+        video_stage_activities,
     )
     from controlplane.application.orchestration.workflows.batch import (
         BatchParams,
@@ -38,6 +38,9 @@ with workflow.unsafe.imports_passed_through():
 JOB_TERMINAL_PATCH_ID = 'job-terminal-on-failure'
 BATCH_CONCURRENCY_PATCH_ID = 'batch-concurrent-videos'
 BATCH_START_PATCH_ID = 'batch-running-on-start'
+# IMGGEN-PIPE: runs that recorded this marker run GenerateIllustrations first in media_select; replays without it keep the legacy map.
+ILLUSTRATIONS_PATCH_ID = 'video-ai-illustrations'
+VIDEO_LIKE_WORKFLOWS = frozenset({'VideoProductionWorkflow', 'DebugStageWorkflow'})
 
 
 class TemporalGateway:
@@ -175,12 +178,16 @@ async def _run_stage_graph(name: str, payload: dict[str, Any], inbox: list) -> d
     )
     spec = get_workflow(name)
     gateway = TemporalGateway(settings)
+    stage_map = STAGE_ACTIVITIES_BY_WORKFLOW.get(name)
+    if name in VIDEO_LIKE_WORKFLOWS:
+        # Asked once, before any command of the run (IMGGEN-PIPE).
+        stage_map = video_stage_activities(workflow.patched(ILLUSTRATIONS_PATCH_ID))
     if name == 'DebugStageWorkflow':
-        flow = build_debug_flow(spec, VIDEO_STAGE_ACTIVITIES, params, settings, gateway, inbox)
+        flow = build_debug_flow(spec, stage_map, params, settings, gateway, inbox)
     else:
         flow = StageGraphFlow(
             spec,
-            STAGE_ACTIVITIES_BY_WORKFLOW[name],
+            stage_map,
             params,
             settings,
             gateway,

@@ -53,6 +53,7 @@ ACTIVITY_BINDINGS: tuple[ActivityBinding, ...] = (
     _b('ValidateVariant', 'D', 'plan', True, ('qc',)),
     _b('ReserveVariant', 'G', 'plan', True),
     _b('GenerateOutputMetadata', 'D', 'plan', True),
+    _b('GenerateIllustrations', 'D', 'media_select', True),
     _b('SelectCreativeAssets', 'D', 'media_select', True),
     _b('CreateVoiceTrack', 'E', 'tts', True),
     _b('CreateWordTiming', 'E', 'align', True),
@@ -89,7 +90,9 @@ INTERNAL_ACTIVITIES: Mapping[str, TaskQueue] = MappingProxyType({
     'StartBatch': TaskQueue.CONTROL_WORKFLOWS,
 })
 
-VIDEO_STAGE_ACTIVITIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
+# Video stage map of runs started before the Temporal patch 'video-ai-illustrations' (IMGGEN-PIPE): their replay keeps these
+# commands, so they never generate AI illustrations.
+LEGACY_VIDEO_STAGE_ACTIVITIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     'analyze': ('BuildProductionSnapshot', 'AnalyzeContent'),
     'script': ('GenerateStoryAngles', 'GenerateScript'),
     'plan': ('BuildProductionPlan', 'ValidateVariant', 'ReserveVariant', 'GenerateOutputMetadata'),
@@ -102,6 +105,19 @@ VIDEO_STAGE_ACTIVITIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     'sync': ('PersistVideoOutput',),
     'complete': ('CommitVideoCompletion',),
 })
+
+# IMGGEN-PIPE: GenerateIllustrations runs first in media_select, so the AI illustrations it registers are media candidates of
+# SelectCreativeAssets; the catalog (workflow v2) and every other stage are unchanged.
+VIDEO_STAGE_ACTIVITIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
+    **LEGACY_VIDEO_STAGE_ACTIVITIES,
+    'media_select': ('GenerateIllustrations', 'SelectCreativeAssets'),
+})
+
+
+def video_stage_activities(illustrated: bool) -> Mapping[str, tuple[str, ...]]:
+    """Stage map of one VideoProductionWorkflow or DebugStageWorkflow run: VIDEO_STAGE_ACTIVITIES when the run recorded the patch
+    'video-ai-illustrations', LEGACY_VIDEO_STAGE_ACTIVITIES when it replays a history started before that patch."""
+    return VIDEO_STAGE_ACTIVITIES if illustrated else LEGACY_VIDEO_STAGE_ACTIVITIES
 
 DAILY_STAGE_ACTIVITIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     'select_sources': ('PlanCollectionCycle',),
@@ -273,6 +289,7 @@ __all__ = [
     'INVALID_ACTIVITY_REQUEST',
     'INVALID_ACTIVITY_RESULT',
     'INVALID_EXECUTION_GRANT',
+    'LEGACY_VIDEO_STAGE_ACTIVITIES',
     'MAINTENANCE_STAGE_ACTIVITIES',
     'MISSING_EXECUTION_GRANT',
     'REF_TYPE_COLLECTED_DOCUMENT',
@@ -284,4 +301,5 @@ __all__ = [
     'claims_to_payload',
     'document_input_refs',
     'to_execution_grant',
+    'video_stage_activities',
 ]

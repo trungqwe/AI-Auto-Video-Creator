@@ -182,6 +182,7 @@ def test_every_stage_activity_has_a_bound_handler(launcher, rig, monkeypatch):
             "AnalyzeContent",
             "GenerateStoryAngles",
             "GenerateScript",
+            "GenerateIllustrations",
             "SelectCreativeAssets",
             "BuildProductionPlan",
             "ValidateVariant",
@@ -346,7 +347,8 @@ def test_assembly_reads_no_database_row_and_loads_no_model(launcher, rig):
         connection_factory=lambda: rig.database.connect(),
         clock=clock,
     )
-    assert len(handlers) == 21
+    assert len(handlers) == 22  # IMGGEN-PIPE: GenerateIllustrations
+    assert 'GenerateIllustrations' in handlers
 
 
 def test_production_py_keeps_module_services_block():
