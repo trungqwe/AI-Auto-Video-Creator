@@ -402,3 +402,216 @@ def test_source_has_no_forbidden_text_and_only_expected_imports() -> None:
         '__future__', 'collections.abc', 'http.client', 'json', 'math', 're', 'urllib.error', 'urllib.request',
         'controlplane.application.config_security.route_resolver', 'controlplane.config.adapter',
     }
+
+
+CHAT_SYSTEM = 'You are the illustration role. Write one plain paragraph.'
+CHAT_TEXT = 'Describe the wide shot of the harbor at dusk.'
+CHAT_REPLY = 'A weathered pier stands in low light.'
+OTHER_B64 = base64.b64encode(bytes(range(32, 64))).decode('ascii')
+CHAT_IMAGES = ((IMAGE_B64, 'image/png'), (OTHER_B64, 'image/jpeg'))
+
+
+def chat(route, role='script', system=CHAT_SYSTEM, text=CHAT_TEXT, images=(), timeout=5.0):
+    return route.invoke_chat(role, system, text, images, timeout=timeout)
+
+
+def chat_body(server):
+    return json.loads(server.hits[0]['body'].decode('utf-8'))
+
+
+def data_part(b64, media_type):
+    return {'type': 'image_url', 'image_url': {'url': 'data:' + media_type + ';base64,' + b64}}
+
+
+def test_chat_posts_system_and_user_text_without_images(serve, credentials) -> None:
+    server = serve(reply=reply_ok(CHAT_REPLY))
+    assert chat(route_for(server.url, credentials)) == CHAT_REPLY
+    assert len(server.hits) == 1
+    hit = server.hits[0]
+    assert hit['method'] == 'POST' and hit['path'] == '/v1/chat/completions'
+    assert hit['authorization'] == 'Bearer ' + CANARY and hit['content_type'] == 'application/json'
+    assert CANARY.encode('utf-8') not in hit['body']
+    body = chat_body(server)
+    assert set(body) == {'model', 'messages'} and body['model'] == MODEL_REFS['script']
+    assert body['messages'] == [{'role': 'system', 'content': CHAT_SYSTEM}, {'role': 'user', 'content': CHAT_TEXT}]
+
+
+def test_chat_images_default_to_none(serve, credentials) -> None:
+    server = serve(reply=reply_ok(CHAT_REPLY))
+    assert route_for(server.url, credentials).invoke_chat('script', CHAT_SYSTEM, CHAT_TEXT, timeout=5.0) == CHAT_REPLY
+    assert chat_body(server)['messages'][1] == {'role': 'user', 'content': CHAT_TEXT}
+
+
+@pytest.mark.parametrize('images', [CHAT_IMAGES, list(CHAT_IMAGES), [list(pair) for pair in CHAT_IMAGES]])
+def test_chat_puts_images_after_text_as_data_uris(serve, credentials, images) -> None:
+    server = serve(reply=reply_ok(CHAT_REPLY))
+    assert chat(route_for(server.url, credentials), images=images) == CHAT_REPLY
+    messages = chat_body(server)['messages']
+    assert messages[0] == {'role': 'system', 'content': CHAT_SYSTEM}
+    assert messages[1] == {'role': 'user', 'content': [{'type': 'text', 'text': CHAT_TEXT}, data_part(IMAGE_B64, 'image/png'), data_part(OTHER_B64, 'image/jpeg')]}
+
+
+def test_chat_accepts_exactly_four_images(serve, credentials) -> None:
+    server = serve(reply=reply_ok(CHAT_REPLY))
+    assert chat(route_for(server.url, credentials), images=[(IMAGE_B64, 'image/png')] * 4) == CHAT_REPLY
+    content = chat_body(server)['messages'][1]['content']
+    assert len(content) == 5 and content[0] == {'type': 'text', 'text': CHAT_TEXT}
+    assert content[1:] == [data_part(IMAGE_B64, 'image/png')] * 4
+
+
+def test_chat_model_follows_role(serve, credentials) -> None:
+    server = serve(reply=reply_ok(CHAT_REPLY))
+    assert chat(route_for(server.url, credentials), 'image_safety') == CHAT_REPLY
+    assert chat_body(server)['model'] == MODEL_REFS['image_safety']
+
+
+def test_chat_shares_endpoint_credentials_and_headers_with_invoke_vision(serve) -> None:
+    spy = SpyCredentials()
+    server = serve(reply=reply_ok(CHAT_REPLY))
+    route = route_for(server.url, spy)
+    call(route)
+    chat(route)
+    assert spy.calls == [(CREDENTIAL_METHOD, ACCOUNT)] * 2
+    first, second = server.hits
+    keys = ('method', 'path', 'authorization', 'content_type')
+    assert [first[k] for k in keys] == [second[k] for k in keys]
+
+
+@pytest.mark.parametrize('role', ['image_unknown', '', None, 7])
+def test_chat_unknown_role_is_rejected_before_network(serve, role) -> None:
+    server = serve(reply=reply_ok(CHAT_REPLY))
+    spy = SpyCredentials()
+    with pytest.raises(VisionRouteError) as info:
+        chat(route_for(server.url, spy), role)
+    assert info.value.code == 'unknown_role' and server.hits == [] and spy.calls == []
+
+
+def test_chat_unknown_role_is_checked_before_other_arguments(serve) -> None:
+    server = serve(reply=reply_ok(CHAT_REPLY))
+    with pytest.raises(VisionRouteError) as info:
+        chat(route_for(server.url, SpyCredentials()), 'image_unknown', system='', text='', images='abc', timeout=-1)
+    assert info.value.code == 'unknown_role' and server.hits == []
+
+
+CHAT_BAD = [
+    ('system', ''), ('system', '   '), ('system', 7), ('system', None),
+    ('text', ''), ('text', '   '), ('text', 7), ('text', None),
+    ('images', 'abc'), ('images', b'abc'), ('images', bytearray(b'abc')), ('images', {'a': 'b'}), ('images', 7), ('images', None),
+    ('images', [(IMAGE_B64, 'image/png')] * 5),
+    ('images', [IMAGE_B64]), ('images', [(IMAGE_B64,)]), ('images', [(IMAGE_B64, 'image/png', 'x')]),
+    ('images', [{'image_base64': IMAGE_B64, 'media_type': 'image/png'}]), ('images', [None]),
+    ('images', [(7, 'image/png')]), ('images', [('', 'image/png')]), ('images', [('not base64!', 'image/png')]),
+    ('images', [(IMAGE_B64, 7)]), ('images', [(IMAGE_B64, '')]), ('images', [(IMAGE_B64, 'text/plain')]),
+    ('images', [(IMAGE_B64, 'image/')]), ('images', [(IMAGE_B64, 'image/png; x=1')]),
+    ('images', [(IMAGE_B64, 'image/png'), ('bad!', 'image/png')]),
+    ('timeout', 0), ('timeout', -1), ('timeout', True), ('timeout', '5'), ('timeout', None),
+    ('timeout', float('nan')), ('timeout', float('inf')),
+]
+
+
+@pytest.mark.parametrize('name, value', CHAT_BAD)
+def test_chat_bad_arguments_are_rejected_before_network(serve, name, value) -> None:
+    server = serve(reply=reply_ok(CHAT_REPLY))
+    spy = SpyCredentials()
+    args = {'system': CHAT_SYSTEM, 'text': CHAT_TEXT, 'images': (), 'timeout': 5.0}
+    args[name] = value
+    with pytest.raises(ValueError):
+        chat(route_for(server.url, spy), **args)
+    assert server.hits == [] and spy.calls == []
+
+
+@pytest.mark.parametrize('status, code', HTTP_CASES)
+def test_chat_http_error_becomes_safe_exception(serve, credentials, status, code) -> None:
+    server = serve(status=status, reply=json.dumps({'error': 'rejected ' + CANARY}).encode('utf-8'))
+    with pytest.raises(VisionRouteError) as info:
+        chat(route_for(server.url, credentials), images=CHAT_IMAGES)
+    assert info.value.code == code and str(info.value) == code
+    assert info.value.__cause__ is None and len(server.hits) == 1 and not leaks(info.value)
+
+
+@pytest.mark.parametrize('status', [301, 302, 303, 307, 308])
+def test_chat_redirect_is_not_followed(serve, credentials, status) -> None:
+    target = serve(reply=reply_ok(CHAT_REPLY))
+    server = serve(status=status, headers={'Location': target.url + '/v1/chat/completions'})
+    with pytest.raises(VisionRouteError) as info:
+        chat(route_for(server.url, credentials))
+    assert info.value.code == 'http_error' and len(server.hits) == 1 and target.hits == []
+
+
+@pytest.mark.parametrize('reply', BAD_BODIES)
+def test_chat_malformed_response_is_rejected(serve, credentials, reply) -> None:
+    server = serve(reply=reply)
+    with pytest.raises(VisionRouteError) as info:
+        chat(route_for(server.url, credentials))
+    assert info.value.code == 'bad_response' and not leaks(info.value)
+
+
+def test_chat_oversized_response_is_rejected(serve, credentials) -> None:
+    server = serve(reply=b'a' * (MAX_RESPONSE_BYTES + 1))
+    with pytest.raises(VisionRouteError) as info:
+        chat(route_for(server.url, credentials))
+    assert info.value.code == 'bad_response'
+
+
+def test_chat_timeout_parameter_is_applied(serve, credentials) -> None:
+    server = serve(hang=True)
+    started = time.monotonic()
+    with pytest.raises(VisionRouteTimeoutError) as info:
+        chat(route_for(server.url, credentials), timeout=0.3)
+    assert time.monotonic() - started < 2.5 and info.value.code == 'timeout' and not leaks(info.value)
+
+
+def test_chat_connection_refused_is_network_error(credentials) -> None:
+    with socket.socket() as sock:
+        sock.bind(('127.0.0.1', 0))
+        port = sock.getsockname()[1]
+    route = RouterVisionRoute('http://127.0.0.1:' + str(port) + '/v1', MODEL_REFS, credentials, ACCOUNT)
+    with pytest.raises(VisionRouteError) as info:
+        chat(route)
+    assert info.value.code == 'network_error' and not leaks(info.value)
+
+
+@pytest.mark.parametrize('key', ['bad key', 'a' + chr(13) + chr(10) + 'X-Evil: 1', '', 'k' + chr(233)])
+def test_chat_unusable_key_is_rejected_without_leak(serve, key) -> None:
+    server = serve(reply=reply_ok(CHAT_REPLY))
+    with pytest.raises(VisionRouteError) as info:
+        chat(route_for(server.url, SpyCredentials(key)))
+    assert info.value.code == 'bad_credential' and server.hits == []
+    if key:
+        assert not leaks(info.value, key)
+
+
+def test_chat_revoked_key_stops_before_network(serve, tmp_path) -> None:
+    vault = DpapiSecretStore(tmp_path / 'vault')
+    store_router_key(vault, SECRET, lambda: CANARY)
+    revoked = RouterKeyCredentials(vault, ACCOUNT, SECRET)
+    vault.revoke(SECRET, vault.current_version(SECRET))
+    server = serve(reply=reply_ok(CHAT_REPLY))
+    with pytest.raises(ProviderCredentialError) as info:
+        chat(route_for(server.url, revoked))
+    assert server.hits == [] and not leaks(info.value)
+
+
+def test_chat_canary_never_reaches_logs_output_or_repr(serve, credentials, caplog, capsys) -> None:
+    caplog.set_level(logging.DEBUG)
+    server = serve(status=500, reply=CANARY.encode('utf-8'))
+    route = route_for(server.url, credentials)
+    with pytest.raises(VisionRouteError):
+        chat(route, images=CHAT_IMAGES)
+    out, err = capsys.readouterr()
+    assert CANARY not in out + err + caplog.text + repr(route) + str(route)
+
+
+def test_chat_proxy_environment_is_ignored(serve, credentials, monkeypatch) -> None:
+    for name in ('http_proxy', 'HTTP_PROXY', 'https_proxy', 'HTTPS_PROXY', 'all_proxy', 'ALL_PROXY'):
+        monkeypatch.setenv(name, 'http://127.0.0.1:9')
+    server = serve(reply=reply_ok(CHAT_REPLY))
+    assert chat(route_for(server.url, credentials)) == CHAT_REPLY and len(server.hits) == 1
+
+
+def test_chat_max_images_is_exported_and_invoke_chat_follows_invoke_vision() -> None:
+    from controlplane.infrastructure.production_ports import vision_route as route_module
+    assert route_module.MAX_CHAT_IMAGES == 4 and 'MAX_CHAT_IMAGES' in route_module.__all__
+    text = SOURCE.read_text(encoding='utf-8')
+    assert text.index('    def invoke_vision(') < text.index('    def invoke_chat(') < text.index('    def _post(')
+    assert 'images: Sequence[tuple[str, str]] = ()' in text and 'def _chat_image_parts(' in text
