@@ -193,6 +193,9 @@ _SELECTED_MEDIA_REF = 'selected_media'
 NO_ILLUSTRATION_AVAILABLE = 'no_illustration_available'
 _SEED_FALLBACK_REASON = 'seed_fallback'
 _SEED_ORIGIN = 'seed'
+_AI_GENERATED_ORIGIN = 'ai_generated'
+_IMAGE_FALLBACK_REASON = 'image_fallback'
+_IMAGE_SAFETY_RULE_PREFIX = 'image-safety:'
 _SEED_SHARE_MAX_PERCENT = 15
 
 
@@ -306,6 +309,82 @@ def require_illustration(timeline: Mapping[str, Any], images: Mapping[str, Rende
     seed_ms, timeline_ms = seed_time_ms(segments, shows_seed)
     if not seed_share_within_limit(seed_ms, timeline_ms):
         raise ActivityInputError(NO_ILLUSTRATION_AVAILABLE, f'seed_share_above_max:{seed_ms}/{timeline_ms}')
+
+
+def _mappings(value: object) -> list[Mapping[str, Any]]:
+    return [item for item in value if isinstance(item, Mapping)] if isinstance(value, (list, tuple)) else []
+
+
+def _ai_image_refs(timeline: object, allowed_fallbacks: object) -> set[str]:
+    replaced = {
+        rule.get('replaced_media_asset_id')
+        for rule in _mappings(allowed_fallbacks)
+        if str(rule.get('rule_id', '')).startswith(_IMAGE_SAFETY_RULE_PREFIX)
+        and rule.get('reason') in (_SEED_FALLBACK_REASON, _IMAGE_FALLBACK_REASON)
+    }
+    refs: set[str] = set()
+    for scene in _mappings(timeline.get('segments') if isinstance(timeline, Mapping) else None):
+        for visual in _mappings(scene.get('visuals')):
+            ref = visual.get('artifact_version_ref')
+            if visual.get('origin') == _AI_GENERATED_ORIGIN and visual.get('media_asset_id') not in replaced and isinstance(ref, str) and ref:
+                refs.add(ref.lower())
+    return refs
+
+
+def _cut_ranges(spans: list[tuple[int, int]], cuts: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    result: list[tuple[int, int]] = []
+    for start, end in spans:
+        pieces = [(start, end)]
+        for cut_start, cut_end in cuts:
+            kept: list[tuple[int, int]] = []
+            for a, b in pieces:
+                if cut_end <= a or cut_start >= b:
+                    kept.append((a, b))
+                    continue
+                if a < cut_start:
+                    kept.append((a, cut_start))
+                if cut_end < b:
+                    kept.append((cut_end, b))
+            pieces = kept
+        result.extend(pieces)
+    return result
+
+
+def illustration_windows(timeline: Any, hook_placement: Any, allowed_fallbacks: Any, end_ms: Any = None) -> tuple[tuple[int, int], ...]:
+    ai_refs = _ai_image_refs(timeline, allowed_fallbacks)
+    if not ai_refs:
+        return ()
+    scenes = [
+        s for s in _mappings(timeline.get('segments') if isinstance(timeline, Mapping) else None)
+        if _int_ms(s.get('start_ms')) and _int_ms(s.get('end_ms')) and 0 <= s['start_ms'] < s['end_ms']
+    ]
+    if not scenes:
+        return ()
+    last_end = max(s['end_ms'] for s in scenes)
+    spans: list[tuple[int, int]] = []
+    for scene in scenes:
+        refs = scene.get('visual_asset_refs')
+        first = refs[0] if isinstance(refs, (list, tuple)) and refs else None
+        if not isinstance(first, str) or first.lower() not in ai_refs:
+            continue
+        end = scene['end_ms']
+        if end == last_end and _int_ms(end_ms) and end_ms > end:
+            end = end_ms
+        spans.append((scene['start_ms'], end))
+    merged: list[list[int]] = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    placement = hook_placement if isinstance(hook_placement, Mapping) else {}
+    cuts: list[tuple[int, int]] = []
+    for name in ('hook_time_range', 'thumbnail_time_range'):
+        span = placement.get(name)
+        if isinstance(span, Mapping) and _int_ms(span.get('start_ms')) and _int_ms(span.get('end_ms')) and 0 <= span['start_ms'] < span['end_ms']:
+            cuts.append((span['start_ms'], span['end_ms']))
+    pieces = _cut_ranges([(a, b) for a, b in merged], cuts)
+    return tuple(sorted((a, b) for a, b in pieces if a < b))
 
 
 _REF_AUDIO_BED_CUE = 'audio_bed_cue'
@@ -546,13 +625,22 @@ class ProductionRenderSources:
                 return None
         return payload if isinstance(payload, Mapping) else None
 
-    def _build_ass_material(self, timing_payload: Mapping[str, Any], script_version_ref: str) -> Any:
+    def _build_ass_material(
+        self,
+        timing_payload: Mapping[str, Any],
+        script_version_ref: str,
+        *,
+        timeline: Mapping[str, Any],
+        hook_placement: Mapping[str, Any],
+        allowed_fallbacks: Sequence[Mapping[str, Any]],
+    ) -> Any:
         scope = FreshScope(self._manager)
         cfg_sources = ConfigRenderSources(scope, self._workspace_id)
         preset_obj = cfg_sources.preset('bold-yellow').preset
         profile_obj = cfg_sources.output_profile().profile
         infos = read_script_segments(self._manager, workspace_id=self._workspace_id, script_version_ref=script_version_ref)
         inputs_ass = ass_inputs(preset_obj, profile_obj)
+        labels = illustration_windows(timeline, hook_placement, allowed_fallbacks, timing_payload.get('voice_duration_ms'))
         return build_ass_material(
             staging_root=str(self._runtime.staging_root),
             words=parse_word_timing(timing_payload),
@@ -561,6 +649,7 @@ class ProductionRenderSources:
             profile=inputs_ass.profile,
             disclosure_style=inputs_ass.disclosure_style,
             segments=infos,
+            illustration_windows=labels,
         )
 
     def _hook_source(self, hook_id: str) -> _StagedSource | None:
@@ -801,7 +890,14 @@ class ProductionRenderSources:
         )
 
         script_version_ref = script_ref or 'script-default'
-        ass = self._build_ass_material(timing_payload, script_version_ref)
+        render_timeline = _timeline_for_render(timeline)
+        ass = self._build_ass_material(
+            timing_payload,
+            script_version_ref,
+            timeline=render_timeline,
+            hook_placement=hook_placement,
+            allowed_fallbacks=allowed_fallbacks,
+        )
         entries = with_ass_entry(manifest_entries, ass)
 
         lang_ref = 'lang-' + str(plan_ref or 'default')
@@ -817,7 +913,7 @@ class ProductionRenderSources:
             output_profile_revision=profile_pin.revision_ref,
             language_validation_refs=(lang_ref,),
             input_artifacts=tuple(input_artifacts),
-            timeline=_timeline_for_render(timeline),
+            timeline=render_timeline,
             hook_placement=hook_placement,
             subtitle_config=subtitle_config,
             mix_plan=mix_plan,
@@ -986,7 +1082,13 @@ class ProductionRenderSources:
         voice_ms = timing_payload.get('voice_duration_ms')
         if isinstance(voice_ms, bool) or not isinstance(voice_ms, int) or voice_ms <= 0:
             raise ActivityInputError('INPUT_NOT_READY', 'voice_duration_missing')
-        ass_ref = self._build_ass_material(timing_payload, package.script_version_ref).ass_ref
+        ass_ref = self._build_ass_material(
+            timing_payload,
+            package.script_version_ref,
+            timeline=package.timeline,
+            hook_placement=package.hook_placement,
+            allowed_fallbacks=package.allowed_fallbacks,
+        ).ass_ref
         spec = build_render_command(
             package,
             preset_obj,
@@ -1000,7 +1102,13 @@ class ProductionRenderSources:
 
     def ass_material(self, package: RenderPackageRecord) -> Any:
         p_data = self._read_timing_payload(package.word_timing_ref) or {}
-        return self._build_ass_material(p_data, package.script_version_ref)
+        return self._build_ass_material(
+            p_data,
+            package.script_version_ref,
+            timeline=package.timeline,
+            hook_placement=package.hook_placement,
+            allowed_fallbacks=package.allowed_fallbacks,
+        )
 
     def ass_ref_for(self, package: RenderPackageRecord) -> str:
         return self.ass_material(package).ass_ref

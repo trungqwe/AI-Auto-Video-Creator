@@ -19,6 +19,17 @@ SEGMENT_INVALID = 'SEGMENT_INVALID'
 DISCLOSURE_STYLE_INVALID = 'DISCLOSURE_STYLE_INVALID'
 STAGING_ROOT_INVALID = 'STAGING_ROOT_INVALID'
 MANIFEST_CONFLICT = 'MANIFEST_CONFLICT'
+ILLUSTRATION_WINDOW_INVALID = 'ILLUSTRATION_WINDOW_INVALID'
+ILLUSTRATION_STYLE = 'Illustration'
+ILLUSTRATION_TEXT = 'AI-generated illustration'
+ILLUSTRATION_FONT_SIZE = 34
+ILLUSTRATION_ALIGNMENT = 7
+ILLUSTRATION_MARGIN_H = 60
+ILLUSTRATION_MARGIN_V = 110
+ILLUSTRATION_BORDER_STYLE = 3
+ILLUSTRATION_BOX_PADDING = 8
+ILLUSTRATION_TEXT_COLOUR = '&H00FFFFFF'
+ILLUSTRATION_BOX_COLOUR = '&H80000000'
 
 
 class AssManifestRejected(ValueError):
@@ -147,6 +158,43 @@ def _disclosure_style_row(plan: Any, style: object) -> tuple[str, int]:
     return row, margin_v
 
 
+def _illustration_style_row(plan: Any) -> str:
+    s = plan.style
+    return 'Style: ' + ','.join(
+        str(v)
+        for v in (
+            ILLUSTRATION_STYLE, s.font_name, ILLUSTRATION_FONT_SIZE,
+            ILLUSTRATION_TEXT_COLOUR, ILLUSTRATION_TEXT_COLOUR, ILLUSTRATION_BOX_COLOUR, ILLUSTRATION_BOX_COLOUR,
+            s.bold, s.italic, s.underline, s.strike_out, s.scale_x, s.scale_y, s.spacing, s.angle,
+            ILLUSTRATION_BORDER_STYLE, ILLUSTRATION_BOX_PADDING, 0, ILLUSTRATION_ALIGNMENT,
+            ILLUSTRATION_MARGIN_H, ILLUSTRATION_MARGIN_H, ILLUSTRATION_MARGIN_V, s.encoding,
+        )
+    )
+
+
+def _label_windows(windows: object) -> tuple[tuple[int, int], ...]:
+    if isinstance(windows, (str, bytes)) or not isinstance(windows, Sequence):
+        raise AssManifestRejected(ILLUSTRATION_WINDOW_INVALID, 'windows')
+    pairs: list[tuple[int, int]] = []
+    for window in windows:
+        if isinstance(window, (str, bytes)) or not isinstance(window, Sequence) or len(window) != 2:
+            raise AssManifestRejected(ILLUSTRATION_WINDOW_INVALID, 'window')
+        start, end = window
+        for value in (start, end):
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise AssManifestRejected(ILLUSTRATION_WINDOW_INVALID, 'window')
+        if start >= end:
+            raise AssManifestRejected(ILLUSTRATION_WINDOW_INVALID, 'window')
+        pairs.append((start, end))
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(pairs):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return tuple(merged)
+
+
 def build_ass_text(
     words: ConsumerWordTiming | Sequence[TimedWord],
     typography: Mapping,
@@ -154,6 +202,7 @@ def build_ass_text(
     profile: Mapping,
     disclosure_style: Mapping,
     segments: Sequence[ScriptSegmentInfo],
+    illustration_windows: Sequence[tuple[int, int]] = (),
 ) -> str:
     words_seq = words.words if isinstance(words, ConsumerWordTiming) else words
     words_tuple = tuple(words_seq)
@@ -161,6 +210,7 @@ def build_ass_text(
     base = render_ass(plan)
     windows = disclosure_windows(segments, words_tuple)
     style_row, margin_v = _disclosure_style_row(plan, disclosure_style)
+    labels = _label_windows(illustration_windows)
 
     rows = base.rstrip('\n').split('\n')
     if windows:
@@ -174,6 +224,14 @@ def build_ass_text(
                 f'{plan.margin_left},{plan.margin_right},{margin_v},,{_field_text(disclosure)}'
             )
             rows.append(dialogue_row)
+    if labels:
+        last_style_idx = max(i for i, r in enumerate(rows) if r.startswith('Style: '))
+        rows.insert(last_style_idx + 1, _illustration_style_row(plan))
+        for start_ms, end_ms in labels:
+            rows.append(
+                f'Dialogue: 0,{_clock(start_ms)},{_clock(end_ms)},{ILLUSTRATION_STYLE},,'
+                f'{ILLUSTRATION_MARGIN_H},{ILLUSTRATION_MARGIN_H},{ILLUSTRATION_MARGIN_V},,{ILLUSTRATION_TEXT}'
+            )
     return '\n'.join(rows) + '\n'
 
 
@@ -186,6 +244,7 @@ def build_ass_material(
     profile: Mapping,
     disclosure_style: Mapping,
     segments: Sequence[ScriptSegmentInfo],
+    illustration_windows: Sequence[tuple[int, int]] = (),
 ) -> AssMaterial:
     if not isinstance(staging_root, str) or not staging_root:
         raise AssManifestRejected(STAGING_ROOT_INVALID, 'staging_root')
@@ -200,6 +259,7 @@ def build_ass_material(
         profile=profile,
         disclosure_style=disclosure_style,
         segments=segments,
+        illustration_windows=illustration_windows,
     )
     data = text.encode('utf-8')
     digest = hashlib.sha256(data).hexdigest()
@@ -236,6 +296,7 @@ __all__ = (
     'AssMaterial',
     'DISCLOSURE_MISSING',
     'DISCLOSURE_STYLE_INVALID',
+    'ILLUSTRATION_WINDOW_INVALID',
     'MANIFEST_CONFLICT',
     'SEGMENT_INVALID',
     'STAGING_ROOT_INVALID',
