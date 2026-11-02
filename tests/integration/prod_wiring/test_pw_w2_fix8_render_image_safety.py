@@ -341,10 +341,25 @@ def test_a_blurred_image_that_is_safe_renders_as_the_registered_blurred_copy(wor
     assert hashlib.sha256(disk_file.read_bytes()).hexdigest() != world.v1.sha
 
 
+def test_a_blurred_copy_that_is_still_flagged_renders_as_the_blurred_copy_with_a_warning(world: Any) -> None:
+    produced = run_chain(world, WEAPON, after_blur=WEAPON)
+    record, chosen = assert_render_follows_e(world, produced, replaced=("m-1",))
+    source = e_choice(world, produced, world.selected[0])
+    assert source.reason == "blurred_with_warning" and source.artifact.ref.startswith("processed:")
+    assert chosen["m-1"] not in (world.v1.id, *world.seed_ids) and chosen["m-2"] == world.v2.id
+
+
+def test_an_unsure_image_renders_as_the_original(world: Any) -> None:
+    produced = run_chain(world, UNCERTAIN)
+    record, chosen = assert_render_follows_e(world, produced, replaced=())
+    assert chosen == {"m-1": world.v1.id, "m-2": world.v2.id}
+    assert e_choice(world, produced, world.selected[0]).reason == "uncertain"
+
+
 @pytest.mark.parametrize(
     "first_answer,after_blur",
-    [(NUDITY, SAFE), (UNCERTAIN, SAFE), (WEAPON, WEAPON)],
-    ids=["nudity_sexual", "uncertain", "blur_not_safe"],
+    [(NUDITY, SAFE)],
+    ids=["nudity_sexual"],
 )
 def test_an_excluded_image_renders_as_the_seed_of_its_rank(world: Any, first_answer: dict[str, Any], after_blur: dict[str, Any]) -> None:
     produced = run_chain(world, first_answer, after_blur=after_blur)
@@ -363,12 +378,12 @@ def test_an_excluded_image_renders_as_the_seed_of_its_rank(world: Any, first_ans
 
 def test_an_excluded_image_without_a_seed_fails_with_image_excluded(pw_database: Any, manager: Any, pinned: tuple[Any, Any], tmp_path: Path) -> None:
     world = fix8_world(pw_database, manager, pinned, tmp_path, seed_mode="none")
-    produced = run_chain(world, UNCERTAIN)
+    produced = run_chain(world, NUDITY)
     refs = merged(world.render_refs, world.selected, produced)
     with pytest.raises(ActivityInputError) as raised:
         world.sources.resolve_inputs(refs)
     assert raised.value.code == "INPUT_NOT_READY"
-    assert "image_excluded:uncertain:m-1" in str(raised.value)
+    assert "image_excluded:reject_category:m-1" in str(raised.value)
 
 
 def test_a_media_without_an_assessment_decision_fails_with_image_not_assessed(world: Any) -> None:
@@ -381,7 +396,7 @@ def test_a_media_without_an_assessment_decision_fails_with_image_not_assessed(wo
 
 def test_a_replacement_version_that_is_not_verified_fails_closed(pw_database: Any, manager: Any, pinned: tuple[Any, Any], tmp_path: Path) -> None:
     world = fix8_world(pw_database, manager, pinned, tmp_path, seed_mode="unverified")
-    produced = run_chain(world, UNCERTAIN)
+    produced = run_chain(world, NUDITY)
     with pytest.raises(ActivityInputError) as raised:
         world.sources.resolve_inputs(merged(world.render_refs, world.selected, produced))
     assert raised.value.code == "INPUT_NOT_READY"

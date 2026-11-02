@@ -558,7 +558,7 @@ def voice_activity_deps(
             try:
                 det = services.image_safety_detector_factory(processed)
                 res = assess_image_safety('image', det, safety_policy)
-                if isinstance(res, ImageSafetyAssessment):
+                if isinstance(res, ImageSafetyAssessment) and res.outcome is not SafetyOutcome.DETECTION_FAILED:
                     return res
             except Exception:
                 pass

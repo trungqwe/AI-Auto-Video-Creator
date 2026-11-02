@@ -6,7 +6,7 @@
       "basis": "DECIDED"
     },
     "revision": {
-      "value": 5,
+      "value": 6,
       "reason": "Revision cấu hình theo kết quả đo CP7 (docs/implementation/adapt/plan.md mục giá trị production: kết quả đo thay giá trị bằng revision cấu hình mới, không đổi mã).",
       "basis": "DECIDED"
     }
@@ -303,40 +303,42 @@
         "nudity_sexual",
         "graphic_violence",
         "weapon",
-        "hate_symbol"
+        "hate_symbol",
+        "logo_watermark"
       ],
-      "reason": "Tập danh mục nhạy cảm tối thiểu theo quy định CT-PROC-006.",
+      "reason": "Thêm nhóm logo_watermark (logo báo, kênh, hãng, watermark, chữ ghi công) theo quyết định user 02/11/2026 (CLOSURE_NOTE CP7/RG-13).",
       "basis": "DECIDED"
     },
     "thresholds": {
       "value": {
         "reject_min_confidence": {
-          "minor_child": 0.5,
           "nudity_sexual": 0.5
         },
         "blur_min_confidence": {
+          "minor_child": 0.5,
           "graphic_violence": 0.5,
           "weapon": 0.5,
-          "hate_symbol": 0.5
+          "hate_symbol": 0.5,
+          "logo_watermark": 0.5
         },
         "blur_without_region_action": "reject",
         "uncertain_range": {
           "min": 0.3,
           "max_exclusive": 0.5,
-          "action": "reject"
+          "action": "use_original"
         },
         "detector_failure_action": "reject"
       },
-      "reason": "Nghiêng về chặn an toàn vì bỏ một ảnh rẻ hơn rủi ro nội dung, đo ở CP7-E-03.",
-      "basis": "CONSERVATIVE_DEFAULT"
+      "reason": "Chỉ nudity_sexual bị loại; trẻ em, bạo lực, vũ khí, biểu tượng thù ghét và logo được che mờ; ảnh chưa chắc dùng nguyên gốc, theo quyết định user 02/11/2026 (CLOSURE_NOTE CP7/RG-13).",
+      "basis": "DECIDED"
     },
     "boxblur": {
       "value": {
-        "luma_radius": 40,
-        "luma_power": 3
+        "luma_radius": 4,
+        "luma_power": 1
       },
-      "reason": "Che mờ vùng nhạy cảm đủ mạnh nhưng vẫn giữ được bố cục tổng thể.",
-      "basis": "CONSERVATIVE_DEFAULT"
+      "reason": "Che mờ tối thiểu, bán kính theo cỡ vùng (blur_radius, tối thiểu 4), luma_power 1, theo quyết định user 02/11/2026 (CLOSURE_NOTE CP7/RG-13).",
+      "basis": "DECIDED"
     },
     "vision": {
       "value": {

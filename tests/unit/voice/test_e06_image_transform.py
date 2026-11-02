@@ -215,7 +215,6 @@ def test_transform_raising_is_failure_and_does_not_leak_text() -> None:
 
 
 FAILING_OUTPUTS = (
-    ('still_required', {'post': assessed('weapon')}, 'post_assessment_still_transform_required'),
     ('unreadable', {'post': UNREADABLE_POST}, 'processed_unreadable'),
     ('post_transform_failed', {'post': FAILED_POST}, 'post_assessment_transform_failed'),
     ('bad_result', {'bad_result': {'processed_ref': PROCESSED}}, 'transform_bad_result'),
@@ -234,6 +233,7 @@ def test_bad_transform_outputs_are_failure_never_success(kwargs: dict, reason: s
 def test_inconclusive_post_assessment_is_warning_not_success() -> None:
     cases = (
         (assessed(confidence=0.4), SafetyOutcome.UNCERTAIN),
+        (assessed('weapon'), SafetyOutcome.TRANSFORM_REQUIRED),
         (assess_image_safety('image', None, SAFETY_POLICY), SafetyOutcome.DETECTION_FAILED),
     )
     for post, expected in cases:
@@ -256,7 +256,7 @@ def test_only_safe_post_assessment_yields_success() -> None:
     statuses = {post.outcome: run(FakeTransformPort(post=post)).status for post in posts}
     assert statuses == {
         SafetyOutcome.SAFE: TransformStatus.SUCCESS,
-        SafetyOutcome.TRANSFORM_REQUIRED: TransformStatus.FAILURE,
+        SafetyOutcome.TRANSFORM_REQUIRED: TransformStatus.WARNING,
         SafetyOutcome.UNCERTAIN: TransformStatus.WARNING,
         SafetyOutcome.DETECTION_FAILED: TransformStatus.WARNING,
         SafetyOutcome.UNREADABLE: TransformStatus.FAILURE,

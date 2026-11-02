@@ -1,7 +1,7 @@
 """CP7-7 / RG-06: an toàn ảnh thật (OI-CP7-02).
 
 Bộ ảnh nhạy cảm nằm ngoài cây Git (LOCALAPPDATA/AIAutoVideoCreator/real-fixtures/sensitive); 5 ảnh đầu mỗi nhóm safe, tre-em, mau-me, vu-khi, uncertain đi qua LlmImageSafetyDetector + RouterVisionRoute thật,
-che bằng RealFfmpegMediaTool (boxblur luma_radius 40, luma_power 3) của FFmpeg đã ghim; lỗi detector thật bằng timeout 1 ms trên tuyến thật;
+che bằng RealFfmpegMediaTool (boxblur luma_power 1, bán kính theo blur_radius, tối thiểu 4) của FFmpeg đã ghim; lỗi detector thật bằng timeout 1 ms trên tuyến thật;
 trần chi phí (CALL_CAP 35 lời gọi mỗi lượt chạy, ledger +5 USD, hạn 45 phút, Ctrl+C); không in khóa, không nhúng ảnh.
 """
 
@@ -281,8 +281,8 @@ def _evaluate(stack, bundle, tool, produced, entry, timeout_seconds):
             reason = 'transform_failed'
         elif result is not None:
             reductions = _region_reductions(entry.path, produced[result.processed_ref.ref], detector.regions)
-            final = BLURRED if result.outcome is SafetyOutcome.SAFE else EXCLUDED
-            reason = 'blurred' if final == BLURRED else 'not_blurred_safe'
+            final = BLURRED
+            reason = 'blurred' if result.outcome is SafetyOutcome.SAFE else 'blurred_with_warning'
     return SimpleNamespace(
         group=entry.group, id=entry.id, outcome=assessment.outcome.value, original_usable=assessment.original_usable,
         confidence=assessment.confidence, categories=assessment.categories, failure_code=detector.failure_code, regions=len(detector.regions),
@@ -314,7 +314,7 @@ def measurement(tmp_path_factory):
         stack = _build_stack()
         bundle = _policy_bundle(stack.profile)
         assert bundle.policy.require_transform_before_use is True
-        assert (bundle.output_profile['luma_radius'], bundle.output_profile['luma_power']) == (40, 3)
+        assert (bundle.output_profile['luma_radius'], bundle.output_profile['luma_power']) == (4, 1)
         guard = c.CostGuard.from_ledger(stack.ledger, WS, *stack.window(stack.clock()), LEDGER_CEILING_USD)
         sources = {item.ref: item.path for items in entries.values() for item in items}
         tool_main, produced_main = _make_tool(sources, work_dir / 'main')
@@ -410,7 +410,7 @@ def test_rg06_false_safe_zero(measurement, emit):
 def test_rg06_uncertain_never_safe(measurement, emit):
     items = _by_group(measurement, 'uncertain')
     assert len(items) == PER_GROUP
-    assert _leaked(items) == [], f'uncertain became safe: {_leaked(items)}'
+    assert [i.id for i in items if i.outcome == 'UNCERTAIN' and i.final != USABLE_ORIGINAL] == [], 'uncertain outcome must use the original (RG-13)'
     assert len(measurement.unreadable) >= MIN_PER_GROUP
     bad = [u.id for u in measurement.unreadable if u.final == USABLE_ORIGINAL]
     assert bad == [], f'unreadable not excluded: {bad}'
@@ -420,7 +420,7 @@ def test_rg06_uncertain_never_safe(measurement, emit):
 
 def test_rg06_blur_applied(measurement, emit):
     from voice.adapters import real_ffmpeg_media_tool as tool_module
-    assert (tool_module.LUMA_RADIUS, tool_module.LUMA_POWER) == (40, 3)
+    assert (tool_module.BLUR_MIN_RADIUS, tool_module.LUMA_POWER) == (4, 1)
     tool, produced = _make_tool(measurement.sources, measurement.work_dir / 'blur')
     fixed = []
     for group, category in BLUR_GROUPS.items():
@@ -435,7 +435,7 @@ def test_rg06_blur_applied(measurement, emit):
     assert all(r >= BLUR_MIN_REDUCTION for r in detected), 'detector region blur below threshold'
     emit(c.report_line('RG-06', 'blur_applied', 'PASS'))
     detected_min = f'{min(detected):.3f}' if detected else 'n/a'
-    emit(f'- blur_applied: luma_radius=40 luma_power=3 fixed_region_images={len(fixed)} min_reduction={min(fixed):.3f} mean_reduction={sum(fixed) / len(fixed):.3f} detector_regions_measured={len(detected)} detector_min_reduction={detected_min}')
+    emit(f'- blur_applied: luma_radius=min4 luma_power=1 fixed_region_images={len(fixed)} min_reduction={min(fixed):.3f} mean_reduction={sum(fixed) / len(fixed):.3f} detector_regions_measured={len(detected)} detector_min_reduction={detected_min}')
 
 
 def test_rg06_failure_modes(measurement, emit):

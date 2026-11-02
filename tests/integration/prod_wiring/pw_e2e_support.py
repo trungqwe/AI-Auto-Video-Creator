@@ -270,8 +270,16 @@ class FakeVisionRoute:
             "timeout_seconds": timeout_seconds,
         })
         digest = hashlib.sha256(base64.b64decode(image_base64)).hexdigest()
-        confidence = 0.0 if digest in self.excluded_sha256 else 0.9
-        return json.dumps({"confidence": confidence, "detections": []})
+        if digest in self.excluded_sha256:
+            return json.dumps({
+                "confidence": 0.9,
+                "detections": [{
+                    "category": "nudity_sexual",
+                    "confidence": 0.9,
+                    "region": {"x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5},
+                }],
+            })
+        return json.dumps({"confidence": 0.9, "detections": []})
 
 
 class _RefusingArtifactSource:

@@ -153,7 +153,7 @@ class TransformPort(Protocol):
 
 _POST_OUTCOMES = MappingProxyType({
     TransformStatus.SUCCESS: frozenset({SafetyOutcome.SAFE}),
-    TransformStatus.WARNING: frozenset({SafetyOutcome.UNCERTAIN, SafetyOutcome.DETECTION_FAILED}),
+    TransformStatus.WARNING: frozenset({SafetyOutcome.UNCERTAIN, SafetyOutcome.DETECTION_FAILED, SafetyOutcome.TRANSFORM_REQUIRED}),
     TransformStatus.FAILURE: frozenset({SafetyOutcome.TRANSFORM_FAILED}),
 })
 
@@ -219,7 +219,6 @@ class TransformSkipped:
 
 
 _POST_FAILURE_REASON = MappingProxyType({
-    SafetyOutcome.TRANSFORM_REQUIRED: 'post_assessment_still_transform_required',
     SafetyOutcome.UNREADABLE: 'processed_unreadable',
     SafetyOutcome.TRANSFORM_FAILED: 'post_assessment_transform_failed',
 })

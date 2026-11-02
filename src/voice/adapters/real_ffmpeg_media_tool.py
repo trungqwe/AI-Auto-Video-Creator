@@ -3,6 +3,7 @@
 Executes ffmpeg and ffprobe binaries located in the same directory.
 Pin is verified from tools/runtime/runtime.lock.json (pins.ffmpeg).
 Region masking is performed using the boxblur filter.
+The blur radius of a region follows its shorter side (blur_radius).
 """
 from __future__ import annotations
 
@@ -28,8 +29,9 @@ from voice.ports.media_tool import ToolOutcome
 RUNTIME_LOCK_RELATIVE_PATH = 'tools/runtime/runtime.lock.json'
 MASK_REF_PREFIX = 'region:'
 BLUR_ACTION = 'blur'
-LUMA_RADIUS = 40
-LUMA_POWER = 3
+LUMA_POWER = 1
+BLUR_MIN_RADIUS = 4
+BLUR_REGION_DIVISOR = 6
 _SHA256_RE = re.compile(r'[0-9a-f]{64}')
 _EXTENSION_RE = re.compile(r'[a-z0-9]{1,8}')
 _COLOR_RE = re.compile(r'#[0-9a-fA-F]{6}')
@@ -73,6 +75,11 @@ def parse_mask_ref(mask_ref: str) -> tuple[float, float, float, float]:
     except (ValueError, TypeError):
         raise ValueError('invalid_mask_ref') from None
     return (x, y, w, h)
+
+
+def blur_radius(width: int, height: int) -> int:
+    short = min(width, height)
+    return min(max(BLUR_MIN_RADIUS, short // BLUR_REGION_DIVISOR), short // 4)
 
 
 def _file_sha256(path: Path) -> str:
@@ -307,7 +314,7 @@ class RealFfmpegMediaTool:
             elif op_name == 'resize':
                 w = _int_param(step.params, 'width', 1)
                 h = _int_param(step.params, 'height', 1)
-                vf.append(f'scale={w}:{h}')
+                vf.append(f"scale='min({w},iw)':'min({h},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2")
             elif op_name == 'pad':
                 w = step.params.get('width')
                 h = step.params.get('height')
@@ -416,9 +423,9 @@ class RealFfmpegMediaTool:
             ph = min(max(1, round(h * height)), height - py)
             if min(pw, ph) < 4:
                 raise FfmpegToolError('region_too_small')
-            radius = min(LUMA_RADIUS, min(pw, ph) // 4)
+            radius = blur_radius(pw, ph)
             clauses.append(f"[t{i}]crop={pw}:{ph}:{px}:{py},boxblur=luma_radius={radius}:luma_power={LUMA_POWER}[k{i}]")
-            clauses.append(f"[b{i}][k{i}]overlay={px}:{py}[b{i + 1}]")
+            clauses.append(f"[b{i}][k{i}]overlay={px}:{py}:format=auto[b{i + 1}]")
 
         graph = ';'.join(clauses)
         payload = {
@@ -428,6 +435,7 @@ class RealFfmpegMediaTool:
             'policy': request.transform_policy_revision,
             'profile': dict(request.output_profile),
             'processor': f'ffmpeg-{archive}',
+            'graph': graph,
         }
         digest = hashlib.sha256(
             json.dumps(payload, sort_keys=True, separators=(',', ':')).encode('utf-8')
@@ -538,6 +546,7 @@ __all__ = (
     'FfmpegPinError',
     'RealFfmpegMediaTool',
     'RUNTIME_LOCK_RELATIVE_PATH',
+    'blur_radius',
     'format_mask_ref',
     'parse_mask_ref',
 )
