@@ -2,109 +2,151 @@
 
 ## Kết luận trung thực
 
-- Lượt chạy thật duy nhất đã hoàn tất: 100/100 video hợp lệ đã cloud verified (ledger + location VERIFIED + evidence `drive:` + QC hard gate 0 lỗi), 0 video không hợp lệ, 0 job lỗi hệ thống, 6 video được đối soát md5/sha256 với Drive đều khớp.
-- Thời gian từ lúc POST lô tới video hợp lệ thứ 100 là 5827 giây (khoảng 1 giờ 37 phút), trong ngưỡng 12 giờ; thời gian chờ nhà cung cấp `wait_provider_seconds=331`, tính vào tổng thời gian.
-- Resume giữa lô (stop rồi start đúng một lần, lúc 41 video đã hoàn tất và 6 video đang chạy) sẵn sàng sau 16,1 giây (ngưỡng 300 giây); không stage SUCCEEDED nào bị chạy lại.
-- Chi phí: ledger đêm 0 USD, tháng 0 USD (route 9Router có `route_cost_per_request=0`), 606 lời gọi AI, Drive 534327038 byte; working set tối đa 2,32 GiB.
-- **Mục không đạt: `RG-10.failure_isolated` là FAIL.** Nguồn 404 thật đã được đăng ký, trả 404 và có đúng 1 lượt thu thập `FAILED_FINAL` (cảnh báo `HTTP_STATUS_REJECTED`), nhưng trong cửa sổ lô không có lượt thu thập nào của nguồn khác (`others_ok=0`), nên theo định nghĩa của test (`target_failed >= 1` và `others_ok >= 1`) chưa chứng minh được cô lập lỗi bằng sổ thu thập. Việc độc lập (100 video của lô) vẫn hoàn tất bình thường, nhưng đó không phải là bằng chứng mà mục này đòi. Không chạy lại lô và không đổi tiêu chí để ép PASS; cần Control quyết định gói sửa.
-- Do mục trên FAIL, probe `python -c` cuối của gói không đạt (đúng như kỳ vọng của quy tắc trung thực).
+Lượt 3 (lượt chính thức) đã chạy trọn lô thật và pytest kết thúc với `1 failed, 54 passed in 7305.07s (2:01:45)`, exit code 1. Mục `auto_ratio_95` FAIL thật; 12 mục còn lại có dòng kết quả trong log (11 PASS, `warn_80_visible` NOT_OBSERVED).
+
+- `valid_synced_100`: 100 video hợp lệ, 0 không hợp lệ, 6 video đối soát Drive.
+- `within_12h`: `t_target_s=7261` (khoảng 2 giờ 1 phút, rất thấp hơn trần 12 giờ); `wait_provider_seconds=1053`.
+- `auto_ratio_95`: FAIL. Test assert `valid=100 total=112`: 100 job hoàn thành trên 112 job của lô, tức khoảng 89,3% (dưới ngưỡng 95%). 12 job ở trạng thái `FAILED_FINAL`. Test dừng ở assert này nên log không có dòng `RG-10.auto_ratio_95`; báo cáo không tự thêm dòng đó và không đổi tiêu chí.
+- `failure_isolated`: `target_runs=1`, `target_failed=1`, `others_ok=1`, `completed_after_failure=100` (lọc theo `business_date` đã khắc phục lỗi của lượt 1).
+- `resume_300s_midrun`: `ready_seconds=19.0` (stop 1 lần, 6 video đang chạy và 40 video đã xong tại thời điểm dừng).
+- Chi phí: `night_usd=0`, `month_usd=0`, 677 lời gọi AI (route_cost_per_request=0 nên ledger bằng 0).
+- Working set tối đa 5,87 GiB (trần 20 GiB), disk trống tối thiểu 222,3 GiB, VRAM tối đa 2778 MiB.
+
+Lô chạy với 6 luồng (mặc định 6, tối đa 10); sau 7261 giây đạt 100 video hợp lệ nhưng tổng 112 job vì 12 job lỗi chung cuộc, nên tỉ lệ tự hoàn thành chưa đạt 95%. Control cần quyết định xử lý mục này.
+
+## Lịch sử các lượt chạy
+
+- Lượt 1 (2026-11-02 08:09:40–09:47:30 giờ Việt Nam, HEAD 7fa09bf): 100/100 video hợp lệ nhưng `failure_isolated` FAIL do `others_ok=0`: mỗi nguồn chỉ thu thập một lượt mỗi ngày giờ Việt Nam nên lọc theo cửa sổ lô không thấy nguồn khác; bằng chứng đã đổi sang lọc theo `business_date` kèm `completed_after_failure`.
+- Lượt 2 (bắt đầu 09:59:26+07:00): bị hệ thống dừng khoảng 10:31 vì thiếu bộ nhớ khi chạy trong tác vụ nền, không có dòng RG-10.* nên không tính.
+- Lượt 3 (Control cấp thay lượt 2, kết quả chính thức bên dưới): bắt đầu 2026-11-02 12:08:08+07:00 (lô POST lúc 12:08:23), kết thúc khoảng 14:10 +07:00, chạy tách tiến trình, có dòng tổng kết pytest.
 
 ## Lệnh đã chạy
 
-- Bắt đầu pytest: 2026-11-02T01:09:40Z (08:09:40 giờ Việt Nam); POST lô lúc 01:09:56Z; video thứ 100 lúc 02:47:03Z; kết thúc pytest 02:47:30Z (09:47:30 giờ Việt Nam).
-- HEAD lúc chạy: `7fa09bf97eddc072af4a038c154148580fdef7d0` (worktree `lane-cp7-11`, nhánh `trungqwe/lane-cp7-11`).
+- HEAD khi chạy: `8acce40b3acc14d02ae572478f8785375798288e` (hai tệp test và monitor sửa chưa commit tại thời điểm chạy).
 - Interpreter khoá: `C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\8715e538\venv\Scripts\python.exe`.
-- Lệnh: `python -m pytest tests/real/test_cp7_overnight.py -q -p no:cacheprovider` (đúng một lần), exit code 1.
-- Dòng tổng kết pytest: `1 failed, 51 passed in 5869.39s (1:37:49)` (38 test_unit_* đạt, 13 test_rg10_* đạt, 1 test_rg10_* đỏ: `test_rg10_failure_isolated`).
-- Trước khi chạy thật: `git diff --check` exit 0; 38 test_unit_* xanh (bước 7 và 17); RED hợp lệ ở bước 4 (15 test thuần đỏ do hàm khung trả `None`) và bước 11 (21 test nhóm C đỏ).
-- Stop/start đặt giữa lô (khi đạt 40 video hợp lệ và có job đang chạy) theo quyết định của user ngày 31/10/2026, thay cho giờ thứ 6.
-- Số luồng mặc định lấy từ `/v1/batch-settings`: `{"default": 6, "max": 10, "min": 1}`; lô `target_completed_videos=100`, `videos_per_news_per_round=2`.
-- Ổ chứa dữ liệu: ổ D: (`AIAVC_DATA_DIR` mức User đã được Control dời sang ổ D theo quyết định 01/11/2026; giá trị được truyền nguyên vẹn vào shell chạy lệnh, không đổi cấu hình).
-- Ngưỡng quota Drive dùng 12 GiB + 20% limit: trống 5119,81 GiB, cần 1036,00 GiB, `unlimited=False`.
-- Chẩn đoán sau lượt chạy (chỉ đọc DB, không chạy lại lô): `cp_collection_runs` từ 01:09Z trở đi chỉ có 1 dòng, của nguồn 404 (`b9500b***`), trạng thái `FAILED_FINAL`, `run_kind=PERIODIC`, cảnh báo `HTTP_STATUS_REJECTED`; `collection_isolation` cho `{'target_runs': 1, 'target_failed': 1, 'others_ok': 0, 'isolated': False}`.
+- RED đã chứng kiến ở lượt Worker trước: `test_unit_collection_isolation` đỏ trước khi sửa, sau đó 41 test_unit đạt.
+- `git diff --check`: exit 0 trước khi chạy lô.
+- `python -m pytest tests/real/test_cp7_overnight.py -q -p no:cacheprovider -k test_unit`: `41 passed, 14 deselected in 0.32s`, exit 0.
+- RAM trống trước khi chạy lô: 11300896 KB (ngưỡng 8388608 KB).
+- Cách chạy lô: `Start-Process` tách tiến trình (PID 96952, `PYTEST_DEBUG_TEMPROOT` riêng, `PYTHONUTF8=1`), log ngoài repo; lệnh `python -m pytest tests/real/test_cp7_overnight.py -q -p no:cacheprovider`.
+- Exit code lô thật: 1 (do `test_rg10_auto_ratio_95`).
+- Dòng tổng kết pytest nguyên văn: `1 failed, 54 passed in 7305.07s (2:01:45)`.
+- `AIAVC_DATA_DIR` (biến môi trường User): `D:\AIAVC_DATA`.
+- Số luồng (dòng `concurrency=`): `{"default": 6, "max": 10, "min": 1}`.
+- Quota Drive (dòng `drive_quota_ok`): `free_gib=5118.78`, `required_gib=1036.00`, `unlimited=False`.
 
 ## Kết quả
 
+RG-10.drive_quota_ok: PASS
 RG-10.valid_synced_100: PASS
 RG-10.within_12h: PASS
-RG-10.auto_ratio_95: PASS
 RG-10.no_vanished_jobs: PASS
-RG-10.failure_isolated: FAIL
+RG-10.failure_isolated: PASS
 RG-10.resume_300s_midrun: PASS
 RG-10.no_rerun_completed: PASS
 RG-10.cost_under_cap: PASS
 RG-10.working_set_cap: PASS
-RG-10.drive_quota_ok: PASS
 RG-10.stage_metrics: PASS
 RG-10.secret_scan: PASS
 RG-10.warn_80_visible: NOT_OBSERVED
 
+(Không có dòng nào cho `auto_ratio_95` trong log vì test FAIL tại assert; xem phần Kết luận.)
+
 ## Chuỗi thời gian
 
 ```
-- sample t=2026-11-02T01:14:56Z elapsed_s=300 batch=RUNNING jobs={"ACTIVE":6} valid=0 running_stages=5 night_usd=0 month_usd=0 ai_calls=36 data_free_gib=266.0 sys_free_gib=57.6 working_set_gib=0.68 vram_mib=997
-- sample t=2026-11-02T01:19:56Z elapsed_s=600 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":6} valid=6 running_stages=6 night_usd=0 month_usd=0 ai_calls=70 data_free_gib=265.9 sys_free_gib=57.6 working_set_gib=0.77 vram_mib=1008
-- sample t=2026-11-02T01:24:57Z elapsed_s=900 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":12} valid=12 running_stages=6 night_usd=0 month_usd=0 ai_calls=91 data_free_gib=265.9 sys_free_gib=57.6 working_set_gib=0.86 vram_mib=1020
-- sample t=2026-11-02T01:29:57Z elapsed_s=1201 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":18} valid=18 running_stages=6 night_usd=0 month_usd=0 ai_calls=123 data_free_gib=265.8 sys_free_gib=57.6 working_set_gib=0.95 vram_mib=1019
-- sample t=2026-11-02T01:34:57Z elapsed_s=1501 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":24} valid=24 running_stages=6 night_usd=0 month_usd=0 ai_calls=157 data_free_gib=265.7 sys_free_gib=57.5 working_set_gib=1.05 vram_mib=1021
-- sample t=2026-11-02T01:39:57Z elapsed_s=1801 batch=RUNNING jobs={"ACTIVE":2,"COMPLETED":30,"SNAPSHOTTED":4} valid=30 running_stages=5 night_usd=0 month_usd=0 ai_calls=190 data_free_gib=265.5 sys_free_gib=57.5 working_set_gib=1.16 vram_mib=1021
-- sample t=2026-11-02T01:44:57Z elapsed_s=2101 batch=RUNNING jobs={"ACTIVE":5,"COMPLETED":34,"SNAPSHOTTED":1} valid=34 running_stages=6 night_usd=0 month_usd=0 ai_calls=224 data_free_gib=265.5 sys_free_gib=57.5 working_set_gib=1.24 vram_mib=1019
-- sample t=2026-11-02T01:49:58Z elapsed_s=2401 batch=RUNNING jobs={"ACTIVE":3,"COMPLETED":41,"SNAPSHOTTED":3} valid=41 running_stages=6 night_usd=0 month_usd=0 ai_calls=259 data_free_gib=265.4 sys_free_gib=57.5 working_set_gib=1.34 vram_mib=1020
-- sample t=2026-11-02T01:54:58Z elapsed_s=2702 batch=RUNNING jobs={"ACTIVE":5,"COMPLETED":44} valid=44 running_stages=5 night_usd=0 month_usd=0 ai_calls=291 data_free_gib=265.3 sys_free_gib=57.5 working_set_gib=1.40 vram_mib=1329
-- sample t=2026-11-02T01:59:58Z elapsed_s=3002 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":49} valid=49 running_stages=6 night_usd=0 month_usd=0 ai_calls=327 data_free_gib=265.2 sys_free_gib=57.5 working_set_gib=1.48 vram_mib=1026
-- sample t=2026-11-02T02:04:58Z elapsed_s=3302 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":55} valid=55 running_stages=6 night_usd=0 month_usd=0 ai_calls=354 data_free_gib=265.1 sys_free_gib=57.5 working_set_gib=1.56 vram_mib=1120
-- sample t=2026-11-02T02:09:59Z elapsed_s=3602 batch=RUNNING jobs={"ACTIVE":5,"COMPLETED":60,"SNAPSHOTTED":1} valid=60 running_stages=6 night_usd=0 month_usd=0 ai_calls=383 data_free_gib=265.0 sys_free_gib=57.5 working_set_gib=1.67 vram_mib=1039
-- sample t=2026-11-02T02:14:59Z elapsed_s=3902 batch=RUNNING jobs={"ACTIVE":5,"COMPLETED":66,"SNAPSHOTTED":1} valid=66 running_stages=6 night_usd=0 month_usd=0 ai_calls=415 data_free_gib=264.7 sys_free_gib=57.5 working_set_gib=1.75 vram_mib=1008
-- sample t=2026-11-02T02:19:59Z elapsed_s=4203 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":70} valid=70 running_stages=6 night_usd=0 month_usd=0 ai_calls=448 data_free_gib=264.6 sys_free_gib=57.5 working_set_gib=1.84 vram_mib=1357
-- sample t=2026-11-02T02:24:59Z elapsed_s=4503 batch=RUNNING jobs={"ACTIVE":5,"COMPLETED":76,"SNAPSHOTTED":1} valid=76 running_stages=6 night_usd=0 month_usd=0 ai_calls=480 data_free_gib=264.5 sys_free_gib=57.4 working_set_gib=1.94 vram_mib=1303
-- sample t=2026-11-02T02:30:00Z elapsed_s=4803 batch=RUNNING jobs={"ACTIVE":4,"COMPLETED":81,"SNAPSHOTTED":1,"WAITING":1} valid=81 running_stages=6 night_usd=0 month_usd=0 ai_calls=508 data_free_gib=264.5 sys_free_gib=57.3 working_set_gib=2.02 vram_mib=1475
-- sample t=2026-11-02T02:35:00Z elapsed_s=5104 batch=RUNNING jobs={"ACTIVE":5,"COMPLETED":86,"SNAPSHOTTED":1} valid=86 running_stages=6 night_usd=0 month_usd=0 ai_calls=545 data_free_gib=264.4 sys_free_gib=57.3 working_set_gib=2.10 vram_mib=1123
-- sample t=2026-11-02T02:40:00Z elapsed_s=5404 batch=RUNNING jobs={"ACTIVE":5,"COMPLETED":92,"SNAPSHOTTED":1} valid=92 running_stages=6 night_usd=0 month_usd=0 ai_calls=575 data_free_gib=264.3 sys_free_gib=57.3 working_set_gib=2.20 vram_mib=1149
-- sample t=2026-11-02T02:45:01Z elapsed_s=5704 batch=RUNNING jobs={"ACTIVE":4,"COMPLETED":96} valid=96 running_stages=4 night_usd=0 month_usd=0 ai_calls=604 data_free_gib=264.2 sys_free_gib=57.3 working_set_gib=2.28 vram_mib=1703
-- sample t=2026-11-02T02:47:03Z elapsed_s=5826 batch=COMPLETED_TARGET jobs={"COMPLETED":100} valid=100 running_stages=0 night_usd=0 month_usd=0 ai_calls=606 data_free_gib=264.2 sys_free_gib=57.3 working_set_gib=2.32 vram_mib=1189
+- sample t=2026-11-02T05:08:23Z elapsed_s=0 batch=CREATED jobs={} valid=0 running_stages=0 night_usd=0 month_usd=0 ai_calls=0 data_free_gib=234.1 sys_free_gib=52.9 working_set_gib=4.06 vram_mib=500
+- sample t=2026-11-02T05:13:23Z elapsed_s=300 batch=RUNNING jobs={"ACTIVE":6} valid=0 running_stages=6 night_usd=0 month_usd=0 ai_calls=36 data_free_gib=231.5 sys_free_gib=53.0 working_set_gib=4.09 vram_mib=488
+- sample t=2026-11-02T05:18:24Z elapsed_s=600 batch=RUNNING jobs={"ACTIVE":5,"COMPLETED":6,"WAITING":1} valid=6 running_stages=6 night_usd=0 month_usd=0 ai_calls=60 data_free_gib=228.4 sys_free_gib=52.9 working_set_gib=4.19 vram_mib=481
+- sample t=2026-11-02T05:23:24Z elapsed_s=900 batch=RUNNING jobs={"ACTIVE":5,"COMPLETED":10,"FAILED_FINAL":1,"WAITING":1} valid=10 running_stages=6 night_usd=0 month_usd=0 ai_calls=86 data_free_gib=226.2 sys_free_gib=52.9 working_set_gib=4.26 vram_mib=482
+- sample t=2026-11-02T05:28:24Z elapsed_s=1200 batch=RUNNING jobs={"ACTIVE":5,"COMPLETED":16,"FAILED_FINAL":1,"SNAPSHOTTED":1} valid=16 running_stages=6 night_usd=0 month_usd=0 ai_calls=115 data_free_gib=224.2 sys_free_gib=52.8 working_set_gib=4.37 vram_mib=483
+- sample t=2026-11-02T05:33:24Z elapsed_s=1500 batch=RUNNING jobs={"ACTIVE":4,"COMPLETED":20,"FAILED_FINAL":1,"SNAPSHOTTED":2} valid=20 running_stages=6 night_usd=0 month_usd=0 ai_calls=144 data_free_gib=222.3 sys_free_gib=52.6 working_set_gib=4.45 vram_mib=956
+- sample t=2026-11-02T05:38:24Z elapsed_s=1801 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":24,"FAILED_FINAL":1} valid=24 running_stages=6 night_usd=0 month_usd=0 ai_calls=179 data_free_gib=224.6 sys_free_gib=52.5 working_set_gib=4.53 vram_mib=1235
+- sample t=2026-11-02T05:43:25Z elapsed_s=2101 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":29,"FAILED_FINAL":2} valid=29 running_stages=6 night_usd=0 month_usd=0 ai_calls=203 data_free_gib=228.0 sys_free_gib=52.5 working_set_gib=4.63 vram_mib=1867
+- sample t=2026-11-02T05:48:25Z elapsed_s=2401 batch=RUNNING jobs={"ACTIVE":4,"COMPLETED":32,"FAILED_FINAL":4,"SNAPSHOTTED":2} valid=32 running_stages=6 night_usd=0 month_usd=0 ai_calls=234 data_free_gib=227.9 sys_free_gib=52.5 working_set_gib=4.70 vram_mib=2778
+- sample t=2026-11-02T05:53:25Z elapsed_s=2701 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":36,"FAILED_FINAL":4} valid=36 running_stages=6 night_usd=0 month_usd=0 ai_calls=266 data_free_gib=227.8 sys_free_gib=52.5 working_set_gib=4.77 vram_mib=1318
+- sample t=2026-11-02T05:58:25Z elapsed_s=3002 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":40,"FAILED_FINAL":4} valid=40 running_stages=6 night_usd=0 month_usd=0 ai_calls=288 data_free_gib=231.8 sys_free_gib=52.7 working_set_gib=4.84 vram_mib=726
+- sample t=2026-11-02T06:03:25Z elapsed_s=3302 batch=RUNNING jobs={"ACTIVE":4,"COMPLETED":46,"FAILED_FINAL":4,"SNAPSHOTTED":2} valid=46 running_stages=6 night_usd=0 month_usd=0 ai_calls=317 data_free_gib=231.7 sys_free_gib=52.6 working_set_gib=4.94 vram_mib=834
+- sample t=2026-11-02T06:08:26Z elapsed_s=3602 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":47,"FAILED_FINAL":6} valid=47 running_stages=6 night_usd=0 month_usd=0 ai_calls=348 data_free_gib=226.6 sys_free_gib=52.5 working_set_gib=4.97 vram_mib=1157
+- sample t=2026-11-02T06:13:26Z elapsed_s=3903 batch=RUNNING jobs={"ACTIVE":5,"COMPLETED":51,"FAILED_FINAL":6,"WAITING":1} valid=51 running_stages=6 night_usd=0 month_usd=0 ai_calls=373 data_free_gib=226.5 sys_free_gib=52.5 working_set_gib=5.03 vram_mib=1134
+- sample t=2026-11-02T06:18:27Z elapsed_s=4204 batch=RUNNING jobs={"ACTIVE":5,"COMPLETED":55,"FAILED_FINAL":8,"WAITING":1} valid=55 running_stages=6 night_usd=0 month_usd=0 ai_calls=397 data_free_gib=232.1 sys_free_gib=52.8 working_set_gib=5.10 vram_mib=731
+- sample t=2026-11-02T06:23:28Z elapsed_s=4504 batch=RUNNING jobs={"ACTIVE":3,"COMPLETED":59,"FAILED_FINAL":9,"SNAPSHOTTED":2,"WAITING":1} valid=59 running_stages=6 night_usd=0 month_usd=0 ai_calls=423 data_free_gib=232.0 sys_free_gib=52.6 working_set_gib=5.18 vram_mib=725
+- sample t=2026-11-02T06:28:28Z elapsed_s=4804 batch=RUNNING jobs={"ACTIVE":4,"COMPLETED":63,"FAILED_FINAL":9,"SNAPSHOTTED":2} valid=63 running_stages=6 night_usd=0 month_usd=0 ai_calls=451 data_free_gib=230.4 sys_free_gib=52.3 working_set_gib=5.25 vram_mib=716
+- sample t=2026-11-02T06:33:28Z elapsed_s=5104 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":67,"FAILED_FINAL":9} valid=67 running_stages=6 night_usd=0 month_usd=0 ai_calls=485 data_free_gib=229.3 sys_free_gib=52.3 working_set_gib=5.31 vram_mib=717
+- sample t=2026-11-02T06:38:28Z elapsed_s=5405 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":72,"FAILED_FINAL":9} valid=72 running_stages=6 night_usd=0 month_usd=0 ai_calls=516 data_free_gib=227.2 sys_free_gib=52.2 working_set_gib=5.41 vram_mib=739
+- sample t=2026-11-02T06:43:29Z elapsed_s=5705 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":78,"FAILED_FINAL":9} valid=78 running_stages=6 night_usd=0 month_usd=0 ai_calls=545 data_free_gib=227.1 sys_free_gib=52.1 working_set_gib=5.50 vram_mib=713
+- sample t=2026-11-02T06:48:29Z elapsed_s=6005 batch=RUNNING jobs={"ACTIVE":6,"COMPLETED":83,"FAILED_FINAL":9} valid=83 running_stages=6 night_usd=0 month_usd=0 ai_calls=573 data_free_gib=227.0 sys_free_gib=52.0 working_set_gib=5.58 vram_mib=716
+- sample t=2026-11-02T06:53:29Z elapsed_s=6306 batch=RUNNING jobs={"ACTIVE":5,"COMPLETED":87,"FAILED_FINAL":11,"SNAPSHOTTED":1} valid=87 running_stages=6 night_usd=0 month_usd=0 ai_calls=603 data_free_gib=226.9 sys_free_gib=52.0 working_set_gib=5.66 vram_mib=711
+- sample t=2026-11-02T06:58:29Z elapsed_s=6606 batch=RUNNING jobs={"ACTIVE":3,"COMPLETED":91,"FAILED_FINAL":11,"SNAPSHOTTED":3} valid=91 running_stages=6 night_usd=0 month_usd=0 ai_calls=632 data_free_gib=228.2 sys_free_gib=51.9 working_set_gib=5.73 vram_mib=705
+- sample t=2026-11-02T07:03:30Z elapsed_s=6906 batch=RUNNING jobs={"ACTIVE":5,"COMPLETED":94,"FAILED_FINAL":12,"SNAPSHOTTED":1} valid=94 running_stages=6 night_usd=0 month_usd=0 ai_calls=665 data_free_gib=228.2 sys_free_gib=51.9 working_set_gib=5.78 vram_mib=1004
+- sample t=2026-11-02T07:08:30Z elapsed_s=7206 batch=RUNNING jobs={"ACTIVE":1,"COMPLETED":99,"FAILED_FINAL":12} valid=99 running_stages=1 night_usd=0 month_usd=0 ai_calls=677 data_free_gib=228.2 sys_free_gib=51.9 working_set_gib=5.86 vram_mib=699
+- sample t=2026-11-02T07:09:24Z elapsed_s=7260 batch=COMPLETED_TARGET jobs={"COMPLETED":100,"FAILED_FINAL":12} valid=100 running_stages=0 night_usd=0 month_usd=0 ai_calls=677 data_free_gib=228.1 sys_free_gib=51.9 working_set_gib=5.87 vram_mib=705
 ```
 
 ## Số liệu theo stage (G02)
 
 ```
-- stage_metrics: analyze(snapshot) n=100 p50_s=38.1 p95_s=53.0 max_s=463.6 extra_attempts=0
-- stage_metrics: script(script_ai) n=100 p50_s=89.1 p95_s=124.5 max_s=152.1 extra_attempts=0
-- stage_metrics: plan(plan) n=100 p50_s=58.3 p95_s=76.8 max_s=90.8 extra_attempts=0
-- stage_metrics: media_select(media_select) n=100 p50_s=45.1 p95_s=58.1 max_s=65.5 extra_attempts=0
-- stage_metrics: tts(tts) n=100 p50_s=12.5 p95_s=25.2 max_s=36.5 extra_attempts=0
-- stage_metrics: align(align) n=100 p50_s=10.4 p95_s=53.3 max_s=60.2 extra_attempts=0
-- stage_metrics: process(process) n=100 p50_s=39.1 p95_s=55.0 max_s=60.4 extra_attempts=0
-- stage_metrics: render(render) n=100 p50_s=11.3 p95_s=18.4 max_s=29.1 extra_attempts=0
-- stage_metrics: qc(qc) n=100 p50_s=3.0 p95_s=5.0 max_s=5.6 extra_attempts=0
-- stage_metrics: sync(upload_drive_and_verify) n=100 p50_s=6.4 p95_s=8.1 max_s=78.0 extra_attempts=0
-- stage_metrics: complete(completion) n=100 p50_s=0.1 p95_s=0.7 max_s=1.5 extra_attempts=0
-- lead_time: p50_s=335.1 p95_s=378.5 videos_per_hour=61.8
+- stage_metrics: analyze(snapshot) n=112 p50_s=42.3 p95_s=62.9 max_s=70.1 extra_attempts=0
+- stage_metrics: script(script_ai) n=112 p50_s=96.6 p95_s=129.9 max_s=527.3 extra_attempts=0
+- stage_metrics: plan(plan) n=112 p50_s=66.0 p95_s=85.5 max_s=506.9 extra_attempts=0
+- stage_metrics: media_select(media_select) n=112 p50_s=51.6 p95_s=67.9 max_s=473.5 extra_attempts=0
+- stage_metrics: tts(tts) n=110 p50_s=13.6 p95_s=30.9 max_s=38.3 extra_attempts=0
+- stage_metrics: align(align) n=104 p50_s=11.4 p95_s=33.6 max_s=39.8 extra_attempts=0
+- stage_metrics: process(process) n=100 p50_s=43.4 p95_s=76.7 max_s=140.0 extra_attempts=0
+- stage_metrics: render(render) n=100 p50_s=13.1 p95_s=19.6 max_s=29.9 extra_attempts=0
+- stage_metrics: qc(qc) n=100 p50_s=3.3 p95_s=5.4 max_s=8.0 extra_attempts=0
+- stage_metrics: sync(upload_drive_and_verify) n=100 p50_s=6.7 p95_s=28.8 max_s=53.3 extra_attempts=0
+- stage_metrics: complete(completion) n=100 p50_s=0.1 p95_s=0.6 max_s=0.7 extra_attempts=0
+- lead_time: p50_s=368.7 p95_s=474.0 videos_per_hour=49.6
 ```
 
 ## Chi phí (G03)
 
-- night_usd=0
-- month_usd=0
-- ai_calls=606
-- drive_bytes=534327038
-- usd_per_valid_video=0.0000
-- route_cost_per_request=0 nên ledger có thể bằng 0.
+```
+- budget: night_usd=0 month_usd=0 drive_bytes=556255820 elapsed_s=7261 deadline_s=44100 stop_reason=target_reached
+- cost_under_cap: night_usd=0
+- cost_under_cap: month_usd=0
+- cost_under_cap: ai_calls=677
+- cost_under_cap: drive_bytes=556255820
+- cost_under_cap: usd_per_valid_video=0.0000
+- cost_under_cap: route_cost_per_request=0 nen ledger co the bang 0
+```
 
 ## Chi tiết đo
 
-- wait_provider_seconds=331
+```
+- wait_provider_seconds=1053
 - concurrency={"default": 6, "max": 10, "min": 1}
-- Nguồn 404: `not_found_status=404` (kiểm trước khi chạy), registered=1, existing=0; lượt thu thập: 1 lượt `FAILED_FINAL` (`HTTP_STATUS_REJECTED`), nguồn khác 0 lượt trong cửa sổ lô.
-- other_workflows_running=0 trước khi bắt đầu; stop_reason=target_reached; elapsed_s=5827 (hạn 44100).
-- Working set tối đa 2,32 GiB (trần 20 GiB); ổ dữ liệu trống tối thiểu 264,2 GiB; VRAM tối đa 1703 MiB; 21 mẫu, 0 mẫu lỗi.
-- drive_sample=6 video đối soát md5 và sha256 với Drive, đều khớp; valid=100, invalid=0, failed_final=0, manual_actions=0.
-- Resume: ready_seconds=16.1, stop_attempts=1, busy_at_stop=6, completed_at_stop=41, jobs_checked=6, reruns=0.
-- Render config: preset/bold-yellow, preset/output-profile, policy/quality đều PUBLISHED; media seed đã nạp.
-- Mã bí mật trong log và timeline: 0 khớp; không đọc Credentials/, không ghi capability.
+- batch: id=71973394 concurrency={"default": 6, "max": 10, "min": 1} other_workflows_running=0 not_found_status=404 not_found_source registered=0 existing=0
+- seed: launcher_seed_line=\u0110\xe3 n\u1ea1p b\u1ed9 media seed (idempotent). render_config=render_config=[preset/bold-yellow=PUBLISHED preset/output-profile=PUBLISHED policy/quality=PUBLISHED]
+- failure_isolated: target_runs=1
+- failure_isolated: target_failed=1
+- failure_isolated: others_ok=1
+- failure_isolated: completed_after_failure=100
+- failure_isolated: failed_final_jobs=12
+- failure_isolated: source=b9500b***
+- resume_300s_midrun: ready_seconds=19.0
+- resume_300s_midrun: stop_attempts=1
+- resume_300s_midrun: busy_at_stop=6
+- resume_300s_midrun: completed_at_stop=40
+- working_set_cap: max_working_set_gib=5.87
+- working_set_cap: min_disk_free_gib=222.3
+- working_set_cap: max_vram_mib=2778
+- working_set_cap: samples=26
+- working_set_cap: sample_errors=0
+- secret_scan: match_count=0
+- secret_scan: khong_doc_Credentials=True
+- secret_scan: capability_khong_ghi=True
+- valid_synced_100: valid=100
+- valid_synced_100: invalid=0
+- valid_synced_100: drive_sample=6
+- warn_80_visible: peak_month_usd=0
+```
 
 ## Open item
 
-- `RG-10.failure_isolated: FAIL`: sổ thu thập trong cửa sổ lô không có lượt của nguồn khác nên `others_ok=0`; cần Control quyết định gói sửa (ví dụ ép thêm một lượt thu thập nguồn hợp lệ trong lô, hoặc đổi bằng chứng cô lập sang chỉ dấu khác), rồi chạy lại có thẩm quyền. Gói này không tự đổi tiêu chí.
-- `RG-10.warn_80_visible: NOT_OBSERVED` vì ledger tháng 0 USD, không chạm ngưỡng cảnh báo 40 USD; không giả lập.
-- OI-CP7-06 (quota Drive): đã kiểm, Drive trống 5119,81 GiB so với cần 1036,00 GiB; không còn chặn.
-- OI-CP7-11: lô chạy 6 luồng (mặc định của hồ sơ) nên 100 video xong trong khoảng 1 giờ 37 phút, ngắn hơn nhiều so với kịch bản 12 giờ; số liệu stage ở trên dùng cho G02 và chi phí cho G03.
+- `auto_ratio_95` FAIL thật ở lượt 3: 100 hợp lệ trên 112 job (khoảng 89,3%), 12 job `FAILED_FINAL`; cần Control quyết định (phân tích nguyên nhân 12 job lỗi chung cuộc hoặc đổi cách tính), không ghi PASS khi chưa có dòng tương ứng.
+- `failure_isolated` đã xử lý ở lượt 3: PASS (`others_ok=1`, `completed_after_failure=100`).
+- `warn_80_visible` NOT_OBSERVED vì ledger tháng bằng 0 (dưới 40 USD); không giả lập.
+- OI-CP7-06: quota Drive đạt (`free_gib=5118.78` so với `required_gib=1036.00`, `unlimited=False`).
+- OI-CP7-11: thời gian lô 7261 giây (khoảng 2 giờ 1 phút) với 6 luồng, thấp hơn nhiều so với 12 giờ; số luồng mặc định 6 và tối đa 10 cần Control đối chiếu với số đo thật.

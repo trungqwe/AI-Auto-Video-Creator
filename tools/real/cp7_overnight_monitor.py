@@ -170,13 +170,21 @@ def audit_jobs(jobs, stage_counts, problem_missing, seen_ids):
     return sorted(out)
 
 
-def collection_isolation(runs, source_id):
-    """Chứng minh lỗi một nguồn không dừng nguồn khác."""
+def business_date_vn(moment):
+    """Ngày kinh doanh theo giờ Việt Nam (UTC+7) của một thời điểm có múi giờ; khớp business_date của cp_collection_runs."""
+    if not isinstance(moment, datetime) or moment.tzinfo is None:
+        raise ValueError('moment must be timezone-aware')
+    return moment.astimezone(timezone(timedelta(hours=LOCAL_UTC_OFFSET_HOURS))).date()
+
+
+def collection_isolation(runs, source_id, completed_after_failure=0):
+    """Chứng minh lỗi một nguồn không dừng việc độc lập: nguồn khác thu thập thành công trong cùng business_date và video vẫn hoàn tất sau lượt FAILED_FINAL của nguồn lỗi."""
     target = [status for src, status in runs if src == source_id]
     target_failed = sum(1 for status in target if status in FAILED_RUN_STATUSES)
     others_ok = sum(1 for src, status in runs if src != source_id and status in SUCCESS_RUN_STATUSES)
     return {'target_runs': len(target), 'target_failed': target_failed, 'others_ok': others_ok,
-            'isolated': target_failed >= 1 and others_ok >= 1}
+            'completed_after_failure': completed_after_failure,
+            'isolated': target_failed >= 1 and others_ok >= 1 and completed_after_failure >= 1}
 
 
 def manual_actions(calls, batch_id):
@@ -342,9 +350,14 @@ class OvernightDb(d.ReadOnlyDb):
             'WHERE cl.workspace_id = v.workspace_id AND cl.job_id = v.job_id)))', batch_id)
         return int(rows[0][0])
 
-    def collection_runs(self, since):
-        rows = self.query('SELECT r.source_id, r.status FROM controlplane.cp_collection_runs r WHERE r.workspace_id = %s AND r.created_at >= %s', since)
+    def collection_runs(self, business_date):
+        """Lượt thu thập định kỳ từ ngày kinh doanh của lô (mỗi nguồn tối đa một lượt mỗi ngày)."""
+        rows = self.query("SELECT r.source_id, r.status FROM controlplane.cp_collection_runs r WHERE r.workspace_id = %s AND r.run_kind = 'PERIODIC' AND r.business_date >= %s", business_date)
         return [(r[0], r[1]) for r in rows]
+
+    def videos_completed_after_source_failure(self, batch_id, source_id):
+        rows = self.query('SELECT count(*) FROM controlplane.cp_completion_ledger cl JOIN controlplane.cp_video_jobs v ON v.workspace_id = cl.workspace_id AND v.job_id = cl.job_id WHERE cl.workspace_id = %s AND v.batch_id = %s AND cl.completed_at > (SELECT max(r.updated_at) FROM controlplane.cp_collection_runs r WHERE r.workspace_id = cl.workspace_id AND r.source_id = %s AND r.status = ' + "'FAILED_FINAL')", batch_id, source_id)
+        return int(rows[0][0])
 
     def source_id_for(self, locator):
         rows = self.query('SELECT s.source_id FROM controlplane.cp_sources s WHERE s.workspace_id = %s AND s.canonical_locator = %s LIMIT 1', locator)
@@ -771,7 +784,9 @@ def audit_run(db, run, seen_ids=frozenset()):
     run.ai_calls = db.ai_invocation_count(run.record_prefix)
     run.night_usd = str(d.CostWatch(db, run.window_start).spent())
     run.month_usd = str(d.CostWatch(db, month_window_start(db.db_now())).spent())
-    run.collection = collection_isolation(db.collection_runs(run.window_start), run.not_found_source['source_id'])
+    not_found_id = run.not_found_source['source_id']
+    after_failure = db.videos_completed_after_source_failure(batch_id, not_found_id)
+    run.collection = collection_isolation(db.collection_runs(business_date_vn(run.window_start)), not_found_id, after_failure)
     run.reruns = {}
     for job_id, before in run.before_stop.items():
         bad = sorted(set(d.find_reruns(before, db.stage_map(job_id))) | set(d.find_reruns(before, run.after_start.get(job_id, before))))

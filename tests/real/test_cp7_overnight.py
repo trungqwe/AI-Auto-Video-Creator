@@ -7,7 +7,7 @@ import re
 import sys
 import types
 import urllib.error
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -171,13 +171,26 @@ def test_unit_audit_jobs():
 
 def test_unit_collection_isolation():
     runs = [('a', 'COMPLETED'), ('a', 'COMPLETED_PARTIAL'), ('nf', 'FAILED_FINAL'), ('nf', 'FAILED_FINAL')]
-    assert m.collection_isolation(runs, 'nf') == {'target_runs': 2, 'target_failed': 2, 'others_ok': 2, 'isolated': True}
-    none = m.collection_isolation([('a', 'COMPLETED')], 'nf')
+    assert m.collection_isolation(runs, 'nf') == {'target_runs': 2, 'target_failed': 2, 'others_ok': 2,
+                                                  'completed_after_failure': 0, 'isolated': False}
+    assert m.collection_isolation(runs, 'nf', 3) == {'target_runs': 2, 'target_failed': 2, 'others_ok': 2,
+                                                     'completed_after_failure': 3, 'isolated': True}
+    none = m.collection_isolation([('a', 'COMPLETED')], 'nf', 5)
     assert none['target_runs'] == 0
     assert none['isolated'] is False
-    bad = m.collection_isolation([('a', 'FAILED_FINAL'), ('nf', 'FAILED_FINAL')], 'nf')
+    bad = m.collection_isolation([('a', 'FAILED_FINAL'), ('nf', 'FAILED_FINAL')], 'nf', 5)
     assert bad['others_ok'] == 0
     assert bad['isolated'] is False
+    alone = m.collection_isolation([('nf', 'FAILED_FINAL')], 'nf', 5)
+    assert alone['others_ok'] == 0
+    assert alone['isolated'] is False
+
+
+def test_unit_business_date_vn():
+    assert m.business_date_vn(datetime(2026, 11, 1, 18, 30, tzinfo=timezone.utc)) == date(2026, 11, 2)
+    assert m.business_date_vn(datetime(2026, 11, 1, 16, 59, tzinfo=timezone.utc)) == date(2026, 11, 1)
+    with pytest.raises(ValueError):
+        m.business_date_vn(datetime(2026, 11, 2))
 
 
 def test_unit_manual_actions():
@@ -241,7 +254,8 @@ _DB_CASES = [
      [('render', 'SUCCEEDED', 1, 60.5), ('tts', 'SUCCEEDED', 1, None)]),
     ('job_lead_seconds', ('b1',), [(120.0,), (Decimal('60'),)], [120.0, 60.0]),
     ('batch_drive_bytes', ('b1',), [(5,)], 5),
-    ('collection_runs', ('t0',), [('s1', 'COMPLETED')], [('s1', 'COMPLETED')]),
+    ('collection_runs', (date(2026, 11, 2),), [('s1', 'COMPLETED')], [('s1', 'COMPLETED')]),
+    ('videos_completed_after_source_failure', ('b1', 's9'), [(4,)], 4),
     ('source_id_for', ('https://x/',), [('s9',)], 's9'),
     ('source_id_for', ('https://x/',), [], None),
 ]
@@ -267,6 +281,23 @@ def test_unit_valid_synced_count_requires_cloud_verified_evidence():
     for needle in ('cp_completion_ledger', 'cp_artifact_locations', "l.state = 'VERIFIED'", "l.backend_ref = 'cloud'",
                    'starts_with(l.verification_evidence_ref', 'cloud_location_verification_ref'):
         assert needle in sql, needle
+
+
+def test_unit_collection_queries_use_business_day():
+    db = _Rec([('s1', 'COMPLETED')])
+    db.collection_runs(date(2026, 11, 2))
+    sql = db.calls[0][0]
+    assert 'r.business_date >= %s' in sql
+    assert "r.run_kind = 'PERIODIC'" in sql
+    assert 'created_at' not in sql
+    db2 = _Rec([(1,)])
+    db2.videos_completed_after_source_failure('b1', 's9')
+    sql2 = db2.calls[0][0]
+    assert 'cp_completion_ledger' in sql2
+    assert 'cp_collection_runs' in sql2
+    assert "r.status = 'FAILED_FINAL'" in sql2
+    assert 'cl.completed_at > (SELECT max(r.updated_at)' in sql2
+    assert db2.calls[0][1] == ('b1', 's9')
 
 
 def test_unit_session_records_calls():
@@ -481,7 +512,8 @@ def test_rg10_failure_isolated(overnight, emit):
     assert not overnight.failed_final_jobs or len(overnight.valid_jobs) >= m.TARGET_VIDEOS
     source_id = overnight.not_found_source['source_id']
     _pass(emit, 'failure_isolated', 'target_runs=' + str(c_['target_runs']), 'target_failed=' + str(c_['target_failed']),
-          'others_ok=' + str(c_['others_ok']), 'failed_final_jobs=' + str(len(overnight.failed_final_jobs)),
+          'others_ok=' + str(c_['others_ok']), 'completed_after_failure=' + str(c_['completed_after_failure']),
+          'failed_final_jobs=' + str(len(overnight.failed_final_jobs)),
           _ascii_line('source=' + source_id[:6] + '***'))
 
 
