@@ -1,84 +1,65 @@
-# Sidecar Sinh Ảnh Minh Hoạ FLUX 3 Image Klein (`tools/imagegen`)
+# Sidecar sinh ảnh minh hoạ (IMGGEN-SVC)
 
-Tài liệu kỹ thuật và hướng dẫn vận hành tiến trình sidecar sinh ảnh cục bộ sử dụng mô hình FLUX 3 Image Klein.
+Tiến trình riêng do launcher quản lý, sinh ảnh minh hoạ 9:16 bằng FLUX 3 Image Klein (bản distilled, transformer FP8) trên GPU
+của máy. Sidecar có môi trường uv riêng, nằm ngoài runtime khoá của sản phẩm và ngoài Runtime Keeper; torch không bao giờ vào
+runtime sản phẩm.
 
-## 1. Mục đích và Kiến trúc
+## Tệp
 
-Sidecar phục vụ tạo ảnh minh hoạ cục bộ trên GPU bằng mô hình FLUX 3 Image Klein:
-- **Tiến trình độc lập:** Chạy dưới dạng tiến trình riêng biệt ngoài runtime sản phẩm và Keeper.
-- **Môi trường uv riêng (`cu130`):** Sử dụng cấu hình `tools/imagegen/pyproject.toml` và `uv.lock` do gói IMGGEN-DEPS (dependency_slice, mở sau gói này) tạo; gói IMGGEN-SVC không tạo hay sửa hai tệp này; tuyệt đối không đưa PyTorch, torchvision, diffusers vào runtime khoá của sản phẩm.
-- **Bảo mật và loopback:** Chỉ lắng nghe trên giao diện nội bộ `127.0.0.1` với cờ `SO_EXCLUSIVEADDRUSE`, yêu cầu xác thực qua Bearer Token.
+| Tệp | Vai trò |
+| --- | --- |
+| `pyproject.toml`, `uv.lock` | Môi trường riêng: Python 3.13.15, phiên bản ghim theo nguyên mẫu Control 02/11/2026, torch và torchvision chỉ từ chỉ mục cu130, chỉ Windows |
+| `weights.lock.json` | 25 tệp trọng số (24 của `flux-3-image-klein@337337621b85`, `system_prompts.json` của kho pup) với kích thước, SHA-256 và nguồn đối chiếu |
+| `protocol.py` | Hằng số, kiểm yêu cầu, băm idempotency, seed (chỉ thư viện chuẩn) |
+| `weights.py` | Đọc danh mục, bố cục cache HF, kiểm băm có tem (chỉ thư viện chuẩn) |
+| `engine.py` | Chu kỳ ba pha (text encoder, transformer, VAE), nạp từng khúc 64 MiB thẳng vào GPU (không mmap, không gom tệp vào RAM), đo bộ nhớ theo pha, bản vá FP8 cho Ada, lệnh đo trên GPU |
+| `server.py` | API HTTP loopback, job, hàng đợi, vòng đời |
+| `provision.py` | Cài trọng số vào `<data>/models/hf-hub` (Control chạy một lần) |
 
-## 2. Dựng Môi trường Thực thi (Dành cho Control)
+## Dựng môi trường
 
-Để thiết lập môi trường uv riêng cho sidecar (lệnh này do Control thực hiện, Worker không chạy trong lane):
-
-```bash
-uv sync --project tools/imagegen
+```
+set UV_PROJECT_ENVIRONMENT=<data>\imagegen\venv
+uv sync --frozen --project tools/imagegen
 ```
 
-Biến môi trường bắt buộc:
-- `AIAVC_IMAGEGEN_TOKEN`: Khóa bí mật chia sẻ (Bearer token), độ dài tối thiểu 32 ký tự.
+## Cài trọng số
 
-## 3. Khởi chạy Dịch vụ
-
-Lệnh khởi động dịch vụ máy chủ HTTP sidecar:
-
-```bash
-python tools/imagegen/server.py --out <thư_mục_lưu_ảnh> --parent-pid <pid_tiến_trình_cha> --stop-file <đường_dẫn_tệp_dừng> --port 57030
+```
+<python> -I tools/imagegen/provision.py --hub <data>/models/hf-hub --from-hub D:/AIAVC_IMGPROTO/hub
 ```
 
-Các tham số tuỳ chọn:
-- `--hub`: Đường dẫn kho mô hình Hugging Face hub (mặc định tại `%LOCALAPPDATA%/AIAutoVideoCreator/models/hf-hub`).
-- `--manifest`: Đường dẫn tệp khóa trọng số `weights.lock.json`.
-- `--full-verify`: Thực hiện băm lại toàn bộ tệp thay vì tin cậy tem `imagegen-weights.stamp.json`.
-- `--residency`: Chế độ lưu trú mô hình trong VRAM (`auto`, `phase`, `keep`).
+Không có `--from-hub` thì tải bằng `hf_hub_download` theo revision ghim, dưới đăng nhập `hf auth login` của user; mã không đọc
+token. Script băm đủ 25 tệp, đặt `refs/main` và ghi tem `imagegen-weights.stamp.json`.
 
-## 4. Bảng Định tuyến API
+## Chạy
 
-| Phương thức | Đường dẫn | Xác thực | Trạng thái | Mô tả |
-| --- | --- | --- | --- | --- |
-| `GET` | `/v1/health` | Không | `200` | Trả về trạng thái dịch vụ, số ảnh chờ, thông số bộ nhớ theo pha và commit hệ thống |
-| `POST` | `/v1/jobs` | Có | `202`, `400`, `409`, `429`, `503` | Tiếp nhận công việc sinh ảnh (tối đa 6 ảnh/job). `202`: chấp nhận/idempotent; `400`: sai định dạng; `409`: trùng ID khác thân; `429`: hàng đợi đầy (>96 ảnh); `503`: chưa provision hoặc lỗi |
-| `GET` | `/v1/jobs/<job_id>` | Có | `200`, `404` | Lấy tiến độ và trạng thái chi tiết của công việc |
-| `GET` | `/v1/jobs/<job_id>/items/<item_id>.png` | Có | `200`, `404`, `409` | Tải dữ liệu ảnh PNG hoàn tất kèm header `X-Content-SHA256`. `409`: ảnh chưa xong |
-| `POST` | `/v1/shutdown` | Có | `202` | Yêu cầu dừng dịch vụ một cách an toàn |
+```
+set AIAVC_IMAGEGEN_TOKEN=<token mới mỗi lần khởi động, >= 32 ký tự>
+<data>\imagegen\venv\Scripts\python.exe -I tools/imagegen/server.py --port 57030 --hub <data>/models/hf-hub
+    --out <data>/imagegen/out --parent-pid <pid launcher> --stop-file <data>/state/stop.request
+```
 
-## 5. Chu kỳ Xử lý 3 Pha và Cổng Kiểm soát Tài nguyên
+- `GET /v1/health` (không cần token): `state` là `not_provisioned`, `verifying`, `idle`, `loading`, `busy` hoặc `error`; kèm
+  revision, hàng đợi, `fp8_path`, VRAM trống. Không nạp mô hình.
+- `POST /v1/jobs` `{job_id (32 hex), items[1..6]{item_id, caption, width, height, steps, seed}}`: 202. Gửi lại đúng thân thì nhận
+  lại job và các ảnh lỗi còn lượt được xếp lại; thân khác cùng `job_id` là 409; chưa cài trọng số là 503.
+- `GET /v1/jobs/{id}`, `GET /v1/jobs/{id}/items/{item}` (PNG, `X-Content-SHA256`). Kết quả giữ 24 giờ.
+- `POST /v1/shutdown`. Sidecar cũng dừng khi có `stop.request` hoặc khi tiến trình cha thoát.
 
-Tiến trình gom tối đa 16 ảnh từ hàng đợi vào một chu kỳ xử lý gồm 3 pha tuần tự:
-1. `text_encoder`: Nạp text encoder, mã hóa prompt thành embedding cho toàn bộ ảnh.
-2. `transformer`: Nạp transformer, thực hiện khử nhiễu FP8 tensorwise theo số bước quy định.
-3. `vae`: Nạp VAE, giải mã latents thành ảnh PNG thành phẩm.
+## Đo trên GPU (Control)
 
-Trước mỗi pha, dịch vụ kiểm tra các cổng an toàn tài nguyên (`wait_for_resources`):
-- **Cổng VRAM:** Đảm bảo VRAM trống vượt ngưỡng yêu cầu của pha + 1.5 GB.
-- **Cổng Commit:** Đảm bảo commit hệ thống khả dụng vượt ngưỡng yêu cầu + 2.0 GB.
-- **Cổng RAM:** Đảm bảo RAM khả dụng của máy chủ tối thiểu 2.0 GB.
+```
+set HF_HUB_OFFLINE=1
+<python có torch> -I tools/imagegen/engine.py measure --hub <hub> --captions <captions.json> --caption-field t2i --out <thư mục>
+```
 
-## 6. Nạp Trọng số Truyền thẳng (Streaming Safetensors)
+Ghi PNG và `report.json`: VRAM đỉnh từng pha; bộ nhớ riêng (commit) và VRAM giữ trước, sau nạp, sau pha, sau giải phóng, đỉnh
+trong pha và phần dư; bộ nhớ riêng đỉnh của tiến trình, RAM trống thấp nhất; giây mỗi ảnh; `fp8_path` và sai số tự kiểm FP8.
+Mỗi pha cũng in một dòng tóm tắt bộ nhớ. `/v1/health` của sidecar trả cùng các số đó cho chu kỳ gần nhất (`last_cycle`), cùng
+`memory` (đỉnh suốt đời) và `commit` (giới hạn và phần trống của commit hệ thống).
 
-- Không sử dụng `load_file(`, `safe_open(` hay ánh xạ bộ nhớ `mmap`.
-- Trọng số được đọc tuần tự từng khối `STREAM_CHUNK_BYTES = 64 * 1024 * 1024` (64 MiB) truyền thẳng vào bộ đệm VRAM của thiết bị CUDA, giảm thiểu phân mảnh và áp lực lên working set của host.
-
-## 7. Quản lý và Đồng bộ Trọng số (`provision.py`)
-
-Công cụ kiểm tra và nạp trọng số cục bộ:
-- Kiểm tra tính toàn vẹn 25 tệp theo `weights.lock.json` bằng SHA-256.
-- Hỗ trợ nạp từ kho cục bộ sẵn có: `--from-hub <đường_dẫn_kho_nguồn>` (vừa chép vừa băm SHA-256).
-- Hỗ trợ chế độ offline: `--no-download` (báo cáo thiếu nếu không có sẵn, không gọi mạng).
-- Tuyệt đối không lưu trữ hay nhận mã xác thực `HF_TOKEN`.
-
-## 8. GIẢ ĐỊNH (Assumptions)
-
-Các giả định kiến trúc hiện tại cần Control kiểm chứng khi chạy thực tế trên phần cứng GPU:
-- Tên khóa định dạng prompt bên trong `system_prompts.json` phục vụ cho `prompt_upsampler`.
-- Lớp tuyến tính FP8 cụ thể của thư viện `diffusers` (cần vá `patch_bfl_fp8` bằng `torch._scaled_mm`).
-- Mức tiêu thụ không gian commit thực tế `PHASE_COMMIT_BYTES` tương ứng từng pha.
-- Tên lớp mô hình trích xuất từ cấu hình `config.json` (`architectures` hoặc `_class_name`).
-- Trong phạm vi lane `lane-imggen-svc`, Worker không thực thi trên phần cứng GPU thật mà kiểm chứng qua test tích hợp loopback.
-
-## 9. Giới hạn
-
-- Thành phần khởi động tiến trình nền từ Control Plane (`IMGGEN-LAUNCH`) thuộc gói sau.
-- Tích hợp luồng sinh ảnh tự động vào pipeline render (`IMGGEN-PIPE`) thuộc gói sau.
+Trên Windows (WDDM), VRAM được tính vào commit của tiến trình, nên bộ nhớ riêng thô gần bằng nền cộng VRAM đang giữ. Ngân sách vì
+thế chấm working set đỉnh <= 4 GiB, đỉnh (private trừ VRAM đang giữ) <= 4 GiB, phần dư sau pha <= 2,5 GiB ở chu kỳ đầu và
+<= 512 MiB về sau (`--cycles 2` để đo cả trạng thái ổn định; ngân sách hỏng thì mã thoát 4). Trước mỗi pha, commit trống của hệ
+thống phải >= `PHASE_COMMIT_BYTES` của pha cộng 2 GB, không thì chờ tối đa 600 giây rồi báo `HOST_COMMIT_LOW`.

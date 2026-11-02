@@ -1,116 +1,119 @@
-"""Provisioning tool for FLUX 3 Image Klein weights cache."""
+"""Cài trọng số ghim của sidecar sinh ảnh (IMGGEN-SVC) vào <data>/models/hf-hub. Control chạy một lần trên máy user; không
+bao giờ chạy trong lane.
+
+  python -I tools/imagegen/provision.py --hub <data>/models/hf-hub [--from-hub D:/AIAVC_IMGPROTO/hub] [--no-download]
+
+Mỗi tệp của weights.lock.json: đã có và đúng SHA-256 thì giữ; có trong --from-hub thì chép (băm khi chép, sai thì bỏ bản tạm);
+còn lại gọi huggingface_hub.hf_hub_download(revision=<sha>) dưới đăng nhập `hf auth login` của user: mã này không bao giờ đọc,
+nhận hay ghi token. Tệp sai nội dung ở đích được dời sang tên .mismatch-<thời điểm>, không xoá. Sau cùng ghi refs/main của từng
+kho, băm lại toàn bộ và ghi tem (đường dẫn, kích thước, mtime, sha256) cho lần khởi động nhanh của sidecar.
+"""
+from __future__ import annotations
 
 import argparse
 import hashlib
 import json
 import os
-import pathlib
-import shutil
 import sys
 import time
+from pathlib import Path
 
-import protocol
-import weights
+if __package__ in (None, ''):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from imagegen import protocol, weights  # noqa: E402
+
+COPY_CHUNK_BYTES = 8 << 20
 
 
-def provision(hub, manifest, from_hub=None, download=True, hf_download=None, clock=time.time):
-    hub_path = pathlib.Path(hub)
-    report = {
-        'copied': [],
-        'downloaded': [],
-        'skipped': [],
-        'mismatched': [],
-        'missing': [],
-    }
+def _copy_verified(source: Path, target: Path, entry: weights.Entry) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(f'{target.name}.partial-{os.getpid()}-{time.time_ns()}')
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        with source.open('rb') as reader, tmp.open('wb') as writer:
+            while True:
+                chunk = reader.read(COPY_CHUNK_BYTES)
+                if not chunk:
+                    break
+                size += len(chunk)
+                digest.update(chunk)
+                writer.write(chunk)
+            writer.flush()
+            os.fsync(writer.fileno())
+        if size != entry.size or digest.hexdigest() != entry.sha256:
+            raise ValueError(f'{entry.label}: source has size {size} sha256 {digest.hexdigest()[:12]}, expected {entry.size} {entry.sha256[:12]}')
+        os.replace(tmp, target)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
 
-    for item in manifest.get('files', []):
-        repo = item['repo']
-        revision = item['revision']
-        rel_path = item['path']
-        expected_size = item['size']
-        expected_sha256 = item['sha256']
-        target = weights.file_path(hub_path, repo, revision, rel_path)
 
-        if target.exists():
-            if target.stat().st_size == expected_size and weights.sha256_file(target) == expected_sha256:
-                report['skipped'].append(rel_path)
+def _hf_download(**kwargs) -> str:
+    from huggingface_hub import hf_hub_download
+    return hf_hub_download(**kwargs)
+
+
+def install(hub: Path, manifest: weights.Manifest, *, from_hub: Path | None = None, download=_hf_download,
+            hasher=weights.sha256_file, log=print) -> dict:
+    """Installs every manifest file under `hub` (HF cache layout), sets refs/main and writes the stamp after a full verification."""
+    hub = Path(hub)
+    report = {'kept': 0, 'copied': 0, 'downloaded': 0, 'moved_aside': [], 'failures': []}
+    for entry in manifest.entries:
+        target = weights.file_path(hub, entry)
+        if target.is_file():
+            if target.stat().st_size == entry.size and hasher(target) == (entry.size, entry.sha256):
+                report['kept'] += 1
                 continue
-            else:
-                mismatch_name = f"{target.name}.mismatch-{int(clock())}"
-                target.rename(target.with_name(mismatch_name))
-
-        copied = False
-        if from_hub is not None:
-            source = weights.file_path(pathlib.Path(from_hub), repo, revision, rel_path)
-            if source.exists():
-                target.parent.mkdir(parents=True, exist_ok=True)
-                part_target = target.with_name(target.name + '.part')
-                h = hashlib.sha256()
-                with open(source, 'rb') as sf, open(part_target, 'wb') as df:
-                    while chunk := sf.read(1048576):
-                        df.write(chunk)
-                        h.update(chunk)
-                if h.hexdigest() == expected_sha256:
-                    os.replace(part_target, target)
-                    report['copied'].append(rel_path)
-                    copied = True
-                else:
-                    if part_target.exists():
-                        part_target.unlink()
-                    report['mismatched'].append(rel_path)
-                    continue
-
-        if copied:
+            aside = target.with_name(f'{target.name}.mismatch-{time.strftime("%Y%m%dT%H%M%S")}')
+            os.replace(target, aside)
+            report['moved_aside'].append(str(aside))
+        source = weights.file_path(Path(from_hub), entry) if from_hub else None
+        if source is not None and source.is_file():
+            try:
+                _copy_verified(source, target, entry)
+            except (OSError, ValueError) as error:
+                report['failures'].append(str(error))
+                continue
+            report['copied'] += 1
+            log(f'đã chép {entry.label}')
             continue
-
-        if download:
-            if hf_download is not None:
-                hf_download(repo_id=repo, filename=rel_path, revision=revision, cache_dir=str(hub_path))
-                report['downloaded'].append(rel_path)
-            else:
-                try:
-                    from huggingface_hub import hf_hub_download
-                    hf_hub_download(repo_id=repo, filename=rel_path, revision=revision, cache_dir=str(hub_path))
-                    report['downloaded'].append(rel_path)
-                except Exception:
-                    report['missing'].append(rel_path)
-        else:
-            report['missing'].append(rel_path)
-
-    for repo, rinfo in manifest.get('repos', {}).items():
-        revision = rinfo['revision']
-        r_dir = weights.repo_dir(hub_path, repo)
-        refs_dir = r_dir / 'refs'
-        refs_dir.mkdir(parents=True, exist_ok=True)
-        (refs_dir / 'main').write_text(revision, encoding='utf-8')
-
-    if not report['mismatched'] and not report['missing']:
-        weights.write_stamp(hub_path, manifest)
-
+        if download is None:
+            report['failures'].append(f'{entry.label}: không có trong --from-hub và việc tải đang tắt')
+            continue
+        try:
+            path = Path(download(repo_id=entry.repo, filename=entry.path, revision=entry.revision, cache_dir=str(hub)))
+            got = hasher(path)
+        except Exception as error:  # network, licence gate, disk
+            report['failures'].append(f'{entry.label}: tải không được ({type(error).__name__}: {error})')
+            continue
+        if got != (entry.size, entry.sha256):
+            report['failures'].append(f'{entry.label}: bản tải có size {got[0]} sha256 {got[1][:12]}, cần {entry.size} {entry.sha256[:12]}')
+            continue
+        report['downloaded'] += 1
+        log(f'đã tải {entry.label}')
+    for repo, revision in sorted(manifest.revisions.items()):
+        weights.atomic_write_text(weights.repo_dir(hub, repo) / 'refs' / 'main', revision)
+    result = weights.verify(hub, manifest, full=True, hasher=hasher)
+    report.update(ok=result.ok and not report['failures'], problems=result.problems(), stamp_written=result.stamp_written)
     return report
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description="Provision FLUX 3 Image Klein weights")
-    parser.add_argument("--hub", default=str(weights.default_hub()))
-    parser.add_argument("--from-hub", default=None)
-    parser.add_argument("--no-download", action="store_true")
-    parser.add_argument("--manifest", default=None)
-
-    args = parser.parse_args(argv)
+def main(argv=None) -> int:
     protocol.utf8_stdio()
-    manifest = weights.load_manifest(args.manifest)
-    res = provision(
-        hub=args.hub,
-        manifest=manifest,
-        from_hub=args.from_hub,
-        download=not args.no_download,
-    )
-    print(json.dumps(res, indent=2))
-    if res['missing'] or res['mismatched']:
-        return 1
-    return 0
+    parser = argparse.ArgumentParser(prog='provision', description='Cài trọng số ghim của sidecar sinh ảnh vào cache HF ngoài Git.')
+    parser.add_argument('--hub', required=True, help='<data>/models/hf-hub')
+    parser.add_argument('--from-hub', help='cache HF có sẵn để chép (ví dụ D:/AIAVC_IMGPROTO/hub)')
+    parser.add_argument('--no-download', action='store_true', help='không tải; chỉ chép từ --from-hub')
+    parser.add_argument('--manifest', default=str(Path(__file__).resolve().with_name(weights.MANIFEST_NAME)))
+    args = parser.parse_args(argv)
+    manifest = weights.load_manifest(Path(args.manifest))
+    report = install(Path(args.hub), manifest, from_hub=Path(args.from_hub) if args.from_hub else None,
+                     download=None if args.no_download else _hf_download)
+    print(json.dumps(report, ensure_ascii=False, indent=1))
+    return 0 if report['ok'] else 1
 
 
 if __name__ == '__main__':
-    raise SystemExit(main(sys.argv[1:]))
+    sys.exit(main())

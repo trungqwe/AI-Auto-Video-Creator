@@ -1,3 +1,4 @@
-"""Sidecar sinh ảnh minh hoạ FLUX 3 Image Klein (tiến trình riêng, chỉ stdlib lúc nạp)."""
+"""Sidecar sinh ảnh minh hoạ cục bộ (IMGGEN-SVC): FLUX 3 Image Klein trong môi trường uv riêng, ngoài runtime khoá. Xem README.md.
 
-__version__ = '0.0.0'
+Gói này không import gì khi nạp: protocol.py và weights.py chỉ dùng thư viện chuẩn; engine.py import torch trễ.
+"""

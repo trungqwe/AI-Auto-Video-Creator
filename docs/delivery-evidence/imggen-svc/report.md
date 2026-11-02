@@ -1,96 +1,64 @@
 # Báo cáo IMGGEN-SVC
 
-Mã gói: `IMGGEN-SVC`. Nhóm lỗi: `OI-CP7-11-Q2` (theo spec của task: định nghĩa gốc của Q2 không nằm trong repo; nội dung trên là `GIẢ ĐỊNH` theo spec của task).
+Mã gói: `IMGGEN-SVC`. Nhóm lỗi: `OI-CP7-11-Q2` (định nghĩa gốc của Q2 không nằm trong repo; theo spec của task, ghi `GIẢ ĐỊNH`).
 
-## 1. Tệp đã tạo trong owned paths
+## Lý do làm lại
 
-Worker chỉ tạo 13 tệp được phân quyền trong `owned paths`. Hai tệp `tools/imagegen/pyproject.toml` và `tools/imagegen/uv.lock` KHÔNG thuộc gói IMGGEN-SVC: đây là tệp phụ thuộc, chỉ slice phụ thuộc được sửa, nên gói `IMGGEN-DEPS` (dependency_slice, mở sau gói này) tạo chúng; gói này không tạo hay sửa hai tệp đó (xem mục 6):
+Candidate 62f57ab bị Auditor (Opus 5.5) FAIL với F1 BLOCKER (engine giả: pha trả tensor 0, VAE trả ảnh đồng màu, không dùng mô hình) và F2 MAJOR (cổng VRAM, commit, RAM không nối vào server); Control (đính chính IMGGEN-SVC-REFERENCE-COPY ngày 02/11/2026) yêu cầu chép nguyên văn bản tham chiếu đã được đo và kiểm chứng thực tế trên phần cứng GPU từ `D:/AIAVC_IMGPROTO/ref/imggen-svc/`.
 
-| Tệp | Mô tả |
-| --- | --- |
-| `tools/imagegen/__init__.py` | Khởi tạo module sidecar FLUX 3 Image Klein, docstring UTF-8, `__version__ = '0.0.0'`, không import thư viện nặng. |
-| `tools/imagegen/protocol.py` | Giao thức chuẩn: hằng số mạng (57030, 127.0.0.1), giới hạn job/chu kỳ, `parse_job`, `derive_seed`, `body_sha256`, `utf8_stdio`. |
-| `tools/imagegen/weights.py` | Quản lý và kiểm tra trọng số: `STAMP_NAME`, `load_manifest`, `file_path`, `verify` (hashing 1 lần, tin tem), `write_stamp`. |
-| `tools/imagegen/weights.lock.json` | Khóa cấu hình 25 tệp trọng số FLUX 3 Image Klein và pup prompts theo SHA-256 cố định. |
-| `tools/imagegen/engine.py` | Engine nạp truyền thẳng (streaming safetensors), đo bộ nhớ `MemoryProbe`, `KleinBackend`, `run_cycle` 3 pha, `wait_for_resources`, `memory_budget`. |
-| `tools/imagegen/server.py` | Máy chủ HTTP loopback 127.0.0.1 với `SO_EXCLUSIVEADDRUSE`, `JobStore` lưu vết bền vững, xác thực Bearer token, dừng an toàn qua `watch_stop`. |
-| `tools/imagegen/provision.py` | Công cụ chuẩn bị trọng số offline/from-hub, băm khi sao chép, không chứa `HF_TOKEN` hay `token=`. |
-| `tests/integration/imagegen/test_imagegen_protocol.py` | Kiểm thử tích hợp protocol, kiểm tra không import torch lúc nạp, kiểm tra cấu trúc lock. |
-| `tests/integration/imagegen/test_imagegen_weights.py` | Kiểm thử xác minh trọng số, tem tin cậy, đọc safetensors không torch, không dùng mock/monkeypatch. |
-| `tests/integration/imagegen/test_imagegen_server.py` | Kiểm thử máy chủ `ScriptedBackend`, chia sẻ chu kỳ, thử lại OOM, cổng bộ nhớ, vòng đời stop file/parent pid. |
-| `tests/real/test_imagegen_real.py` | Kiểm thử thực tế trên GPU (chỉ chạy khi có GPU và venv uv riêng biệt, không có mạng ngoài). |
-| `tools/imagegen/README.md` | Hướng dẫn vận hành, kiến trúc, bảng API, chu kỳ 3 pha, nạp streaming và các giả định kỹ thuật. |
-| `docs/delivery-evidence/imggen-svc/report.md` | Báo cáo giao nộp này. |
+## Tệp
 
-## 2. Bảng lệnh kiểm đã chạy
+Bảng 13 tệp trong owned paths: 12 tệp mã nguồn và kiểm thử được chép nguyên văn byte-for-byte từ thư mục tham chiếu `D:/AIAVC_IMGPROTO/ref/imggen-svc/` kèm mã SHA-256 (kiểm tra ở bước 13), cùng tệp `docs/delivery-evidence/imggen-svc/report.md` do Worker lập. Các tệp `tools/imagegen/pyproject.toml`, `tools/imagegen/uv.lock` và `tests/integration/imagegen/test_imagegen_env.py` KHÔNG thuộc gói này mà thuộc gói phụ thuộc `IMGGEN-DEPS`; Worker tuyệt đối không tạo hay chỉnh sửa các tệp đó.
 
-Các dòng Bước 16-28 là kết quả trước rebase; kết quả hiệu lực là mục 7 (chạy lại trên mã đã rebase).
+| Tệp | SHA-256 | Nguồn / Ghi chú |
+| --- | --- | --- |
+| `tools/imagegen/__init__.py` | `963caa74c376e0cedd6e2a2d18bf805ec2fc5ebd4ab252597ba36f36e9c86bee` | Chép nguyên văn từ tham chiếu Control |
+| `tools/imagegen/README.md` | `da7ff23c574721214ddd9026287fd68da2fa4500662a9b5143c69cd5fce60724` | Chép nguyên văn từ tham chiếu Control |
+| `tools/imagegen/weights.lock.json` | `acb29143ae4ab41e53e73e18e3c28351dd3ac0debe258eb1f89ca13f691ebfbe` | Chép nguyên văn từ tham chiếu Control |
+| `tools/imagegen/protocol.py` | `ffd211a292a563724c4a191d9fa2a1fc7ce9db2d453e88a3f637700b06289970` | Chép nguyên văn từ tham chiếu Control |
+| `tools/imagegen/weights.py` | `a0fea7409702532e1c1225a5533ea5dbe94da6f77b14c31b1fddc711b72b1035` | Chép nguyên văn từ tham chiếu Control |
+| `tools/imagegen/engine.py` | `d45322f39d03a2bef8edb9803def01ac43635f05bbda25b57877bc90d313cbb4` | Chép nguyên văn từ tham chiếu Control |
+| `tools/imagegen/server.py` | `c6026bd4c726855fb8ba6e3bbd30d3750fbd816e921bdbe58b3cefea5f34ae8d` | Chép nguyên văn từ tham chiếu Control |
+| `tools/imagegen/provision.py` | `ecb1db4502bb4b8fe2d32ea9d8619d72f38bada29c000321b79586cc8764aaa7` | Chép nguyên văn từ tham chiếu Control |
+| `tests/integration/imagegen/test_imagegen_protocol.py` | `61c6be34b66a402ccd691aed8d47ddc2fc17b39e30a8065c6ee1606baaebcb07` | Chép nguyên văn từ tham chiếu Control |
+| `tests/integration/imagegen/test_imagegen_weights.py` | `4d6684297708feea2cd576ffed4ecaaecb5c68ac7bf6bd3efefa7c0e17d3e2af` | Chép nguyên văn từ tham chiếu Control |
+| `tests/integration/imagegen/test_imagegen_server.py` | `edb68d7c8cf5f8e1341992a0ed79e6364821c006fb29c6557a1cab221db8b895` | Chép nguyên văn từ tham chiếu Control |
+| `tests/real/test_imagegen_real.py` | `b886237456f4960a3d466c6246ff1169954093d037f1f7da1599c50f88738ee9` | Chép nguyên văn từ tham chiếu Control |
+| `docs/delivery-evidence/imggen-svc/report.md` | - | Do Worker tạo, ghi lại bằng chứng thực thi |
 
-| Bước | Lệnh kiểm | Exit code | Kết quả quan sát thực tế |
-| --- | --- | --- | --- |
-| Bước 16 | `git diff --check` | 0 | Không có lỗi khoảng trắng thừa (trailing whitespace sạch). |
-| Bước 17 | `python -m pytest tests/integration/imagegen -q -p no:cacheprovider` | 0 | Dòng tổng kết nguyên văn của pytest: `33 passed, 1 skipped in 5.32s` (test_uv_lock_resolves_the_pins_from_the_cu130_index_with_hashes skip có lý do vì tools/imagegen/uv.lock thuộc IMGGEN-DEPS và chưa có trong worktree). |
-| Bước 18 | Probe AST kiểm tra không import nặng ở mức module (`__init__.py`, `protocol.py`, `weights.py`, `engine.py`, `server.py`, `provision.py`) | 0 | Đạt exit 0, không có import nặng ở module-level. |
-| Bước 19 | Probe chuỗi nguyên văn bắt buộc của protocol, weights, engine, server, provision | 0 | Đạt exit 0, chứa đầy đủ tất cả chuỗi hằng số, tên hàm và cơ chế streaming. |
-| Bước 20 | Probe tên test bắt buộc, `ScriptedBackend`, kiểm tra không chứa `mock` hay `monkeypatch`, và các hằng số trong `test_imagegen_real.py` | 0 | Đạt exit 0, 17/17 tên test bắt buộc tồn tại, không có từ mock/monkeypatch. |
-| Bước 21 | Probe `weights.lock.json` thứ nhất (kích thước và SHA-256 của 25 tệp) | 0 | Đạt exit 0, 25 mục khớp 100% với bảng `want`. |
-| Bước 22 | Probe `weights.lock.json` thứ hai (repo, revision, component, source.kind, blob_id) | 0 | Đạt exit 0, cấu trúc phân loại khớp 100% với bảng `want`. |
-| Bước 24 | Probe kiểm tra nội dung `report.md` | 0 | Đạt exit 0, chứa đầy đủ `IMGGEN-SVC` và `OI-CP7-11-Q2`. |
-| Bước 25 | Probe controlplane package layout và không import `src.` | 0 | Đạt exit 0, toàn bộ layout hợp lệ. |
-| Bước 26-27 (cũ) | Probe `tools/imagegen/pyproject.toml` và `tools/imagegen/uv.lock` | - | Đã rời khỏi lệnh kiểm của IMGGEN-SVC: hai tệp thuộc gói IMGGEN-DEPS (dependency_slice), probe của chúng do IMGGEN-DEPS chạy. |
-| Bước 28 | `git diff --check` (lần cuối) | 0 | Sạch hoàn toàn, không có lỗi định dạng. |
-| Bước 3 (lượt sửa) | `git diff --check` | 0 | Sạch. |
-
-## 3. Kiến trúc API Dịch vụ
-
-- **Giao diện mạng:** Chỉ bind vào `127.0.0.1` với tùy chọn `SO_EXCLUSIVEADDRUSE`, không mở ra ngoài máy chủ (`0.0.0.0`).
-- **Xác thực:** Mọi route (ngoại trừ `GET /v1/health`) bắt buộc có header `Authorization: Bearer <token>` với độ dài token tối thiểu 32 ký tự, so khớp an toàn bằng `hmac.compare_digest`.
-- **Định tuyến:**
-  - `GET /v1/health`: Trả về trạng thái, số lượng ảnh trong hàng đợi, thông số bộ nhớ chi tiết theo pha và commit hệ thống.
-  - `POST /v1/jobs`: Tiếp nhận tối đa 6 ảnh/job. Phản hồi `202 Accepted` (idempotent nếu cùng thân body), `400 Bad Request` nếu sai định dạng, `409 Conflict` nếu trùng ID khác thân, `429 Too Many Requests` khi hàng đợi đầy (>96 ảnh), `503 Service Unavailable` khi chưa provision.
-  - `GET /v1/jobs/<job_id>`: Truy vấn trạng thái chi tiết của công việc.
-  - `GET /v1/jobs/<job_id>/items/<item_id>.png`: Tải ảnh PNG thành phẩm, trả kèm header `X-Content-SHA256` khớp với SHA-256 của nội dung ảnh.
-  - `POST /v1/shutdown`: Dừng dịch vụ có kiểm soát.
-
-## 4. Kiểm tra Trọng số theo SHA-256
-
-- Cơ chế khóa: `weights.lock.json` ghim chính xác 25 tệp trọng số từ repo `black-forest-labs/flux-3-image-klein` (revision `337337621b85...`) và `black-forest-labs/flux-3-image-klein-pup` (revision `3f3edb52b2c5...`).
-- Tem xác thực: Quá trình `verify` chỉ băm SHA-256 một lần đầu tiên, sau đó ghi nhận tem `imagegen-weights.stamp.json` lưu cặp `(size, mtime_ns)`. Các lần kiểm tra sau tái sử dụng tem tin cậy để khởi động tức thì mà không phải đọc lại hàng chục gigabyte từ đĩa.
-- Công cụ provision: `provision.py` hỗ trợ sao chép từ kho có sẵn `--from-hub`, thực hiện băm luồng đồng thời trong quá trình chép và kiểm tra khớp SHA-256 trước khi ghi nhận `refs/main`. Tuyệt đối không đọc hay yêu cầu `HF_TOKEN`.
-
-## 5. Quản lý Bộ nhớ và Các Cổng Kiểm soát Tài nguyên
-
-Tiến trình chia chu kỳ xử lý thành 3 pha tuần tự (`text_encoder`, `transformer`, `vae`):
-- **Cổng VRAM (`wait_for_resources`):** Kiểm tra VRAM trống tối thiểu bằng dung lượng pha + 1.5 GB margin. Chờ tối đa 600 giây; nếu không đủ sẽ trả lỗi `GPU_MEMORY_UNAVAILABLE`.
-- **Cổng Commit:** Kiểm tra commit khả dụng của Windows tối thiểu bằng dung lượng pha + 2.0 GB margin. Nếu thiếu sẽ trả lỗi `HOST_COMMIT_LOW`.
-- **Cổng RAM Host:** Đảm bảo RAM trống tối thiểu 2.0 GB (`HOST_MEMORY_LOW`).
-- **Ngân sách bộ nhớ (`memory_budget`):**
-  - Working set tối đa: 4 GiB (`WSET_MAX_BYTES`).
-  - Private trừ VRAM tối đa: 4 GiB (`PRIVATE_MINUS_GPU_MAX_BYTES`).
-  - Bộ nhớ dư (residual) sau pha: Giới hạn 2.5 GiB ở chu kỳ đầu (`RESIDUAL_FIRST_CYCLE_MAX_BYTES`), giới hạn 512 MiB ở các chu kỳ sau (`RESIDUAL_LATER_CYCLE_MAX_BYTES`). Nếu vượt ngưỡng, tiến trình dọn dẹp bộ nhớ và từ chối các tác vụ tiếp theo để tránh tràn RAM.
-
-## 6. GIẢ ĐỊNH và Giới hạn
-
-- **Phần cứng GPU:** Lane `lane-imggen-svc` kiểm chứng toàn bộ luồng logic, giao thức, HTTP API, quản lý trọng số và state machine thông qua test suite độc lập `tests/integration/imagegen` (sử dụng `ScriptedBackend`, không cần GPU thật và không gọi mạng ngoài).
-- **Mã KleinBackend và vá FP8:** Các hàm `patch_bfl_fp8`, `fp8_self_test`, và cấu hình `from_single_file` là `GIẢ ĐỊNH` cần Control đo đạc và xác thực lại khi chạy thực tế trên phần cứng NVIDIA GPU qua `tests/real/test_imagegen_real.py`.
-- **Hai tệp pyproject.toml và uv.lock thuộc gói IMGGEN-DEPS (Finding F1).**
-  - `tools/imagegen/pyproject.toml` và `tools/imagegen/uv.lock` là tệp phụ thuộc, chỉ slice phụ thuộc được sửa. Gói `IMGGEN-DEPS` (dependency_slice, mở sau gói này) tạo chúng; IMGGEN-SVC không tạo hay sửa hai tệp này và hai tệp không nằm trong owned paths.
-  - Hậu quả: test `test_uv_lock_resolves_the_pins_from_the_cu130_index_with_hashes` chỉ skip (có lý do) khi `tools/imagegen/uv.lock` chưa có và chạy chặt khi tệp có mặt; hai probe `pyproject.toml` và `uv.lock` đã rời khỏi lệnh kiểm của IMGGEN-SVC và do IMGGEN-DEPS chạy.
-
-## 7. Rebase lên integration head 432a6f9ce4bf6f6458c8d9043062006a73e62cdc
-
-Lệnh `git rebase 432a6f9ce4bf6f6458c8d9043062006a73e62cdc` đã rebase thành công 4 commit của lane lên integration head 432a6f9ce4bf6f6458c8d9043062006a73e62cdc; không có xung đột, cây làm việc sạch.
-
-Bảng kết quả các lệnh kiểm tra chạy lại trên mã đã rebase:
+## Lệnh kiểm đã chạy
 
 | Lệnh | Exit code | Kết quả |
 | --- | --- | --- |
-| `python -m pytest tests/integration/imagegen -q -p no:cacheprovider` | 0 | Đạt exit 0; dòng tổng kết nguyên văn của pytest: `33 passed, 1 skipped in 5.32s` (test_uv_lock_resolves_the_pins_from_the_cu130_index_with_hashes skip có lý do vì tools/imagegen/uv.lock thuộc IMGGEN-DEPS và chưa có trong worktree). |
-| `python -c "import json, pathlib; ... assert got == want"` (probe weights.lock.json kích thước/sha256) | 0 | Đạt exit 0; 25 mục (path, size, sha256) khớp 100% với danh sách ghim. |
-| `python -c "import json, pathlib; ... assert set(...) == ..."` (probe weights.lock.json repo/blob) | 0 | Đạt exit 0; repo, revision, component, source.kind, blob_id của 25 mục khớp danh sách ghim. |
-| `python -c "import ast, pathlib; ... assert not bad, bad"` (probe AST import nặng) | 0 | Đạt exit 0; không module nào trong `tools/imagegen` import thư viện nặng ở mức module. |
-| `python -c "import pathlib; ... assert all(x in p ...) ..."` (probe chuỗi bắt buộc) | 0 | Đạt exit 0; đầy đủ các chuỗi hằng số, tên hàm và cơ chế streaming bắt buộc trong protocol, weights, engine, server, provision. |
-| `python -c "import pathlib; ... assert all('def ' + x in a ...) ..."` (probe tên test) | 0 | Đạt exit 0; đủ 17 tên test bắt buộc, có `ScriptedBackend`, không có mock/monkeypatch, hằng số trong `test_imagegen_real.py` khớp. |
-| `python -c "import pathlib, re, tomllib; ... assert not miss ... assert not bad, bad"` (probe layout controlplane) | 0 | Đạt exit 0; package-dir của `src/controlplane/pyproject.toml` đủ gói, pytest pythonpath có src, không import tiền tố `src.`. |
-| `python -c "import pathlib; t = pathlib.Path('docs/delivery-evidence/imggen-svc/report.md').read_text(encoding='utf-8'); assert 'IMGGEN-SVC' in t and 'OI-CP7-11-Q2' in t, 'report'"` (probe report.md) | 0 | Đạt exit 0; report.md chứa đầy đủ mã gói `IMGGEN-SVC` và nhóm lỗi `OI-CP7-11-Q2`. |
-| `git diff --check` | 0 | Đạt exit 0; không có lỗi khoảng trắng thừa (trailing whitespace sạch). |
+| `git diff --check` (Bước 14) | 0 | Không có lỗi khoảng trắng |
+| `python -m pytest tests/integration/imagegen -q -p no:cacheprovider` (Bước 15) | 0 | Dòng tổng kết nguyên văn: `75 passed in 7.58s` |
+| Probe SHA-256 của 12 tệp tham chiếu (Bước 13) | 0 | Tất cả 12 tệp khớp SHA-256 tham chiếu, danh sách `bad` rỗng |
+| Probe `weights.lock.json` nội dung tệp (Bước 16) | 0 | Khớp chính xác 25 mục tệp, size và SHA-256 |
+| Probe `weights.lock.json` metadata lưu trữ và nguồn (Bước 17) | 0 | `schema_version == 1`, `in_git == False`, đúng revision và blob ID |
+| Probe AST import thư viện nặng (Bước 18) | 0 | Không module nào import thư viện nặng ở mức module |
+| Probe chuỗi và hằng số bắt buộc (Bước 19) | 0 | Có đầy đủ các ký hiệu, hàm, cổng tài nguyên và cơ chế nạp streaming |
+| Probe test suite và test nhân bản (Bước 20) | 0 | Đủ 16 hàm test tích hợp, dùng `ScriptedBackend`, không dùng mock hay monkeypatch; test real có đủ ràng buộc hằng số |
+| Probe cấu trúc controlplane và cấm import `src.` (Bước 21) | 0 | Cấu trúc gói hợp lệ, không có import tiền tố `src.` |
+| Probe nội dung report.md (Bước 23) | 0 | Có mặt chuỗi `IMGGEN-SVC` và `OI-CP7-11-Q2` |
+| `git diff --check` lần cuối (Bước 24) | 0 | Hoàn toàn sạch lỗi khoảng trắng |
+
+## Hành vi của bản tham chiếu
+
+Bản tham chiếu triển khai hoàn chỉnh dịch vụ sidecar sinh ảnh theo các chuẩn kỹ thuật:
+- **Chu kỳ 3 pha tuần tự trên GPU**: `text_encoder` -> `transformer` -> `vae`. Mỗi pha chỉ nạp mô hình tương ứng vào VRAM, xử lý toàn bộ các ảnh trong hàng đợi, sau đó giải phóng hoàn toàn qua `gc.collect()` và `torch.cuda.empty_cache()` trước khi chuyển pha tiếp theo.
+- **Cổng tài nguyên nghiêm ngặt**: Kiểm tra VRAM trống (dư >= nhu cầu + 1.5 GB), bộ nhớ commit hệ thống qua `GlobalMemoryStatusEx` (commit trống >= commit pha + 2 GB), và RAM trống >= 2 GB. Cổng cho phép chờ tối đa 600 s trước khi từ chối an toàn với mã `GPU_MEMORY_UNAVAILABLE`, `HOST_COMMIT_LOW` hoặc `HOST_MEMORY_LOW`. Xử lý OOM bằng cách thử lại duy nhất một lần (`GPU_OUT_OF_MEMORY`).
+- **Nạp streaming trực tiếp vào CUDA không qua RAM**: Đọc header safetensors bằng thư viện chuẩn, nạp từng khúc 64 MiB thẳng vào CUDA tensor, không dùng mmap, `load_file` hay `safe_open`. Text encoder và VAE dựng trên `torch.device('meta')` rồi gọi `load_state_dict(assign=True)`; Transformer dựng qua `from_single_file(dict)`. Đo lường qua `MemoryProbe` và tính ngân sách `memory_budget` (working set <= 4 GiB, private trừ VRAM <= 4 GiB, dư <= 2.5 GiB ở chu kỳ đầu và <= 512 MiB ở các chu kỳ sau).
+- **API dịch vụ HTTP loopback**: Lắng nghe độc quyền tại `127.0.0.1` (`SO_EXCLUSIVEADDRUSE`) với cổng mặc định `57030`. Xác thực token Bearer qua `hmac.compare_digest` trên mọi endpoint (trừ `GET /v1/health`).
+- **Endpoint và hàng đợi**:
+  - `POST /v1/jobs`: Tiếp nhận job (tối đa 6 ảnh/job, hàng đợi tối đa 96 ảnh), trả về HTTP 202; idempotent với cùng job_id và cùng thân (xếp lại các ảnh lỗi còn lượt); trả về HTTP 409 nếu trùng job_id khác thân; HTTP 429 nếu hàng đợi đầy; HTTP 503 nếu chưa provision hoặc có lỗi nghiêm trọng.
+  - `GET /v1/jobs/<job_id>`: Truy xuất trạng thái và tiến độ xử lý ảnh.
+  - `GET /v1/jobs/<job_id>/artifacts/<item_id>.png`: Tải ảnh kết quả kèm header xác thực `X-Content-SHA256`.
+  - `GET /v1/health`: Báo cáo trạng thái sức khoẻ, bộ nhớ theo từng pha, commit hệ thống và tiến độ hàng đợi không cần token.
+  - `POST /v1/shutdown`: Dừng dịch vụ an toàn.
+- **Kiểm tra trọng số theo SHA-256 và tem xác thực**: `weights.py` định vị tệp theo cache Hugging Face, đối chiếu toàn bộ 25 mục tệp với `weights.lock.json`. Sau khi xác thực toàn diện lần đầu, ghi tem `imagegen-weights.stamp.json` để tăng tốc khởi động lần sau; chỉ xác thực lại khi tem thiếu hoặc commit refs thay đổi.
+
+## Giới hạn và GIẢ ĐỊNH
+
+- **GPU và môi trường thực**: Các số đo hiệu năng phần cứng (28,8 s/ảnh trên NVIDIA GeForce RTX 4070 SUPER) là số liệu do Control đo đạc thực tế trên bản tham chiếu. Worker trong lane này chạy trên môi trường không có GPU CUDA, không tải trọng số từ mạng ngoài và không gọi Internet.
+- **Kiểm thử thực tế**: Tệp `tests/real/test_imagegen_real.py` yêu cầu GPU thật, trọng số mô hình thật và env uv riêng (cu130), chỉ do Control thực thi; Worker không chạy tệp này.
+- **Môi trường giả lập tích hợp**: Bộ kiểm thử tích hợp `tests/integration/imagegen/test_imagegen_server.py` sử dụng backend kịch bản hoá `ScriptedBackend` độc lập để xác minh giao thức, hàng đợi, idempotency và các cổng tài nguyên mà không nạp hay chạy mô hình thật.

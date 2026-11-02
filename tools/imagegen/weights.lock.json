@@ -3,20 +3,34 @@
   "storage": {
     "base_dir_default": "LOCALAPPDATA/AIAutoVideoCreator",
     "subdir": "models/hf-hub",
-    "layout": "hf-hub-cache: models--<org>--<name>/snapshots/<revision>/<path>",
+    "layout": "huggingface_hub cache: models--<org>--<name>/snapshots/<revision>/<path>; refs/main = revision",
     "in_git": false
   },
-  "reason": "pinned FLUX 3 Image Klein weights for the local imagegen sidecar, hashed once, never in git",
-  "repos": {
-    "black-forest-labs/flux-3-image-klein": {
+  "reason": "SHA-256 và kích thước do Control đo ngày 02/11/2026 trên bản tải của nguyên mẫu (D:/AIAVC_IMGPROTO/hub, đã sinh ảnh thật); 4 tệp LFS khớp lfs_sha256 và lfs_size của cây HF đã lưu ở revision 337337621b85, 20 tệp thường khớp git blob SHA-1 của cây đó, variants/fp8r/config.json và model.safetensors còn khớp variants/fp8r/manifest.json của BFL; system_prompts.json của kho pup không có cây đã lưu nên ghi băm của bản tải. Trọng số đặt ngoài cây Git; Worker không tải, không băm lại, không đổi giá trị.",
+  "repos": [
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
       "revision": "337337621b8526e120f2275d250242f4a6bedd75",
-      "tree": "337337621b85"
+      "license": "FLUX Kommunity License (LICENSE.md, NOTICE.md)",
+      "not_used": [
+        "transformer/diffusion_pytorch_model-00001-of-00002.safetensors",
+        "transformer/diffusion_pytorch_model-00002-of-00002.safetensors",
+        "transformer/diffusion_pytorch_model.safetensors.index.json",
+        "variants/nvfp4/*",
+        "model.safetensors",
+        "ae.safetensors",
+        "config.json",
+        "manifest.json",
+        "README.md",
+        "assets/*"
+      ]
     },
-    "black-forest-labs/flux-3-image-klein-pup": {
+    {
+      "repo": "black-forest-labs/flux-3-image-klein-pup",
       "revision": "3f3edb52b2c55de0d49feab28598b68f7f8e4830",
-      "tree": null
+      "note": "Chỉ system_prompts.json: bộ viết caption đọc theo đường dẫn ghim và SHA-256, không chép vào Git (giấy phép pup chưa xác nhận); sidecar không nạp mô hình pup"
     }
-  },
+  ],
   "files": [
     {
       "repo": "black-forest-labs/flux-3-image-klein",
@@ -28,7 +42,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "044cf48568c278150d132a7479ea237a79766ea7",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -41,7 +55,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "ee97a99bbf8ad09b197cf3cb6a079084876b0376",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -54,7 +68,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "b0ce87edf5923b7ea2dbde5bf182a69c90d522a5",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -67,7 +81,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -80,7 +94,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "542417095b66d3fc13be22bbf6722928787b8ef4",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -93,7 +107,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "e49e75bdda104c8de941eb20e0b3765184fb27bc",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -106,7 +120,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "22be8bb79043d39840ca5e70d7a2dab80311602c",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -119,7 +133,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "e116347d7ef42621c7a5957f82c015c38d939c1f",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -132,7 +146,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "20024bfe7c83998e9aeaf98a0cd6a2ce6306c2f0",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -144,8 +158,7 @@
       "sha256": "30a01a0556622645a3cce87b655bbbbbc1f170c196099f1b666c93202c3339a9",
       "source": {
         "kind": "lfs_sha256",
-        "blob_id": null,
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -157,8 +170,7 @@
       "sha256": "046296a2a387efb43b0c997d5833c789604d168834f6e0d3064bf7bb13d002a6",
       "source": {
         "kind": "lfs_sha256",
-        "blob_id": null,
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -171,7 +183,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "3b52de97496e2f4501dfa92a87642f60db3e22a1",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -184,7 +196,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "2ea84a437d448ff71b08df68fdd949d5cc4ebb64",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -197,7 +209,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "c6cc1014128b19d1fc46b1d30a23e3b1d35db421",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -210,7 +222,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "d3d3763207692c78780f4bf42d4dadf49a5c8012",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -223,7 +235,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "3ba673a5ad7d4d13f54155ecd38b2a94a6dac8fe",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -236,7 +248,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "4783fe10ac3adce15ac8f358ef5462739852c569",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -249,7 +261,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "84626bbb88a60c8904542727b500b6cdce2b918c",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -262,7 +274,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "2410d0e0a4b381022ad7ab0ac3007c3c8a5d010c",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -274,8 +286,7 @@
       "sha256": "d64f3a68e1cc4f9f4e29b6e0da38a0204fe9a49f2d4053f0ec1fa1ca02f9c4b5",
       "source": {
         "kind": "lfs_sha256",
-        "blob_id": null,
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -288,7 +299,8 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "76a3e5f8bb24ac284d7851688eec8be57d52204b",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75",
+        "fp8r_manifest": true
       }
     },
     {
@@ -301,7 +313,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "1efac853ddbfaae29f9b873e7dfe3ee748442409",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -314,7 +326,7 @@
       "source": {
         "kind": "git_blob_sha1",
         "blob_id": "88c5a3b28dd07092b6e41d7ae1305b53a55604c4",
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75"
       }
     },
     {
@@ -326,8 +338,8 @@
       "sha256": "30054053f630725b488aead9a81b422793cee18027856a16bd17b902ad612018",
       "source": {
         "kind": "lfs_sha256",
-        "blob_id": null,
-        "tree": "337337621b85"
+        "tree": "337337621b8526e120f2275d250242f4a6bedd75",
+        "fp8r_manifest": true
       }
     },
     {
@@ -340,7 +352,7 @@
       "source": {
         "kind": "local_copy",
         "blob_id": "93081c77e82b989fb5ef3d5968943f06952af274",
-        "tree": null
+        "note": "Control tải ngày 02/11/2026 bằng đăng nhập HF của user; kho pup không có cây đã lưu nên băm là của bản tải này"
       }
     }
   ]

@@ -1,435 +1,280 @@
-"""Integration tests for imagegen weights module."""
+"""IMGGEN-SVC: danh mục trọng số ghim (weights.lock.json), kiểm băm có tem trên tệp nhỏ và provision.py (chép từ hub, tải qua hàm
+được truyền vào, không token). Không mạng, không GPU, không trọng số thật.
+"""
+from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
-import pathlib
-import re
-import struct
 import sys
-import time
+from pathlib import Path
+
 import pytest
 
-TOOLS = pathlib.Path(__file__).resolve().parents[3] / 'tools' / 'imagegen'
-sys.path.insert(0, str(TOOLS))
+ROOT = Path(__file__).resolve().parents[3]
+IMAGEGEN = ROOT / 'tools' / 'imagegen'
+if str(ROOT / 'tools') not in sys.path:
+    sys.path.insert(0, str(ROOT / 'tools'))
 
-import engine
-import protocol
-import provision
-import weights
+from imagegen import engine, provision, weights  # noqa: E402
+
+KLEIN = ('black-forest-labs/flux-3-image-klein', '337337621b8526e120f2275d250242f4a6bedd75')
+PUP = ('black-forest-labs/flux-3-image-klein-pup', '3f3edb52b2c55de0d49feab28598b68f7f8e4830')
+KLEIN_PATHS = {
+    'LICENSE.md', 'NOTICE.md', 'modular_model_index.json', 'transformer/config.json', 'vae/config.json',
+    'vae/diffusion_pytorch_model.safetensors', 'variants/fp8r/config.json', 'variants/fp8r/hf_quant_config.json',
+    'variants/fp8r/manifest.json', 'variants/fp8r/model.safetensors',
+} | {f'text_encoder/{name}' for name in (
+    'LICENSE', 'README.md', 'chat_template.json', 'config.json', 'generation_config.json', 'merges.txt',
+    'model-00001-of-00002.safetensors', 'model-00002-of-00002.safetensors', 'model.safetensors.index.json',
+    'preprocessor_config.json', 'tokenizer.json', 'tokenizer_config.json', 'video_preprocessor_config.json', 'vocab.json')}
+LFS = {  # lfs_sha256 of the cached hub tree at 337337621b85; fp8r also in BFL's variants/fp8r/manifest.json
+    'text_encoder/model-00001-of-00002.safetensors': '30a01a0556622645a3cce87b655bbbbbc1f170c196099f1b666c93202c3339a9',
+    'text_encoder/model-00002-of-00002.safetensors': '046296a2a387efb43b0c997d5833c789604d168834f6e0d3064bf7bb13d002a6',
+    'vae/diffusion_pytorch_model.safetensors': 'd64f3a68e1cc4f9f4e29b6e0da38a0204fe9a49f2d4053f0ec1fa1ca02f9c4b5',
+    'variants/fp8r/model.safetensors': '30054053f630725b488aead9a81b422793cee18027856a16bd17b902ad612018',
+}
 
 
-def test_verify_hashes_once_then_trusts_a_fresh_stamp(tmp_path):
-    hub = tmp_path / "hub"
-    repo = "org/model"
-    revision = "abcdef0123456789"
-    content1 = b"tensor_data_one"
-    content2 = b"tensor_data_two"
-    h1 = hashlib.sha256(content1).hexdigest()
-    h2 = hashlib.sha256(content2).hexdigest()
+def test_manifest_pins_25_files_of_two_revisions():
+    manifest = weights.load_manifest(IMAGEGEN / 'weights.lock.json')
+    assert manifest.revisions == {KLEIN[0]: KLEIN[1], PUP[0]: PUP[1]}
+    assert {e.path for e in manifest.entries if e.repo == KLEIN[0]} == KLEIN_PATHS
+    assert [e.path for e in manifest.entries if e.repo == PUP[0]] == ['system_prompts.json']
+    assert len(manifest.entries) == 25 and sum(e.size for e in manifest.entries) == 15_494_505_294
+    by_path = {e.path: e for e in manifest.entries if e.repo == KLEIN[0]}
+    assert {path: by_path[path].sha256 for path in LFS} == LFS
+    assert not any('diffusion_pytorch_model-0000' in e.path or 'nvfp4' in e.path for e in manifest.entries)
+    assert manifest.component_bytes('text_encoder') > 8_875_000_000 and 6_270_949_144 < manifest.component_bytes('transformer') < 6_271_000_000
 
-    manifest = {
-        "schema_version": 1,
-        "repos": {
-            repo: {"revision": revision}
-        },
-        "files": [
-            {
-                "repo": repo,
-                "revision": revision,
-                "path": "weights/file1.bin",
-                "size": len(content1),
-                "sha256": h1,
-            },
-            {
-                "repo": repo,
-                "revision": revision,
-                "path": "weights/file2.bin",
-                "size": len(content2),
-                "sha256": h2,
-            },
-        ]
-    }
 
-    f1 = weights.file_path(hub, repo, revision, "weights/file1.bin")
-    f2 = weights.file_path(hub, repo, revision, "weights/file2.bin")
-    f1.parent.mkdir(parents=True, exist_ok=True)
-    f1.write_bytes(content1)
-    f2.write_bytes(content2)
+def test_each_hash_records_how_it_was_checked():
+    doc = json.loads((IMAGEGEN / 'weights.lock.json').read_text(encoding='utf-8'))
+    assert doc['storage'] == {'base_dir_default': 'LOCALAPPDATA/AIAutoVideoCreator', 'subdir': 'models/hf-hub',
+                              'layout': doc['storage']['layout'], 'in_git': False}
+    kinds = {}
+    for entry in doc['files']:
+        kinds.setdefault(entry['source']['kind'], []).append(entry['path'])
+        if entry['source']['kind'] == 'git_blob_sha1':
+            assert len(entry['source']['blob_id']) == 40 and entry['source']['tree'] == KLEIN[1]
+    assert sorted(kinds['lfs_sha256']) == sorted(LFS) and len(kinds['git_blob_sha1']) == 20
+    assert kinds['local_copy'] == ['system_prompts.json']
 
-    refs_file = weights.repo_dir(hub, repo) / "refs" / "main"
-    refs_file.parent.mkdir(parents=True, exist_ok=True)
-    refs_file.write_text(revision, encoding="utf-8")
 
-    hash_counts = {"count": 0}
+def _manifest_doc(files):
+    return {'schema_version': 1, 'storage': {'in_git': False}, 'files': files}
 
-    def counting_hasher(path):
-        hash_counts["count"] += 1
+
+def _entry(repo, revision, path, data, component='text_encoder'):
+    return {'repo': repo, 'revision': revision, 'path': path, 'component': component, 'size': len(data),
+            'sha256': hashlib.sha256(data).hexdigest(), 'source': {'kind': 'local_copy'}}
+
+
+TINY = [
+    ('acme/klein', 'a' * 40, 'modular_model_index.json', b'{"tiny": true}\n'),
+    ('acme/klein', 'a' * 40, 'text_encoder/model.safetensors', b'\x00weights\x01' * 64),
+    ('acme/pup', 'b' * 40, 'system_prompts.json', b'{"t2i": "prompt"}\n'),
+]
+
+
+@pytest.fixture
+def tiny(tmp_path):
+    path = tmp_path / 'weights.lock.json'
+    path.write_text(json.dumps(_manifest_doc([_entry(*row) for row in TINY])), encoding='utf-8')
+    return weights.load_manifest(path)
+
+
+def _fill(hub: Path, rows=TINY, refs=True):
+    for repo, revision, rel, data in rows:
+        target = weights.snapshot_dir(hub, repo, revision) / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        if refs:
+            ref = weights.repo_dir(hub, repo) / 'refs' / 'main'
+            ref.parent.mkdir(parents=True, exist_ok=True)
+            ref.write_text(revision, encoding='utf-8')
+
+
+@pytest.mark.parametrize('bad, message', [
+    ({'path': '../escape.json'}, 'invalid path'),
+    ({'path': 'text_encoder\\x.json'}, 'invalid path'),
+    ({'path': '/abs.json'}, 'invalid path'),
+    ({'sha256': 'f' * 63}, 'sha256'),
+    ({'size': 0}, 'size'),
+    ({'revision': 'main'}, 'revision'),
+    ({'source': {'kind': 'trust_me'}}, 'source.kind'),
+])
+def test_unsafe_manifest_entries_are_refused(tmp_path, bad, message):
+    entry = dict(_entry(*TINY[0]), **bad)
+    path = tmp_path / 'm.json'
+    path.write_text(json.dumps(_manifest_doc([entry])), encoding='utf-8')
+    with pytest.raises(weights.ManifestError, match=message.replace('.', r'\.')):
+        weights.load_manifest(path)
+
+
+def test_manifest_refuses_duplicates_two_revisions_and_weights_in_git(tmp_path):
+    path = tmp_path / 'm.json'
+    for files, storage, message in (
+        ([_entry(*TINY[0]), _entry(*TINY[0])], {'in_git': False}, 'listed twice'),
+        ([_entry(*TINY[0]), _entry('acme/klein', 'c' * 40, 'x.json', b'x')], {'in_git': False}, 'two revisions'),
+        ([_entry(*TINY[0])], {'in_git': True}, 'in_git'),
+    ):
+        path.write_text(json.dumps({'schema_version': 1, 'storage': storage, 'files': files}), encoding='utf-8')
+        with pytest.raises(weights.ManifestError, match=message):
+            weights.load_manifest(path)
+
+
+class CountingHasher:
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, path):
+        self.calls.append(Path(path).name)
         return weights.sha256_file(path)
 
-    # First verify: hashes each file, writes fresh stamp
-    res1 = weights.verify(hub, manifest, full=False, hasher=counting_hasher)
-    assert res1.ok is True
-    assert res1.hashed == 2
-    assert res1.trusted_stamp is False
-    assert hash_counts["count"] == 2
 
-    # Second verify: trusts stamp, hashes 0 files
-    hash_counts["count"] = 0
-    res2 = weights.verify(hub, manifest, full=False, hasher=counting_hasher)
-    assert res2.ok is True
-    assert res2.hashed == 0
-    assert res2.trusted_stamp is True
-    assert hash_counts["count"] == 0
-
-    # Modify content of file1 with same size to change mtime
-    time.sleep(0.01)
-    new_content1 = b"tensor_data_mod"
-    assert len(new_content1) == len(content1)
-    f1.write_bytes(new_content1)
-
-    # Third verify: re-hashes and detects sha256 mismatch
-    hash_counts["count"] = 0
-    res3 = weights.verify(hub, manifest, full=False, hasher=counting_hasher)
-    assert res3.ok is False
-    assert any("sha256 weights/file1.bin" in p for p in res3.problems)
-    assert hash_counts["count"] > 0
-
-    # Revert file1
-    f1.write_bytes(content1)
-    weights.write_stamp(hub, manifest)
-
-    # full=True always re-hashes
-    hash_counts["count"] = 0
-    res_full = weights.verify(hub, manifest, full=True, hasher=counting_hasher)
-    assert res_full.ok is True
-    assert res_full.hashed == 2
-    assert res_full.trusted_stamp is False
-    assert hash_counts["count"] == 2
+def test_verify_hashes_once_then_trusts_a_fresh_stamp(tmp_path, tiny):
+    hub = tmp_path / 'hub'
+    _fill(hub)
+    hasher = CountingHasher()
+    first = weights.verify(hub, tiny, hasher=hasher)
+    assert first.ok and first.rehashed and first.stamp_written and len(hasher.calls) == 3
+    assert weights.stamp_path(hub).is_file()
+    hasher.calls.clear()
+    second = weights.verify(hub, tiny, hasher=hasher)
+    assert second.ok and not second.rehashed and hasher.calls == []
+    full = weights.verify(hub, tiny, full=True, hasher=hasher)
+    assert full.ok and full.rehashed and len(hasher.calls) == 3
+    hasher.calls.clear()
+    target = weights.snapshot_dir(hub, 'acme/klein', 'a' * 40) / 'modular_model_index.json'
+    os.utime(target, ns=(target.stat().st_atime_ns, target.stat().st_mtime_ns + 5_000_000_000))
+    touched = weights.verify(hub, tiny, hasher=hasher)
+    assert touched.ok and touched.rehashed and len(hasher.calls) == 3
 
 
-def test_provision_never_handles_the_hugging_face_token():
-    prov_text = (TOOLS / "provision.py").read_text(encoding="utf-8")
-    assert "HF_TOKEN" not in prov_text
-    assert not re.search(r"token\s*=", prov_text, re.IGNORECASE)
-    assert "hf_hub_download" in prov_text
+def test_verify_lists_missing_and_mismatched_files(tmp_path, tiny):
+    hub = tmp_path / 'hub'
+    _fill(hub)
+    assert weights.verify(hub, tiny).ok
+    (weights.snapshot_dir(hub, 'acme/pup', 'b' * 40) / 'system_prompts.json').unlink()
+    model = weights.snapshot_dir(hub, 'acme/klein', 'a' * 40) / 'text_encoder' / 'model.safetensors'
+    model.write_bytes(b'\x00WEIGHTS\x01' * 64)
+    result = weights.verify(hub, tiny)
+    assert not result.ok and result.rehashed and not result.stamp_written
+    assert result.missing == ['acme/pup@bbbbbbbbbbbb/system_prompts.json']
+    assert len(result.mismatched) == 1 and 'text_encoder/model.safetensors' in result.mismatched[0]
+    assert any(p.startswith('missing: ') for p in result.problems()) and any(p.startswith('mismatched: ') for p in result.problems())
 
-    import ast
-    tree = ast.parse(prov_text)
-    top_level_imports = [
-        node for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))
-    ]
-    for node in top_level_imports:
-        names = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or ""]
-        assert not any("huggingface_hub" in n for n in names if n), "huggingface_hub must not be imported at top level"
 
-    func_imports = []
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for child in ast.walk(node):
-                if isinstance(child, (ast.Import, ast.ImportFrom)):
-                    names = [a.name for a in child.names] if isinstance(child, ast.Import) else [child.module or ""]
-                    if any("huggingface_hub" in n for n in names if n):
-                        func_imports.append(child)
-    assert len(func_imports) > 0, "huggingface_hub must be imported inside a function"
+def test_verify_requires_refs_main_at_the_pinned_revision(tmp_path, tiny):
+    hub = tmp_path / 'hub'
+    _fill(hub, refs=False)
+    result = weights.verify(hub, tiny)
+    assert not result.ok and len(result.refs) == 2 and not result.stamp_written
+    _fill(hub)
+    assert weights.verify(hub, tiny).ok
+
+
+def test_provision_copies_from_a_hub_then_writes_refs_and_the_stamp(tmp_path, tiny):
+    source, hub = tmp_path / 'source', tmp_path / 'hub'
+    _fill(source, refs=False)
+    report = provision.install(hub, tiny, from_hub=source, download=None, log=lambda message: None)
+    assert report['ok'] and report['copied'] == 3 and report['downloaded'] == 0 and report['stamp_written']
+    assert (weights.repo_dir(hub, 'acme/klein') / 'refs' / 'main').read_text(encoding='utf-8') == 'a' * 40
+    assert weights.verify(hub, tiny).ok and not weights.verify(hub, tiny).rehashed
+    again = provision.install(hub, tiny, from_hub=source, download=None, log=lambda message: None)
+    assert again['ok'] and again['kept'] == 3 and again['copied'] == 0
+
+
+def test_provision_refuses_a_source_with_other_bytes_and_leaves_no_partial_file(tmp_path, tiny):
+    source, hub = tmp_path / 'source', tmp_path / 'hub'
+    rows = [TINY[0], (TINY[1][0], TINY[1][1], TINY[1][2], b'tampered'), TINY[2]]
+    _fill(source, rows, refs=False)
+    report = provision.install(hub, tiny, from_hub=source, download=None, log=lambda message: None)
+    assert not report['ok'] and report['copied'] == 2 and len(report['failures']) == 1
+    target_dir = weights.snapshot_dir(hub, 'acme/klein', 'a' * 40) / 'text_encoder'
+    assert not target_dir.exists() or list(target_dir.iterdir()) == []
+
+
+def test_provision_moves_a_wrong_file_aside_and_downloads_without_a_token(tmp_path, tiny):
+    hub = tmp_path / 'hub'
+    _fill(hub, [TINY[0], (TINY[1][0], TINY[1][1], TINY[1][2], b'stale'), TINY[2]])
+    calls = []
+
+    def download(**kwargs):
+        calls.append(kwargs)
+        repo, revision, rel, data = next(row for row in TINY if row[2] == kwargs['filename'])
+        target = weights.snapshot_dir(Path(kwargs['cache_dir']), repo, revision) / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        return str(target)
+
+    report = provision.install(hub, tiny, download=download, log=lambda message: None)
+    assert report['ok'] and report['downloaded'] == 1 and report['kept'] == 2 and len(report['moved_aside']) == 1
+    assert calls == [{'repo_id': 'acme/klein', 'filename': 'text_encoder/model.safetensors', 'revision': 'a' * 40, 'cache_dir': str(hub)}]
+    assert Path(report['moved_aside'][0]).read_bytes() == b'stale'
+
+
+def _safetensors(tensors) -> bytes:
+    header, data = {}, b''
+    for name, (dtype, shape, raw) in tensors.items():
+        header[name] = {'dtype': dtype, 'shape': shape, 'data_offsets': [len(data), len(data) + len(raw)]}
+        data += raw
+    blob = json.dumps(dict(header, __metadata__={'format': 'pt'})).encode('utf-8')
+    return len(blob).to_bytes(8, 'little') + blob + data
+
+
+TINY_TENSORS = {'a.weight': ('BF16', [2, 3], bytes(range(12))), 'a.weight_scale': ('F32', [2], bytes(8)),
+                'q': ('F8_E4M3', [4], b'\x01\x02\x03\x04'), 'step': ('I64', [], bytes(8))}
 
 
 def test_safetensors_headers_are_read_and_checked_without_torch(tmp_path):
-    st_file = tmp_path / "model.safetensors"
-    # Tensor 1: F32 shape [2, 2] -> 4 * 4 = 16 bytes. offsets [0, 16]
-    # Tensor 2: BF16 shape [4] -> 4 * 2 = 8 bytes. offsets [16, 24]
-    header_dict = {
-        "t1": {
-            "dtype": "F32",
-            "shape": [2, 2],
-            "data_offsets": [0, 16],
-        },
-        "t2": {
-            "dtype": "BF16",
-            "shape": [4],
-            "data_offsets": [16, 24],
-        },
-        "__metadata__": {"format": "pt"}
+    path = tmp_path / 'tiny.safetensors'
+    path.write_bytes(_safetensors(TINY_TENSORS))
+    offset, entries = engine.read_safetensors_header(path)
+    assert offset == 8 + int.from_bytes(path.read_bytes()[:8], 'little')
+    assert entries == {'a.weight': ('BF16', (2, 3), 0, 12), 'a.weight_scale': ('F32', (2,), 12, 20), 'q': ('F8_E4M3', (4,), 20, 24),
+                       'step': ('I64', (), 24, 32)}
+    assert path.read_bytes()[offset + 20:offset + 24] == b'\x01\x02\x03\x04'
+    broken = {
+        'dtype': _safetensors({'x': ('F4', [2], bytes(1))}),
+        'shape': _safetensors({'x': ('F32', [3], bytes(8))}),
+        'past the end': _safetensors({'x': ('F32', [2], bytes(8))})[:-4],
+        'header length': (10 ** 9).to_bytes(8, 'little') + b'{}',
     }
-    header_json = json.dumps(header_dict).encode("utf-8")
-    header_len = len(header_json)
-    data = b"\x00" * 24
+    for why, raw in broken.items():
+        path.write_bytes(raw)
+        with pytest.raises(ValueError):
+            engine.read_safetensors_header(path)
 
-    with open(st_file, "wb") as f:
-        f.write(struct.pack("<Q", header_len))
-        f.write(header_json)
-        f.write(data)
 
-    parsed_header, data_start = engine.read_safetensors_header(st_file)
-    assert data_start == 8 + header_len
-    assert "t1" in parsed_header and "t2" in parsed_header
-    assert "__metadata__" not in parsed_header
-
-    # Error case 1: offsets exceed file size
-    bad_file = tmp_path / "bad_offset.safetensors"
-    bad_header = {
-        "t": {"dtype": "F32", "shape": [1], "data_offsets": [0, 100]}
-    }
-    bad_json = json.dumps(bad_header).encode("utf-8")
-    with open(bad_file, "wb") as f:
-        f.write(struct.pack("<Q", len(bad_json)))
-        f.write(bad_json)
-        f.write(b"\x00" * 4)
-    with pytest.raises(ValueError):
-        engine.read_safetensors_header(bad_file)
-
-    # Error case 2: unknown dtype
-    bad_dtype_file = tmp_path / "bad_dtype.safetensors"
-    bad_header2 = {
-        "t": {"dtype": "UNKNOWN", "shape": [1], "data_offsets": [0, 4]}
-    }
-    bad_json2 = json.dumps(bad_header2).encode("utf-8")
-    with open(bad_dtype_file, "wb") as f:
-        f.write(struct.pack("<Q", len(bad_json2)))
-        f.write(bad_json2)
-        f.write(b"\x00" * 4)
-    with pytest.raises(ValueError):
-        engine.read_safetensors_header(bad_dtype_file)
-
-    # Error case 3: shape * dtype does not match offset span
-    bad_span_file = tmp_path / "bad_span.safetensors"
-    bad_header3 = {
-        "t": {"dtype": "F32", "shape": [2], "data_offsets": [0, 4]}  # 2*4=8 != 4
-    }
-    bad_json3 = json.dumps(bad_header3).encode("utf-8")
-    with open(bad_span_file, "wb") as f:
-        f.write(struct.pack("<Q", len(bad_json3)))
-        f.write(bad_json3)
-        f.write(b"\x00" * 8)
-    with pytest.raises(ValueError):
-        engine.read_safetensors_header(bad_span_file)
-
-    # Error case 4: n too large (> 100 MiB)
-    bad_large_file = tmp_path / "bad_large.safetensors"
-    with open(bad_large_file, "wb") as f:
-        f.write(struct.pack("<Q", 105 * 1024 * 1024))
-        f.write(b"\x00" * 16)
-    with pytest.raises(ValueError):
-        engine.read_safetensors_header(bad_large_file)
-
-    # Error case 5: overlapping tensor segments
-    bad_overlap_file = tmp_path / "bad_overlap.safetensors"
-    bad_header5 = {
-        "t1": {"dtype": "F32", "shape": [2], "data_offsets": [0, 8]},
-        "t2": {"dtype": "F32", "shape": [2], "data_offsets": [4, 12]},
-    }
-    bad_json5 = json.dumps(bad_header5).encode("utf-8")
-    with open(bad_overlap_file, "wb") as f:
-        f.write(struct.pack("<Q", len(bad_json5)))
-        f.write(bad_json5)
-        f.write(b"\x00" * 16)
-    with pytest.raises(ValueError):
-        engine.read_safetensors_header(bad_overlap_file)
+def test_chunk_spans_cover_every_byte_once():
+    assert engine.chunk_spans(10, 4) == [(0, 4), (4, 4), (8, 2)]
+    assert engine.chunk_spans(8, 4) == [(0, 4), (4, 4)] and engine.chunk_spans(0, 4) == []
+    spans = engine.chunk_spans(777_912_320, engine.STREAM_CHUNK_BYTES)
+    assert sum(length for _, length in spans) == 777_912_320 and max(length for _, length in spans) == engine.STREAM_CHUNK_BYTES
+    assert engine.STREAM_CHUNK_BYTES == 64 * 1024 * 1024
 
 
 def test_the_engine_never_maps_or_preloads_a_whole_weights_file():
-    eng_text = (TOOLS / "engine.py").read_text(encoding="utf-8")
-    assert "mmap" not in eng_text
-    assert "load_file(" not in eng_text
-    assert "safe_open(" not in eng_text
-    assert "read_bytes(" not in eng_text
-    assert "STREAM_CHUNK_BYTES = 64 * 1024 * 1024" in eng_text
-    assert "readinto" in eng_text
+    # Control's GPU measurement (02/11/2026): safetensors load_file mapped the 6.27 GB fp8r file copy-on-write and the process
+    # committed 16.2 GB. The engine reads tensors itself, chunk by chunk, into tensors on the GPU.
+    tree = ast.parse((IMAGEGEN / 'engine.py').read_text(encoding='utf-8'))
+    imported = {alias.name.split('.')[0] for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
+    imported |= {(node.module or '').split('.')[0] for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
+    called = {node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, 'id', None)
+              for node in ast.walk(tree) if isinstance(node, ast.Call)}
+    assert not {'mmap', 'safetensors'} & imported
+    assert not {'load_file', 'safe_open', 'load_components', 'enable_model_cpu_offload'} & called
+    assert {'stream_safetensors', 'load_state_dict', 'from_single_file', 'empty_cache', 'collect'} <= called
 
 
-def test_load_manifest_returns_25_files():
-    manifest = weights.load_manifest()
-    assert len(manifest.get("files", [])) == 25
-    assert len(manifest.get("repos", {})) == 2
-    assert manifest.get("storage", {}).get("in_git") is False
-
-
-def test_file_path_layout():
-    hub = pathlib.Path("/tmp/hub")
-    p = weights.file_path(hub, "org/name", "rev1", "sub/file.safetensors")
-    expected = hub / "models--org--name" / "snapshots" / "rev1" / "sub" / "file.safetensors"
-    assert p == expected
-
-
-def test_verify_fails_when_refs_main_is_wrong(tmp_path):
-    hub = tmp_path / "hub"
-    repo = "test/repo"
-    rev = "rev123"
-    manifest = {
-        "schema_version": 1,
-        "repos": {repo: {"revision": rev}},
-        "files": []
-    }
-    # No refs/main
-    res = weights.verify(hub, manifest)
-    assert res.ok is False
-    assert any("refs/main" in p for p in res.problems)
-
-    # Wrong refs/main
-    ref_f = weights.repo_dir(hub, repo) / "refs" / "main"
-    ref_f.parent.mkdir(parents=True, exist_ok=True)
-    ref_f.write_text("wrong_rev", encoding="utf-8")
-    res2 = weights.verify(hub, manifest)
-    assert res2.ok is False
-    assert any("refs/main" in p for p in res2.problems)
-
-
-def test_provision_from_hub_copies_and_hashes(tmp_path):
-    src_hub = tmp_path / "src_hub"
-    dst_hub = tmp_path / "dst_hub"
-    repo = "test/repo"
-    rev = "rev456"
-    content = b"sample_weights_content"
-    sha = hashlib.sha256(content).hexdigest()
-
-    manifest = {
-        "schema_version": 1,
-        "repos": {repo: {"revision": rev}},
-        "files": [
-            {
-                "repo": repo,
-                "revision": rev,
-                "path": "weights.bin",
-                "size": len(content),
-                "sha256": sha
-            }
-        ]
-    }
-
-    src_file = weights.file_path(src_hub, repo, rev, "weights.bin")
-    src_file.parent.mkdir(parents=True, exist_ok=True)
-    src_file.write_bytes(content)
-
-    rep = provision.provision(dst_hub, manifest, from_hub=src_hub, download=False)
-    assert "weights.bin" in rep["copied"]
-    assert not rep["mismatched"]
-    assert not rep["missing"]
-
-    vres = weights.verify(dst_hub, manifest)
-    assert vres.ok is True
-
-
-def test_provision_mismatched_source(tmp_path):
-    src_hub = tmp_path / "src_hub"
-    dst_hub = tmp_path / "dst_hub"
-    repo = "test/repo"
-    rev = "rev456"
-    content = b"corrupted_content"
-    expected_sha = hashlib.sha256(b"correct_content").hexdigest()
-
-    manifest = {
-        "schema_version": 1,
-        "repos": {repo: {"revision": rev}},
-        "files": [
-            {
-                "repo": repo,
-                "revision": rev,
-                "path": "weights.bin",
-                "size": len(content),
-                "sha256": expected_sha
-            }
-        ]
-    }
-
-    src_file = weights.file_path(src_hub, repo, rev, "weights.bin")
-    src_file.parent.mkdir(parents=True, exist_ok=True)
-    src_file.write_bytes(content)
-
-    rep = provision.provision(dst_hub, manifest, from_hub=src_hub, download=False)
-    assert "weights.bin" in rep["mismatched"]
-    dst_file = weights.file_path(dst_hub, repo, rev, "weights.bin")
-    assert not dst_file.exists()
-
-
-def test_provision_renames_corrupted_destination(tmp_path):
-    hub = tmp_path / "hub"
-    repo = "test/repo"
-    rev = "rev456"
-    good_content = b"original_good_data"
-    good_sha = hashlib.sha256(good_content).hexdigest()
-
-    manifest = {
-        "schema_version": 1,
-        "repos": {repo: {"revision": rev}},
-        "files": [
-            {
-                "repo": repo,
-                "revision": rev,
-                "path": "data.bin",
-                "size": len(good_content),
-                "sha256": good_sha
-            }
-        ]
-    }
-
-    dst_file = weights.file_path(hub, repo, rev, "data.bin")
-    dst_file.parent.mkdir(parents=True, exist_ok=True)
-    dst_file.write_bytes(b"bad_data_length_differs")
-
-    rep = provision.provision(hub, manifest, download=False, clock=lambda: 123456789)
-    assert not dst_file.exists()
-    renamed = dst_file.with_name("data.bin.mismatch-123456789")
-    assert renamed.exists()
-    assert "data.bin" in rep["missing"]
-
-
-def test_provision_missing_without_download(tmp_path):
-    hub = tmp_path / "hub"
-    repo = "test/repo"
-    rev = "rev456"
-    manifest = {
-        "schema_version": 1,
-        "repos": {repo: {"revision": rev}},
-        "files": [
-            {
-                "repo": repo,
-                "revision": rev,
-                "path": "missing.bin",
-                "size": 100,
-                "sha256": "00" * 32
-            }
-        ]
-    }
-
-    call_count = {"calls": 0}
-
-    def dummy_download(**kwargs):
-        call_count["calls"] += 1
-
-    rep = provision.provision(hub, manifest, download=False, hf_download=dummy_download)
-    assert "missing.bin" in rep["missing"]
-    assert call_count["calls"] == 0
-
-
-def test_provision_writes_refs_main_and_stamp(tmp_path):
-    hub = tmp_path / "hub"
-    src_hub = tmp_path / "src"
-    repo = "test/repo"
-    rev = "rev999"
-    content = b"payload"
-    sha = hashlib.sha256(content).hexdigest()
-
-    manifest = {
-        "schema_version": 1,
-        "repos": {repo: {"revision": rev}},
-        "files": [
-            {
-                "repo": repo,
-                "revision": rev,
-                "path": "file.bin",
-                "size": len(content),
-                "sha256": sha
-            }
-        ]
-    }
-
-    src_f = weights.file_path(src_hub, repo, rev, "file.bin")
-    src_f.parent.mkdir(parents=True, exist_ok=True)
-    src_f.write_bytes(content)
-
-    provision.provision(hub, manifest, from_hub=src_hub, download=False)
-    refs_main = weights.repo_dir(hub, repo) / "refs" / "main"
-    assert refs_main.exists()
-    assert refs_main.read_text(encoding="utf-8") == rev
-    stamp_file = hub / weights.STAMP_NAME
-    assert stamp_file.exists()
+def test_provision_never_handles_the_hugging_face_token():
+    tree = ast.parse((IMAGEGEN / 'provision.py').read_text(encoding='utf-8'))
+    keywords = {k.arg for node in ast.walk(tree) if isinstance(node, ast.Call) for k in node.keywords}
+    names = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)} | {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    strings = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+    assert 'token' not in keywords and 'use_auth_token' not in keywords
+    assert not {'get_token', 'HfFolder', 'login'} & names
+    assert not any('HF_TOKEN' in s or 'HUGGING_FACE_HUB_TOKEN' in s for s in strings)
