@@ -4,7 +4,7 @@ Mã gói: `IMGGEN-SVC`. Nhóm lỗi: `OI-CP7-11-Q2` (theo spec của task: đị
 
 ## 1. Tệp đã tạo trong owned paths
 
-Worker chỉ tạo 13 tệp được phân quyền trong `owned paths`, không tạo hay sửa `tools/imagegen/pyproject.toml` và `tools/imagegen/uv.lock` (thuộc dependency slice hoặc do Control cấp):
+Worker chỉ tạo 13 tệp được phân quyền trong `owned paths`. Hai tệp `tools/imagegen/pyproject.toml` và `tools/imagegen/uv.lock` thuộc acceptance 1(1) nhưng Worker không tạo hay sửa vì Control chỉ cho sửa pyproject và lockfile trong slice phụ thuộc (lệnh giao tạo hai tệp này bị từ chối với mã `WORK_ORDER_DEPENDENCY_OUTSIDE_SLICE`); đây là khoảng trống phụ thuộc chưa đóng, tương ứng finding F1 (xem mục 6):
 
 | Tệp | Mô tả |
 | --- | --- |
@@ -74,5 +74,6 @@ Tiến trình chia chu kỳ xử lý thành 3 pha tuần tự (`text_encoder`, `
 - **Mã KleinBackend và vá FP8:** Các hàm `patch_bfl_fp8`, `fp8_self_test`, và cấu hình `from_single_file` là `GIẢ ĐỊNH` cần Control đo đạc và xác thực lại khi chạy thực tế trên phần cứng NVIDIA GPU qua `tests/real/test_imagegen_real.py`.
 - **Trạng thái hai tệp pyproject.toml và uv.lock:**
   - Hai tệp `tools/imagegen/pyproject.toml` và `tools/imagegen/uv.lock` do Control cấp khi tích hợp; Worker không tạo hay sửa chúng.
-  - Vì vậy test uv.lock được skip có lý do trong lane và hai probe pyproject/uv.lock (Bước 26, 27) chưa chạy; đây là điều kiện Control phải kiểm, không phải lỗi mã của lane.
-  - Không có khoảng trống phụ thuộc nào cần gói khác: không còn báo cáo BLOCKED cho gói này.
+  - Finding F1 (MAJOR) chưa đóng trong lane: thiếu `tools/imagegen/pyproject.toml` và `tools/imagegen/uv.lock`. Hai tệp này nằm trong owned paths nhưng Control từ chối giao Worker tạo chúng (`WORK_ORDER_DEPENDENCY_OUTSIDE_SLICE`: pyproject và lockfile chỉ sửa trong slice phụ thuộc); `uv.lock` còn phải dựng bằng `uv lock --offline --project tools/imagegen` (uv 0.12.13) với sha256 đã ghim, việc Worker không được chạy.
+  - Hậu quả: test `test_uv_lock_resolves_the_pins_from_the_cu130_index_with_hashes` bị skip có lý do (khi `uv.lock` có mặt, test chạy chặt), và hai probe pyproject/uv.lock (Bước 26, 27) chưa chạy; hai probe này sẽ đỏ với FileNotFoundError cho tới khi Control cấp tệp.
+  - Trạng thái: BLOCKED, loại DEPENDENCY_GAP. Cần Control cấp hai tệp trên vào worktree hoặc mở slice phụ thuộc để tạo chúng; sau đó chạy lại hai probe Bước 26, 27 và pytest.
