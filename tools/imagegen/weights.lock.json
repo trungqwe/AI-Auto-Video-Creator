@@ -1,0 +1,347 @@
+{
+  "schema_version": 1,
+  "storage": {
+    "base_dir_default": "LOCALAPPDATA/AIAutoVideoCreator",
+    "subdir": "models/hf-hub",
+    "layout": "hf-hub-cache: models--<org>--<name>/snapshots/<revision>/<path>",
+    "in_git": false
+  },
+  "reason": "pinned FLUX 3 Image Klein weights for the local imagegen sidecar, hashed once, never in git",
+  "repos": {
+    "black-forest-labs/flux-3-image-klein": {
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "tree": "337337621b85"
+    },
+    "black-forest-labs/flux-3-image-klein-pup": {
+      "revision": "3f3edb52b2c55de0d49feab28598b68f7f8e4830",
+      "tree": null
+    }
+  },
+  "files": [
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "LICENSE.md",
+      "component": "license",
+      "size": 19593,
+      "sha256": "100a3a5af8f1a2943dca0d127671bcaa93ad894a63330825219f1a0a44451f22",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "044cf48568c278150d132a7479ea237a79766ea7",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "NOTICE.md",
+      "component": "license",
+      "size": 330,
+      "sha256": "a12f7eb0cab87ed210ffb0921425589a1c88abded6ba0c4285b4d32cbaf5f35c",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "ee97a99bbf8ad09b197cf3cb6a079084876b0376",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "modular_model_index.json",
+      "component": "pipeline",
+      "size": 2115,
+      "sha256": "7628112b0d8caade9f408def94c9e9d24346068fec2f6c87eb568924d78ea48c",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "b0ce87edf5923b7ea2dbde5bf182a69c90d522a5",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "text_encoder/LICENSE",
+      "component": "text_encoder",
+      "size": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "text_encoder/README.md",
+      "component": "text_encoder",
+      "size": 7133,
+      "sha256": "a884e5e78f7d6f7bfe237f909dbc41a126542e259dc79d8ab33cc8980580ff79",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "542417095b66d3fc13be22bbf6722928787b8ef4",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "text_encoder/chat_template.json",
+      "component": "text_encoder",
+      "size": 5502,
+      "sha256": "6f8a6a55027e3da5160105556cda5dd69f6423f1c32645f6730d32de7773d0c4",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "e49e75bdda104c8de941eb20e0b3765184fb27bc",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "text_encoder/config.json",
+      "component": "text_encoder",
+      "size": 1505,
+      "sha256": "edac7703329133edfc53e46ac0081835144c99d7eebf28b71c732694d435224d",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "22be8bb79043d39840ca5e70d7a2dab80311602c",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "text_encoder/generation_config.json",
+      "component": "text_encoder",
+      "size": 269,
+      "sha256": "8469742d1fce0de951c8909b26a2c0c0d8490837ce476efb114da9e0cefc4d44",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "e116347d7ef42621c7a5957f82c015c38d939c1f",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "text_encoder/merges.txt",
+      "component": "text_encoder",
+      "size": 1671839,
+      "sha256": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "20024bfe7c83998e9aeaf98a0cd6a2ce6306c2f0",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "text_encoder/model-00001-of-00002.safetensors",
+      "component": "text_encoder",
+      "size": 4967229296,
+      "sha256": "30a01a0556622645a3cce87b655bbbbbc1f170c196099f1b666c93202c3339a9",
+      "source": {
+        "kind": "lfs_sha256",
+        "blob_id": null,
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "text_encoder/model-00002-of-00002.safetensors",
+      "component": "text_encoder",
+      "size": 3908490048,
+      "sha256": "046296a2a387efb43b0c997d5833c789604d168834f6e0d3064bf7bb13d002a6",
+      "source": {
+        "kind": "lfs_sha256",
+        "blob_id": null,
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "text_encoder/model.safetensors.index.json",
+      "component": "text_encoder",
+      "size": 64742,
+      "sha256": "58a7841d7bff2548dd91577d216274a83cf1b500bc6a534b809d6c1b1707cf2b",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "3b52de97496e2f4501dfa92a87642f60db3e22a1",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "text_encoder/preprocessor_config.json",
+      "component": "text_encoder",
+      "size": 390,
+      "sha256": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "2ea84a437d448ff71b08df68fdd949d5cc4ebb64",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "text_encoder/tokenizer.json",
+      "component": "text_encoder",
+      "size": 7032403,
+      "sha256": "a5d85b6dcc535e6b93115a9ef287e6132fdbf30270da6218194ba742261173c7",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "c6cc1014128b19d1fc46b1d30a23e3b1d35db421",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "text_encoder/tokenizer_config.json",
+      "component": "text_encoder",
+      "size": 10868,
+      "sha256": "c2da771801886ad9ae98181793ffd3dfb7f1af30f6f7c6a4e15d7dbba52e2399",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "d3d3763207692c78780f4bf42d4dadf49a5c8012",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "text_encoder/video_preprocessor_config.json",
+      "component": "text_encoder",
+      "size": 385,
+      "sha256": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "3ba673a5ad7d4d13f54155ecd38b2a94a6dac8fe",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "text_encoder/vocab.json",
+      "component": "text_encoder",
+      "size": 2776833,
+      "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "4783fe10ac3adce15ac8f358ef5462739852c569",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "transformer/config.json",
+      "component": "transformer",
+      "size": 436,
+      "sha256": "e748b382508f3171d1f4039688b23d1f809aebe4507b3ed5a29bca01b4b58877",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "84626bbb88a60c8904542727b500b6cdce2b918c",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "vae/config.json",
+      "component": "vae",
+      "size": 808,
+      "sha256": "66564b3cd3f3f3ce5ce3cd4df72f1de883b242c7f338e27d420fe5ddcb0a6ed9",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "2410d0e0a4b381022ad7ab0ac3007c3c8a5d010c",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "vae/diffusion_pytorch_model.safetensors",
+      "component": "vae",
+      "size": 336213556,
+      "sha256": "d64f3a68e1cc4f9f4e29b6e0da38a0204fe9a49f2d4053f0ec1fa1ca02f9c4b5",
+      "source": {
+        "kind": "lfs_sha256",
+        "blob_id": null,
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "variants/fp8r/config.json",
+      "component": "transformer",
+      "size": 830,
+      "sha256": "3f8fdaf707b6f4de023f35d253db58077bfb36df746331fcec93fc570a744811",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "76a3e5f8bb24ac284d7851688eec8be57d52204b",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "variants/fp8r/hf_quant_config.json",
+      "component": "transformer",
+      "size": 1438,
+      "sha256": "6179a2d069688ca3331966910cf1968f56bca81c8266ff3a3c3537a108260631",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "1efac853ddbfaae29f9b873e7dfe3ee748442409",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "variants/fp8r/manifest.json",
+      "component": "transformer",
+      "size": 1872,
+      "sha256": "cc8ca26b9f9c7b59167c0ca3f77d5a13a95d5c8008af8e5f9d6f98efb2d6e65b",
+      "source": {
+        "kind": "git_blob_sha1",
+        "blob_id": "88c5a3b28dd07092b6e41d7ae1305b53a55604c4",
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein",
+      "revision": "337337621b8526e120f2275d250242f4a6bedd75",
+      "path": "variants/fp8r/model.safetensors",
+      "component": "transformer",
+      "size": 6270949144,
+      "sha256": "30054053f630725b488aead9a81b422793cee18027856a16bd17b902ad612018",
+      "source": {
+        "kind": "lfs_sha256",
+        "blob_id": null,
+        "tree": "337337621b85"
+      }
+    },
+    {
+      "repo": "black-forest-labs/flux-3-image-klein-pup",
+      "revision": "3f3edb52b2c55de0d49feab28598b68f7f8e4830",
+      "path": "system_prompts.json",
+      "component": "caption_prompts",
+      "size": 12602,
+      "sha256": "b5da3ed8bc04ab59dbdb747930f7dbff847e868903fed8028f85ee1a4ac82fb4",
+      "source": {
+        "kind": "local_copy",
+        "blob_id": "93081c77e82b989fb5ef3d5968943f06952af274",
+        "tree": null
+      }
+    }
+  ]
+}
