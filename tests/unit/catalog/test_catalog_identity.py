@@ -63,7 +63,7 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual({s.value for s in RightsStatus}, {'known', 'unknown', 'disputed'})
         self.assertEqual(
             {r.value for r in ProvenanceRelation},
-            {'hero_image', 'inline_image', 'embedded_clip', 'official_social_clip', 'user_imported'},
+            {'hero_image', 'inline_image', 'embedded_clip', 'official_social_clip', 'user_imported', 'ai_generated'},
         )
 
 
@@ -160,6 +160,16 @@ class ProvenanceTests(unittest.TestCase):
     def test_provenance_entry_is_frozen(self) -> None:
         with self.assertRaises(dataclasses.FrozenInstanceError):
             make_entry().article_ref = 'article-3'
+
+    def test_ai_generated_entry_is_a_plain_provenance_entry_of_the_article(self) -> None:
+        locator = 'aigen://flux-3-image-klein/337337621b85/' + VALID_HEX
+        entry = ProvenanceEntry('imggen-pipe', 'article-1', None, locator, '2026-11-02T00:00:00Z', ProvenanceRelation.AI_GENERATED)
+        self.assertEqual(entry.relation.value, 'ai_generated')
+        self.assertIs(ProvenanceRelation('ai_generated'), ProvenanceRelation.AI_GENERATED)
+        asset = make_asset(fingerprint=CanonicalFingerprint(VALID_HEX), provenance=(entry,))
+        self.assertEqual(asset.provenance, (entry,))
+        self.assertIs(asset.with_provenance(entry), asset)
+        self.assertEqual(asset.with_provenance(make_entry()).provenance, (entry, make_entry()))
 
 
 class RightsTests(unittest.TestCase):

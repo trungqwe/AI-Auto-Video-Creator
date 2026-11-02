@@ -1,6 +1,6 @@
 """Media candidates of SelectCreativeAssets read from the catalog of C (PW-D3, OI-ADAPT-10).
 
-Assets come through an injected catalog scope, so this module holds no SQL and no connection. The candidate query of C (CT-MED-005) shapes every candidate; D only gathers the index entries: the twelve seed images and the images that came with the articles of the snapshot. An article image enters with its provenance (source URL, article, sha256, fetch time) and the flag needs_image_safety; it is rights_cleared by the user decision OI-ADAPT-10 (rights_basis OI-ADAPT-10) and AssessImageSafety still decides later; a seed image is rights_cleared only when its seed rights status is SELF_GENERATED; no candidate is cleared by default. An image with incomplete provenance, without a fingerprint or without a verified version is dropped, and a missing seed image is refused, so the list always holds a seed fallback. Every candidate carries the UUID of the verified version of its bytes, resolved through the injected resolve_version. The article_ref of a stored article image is the id of the collected document of the pinned revision, so an image is accepted when its article_ref is the article id or one of the document ids that resolve_documents(article_id, revision_id) returns for the pinned revision; the topic of an accepted image is its article id.
+Assets come through an injected catalog scope, so this module holds no SQL and no connection. The candidate query of C (CT-MED-005) shapes every candidate; D only gathers the index entries: the twelve seed images and the images that came with the articles of the snapshot. An article image enters with its provenance (source URL, article, sha256, fetch time) and the flag needs_image_safety; it is rights_cleared by the user decision OI-ADAPT-10 (rights_basis OI-ADAPT-10) and AssessImageSafety still decides later; a seed image is rights_cleared only when its seed rights status is SELF_GENERATED; no candidate is cleared by default. An image with incomplete provenance, without a fingerprint or without a verified version is dropped, and a missing seed image is refused, so the list always holds a seed fallback. Every candidate carries the UUID of the verified version of its bytes, resolved through the injected resolve_version. The article_ref of a stored article image is the id of the collected document of the pinned revision, so an image is accepted when its article_ref is the article id or one of the document ids that resolve_documents(article_id, revision_id) returns for the pinned revision; the topic of an accepted image is its article id. An AI illustration generated on this machine (decision D4) enters after the article images and before the seed images: its provenance relation is ai_generated, its locator names the model and the revision and carries the digest of its own bytes, its article_ref is the article id; it needs_image_safety like an article image, is rights_cleared with rights_basis D4 and at most MAX_AI_IMAGES of them are listed.
 """
 from __future__ import annotations
 
@@ -15,16 +15,23 @@ from creative.domain.asset_selection import INPUT_NOT_READY, MediaCandidate, Sel
 SCENE_ROLE = 'scene_visual'
 ORIGIN_SEED = 'seed'
 ORIGIN_ARTICLE = 'article'
+ORIGIN_AI_GENERATED = 'ai_generated'
 SEED_LOCATOR = re.compile(r'seed://bg-(0[1-9]|1[0-2])\.png')
+AI_LOCATOR = re.compile(r'aigen://(?P<model>[a-z0-9][a-z0-9._-]*)/(?P<revision>[0-9a-f]{12})/(?P<digest>[0-9a-f]{64})')
 SEED_SCAN_TERMS = 'seed png'
 SEED_RIGHTS_STATUS = 'SELF_GENERATED'
 ARTICLE_IMAGE_RIGHTS_STATUS = 'UNVERIFIED'
+AI_IMAGE_RIGHTS_STATUS = 'SELF_GENERATED'
 RIGHTS_BASIS_ARTICLE_IMAGE = 'OI-ADAPT-10'
+RIGHTS_BASIS_AI_IMAGE = 'D4'
 RELATION_USER_IMPORTED = 'user_imported'
+RELATION_AI_GENERATED = 'ai_generated'
 ARTICLE_RELATIONS = frozenset({'hero_image', 'inline_image'})
 REF_TYPE_ARTICLE_REVISION = 'article_revision'
+AI_ILLUSTRATION_LABEL = 'ai_illustration'
 SCAN_LIMIT = 200
 MAX_ARTICLE_IMAGES = 24
+MAX_AI_IMAGES = 8
 
 
 def _text(value: object) -> str:
@@ -48,6 +55,14 @@ def _document_ids(value: object) -> tuple[str, ...]:
     return tuple(dict.fromkeys(item.strip() for item in value if item.strip()))
 
 
+def _ai_model_ref(locator: str, fingerprint: str) -> str | None:
+    """model@revision of an AI illustration locator whose digest is the fingerprint of the asset's own bytes, else None."""
+    found = AI_LOCATOR.fullmatch(locator)
+    if found is None or found.group('digest') != fingerprint:
+        return None
+    return found.group('model') + '@' + found.group('revision')
+
+
 def _provenance_of(asset: Any, origin: str, article_keys: Mapping[str, str]) -> Any | None:
     """First provenance entry that makes the asset usable as `origin`, else None; no fingerprint means no bytes to use."""
     if asset.kind.value != 'image' or asset.fingerprint is None:
@@ -60,6 +75,8 @@ def _provenance_of(asset: Any, origin: str, article_keys: Mapping[str, str]) -> 
             return entry
         if origin == ORIGIN_ARTICLE and relation in ARTICLE_RELATIONS and entry.article_ref in article_keys:
             return entry
+        if origin == ORIGIN_AI_GENERATED and relation == RELATION_AI_GENERATED and entry.article_ref in article_keys and _ai_model_ref(entry.original_locator, asset.fingerprint.value) is not None:
+            return entry
     return None
 
 
@@ -71,21 +88,30 @@ def _usable(assets: Any, origin: str, article_keys: Mapping[str, str]) -> list[t
 def _index_entry(asset: Any, entry: Any, origin: str, version_ref: str, article_id: str | None) -> CandidateIndexEntry:
     sha256 = asset.fingerprint.value
     article = origin == ORIGIN_ARTICLE
-    safety = {'rights_status': asset.rights.status.value, 'needs_image_safety': article, 'origin': origin}
+    ai = origin == ORIGIN_AI_GENERATED
+    safety = {'rights_status': asset.rights.status.value, 'needs_image_safety': article or ai, 'origin': origin}
     if article:
         safety['article_image_rights_status'] = ARTICLE_IMAGE_RIGHTS_STATUS
         safety['rights_cleared'] = True
         safety['rights_basis'] = RIGHTS_BASIS_ARTICLE_IMAGE
+    elif ai:
+        safety['ai_image_rights_status'] = AI_IMAGE_RIGHTS_STATUS
+        safety['rights_cleared'] = True
+        safety['rights_basis'] = RIGHTS_BASIS_AI_IMAGE
     else:
         safety['seed_rights_status'] = SEED_RIGHTS_STATUS
         safety['rights_cleared'] = safety['seed_rights_status'] == SEED_RIGHTS_STATUS
+    provenance = {
+        'origin': origin, 'source_url': entry.original_locator, 'source_ref': entry.source_ref,
+        'article_ref': entry.article_ref, 'sha256': sha256, 'fetched_at': entry.observed_at, 'relation': entry.relation.value}
+    if ai:
+        provenance['model_ref'] = _ai_model_ref(entry.original_locator, sha256)
+        provenance['label'] = AI_ILLUSTRATION_LABEL
     return CandidateIndexEntry(
         media_asset_id=asset.media_asset_id, rendition_ref=f'original:{asset.media_asset_id}',
         artifact_version_ref=version_ref, kind='image', roles=(SCENE_ROLE,), entities=(),
-        topics=(article_id,) if article else (), scenes=(),
-        provenance={
-            'origin': origin, 'source_url': entry.original_locator, 'source_ref': entry.source_ref,
-            'article_ref': entry.article_ref, 'sha256': sha256, 'fetched_at': entry.observed_at, 'relation': entry.relation.value},
+        topics=(article_id,) if article or ai else (), scenes=(),
+        provenance=provenance,
         technical_fitness={'probed': False}, availability='AVAILABLE', safety_rights_status=safety, usage_refs=())
 
 
@@ -135,15 +161,22 @@ class PostgresMediaCandidates:
         return entries
 
     def media_candidates(self, *, workspace_id: str, snapshot: Any) -> tuple[MediaCandidate, ...]:
-        """Article images of the snapshot first, then the seed images; SelectionRejected(INPUT_NOT_READY, seed_media_missing) when no seed image is usable."""
+        """Article images of the snapshot first, then the AI illustrations of its articles, then the seed images; SelectionRejected(INPUT_NOT_READY, seed_media_missing) when no seed image is usable."""
         keys = self._article_keys(snapshot)
+        found: list[Any] = []
         with self._open_assets(workspace_id) as assets:
             seeds = _usable(assets.search(SEED_SCAN_TERMS, SCAN_LIMIT), ORIGIN_SEED, keys)
-            articles: dict[str, tuple[Any, Any]] = {}
             for key in keys:
-                for asset, entry in _usable(assets.search(key, SCAN_LIMIT), ORIGIN_ARTICLE, keys):
-                    articles.setdefault(asset.media_asset_id, (asset, entry))
+                found.extend(assets.search(key, SCAN_LIMIT))
+        articles: dict[str, tuple[Any, Any]] = {}
+        for asset, entry in _usable(found, ORIGIN_ARTICLE, keys):
+            articles.setdefault(asset.media_asset_id, (asset, entry))
+        illustrations: dict[str, tuple[Any, Any]] = {}
+        for asset, entry in _usable(found, ORIGIN_AI_GENERATED, keys):
+            if asset.media_asset_id not in articles:
+                illustrations.setdefault(asset.media_asset_id, (asset, entry))
         entries = self._entries(list(articles.values()), ORIGIN_ARTICLE, keys)[:MAX_ARTICLE_IMAGES]
+        entries += self._entries(list(illustrations.values()), ORIGIN_AI_GENERATED, keys)[:MAX_AI_IMAGES]
         entries += self._entries(seeds, ORIGIN_SEED, keys)
         query = {
             'production_snapshot_ref': snapshot.snapshot_id, 'scene_intent': {'topics': list(_article_ids(snapshot))},

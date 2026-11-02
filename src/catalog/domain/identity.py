@@ -45,6 +45,7 @@ class ProvenanceRelation(StrEnum):
     EMBEDDED_CLIP = "embedded_clip"
     OFFICIAL_SOCIAL_CLIP = "official_social_clip"
     USER_IMPORTED = "user_imported"
+    AI_GENERATED = "ai_generated"
 
 
 @dataclass(frozen=True, slots=True)
