@@ -12,6 +12,7 @@ from creative.domain.asset_selection import (
 DEFAULT_OVERLAY_INTENT = 'headline_text'
 SOURCE_VISUAL_HOOK = 'visual_hook'
 SOURCE_MEDIA_ASSET = 'media_asset'
+ORIGIN_AI_GENERATED = 'ai_generated'
 
 
 def _hook_duration_ms(hook: HookCandidate) -> int | None:
@@ -29,7 +30,7 @@ class ThumbnailCandidates:
     def thumbnail_candidates(
         self, *, visual_hooks: Iterable[HookCandidate], media_candidates: Iterable[MediaCandidate],
     ) -> tuple[ThumbnailCandidate, ...]:
-        """Hook frames first, then image stills; SelectionRejected(INPUT_NOT_READY, no_thumbnail_candidates) when there is no valid frame."""
+        """Hook frames first, then image stills (never an AI illustration); SelectionRejected(INPUT_NOT_READY, no_thumbnail_candidates) when there is no valid frame."""
         candidates: list[ThumbnailCandidate] = []
         for hook in visual_hooks:
             if hook.hook_kind != REF_TYPE_VISUAL_HOOK:
@@ -47,6 +48,8 @@ class ThumbnailCandidates:
                     'hook_window_ms': [0, duration]},
                 reason=f'frame at {frame_ms} ms inside the {duration} ms window of visual hook {hook.hook_id}'))
         for media in media_candidates:
+            if media.provenance.get('origin') == ORIGIN_AI_GENERATED:
+                continue
             candidates.append(self._build(
                 thumbnail_id=f'thumb:{media.media_asset_id}', revision_id=f'{media.artifact_version_ref}:still',
                 subject=media.media_asset_id, frame_ms=0, availability=media.availability,
