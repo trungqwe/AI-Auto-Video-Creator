@@ -49,7 +49,7 @@ Mục chờ liên quan ngoài năm báo cáo (cũng không bỏ sót):
 - `M2-USER-CHECKPOINT-P8-P9` (`pending_user_checkpoint` trong `docs/parallel-delivery/task-dag.yaml`): gộp vào nghiệm thu cuối R6, kèm ngoại lệ `safe-error-modal.spec.ts` của CP-2C (nêu ở nghiệm thu cuối theo ghi chú Control).
 - `USER-CKPT-D9-D10` (thư viện và cách dựng lại runtime): CP7 không đóng; nhắc ở R6.
 - `tests/m2/test_p7b_hardening.py::test_h36_m1_regression`: hoãn sang CP7 (U6) → RG-08, OI-CP7-05.
-- `OI-ADAPT-10` (quyền ảnh tải kèm bài) → R2; `ROADMAP-OPEN-009` (năm preset) → R4; `ROADMAP-OPEN-006`, `ROADMAP-OPEN-007`, `ROADMAP-OPEN-008` (mẫu an toàn ảnh, output profile, sai số word timing) → RG-06, RG-07, RG-05.
+- `OI-ADAPT-10` (quyền ảnh tải kèm bài; user đã quyết ngày 25/10/2026 và CLOSURE_NOTE CP7/RG-13 ngày 02/11/2026: ảnh `UNVERIFIED` dùng được sau khi che mờ tối thiểu logo và chi tiết nhạy cảm, không còn chờ) → R2 chỉ trình bằng chứng; `ROADMAP-OPEN-009` (năm preset) → R4; `ROADMAP-OPEN-006`, `ROADMAP-OPEN-007`, `ROADMAP-OPEN-008` (mẫu an toàn ảnh, output profile, sai số word timing) → RG-06, RG-07, RG-05.
 - `CP7-ADAPT-01..11` (`docs/implementation/adapt/plan.md` mục 8): 01→RG-02, 02→RG-03, 03 và 04→RG-05, 05→RG-06, 06→RG-07, 07→RG-04, 08→RG-01, 09→RG-10, 10→RG-11 và RG-12, 11→RG-13.
 
 ## 4. Gate cần tài nguyên thật
@@ -156,7 +156,7 @@ Mỗi gate gồm tài nguyên, cách kiểm thật, ngưỡng đạt, bằng ch�
 
 - **Tài nguyên**: toàn bộ ngăn xếp production sau restore; Dashboard `https://127.0.0.1:8443`.
 - **Cách kiểm thật**: lô mẫu `batch.target.sample_run` = 10; sinh gói bằng chứng cho R1–R6 và hai bảng chấm cho user (10 video; 40 cặp holdout), cột nhãn của user để trống.
-- **Ngưỡng đạt**: 10 video hợp lệ, cloud verified; mỗi video truy vết đủ; các video cùng lượt của một tin có StoryAngle khác nhau; ảnh `UNVERIFIED` không vào video; gói bằng chứng liệt kê đủ R1–R6 với tệp và băm; không ô nào ghi thay user.
+- **Ngưỡng đạt**: 10 video hợp lệ, cloud verified; mỗi video truy vết đủ; các video cùng lượt của một tin có StoryAngle khác nhau; ảnh `UNVERIFIED` chỉ vào video sau khi che mờ tối thiểu logo và chi tiết nhạy cảm, lấy tối đa ảnh trên trang, không video nào chỉ có ảnh nền, thiếu ảnh thì dùng ảnh AI cùng phong cách với ảnh trong bài (OI-ADAPT-10, CLOSURE_NOTE CP7/RG-13; khoá probe `rights_unverified_excluded` của CP7-14 giữ tên, xét theo quyết định này); gói bằng chứng liệt kê đủ R1–R6 với tệp và băm; không ô nào ghi thay user.
 - **Bằng chứng**: `docs/delivery-evidence/cp7-14/report.md`.
 - **Rủi ro chi phí**: ≤ 60 lời gọi AI, ledger ≤ 5 USD; Drive ≤ 1,5 GiB; ≤ 3 giờ.
 
@@ -165,7 +165,7 @@ Mỗi gate gồm tài nguyên, cách kiểm thật, ngưỡng đạt, bằng ch�
 Tách riêng khỏi gate tài nguyên. User chỉ nghiệm thu sau khi các gate tài nguyên liên quan có kết quả và gói `CP7-14` đã chuẩn bị bằng chứng; kế hoạch không ghi thay user. Dashboard ở `https://127.0.0.1:8443`, tên màn theo `src/controlplane/ui/src/features/screens/screenRegistry.ts`.
 
 - **R1 Content Alpha (M3-EG7; M3-REAL)** — User xem: màn `sources` (7 nguồn, trạng thái lượt, stage, lỗi), `articles` và `events` (truy ngược nguồn, fetch evidence, revision cho ≥ 3 mục), `stage-runs`; bằng chứng RG-04. Quyết định cần user: ghi nhận phạm vi v1 không có scheduler cloud (OI-CP7-03). Tiền đề: RG-04.
-- **R2 Media Alpha (M4-EG6; M4-EG5)** — User xem: màn `media`, `hooks`, `artifacts` (đủ 5 trạng thái bản gốc, đã xử lý, không chắc chắn, lỗi, không khả dụng; vị trí Drive đã verified) và kết quả ảnh an toàn theo nhóm; bằng chứng RG-02, RG-06. Quyết định cần user: quyền dùng ảnh tải kèm bài (OI-ADAPT-10, mặc định `UNVERIFIED` và không vào video). Tiền đề: RG-02, RG-06.
+- **R2 Media Alpha (M4-EG6; M4-EG5)** — User xem: màn `media`, `hooks`, `artifacts` (đủ 5 trạng thái bản gốc, đã xử lý, không chắc chắn, lỗi, không khả dụng; vị trí Drive đã verified) và kết quả ảnh an toàn theo nhóm; bằng chứng RG-02, RG-06. Quyết định của user đã có: quyền dùng ảnh tải kèm bài (OI-ADAPT-10 ngày 25/10/2026; CLOSURE_NOTE CP7/RG-13 ngày 02/11/2026): nhãn `UNVERIFIED` giữ nguyên, ảnh vào video sau khi che mờ tối thiểu; user chỉ xem kết quả. Tiền đề: RG-02, RG-06.
 - **R3 Creative Alpha (M5-EG7; M5-REAL)** — User xem: màn `snapshots`, `story-angles`, `scripts` (snapshot, model, prompt, config, input revision của 10 video mẫu); chấm bảng topic và media/hook của 10 video (ngưỡng ≥ 90%) và bảng 40 cặp holdout cho event-link (ngưỡng ≥ 95%); kết quả RG-03, RG-04. Tiền đề: RG-03, RG-04, RG-13.
 - **R4 Video Alpha (M6-EG6; M6-EG1; M6-EG5)** — User nghe và xem 10 video mẫu: giọng Kokoro, karaoke, hình, hook, 5 preset (duyệt ROADMAP-OPEN-009), output profile (ROADMAP-OPEN-007) và sai số word timing 150 ms (ROADMAP-OPEN-008); bằng chứng RG-05 đến RG-09. Tiền đề: RG-05, RG-06, RG-07, RG-09, RG-13.
 - **R5 Unattended Beta (M7-R5-EG1)** — User xem: báo cáo đêm chạy RG-10 (chuỗi thời gian, số video, lỗi độc lập, resume, 0 job mất) và màn `batches`, `jobs`, `logs`. Tiền đề: RG-08, RG-10.
@@ -215,4 +215,4 @@ Không mục nào là đã duyệt; mục cần user được ghi ở R1–R6.
 
 ## 9. Ngoài phạm vi
 
-Sửa mã sản phẩm, migration, contract, state machine, `ui/dist`; scheduler cloud; Gemini TTS, WhisperX, pgvector; thêm thư viện; nhiều hơn một tài khoản Drive; media có bản quyền hoặc không rõ quyền; kích hoạt sản xuất (`PRODUCTION_ACTIVATION_BLOCKED` giữ tới nghiệm thu cuối của user); push và merge. Kết quả CP7 không tự đổi trạng thái `docs/11-roadmap.md` hay `docs/12-pre-code-checklist.md`; quyền đó thuộc Control và user.
+Sửa mã sản phẩm, migration, contract, state machine, `ui/dist`; scheduler cloud; Gemini TTS, WhisperX, pgvector; thêm thư viện; nhiều hơn một tài khoản Drive; media có bản quyền hoặc không rõ quyền, trừ ảnh bài `UNVERIFIED` đã quyết dùng sau khi che mờ tối thiểu (OI-ADAPT-10, CLOSURE_NOTE CP7/RG-13); kích hoạt sản xuất (`PRODUCTION_ACTIVATION_BLOCKED` giữ tới nghiệm thu cuối của user); push và merge. Kết quả CP7 không tự đổi trạng thái `docs/11-roadmap.md` hay `docs/12-pre-code-checklist.md`; quyền đó thuộc Control và user.

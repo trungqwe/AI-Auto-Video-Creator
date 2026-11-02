@@ -26,7 +26,7 @@ Ngoài phạm vi: giao diện (`ui/dist`), tài nguyên thật (thuộc CP7), sc
 - DQ-08 Disposition `waiting` áp cho mọi stage: `WAITING_CAPABILITY` kèm `WaitReason`, chờ `capability_poll_seconds` hoặc signal rồi đánh giá lại đúng stage đó; job sang `WAITING`.
 - DQ-09 Vai trò AI của D dịch tại một điểm sang khoá `ai.route_model_refs`; `production_plan` dùng khoá `selection` vì profile không có khoá `plan` (không sửa profile, OI-PW-04).
 - DQ-10 Sáu prompt mặc định là `ConfigRevision(scope_kind='prompt', scope_key=<vai trò>)`, seed khi `launcher start` nếu chưa có, ghim revision vào snapshot, sửa được qua lệnh cấu hình của Control API (FR-CFG-007), giữ biên instruction–data của `PromptEnvelope`.
-- DQ-11 Ảnh tải kèm bài (OI-ADAPT-10, quyết định user 25/10/2026): được chọn vào video, kèm provenance, bắt buộc qua `AssessImageSafety`; ảnh không an toàn hoặc không chắc chắn bị loại và thay bằng media seed.
+- DQ-11 Ảnh tải kèm bài (OI-ADAPT-10, quyết định user 25/10/2026): được chọn vào video, kèm provenance, bắt buộc qua `AssessImageSafety`; ảnh không an toàn hoặc không chắc chắn bị loại và thay bằng media seed. Bổ sung 02/11/2026 (CLOSURE_NOTE CP7/RG-13): ảnh `UNVERIFIED` dùng được sau khi che mờ tối thiểu logo và chi tiết nhạy cảm; lấy tối đa ảnh trên trang; không video nào chỉ có ảnh nền; thiếu ảnh thì sinh ảnh AI cùng phong cách với ảnh trong bài; media seed chỉ là dự phòng cuối, không thay cho ảnh bài.
 - DQ-12 Nhạc nền (FR-AUD-007, quyết định user): hệ thống tự tìm và thu thập từ nguồn ngoài, không AI sáng tác, ghi provenance; `PW-E4` khảo sát rồi chọn nguồn; không có nhạc phù hợp thì chuỗi vẫn chạy (kết quả loại `none` kèm warning `AUDIO_MIX_QUALITY`).
 - DQ-13 Tên tệp WAV: Kokoro ghi tạm, pipeline đặt `voice-artifact-<sha256 của WAV>` trong staging, aligner mở đúng tên đó. GPU chỉ khoá một lần mỗi render.
 - DQ-14 Thu thập (U1): vòng lặp cục bộ trong worker, nhịp `collection_interval_minutes` (180) chỉ là nhịp kiểm; mỗi nguồn tối đa một lượt định kỳ mỗi ngày nhờ `cp_source_cycle_marks` (CT-SRC-004).
@@ -60,7 +60,7 @@ Mọi slice có test thật trên PostgreSQL thử (`M2_TEST_PG_DSN`, CSDL tạm
 
 - OI-PW-01: OI-CP7-03 (bỏ scheduler cloud theo U1) vẫn chờ user ghi nhận ở R1; không chặn kế hoạch.
 - OI-PW-02: vòng lô chạy video tuần tự. 100 video trong 12 giờ cần trung bình tối đa 7,2 phút mỗi video. `PW-E2E` ghi số đo thời gian từng stage; nếu vượt thì Control lập slice chạy song song hai video theo 2 khe GPU.
-- OI-PW-03: quyết định OI-ADAPT-10 làm hết hiệu lực mặc định UNVERIFIED ở `docs/implementation/adapt/plan.md:274,321` và mục `rights_unverified_excluded` của CP7-14; Control sửa các chỗ đó trước khi chạy CP7-14.
+- OI-PW-03 ĐÃ XONG (ADAPT-SEED-FIX3): quyết định OI-ADAPT-10 và CLOSURE_NOTE CP7/RG-13 (02/11/2026) làm hết hiệu lực mặc định UNVERIFIED ở mục 7.8 và mục 9 của `docs/implementation/adapt/plan.md` và ở mục `rights_unverified_excluded` của CP7-14; ADAPT-SEED-FIX3 đã sửa các chỗ đó (định nghĩa CP7-14 đã biên dịch trong Portfolio do Control xử lý khi mở gói).
 - OI-PW-04: nếu muốn khoá route riêng cho `production_plan` thì Control thêm khoá `plan` vào `ai.route_model_refs` (`tools/launcher/prod/profile.json:122-130`) bằng slice riêng.
 - OI-PW-05: TTL grant theo hàng đợi dùng giá trị mặc định do `PW-G3` ghi; Control đưa vào profile nếu muốn chỉnh.
 - OI-PW-06: nguồn nhạc nền do `PW-E4` khảo sát và chọn; cách hiểu lời user "giai đoạn đầu tự tìm nguồn sinh nhạc nền" (hệ thống tự tìm và thu thập nhạc, không AI sáng tác) đã báo user và chờ user sửa nếu sai.

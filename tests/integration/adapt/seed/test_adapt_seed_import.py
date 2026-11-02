@@ -432,7 +432,8 @@ def test_assets_and_hooks_keep_rights_and_provenance(manager, database, seed_run
     tool = load_tool('import_seed')
     report = import_once(tool, manager, database, tmp_path, seed_runs[0].dir)
     assert report.article_image_rights_status == 'UNVERIFIED'
-    assert HOOKS['rights']['article_images_in_sample_video'] is False
+    assert HOOKS['rights']['article_images_in_sample_video'] is True
+    assert 'pending_user_checkpoint' not in HOOKS['rights']
     ws = uuid.UUID(database[1])
     with psycopg.connect(database[0], autocommit=True) as conn:
         rows = conn.execute('SELECT payload, discovery_id FROM controlplane.cp_media_assets WHERE workspace_id = %s', (ws,)).fetchall()
