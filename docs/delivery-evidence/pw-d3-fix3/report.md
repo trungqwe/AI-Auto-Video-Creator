@@ -29,7 +29,7 @@ Ghi rõ: OI-CP7-11-Q1 được xử lý bằng ba tầng luật "không toàn n�
 - `src/creative/domain/production_plan.py`
 - `src/voice/adapters/activity_inputs.py`
 - `src/controlplane/api/wiring/render.py`
-- `tests/integration/prod_wiring/test_pw_d3_fix3_illustration.py` (mới, 14 test, offline)
+- `tests/integration/prod_wiring/test_pw_d3_fix3_illustration.py` (mới, 15 test, offline; 14 ở lượt đầu, thêm `test_wiring_render_seed_rule_matches_creative` sau rebase)
 - `tests/unit/creative/test_d09_asset_selection.py` (3 test mới)
 - `tests/integration/prod_wiring/test_pw_d3_candidates.py`
 - `tests/integration/prod_wiring/test_pw_e2e_batch_video.py`
@@ -60,6 +60,21 @@ Interpreter khoá của lane, `PYTEST_DEBUG_TEMPROOT` đặt đúng như lệnh 
 Lần chạy nhóm e3/fix8 đầu tiên thất bại 1 test (`test_pw_e3_second_job_on_the_same_images_normalizes_and_blurs_again`, mã thoát 1, `1 failed, 22 passed`) do hành vi mới; đã sửa test như nêu ở mục Tệp đã sửa và chạy lại đạt như bảng trên.
 
 Test e2e loại ảnh `test_an_article_image_e_excludes_is_rendered_as_the_seed_of_its_rank` (giữ tên hàm) nay chờ batch `EXHAUSTED`, stage `FAILED_FINAL` chứa `no_illustration_available`, job `FAILED_FINAL`, không có video, không có upload; các assert này đạt với giá trị dự kiến, không phải sửa theo giá trị quan sát khác.
+
+## Sửa sau rebase (OI-CP7-11-Q1)
+
+Grant G1 của PW-D3-FIX3 bị thu hồi vì `test_wiring_modules_do_not_cross_import_subsystems` hỏng: `render.py` import `creative.domain.asset_selection` và `creative.domain.production_plan`. Cách sửa: bỏ hai import, đặt hằng `_SEED_ORIGIN`, `_SEED_SHARE_MAX_PERCENT` và các hàm `seed_time_ms`, `seed_share_within_limit` (cùng `_union_ms`, `_int_ms`) ngay trong `render.py`, giữ khớp bản của creative; thêm test `test_wiring_render_seed_rule_matches_creative` để hai bản không lệch. Rebase lên `60cde6406d382712a89afe1a8e7a5c62306d072d` là no-op (`Current branch trungqwe/lane-pw-d3-fix3 is up to date.`).
+
+| Lệnh | Mã thoát | Dòng tổng kết pytest (nguyên văn) |
+| --- | --- | --- |
+| adapt/wire `test_adapt_wire_services.py` + `test_pw_w2_launcher_def.py` | 0 | `152 passed in 21.64s` |
+| nhóm creative (gồm test mới) | 0 | `401 passed, 70 subtests passed in 2.51s` |
+| nhóm e3/fix8 (Postgres) | 0 | `23 passed in 19.76s` |
+| nhóm f3/f20 (Postgres) | 0 | `104 passed in 25.79s` |
+| e2e `test_pw_e2e_batch_video.py` (Postgres, Temporal) | 0 | `11 passed, 1 warning in 173.61s (0:02:53)` |
+| probe cổng `render.py` (NO_ILLUSTRATION_AVAILABLE, thứ tự, ranh giới voice) | 0 | (probe không in dòng pytest) |
+| probe `render.py` không import creative/voice, không còn `ORIGIN_SEED` | 0 | (probe không in dòng pytest) |
+| `git diff --check` | 0 | (không có output) |
 
 ## Giới hạn đã biết
 

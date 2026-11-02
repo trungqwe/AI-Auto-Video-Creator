@@ -22,8 +22,6 @@ from controlplane.api.wiring._shared import resolve_under_root
 from controlplane.api.wiring.workflow import RenderImage, render_handler, render_image_sources
 from controlplane.infrastructure.db.control_api_commands import PostgresConfigScope, compose_command_service
 from controlplane.infrastructure.production_ports.gpu_lease import LocalGpuLease
-from creative.domain.asset_selection import ORIGIN_SEED
-from creative.domain.production_plan import seed_share_within_limit, seed_time_ms
 from render.adapters.activity_inputs import (
     INPUT_REF_MISSING,
     ActivityInputError,
@@ -194,6 +192,8 @@ def _visual_version_ref(timeline: Mapping[str, Any], media_asset_id: str) -> str
 _SELECTED_MEDIA_REF = 'selected_media'
 NO_ILLUSTRATION_AVAILABLE = 'no_illustration_available'
 _SEED_FALLBACK_REASON = 'seed_fallback'
+_SEED_ORIGIN = 'seed'
+_SEED_SHARE_MAX_PERCENT = 15
 
 
 def _visual_version_refs(timeline: Mapping[str, Any]) -> set[str]:
@@ -255,6 +255,43 @@ def _image_fallback_rule(media: str, original: str, image: RenderImage) -> dict[
     }
 
 
+# Wiring không import creative: bốn hàm dưới giữ khớp bản ở creative.domain.production_plan (có test đối chiếu).
+def _union_ms(spans: list[tuple[int, int]]) -> int:
+    total = 0
+    reach = 0
+    for start, end in sorted(spans):
+        start = max(start, reach)
+        if end > start:
+            total += end - start
+            reach = end
+    return total
+
+
+def _int_ms(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def seed_time_ms(segments, shows_seed) -> tuple[int, int]:
+    scenes: list[tuple[int, int]] = []
+    seeds: list[tuple[int, int]] = []
+    for scene in segments:
+        if not isinstance(scene, Mapping) or not _int_ms(scene.get('start_ms')) or not _int_ms(scene.get('end_ms')):
+            continue
+        start, end = scene['start_ms'], scene['end_ms']
+        scenes.append((start, end))
+        visuals = scene.get('visuals')
+        for visual in visuals if isinstance(visuals, (list, tuple)) else ():
+            if not isinstance(visual, Mapping) or not _int_ms(visual.get('start_ms')) or not _int_ms(visual.get('end_ms')):
+                continue
+            if shows_seed(visual):
+                seeds.append((max(start, visual['start_ms']), min(end, visual['end_ms'])))
+    return _union_ms(seeds), _union_ms(scenes)
+
+
+def seed_share_within_limit(seed_ms: int, timeline_ms: int) -> bool:
+    return seed_ms * 100 <= _SEED_SHARE_MAX_PERCENT * timeline_ms
+
+
 def require_illustration(timeline: Mapping[str, Any], images: Mapping[str, RenderImage] | None) -> None:
     """Từ chối job khi timeline cuối quá mức ảnh seed cho phép (kể cả toàn seed): không có video chỉ có ảnh nền (RG-13)."""
     segments = timeline.get('segments') if isinstance(timeline, Mapping) else None
@@ -264,7 +301,7 @@ def require_illustration(timeline: Mapping[str, Any], images: Mapping[str, Rende
 
     def shows_seed(visual: Mapping[str, Any]) -> bool:
         image = chosen.get(visual.get('media_asset_id'))
-        return visual.get('origin') == ORIGIN_SEED or (image is not None and image.reason == _SEED_FALLBACK_REASON)
+        return visual.get('origin') == _SEED_ORIGIN or (image is not None and image.reason == _SEED_FALLBACK_REASON)
 
     seed_ms, timeline_ms = seed_time_ms(segments, shows_seed)
     if not seed_share_within_limit(seed_ms, timeline_ms):

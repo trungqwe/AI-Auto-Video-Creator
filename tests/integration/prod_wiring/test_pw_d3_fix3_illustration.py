@@ -10,9 +10,11 @@ import pathlib
 import pytest
 
 from controlplane.api.wiring.render import NO_ILLUSTRATION_AVAILABLE, require_illustration
+from controlplane.api.wiring import render as render_wiring
 from controlplane.api.wiring.workflow import RenderImage
 from creative.domain.asset_selection import (
     HookCandidate,
+    ORIGIN_SEED,
     MediaCandidate,
     SafetyRightsPolicy,
     ScoringWeights,
@@ -20,7 +22,13 @@ from creative.domain.asset_selection import (
     ThumbnailCandidate,
     select_creative_assets,
 )
-from creative.domain.production_plan import PlanRejected, build_production_plan, seed_share_within_limit, seed_time_ms
+from creative.domain.production_plan import (
+    SEED_SHARE_MAX_PERCENT,
+    PlanRejected,
+    build_production_plan,
+    seed_share_within_limit,
+    seed_time_ms,
+)
 from creative.domain.script import ScriptSegment, ScriptVersion
 from render.adapters.activity_inputs import ActivityInputError
 from tests.integration.adapt.e_media.test_adapt_e_media_fix4_rg13 import (
@@ -241,6 +249,21 @@ def test_seed_time_ms_merges_overlapping_visuals_and_clips_them_to_their_scene()
     assert seed_share_within_limit(15, 100) is True
     assert seed_share_within_limit(16, 100) is False
     assert seed_share_within_limit(0, 0) is True
+
+
+def test_wiring_render_seed_rule_matches_creative():
+    assert render_wiring._SEED_ORIGIN == ORIGIN_SEED
+    assert render_wiring._SEED_SHARE_MAX_PERCENT == SEED_SHARE_MAX_PERCENT
+    segments = [
+        {'start_ms': 0, 'end_ms': 10000, 'visuals': [
+            {'start_ms': 0, 'end_ms': 6000, 'seed': True}, {'start_ms': 4000, 'end_ms': 8000, 'seed': True},
+        ]},
+        {'start_ms': 10000, 'end_ms': 20000, 'visuals': [{'start_ms': 9000, 'end_ms': 12000, 'seed': True}]},
+        {'start_ms': 20000, 'end_ms': 30000, 'visuals': [{'start_ms': 20000, 'end_ms': 30000, 'seed': False}]},
+    ]
+    assert render_wiring.seed_time_ms(segments, lambda v: v.get('seed')) == seed_time_ms(segments, lambda v: v.get('seed'))
+    for seed_ms, timeline_ms in [(0, 0), (15, 100), (16, 100), (3000, 20000), (20000, 20000)]:
+        assert render_wiring.seed_share_within_limit(seed_ms, timeline_ms) == seed_share_within_limit(seed_ms, timeline_ms)
 
 
 # --- Phần 3: E lấy ảnh khác của job cho ảnh bị loại --------------------------------------------------------------
