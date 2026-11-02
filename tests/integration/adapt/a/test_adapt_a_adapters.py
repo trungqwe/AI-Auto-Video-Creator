@@ -500,7 +500,18 @@ def test_constructor_rejects_bad_config():
         RealFeedSource(fetcher, source_kind='rss_feed', feed_policy=FEED_POLICY, article_policy=ARTICLE_POLICY, max_candidates=0)
 
 
-PNG = bytes.fromhex('89504e470d0a1a0a') + bytes(range(256)) * 4
+def png_header(width=640, height=480):
+    ihdr = width.to_bytes(4, 'big') + height.to_bytes(4, 'big') + bytes.fromhex('0802000000')
+    return bytes.fromhex('89504e470d0a1a0a') + (13).to_bytes(4, 'big') + b'IHDR' + ihdr + bytes(4)
+
+
+def jpeg_header(width=640, height=480):
+    app0 = bytes.fromhex('ffe0') + (16).to_bytes(2, 'big') + b'JFIF' + bytes(1) + bytes.fromhex('010100000100010000')
+    sof = bytes.fromhex('ffc0') + (17).to_bytes(2, 'big') + bytes([8]) + height.to_bytes(2, 'big') + width.to_bytes(2, 'big') + bytes.fromhex('03012200021101031101')
+    return bytes.fromhex('ffd8') + app0 + sof + bytes.fromhex('ffda') + bytes(20)
+
+
+PNG = png_header() + bytes(range(256)) * 4
 HERO = 'https://img.example/hero.png'
 
 
@@ -590,7 +601,7 @@ def test_fetch_article_media_filters_dedupes_and_reports_problems(no_network, tm
     GONE = 'https://img.example/gone.png'
     routes = {
         HERO: png_response(),
-        ENC: response(200, [('Content-Type', 'image/jpeg')], [b'jpeg-data']),
+        ENC: response(200, [('Content-Type', 'image/jpeg')], [jpeg_header() + b'jpeg-body']),
         GONE: response(404),
     }
     media, transport, _ = make_media(routes, tmp_path)

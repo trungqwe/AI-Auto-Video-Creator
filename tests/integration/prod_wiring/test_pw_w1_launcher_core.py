@@ -321,7 +321,7 @@ def test_seed_defaults_registers_seven_sources_and_six_prompts_once(launcher, pw
     assert scalar(pw_database, "SELECT count(*) FROM controlplane.cp_config_revisions WHERE workspace_id = %s AND scope_kind = 'prompt'") == 6
 
 IMAGE_URL = 'https://img.example/hero.png'
-PNG_BYTES = bytes.fromhex('89504e470d0a1a0a') + bytes(range(256)) * 4
+PNG_BYTES = bytes.fromhex('89504e470d0a1a0a' '0000000d' '49484452' '00000280' '000001e0' '0802000000' '00000000') + bytes(range(256)) * 4
 PNG_SHA = hashlib.sha256(PNG_BYTES).hexdigest()
 PUBLIC_ADDRESS = '93.184.216.34'
 DOCUMENT_ID = 'doc-r3'
