@@ -170,6 +170,18 @@ def audit_jobs(jobs, stage_counts, problem_missing, seen_ids):
     return sorted(out)
 
 
+def failure_causes(rows):
+    """Gom nguyên nhân job FAILED_FINAL theo (stage, code, activity); rows là danh sách (job_id, hàng failed_stage hoặc None); giá trị lạ đổi thành `?`, thiếu là `none`."""
+    def clean(value):
+        text = 'none' if value in (None, '') else re.sub(r'[^A-Za-z0-9_.:-]', '?', str(value))
+        return text[:60]
+    counts = {}
+    for _job_id, row in rows:
+        stage, code, activity = ('none', 'none', 'none') if not row else (clean(row[0]), clean(row[2]), clean(row[3]))
+        counts[(stage, code, activity)] = counts.get((stage, code, activity), 0) + 1
+    return [{'stage': k[0], 'code': k[1], 'activity': k[2], 'n': n} for k, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+
+
 def business_date_vn(moment):
     """Ngày kinh doanh theo giờ Việt Nam (UTC+7) của một thời điểm có múi giờ; khớp business_date của cp_collection_runs."""
     if not isinstance(moment, datetime) or moment.tzinfo is None:
@@ -611,6 +623,7 @@ class OvernightRun:
     valid_jobs: list = field(default_factory=list)
     invalid_jobs: list = field(default_factory=list)
     failed_final_jobs: list = field(default_factory=list)
+    failure_causes: list = field(default_factory=list)
     drive_checks: list = field(default_factory=list)
     findings: list = field(default_factory=list)
     collection: dict = field(default_factory=dict)
@@ -745,6 +758,7 @@ def audit_run(db, run, seen_ids=frozenset()):
     jobs = db.batch_jobs(batch_id)
     run.job_counts = db.batch_job_counts(batch_id)
     run.failed_final_jobs = [j for j, s in jobs if s == 'FAILED_FINAL']
+    run.failure_causes = failure_causes([(j, db.failed_stage(j)) for j in run.failed_final_jobs])
     run.findings = audit_jobs(jobs, db.stage_row_counts(batch_id), db.problem_missing(batch_id), set(seen_ids))
     run.valid_jobs = []
     run.invalid_jobs = []

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import types
@@ -167,6 +168,15 @@ def test_unit_audit_jobs():
     jobs = [('j1', 'COMPLETED'), ('j2', 'FAILED_FINAL'), ('j3', 'ACTIVE'), ('j4', 'BOGUS'), ('j5', 'CREATED')]
     out = m.audit_jobs(jobs, {'j1': 11, 'j2': 3, 'j3': 0, 'j4': 1}, {'j2'}, {'j1', 'j9'})
     assert out == ['failed_without_problem:j2', 'no_stage_rows:j3', 'unknown_status:j4', 'vanished:j9']
+
+
+def test_unit_failure_causes():
+    rows = [('j1', ('tts', 'FAILED_FINAL', 'TTS_TIMEOUT', 'synthesize', '{}')), ('j2', ('tts', 'FAILED_FINAL', 'TTS_TIMEOUT', 'synthesize', '{}')),
+            ('j3', ('align', 'OUTCOME_UNKNOWN', 'X Y', None, '')), ('j4', None)]
+    assert m.failure_causes(rows) == [{'stage': 'tts', 'code': 'TTS_TIMEOUT', 'activity': 'synthesize', 'n': 2},
+                                      {'stage': 'align', 'code': 'X?Y', 'activity': 'none', 'n': 1},
+                                      {'stage': 'none', 'code': 'none', 'activity': 'none', 'n': 1}]
+    assert m.failure_causes([]) == []
 
 
 def test_unit_collection_isolation():
@@ -493,9 +503,15 @@ def test_rg10_within_12h(overnight, emit):
 
 def test_rg10_auto_ratio_95(overnight, emit):
     total = sum(overnight.job_counts.values())
-    assert m.auto_ratio_ok(len(overnight.valid_jobs), total), f'valid={len(overnight.valid_jobs)} total={total}'
+    valid = len(overnight.valid_jobs)
+    for cause in overnight.failure_causes:
+        emit(_ascii_line(f"- auto_ratio_95: failure_cause stage={cause['stage']} code={cause['code']} activity={cause['activity']} n={cause['n']}"))
+    if not m.auto_ratio_ok(valid, total):
+        emit(c.report_line('RG-10', 'auto_ratio_95', 'FAIL'))
+        emit(f'- auto_ratio_95: valid={valid} total={total} failed_final={len(overnight.failed_final_jobs)}')
+        pytest.fail(f'valid={valid} total={total}')
     assert m.manual_actions(overnight.api_calls, overnight.batch_id) == []
-    _pass(emit, 'auto_ratio_95', 'valid=' + str(len(overnight.valid_jobs)), 'total=' + str(total),
+    _pass(emit, 'auto_ratio_95', 'valid=' + str(valid), 'total=' + str(total),
           'failed_final=' + str(len(overnight.failed_final_jobs)), 'manual_actions=0')
 
 
@@ -597,3 +613,22 @@ def test_rg10_timeline_and_budget(overnight, emit):
     emit(_ascii_line(f'- batch: id={overnight.batch_id[:8]} concurrency={json.dumps(overnight.concurrency, sort_keys=True)} '
                      f'other_workflows_running={overnight.other_workflows_running} not_found_status={overnight.not_found_status} '
                      f"not_found_source registered={source.get('registered')} existing={source.get('existing')}"))
+
+
+def test_diag_failed_jobs_of_batch(emit):
+    prefix = os.environ.get('CP7_DIAG_BATCH_PREFIX', '')
+    if not re.fullmatch(r'[0-9a-f-]{8,36}', prefix):
+        pytest.skip('CP7_DIAG_BATCH_PREFIX chưa đặt')
+    db = m.OvernightDb(d.load_launcher())
+    rows = db.query('SELECT batch_id FROM controlplane.cp_production_batches WHERE workspace_id = %s AND starts_with(batch_id, %s)', prefix)
+    assert len(rows) == 1, 'batches=' + str(len(rows))
+    batch_id = rows[0][0]
+    jobs = db.batch_jobs(batch_id)
+    failed = [j for j, s in jobs if s == 'FAILED_FINAL']
+    emit(_ascii_line(f'- diag: batch={batch_id[:8]} jobs={len(jobs)} failed_final={len(failed)}'))
+    for cause in m.failure_causes([(j, db.failed_stage(j)) for j in failed]):
+        emit(_ascii_line(f"- diag_cause: stage={cause['stage']} code={cause['code']} activity={cause['activity']} n={cause['n']}"))
+    for job_id in failed:
+        for row in db.job_diagnostics(job_id)['stages']:
+            if row['status'] in ('FAILED_FINAL', 'OUTCOME_UNKNOWN'):
+                emit(_ascii_line(f"- diag_job: job={job_id[:8]} stage={row['stage']} attempt={row['attempt']} status={row['status']} code={row['code']} message={str(row['message'])[:120]}"))

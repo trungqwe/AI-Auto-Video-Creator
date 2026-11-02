@@ -6,13 +6,13 @@ Lượt 3 (lượt chính thức) đã chạy trọn lô thật và pytest kết
 
 - `valid_synced_100`: 100 video hợp lệ, 0 không hợp lệ, 6 video đối soát Drive.
 - `within_12h`: `t_target_s=7261` (khoảng 2 giờ 1 phút, rất thấp hơn trần 12 giờ); `wait_provider_seconds=1053`.
-- `auto_ratio_95`: FAIL. Test assert `valid=100 total=112`: 100 job hoàn thành trên 112 job của lô, tức khoảng 89,3% (dưới ngưỡng 95%). 12 job ở trạng thái `FAILED_FINAL`. Test dừng ở assert này nên log không có dòng `RG-10.auto_ratio_95`; báo cáo không tự thêm dòng đó và không đổi tiêu chí.
+- `auto_ratio_95`: FAIL. Test assert `valid=100 total=112`: 100 job hoàn thành trên 112 job của lô, tức khoảng 89,3% (dưới ngưỡng 95%). 12 job ở trạng thái `FAILED_FINAL`. Mẫu số là toàn bộ 112 job của lô theo `docs/10-test-strategy.md:686-688` và `docs/11-roadmap.md:600` (không loại lỗi hệ thống khỏi mẫu số); repo không có reason code loại trừ định nghĩa trước nên không loại job nào và không đổi công thức hay ngưỡng. Nguyên nhân 12 job xem mục `## Phân tích job FAILED_FINAL`.
 - `failure_isolated`: `target_runs=1`, `target_failed=1`, `others_ok=1`, `completed_after_failure=100` (lọc theo `business_date` đã khắc phục lỗi của lượt 1).
 - `resume_300s_midrun`: `ready_seconds=19.0` (stop 1 lần, 6 video đang chạy và 40 video đã xong tại thời điểm dừng).
 - Chi phí: `night_usd=0`, `month_usd=0`, 677 lời gọi AI (route_cost_per_request=0 nên ledger bằng 0).
 - Working set tối đa 5,87 GiB (trần 20 GiB), disk trống tối thiểu 222,3 GiB, VRAM tối đa 2778 MiB.
 
-Lô chạy với 6 luồng (mặc định 6, tối đa 10); sau 7261 giây đạt 100 video hợp lệ nhưng tổng 112 job vì 12 job lỗi chung cuộc, nên tỉ lệ tự hoàn thành chưa đạt 95%. Control cần quyết định xử lý mục này.
+Lô chạy với 6 luồng (mặc định 6, tối đa 10); sau 7261 giây đạt 100 video hợp lệ nhưng tổng 112 job vì 12 job lỗi chung cuộc, nên tỉ lệ tự hoàn thành chưa đạt 95%. Lượt này chưa đạt RG-10 vì `auto_ratio_95` FAIL thật, cần Control mở gói sửa nguyên nhân gốc (ngoài owned paths nếu nằm trong `src/**`) rồi cấp lô thật mới.
 
 ## Lịch sử các lượt chạy
 
@@ -34,12 +34,15 @@ Lô chạy với 6 luồng (mặc định 6, tối đa 10); sau 7261 giây đạ
 - `AIAVC_DATA_DIR` (biến môi trường User): `D:\AIAVC_DATA`.
 - Số luồng (dòng `concurrency=`): `{"default": 6, "max": 10, "min": 1}`.
 - Quota Drive (dòng `drive_quota_ok`): `free_gib=5118.78`, `required_gib=1036.00`, `unlimited=False`.
+- Lượt chẩn đoán (lượt 3 sau lô, không chạy lô mới, không khởi động launcher/Docker/Temporal, chỉ truy vấn SELECT): sau khi thêm `failure_causes` và `test_diag_failed_jobs_of_batch`, `git diff --check`: exit 0; `python -m pytest tests/real/test_cp7_overnight.py -q -p no:cacheprovider -k test_unit`: `42 passed, 15 deselected in 0.46s`, exit 0.
+- Chẩn đoán chỉ đọc lô `71973394` với `CP7_DIAG_BATCH_PREFIX=71973394`: `python -m pytest tests/real/test_cp7_overnight.py -q -p no:cacheprovider -k test_diag -rP`: `1 passed, 56 deselected in 1.01s`, exit 0.
 
 ## Kết quả
 
 RG-10.drive_quota_ok: PASS
 RG-10.valid_synced_100: PASS
 RG-10.within_12h: PASS
+RG-10.auto_ratio_95: FAIL
 RG-10.no_vanished_jobs: PASS
 RG-10.failure_isolated: PASS
 RG-10.resume_300s_midrun: PASS
@@ -49,8 +52,6 @@ RG-10.working_set_cap: PASS
 RG-10.stage_metrics: PASS
 RG-10.secret_scan: PASS
 RG-10.warn_80_visible: NOT_OBSERVED
-
-(Không có dòng nào cho `auto_ratio_95` trong log vì test FAIL tại assert; xem phần Kết luận.)
 
 ## Chuỗi thời gian
 
@@ -143,9 +144,36 @@ RG-10.warn_80_visible: NOT_OBSERVED
 - warn_80_visible: peak_month_usd=0
 ```
 
+## Phân tích job FAILED_FINAL
+
+```
+- diag: batch=71973394 jobs=112 failed_final=12
+- diag_cause: stage=align code=word_coverage_incomplete activity=CreateWordTiming n=4
+- diag_cause: stage=process code=post_assessment_still_transform_required activity=TransformSensitiveImage n=4
+- diag_cause: stage=align code=alignment_unmatched_ratio_exceeded activity=CreateWordTiming n=2
+- diag_cause: stage=tts code=voice_duration_out_of_range activity=CreateVoiceTrack n=2
+- diag_job: job=71973394 stage=tts attempt=1 status=FAILED_FINAL code=voice_duration_out_of_range message=
+- diag_job: job=71973394 stage=align attempt=1 status=FAILED_FINAL code=alignment_unmatched_ratio_exceeded message=
+- diag_job: job=71973394 stage=align attempt=1 status=FAILED_FINAL code=word_coverage_incomplete message=
+- diag_job: job=71973394 stage=align attempt=1 status=FAILED_FINAL code=alignment_unmatched_ratio_exceeded message=
+- diag_job: job=71973394 stage=process attempt=1 status=FAILED_FINAL code=post_assessment_still_transform_required message=
+- diag_job: job=71973394 stage=process attempt=1 status=FAILED_FINAL code=post_assessment_still_transform_required message=
+- diag_job: job=71973394 stage=process attempt=1 status=FAILED_FINAL code=post_assessment_still_transform_required message=
+- diag_job: job=71973394 stage=process attempt=1 status=FAILED_FINAL code=post_assessment_still_transform_required message=
+- diag_job: job=71973394 stage=tts attempt=1 status=FAILED_FINAL code=voice_duration_out_of_range message=
+- diag_job: job=71973394 stage=align attempt=1 status=FAILED_FINAL code=word_coverage_incomplete message=
+- diag_job: job=71973394 stage=align attempt=1 status=FAILED_FINAL code=word_coverage_incomplete message=
+- diag_job: job=71973394 stage=align attempt=1 status=FAILED_FINAL code=word_coverage_incomplete message=
+```
+
+- Tổng 12 job chia thành 4 nhóm: `align`/`word_coverage_incomplete`/`CreateWordTiming` 4 job; `process`/`post_assessment_still_transform_required`/`TransformSensitiveImage` 4 job; `align`/`alignment_unmatched_ratio_exceeded`/`CreateWordTiming` 2 job; `tts`/`voice_duration_out_of_range`/`CreateVoiceTrack` 2 job. Mọi job lỗi ở lần thử thứ 1 và không có message kèm theo.
+- Thời điểm: job lỗi đầu tiên xuất hiện ở `elapsed_s=900`, trước lần stop/start (tại stop `completed_at_stop=40`, khoảng `elapsed_s=3000`, đã có 4 job `FAILED_FINAL`); 8 job còn lại xuất hiện sau lần stop/start (từ 4 lên 12 ở `elapsed_s=3602`–`6906`). Lần chẩn đoán này không in thời điểm theo từng nhóm nên báo cáo không gán từng nhóm vào trước hay sau stop.
+- Nhận định: cả bốn nhóm là mã lỗi do chính các stage của hệ thống trả về (căn thời gian từ vựng, đánh giá và làm mờ ảnh nhạy cảm, độ dài giọng đọc), không có nhóm nào là thiếu đầu vào; chỉ dựa trên code và activity đã in, báo cáo không suy đoán thêm nguyên nhân gốc trong `src/**`.
+- Nếu một nhóm có thể do tài nguyên ngoài (provider AI hoặc TTS, ví dụ nhóm `tts` và `align`) thì đó vẫn là lỗi hệ thống theo quy tắc không loại khỏi mẫu số, nên cả 12 job vẫn tính vào 112.
+
 ## Open item
 
-- `auto_ratio_95` FAIL thật ở lượt 3: 100 hợp lệ trên 112 job (khoảng 89,3%), 12 job `FAILED_FINAL`; cần Control quyết định (phân tích nguyên nhân 12 job lỗi chung cuộc hoặc đổi cách tính), không ghi PASS khi chưa có dòng tương ứng.
+- `auto_ratio_95` FAIL thật (100/112, 89,3%), nguyên nhân theo mục Phân tích; chặn bởi nguyên nhân gốc ngoài owned paths và cần một lô thật mới do Control cấp; không ghi PASS.
 - `failure_isolated` đã xử lý ở lượt 3: PASS (`others_ok=1`, `completed_after_failure=100`).
 - `warn_80_visible` NOT_OBSERVED vì ledger tháng bằng 0 (dưới 40 USD); không giả lập.
 - OI-CP7-06: quota Drive đạt (`free_gib=5118.78` so với `required_gib=1036.00`, `unlimited=False`).
