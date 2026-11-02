@@ -41,6 +41,8 @@ Mã nguồn chạy thực nghiệm là commit HEAD sau khi rebase lên đầu t�
 - Số luồng (dòng `concurrency=`): `{"default": 6, "max": 10, "min": 1}`.
 - Quota Drive (dòng `drive_quota_ok`): `free_gib=5118.26`, `required_gib=1036.00`, `unlimited=False`.
 - Lượt chẩn đoán chỉ đọc lô `74e795ef` với `CP7_DIAG_BATCH_PREFIX=74e795ef`: `python -m pytest tests/real/test_cp7_overnight.py -q -p no:cacheprovider -k test_diag -rP`: `1 passed, 56 deselected in 0.34s`, exit 0.
+- Cổng chạy thật (thêm sau Lượt 4 theo phản hồi Reviewer): `tests/real/test_cp7_overnight.py` đọc biến `CP7_RG10_LIVE`; không đặt thì fixture `overnight` bỏ qua các `test_rg10_*` (không chạy lô thứ hai) và `test_unit_recorded_report_rg10` kiểm 12 dòng `RG-10.*: PASS`, `warn_80_visible`, Batch ID và dòng tổng kết pytest của Lượt 4 trong báo cáo này. Lô thật Lượt 4 (`74e795ef`) chạy bằng bản test trước khi thêm cổng; cổng chỉ thêm điều kiện chạy, không đổi công thức hay ngưỡng RG-10. Chạy lại lô thật chỉ khi đặt `CP7_RG10_LIVE=1`.
+- Lệnh kiểm mặc định sau khi thêm cổng: `python -m pytest tests/real/test_cp7_overnight.py -q -p no:cacheprovider`: `43 passed, 15 skipped in 0.53s`, exit 0, không chạy lô thật.
 
 ## Kết quả
 

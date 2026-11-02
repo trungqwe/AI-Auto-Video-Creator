@@ -1,4 +1,5 @@
 """CP7-11 / RG-10: đêm chạy 100 video trên ngăn xếp thật. Các test_unit_* ở đầu tệp là test thuần, không chạm ngăn xếp; test_rg10_* ở cuối tệp chạy lô thật (trần: ledger đêm +25 USD, tháng ≤ 50 USD, Drive ≤ 12 GiB, 12 giờ 15 phút; cách dừng `python tools/launcher/launcher.py stop`).
+Mặc định (không đặt CP7_RG10_LIVE=1) tệp không chạy lô thật: các test_rg10_* bị bỏ qua và test_unit_recorded_report_rg10 kiểm bằng chứng RG-10 đã ghi trong report.md; chỉ khi đặt CP7_RG10_LIVE=1 mới chạy lô thật.
 """
 from __future__ import annotations
 
@@ -32,6 +33,10 @@ MONITOR_FILE = REPO / 'tools' / 'real' / 'cp7_overnight_monitor.py'
 SELF = Path(__file__).resolve()
 GIB = 1024 ** 3
 PROFILE = json.loads(d.PROFILE_JSON.read_text(encoding='utf-8'))
+
+LIVE = os.environ.get('CP7_RG10_LIVE') == '1'
+RG10_REQUIRED = ('valid_synced_100', 'within_12h', 'auto_ratio_95', 'no_vanished_jobs', 'failure_isolated', 'resume_300s_midrun',
+                 'no_rerun_completed', 'cost_under_cap', 'working_set_cap', 'drive_quota_ok', 'stage_metrics', 'secret_scan')
 
 
 def _ascii_line(line):
@@ -464,10 +469,24 @@ def test_unit_monitor_is_read_only():
     assert not re.search(r'print\([^)]*(launch_path|launch2|\burl\b|raw)', text)
 
 
+def test_unit_recorded_report_rg10():
+    """Chế độ mặc định: kiểm bằng chứng lô thật đã ghi trong report.md, không chạy lại lô."""
+    text = REPORT.read_text(encoding='utf-8')
+    for item in RG10_REQUIRED:
+        assert re.search(r'(?m)^RG-10[.]' + item + r': PASS[ \t]*\r?(?:\n|\Z)', text), item
+    assert re.search(r'(?m)^RG-10[.]warn_80_visible: (?:PASS|NOT_OBSERVED)[ \t]*\r?(?:\n|\Z)', text)
+    assert not re.search(r'(?m)^RG-[0-9]{2}[.]\w+: (?:FAIL|BLOCKED)', text)
+    assert re.search(r'Batch ID: `[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`', text)
+    assert re.search(r'(?m)^- Dòng tổng kết pytest nguyên văn: `[0-9]+ passed[^`]* in [0-9.]+s', text)
+    assert c.scan_secrets(text) == []
+
+
 # --- RG-10 trên ngăn xếp thật ------------------------------------------------------------------------------------
 
 @pytest.fixture(scope='module')
 def overnight(tmp_path_factory):
+    if not LIVE:
+        pytest.skip('lô thật chỉ chạy khi đặt CP7_RG10_LIVE=1; mặc định kiểm bằng chứng đã ghi (test_unit_recorded_report_rg10)')
     work = tmp_path_factory.mktemp('cp7_rg10')
     try:
         return m.run_overnight(work, work / 'timeline.jsonl')
