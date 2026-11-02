@@ -486,23 +486,18 @@ async def test_an_article_image_e_excludes_is_rendered_as_the_seed_of_its_rank(
     rig.router.script_mode = "inference"
     batch_id = await asyncio.to_thread(rig.post_batch, 1)
 
+    # RG-13: cả hai ảnh bài bị loại, job chỉ còn ảnh seed nên render từ chối no_illustration_available
     handle = await wait_for_workflow(pw_temporal, batch_id)
-    batch_result = await wait_for_workflow_result(handle, 900.0, rig=rig)
-    assert batch_result["status"] == "TARGET_REACHED"
+    batch_result = await wait_for_workflow_result(handle, 900.0)
+    assert batch_result["status"] == "EXHAUSTED"
+    assert batch_result["completed"] == 0
 
-    child_handle = await wait_for_workflow(pw_temporal, f"{batch_id}:video:0")
-    child = await wait_for_workflow_result(child_handle, 120.0, rig=rig)
-    assert child["status"] == "COMPLETED"
-    assert job_row(rig.database, f"{batch_id}:job:1") == ("COMPLETED", None)
-
-    scene1_id = rig.router.selected_media[0]
     with rig.database.connect() as conn:
-        row = conn.execute(
-            "SELECT payload FROM controlplane.cp_production_plans WHERE workspace_id = %s ORDER BY revision DESC",
+        failed_stages = conn.execute(
+            "SELECT stage_name, problem FROM controlplane.cp_stage_runs WHERE workspace_id = %s AND status = 'FAILED_FINAL'",
             (ws,),
-        ).fetchone()
-        payload = json.loads(row[0]) if isinstance(row[0], str) else row[0]
-        original1 = payload["timeline"]["segments"][0]["visuals"][0]["artifact_version_ref"]
+        ).fetchall()
+        job_states = {r[0] for r in conn.execute("SELECT status FROM controlplane.cp_video_jobs WHERE workspace_id = %s", (ws,)).fetchall()}
         article_versions = {
             r[0]
             for r in conn.execute(
@@ -510,78 +505,29 @@ async def test_an_article_image_e_excludes_is_rendered_as_the_seed_of_its_rank(
                 (ws, list(feed_sha.values())),
             ).fetchall()
         }
-    assert original1 in article_versions
+        packages = conn.execute("SELECT payload FROM controlplane.cp_render_packages WHERE workspace_id = %s", (ws,)).fetchall()
+        records_keys = [
+            r[0]
+            for r in conn.execute(
+                "SELECT DISTINCT record_key FROM controlplane.cp_processed_media WHERE workspace_id = %s AND record_key LIKE %s",
+                (ws, f"{batch_id}:video:0:%NormalizeMedia%"),
+            ).fetchall()
+        ]
+    assert failed_stages and all("no_illustration_available" in str(row[1]) for row in failed_stages)
+    assert job_states == {"FAILED_FINAL"}
+    assert count(rig.database, "cp_completion_ledger") == 0
+    assert not [row for row in packages if "image-safety:" in json.dumps(row[0])]
+    assert not list((rig.tmp_path / "staging" / "out").glob("*.mp4"))
+    assert len(rig.drive.uploads) == 0
 
-    # (b) Render package
-    with rig.database.connect() as conn:
-        pkg_row = conn.execute(
-            "SELECT payload FROM controlplane.cp_render_packages WHERE workspace_id = %s",
-            (ws,),
-        ).fetchone()
-    package = json.loads(pkg_row[0]) if isinstance(pkg_row[0], str) else pkg_row[0]
-    scene_refs = [s["visual_asset_refs"] for s in package["timeline"]["segments"]]
-    scene1 = scene_refs[0][0]
-    scene2 = scene_refs[1][0]
-
-    # (c) E outputs
     mgr = TransactionManager(rig.database.dsn, pool_max_size=4)
     try:
-        with rig.database.connect() as conn:
-            records_keys = [
-                r[0]
-                for r in conn.execute(
-                    "SELECT DISTINCT record_key FROM controlplane.cp_processed_media WHERE workspace_id = %s AND record_key LIKE %s",
-                    (ws, f"{batch_id}:video:0:%NormalizeMedia%"),
-                ).fetchall()
-            ]
         uow = PostgresVoiceUnitOfWork(mgr, workspace_id=ws)
         e_records = [uow.outputs.latest("processed_media", key).record for key in records_keys]
         e_inputs = {record.input_ref.ref for record in e_records if getattr(record, "input_ref", None) is not None}
-        assert scene2 in e_inputs
-        expected = e_inputs - {scene2}
-        assert len(expected) == 1
-        assert scene1 == expected.pop()
-        assert scene1 not in article_versions
     finally:
         mgr.close()
-
-    # (d) Article versions absent
-    blob = json.dumps({k: v for k, v in package.items() if k != 'allowed_fallbacks'})
-    with rig.database.connect() as conn:
-        attempt_rows = conn.execute(
-            "SELECT payload->'command_spec' FROM controlplane.cp_render_attempts WHERE workspace_id = %s",
-            (ws,),
-        ).fetchall()
-    argvs = [(json.loads(r[0]) if isinstance(r[0], str) else r[0]).get("argv") for r in attempt_rows if r and r[0]]
-    assert len(argvs) > 0
-    for vid in article_versions:
-        assert vid not in blob
-        assert vid not in package["materialization_manifest"]
-        assert not any(entry.get("local_ref") == vid for entry in package["materialization_manifest"].values())
-        assert vid not in json.dumps(argvs)
-        assert not any(a["artifact_version_id"] in article_versions for a in package["input_artifacts"])
-
-    # (e) allowed_fallbacks image-safety
-    rules = [r for r in package["allowed_fallbacks"] if str(r.get("rule_id", "")).startswith("image-safety:")]
-    assert len(rules) == 1
-    rule = rules[0]
-    assert rule["rule_id"] == f"image-safety:{scene1_id}"
-    assert rule["kind"] == "replace_asset"
-    assert rule["reason"] == "seed_fallback"
-    assert rule["artifact_version_id"] == scene1
-    assert rule["replaced_artifact_version_ref"] == original1
-    assert rule["replaced_media_asset_id"] == scene1_id
-
-    # (f) Center frame evidence
-    out_mp4 = next((rig.tmp_path / "staging" / "out").glob("*.mp4"))
-    frame = center_rgb(out_mp4, seek="15")
-    seed_rgb = center_rgb(rig.tmp_path / "staging" / "media" / f"{scene1}.png")
-    article_rgbs = [center_rgb(rig.tmp_path / "feed-a.jpg"), center_rgb(rig.tmp_path / "feed-b.jpg")]
-    dist_seed = math.dist(frame, seed_rgb)
-    dist_article = min(math.dist(frame, a) for a in article_rgbs)
-    print(f"FIX8_FRAME_EVIDENCE frame={frame} seed={seed_rgb} article={article_rgbs} dist_seed={dist_seed} dist_article={dist_article}")
-    assert dist_seed <= 60, f"dist_seed {dist_seed} > 60"
-    assert dist_article >= 150, f"dist_article {dist_article} < 150"
+    assert e_inputs and not e_inputs & article_versions, "E phải lấy ảnh seed_fallback thay cho ảnh bài bị loại"
 
 
 @pytest.mark.asyncio

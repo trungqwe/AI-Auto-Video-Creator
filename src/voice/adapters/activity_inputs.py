@@ -1,6 +1,6 @@
 """Production ActivityInputPort of E (PW-E3): input_refs of an ActivityRequest to the typed arguments of the one E command, and the output refs of the image safety chain (DQ-11).
 
-Fan-out item rule: the item of an activity is the first ref of its ref_type in input_refs (the flow puts the item right after the workflow refs). An image that AssessImageSafety judged SAFE or UNCERTAIN reaches NormalizeMedia as the original, and a blurred copy reaches it unless its transform failed (a post assessment that is not SAFE is only a warning); an excluded image is replaced by the next media seed of the selection, and without a seed the activity succeeds with no output. TransformSensitiveImage follows the same rule: a request without a sensitive_image ref (no image needs the blur) succeeds with no output.
+Fan-out item rule: the item of an activity is the first ref of its ref_type in input_refs (the flow puts the item right after the workflow refs). An image that AssessImageSafety judged SAFE or UNCERTAIN reaches NormalizeMedia as the original, and a blurred copy reaches it unless its transform failed (a post assessment that is not SAFE is only a warning); an excluded image is replaced by the image of another selected media of the job that is usable (the original, or the blurred copy), taken in turn by the rank of the excluded image, then by the media seed of the selection with the same rank, and without either the activity succeeds with no output. TransformSensitiveImage follows the same rule: a request without a sensitive_image ref (no image needs the blur) succeeds with no output.
 """
 from __future__ import annotations
 
@@ -65,6 +65,7 @@ REF_SENSITIVE_IMAGE = 'sensitive_image'
 REF_MEDIA = 'media_artifact'
 ASSESSMENT_PREFIX = 'assessment:'
 REASON_SEED_FALLBACK = 'seed_fallback'
+REASON_IMAGE_FALLBACK = 'image_fallback'
 REASON_NO_SENSITIVE_IMAGE = 'no_sensitive_image'
 
 
@@ -310,7 +311,7 @@ class ProductionActivityInputs:
         return (TRANSFORM, 'blurred' if record.status is TransformStatus.SUCCESS else 'blurred_with_warning', record.processed_ref)
 
     def normalize_source(self, workspace_id: str, refs: Sequence[Mapping[str, Any]]) -> NormalizeSource:
-        """The image NormalizeMedia may take for the first selected_media item: the original when SAFE, the blurred copy when SAFE after the transform, else the media seed of the selection with the same rank among the excluded images, else nothing."""
+        """The image NormalizeMedia may take for the first selected_media item: the original when SAFE, the blurred copy when SAFE after the transform; for an excluded image the original or blurred copy of another selected media of the job that is usable, by the rank of the image among the excluded ones; only when the job has none, the media seed of the selection with the same rank, else nothing."""
         item = _first_ref(refs, REF_SELECTED_MEDIA)
         kind, reason, processed = self._verdict(refs, item['ref_id'])
         if kind == USABLE:
@@ -318,13 +319,23 @@ class ProductionActivityInputs:
         if kind == TRANSFORM:
             return NormalizeSource(processed, reason)
         ordered = list(dict.fromkeys(ref['source_ref_id'] for ref in _refs_of(refs, REF_ASSESSMENT) if _is_text(ref.get('source_ref_id'))))
+        selected: dict[str, Mapping[str, Any]] = {}
         for ref in _refs_of(refs, REF_SELECTED_MEDIA):
+            selected.setdefault(ref['ref_id'], ref)
             if ref['ref_id'] not in ordered:
                 ordered.append(ref['ref_id'])
-        excluded = [ref_id for ref_id in ordered if self._verdict(refs, ref_id)[0] == EXCLUDED]
+        verdicts = {ref_id: self._verdict(refs, ref_id) for ref_id in ordered}
+        excluded = [ref_id for ref_id in ordered if verdicts[ref_id][0] == EXCLUDED]
+        usable = [
+            self._artifact(workspace_id, selected[ref_id]).ref if verdicts[ref_id][0] == USABLE else verdicts[ref_id][2]
+            for ref_id in ordered
+            if ref_id in selected and verdicts[ref_id][0] in (USABLE, TRANSFORM)
+        ]
+        position = excluded.index(item['ref_id'])
+        if usable:
+            return NormalizeSource(usable[position % len(usable)], REASON_IMAGE_FALLBACK)
         selections = _refs_of(refs, REF_SELECTION)
         seeds = () if not selections else tuple(self._selections.fallback_media(workspace_id=workspace_id, selection_ref=selections[-1]['ref_id']))
-        position = excluded.index(item['ref_id'])
         if position < len(seeds):
             return NormalizeSource(seeds[position].ref, REASON_SEED_FALLBACK)
         return NormalizeSource(None, reason)

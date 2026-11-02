@@ -1,4 +1,4 @@
-"""PW-W2-FIX8: render dùng đúng ảnh NormalizeMedia của E chọn theo AssessImageSafety (gốc khi SAFE, bản che khi TRANSFORM rồi SAFE, seed cùng hạng khi bị loại), trên PostgreSQL thật và FFmpeg ghim.
+"""PW-W2-FIX8: render dùng đúng ảnh NormalizeMedia của E chọn theo AssessImageSafety (gốc khi SAFE, bản che khi TRANSFORM rồi SAFE, ảnh dùng được khác của job khi bị loại, seed cùng hạng khi job không còn ảnh nào dùng được), trên PostgreSQL thật và FFmpeg ghim.
 
 coveredIds: DQ-11, OI-ADAPT-10, CT-RND-002, CT-PROC-005
 """
@@ -136,8 +136,9 @@ def fix8_world(db: Any, manager: Any, pinned: tuple[Any, Any], tmp_path: Path, *
         s2 = stage_png(manager, db, runtime, work, "s2", LAVFI[3])
         seed_ids = [s1.id, s2.id]
     elif seed_mode == "unverified":
-        seed_ids = [str(uuid.uuid4())]
-        insert_artifact(db, seed_ids[0], kind="render_input_media", mime="image/png", states=("DECLARED",))
+        seed_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+        for seed_id in seed_ids:
+            insert_artifact(db, seed_id, kind="render_input_media", mime="image/png", states=("DECLARED",))
     elif seed_mode == "none":
         seed_ids = []
     else:
@@ -239,8 +240,8 @@ def merged(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
-def run_chain(world: Any, first_answer: dict[str, Any], *, after_blur: dict[str, Any] = SAFE) -> list[dict[str, Any]]:
-    world.vision.answers = {world.v1.sha: first_answer, world.v2.sha: SAFE}
+def run_chain(world: Any, first_answer: dict[str, Any], *, after_blur: dict[str, Any] = SAFE, second_answer: dict[str, Any] = SAFE) -> list[dict[str, Any]]:
+    world.vision.answers = {world.v1.sha: first_answer, world.v2.sha: second_answer}
     world.vision.default = after_blur
     produced: list[dict[str, Any]] = []
     for index, item in enumerate(world.selected):
@@ -361,13 +362,13 @@ def test_an_unsure_image_renders_as_the_original(world: Any) -> None:
     [(NUDITY, SAFE)],
     ids=["nudity_sexual"],
 )
-def test_an_excluded_image_renders_as_the_seed_of_its_rank(world: Any, first_answer: dict[str, Any], after_blur: dict[str, Any]) -> None:
+def test_an_excluded_image_renders_as_another_usable_image_of_the_job(world: Any, first_answer: dict[str, Any], after_blur: dict[str, Any]) -> None:
     produced = run_chain(world, first_answer, after_blur=after_blur)
     record, chosen = assert_render_follows_e(world, produced, replaced=("m-1",))
-    assert chosen["m-1"] == world.seed_ids[0] and chosen["m-2"] == world.v2.id
+    assert chosen["m-1"] == world.v2.id and chosen["m-2"] == world.v2.id
     rule = next(r for r in record.allowed_fallbacks if r.get("rule_id") == "image-safety:m-1")
-    assert rule["reason"] == "seed_fallback"
-    assert world.seed_ids[0] in {a.artifact_version_id for a in record.input_artifacts}
+    assert rule["reason"] == "image_fallback"
+    assert not set(world.seed_ids) & {a.artifact_version_id for a in record.input_artifacts}
     with world.database.connect() as conn:
         count = conn.execute(
             "SELECT count(*) FROM controlplane.cp_artifact_versions WHERE workspace_id = %s::uuid AND artifact_id LIKE %s",
@@ -376,9 +377,18 @@ def test_an_excluded_image_renders_as_the_seed_of_its_rank(world: Any, first_ans
     assert count == 0
 
 
+def test_every_image_excluded_with_only_seed_replacements_fails_with_no_illustration_available(world: Any) -> None:
+    produced = run_chain(world, NUDITY, second_answer=NUDITY)
+    assert all(e_choice(world, produced, item).reason == "seed_fallback" for item in world.selected)
+    with pytest.raises(ActivityInputError) as raised:
+        world.sources.resolve_inputs(merged(world.render_refs, world.selected, produced))
+    assert raised.value.code == "no_illustration_available"
+    assert "seed_share_above_max" in str(raised.value)
+
+
 def test_an_excluded_image_without_a_seed_fails_with_image_excluded(pw_database: Any, manager: Any, pinned: tuple[Any, Any], tmp_path: Path) -> None:
     world = fix8_world(pw_database, manager, pinned, tmp_path, seed_mode="none")
-    produced = run_chain(world, NUDITY)
+    produced = run_chain(world, NUDITY, second_answer=NUDITY)
     refs = merged(world.render_refs, world.selected, produced)
     with pytest.raises(ActivityInputError) as raised:
         world.sources.resolve_inputs(refs)
@@ -396,7 +406,7 @@ def test_a_media_without_an_assessment_decision_fails_with_image_not_assessed(wo
 
 def test_a_replacement_version_that_is_not_verified_fails_closed(pw_database: Any, manager: Any, pinned: tuple[Any, Any], tmp_path: Path) -> None:
     world = fix8_world(pw_database, manager, pinned, tmp_path, seed_mode="unverified")
-    produced = run_chain(world, NUDITY)
+    produced = run_chain(world, NUDITY, second_answer=NUDITY)
     with pytest.raises(ActivityInputError) as raised:
         world.sources.resolve_inputs(merged(world.render_refs, world.selected, produced))
     assert raised.value.code == "INPUT_NOT_READY"

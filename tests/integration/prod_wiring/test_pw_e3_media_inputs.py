@@ -466,11 +466,10 @@ def test_pw_e3_safety_chain_excludes_unsafe_images_and_blurs_with_the_pinned_ffm
         for index, item in enumerate(selected):
             stored = world.uow.outputs.latest('processed_media', f'wf-e3:process:NormalizeMedia:{index}:r1')
             used[item['ref_id']] = None if stored is None else stored.record.input_ref.ref
-        assert used == {'media-safe': 'art-safe', 'media-uncertain': 'art-uncertain', 'media-blur': blurred, 'media-reject': 'art-seed-s0', 'media-failed': None}
-        failed = chain['normalized']['media-failed']
-        assert failed['output_refs'] == [] and failed['warnings'] == ['image_excluded:detection_failed']
+        assert used == {'media-safe': 'art-safe', 'media-uncertain': 'art-uncertain', 'media-blur': blurred, 'media-reject': 'art-safe', 'media-failed': 'art-uncertain'}
+        assert 'art-seed-s0' not in used.values()
         assert not set(used.values()) & {'art-reject', 'art-failed', 'art-blur'}
-        for key in ('media-safe', 'media-uncertain', 'media-blur', 'media-reject'):
+        for key in ('media-safe', 'media-uncertain', 'media-blur', 'media-reject', 'media-failed'):
             assert [ref['source_ref_id'] for ref in chain['normalized'][key]['output_refs']] == [key]
         blurred_file = world.out / (blurred.replace(':', '_') + '.png')
         assert blurred_file.is_file() and sha(blurred_file.read_bytes()) != world.media.items['media-blur'][0].content_sha256
@@ -571,7 +570,7 @@ def test_pw_e3_second_job_on_the_same_images_normalizes_and_blurs_again(pw_datab
             assert one.output_ref != two.output_ref
             assert one.output_sha256 == two.output_sha256
             assert one.input_ref == two.input_ref
-        assert second['normalized']['media-failed']['output_refs'] == []
+        assert [ref['source_ref_id'] for ref in second['normalized']['media-failed']['output_refs']] == ['media-failed']
     finally:
         world.close()
 

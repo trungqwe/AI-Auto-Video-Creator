@@ -469,6 +469,27 @@ def test_an_image_that_needs_image_safety_can_still_be_chosen_for_a_scene() -> N
     assert 'm-flagged' not in [f.media_asset_id for f in result.fallback_candidates]
 
 
+def test_a_scene_that_picks_a_seed_while_a_non_seed_image_is_eligible_is_rejected() -> None:
+    media = [_media('m-art', provenance={'origin': 'article'}), _media('m-seed', provenance={'origin': 'seed'})]
+    error = _reject(media_candidates=media, proposal=_proposal(scenes=[_scene('s-1', 'm-art'), _scene('s-2', 'm-seed')]))
+    assert (error.code, error.reason, error.field) == ('invalid_proposal', 'seed_scene_while_illustration_eligible', 'scenes[1].ref')
+
+
+def test_a_seed_scene_is_accepted_when_no_eligible_candidate_has_another_origin() -> None:
+    blocked = _media('m-blocked', provenance={'origin': 'article'}, safety_rights_status={'rights_cleared': False})
+    media = [blocked, _media('m-seed-1', provenance={'origin': 'seed'}), _media('m-seed-2', provenance={'origin': 'seed'})]
+    result = select_creative_assets(**_inputs(media_candidates=media, proposal=_proposal(scenes=[_scene('s-1', 'm-seed-1'), _scene('s-2', 'm-seed-2')])))
+    assert [a.origin for a in result.assignments] == ['seed', 'seed']
+
+
+def test_an_assignment_carries_the_candidate_origin_and_its_payload_omits_a_missing_one() -> None:
+    media = [_media('m-ai', provenance={'origin': 'ai_generated'}), _media('m-none', provenance={'source': 'catalog'}), _media('m-seed', provenance={'origin': 'seed'})]
+    result = select_creative_assets(**_inputs(media_candidates=media, proposal=_proposal(scenes=[_scene('s-1', 'm-ai'), _scene('s-2', 'm-none')])))
+    assert [a.origin for a in result.assignments] == ['ai_generated', None]
+    payloads = [a.to_payload() for a in result.assignments]
+    assert payloads[0]['origin'] == 'ai_generated' and 'origin' not in payloads[1]
+
+
 @pytest.mark.parametrize('slot', ['visual_hook', 'audio_hook', 'thumbnail'])
 @pytest.mark.parametrize('absent', [True, False], ids=['absent', 'none'])
 def test_missing_required_hook_is_rejected(slot: str, absent: bool) -> None:

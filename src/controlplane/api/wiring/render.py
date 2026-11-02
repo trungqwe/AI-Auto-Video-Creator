@@ -22,6 +22,8 @@ from controlplane.api.wiring._shared import resolve_under_root
 from controlplane.api.wiring.workflow import RenderImage, render_handler, render_image_sources
 from controlplane.infrastructure.db.control_api_commands import PostgresConfigScope, compose_command_service
 from controlplane.infrastructure.production_ports.gpu_lease import LocalGpuLease
+from creative.domain.asset_selection import ORIGIN_SEED
+from creative.domain.production_plan import seed_share_within_limit, seed_time_ms
 from render.adapters.activity_inputs import (
     INPUT_REF_MISSING,
     ActivityInputError,
@@ -190,6 +192,8 @@ def _visual_version_ref(timeline: Mapping[str, Any], media_asset_id: str) -> str
 
 
 _SELECTED_MEDIA_REF = 'selected_media'
+NO_ILLUSTRATION_AVAILABLE = 'no_illustration_available'
+_SEED_FALLBACK_REASON = 'seed_fallback'
 
 
 def _visual_version_refs(timeline: Mapping[str, Any]) -> set[str]:
@@ -249,6 +253,23 @@ def _image_fallback_rule(media: str, original: str, image: RenderImage) -> dict[
         'artifact_version_id': image.artifact_version_id,
         'reason': image.reason,
     }
+
+
+def require_illustration(timeline: Mapping[str, Any], images: Mapping[str, RenderImage] | None) -> None:
+    """Từ chối job khi timeline cuối quá mức ảnh seed cho phép (kể cả toàn seed): không có video chỉ có ảnh nền (RG-13)."""
+    segments = timeline.get('segments') if isinstance(timeline, Mapping) else None
+    if not isinstance(segments, (list, tuple)):
+        return
+    chosen = images or {}
+
+    def shows_seed(visual: Mapping[str, Any]) -> bool:
+        image = chosen.get(visual.get('media_asset_id'))
+        return visual.get('origin') == ORIGIN_SEED or (image is not None and image.reason == _SEED_FALLBACK_REASON)
+
+    seed_ms, timeline_ms = seed_time_ms(segments, shows_seed)
+    if not seed_share_within_limit(seed_ms, timeline_ms):
+        raise ActivityInputError(NO_ILLUSTRATION_AVAILABLE, f'seed_share_above_max:{seed_ms}/{timeline_ms}')
+
 
 _REF_AUDIO_BED_CUE = 'audio_bed_cue'
 _MUSIC_RENDITION = re.compile(r'music-[0-9a-f]{64}')
@@ -686,6 +707,8 @@ class ProductionRenderSources:
             if replacement.artifact_version_id.lower() not in present:
                 input_artifacts.append(replacement)
                 present.add(replacement.artifact_version_id.lower())
+
+        require_illustration(timeline, images)
 
         manifest_entries = [
             LocalMaterialRef(artifact_version_id=art.artifact_version_id, local_ref=art.artifact_version_id)
