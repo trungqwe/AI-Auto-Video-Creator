@@ -124,12 +124,31 @@ def test_exactly_five_presets():
 def test_ai_routes_and_duration_anchors():
     p = profile_params()
     routes = p['ai.route_model_refs']['value']
-    assert set(routes) == {'analysis', 'angle', 'script', 'selection', 'metadata', 'image_safety'}
+    assert set(routes) == {'analysis', 'angle', 'script', 'selection', 'metadata', 'image_safety', 'illustration'}
     assert set(routes.values()) == {'ag/gemini-3.8-flash-high'}
     for key in ('voice.duration_range_ms', 'qc.duration_range_ms'):
         assert (p[key]['value']['min'], p[key]['value']['max']) == (61000, 70000)
     assert p['qc.karaoke_tolerance_ms']['value'] == p['aligner.word_timing_tolerance_ms']['value'] == 200
     assert p['qc.required_language']['value'] == 'en'
+
+
+def test_illustration_route_shares_the_image_safety_model_and_cites_the_user_decision():
+    p = profile_params()['ai.route_model_refs']
+    routes = p['value']
+    assert list(routes)[-1] == 'illustration'
+    assert routes['illustration'] == routes['image_safety'] == 'ag/gemini-3.8-flash-high'
+    assert p['basis'] == 'DECIDED'
+    for needle in ('illustration', 'CLOSURE_NOTE CP7/RG-13', 'D4', '02/11/2026'):
+        assert needle in p['reason'], needle
+
+
+def test_profile_revision_moves_to_7_for_the_illustration_role():
+    p = profile_params()['meta.revision']
+    assert type(p['value']) is int and p['value'] >= 7
+    assert p['basis'] == 'DECIDED'
+    if p['value'] == 7:
+        for needle in ('illustration', 'CLOSURE_NOTE CP7/RG-13', 'D4', '02/11/2026'):
+            assert needle in p['reason'], needle
 
 
 EXPECTED_SOURCES = {
