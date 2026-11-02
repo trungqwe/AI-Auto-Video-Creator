@@ -6,6 +6,7 @@ import collections.abc
 import dataclasses
 import datetime
 import hashlib
+import http.client
 import ipaddress
 import json
 import os
@@ -54,6 +55,26 @@ NAMESPACE_WAIT_SECONDS = 60
 OUTBOX_RELAY_INTERVAL_SECONDS = 2.0
 ENRICHMENT_INTERVAL_SECONDS = 5.0
 BACKGROUND_STOP_SECONDS = 10.0
+
+# Sidecar ảnh minh hoạ cục bộ (IMGGEN-LAUNCH, thiết kế đợt 42 mục 2): tiến trình riêng trong môi trường uv riêng, launcher chỉ khởi chạy, canh và dừng nó.
+# Giá trị trùng tools/imagegen/protocol.py (test đối chiếu); launcher không import gì của sidecar.
+IMAGEGEN_SERVER = ROOT / 'tools' / 'imagegen' / 'server.py'
+IMAGEGEN_SERVICE = 'aiavc-imagegen'
+IMAGEGEN_PORT = 57030
+IMAGEGEN_TOKEN_ENV = 'AIAVC_IMAGEGEN_TOKEN'
+IMAGEGEN_TOKEN_BYTES = 32  # token_urlsafe(32) dài 43 ký tự; sidecar đòi ít nhất 32
+IMAGEGEN_HTTP_TIMEOUT_SECONDS = 2.0
+# Chờ có hạn 20 x 0,25 = 5 giây để sidecar rời trạng thái verifying; quá hạn thì ứng dụng cứ khởi động.
+IMAGEGEN_READY_POLLS = 20
+IMAGEGEN_READY_POLL_SECONDS = 0.25
+# Dừng: sidecar tự thấy tệp dừng (đọc mỗi giây), rồi POST /v1/shutdown, rồi terminate. 25 giây gồm 20 giây ân hạn của chính sidecar cho chu kỳ đang chạy.
+IMAGEGEN_STOP_FILE_WAIT_SECONDS = 3.0
+IMAGEGEN_STOP_GRACE_SECONDS = 25.0
+IMAGEGEN_KILL_WAIT_SECONDS = 5.0
+IMAGEGEN_EXIT_HINTS = {2: 'tham số hoặc token không hợp lệ', 3: 'cổng đang bị tiến trình khác chiếm', 4: 'tiến trình launcher không còn chạy'}
+# Môi trường của sidecar không mang khoá của ứng dụng (DSN có mật khẩu CSDL) hay token Hugging Face.
+IMAGEGEN_ENV_DROP_PREFIXES = ('CONTROLPLANE_', 'AIAVC_')
+IMAGEGEN_ENV_DROP_NAMES = ('HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN')
 
 COMMANDS = ('start', 'stop', 'down', 'status', 'backup', 'restore', 'oauth')
 
@@ -134,6 +155,30 @@ class Layout:
     def serve_log(self) -> Path:
         return self.logs_dir / 'serve.log'
 
+    @property
+    def hf_hub_dir(self) -> Path:
+        return self.models_dir / 'hf-hub'
+
+    @property
+    def imagegen_dir(self) -> Path:
+        return self.data_dir / 'imagegen'
+
+    @property
+    def imagegen_python(self) -> Path:
+        return self.imagegen_dir / 'venv' / 'Scripts' / 'python.exe'
+
+    @property
+    def imagegen_out_dir(self) -> Path:
+        return self.imagegen_dir / 'out'
+
+    @property
+    def imagegen_endpoint_file(self) -> Path:
+        return self.imagegen_dir / 'endpoint.json'
+
+    @property
+    def imagegen_log(self) -> Path:
+        return self.logs_dir / 'imagegen.log'
+
     def ensure_dirs(self) -> None:
         for d in (
             self.tls_dir,
@@ -175,6 +220,8 @@ class Deps:
     seed_defaults: typing.Callable[[str, str, str, str], None] | None = None
     # (dsn, workspace_id, layout, environ) sinh nếu cần rồi nhập bộ media seed ngay sau seed_defaults; None bỏ qua bước này.
     seed_media: typing.Callable[[str, str, Layout, typing.Mapping[str, str]], None] | None = None
+    # (layout, environ) -> sidecar ảnh minh hoạ đang chạy (có exit_code(), health(), stop()); cmd_serve gọi một lần trước start_worker và dừng nó cạnh worker.stop(); None bỏ qua bước này.
+    start_imagegen: typing.Callable[[Layout, typing.Mapping[str, str]], typing.Any] | None = None
 
 
 def resolve_layout(environ: typing.Mapping[str, str], root: Path = ROOT) -> Layout:
@@ -1120,6 +1167,237 @@ def serve_tls(
     server.run()
 
 
+def imagegen_child_env(environ: typing.Mapping[str, str], token: str) -> dict[str, str]:
+    """Môi trường của sidecar: môi trường của launcher trừ khoá của ứng dụng (DSN mang mật khẩu CSDL, biến AIAVC_) và token Hugging Face,
+    cộng token riêng của lần khởi động này và hai cờ không bao giờ tải trọng số."""
+    env = {
+        key: value for key, value in environ.items()
+        if not key.upper().startswith(IMAGEGEN_ENV_DROP_PREFIXES) and key.upper() not in IMAGEGEN_ENV_DROP_NAMES
+    }
+    env[IMAGEGEN_TOKEN_ENV] = token
+    env['HF_HUB_OFFLINE'] = '1'
+    env['TRANSFORMERS_OFFLINE'] = '1'
+    return env
+
+
+def imagegen_request(port: int, method: str, path: str, token: str | None, timeout: float) -> tuple[int, bytes] | None:
+    """Một lệnh HTTP tới sidecar trên loopback; None khi cổng không trả lời."""
+    connection = http.client.HTTPConnection(LOOPBACK, port, timeout=timeout)
+    try:
+        headers = {'Authorization': f'Bearer {token}'} if token else {}
+        connection.request(method, path, headers=headers)
+        response = connection.getresponse()
+        return response.status, response.read(65536)
+    except (OSError, http.client.HTTPException):
+        return None
+    finally:
+        connection.close()
+
+
+def fetch_imagegen_health(port: int | None = None, timeout: float | None = None) -> dict[str, typing.Any] | None:
+    """GET /v1/health của sidecar (không cần token, không nạp mô hình); None khi cổng không trả lời hoặc không phải sidecar này.
+    Trên Windows một cổng loopback đóng chỉ từ chối sau khoảng 2 giây, nên hạn mặc định là 2 giây."""
+    reply = imagegen_request(
+        IMAGEGEN_PORT if port is None else port, 'GET', '/v1/health', None,
+        IMAGEGEN_HTTP_TIMEOUT_SECONDS if timeout is None else timeout,
+    )
+    if reply is None or reply[0] != 200:
+        return None
+    try:
+        body = json.loads(reply[1].decode('utf-8'))
+    except ValueError:
+        return None
+    if not isinstance(body, dict) or body.get('service') != IMAGEGEN_SERVICE:
+        return None
+    return body
+
+
+def describe_imagegen_health(health: typing.Mapping[str, typing.Any], port: int) -> str:
+    """Một dòng trạng thái của sidecar cho nhật ký và lệnh status: trạng thái, revision và hàng đợi, hoặc 'not provisioned' kèm số tệp thiếu."""
+    state = str(health.get('state', '?'))
+    revision = str(health.get('revision') or '?')[:12]
+    head = f'Sidecar ảnh minh hoạ (cổng {port}): '
+    if state == 'not_provisioned':
+        missing = health.get('missing') if isinstance(health.get('missing'), list) else []
+        first = f'; tệp đầu: {str(missing[0])[:120]}' if missing else ''
+        return f'{head}chưa cấp trọng số (not provisioned), {len(missing)} tệp thiếu hoặc lệch{first}; revision {revision}'
+    phase = health.get('phase')
+    phase_text = f'/{phase}' if phase else ''
+    queue = health.get('queue') if isinstance(health.get('queue'), dict) else {}
+    line = f"{head}{state}{phase_text}; revision {revision}; hàng đợi {queue.get('jobs', 0)} job, {queue.get('items', 0)} ảnh"
+    if state == 'error' and health.get('error'):
+        line += f"; lỗi: {str(health['error'])[:200]}"
+    return line
+
+
+class ImagegenSidecar:
+    """Sidecar ảnh minh hoạ đang chạy do launcher giữ: tiến trình con, cổng và token của lần khởi động này (token chỉ nằm ở môi trường của
+    tiến trình con và tệp endpoint của lần chạy này)."""
+
+    def __init__(self, process: typing.Any, layout: Layout, token: str, port: int) -> None:
+        self.process = process
+        self.layout = layout
+        self.token = token
+        self.port = port
+
+    @property
+    def pid(self) -> int:
+        return self.process.pid
+
+    def exit_code(self) -> int | None:
+        return self.process.poll()
+
+    def health(self) -> dict[str, typing.Any] | None:
+        return fetch_imagegen_health(self.port)
+
+    def _wait(self, seconds: float) -> None:
+        try:
+            self.process.wait(timeout=seconds)
+        except subprocess.TimeoutExpired:
+            pass
+
+    def _forget_endpoint(self) -> None:
+        path = self.layout.imagegen_endpoint_file
+        try:
+            if json.loads(path.read_text(encoding='utf-8')).get('token') == self.token:
+                path.unlink()
+        except (OSError, ValueError, AttributeError):
+            pass
+
+    def stop(
+        self,
+        *,
+        stop_file_wait: float = IMAGEGEN_STOP_FILE_WAIT_SECONDS,
+        grace: float = IMAGEGEN_STOP_GRACE_SECONDS,
+        kill_wait: float = IMAGEGEN_KILL_WAIT_SECONDS,
+    ) -> int | None:
+        """Dừng sidecar theo ba bước, bước sau chỉ khi bước trước chưa đủ: (1) tệp dừng của launcher, sidecar tự đọc mỗi giây; (2) POST
+        /v1/shutdown kèm token; (3) terminate rồi kill. Gọi lại được, trả mã thoát (None nếu tiến trình vẫn còn)."""
+        process = self.process
+        if process.poll() is None and self.layout.stop_file.exists():
+            self._wait(stop_file_wait)
+        if process.poll() is None:
+            imagegen_request(self.port, 'POST', '/v1/shutdown', self.token, IMAGEGEN_HTTP_TIMEOUT_SECONDS)
+            self._wait(grace)
+        if process.poll() is None:
+            process.terminate()
+            self._wait(kill_wait)
+        if process.poll() is None:
+            process.kill()
+            self._wait(kill_wait)
+        self._forget_endpoint()
+        return process.poll()
+
+
+def start_imagegen(
+    layout: Layout,
+    environ: typing.Mapping[str, str],
+    *,
+    spawn: typing.Callable[..., typing.Any] | None = None,
+) -> ImagegenSidecar:
+    """Khởi chạy sidecar ảnh minh hoạ bằng Python của môi trường uv riêng (<data>/imagegen/venv), cách ly (-I), chỉ nghe loopback.
+
+    Token mới mỗi lần khởi động chỉ đi qua môi trường của tiến trình con; tệp <data>/imagegen/endpoint.json (url, token, pid) cho tiến trình
+    ứng dụng biết đích, và bị xoá khi sidecar dừng. Thiếu môi trường riêng thì ném LauncherError (chưa cài): cmd_serve ghi một dòng và ứng
+    dụng vẫn khởi động. Sidecar tự dừng khi có stop.request của launcher hoặc khi tiến trình launcher thoát (--parent-pid)."""
+    try:
+        layout.imagegen_endpoint_file.unlink(missing_ok=True)  # endpoint của lần chạy trước (có thể hỏng giữa chừng) không được chỉ client tới sidecar đã chết
+    except OSError:
+        pass
+    python = layout.imagegen_python
+    if not python.is_file():
+        raise LauncherError(f'Sidecar ảnh minh hoạ chưa cài (not provisioned): thiếu {python}; dựng môi trường theo tools/imagegen/README.md.')
+    if not IMAGEGEN_SERVER.is_file():
+        raise LauncherError(f'Sidecar ảnh minh hoạ thiếu mã nguồn {IMAGEGEN_SERVER}.')
+    port = IMAGEGEN_PORT
+    token = secrets.token_urlsafe(IMAGEGEN_TOKEN_BYTES)
+    argv = [
+        str(python), '-I', str(IMAGEGEN_SERVER),
+        '--port', str(port),
+        '--hub', str(layout.hf_hub_dir),
+        '--out', str(layout.imagegen_out_dir),
+        '--parent-pid', str(os.getpid()),
+        '--stop-file', str(layout.stop_file),
+    ]
+    layout.logs_dir.mkdir(parents=True, exist_ok=True)
+    layout.imagegen_dir.mkdir(parents=True, exist_ok=True)
+    with open(layout.imagegen_log, 'ab') as logfile:
+        process = (spawn or subprocess.Popen)(
+            argv,
+            env=imagegen_child_env(environ, token),
+            cwd=str(ROOT),
+            stdin=subprocess.DEVNULL,
+            stdout=logfile,
+            stderr=subprocess.STDOUT,
+            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0),
+        )
+    try:
+        atomic_write_text(layout.imagegen_endpoint_file, json.dumps({'url': f'http://{LOOPBACK}:{port}', 'token': token, 'pid': process.pid}))
+    except BaseException:
+        process.terminate()
+        raise
+    return ImagegenSidecar(process, layout, token, port)
+
+
+def announce_imagegen(deps: Deps, layout: Layout, sidecar: typing.Any) -> None:
+    """Chờ có hạn (IMAGEGEN_READY_POLLS x IMAGEGEN_READY_POLL_SECONDS, tính cả thời gian mỗi lần hỏi) cho tới khi sidecar rời 'verifying', rồi
+    ghi đúng một dòng nói rõ nó sẵn sàng, chưa cấp trọng số, báo lỗi hay đã thoát. Không bao giờ chặn hay làm hỏng việc khởi động ứng dụng."""
+    deadline = time.monotonic() + IMAGEGEN_READY_POLLS * IMAGEGEN_READY_POLL_SECONDS
+    for _ in range(IMAGEGEN_READY_POLLS):
+        code = sidecar.exit_code()
+        if code is not None:
+            hint = IMAGEGEN_EXIT_HINTS.get(code)
+            reason = f' ({hint})' if hint else ''
+            deps.out(f'Sidecar ảnh minh hoạ thoát ngay với mã {code}{reason}; ứng dụng vẫn khởi động, ảnh minh hoạ AI chưa dùng được. Xem {layout.imagegen_log}.')
+            return
+        health = sidecar.health()
+        state = health.get('state') if health else None
+        if state is not None and state != 'verifying':
+            line = describe_imagegen_health(health, getattr(sidecar, 'port', IMAGEGEN_PORT))
+            if state == 'not_provisioned':
+                line += '. Ứng dụng vẫn khởi động; ảnh minh hoạ AI chưa dùng được tới khi cài trọng số (tools/imagegen/provision.py) và start lại.'
+            elif state == 'error':
+                line += '. Ứng dụng vẫn khởi động.'
+            deps.out(line)
+            return
+        deps.sleep(IMAGEGEN_READY_POLL_SECONDS)
+        if time.monotonic() >= deadline:
+            break
+    waited = IMAGEGEN_READY_POLLS * IMAGEGEN_READY_POLL_SECONDS
+    deps.out(f'Sidecar ảnh minh hoạ chưa báo xong kiểm trọng số sau {waited:g} giây; ứng dụng vẫn khởi động, xem trạng thái bằng launcher.py status hoặc {layout.imagegen_log}.')
+
+
+def begin_imagegen(deps: Deps, layout: Layout) -> typing.Any:
+    """Bật sidecar ảnh minh hoạ khi Deps có start_imagegen. Mọi lỗi chỉ thành một dòng nhật ký và trả None: ứng dụng vẫn khởi động."""
+    if deps.start_imagegen is None:
+        return None
+    try:
+        sidecar = deps.start_imagegen(layout, deps.environ)
+    except LauncherError as exc:
+        deps.out(f'Ảnh minh hoạ AI chưa dùng được, ứng dụng vẫn khởi động: {exc}')
+        return None
+    except Exception as exc:
+        deps.out(f'Không khởi động được sidecar ảnh minh hoạ ({type(exc).__name__}); ứng dụng vẫn khởi động. Xem {layout.imagegen_log}.')
+        return None
+    if sidecar is None:
+        return None
+    try:
+        announce_imagegen(deps, layout, sidecar)
+    except Exception as exc:
+        deps.out(f'Không đọc được trạng thái sidecar ảnh minh hoạ ({type(exc).__name__}); ứng dụng vẫn khởi động.')
+    return sidecar
+
+
+def end_imagegen(deps: Deps, sidecar: typing.Any) -> None:
+    """Dừng sidecar nếu có; lỗi khi dừng chỉ thành một dòng nhật ký, không cản việc tắt worker và ứng dụng."""
+    if sidecar is None:
+        return
+    try:
+        sidecar.stop()
+    except Exception as exc:
+        deps.out(f'Không dừng gọn được sidecar ảnh minh hoạ ({type(exc).__name__}); nó tự thoát khi launcher thoát.')
+
+
 def default_deps(environ: typing.Mapping[str, str] | None = None) -> Deps:
     return Deps(
         environ=dict(os.environ if environ is None else environ),
@@ -1327,6 +1605,14 @@ def cmd_status(deps: Deps, args: argparse.Namespace) -> int:
     for port, name in ((POSTGRES_PORT, 'PostgreSQL'), (TEMPORAL_PORT, 'Temporal'), (APP_PORT, 'Application')):
         status = 'Mở' if deps.wait_tcp(LOOPBACK, port, 1.0) else 'Đóng'
         deps.out(f'Cổng {port} ({name}): {status}')
+    if deps.start_imagegen is not None:
+        health = fetch_imagegen_health()
+        if health is not None:
+            deps.out(describe_imagegen_health(health, IMAGEGEN_PORT))
+        elif not layout.imagegen_python.is_file():
+            deps.out(f'Sidecar ảnh minh hoạ: chưa cài (not provisioned): thiếu {layout.imagegen_python}')
+        else:
+            deps.out(f'Sidecar ảnh minh hoạ (cổng {IMAGEGEN_PORT}): không chạy (not running)')
     password = load_or_create_password(layout)
     env = dict(deps.environ)
     env['AIAVC_PG_PASSWORD'] = password
@@ -1500,11 +1786,18 @@ def cmd_serve(deps: Deps, args: argparse.Namespace) -> int:
 
     identity = load_or_create_identity(layout)
 
+    # Sidecar ảnh minh hoạ chạy trước worker để activity đầu tiên đã có đích; nó không bao giờ chặn việc khởi động ứng dụng.
+    sidecar = begin_imagegen(deps, layout)
+
     try:
         worker = deps.start_worker(app, layout)
     except LauncherError as exc:
         deps.out(str(exc))
+        end_imagegen(deps, sidecar)
         return 1
+    except BaseException:
+        end_imagegen(deps, sidecar)
+        raise
 
     atomic_write_text(layout.pid_file, str(os.getpid()))
     serve_ended = False
@@ -1520,7 +1813,10 @@ def cmd_serve(deps: Deps, args: argparse.Namespace) -> int:
         )
         serve_ended = True
     finally:
-        worker.stop()
+        try:
+            worker.stop()
+        finally:
+            end_imagegen(deps, sidecar)
         try:
             layout.pid_file.unlink(missing_ok=True)
         except Exception:
@@ -1574,8 +1870,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None, deps: Deps | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    # default_deps giữ seed_defaults và seed_media là None để các test dựng từ default_deps (PW-G1) không chạm CSDL; CLI thật gắn bản thật.
-    actual_deps = deps or dataclasses.replace(default_deps(), seed_defaults=seed_defaults, seed_media=seed_media)
+    # default_deps giữ seed_defaults, seed_media và start_imagegen là None để các test dựng từ default_deps (PW-G1) không chạm CSDL hay chạy sidecar; CLI thật gắn bản thật.
+    actual_deps = deps or dataclasses.replace(default_deps(), seed_defaults=seed_defaults, seed_media=seed_media, start_imagegen=start_imagegen)
     handlers: dict[str, typing.Callable[[Deps, argparse.Namespace], int]] = {
         'start': cmd_start,
         'stop': cmd_stop,
