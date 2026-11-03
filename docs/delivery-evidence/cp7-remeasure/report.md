@@ -176,7 +176,7 @@ CQ.layout_cap_40: OVER
   - FULL_BLEED_INSET: 15 video (15,0%).
   - DATA_CARD: 10 video (10,0%).
   - MOSAIC_GRID: 0 video (0,0%).
-  - Toàn bộ 4 bố cục hợp lệ được phân bổ đa dạng, không bị độc canh một kiểu hiển thị.
+  - Mã nguồn (LAYOUT_KEYS) có 5 bố cục: HERO_STRIP, MOSAIC_GRID, FULL_BLEED_INSET, SPLIT_STACK, DATA_CARD. Lô chỉ dùng 4 bố cục (distinct:4), MOSAIC_GRID không được chọn cho video nào. HERO_STRIP chiếm 41%, vượt trần 40% một video. Số đo không cho biết vì sao MOSAIC_GRID không được chọn; báo cáo không suy đoán.
 - **Ảnh AI mỗi video**:
   - Tổng số ảnh AI sinh ra trong lô: **375 ảnh AI**.
   - Trung vị p50: **4 ảnh AI/video** (tối thiểu 0, tối đa 7 ảnh/video).
