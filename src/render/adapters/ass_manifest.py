@@ -1,4 +1,10 @@
-"""Builds the ASS file of one render from karaoke_plan (build_karaoke_plan, render_ass), adds the Disclosure style and Dialogue rows of inference segments (CT-AI-004, CT-QC-001), writes it under the staging root and returns the materialization_manifest entry (PW-F3)."""
+"""Builds the ASS file of one render from karaoke_plan (build_karaoke_plan, render_ass), adds the Disclosure style and Dialogue rows of inference segments (CT-AI-004, CT-QC-001), writes it under the staging root and returns the materialization_manifest entry (PW-F3).
+
+PRS-LAYOUT-TEXT: with layout_rows (render.domain.layout_text) the file also carries the layout text (title, category, number, quote,
+labels) and the "AI illustration" label of each cell; the whole-frame illustration label of IMGGEN-LABEL is then not written, so an
+AI picture is labelled once. Without layout_rows the file is unchanged.
+coveredIds: FR-PRS-006
+"""
 from __future__ import annotations
 
 import hashlib
@@ -11,6 +17,7 @@ from render.adapters.postgres_plan_assets import ScriptSegmentInfo
 from render.adapters.real_output_inspector import DISCLOSURE_STYLE
 from render.domain.content_gates import INFERENCE_CLAIM_MODES
 from render.domain.karaoke_plan import ConsumerWordTiming, TimedWord, build_karaoke_plan, render_ass
+from render.domain.layout_text import LayoutRows
 from render.ports.inputs import LocalMaterialRef
 
 DISCLOSURE_MISSING = 'DISCLOSURE_MISSING'
@@ -203,6 +210,7 @@ def build_ass_text(
     disclosure_style: Mapping,
     segments: Sequence[ScriptSegmentInfo],
     illustration_windows: Sequence[tuple[int, int]] = (),
+    layout_rows: LayoutRows | None = None,
 ) -> str:
     words_seq = words.words if isinstance(words, ConsumerWordTiming) else words
     words_tuple = tuple(words_seq)
@@ -211,6 +219,9 @@ def build_ass_text(
     windows = disclosure_windows(segments, words_tuple)
     style_row, margin_v = _disclosure_style_row(plan, disclosure_style)
     labels = _label_windows(illustration_windows)
+    if layout_rows is not None:
+        # PRS-LAYOUT-TEXT: the layout labels each AI cell itself; the whole-frame label would label the same picture twice.
+        labels = ()
 
     rows = base.rstrip('\n').split('\n')
     if windows:
@@ -232,6 +243,10 @@ def build_ass_text(
                 f'Dialogue: 0,{_clock(start_ms)},{_clock(end_ms)},{ILLUSTRATION_STYLE},,'
                 f'{ILLUSTRATION_MARGIN_H},{ILLUSTRATION_MARGIN_H},{ILLUSTRATION_MARGIN_V},,{ILLUSTRATION_TEXT}'
             )
+    if layout_rows is not None and layout_rows.events:
+        last_style_idx = max(i for i, r in enumerate(rows) if r.startswith('Style: '))
+        rows[last_style_idx + 1:last_style_idx + 1] = list(layout_rows.styles)
+        rows.extend(layout_rows.events)
     return '\n'.join(rows) + '\n'
 
 
@@ -245,6 +260,7 @@ def build_ass_material(
     disclosure_style: Mapping,
     segments: Sequence[ScriptSegmentInfo],
     illustration_windows: Sequence[tuple[int, int]] = (),
+    layout_rows: LayoutRows | None = None,
 ) -> AssMaterial:
     if not isinstance(staging_root, str) or not staging_root:
         raise AssManifestRejected(STAGING_ROOT_INVALID, 'staging_root')
@@ -260,6 +276,7 @@ def build_ass_material(
         disclosure_style=disclosure_style,
         segments=segments,
         illustration_windows=illustration_windows,
+        layout_rows=layout_rows,
     )
     data = text.encode('utf-8')
     digest = hashlib.sha256(data).hexdigest()
