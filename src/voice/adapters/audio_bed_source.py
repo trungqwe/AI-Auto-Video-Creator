@@ -1,4 +1,6 @@
-"""Production AudioBedPort (PW-E4; FR-AUD-007, FR-AUD-004): finds music by mood and duration in the collected library, collects new music over HTTPS from the pinned sources of music_sources.json under an exact-URL SSRF policy, pins sha256 and records provenance. Never AI-composed. No suitable music or a failing source gives a bed of kind none with warning AUDIO_MIX_QUALITY. The HTTPS transport is injected (no network import here)."""
+"""Production AudioBedPort (PW-E4; FR-AUD-007, FR-AUD-004): finds music by mood and duration in the collected library, collects new music over HTTPS from the pinned sources of music_sources.json under an exact-URL SSRF policy, pins sha256 and records provenance. Never AI-composed. No suitable music or a failing source gives a bed of kind none with warning AUDIO_MIX_QUALITY. The HTTPS transport is injected (no network import here).
+
+PW-E4-FIX2 (R11, FR-AUD-007, FR-AUD-004): besides the two pinned sources, the library reads the harvested catalog <library>/catalog/music_sources.json (same fields, role catalog, sha256 measured when harvested, any number of entries). While fewer than MUSIC_LIBRARY_TARGET tracks fit a cue, one catalog source not yet collected is collected for it (at most MAX_COLLECT_ATTEMPTS tries), so the library grows past one track. Among the fitting tracks the cue takes one by a stable rotation keyed on the voice artifact and the cue index (same video, same track; different videos spread over the library), instead of always the shortest. A cue without mood prefers tracks whose moods appear as words of its cue text."""
 from __future__ import annotations
 
 import datetime
@@ -26,6 +28,11 @@ BED_KIND_MUSIC = 'external_music'
 BED_KIND_NONE = 'none'
 ROLE_PRIMARY = 'primary'
 ROLE_FALLBACK = 'fallback'
+ROLE_CATALOG = 'catalog'
+CATALOG_RELATIVE_PATH = Path('catalog') / 'music_sources.json'
+MAX_CATALOG_SOURCES = 500
+MUSIC_LIBRARY_TARGET = 6
+MAX_COLLECT_ATTEMPTS = 2
 ERR_SOURCES_INVALID = 'music_sources_invalid'
 ERR_URL_NOT_ALLOWED = 'music_url_not_allowed'
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
@@ -89,6 +96,53 @@ def load_music_sources(path: Path | str) -> tuple[MusicSource, ...]:
     if len({item.source_id for item in sources}) != 2:
         raise _invalid('duplicate source_id')
     return tuple(sorted(sources, key=lambda item: item.role != ROLE_PRIMARY))
+
+
+def load_music_catalog(path: Path | str) -> tuple[MusicSource, ...]:
+    """Harvested music sources (role catalog): a missing file is an empty catalog; an unreadable file or a bad entry is skipped with a warning, never fatal. Duplicate URLs keep the first entry; at most MAX_CATALOG_SOURCES entries."""
+    target = Path(path)
+    if not target.is_file():
+        return ()
+    try:
+        raw = json.loads(target.read_text(encoding='utf-8'))['sources']
+    except (OSError, ValueError, KeyError, TypeError):
+        LOGGER.warning('music_catalog_unreadable')
+        return ()
+    if not isinstance(raw, list):
+        LOGGER.warning('music_catalog_unreadable')
+        return ()
+    sources: list[MusicSource] = []
+    seen: set[str] = set()
+    for index, item in enumerate(raw[:MAX_CATALOG_SOURCES]):
+        try:
+            source = _source_from(item, index)
+        except MusicSourceError:
+            LOGGER.warning('music_catalog_entry_invalid index=%s', index)
+            continue
+        if source.role != ROLE_CATALOG or source.url in seen:
+            continue
+        seen.add(source.url)
+        sources.append(source)
+    return tuple(sources)
+
+
+def save_music_catalog(path: Path | str, sources: Sequence[MusicSource]) -> None:
+    """Write the catalog atomically (role catalog for every entry); the harvest command is the only writer."""
+    entries = [
+        {'source_id': s.source_id, 'role': ROLE_CATALOG, 'url': s.url, 'license': s.license, 'attribution': s.attribution, 'author': s.author, 'sha256': s.sha256, 'moods': list(s.moods)}
+        for s in sources]
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write(target, json.dumps({'sources': entries}, ensure_ascii=False, indent=1).encode('utf-8'))
+
+
+def _words(text: object) -> frozenset[str]:
+    return frozenset(re.findall('[a-z]+', text.casefold())) if isinstance(text, str) else frozenset()
+
+
+def _rotation_pick(tracks: Sequence['CollectedTrack'], seed: str) -> 'CollectedTrack':
+    ordered = sorted(tracks, key=lambda track: track.rendition_sha256)
+    return ordered[int(hashlib.sha256(seed.encode('utf-8')).hexdigest(), 16) % len(ordered)]
 
 
 def check_music_url(url: object, sources: Sequence[MusicSource]) -> MusicSource:
@@ -239,6 +293,7 @@ class AudioBedSource:
         clock: Callable[[], datetime.datetime], max_bytes: int = DEFAULT_MAX_BYTES, timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         self._sources = tuple(sources)
+        self._active = self._sources
         self._library = Path(library_dir)
         self._transport = transport
         self._prepare_music = prepare_music
@@ -252,10 +307,13 @@ class AudioBedSource:
             raise AudioBedRejected(INPUT_NOT_READY, 'missing_loudness_constraints')
         errors: list[str] = []
         tracks: dict[int, CollectedTrack] = {}
+        pinned_urls = {source.url for source in self._sources}
+        catalog = tuple(source for source in load_music_catalog(self._library / CATALOG_RELATIVE_PATH) if source.url not in pinned_urls)
+        self._active = self._sources + catalog
         for index, cue in enumerate(request.cues):
             if cue.kind != 'music':
                 continue
-            track = self._track_for(cue, limits, errors)
+            track = self._track_for(cue, limits, errors, catalog, f'{request.voice_artifact_ref}#{index}')
             if track is None:
                 return self._none_outcome(request, errors)
             tracks[index] = track
@@ -263,11 +321,32 @@ class AudioBedSource:
             return self._none_outcome(request, ['no_music_cue'])
         return self._music_outcome(request, tracks)
 
-    def _track_for(self, cue, limits, errors: list[str]) -> CollectedTrack | None:
+    def _track_for(self, cue, limits, errors: list[str], catalog: Sequence[MusicSource], seed: str) -> CollectedTrack | None:
+        hints = frozenset()
+        if cue.mood is None:
+            hints = _words(cue.artifact_ref) & {mood for source in self._active for mood in source.moods}
+        if hints:
+            track = self._choose(cue, limits, errors, catalog, seed, hints)
+            if track is not None:
+                return track
+        return self._choose(cue, limits, errors, catalog, seed, frozenset())
+
+    def _choose(self, cue, limits, errors: list[str], catalog: Sequence[MusicSource], seed: str, hints: frozenset[str]) -> CollectedTrack | None:
         span = cue.end_ms - cue.start_ms
-        found = self._from_library(cue.mood, span, limits)
-        if found is not None:
-            return found
+        library = [track for track in self._from_library(cue.mood, span, limits) if not hints or hints & set(track.moods)]
+        if len(library) < MUSIC_LIBRARY_TARGET and catalog:
+            collected = {track.url for track in self._from_library(None, 0, None)}
+            fresh = [
+                source for source in catalog
+                if source.url not in collected and _mood_matches(source.moods, cue.mood) and (not hints or hints & set(source.moods))]
+            for source in fresh[:MAX_COLLECT_ATTEMPTS]:
+                track = self._collect(source, span, limits, errors)
+                if track is not None:
+                    return track
+        if library:
+            return _rotation_pick(library, seed)
+        if hints:
+            return None
         for source in self._sources:
             if _mood_matches(source.moods, cue.mood):
                 track = self._collect(source, span, limits, errors)
@@ -275,9 +354,10 @@ class AudioBedSource:
                     return track
         return None
 
-    def _from_library(self, mood: str | None, span: int, limits) -> CollectedTrack | None:
-        pinned = {source.url: source.sha256 for source in self._sources}
-        best = None
+    def _from_library(self, mood: str | None, span: int, limits) -> list[CollectedTrack]:
+        """Every intact library track of a current source that fits the mood, the span and (when limits is given) the loudness window."""
+        pinned = {source.url: source.sha256 for source in self._active}
+        found: list[CollectedTrack] = []
         for sidecar in sorted(self._library.glob('music-*.json')):
             try:
                 track = track_from_sidecar(sidecar.read_bytes())
@@ -285,19 +365,19 @@ class AudioBedSource:
                 continue
             if track is None or sidecar.name != f'music-{track.rendition_sha256}.json' or pinned.get(track.url) != track.sha256:
                 continue
-            if not _mood_matches(track.moods, mood) or track.duration_ms < span or validate_loudness_report(track.report, limits):
+            if not _mood_matches(track.moods, mood) or track.duration_ms < span or (limits is not None and validate_loudness_report(track.report, limits)):
                 continue
             try:
                 intact = hashlib.sha256((self._library / f'music-{track.rendition_sha256}.audio').read_bytes()).hexdigest() == track.rendition_sha256
             except OSError:
                 continue
-            if intact and (best is None or (track.duration_ms, track.rendition_sha256) < (best.duration_ms, best.rendition_sha256)):
-                best = track
-        return best
+            if intact:
+                found.append(track)
+        return found
 
     def _collect(self, source: MusicSource, span: int, limits, errors: list[str]) -> CollectedTrack | None:
         try:
-            check_music_url(source.url, self._sources)
+            check_music_url(source.url, self._active)
             response = self._transport.fetch(source.url, max_bytes=self._max_bytes, timeout_seconds=self._timeout)
         except MusicSourceError as exc:
             errors.append(exc.code)
@@ -403,4 +483,4 @@ class AudioBedSource:
         )
 
 
-__all__ = ('AudioBedSource', 'CollectedTrack', 'HttpsResponse', 'HttpsTransport', 'MusicSource', 'MusicSourceError', 'PreparedMusic', 'check_music_url', 'load_music_sources', 'silent_wav', 'track_from_sidecar')
+__all__ = ('AudioBedSource', 'CollectedTrack', 'HttpsResponse', 'HttpsTransport', 'MusicSource', 'MusicSourceError', 'PreparedMusic', 'check_music_url', 'load_music_catalog', 'load_music_sources', 'save_music_catalog', 'silent_wav', 'track_from_sidecar')
