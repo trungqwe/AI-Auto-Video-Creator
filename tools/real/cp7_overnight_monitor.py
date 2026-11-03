@@ -362,13 +362,13 @@ class OvernightDb(d.ReadOnlyDb):
             'WHERE cl.workspace_id = v.workspace_id AND cl.job_id = v.job_id)))', batch_id)
         return int(rows[0][0])
 
-    def collection_runs(self, business_date):
-        """Lượt thu thập định kỳ từ ngày kinh doanh của lô (mỗi nguồn tối đa một lượt mỗi ngày)."""
-        rows = self.query("SELECT r.source_id, r.status FROM controlplane.cp_collection_runs r WHERE r.workspace_id = %s AND r.run_kind = 'PERIODIC' AND r.business_date >= %s", business_date)
+    def collection_runs(self, business_date, since):
+        """Lượt thu thập định kỳ từ ngày kinh doanh của lô, chỉ lượt tạo từ lúc launcher của phép đo khởi động (CP7-11-FIX2: không mượn lượt cũ)."""
+        rows = self.query("SELECT r.source_id, r.status FROM controlplane.cp_collection_runs r WHERE r.workspace_id = %s AND r.run_kind = 'PERIODIC' AND r.business_date >= %s AND r.created_at >= %s", business_date, since)
         return [(r[0], r[1]) for r in rows]
 
-    def videos_completed_after_source_failure(self, batch_id, source_id):
-        rows = self.query('SELECT count(*) FROM controlplane.cp_completion_ledger cl JOIN controlplane.cp_video_jobs v ON v.workspace_id = cl.workspace_id AND v.job_id = cl.job_id WHERE cl.workspace_id = %s AND v.batch_id = %s AND cl.completed_at > (SELECT max(r.updated_at) FROM controlplane.cp_collection_runs r WHERE r.workspace_id = cl.workspace_id AND r.source_id = %s AND r.status = ' + "'FAILED_FINAL')", batch_id, source_id)
+    def videos_completed_after_source_failure(self, batch_id, source_id, since):
+        rows = self.query('SELECT count(*) FROM controlplane.cp_completion_ledger cl JOIN controlplane.cp_video_jobs v ON v.workspace_id = cl.workspace_id AND v.job_id = cl.job_id WHERE cl.workspace_id = %s AND v.batch_id = %s AND cl.completed_at > (SELECT max(r.updated_at) FROM controlplane.cp_collection_runs r WHERE r.workspace_id = cl.workspace_id AND r.source_id = %s AND r.created_at >= %s AND r.status = ' + "'FAILED_FINAL')", batch_id, source_id, since)
         return int(rows[0][0])
 
     def source_id_for(self, locator):
@@ -598,6 +598,7 @@ class OvernightRun:
     batch_id: str = ''
     record_prefix: str = ''
     window_start: object = None
+    collection_since: object = None
     started_utc: str = ''
     target_utc: str = ''
     t_target_s: float | None = None
@@ -651,6 +652,8 @@ def run_overnight(work_dir, sink_path=None):
         result.not_found_status = require_not_found_url()
         result.pre_stop_attempts = d.stop_until_exited()
         result.other_workflows_running = d.require_no_other_workflows()
+        # CP7-11-FIX2: launcher khởi chu kỳ thu thập bù ngay khi lên (trước khi lô được tạo), nên mốc lượt thu thập lấy trước khi khởi launcher.
+        result.collection_since = db.db_now()
         launch_path, _, launcher_out = d.start_capturing(work_dir, 'first')
         result.launcher_seed_line = d.launcher_seed_line(launcher_out)
         result.not_found_source = register_not_found_source(launcher, db, work_dir)
@@ -799,8 +802,9 @@ def audit_run(db, run, seen_ids=frozenset()):
     run.night_usd = str(d.CostWatch(db, run.window_start).spent())
     run.month_usd = str(d.CostWatch(db, month_window_start(db.db_now())).spent())
     not_found_id = run.not_found_source['source_id']
-    after_failure = db.videos_completed_after_source_failure(batch_id, not_found_id)
-    run.collection = collection_isolation(db.collection_runs(business_date_vn(run.window_start)), not_found_id, after_failure)
+    since = run.collection_since if run.collection_since is not None else run.window_start
+    after_failure = db.videos_completed_after_source_failure(batch_id, not_found_id, since)
+    run.collection = collection_isolation(db.collection_runs(business_date_vn(run.window_start), since), not_found_id, after_failure)
     run.reruns = {}
     for job_id, before in run.before_stop.items():
         bad = sorted(set(d.find_reruns(before, db.stage_map(job_id))) | set(d.find_reruns(before, run.after_start.get(job_id, before))))
