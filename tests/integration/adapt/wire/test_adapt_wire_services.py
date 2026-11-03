@@ -92,7 +92,8 @@ OWN_SUBSYSTEM = {
 # Mô-đun ghép nhiều phân hệ theo kế hoạch đã duyệt, không phải mô-đun đấu nối của một phân hệ:
 # completion.py (CP-5-COMPLETION), workflow.py (CP-6-WORKFLOW, docs/implementation/convergence/plan.md dòng 257, BL-CV-10)
 # và production.py (ADAPT-PROD, docs/implementation/adapt/slices.md, mục ADAPT-PROD).
-COMPOSITION_MODULES = {'completion', 'workflow', 'production'}
+# và illustrations.py (IMGGEN-PIPE, docs/plans/CREATIVE_QUALITY_PLAN_20261102.md của AI_SETUP, đợt 42: ghép catalog, creative và cổng sinh ảnh).
+COMPOSITION_MODULES = {'completion', 'workflow', 'production', 'illustrations'}
 
 
 def wiring(name: str):

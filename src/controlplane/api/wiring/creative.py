@@ -26,6 +26,7 @@ from creative.adapters.prompt_source import ConfigPromptSource
 from creative.application.pipeline import CreativePipeline
 from creative.application.provider_failure import ProviderFailurePolicy
 from creative.domain.asset_selection import SafetyRightsPolicy, ScoringWeights
+from creative.domain.layout_choice import DEFAULT_LAYOUT, LAYOUT_KEYS
 from creative.domain.script import LanguageVoicePolicy, TargetRange, INPUT_NOT_READY, SCRIPT_CHARS_PER_SECOND
 from creative.worker.activity_handler import CreativeActivityDeps
 from zoneinfo import ZoneInfo
@@ -239,6 +240,56 @@ class LazyInstructions(Mapping):
         return len(self._get())
 
 
+def layout_presets_of(presets: object) -> dict[str, str] | None:
+    """PRS-LAYOUT-QUOTA (FR-PRS-003): layout key -> preset name, inverted from render.presets.variants.<preset>.layout of the profile;
+    None unless each of the five layouts is named by exactly one variant (the plan then keeps the fixed preset as before)."""
+    variants = presets.get('variants') if isinstance(presets, Mapping) else None
+    if not isinstance(variants, Mapping):
+        return None
+    found: dict[str, str] = {}
+    for name, variant in variants.items():
+        layout = variant.get('layout') if isinstance(variant, Mapping) else None
+        if layout is None:
+            continue
+        if layout not in LAYOUT_KEYS or layout in found or not isinstance(name, str) or not name.strip():
+            return None
+        found[layout] = name
+    return found if set(found) == set(LAYOUT_KEYS) else None
+
+
+# PRS-LAYOUT-QUOTA: layouts already used by the other jobs of a job's batch (latest plan of each job, failed jobs left out) and the
+# batch target_count; the creative pipeline caps a layout at BATCH_SHARE_MAX of the batch with them (creative.domain.layout_choice).
+LAYOUT_USAGE_SQL = (
+    "SELECT DISTINCT ON (j.job_id) p.payload->'layout_choice'->>'layout_key' FROM controlplane.cp_video_jobs j "
+    "JOIN controlplane.cp_production_plans p ON p.workspace_id = j.workspace_id AND p.production_plan_id LIKE 'plan:' || j.job_id || ':r%%' "
+    "WHERE j.workspace_id = %s::uuid AND j.batch_id = (SELECT batch_id FROM controlplane.cp_video_jobs WHERE workspace_id = %s::uuid AND job_id = %s) "
+    "AND j.job_id <> %s AND j.status <> 'FAILED_FINAL' ORDER BY j.job_id, p.created_at DESC"
+)
+LAYOUT_TARGET_SQL = (
+    'SELECT b.target_count FROM controlplane.cp_production_batches b JOIN controlplane.cp_video_jobs j '
+    'ON j.workspace_id = b.workspace_id AND j.batch_id = b.batch_id WHERE j.workspace_id = %s::uuid AND j.job_id = %s'
+)
+
+
+class PostgresLayoutUsage:
+    """LayoutUsagePort of the creative activity inputs over the control plane tables; None (no cap) when the job has no batch row."""
+
+    def __init__(self, manager: Any) -> None:
+        self._manager = manager
+
+    def usage(self, *, workspace_id: str, job_id: str) -> tuple[dict[str, int], int] | None:
+        with self._manager.borrow_connection() as conn:
+            target = conn.execute(LAYOUT_TARGET_SQL, (workspace_id, job_id)).fetchone()
+            if target is None:
+                return None
+            rows = conn.execute(LAYOUT_USAGE_SQL, (workspace_id, workspace_id, job_id, job_id)).fetchall()
+        used: dict[str, int] = {}
+        for (key,) in rows:
+            if key in LAYOUT_KEYS:
+                used[key] = used.get(key, 0) + 1
+        return used, int(target[0])
+
+
 def creative_settings(profile: Any) -> CreativeSettings:
     min_ms = 60000
     max_ms = 70000
@@ -276,6 +327,7 @@ def creative_settings(profile: Any) -> CreativeSettings:
     variation_policy_revision = f'profile-{rev}'
     requested_angle_count = 2
     preset_revision_ref = 'preset-default'
+    layout_presets = None
     if hasattr(profile, 'parameters') and isinstance(profile.parameters, Mapping):
         if 'batch.videos_per_news_per_round' in profile.parameters:
             try:
@@ -284,7 +336,12 @@ def creative_settings(profile: Any) -> CreativeSettings:
                 pass
         if 'render.presets' in profile.parameters:
             presets = profile.parameters['render.presets']
-            if isinstance(presets, Mapping) and presets:
+            # PRS-LAYOUT-QUOTA (FR-PRS-003): with a layout per preset the model picks the layout and the plan takes its preset;
+            # preset_revision_ref is then the preset of the default layout. Without it the first preset is kept as before.
+            layout_presets = layout_presets_of(presets)
+            if layout_presets is not None:
+                preset_revision_ref = layout_presets[DEFAULT_LAYOUT]
+            elif isinstance(presets, Mapping) and presets:
                 preset_revision_ref = str(next(iter(presets.keys())))
             elif isinstance(presets, (list, tuple)) and presets:
                 preset_revision_ref = str(presets[0])
@@ -295,6 +352,7 @@ def creative_settings(profile: Any) -> CreativeSettings:
         requested_angle_count=requested_angle_count,
         variation_policy_revision=variation_policy_revision,
         preset_revision_ref=preset_revision_ref,
+        layout_presets=layout_presets,
     )
 
 
@@ -451,6 +509,7 @@ def creative_activity_deps(
         selections=selections,
         settings=creative_settings(profile),
         clock=clock,
+        layout_usage=PostgresLayoutUsage(manager),
     )
     return CreativeActivityDeps(
         pipeline=pipeline,
@@ -504,6 +563,8 @@ __all__ = [
     'creative_settings',
     'PostgresPromptScope',
     'LazyInstructions',
+    'PostgresLayoutUsage',
+    'layout_presets_of',
     'ProductionSelectionInputs',
     'ProductionVariantContext',
 ]
