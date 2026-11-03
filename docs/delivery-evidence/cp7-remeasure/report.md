@@ -2,34 +2,39 @@
 
 ## Kết luận trung thực
 
-Thực hiện đo lại đúng 1 lô thật 100 video trên HEAD tích hợp mới (đã có ảnh AI Klein, hook thật Pixabay/Freesound, kho nhạc xoay vòng, chuẩn hoá số TTS, năm bố cục và POLISH) theo mục mở **OI-CP7-11-Q6** bằng chính công cụ và bộ test của CP7-11, giữ nguyên công thức và ngưỡng RG-10.
+Thực hiện đo lại đúng 1 lô thật 100 video trên HEAD tích hợp (đã có ảnh AI Klein, hook thật Pixabay/Freesound, kho nhạc xoay vòng, chuẩn hoá số TTS, năm bố cục và POLISH) theo mục mở **OI-CP7-11-Q6**, bằng chính công cụ và bộ test của CP7-11; công thức và ngưỡng RG-10 giữ nguyên.
 
-Lô thật đo được chạy với Batch ID: `f132d43a-e25d-42c3-afe6-373d1155ecd6` trên HEAD `a8a92461a94ed14db71c325bb2b65f96540746ea`. Toàn bộ 100 video hợp lệ đã được sản xuất, kiểm tra chất lượng và đồng bộ lên Google Drive (valid=100, invalid=0, drive_sample=6).
+**Trạng thái nghiệm thu: CHƯA ĐẠT, cần Control quyết định.** Acceptance yêu cầu các mục RG-10 PASS (warn_80_visible PASS hoặc NOT_OBSERVED), nhưng số đo thật có 3 mục RG-10 FAIL (auto_ratio_95, failure_isolated, working_set_cap) và CQ.layout_cap_40 là OVER. Nguyên nhân nằm ở dây chuyền sản phẩm ngoài owned paths của gói nên Worker (Sonnet 5.5) không sửa được; theo ràng buộc không chạy lô thứ hai, báo cáo này ghi nguyên số đo của lô duy nhất để Control quyết.
+
+`Batch ID: f132d43a-e25d-42c3-afe6-373d1155ecd6`
+
+`HEAD khi chạy: a8a92461a94ed14db71c325bb2b65f96540746ea`
+
+Lô đạt 100 video hợp lệ và đã đồng bộ Drive (valid=100, invalid=0, drive_sample=6) nhưng phải tạo 153 job để có 100 video hợp lệ.
 
 Trạng thái từng mục RG-10 và CQ được ghi nhận trung thực như sau:
-- 10 mục RG-10 đạt chuẩn: drive_quota_ok: PASS, valid_synced_100: PASS, within_12h: PASS (t_target_s=26641 s ~ 7 giờ 24 phút, dưới trần 12 giờ), no_vanished_jobs: PASS, resume_300s_midrun: PASS (thời gian phục hồi 15,8 s sau lệnh dừng/khởi động lại ở mốc 40 video), no_rerun_completed: PASS, cost_under_cap: PASS (0 USD), stage_metrics: PASS, secret_scan: PASS, warn_80_visible: NOT_OBSERVED.
+- 9 mục RG-10 PASS: drive_quota_ok, valid_synced_100, within_12h (t_target_s=26641 s, khoảng 7 giờ 24 phút, dưới trần 12 giờ), no_vanished_jobs, resume_300s_midrun (ready_seconds=15,8 s; dừng rồi khởi động lại ở mốc 40 video hoàn thành), no_rerun_completed, cost_under_cap (0 USD), stage_metrics, secret_scan. 1 mục NOT_OBSERVED: warn_80_visible (acceptance chấp nhận PASS hoặc NOT_OBSERVED). 3 mục FAIL nêu ngay dưới.
 - 3 mục RG-10 không đạt:
-  - RG-10.auto_ratio_95: FAIL. Lô hoàn thành 100 video hợp lệ nhưng cần tổng cộng 153 job (tỷ lệ 100/153 = 65,36%, dưới ngưỡng >= 95%). Có 53 job rơi vào FAILED_FINAL, trong đó 51 job bị trượt ở stage qc với mã quality_gates_failed (hoạt động inspect_output), 1 job ở tts với mã voice_duration_out_of_range, và 1 job ở stage none.
-  - RG-10.failure_isolated: FAIL. Nguồn 404 thử nghiệm chưa có lượt thu thập nào (target_runs=0) trong cửa sổ của lô này, do đó test báo lỗi không chứng minh được cô lập lỗi.
-  - RG-10.working_set_cap: FAIL. Dung lượng working set tối đa của thư mục staging đạt 23.046.397.320 bytes (21,46 GiB), vượt nhẹ ngưỡng trần 20 GiB (21.474.836.480 bytes) quy định tại WORKING_SET_CAP_BYTES do số lượng job luân chuyển tăng lên 153 job và tích lũy tệp trung gian trong staging.
+  - RG-10.auto_ratio_95: FAIL. Cần 153 job để có 100 video hợp lệ (100/153 = 65,36%, dưới ngưỡng 95%); 53 job FAILED_FINAL: 51 job ở stage qc, code quality_gates_failed (activity inspect_output); 1 job ở stage tts, code voice_duration_out_of_range (activity CreateVoiceTrack); 1 job không rõ stage (stage=none). Lý do cụ thể cổng QC nào không đạt chưa được số đo ghi lại (dòng diag_job có message rỗng); báo cáo không suy đoán, Control cần điều tra.
+  - RG-10.failure_isolated: FAIL. target_runs=0: nguồn 404 thử nghiệm không có lượt thu thập nào trong cửa sổ của lô này (batch ghi not_found_source registered=0 existing=0) nên test không chứng minh được cô lập lỗi.
+  - RG-10.working_set_cap: FAIL. max_working_set_gib=21,46 (23.046.397.320 bytes) vượt trần 20 GiB (21.474.836.480 bytes) của WORKING_SET_CAP_BYTES. Nguyên nhân chưa được số đo chứng minh; GIẢ ĐỊNH chưa kiểm: nhiều job (153) để lại tệp trung gian trong staging.
 - 3 chỉ số chất lượng sáng tạo CQ:
   - CQ.no_background_only: PASS. 0 video chỉ có ảnh nền (background_only=0, seed_share_max_pct=0.0). Toàn bộ 100 video đều có ảnh minh hoạ thật hoặc ảnh AI, đáp ứng tuyệt đối chỉ thị chất lượng.
   - CQ.real_hooks: PASS. 100% video dùng hook thật từ Freesound (audio) và Pixabay (visual), không có hook giữ chỗ template nào (not_real=0).
-  - CQ.layout_cap_40: OVER. Phân bố 4 bố cục gồm HERO_STRIP (41 video = 41%), SPLIT_STACK (34 video), FULL_BLEED_INSET (15 video), DATA_CARD (10 video). Bố cục HERO_STRIP vượt trần 40% đúng 1 video do chạy song song 6 luồng (max_concurrent_videos - 1), thuộc diện Control quyết theo giới hạn đã định.
+  - CQ.layout_cap_40: OVER. Phân bố 4 bố cục gồm HERO_STRIP (41 video = 41%), SPLIT_STACK (34 video), FULL_BLEED_INSET (15 video), DATA_CARD (10 video). HERO_STRIP đạt 41/100 video, vượt trần 40% một video. Acceptance cho phép trần có thể vượt tối đa max_concurrent_videos - 1 khi chạy song song (mặc định 6 luồng) và quy định kết quả là OVER chứ không FAIL; Control quyết.
 
 Danh sách tệp thêm mới của gói: tools/real/cp7_remeasure_quality.py, tests/real/test_cp7_remeasure.py (cả hai chép nguyên văn từ bản tham chiếu Control D:/AIAVC_IMGPROTO/ref/cp7-remeasure/, khớp SHA-256 hoàn toàn) và tệp báo cáo docs/delivery-evidence/cp7-remeasure/report.md. Không sửa đổi bất kỳ tệp nào của CP7-11 hay mã nguồn sản phẩm.
 
 ## Lệnh đã chạy
 
-- HEAD khi chạy: `a8a92461a94ed14db71c325bb2b65f96540746ea`
-- Interpreter khoá: C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\8715e538\venv\Scripts\python.exe
-- git diff --check: exit code 0
-- python -m pytest tests/real/test_cp7_remeasure.py -q -p no:cacheprovider: exit code 0, dòng tổng kết nguyên văn: 18 passed, 1 skipped in 0.08s
-- Chạy lô thật: Start-Process tách tiến trình độc lập (CP7_RG10_LIVE=1, PYTHONUTF8=1, PYTEST_DEBUG_TEMPROOT=C:\Users\Admin\AppData\Local\Temp\ai-setup-pytest\CP7-REMEASURE-implement-r0-ac1b5c0961, log ngoài repo tại C:\Users\Admin\AppData\Local\Temp\ai-setup-pytest\cp7_remeasure_stdout.log và cp7_remeasure_stderr.log); lệnh python -m pytest tests/real/test_cp7_overnight.py -q -p no:cacheprovider: exit code 1
-- Dòng tổng kết pytest nguyên văn: `3 failed, 54 passed, 1 skipped in 26772.85s (7:26:12)`
-- Đo chỉ số CQ (bước 7, với CP7_REMEASURE_BATCH_PREFIX=f132d43a): python -m pytest tests/real/test_cp7_remeasure.py -q -p no:cacheprovider -k test_cq -rP: exit code 0, dòng tổng kết nguyên văn: 1 passed, 18 deselected in 1.20s
-- Chẩn đoán FAILED_FINAL (bước 8, với CP7_DIAG_BATCH_PREFIX=f132d43a): python -m pytest tests/real/test_cp7_overnight.py -q -p no:cacheprovider -k test_diag -rP: exit code 0, dòng tổng kết nguyên văn: 1 passed, 57 deselected in 2.66s
-- Kiểm tra mặc định sau lô không chạy thật (bước 9): python -m pytest tests/real/test_cp7_overnight.py -q -p no:cacheprovider: exit code 0, dòng tổng kết nguyên văn: 43 passed, 15 skipped in 0.30s
+- `HEAD khi chạy: a8a92461a94ed14db71c325bb2b65f96540746ea`
+- Interpreter khoá: `C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\8715e538\venv\Scripts\python.exe`
+- Lệnh `git diff --check`: exit code `0`
+- Lệnh `python -m pytest tests/real/test_cp7_remeasure.py -q -p no:cacheprovider`: exit code `0`, dòng tổng kết nguyên văn `18 passed, 1 skipped in 0.08s`
+- Chạy lô thật đúng một lần bằng Start-Process tách tiến trình (CP7_RG10_LIVE=1, PYTHONUTF8=1, PYTEST_DEBUG_TEMPROOT riêng của lane, log ngoài repo): lệnh `python -m pytest tests/real/test_cp7_overnight.py -q -p no:cacheprovider`, exit code `1`, dòng tổng kết nguyên văn `3 failed, 54 passed, 1 skipped in 26772.85s (7:26:12)`
+- Đo CQ sau lô (CP7_REMEASURE_BATCH_PREFIX=f132d43a): lệnh `python -m pytest tests/real/test_cp7_remeasure.py -q -p no:cacheprovider -k test_cq -rP`, exit code `0`, dòng tổng kết nguyên văn `1 passed, 18 deselected in 1.20s`
+- Chẩn đoán FAILED_FINAL (CP7_DIAG_BATCH_PREFIX=f132d43a): lệnh `python -m pytest tests/real/test_cp7_overnight.py -q -p no:cacheprovider -k test_diag -rP`, exit code `0`, dòng tổng kết nguyên văn `1 passed, 57 deselected in 2.66s`
+- Kiểm tra mặc định sau lô, không chạy thật: lệnh `python -m pytest tests/real/test_cp7_overnight.py -q -p no:cacheprovider`, exit code `0`, dòng tổng kết nguyên văn `43 passed, 15 skipped in 0.30s`
 
 ## Kết quả
 
@@ -52,7 +57,7 @@ CQ.layout_cap_40: OVER
 
 ## Chi tiết đo
 
-`
+```text
 - valid_synced_100: valid=100
 - valid_synced_100: invalid=0
 - valid_synced_100: drive_sample=6
@@ -126,7 +131,7 @@ CQ.layout_cap_40: OVER
 - diag_cause: stage=none code=none activity=none n=1
 - diag_cause: stage=tts code=voice_duration_out_of_range activity=CreateVoiceTrack n=1
 - diag_job: job=f132d43a stage=qc attempt=1 status=FAILED_FINAL code=quality_gates_failed message=
-`
+```
 
 ## So sánh với lượt trước (lô 74e795ef)
 
@@ -146,10 +151,10 @@ CQ.layout_cap_40: OVER
 - analyze: 42,7 s (lô cũ 42,3 s, delta +0,4 s)
 - script: 96,5 s (lô cũ 98,3 s, delta -1,8 s)
 - plan: 89,9 s (lô cũ 66,7 s, delta +23,2 s)
-- media_select: 372,6 s (lô cũ 50,3 s, delta +322,3 s — tăng mạnh do sinh ảnh AI Klein qua mạng và tìm hook thật Pixabay/Freesound)
+- media_select: 372,6 s (lô cũ 50,3 s, delta +322,3 s — tăng mạnh; GIẢ ĐỊNH chưa kiểm: do bước sinh ảnh AI Klein và tìm hook thật Pixabay/Freesound)
 - tts: 11,1 s (lô cũ 15,9 s, delta -4,8 s)
 - align: 7,6 s (lô cũ 9,9 s, delta -2,3 s)
-- process: 79,2 s (lô cũ 27,5 s, delta +51,7 s — tải và xử lý media đa nguồn)
+- process: 79,2 s (lô cũ 27,5 s, delta +51,7 s — GIẢ ĐỊNH chưa kiểm: tải và xử lý media đa nguồn)
 - render: 19,8 s (lô cũ 13,5 s, delta +6,3 s)
 - qc: 3,0 s (lô cũ 3,2 s, delta -0,2 s)
 - sync: 15,7 s (lô cũ 13,7 s, delta +2,0 s)
@@ -159,7 +164,7 @@ CQ.layout_cap_40: OVER
 
 - Lô cũ 74e795ef: Chỉ có đúng 1 job thất bại tại stage render, code no_illustration_available (activity resolve_render_package).
 - Lô mới f132d43a: Có 53 job thất bại chung cuộc trên 153 job được tạo:
-  - Stage qc, code quality_gates_failed, activity inspect_output: **51 job**. Nguyên nhân chính do cổng QC kiểm tra visual hook similarity phát hiện tương đồng dưới ngưỡng hoặc thumbnail bài viết. Cơ chế phục hồi của launcher tự động cấp job mới từ kho bài viết để hoàn thành đủ 100 video hợp lệ.
+  - Stage qc, code quality_gates_failed, activity inspect_output: **51 job**. Lý do cổng QC nào không đạt chưa được số đo ghi lại (diag_job có message rỗng); Control cần điều tra. Launcher cấp job mới để đủ 100 video hợp lệ (quan sát từ total=153, không phải nguyên nhân).
   - Stage tts, code voice_duration_out_of_range, activity CreateVoiceTrack: **1 job**.
   - Stage none, code none, activity none: **1 job**.
 
@@ -194,11 +199,11 @@ CQ.layout_cap_40: OVER
 
 ## Open item
 
-- **OI-CP7-11-Q6**: Gói CP7-REMEASURE đã hoàn thành nhiệm vụ cốt lõi là đo lại toàn diện một lô thật 100 video trên dây chuyền tích hợp mới với đầy đủ số đo chất lượng hình/tiếng và so sánh chi tiết với lô cũ 74e795ef.
-- **Đánh giá chất lượng sáng tạo (CQ)**: Dây chuyền mới đạt xuất sắc mục tiêu chất lượng: loại bỏ hoàn toàn video chỉ có ảnh nền (CQ.no_background_only: PASS, 0 video), chuyển đổi thành công 100% sang hook thật từ Freesound và Pixabay (CQ.real_hooks: PASS), tích hợp 375 ảnh AI cho 97% video, và xoay vòng 11 bản nhạc nền không lặp đơn điệu. Bố cục phân bổ 4 kiểu, trong đó HERO_STRIP 41% (CQ.layout_cap_40: OVER vượt 1 video do chạy song song 6 luồng, thuộc thẩm quyền Control quyết định).
-- **Đánh giá ngưỡng vận hành (RG-10)**:
-  - Do bổ sung bước gọi AI sinh ảnh Klein và tải hook ngoài theo thời gian thực, thời gian xử lý tại media_select tăng từ 50,3 s lên 372,6 s (lead time p50 tăng từ 364,6 s lên 812,3 s, thông lượng 13,5 video/giờ thay vì 52,6 video/giờ). Tổng thời gian hoàn thành lô 100 video là 26.641 giây (~7 giờ 24 phút), vẫn nằm an toàn dưới trần 12 giờ của RG-10 (within_12h: PASS).
-  - Tỷ lệ tự hoàn thành đạt 65,36% (100/153 job) không đạt ngưỡng >= 95% của RG-10.auto_ratio_95 do cổng QC kiểm tra visual hook tương đồng quá chặt chẽ (51 job bị loại tại qc/quality_gates_failed).
-  - Thư mục staging tích lũy tệp trung gian trong suốt 153 job khiến working set đỉnh đạt 21,46 GiB, vượt nhẹ trần 20 GiB của RG-10.working_set_cap.
-  - Nguồn 404 không có lượt thu thập nào trong cửa sổ lô khiến RG-10.failure_isolated không ghi nhận được target_runs > 0.
-- Các dữ liệu và số đo thực tế này là cơ sở khách quan để Control, Sol-Lead và Astra-Lead đánh giá và điều chỉnh tham số trước mốc nghiệm thu mẫu CP7-14.
+- **OI-CP7-11-Q6**: Gói CP7-REMEASURE đã đo lại một lô thật 100 video trên dây chuyền tích hợp mới, kèm số đo hình/tiếng và so sánh với lô 74e795ef. Lô chạy đúng một lần; không chạy lô thứ hai.
+- **Chất lượng sáng tạo (CQ)**: CQ.no_background_only PASS (0 video chỉ có ảnh nền); CQ.real_hooks PASS (100 video dùng hook thật Freesound và Pixabay, not_real=0); 375 ảnh AI cho 97/100 video; 11 bản nhạc khác nhau, 0 video không nhạc; CQ.layout_cap_40 OVER (HERO_STRIP 41/100, trần 40).
+- **Ngưỡng vận hành (RG-10) chưa đạt**:
+  - RG-10.auto_ratio_95 FAIL: 100/153 = 65,36%; 51 job qc/quality_gates_failed, lý do cổng QC chưa xác định.
+  - RG-10.working_set_cap FAIL: 21,46 GiB, vượt trần 20 GiB.
+  - RG-10.failure_isolated FAIL: target_runs=0 (nguồn 404 không được thu thập trong cửa sổ lô).
+  - Thời gian: t_target_s tăng từ 6849 s lên 26641 s; lead p50 từ 364,6 s lên 812,3 s; 13,5 video/giờ so với 52,6; media_select p50 từ 50,3 s lên 372,6 s; RG-10.within_12h vẫn PASS.
+- **Đề nghị Control quyết định** (Worker không tự quyết): (1) ghi nhận lô f132d43a là số đo thật của OI-CP7-11-Q6 với 3 RG-10 FAIL và 1 CQ OVER; (2) mở gói sửa sản phẩm riêng, ngoài owned paths của gói này, cho cổng QC quality_gates_failed, working set của staging và kiểm chứng nguồn 404, rồi đo lại ở phạm vi mới; (3) quyết định xử lý CQ.layout_cap_40 OVER. Các số đo này là cơ sở để Control, Reviewer (Sonnet 5.5) và Auditor (Opus 5.5) điều chỉnh trước mẫu CP7-14.
