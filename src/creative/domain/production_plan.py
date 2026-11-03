@@ -1,5 +1,8 @@
 """ProductionPlan (CT-AI-007) và đầu vào RenderPackage (CT-RND-003) phía D.
 
+PRS-LAYOUT-PLAN: raw may hold the member layout (read by the pipeline, see creative.domain.layout_choice); the plan carries the
+layout_choice the caller passes, in the payload and the fingerprint only when present, so plans without it keep their fingerprint.
+
 coveredIds: CT-AI-007, CT-RND-003
 """
 from __future__ import annotations
@@ -38,7 +41,7 @@ HOOK_LEAD_IN_MS = 500
 _SCENE_KEYS = ('scene_id', 'start_ms', 'end_ms', 'transition_intent', 'visuals')
 _VISUAL_KEYS = ('media_asset_id', 'start_ms', 'end_ms', 'crop_intent', 'overlay_intent', 'effect_intent')
 _TOP_REQUIRED = ('timeline', 'hook_placement', 'voice_profile_intent', 'music_cues', 'sfx_cues', 'subtitle_style_intent', 'allowed_fallbacks')
-_TOP_OPTIONAL = ('output_metadata_ref', 'output_metadata_requirement')
+_TOP_OPTIONAL = ('output_metadata_ref', 'output_metadata_requirement', 'layout')
 _FORBIDDEN_VALUE = re.compile(
     r'[A-Za-z][A-Za-z0-9+.-]*://'
     r'|^(?:[A-Za-z]:[\x5c/]|[\x5c/]|~[\x5c/]|[.]{1,2}[\x5c/])'
@@ -393,13 +396,19 @@ class ProductionPlan:
     output_metadata_ref: str | None
     output_metadata_requirement: str | None
     plan_fingerprint: str = ''
+    layout_choice: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
         for name in _FROZEN_FIELDS:
             object.__setattr__(self, name, _freeze(getattr(self, name)))
+        if self.layout_choice is not None:
+            object.__setattr__(self, 'layout_choice', _freeze(self.layout_choice))
 
     def to_payload(self) -> dict[str, object]:
-        return {name: _thaw(getattr(self, name)) for name in _PAYLOAD_FIELDS}
+        payload = {name: _thaw(getattr(self, name)) for name in _PAYLOAD_FIELDS}
+        if self.layout_choice is not None:
+            payload['layout_choice'] = _thaw(self.layout_choice)
+        return payload
 
     def fingerprint_basis(self) -> dict[str, object]:
         """Nội dung kế hoạch; loại production_plan_id và plan_fingerprint nên đổi ID không đổi fingerprint."""
@@ -422,7 +431,7 @@ class ProductionPlan:
         }
 
 
-def build_production_plan(raw, *, production_plan_id, script, selection, preset_revision_ref) -> ProductionPlan:
+def build_production_plan(raw, *, production_plan_id, script, selection, preset_revision_ref, layout_choice=None) -> ProductionPlan:
     """Dựng ProductionPlan (CT-AI-007) từ raw không tin cậy; chỉ chứa intent.
 
     Ref asset/rendition/hook/thumbnail lấy từ selection (D-09), không từ raw; thumbnail phải nằm trọn trong hook và được chuẩn hoá bắt đầu sau lead-in (HOOK_LEAD_IN_MS, tối đa nửa hook);
@@ -435,6 +444,11 @@ def build_production_plan(raw, *, production_plan_id, script, selection, preset_
     for name, value in (('production_plan_id', production_plan_id), ('preset_revision_ref', preset_revision_ref)):
         if not isinstance(value, str) or not value.strip():
             _reject(INPUT_NOT_READY, f'missing_{name}', name)
+    if layout_choice is not None and not (
+        isinstance(layout_choice, Mapping) and all(isinstance(layout_choice.get(k), str) and layout_choice[k] for k in ('layout_key', 'preset_key'))
+        and layout_choice['preset_key'] == preset_revision_ref
+    ):
+        _reject(INPUT_NOT_READY, 'invalid_layout_choice', 'layout_choice')
     if selection.script_ref != script.script_version_id:
         _reject(CONTEXT_MISMATCH, 'script_ref_mismatch', 'selection.script_ref')
     if not isinstance(raw, Mapping):
@@ -460,5 +474,6 @@ def build_production_plan(raw, *, production_plan_id, script, selection, preset_
         music_cues=music, sfx_cues=sfx, subtitle_style_intent=subtitle, allowed_fallbacks=fallbacks,
         output_metadata_ref=_text(source, 'output_metadata_ref', '') if 'output_metadata_ref' in source else None,
         output_metadata_requirement=_text(source, 'output_metadata_requirement', '') if 'output_metadata_requirement' in source else None,
+        layout_choice=layout_choice,
     )
     return replace(plan, plan_fingerprint=plan.compute_fingerprint())
