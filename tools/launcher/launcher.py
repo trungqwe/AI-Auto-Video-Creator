@@ -56,6 +56,8 @@ OUTBOX_RELAY_INTERVAL_SECONDS = 2.0
 ENRICHMENT_INTERVAL_SECONDS = 5.0
 # Nhịp chiếu sự kiện outbox vào cp_operation_stream (OPSTREAM-WIRE): SSE và màn hình thao tác đọc luồng này.
 OPERATION_STREAM_INTERVAL_SECONDS = 2.0
+# Nhịp dọn staging (STAGING-RETENTION): mỗi 5 phút dời tệp của job đã hoàn tất sang thùng rác theo retention của profile.
+STAGING_RETENTION_INTERVAL_SECONDS = 300.0
 BACKGROUND_STOP_SECONDS = 10.0
 
 # Sidecar ảnh minh hoạ cục bộ (IMGGEN-LAUNCH, thiết kế đợt 42 mục 2): tiến trình riêng trong môi trường uv riêng, launcher chỉ khởi chạy, canh và dừng nó.
@@ -1012,6 +1014,26 @@ def install_activity_executor(loop: typing.Any) -> typing.Any:
     return executor
 
 
+def build_staging_retention(
+    connection_factory: typing.Callable[[], typing.Any],
+    workspace_id: str,
+    runtime: typing.Any,
+    parameters: typing.Mapping[str, typing.Any],
+    clock: typing.Callable[[], datetime.datetime],
+    environ: typing.Mapping[str, str] | None = None,
+) -> typing.Any:
+    """STAGING-RETENTION: vòng dọn staging của worker; None khi runtime không có staging_root tuyệt đối.
+    Thùng rác là AIAVC_STAGING_TRASH_DIR hoặc <thư mục dữ liệu>/trash/staging; chính sách đọc từ retention.output và retention.temporary."""
+    ensure_src_on_path()
+    from controlplane.infrastructure.storage.staging_retention import RetentionPolicy, StagingRetentionSweeper, resolve_trash_root
+
+    staging_root = getattr(runtime, 'staging_root', None)
+    if not isinstance(staging_root, Path) or not staging_root.is_absolute():
+        return None
+    trash_root = resolve_trash_root(staging_root, os.environ if environ is None else environ)
+    return StagingRetentionSweeper(connection_factory, workspace_id, staging_root, trash_root, RetentionPolicy.from_parameters(parameters), clock)
+
+
 def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
     ensure_src_on_path()
     import asyncio
@@ -1086,6 +1108,7 @@ def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
     )
     tier_order = tuple(profile.parameters['collection.tiers'])
     interval_minutes = int(profile.parameters['collection.collection_interval_minutes'])
+    retention = build_staging_retention(batch_connection, workspace_id, runtime, profile.parameters, clock)
 
     loop = asyncio.new_event_loop()
     executor = install_activity_executor(loop)
@@ -1112,6 +1135,8 @@ def start_worker(app: typing.Any, layout: Layout) -> typing.Any:
                 asyncio.ensure_future(starter.run_forever(stop_event, ENRICHMENT_INTERVAL_SECONDS)),
                 asyncio.ensure_future(stream_relay.run_forever(stop_event, OPERATION_STREAM_INTERVAL_SECONDS)),
             ]
+            if retention is not None:
+                background.append(asyncio.ensure_future(retention.run_forever(stop_event, STAGING_RETENTION_INTERVAL_SECONDS)))
             group_box.append(group)
             ready_evt.set()
             try:
