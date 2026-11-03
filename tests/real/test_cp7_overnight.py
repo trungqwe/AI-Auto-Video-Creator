@@ -269,8 +269,9 @@ _DB_CASES = [
      [('render', 'SUCCEEDED', 1, 60.5), ('tts', 'SUCCEEDED', 1, None)]),
     ('job_lead_seconds', ('b1',), [(120.0,), (Decimal('60'),)], [120.0, 60.0]),
     ('batch_drive_bytes', ('b1',), [(5,)], 5),
-    ('collection_runs', (date(2026, 11, 2),), [('s1', 'COMPLETED')], [('s1', 'COMPLETED')]),
-    ('videos_completed_after_source_failure', ('b1', 's9'), [(4,)], 4),
+    ('collection_runs', (date(2026, 11, 2), datetime(2026, 11, 1, 18, 4, tzinfo=timezone.utc)), [('s1', 'COMPLETED')],
+     [('s1', 'COMPLETED')]),
+    ('videos_completed_after_source_failure', ('b1', 's9', datetime(2026, 11, 1, 18, 4, tzinfo=timezone.utc)), [(4,)], 4),
     ('source_id_for', ('https://x/',), [('s9',)], 's9'),
     ('source_id_for', ('https://x/',), [], None),
 ]
@@ -299,20 +300,50 @@ def test_unit_valid_synced_count_requires_cloud_verified_evidence():
 
 
 def test_unit_collection_queries_use_business_day():
+    since = datetime(2026, 11, 1, 18, 4, tzinfo=timezone.utc)
     db = _Rec([('s1', 'COMPLETED')])
-    db.collection_runs(date(2026, 11, 2))
+    db.collection_runs(date(2026, 11, 2), since)
     sql = db.calls[0][0]
     assert 'r.business_date >= %s' in sql
     assert "r.run_kind = 'PERIODIC'" in sql
-    assert 'created_at' not in sql
+    assert db.calls[0][1] == (date(2026, 11, 2), since)
     db2 = _Rec([(1,)])
-    db2.videos_completed_after_source_failure('b1', 's9')
+    db2.videos_completed_after_source_failure('b1', 's9', since)
     sql2 = db2.calls[0][0]
     assert 'cp_completion_ledger' in sql2
     assert 'cp_collection_runs' in sql2
     assert "r.status = 'FAILED_FINAL'" in sql2
     assert 'cl.completed_at > (SELECT max(r.updated_at)' in sql2
-    assert db2.calls[0][1] == ('b1', 's9')
+    assert db2.calls[0][1] == ('b1', 's9', since)
+
+
+def test_unit_collection_queries_count_only_runs_created_since_the_launch():
+    """CP7-11-FIX2: lượt thu thập của cùng ngày kinh doanh tạo trước phép đo (lô f132d43a: lượt ngày 03/11 tạo 17:13Z ngày 02/11, lô tạo
+    07:48Z ngày 03/11) không được làm bằng chứng cô lập lỗi; cả hai truy vấn lọc r.created_at >= mốc khởi launcher."""
+    since = datetime(2026, 11, 3, 7, 40, tzinfo=timezone.utc)
+    db = _Rec([])
+    db.collection_runs(date(2026, 11, 3), since)
+    sql, params = db.calls[0]
+    assert sql.endswith('AND r.business_date >= %s AND r.created_at >= %s') and params == (date(2026, 11, 3), since)
+    db2 = _Rec([(0,)])
+    db2.videos_completed_after_source_failure('b1', 's9', since)
+    sql2, params2 = db2.calls[0]
+    assert 'r.source_id = %s AND r.created_at >= %s AND' in sql2 and params2 == ('b1', 's9', since)
+    assert sql2.count('%s') == 4
+
+
+def test_unit_collection_since_is_taken_before_the_launcher_starts_and_used_by_the_audit():
+    text = MONITOR_FILE.read_text(encoding='utf-8')
+    body = text[text.index('def run_overnight('):text.index('def audit_run(')]
+    marks = ['result.other_workflows_running = d.require_no_other_workflows()', 'result.collection_since = db.db_now()',
+             "d.start_capturing(work_dir, 'first')", 'result.window_start = window_start = db.db_now()']
+    positions = [body.index(item) for item in marks]
+    assert positions == sorted(positions) and body.count('result.collection_since =') == 1
+    audit = text[text.index('def audit_run('):]
+    assert 'since = run.collection_since if run.collection_since is not None else run.window_start' in audit
+    assert 'db.videos_completed_after_source_failure(batch_id, not_found_id, since)' in audit
+    assert 'db.collection_runs(business_date_vn(run.window_start), since)' in audit
+    assert m.OvernightRun().collection_since is None
 
 
 def test_unit_session_records_calls():
