@@ -6,6 +6,8 @@ VOICE_AUDIBLE and OUTPUT_PROFILE (technical gates fed by RealFfprobeProbe, see G
 and audio_mix_result (loudness and true peak recorded as a warning, never a hard failure).
 Every measurement threshold comes from InspectorSettings or the caller, no threshold constant in code;
 missing inputs yield None in evidence fields.
+QC-HOOK-FIX: ssim_between turns both frames into full-range gray before shrinking them, so the colour range of the output (full range
+when the scenes are JPEG) no longer shifts dark frames apart.
 
 coveredIds: PW-F1-01, PW-F2-01, CT-QC-001
 """
@@ -287,6 +289,8 @@ def evenly_sampled(items: Sequence[int], limit: int) -> list[int]:
 
 
 _SSIM_ALL_RE = re.compile(r'All:([0-9]+(?:\.[0-9]+)?)')
+COMPARE_GRAY = 'format=gray'  # QC-HOOK-FIX: full-range gray before any shrink, so both inputs share one pixel format and range
+COMPARE_SCALE_FLAGS = 'area'  # QC-HOOK-FIX: box average for the large shrink; bicubic lifts full-range black by about 3 levels
 
 
 def ssim_between(
@@ -303,7 +307,13 @@ def ssim_between(
 ) -> float | None:
     """SSIM of one frame of left against one frame of right, both scaled to width x height.
 
-    PW-F1-FIX4 and F-10-FIX6: the render places every still and clip on the output canvas with render_command.frame_placement (the single builder); with canvas=(W, H) the right input (still or sample clip) goes through that same builder before the shrink, so the QC compares what the render drew. canvas=None keeps the old filter chain; the left input (output frame) is never re-placed."""
+    PW-F1-FIX4 and F-10-FIX6: the render places every still and clip on the output canvas with render_command.frame_placement (the single builder); with canvas=(W, H) the right input (still or sample clip) goes through that same builder before the shrink, so the QC compares what the render drew. canvas=None keeps the old filter chain; the left input (output frame) is never re-placed.
+
+    QC-HOOK-FIX: each side is turned into full-range gray at its own size first (COMPARE_GRAY, which reads the frame's colour range),
+    then shrunk with the area filter (COMPARE_SCALE_FLAGS). The old order shrank with bicubic in whatever pixel format and range the
+    input had: a full-range output (scenes from JPEG make the render output yuvj420p) came out about 3 levels brighter than the
+    limited-range hook clip, and near black the SSIM luminance term turns that into a failure (lot f132d43a: a dark Pixabay hook
+    measured 0.117 on full-range outputs and 0.996 on limited-range ones with the same clip and the same frame)."""
     argv = [str(ffmpeg), '-hide_banner', '-nostdin', '-v', 'info']
     if left_ms is not None:
         argv.extend(['-ss', seek_arg(left_ms)])
@@ -311,7 +321,7 @@ def ssim_between(
     if right_ms is not None:
         argv.extend(['-ss', seek_arg(right_ms)])
     argv.extend(['-i', str(right)])
-    prep = f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},format=gray'
+    prep = f'{COMPARE_GRAY},scale={width}:{height}:force_original_aspect_ratio=increase:flags={COMPARE_SCALE_FLAGS},crop={width}:{height}'
     right_prep = prep
     if canvas is not None:
         right_prep = frame_placement(canvas[0], canvas[1], 'qc') + ',' + prep
