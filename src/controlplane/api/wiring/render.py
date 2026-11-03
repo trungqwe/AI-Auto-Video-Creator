@@ -31,7 +31,7 @@ from render.adapters.activity_inputs import (
 )
 from render.adapters.ass_manifest import build_ass_material, with_ass_entry
 from render.adapters.audio_mix_gate import AudioMixGate
-from render.adapters.config_render_sources import ConfigRenderSources, ass_inputs, seed_render_config
+from render.adapters.config_render_sources import ConfigRenderSources, RenderConfigNotSeeded, ass_inputs, seed_render_config
 from render.adapters.ffmpeg_capability import read_tool_capability
 from render.adapters.postgres_plan_assets import (
     PostgresArtifactInfo,
@@ -138,6 +138,7 @@ def seed_production_render_config(manager: Any, *, workspace_id: str, actor_id: 
         actor_id=actor_id,
         parameters=profile.parameters,
         supplements=render_supplements(profile),
+        scope=FreshScope(manager),
     )
 
 
@@ -158,6 +159,8 @@ _HOOK_MEDIA_SHA_KEY = 'media_sha256'
 # HOOK-QC (FR-HOOK-008): a hook revision whose technical_metadata names a recipe of hooks.json is a generated placeholder
 # (gradient vh-01..05, sweep ah-01..05); render refuses it instead of putting a placeholder in the video.
 _HOOK_PLACEHOLDER_KEY = 'recipe_template'
+# PRS-LAYOUT-RENDER: preset of a plan without a seeded preset_revision_ref (the preset of the default layout HERO_STRIP).
+DEFAULT_PRESET_KEY = 'bold-yellow'
 HOOK_PLACEHOLDER_REASON = 'hook_placeholder'
 _HOOK_LATEST_SQL = ('SELECT r.payload FROM controlplane.cp_hook_revisions r JOIN controlplane.cp_hooks h ON h.workspace_id = r.workspace_id AND h.hook_id = r.hook_id AND h.current_revision = r.revision WHERE h.workspace_id = %s::uuid AND h.hook_id = %s')
 
@@ -637,10 +640,11 @@ class ProductionRenderSources:
         timeline: Mapping[str, Any],
         hook_placement: Mapping[str, Any],
         allowed_fallbacks: Sequence[Mapping[str, Any]],
+        plan_ref: str | None = None,
     ) -> Any:
         scope = FreshScope(self._manager)
         cfg_sources = ConfigRenderSources(scope, self._workspace_id)
-        preset_obj = cfg_sources.preset('bold-yellow').preset
+        preset_obj = self._plan_preset(cfg_sources, plan_ref).preset
         profile_obj = cfg_sources.output_profile().profile
         infos = read_script_segments(self._manager, workspace_id=self._workspace_id, script_version_ref=script_version_ref)
         inputs_ass = ass_inputs(preset_obj, profile_obj)
@@ -769,6 +773,38 @@ class ProductionRenderSources:
                 entries.append(LocalMaterialRef(artifact_version_id=ref, local_ref=f'{ref}.wav'))
         return {'bed_gain_db': gain, 'voice_integrated_lufs': round(voice_lufs, 2), 'beds': beds}, assets, entries
 
+    def _plan_payload(self, plan_ref: str | None) -> Mapping[str, Any] | None:
+        """Payload of the latest revision of the production plan, or None when there is no plan_ref, no row or no readable payload."""
+        if not plan_ref:
+            return None
+        plan_sql = (
+            'SELECT payload FROM controlplane.cp_production_plans '
+            'WHERE workspace_id = %s::uuid AND production_plan_id = %s '
+            'ORDER BY revision DESC LIMIT 1'
+        )
+        try:
+            with self._manager.borrow_connection() as conn:
+                prow = conn.execute(plan_sql, (self._workspace_id, plan_ref)).fetchone()
+        except Exception:
+            return None
+        if prow is None:
+            return None
+        raw_p = prow[0]
+        p_obj = json.loads(raw_p) if isinstance(raw_p, str) else raw_p
+        return p_obj if isinstance(p_obj, Mapping) else None
+
+    def _plan_preset(self, cfg_sources: ConfigRenderSources, plan_ref: str | None) -> Any:
+        """PRS-LAYOUT-RENDER (FR-PRS-003): the preset named by the plan's preset_revision_ref (chosen with the layout at plan time); a plan
+        without one, or naming a preset that is not seeded, renders with DEFAULT_PRESET_KEY as before."""
+        payload = self._plan_payload(plan_ref)
+        key = payload.get('preset_revision_ref') if payload is not None else None
+        if isinstance(key, str) and key.strip() and key != DEFAULT_PRESET_KEY:
+            try:
+                return cfg_sources.preset(key)
+            except RenderConfigNotSeeded:
+                pass
+        return cfg_sources.preset(DEFAULT_PRESET_KEY)
+
     def resolve_inputs(self, input_refs: Sequence[Mapping[str, str]]) -> ResolveInputs:
         output_path_ref = next((r['ref_id'] for r in input_refs if r.get('ref_type') == 'output_path'), 'out-default')
         script_ref = next((r['ref_id'] for r in input_refs if r.get('ref_type') == 'script_version'), None)
@@ -779,32 +815,19 @@ class ProductionRenderSources:
 
         scope = FreshScope(self._manager)
         cfg_sources = ConfigRenderSources(scope, self._workspace_id)
-        preset_pin = cfg_sources.preset('bold-yellow')
+        preset_pin = self._plan_preset(cfg_sources, plan_ref)
         profile_pin = cfg_sources.output_profile()
 
         timeline = {}
         hook_placement = {}
         subtitle_config = {'karaoke': True}
         allowed_fallbacks = ()
-        plan_sql = (
-            'SELECT payload FROM controlplane.cp_production_plans '
-            'WHERE workspace_id = %s::uuid AND production_plan_id = %s '
-            'ORDER BY revision DESC LIMIT 1'
-        )
-        if plan_ref:
-            try:
-                with self._manager.borrow_connection() as conn:
-                    prow = conn.execute(plan_sql, (self._workspace_id, plan_ref)).fetchone()
-                if prow is not None:
-                    raw_p = prow[0]
-                    p_obj = json.loads(raw_p) if isinstance(raw_p, str) else raw_p
-                    if isinstance(p_obj, Mapping):
-                        timeline = p_obj.get('timeline') or {}
-                        hook_placement = p_obj.get('hook_placement') or {}
-                        subtitle_config = p_obj.get('subtitle_style_intent') or {'karaoke': True}
-                        allowed_fallbacks = tuple(p_obj.get('allowed_fallbacks') or ())
-            except Exception:
-                pass
+        p_obj = self._plan_payload(plan_ref)
+        if p_obj is not None:
+            timeline = p_obj.get('timeline') or {}
+            hook_placement = p_obj.get('hook_placement') or {}
+            subtitle_config = p_obj.get('subtitle_style_intent') or {'karaoke': True}
+            allowed_fallbacks = tuple(p_obj.get('allowed_fallbacks') or ())
 
         art_info = PostgresArtifactInfo(self._manager, workspace_id=self._workspace_id)
         plan_assets = PostgresPlanAssets(self._manager, workspace_id=self._workspace_id)
@@ -903,6 +926,7 @@ class ProductionRenderSources:
             timeline=render_timeline,
             hook_placement=hook_placement,
             allowed_fallbacks=allowed_fallbacks,
+            plan_ref=plan_ref,
         )
         entries = with_ass_entry(manifest_entries, ass)
 
@@ -1044,7 +1068,7 @@ class ProductionRenderSources:
 
         scope = FreshScope(self._manager)
         cfg_sources = ConfigRenderSources(scope, self._workspace_id)
-        preset = cfg_sources.preset('bold-yellow').preset
+        preset = self._plan_preset(cfg_sources, package.production_plan_ref).preset
 
         cap = read_tool_capability(
             ffmpeg_path=self._runtime.ffmpeg_path,
@@ -1067,7 +1091,7 @@ class ProductionRenderSources:
     def render_plan(self, package: RenderPackageRecord, render_attempt_id: str) -> RenderPlan:
         scope = FreshScope(self._manager)
         cfg_sources = ConfigRenderSources(scope, self._workspace_id)
-        preset_obj = cfg_sources.preset('bold-yellow').preset
+        preset_obj = self._plan_preset(cfg_sources, package.production_plan_ref).preset
         profile_obj = cfg_sources.output_profile().profile
 
         tool = ToolIdentity(
@@ -1094,6 +1118,7 @@ class ProductionRenderSources:
             timeline=package.timeline,
             hook_placement=package.hook_placement,
             allowed_fallbacks=package.allowed_fallbacks,
+            plan_ref=package.production_plan_ref,
         ).ass_ref
         spec = build_render_command(
             package,
@@ -1114,6 +1139,7 @@ class ProductionRenderSources:
             timeline=package.timeline,
             hook_placement=package.hook_placement,
             allowed_fallbacks=package.allowed_fallbacks,
+            plan_ref=package.production_plan_ref,
         )
 
     def ass_ref_for(self, package: RenderPackageRecord) -> str:

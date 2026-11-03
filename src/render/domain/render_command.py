@@ -4,7 +4,11 @@ A command is an argv tuple built from validated structured parts: there is no co
 Profile values, tool identity and paths are inputs. Paths come only from the local refs of the materialization manifest under the staging root.
 redacted_argv replaces every path with a token and is the only argv view that to_dict and to_json serialize.
 Pure domain: no I/O, no clock, no process execution.
-coveredIds: CT-RND-004, TST-SEC-INV-012, TST-SEC-INV-020 (F side)
+PRS-LAYOUT-RENDER: when the preset's layout_rules carry presentation {layout_key, accent_colour} and every scene is a still image, each scene
+is drawn by render.domain.layout.compose_layout (one input per distinct image of the scene, bands and gradients built once per video by
+compose_chrome); otherwise, or when the video has fewer distinct images than the layout needs or the graph would exceed
+LAYOUT_GRAPH_MAX_CHARS, the single-image scene is kept and the argv and the graph are unchanged.
+coveredIds: CT-RND-004, TST-SEC-INV-012, TST-SEC-INV-020 (F side), FR-PRS-002
 """
 from __future__ import annotations
 
@@ -36,6 +40,8 @@ ZOOM_FRAME_STEP = 2
 BACKDROP_SHRINK = 8
 BACKDROP_BLUR_SIGMA = 6
 BACKDROP_LEVEL = 0.5
+LAYOUT_GRAPH_MAX_CHARS = 24000
+_ACCENT_RE = re.compile(r'#[0-9A-Fa-f]{6}')
 
 
 class RenderCommandRejected(ValueError):
@@ -338,11 +344,112 @@ def _loudnorm_chain(rule: dict[str, int | float] | None) -> str:
     return ',loudnorm=' + args + ',asetpts=N/SR/TB'
 
 
-def _filter_graph(scenes: Sequence[tuple[bool, int]], values: dict[str, object], ass_path: str, hook: _HookPlan, loudnorm: str = '', beds: Sequence[_Bed] = ()) -> str:
+@dataclass(frozen=True)
+class _LayoutScene:
+    duration_ms: int
+    cells: tuple[int, ...]
+    active: int
+
+
+@dataclass(frozen=True)
+class _LayoutPlan:
+    """images: (ref, path, -t milliseconds) of each input, in first-use order; a scene's cells index into images."""
+
+    key: str
+    accent: str
+    images: tuple[tuple[str, str, int], ...]
+    scenes: tuple[_LayoutScene, ...]
+
+    @property
+    def input_count(self) -> int:
+        return len(self.images)
+
+    def detail(self) -> dict[str, object]:
+        return {
+            'layout_key': self.key,
+            'accent_colour': self.accent,
+            'scenes': [{'cells': [self.images[k][0] for k in scene.cells], 'active': scene.active} for scene in self.scenes],
+        }
+
+
+def _presentation(preset: RenderPresetRevision) -> tuple[str, str] | None:
+    """(layout_key, accent_colour) of preset.layout_rules['presentation'], None without it; a malformed value is refused."""
+    from render.domain.layout import LAYOUT_KEYS
+
+    rules = preset.layout_rules
+    if 'presentation' not in rules:
+        return None
+    rule = rules['presentation']
+    key = rule.get('layout_key') if isinstance(rule, Mapping) else None
+    accent = rule.get('accent_colour') if isinstance(rule, Mapping) else None
+    if key not in LAYOUT_KEYS or not isinstance(accent, str) or _ACCENT_RE.fullmatch(accent) is None:
+        raise RenderCommandRejected(INVALID_INPUT, 'invalid_preset.layout_rules.presentation')
+    return key, accent
+
+
+def _layout_plan(record: RenderPackageRecord, root: str, presentation: tuple[str, str] | None) -> tuple[_LayoutPlan | None, str | None]:
+    """(plan, None) when every scene is drawn with the layout, (None, reason) when the single-image scene is kept (None, None without presentation)."""
+    from render.domain.layout import MIN_IMAGES, slot_sources
+
+    if presentation is None:
+        return None, None
+    key, accent = presentation
+    found = _visual_refs(record)
+    if not all(_is_still_image(record, refs[0]) for refs, _, _ in found):
+        return None, 'scene_not_still'
+    paths: dict[str, str] = {}
+    for refs, name, _ in found:
+        for ref in refs:
+            if ref not in paths and _is_still_image(record, ref):
+                paths[ref] = _local_path(record, root, ref, name)
+    images = list(paths)
+    if len(images) < MIN_IMAGES[key]:
+        return None, 'too_few_images'
+    used: dict[str, int] = {}
+    scenes = []
+    for index, (_, _, duration_ms) in enumerate(found):
+        cell_refs, active = slot_sources(key, images, index)
+        for ref in cell_refs:
+            used.setdefault(ref, duration_ms)
+        scenes.append((duration_ms, cell_refs, active))
+    order = list(used)
+    plan_scenes = tuple(_LayoutScene(ms, tuple(order.index(ref) for ref in refs), active) for ms, refs, active in scenes)
+    return _LayoutPlan(key, accent, tuple((ref, paths[ref], used[ref]) for ref in order), plan_scenes), None
+
+
+def _layout_chains(plan: _LayoutPlan, values: dict[str, object]) -> list[str]:
+    """Scene chains [v0]..[vN-1] of a layout video: the chrome once, split over the scenes, then compose_layout per scene."""
+    from render.domain.layout import compose_chrome, compose_layout
+
+    width, height, fps, pixel_format = values['width'], values['height'], values['fps'], values['pixel_format']
+    count = len(plan.scenes)
+    chrome, under, above = compose_chrome(plan.key, width=width, height=height, accent=plan.accent, prefix='k')
+    chains = [
+        chrome,
+        f'[{under}]split={count}' + ''.join(f'[ku{index}]' for index in range(count)),
+        f'[{above}]split={count}' + ''.join(f'[ka{index}]' for index in range(count)),
+    ]
+    users = [[index for index, scene in enumerate(plan.scenes) if image in scene.cells] for image in range(len(plan.images))]
+    for image, scenes in enumerate(users):
+        chains.append(f'[{image}:v:0]trim=end_frame=1,split={len(scenes)}' + ''.join(f'[i{image}s{index}]' for index in scenes))
+    for index, scene in enumerate(plan.scenes):
+        body = compose_layout(
+            plan.key, width=width, height=height, sources=[f'i{image}s{index}' for image in scene.cells], accent=plan.accent, prefix=f's{index}',
+            active=scene.active, frames=_segment_frames(scene.duration_ms, fps), fps=fps, chrome=(f'ku{index}', f'ka{index}'),
+        )
+        chains.append(f'{body},setsar=1,fps={fps},format={pixel_format}[v{index}]')
+    return chains
+
+
+def _filter_graph(scenes: Sequence[tuple[bool, int]], values: dict[str, object], ass_path: str, hook: _HookPlan, loudnorm: str = '', beds: Sequence[_Bed] = (), layout: _LayoutPlan | None = None) -> str:
     count = len(scenes)
-    voice, visual, audio, thumbnail = count, count + 1, count + 2, count + 3
+    inputs = count if layout is None else layout.input_count
+    voice, visual, audio, thumbnail = inputs, inputs + 1, inputs + 2, inputs + 3
     first_bed = thumbnail + (1 if hook.thumbnail_path is not None else 0)
-    chains = [_normalise(index, values, still, duration_ms) for index, (still, duration_ms) in enumerate(scenes)]
+    if layout is None:
+        chains = [_normalise(index, values, still, duration_ms) for index, (still, duration_ms) in enumerate(scenes)]
+    else:
+        chains = _layout_chains(layout, values)
     labels = ''.join(f'[v{index}]' for index in range(count))
     chains.append(f'[{audio}:a:0]adelay={hook.hook_range[0]}:all=1[ahook]')
     chains += [
@@ -510,9 +617,17 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
     ass = _ass_path(record, root, ass_ref)
     output = _staged_path(root, materialized.output_path, 'materialized.output_path')
     scenes = [(_is_still_image(record, ref), duration_ms) for _, ref, duration_ms in assets]
+    presentation = _presentation(preset)
+    layout, layout_skipped = _layout_plan(record, root, presentation)
+    if layout is not None and len(_filter_graph(scenes, values, '{ass}', hook, loudnorm, beds, layout)) > LAYOUT_GRAPH_MAX_CHARS:
+        layout, layout_skipped = None, 'graph_too_long'
     pairs = [(tool['executable'], '{tool}'), *_plain('-hide_banner', '-nostdin', '-n')]
-    for index, (path, ref, duration_ms) in enumerate(assets):
-        pairs += _timed_input(record, ref, path, f'{{asset:{index}}}', values, duration_ms)
+    if layout is None:
+        for index, (path, ref, duration_ms) in enumerate(assets):
+            pairs += _timed_input(record, ref, path, f'{{asset:{index}}}', values, duration_ms)
+    else:
+        for index, (ref, path, duration_ms) in enumerate(layout.images):
+            pairs += _timed_input(record, ref, path, f'{{image:{index}}}', values, duration_ms)
     pairs += [*_plain('-i'), (voice, '{voice}')]
     hook_ms = hook.hook_range[1] - hook.hook_range[0]
     pairs += _timed_input(record, hook.visual_ref, hook.visual_path, '{hook_visual}', values, hook_ms)
@@ -523,7 +638,7 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
     for index, bed in enumerate(beds):
         pairs += [*_plain('-t', _seconds(bed.end_ms - bed.start_ms), '-i'), (bed.path, f'{{bed:{index}}}')]
     pairs += _plain('-filter_complex')
-    pairs.append((_filter_graph(scenes, values, _filter_path(ass), hook, loudnorm, beds), _filter_graph(scenes, values, '{ass}', hook, loudnorm, beds)))
+    pairs.append((_filter_graph(scenes, values, _filter_path(ass), hook, loudnorm, beds, layout), _filter_graph(scenes, values, '{ass}', hook, loudnorm, beds, layout)))
     pairs += _plain('-map', '[vout]', '-map', '[aout]', '-shortest')
     output_ms = voice_duration_ms if voice_duration_ms is not None else _timeline_end_ms(record)
     if output_ms > 0:
@@ -549,6 +664,10 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
     }
     if rule is not None:
         details['loudness'] = dict(rule)
+    if layout is not None:
+        details['layout'] = layout.detail()
+    elif presentation is not None:
+        details['layout_skipped'] = {'layout_key': presentation[0], 'reason': layout_skipped}
     if beds:
         details['beds'] = [{'rendition_ref': bed.rendition_ref, 'start_ms': bed.start_ms, 'end_ms': bed.end_ms, 'gain_db': bed.gain_db} for bed in beds]
     return _make_spec(KIND_RENDER, pairs, tool_identity, tool, details)
