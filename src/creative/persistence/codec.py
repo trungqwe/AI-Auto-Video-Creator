@@ -34,7 +34,11 @@ def decode_record(tp: Any, value: Any) -> Any:
         return value
     if isinstance(tp, type) and dataclasses.is_dataclass(tp):
         hints = typing.get_type_hints(tp)
-        return tp(**{field.name: decode_record(hints[field.name], value[field.name]) for field in dataclasses.fields(tp) if field.init})
+        # PRS-LAYOUT-PLAN: a field added later with a default (ProductionPlan.layout_choice) may be absent from a record stored before it.
+        return tp(**{
+            field.name: decode_record(hints[field.name], value[field.name]) for field in dataclasses.fields(tp)
+            if field.init and (field.name in value or (field.default is dataclasses.MISSING and field.default_factory is dataclasses.MISSING))
+        })
     if origin is tuple:
         return tuple(decode_record(typing.get_args(tp)[0], item) for item in value)
     if origin is collections.abc.Mapping or origin is dict:

@@ -20,6 +20,7 @@ from creative.application.roles import AI_ROLES, ROLE_ANALYSIS, ROLE_ANGLES, ROL
 from creative.domain.analysis import parse_content_analysis
 from creative.domain.angles import StoryAngle, build_story_angle_set
 from creative.domain.asset_selection import CreativeAssetSelection, select_creative_assets
+from creative.domain.layout_choice import choose_layout, layout_prompt_data, valid_presets
 from creative.domain.output_metadata import OUTPUT_LANGUAGE, OutputMetadata
 from creative.domain.production_plan import build_production_plan
 from creative.domain.ref_resolver import RefResolver, ResourceRef
@@ -691,6 +692,8 @@ class CreativePipeline:
         production_plan_id: str,
         preset_revision_ref: str,
         selection_ref: str | None = None,
+        layout_options: Sequence[str] | None = None,
+        layout_presets: Mapping[str, str] | None = None,
     ) -> CommandResult:
         """BuildProductionPlan (CT-AI-007): one AI call; the plan is built from the stored script and a selection, either given or read from the selection store by `selection_ref`, and stored with ProductionPlanCreated."""
         if (selection is None) == (selection_ref is None):
@@ -705,6 +708,11 @@ class CreativePipeline:
             payload['selection_fingerprint'] = selection.selection_fingerprint
         else:
             payload['selection_ref'] = selection_ref
+        if layout_presets is not None:
+            # PRS-LAYOUT-PLAN: the model reads the offered layouts (key and description) in the data block of the plan prompt.
+            if not valid_presets(layout_presets):
+                raise PipelineRejected(INPUT_NOT_READY, 'invalid_layout_presets', 'layout_presets')
+            payload['layout_options'] = layout_prompt_data(layout_options or ())
 
         def work(uow: Any) -> _Outcome | _AiPlan:
             snapshot = self._committed_snapshot(uow, snapshot_id)
@@ -721,9 +729,16 @@ class CreativePipeline:
             key = self._key(context, idempotency_key)
 
             def validate(result: Any, prompt_ref: ResourceRef) -> Any:
+                raw = self._model_json(result)
+                preset, choice = preset_revision_ref, None
+                if layout_presets is not None:
+                    picked = choose_layout(
+                        raw.get('layout'), options=tuple(layout_options or ()), presets=layout_presets,
+                        segment_ids=[segment.segment_id for segment in script.segments])
+                    preset, choice = picked.preset_key, picked.to_payload()
                 return build_production_plan(
-                    self._model_json(result), production_plan_id=production_plan_id, script=script, selection=chosen,
-                    preset_revision_ref=preset_revision_ref)
+                    raw, production_plan_id=production_plan_id, script=script, selection=chosen,
+                    preset_revision_ref=preset, layout_choice=choice)
 
             def store(unit: Any, plan: Any, record: Any) -> _Outcome:
                 unit.plans.append(production_plan_id, 1, plan)

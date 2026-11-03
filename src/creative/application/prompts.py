@@ -110,6 +110,9 @@ DEFAULT_PROMPTS: Mapping[str, str] = MappingProxyType({
         + 'subtitle_style_intent (object with style and highlight_intent as non-empty text and karaoke as true or false); '
         + 'allowed_fallbacks (list, may be empty, of objects with rule_id, kind and scene_id; rule_id is unique non-empty text, kind is exactly one of replace_asset, drop_overlay_effect or simplify_transition, scene_id is a scene_id of the timeline; only kind replace_asset has replacement_media_asset_id, copied from a media_asset_id in fallback_candidates of the selection data item); '
         + 'and exactly one of output_metadata_ref or output_metadata_requirement as non-empty text. '
+        + 'When the data item holds layout_options, also return layout (object with key, reason and, optionally, title and contrast_pair): '
+        + 'key is exactly one key of layout_options, the one whose description fits the story and its pictures best; reason is one short sentence; '
+        + 'title is a short English headline of at most 48 characters for the title band; contrast_pair (only for SPLIT_STACK) lists the segment_id of the two script segments that the two halves contrast. '
         + 'Use no other members anywhere. Values describe intent only: never write a URL, a file path or a command. '
         + _BOUNDARY
     ),
@@ -130,7 +133,10 @@ PREVIOUS_DEFAULT_PROMPT_HASHES: Mapping[str, tuple[str, ...]] = MappingProxyType
         'f0bb43142d3e6e6ddd5f6ffac0b6b51f76b9a41df3d4c34b32acacd5de28f793',
         '8ae5a9037674ba38f9e028951c08e52617d6d43c6ee101a3c588f9f9409a5658',
     ),
-    ROLE_PLAN: ('89cbc7ae46ade6f3d4959f421433c9dc06ff6ea57c5ca6864b6ad37e10a4a2ed',),
+    ROLE_PLAN: (
+        '89cbc7ae46ade6f3d4959f421433c9dc06ff6ea57c5ca6864b6ad37e10a4a2ed',
+        'b077e48b48d00e8f1cc8edab7904d12f976c37c5008e098cd8c0aa4c8a6cdd5b',
+    ),
     ROLE_METADATA: ('3ef7ede4d145f6566bb102e4853cad45e27832f2928b5b2c6d1cff2b3b172cf3',),
 })
 
