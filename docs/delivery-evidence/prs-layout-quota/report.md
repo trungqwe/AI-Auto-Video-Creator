@@ -1,0 +1,66 @@
+# Báo cáo chuyển giao: PRS-LAYOUT-QUOTA
+
+## 1. Tiêu đề và nhóm lỗi OI-CP7-11-Q5
+
+- **Mã gói công việc:** PRS-LAYOUT-QUOTA
+- **Milestone:** CP7
+- **Nhóm lỗi xử lý:** `OI-CP7-11-Q5`
+- **Mô tả nhóm lỗi:**
+  - AI không bao giờ chọn preset vì `creative.py` lấy preset đầu 'common' (`src/controlplane/api/wiring/creative.py:278-290`); `ProductionActivityInputs._plan` không truyền `layout_options`, `layout_presets` nên kế hoạch không có bố cục.
+  - Gói `PRS-LAYOUT-QUOTA` hoàn tất khắc phục nhóm lỗi `OI-CP7-11-Q5` bằng các điểm cốt lõi sau:
+    1. Đấu nối `layout_presets_of(presets)` để ánh xạ bố cục sang preset tương ứng (đủ 5 LAYOUT_KEYS), xác định `preset_revision_ref = layout_presets[DEFAULT_LAYOUT]`.
+    2. Bổ sung `LayoutUsagePort` và lớp `PostgresLayoutUsage` để thống kê tỷ lệ phân bổ bố cục trong cùng batch bằng SQL (`DISTINCT ON (j.job_id)`, trừ chính job và trừ các job `FAILED_FINAL`).
+    3. Cập nhật `ProductionActivityInputs._plan` truyền danh sách `layout_options` (thu hẹp qua `capped_layouts` theo trần 40% batch quota) và `layout_presets` vào yêu cầu tạo kế hoạch.
+    4. Sửa hai bất biến ADAPT-WIRE theo đính chính Control 03/11/2026: loại bỏ `import os` trong `illustrations.py` (thay bằng `part.replace`), và khai báo `illustrations` trong `COMPOSITION_MODULES` của `test_adapt_wire_services.py` kèm chú thích `IMGGEN-PIPE`.
+
+## 2. Danh sách các tệp đã sửa đổi
+
+1. `src/controlplane/api/wiring/creative.py`: Thêm `layout_presets_of`, `PostgresLayoutUsage`, `LAYOUT_USAGE_SQL`, `LAYOUT_TARGET_SQL`, truyền `layout_usage` vào `creative_activity_deps` và gán `preset_revision_ref` theo bố cục mặc định. Chép nguyên văn từ D:/AIAVC_IMGPROTO/ref/prs-layout-quota/, khớp SHA256SUMS.
+2. `src/creative/adapters/activity_inputs.py`: Thêm trường `layout_presets` vào `CreativeSettings`, định nghĩa `LayoutUsagePort`, kiểm tra `valid_presets`, lọc `layout_options` qua `eligible_layouts` và `capped_layouts`. Chép nguyên văn từ D:/AIAVC_IMGPROTO/ref/prs-layout-quota/, khớp SHA256SUMS.
+3. `tests/integration/prod_wiring/test_prs_layout_quota.py`: Bộ kiểm thử tích hợp 5 ca test không cần CSDL (FR-PRS-003, FR-PRS-005, không dùng mock/monkeypatch). Chép nguyên văn từ D:/AIAVC_IMGPROTO/ref/prs-layout-quota/, khớp SHA256SUMS.
+4. `src/controlplane/api/wiring/illustrations.py`: Xoá `import os`, thay thế `os.replace` bằng `part.replace(path)` và `part.replace(target)` theo đính chính Control 03/11/2026. Chép nguyên văn từ D:/AIAVC_IMGPROTO/ref/prs-layout-quota/, khớp SHA256SUMS.
+5. `tests/integration/adapt/wire/test_adapt_wire_services.py`: Khai báo `illustrations` là mô-đun ghép trong `COMPOSITION_MODULES` kèm chú thích `IMGGEN-PIPE` theo đính chính Control 03/11/2026. Chép nguyên văn từ D:/AIAVC_IMGPROTO/ref/prs-layout-quota/, khớp SHA256SUMS.
+6. `docs/delivery-evidence/prs-layout-quota/report.md`: Báo cáo chuyển giao và bằng chứng thực thi.
+
+## 3. Bảng lệnh kiểm tra đã chạy và kết quả thực tế
+
+Tất cả các lệnh kiểm tra được thực thi bằng Python runtime khoá `C:\Users\Admin\orca\workspaces\AI-Auto-Video-Creator\.local-tools\runtime\8715e538\venv\Scripts\python.exe` với biến môi trường `PYTEST_DEBUG_TEMPROOT=C:\Users\Admin\AppData\Local\Temp\ai-setup-pytest\PRS-LAYOUT-QUOTA-implement-r0-ac1b5c0961`.
+
+| Bước | Lệnh kiểm tra | Mã thoát | Dòng tổng kết nguyên văn / Kết quả |
+| :--- | :--- | :---: | :--- |
+| 1 | `python -c "import hashlib, pathlib; want = {'src/controlplane/api/wiring/creative.py': 'd10f28e9246affe479a13fc0a8eabfaacd09d23b58d695e90e453eb28b2395b7', 'src/creative/adapters/activity_inputs.py': '3aaec3a5b6e01efd1672dced5686133427bfb57d742be8a17e431ce8a89986f9', 'tests/integration/prod_wiring/test_prs_layout_quota.py': '05a95d65286352e831530c6077c4b13338f90ab1f88cd915c86f0b6e826672e6'}; norm = lambda p: pathlib.Path(p).read_bytes().replace(bytes([13, 10]), bytes([10])); bad = sorted(p for p, h in want.items() if hashlib.sha256(norm(p)).hexdigest() != h); assert not bad, bad"` | 0 | 3 tệp ban đầu khớp SHA256 bản tham chiếu |
+| 6 | `python -c "import hashlib, pathlib; want = {'src/controlplane/api/wiring/creative.py': 'd10f28e9246affe479a13fc0a8eabfaacd09d23b58d695e90e453eb28b2395b7', 'src/creative/adapters/activity_inputs.py': '3aaec3a5b6e01efd1672dced5686133427bfb57d742be8a17e431ce8a89986f9', 'tests/integration/prod_wiring/test_prs_layout_quota.py': '05a95d65286352e831530c6077c4b13338f90ab1f88cd915c86f0b6e826672e6', 'src/controlplane/api/wiring/illustrations.py': '292891e2aea8136b24ee7a6d4a64ba3b85ee41daa3fe30fb990d267954e28bfc', 'tests/integration/adapt/wire/test_adapt_wire_services.py': 'ee70489c53d97cc9ef393d2503c66c18fc733f9585963a5f0b7ab5289264e366'}; norm = lambda p: pathlib.Path(p).read_bytes().replace(bytes([13, 10]), bytes([10])); bad = sorted(p for p, h in want.items() if hashlib.sha256(norm(p)).hexdigest() != h); assert not bad, bad"` | 0 | Cả 5 tệp khớp hoàn toàn SHA256SUMS |
+| 7 | `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/illustrations.py').read_text(encoding='utf-8'); lines = t.splitlines(); d = chr(46); assert 'import os' not in lines and 'os' + d + 'replace' not in t, 'os'; assert 'part' + d + 'replace' + chr(40) + 'path' in t and 'part' + d + 'replace' + chr(40) + 'target' in t, 'replace'"` | 0 | illustrations.py không còn import os và os.replace, có part.replace |
+| 8 | `python -c "import pathlib; t = pathlib.Path('tests/integration/adapt/wire/test_adapt_wire_services.py').read_text(encoding='utf-8'); q = chr(39); line = [x for x in t.splitlines() if x.startswith('COMPOSITION_MODULES = {')]; assert line and line[0].endswith(q + 'illustrations' + q + '}'), line; assert 'IMGGEN-PIPE' in t, 'note'"` | 0 | COMPOSITION_MODULES khai illustrations và có chú thích IMGGEN-PIPE |
+| 9 | `git diff --check` | 0 | Không có lỗi khoảng trắng |
+| 10 | `python -m pytest tests/integration/prod_wiring/test_prs_layout_quota.py tests/integration/creative/test_d14_creative_pipeline.py tests/integration/creative/test_d16_worker_activity.py tests/integration/creative/test_d15_provider_failure.py -q -p no:cacheprovider` | 0 | `105 passed in 1.53s` |
+| 11 | `python -m pytest tests/unit/creative -q -p no:cacheprovider` | 0 | `934 passed, 200 subtests passed in 2.74s` |
+| 12 | `python -m pytest tests/integration/prod_wiring/test_pw_d2_context_selection.py tests/integration/prod_wiring/test_pw_d1_roles_prompts.py tests/integration/prod_wiring/test_d15_fix1_ai_output_retry.py tests/integration/adapt/wire/test_adapt_wire_services.py tests/integration/prod_wiring/test_pw_w2_launcher_def.py -q -p no:cacheprovider` | 0 | `215 passed in 37.64s` |
+| 13 | `python -m pytest tests/integration/adapt/wire/test_adapt_wire_services.py::test_wiring_sources_have_no_forbidden_text tests/integration/adapt/wire/test_adapt_wire_services.py::test_wiring_modules_do_not_cross_import_subsystems -q -p no:cacheprovider` | 0 | `2 passed in 1.16s` |
+| 14 | `python -m pytest tests/integration/prod_wiring/test_imggen_pipe_client.py tests/integration/prod_wiring/test_imggen_pipe_activity.py tests/integration/prod_wiring/test_imggen_pipe_replay.py -q -p no:cacheprovider` | 0 | `23 passed in 18.46s` |
+| 15 | `python -c "import pathlib; t = pathlib.Path('src/controlplane/api/wiring/creative.py').read_text(encoding='utf-8'); assert 'def layout_presets_of(' in t and 'class PostgresLayoutUsage' in t and 'layout_usage=PostgresLayoutUsage(manager)' in t and 'preset_revision_ref = layout_presets[DEFAULT_LAYOUT]' in t and 'DISTINCT ON (j.job_id)' in t and 'FAILED_FINAL' in t, 'wiring'"` | 0 | Đạt probe wiring creative |
+| 16 | `python -c "import pathlib; t = pathlib.Path('src/creative/adapters/activity_inputs.py').read_text(encoding='utf-8'); assert 'layout_presets: Mapping[str, str] | None = None' in t and 'class LayoutUsagePort' in t and 'def _layout_options(' in t and 'capped_layouts(options, used, target_count)' in t and 'invalid_layout_presets' in t, 'inputs'; s = pathlib.Path('tests/integration/prod_wiring/test_prs_layout_quota.py').read_text(encoding='utf-8'); assert 'def test_the_plan_takes_the_preset_of_the_layout_the_model_picks(' in s and 'def test_layout_usage_counts_the_latest_plan_of_the_other_jobs_of_the_batch(' in s and 'coveredIds: FR-PRS-003, FR-PRS-005' in s, 'tests'; assert 'monkeypatch' not in s and 'mock' not in s.lower(), 'fixture'"` | 0 | Đạt probe activity_inputs và test mới |
+| 17 | `python -c "import json, pathlib; t = pathlib.Path('src/creative/domain/script.py').read_text(encoding='utf-8'); assert all(s in t for s in ['SCRIPT_CHARS_PER_SECOND = 13.81', 'FIRST_READ_SLOW_RATIO = 1.1087', 'FIRST_READ_FAST_RATIO = 0.9226', 'chars_per_second: float | None = None', 'def count_chars(', 'target_range.min_seconds / FIRST_READ_SLOW_RATIO', 'target_range.max_seconds / FIRST_READ_FAST_RATIO']), 'script'; w = pathlib.Path('src/controlplane/api/wiring/creative.py').read_text(encoding='utf-8'); assert 'chars_per_second=SCRIPT_CHARS_PER_SECOND' in w, 'wiring'; v = json.loads(pathlib.Path('tools/launcher/prod/profile.json').read_text(encoding='utf-8'))['voice']; assert v['duration_range_ms']['value'] == {'min': 61000, 'max': 70000} and v['speed_fit']['value']['min_scale'] == 0.85 and v['speed_fit']['value']['max_scale'] == 1.15 and v['speech_rate_wpm']['value'] == 136, v"` | 0 | Đạt probe D-08-FIX1 |
+| 18 | `python -c "import ast, pathlib; t = pathlib.Path('src/controlplane/api/wiring/creative.py').read_text(encoding='utf-8'); fs = [n for n in ast.parse(t).body if isinstance(n, ast.FunctionDef) and n.name == 'build_creative_services']; assert len(fs) == 1, 'build_creative_services missing'; body = fs[0].body; branches = [s for s in body if isinstance(s, ast.If)]; assert branches, 'test branch missing'; rest = [s for s in body if s is not branches[0]]; names = [x.id for s in rest for x in ast.walk(s) if isinstance(x, ast.Name)] + [x.attr for s in rest for x in ast.walk(s) if isinstance(x, ast.Attribute)]; bad = [x for x in names if x.startswith(('Fake', 'InMemory', 'Memory'))]; assert not bad, bad; assert 'from src.' not in t, 'PW-W2'"` | 0 | Đạt probe build_creative_services |
+| 19 | `python -c "import pathlib, re, tomllib; root = pathlib.Path('src/controlplane'); keys = set(tomllib.loads((root / 'pyproject.toml').read_text(encoding='utf-8'))['tool']['setuptools']['package-dir']); pk = set('.'.join(('controlplane',) + q.parent.relative_to(root).parts) for q in root.rglob('*.py') if q.stem.strip('_') == 'init' and 'node_modules' not in q.parts); miss = sorted(pk - keys); assert not miss, miss; ini = tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8'))['tool']['pytest']['ini_options']; assert 'src' in ini.get('pythonpath', []), 'pytest pythonpath must include src'; bad = [str(q) for d in ['src', 'tests'] for q in pathlib.Path(d).rglob('*.py') if 'node_modules' not in q.parts and re.search(r'(?m)^\s*(from|import)\s+src\.', q.read_text(encoding='utf-8', errors='replace'))]; assert not bad, bad"` | 0 | Đạt probe package-dir và import sạch |
+
+## 4. Chi tiết kiểm thử và nội dung nghiệm thu
+
+1. **Bố cục và preset AI chọn:**
+   - Trong `test_the_plan_takes_the_preset_of_the_layout_the_model_picks`: Mô hình chọn bố cục SPLIT_STACK, kế hoạch sinh ra nhận đúng preset tương ứng là `clean-white` (`plan.preset_revision_ref == 'clean-white'`), thay vì dùng preset đầu cố định `'common'`.
+2. **Tập bố cục đủ điều kiện:**
+   - Khi chưa có dữ liệu lô hoặc không bị giới hạn quota, tập bố cục đủ điều kiện dựa trên đặc trưng kịch bản là `['HERO_STRIP', 'SPLIT_STACK']`.
+3. **Trần 40% đếm theo lô (Quota):**
+   - Trong một lô 10 video, khi `HERO_STRIP` đã chiếm 4/10 video (đạt ngưỡng trần 40%), `capped_layouts` loại bỏ `HERO_STRIP` khỏi danh sách tùy chọn, chỉ còn `['SPLIT_STACK']` được đưa cho AI lựa chọn.
+4. **Không tự đếm chính job và PostgresLayoutUsage:**
+   - `PostgresLayoutUsage` đếm bố cục của kế hoạch mới nhất từ các job khác trong cùng `batch_id` (`DISTINCT ON (j.job_id)` theo `created_at DESC`), loại trừ chính `job_id` đang chạy và loại trừ các job trạng thái `FAILED_FINAL`. Nếu không có hàng lô thì trả về `None`.
+
+## 5. Giới hạn kỹ thuật (Limitations)
+
+- **Trần 40% đếm trên kế hoạch đã lưu:** Cơ chế đếm dựa trên các kế hoạch đã commit vào cơ sở dữ liệu. Do đó, các video chạy song song trong cùng thời điểm có thể vượt tối đa `max_concurrent_videos − 1` trước khi kế hoạch được lưu.
+- **Thử lại với cùng operation_key:** Trong trường hợp hiếm khi lượt thử lại cùng `operation_key` diễn ra sau khi kế hoạch đã commit (mất xác nhận mạng), việc đọc lại số liệu lô có thể khác lần đầu và gây ra `IdempotencyConflict` (được ghi nhận vào backlog kỹ thuật).
+- **Phạm vi kiểm thử truy vấn:** Truy vấn đếm `LAYOUT_USAGE_SQL` và `LAYOUT_TARGET_SQL` trong gói này được kiểm thử tích hợp bằng kết nối mô phỏng; kiểm thử trực tiếp trên cơ sở dữ liệu PostgreSQL thực tế thuộc phạm vi nhóm 3.
+
+## 6. Kết luận và ghi chú mã lỗi
+
+Gói công việc `PRS-LAYOUT-QUOTA` đã hoàn thành toàn diện việc khắc phục nhóm lỗi `OI-CP7-11-Q5`. Hệ thống đã kết nối hoàn chỉnh việc lựa chọn bố cục AI, gán đúng preset tương ứng và áp dụng trần hạn ngạch 40% cho mỗi bố cục theo từng lô video.

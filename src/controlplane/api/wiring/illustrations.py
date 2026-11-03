@@ -24,7 +24,6 @@ import base64
 import datetime
 import hashlib
 import json
-import os
 import re
 import subprocess
 import time
@@ -411,7 +410,7 @@ class IllustrationService:
         path.parent.mkdir(parents=True, exist_ok=True)
         part = path.with_name(path.name + '.part')
         part.write_text(json.dumps(stored, ensure_ascii=False, indent=1), encoding='utf-8')
-        os.replace(part, path)
+        part.replace(path)
         return stored
 
     def _age_seconds(self, stored: Mapping[str, Any]) -> float:
@@ -465,7 +464,7 @@ class IllustrationService:
         part = media / f'{sha256}.png.part'
         try:
             part.write_bytes(data)
-            os.replace(part, target)
+            part.replace(target)
         finally:
             part.unlink(missing_ok=True)
         return target

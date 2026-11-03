@@ -1,6 +1,10 @@
 """Production ActivityInputPort of D (PW-D2): input_refs of an ActivityRequest to the typed arguments of the one D-14 command.
 
 Every id built here comes from job_id and the stage revision of stage_run_id, so a retry with the same operation_key gives the same arguments and the command receipt replays. The source set, the media, hook and thumbnail candidates and the variant history come from injected ports; their production sources belong to PW-D3 and to G.
+PRS-LAYOUT-QUOTA: with settings.layout_presets (layout key to preset, from the profile), BuildProductionPlan also gets layout_options (the
+layouts the stored script and selection make eligible, without the layouts that already hold their share of the batch, read through
+the optional LayoutUsagePort) and layout_presets, so the model picks the layout and the plan takes its preset (FR-PRS-003).
+coveredIds: FR-PRS-003, FR-PRS-005
 """
 from __future__ import annotations
 
@@ -12,6 +16,7 @@ from typing import Any, Protocol
 
 from controlplane.domain.orchestration import ExecutionGrant
 from creative.domain.asset_selection import CreativeAssetSelection
+from creative.domain.layout_choice import capped_layouts, eligible_layouts, layout_features, valid_presets
 from creative.domain.script import LanguageVoicePolicy, TargetRange
 from creative.domain.variant import build_variant_fingerprint
 from creative.ports.repositories import EventContext
@@ -66,6 +71,7 @@ class CreativeSettings:
     requested_angle_count: int
     variation_policy_revision: str
     preset_revision_ref: str
+    layout_presets: Mapping[str, str] | None = None
 
 
 def _pinned(refs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -94,6 +100,13 @@ class VariantContextPort(Protocol):
     """Variant history of ValidateVariant: a mapping with every key of VARIANT_CONTEXT_KEYS plus optional own_reservation_id and output_hash (G owns the data)."""
 
     def variant_context(self, *, workspace_id: str, job_id: str, phase: str, input_refs: Sequence[Mapping[str, Any]]) -> Mapping[str, Any]:
+        ...
+
+
+class LayoutUsagePort(Protocol):
+    """PRS-LAYOUT-QUOTA: (layout key -> plans of the other jobs of the job's batch that use it, target_count of the batch); None when unknown."""
+
+    def usage(self, *, workspace_id: str, job_id: str) -> tuple[Mapping[str, int], int] | None:
         ...
 
 
@@ -177,9 +190,10 @@ class ProductionActivityInputs:
     def __init__(
         self, *, uow_factory: Callable[[], Any], prompts: PromptRefsPort, sources: SourceSetPort,
         selection_inputs: SelectionInputsPort, variant_context: VariantContextPort, selections: Any,
-        settings: CreativeSettings, clock: Callable[[], datetime.datetime],
+        settings: CreativeSettings, clock: Callable[[], datetime.datetime], layout_usage: LayoutUsagePort | None = None,
     ) -> None:
         self._uow_factory = uow_factory
+        self._layout_usage = layout_usage
         self._prompts = prompts
         self._sources = sources
         self._selection_inputs = selection_inputs
@@ -282,11 +296,32 @@ class ProductionActivityInputs:
         }
 
     def _plan(self, frame: _Frame) -> dict[str, Any]:
-        return {
+        args = {
             'snapshot_id': _last_ref(frame.refs, REF_SNAPSHOT)['ref_id'], 'script_version_id': _last_ref(frame.refs, REF_SCRIPT)['ref_id'],
             'selection_ref': _last_ref(frame.refs, REF_SELECTION)['ref_id'],
             'production_plan_id': f'plan:{frame.job_id}:r{frame.revision}', 'preset_revision_ref': self._settings.preset_revision_ref,
         }
+        presets = self._settings.layout_presets
+        if presets is None:
+            return args
+        if not valid_presets(presets):
+            raise ActivityInputError(INPUT_NOT_READY, 'invalid_layout_presets')
+        args['layout_options'], args['layout_presets'] = list(self._layout_options(frame, args)), dict(presets)
+        return args
+
+    def _layout_options(self, frame: _Frame, args: Mapping[str, Any]) -> tuple[str, ...]:
+        """PRS-LAYOUT-QUOTA: eligible_layouts of the stored script and selection, narrowed by capped_layouts with the batch usage when known."""
+        script_id = args['script_version_id']
+        script = self._read(lambda uow: self._latest(uow.scripts, script_id, 'script_not_found'))
+        selection = self._selections.load(workspace_id=frame.workspace_id, selection_id=args['selection_ref'])
+        if selection is None:
+            raise ActivityInputError(INPUT_NOT_READY, 'selection_not_found')
+        options = eligible_layouts(layout_features(selection, script))
+        found = self._layout_usage.usage(workspace_id=frame.workspace_id, job_id=frame.job_id) if self._layout_usage is not None else None
+        if found is None:
+            return options
+        used, target_count = found
+        return capped_layouts(options, used, target_count)
 
     def _variant(self, frame: _Frame) -> dict[str, Any]:
         phase = variant_phase(frame.stage_run_id)
@@ -324,6 +359,7 @@ class ProductionActivityInputs:
 __all__ = [
     'ActivityInputError',
     'CreativeSettings',
+    'LayoutUsagePort',
     'ProductionActivityInputs',
     'PromptRefsPort',
     'SelectionInputsPort',
