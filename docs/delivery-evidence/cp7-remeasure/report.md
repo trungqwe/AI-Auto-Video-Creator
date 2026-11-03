@@ -21,7 +21,7 @@ Trạng thái từng mục RG-10 và CQ được ghi nhận trung thực như sa
 - 3 chỉ số chất lượng sáng tạo CQ:
   - CQ.no_background_only: PASS. 0 video chỉ có ảnh nền (background_only=0, seed_share_max_pct=0.0). Toàn bộ 100 video đều có ảnh minh hoạ thật hoặc ảnh AI, đáp ứng tuyệt đối chỉ thị chất lượng.
   - CQ.real_hooks: PASS. 100% video dùng hook thật từ Freesound (audio) và Pixabay (visual), không có hook giữ chỗ template nào (not_real=0).
-  - CQ.layout_cap_40: OVER. Phân bố 4 bố cục gồm HERO_STRIP (41 video = 41%), SPLIT_STACK (34 video), FULL_BLEED_INSET (15 video), DATA_CARD (10 video). HERO_STRIP đạt 41/100 video, vượt trần 40% một video. Acceptance cho phép trần có thể vượt tối đa max_concurrent_videos - 1 khi chạy song song (mặc định 6 luồng) và quy định kết quả là OVER chứ không FAIL; Control quyết.
+  - CQ.layout_cap_40: OVER. Phân bố 4 bố cục gồm HERO_STRIP (41 video = 41%), SPLIT_STACK (34 video), FULL_BLEED_INSET (15 video), DATA_CARD (10 video). HERO_STRIP đạt 41/100 video, vượt trần 40% một video. Acceptance cho phép trần có thể vượt tối đa max_concurrent_videos - 1 khi chạy song song (hồ sơ cấu hình in ở dòng concurrency={default: 6, max: 10, min: 1} của mục Chi tiết đo, nên trần có thể vượt tối đa 5 video; mức vượt 1 video của HERO_STRIP nằm trong giới hạn đó) và quy định kết quả là OVER chứ không FAIL; Control quyết.
 
 Danh sách tệp thêm mới của gói: tools/real/cp7_remeasure_quality.py, tests/real/test_cp7_remeasure.py (cả hai chép nguyên văn từ bản tham chiếu Control D:/AIAVC_IMGPROTO/ref/cp7-remeasure/, khớp SHA-256 hoàn toàn) và tệp báo cáo docs/delivery-evidence/cp7-remeasure/report.md. Không sửa đổi bất kỳ tệp nào của CP7-11 hay mã nguồn sản phẩm.
 
@@ -171,7 +171,7 @@ CQ.layout_cap_40: OVER
 ## Chất lượng hình và tiếng
 
 - **Phân bố bố cục (layout_batch)**:
-  - HERO_STRIP: 41 video (41,0%, vượt trần 40% quy định 1 video, CQ.layout_cap_40: OVER; ghi rõ Control quyết theo giới hạn đã định khi chạy song song 6 luồng với max_concurrent_videos - 1).
+  - HERO_STRIP: 41 video (41,0%, vượt trần 40% quy định 1 video, CQ.layout_cap_40: OVER; Control quyết; hồ sơ in max_concurrent_videos default 6 nên trần có thể vượt tối đa 5 video, mức vượt 1 video của HERO_STRIP nằm trong giới hạn đó).
   - SPLIT_STACK: 34 video (34,0%).
   - FULL_BLEED_INSET: 15 video (15,0%).
   - DATA_CARD: 10 video (10,0%).
