@@ -1,5 +1,7 @@
 """PW-CAT2: flow.py xử lý waiting, RetryStage và fan-out.
 
+PW-CAT2-FIX2: một phần tử CollectSource hỏng không dừng các nguồn còn lại (patch fan-out-item-isolation); lịch sử cũ replay như trước.
+
 coveredIds: PW-CAT2-01, CT-WF-006, CT-WF-007, CT-ORC-007
 """
 from __future__ import annotations
@@ -15,7 +17,7 @@ from pathlib import Path
 
 import pytest
 from temporalio.api.enums.v1 import EventType
-from temporalio.worker import UnsandboxedWorkflowRunner, Worker
+from temporalio.worker import Replayer, UnsandboxedWorkflowRunner, Worker
 
 from controlplane.api.wiring.workflow import build_temporal_registration, build_workflow_services
 from controlplane.application.orchestration.grant_runtime import GrantRevokingDispatcher, build_grant_issuer
@@ -33,7 +35,9 @@ from controlplane.application.orchestration.workflows.flow import (
     FlowParams,
     StageGraphFlow,
 )
+from controlplane.application.orchestration.workflows import flow as flow_module
 from controlplane.application.orchestration.workflows.settings import settings_from_parameters
+from controlplane.domain.orchestration.fencing import GrantClaims
 from controlplane.domain.orchestration.job_waiting import WaitReason
 from controlplane.domain.orchestration.workflow_catalog import get_workflow
 from controlplane.infrastructure.db.orchestration.app_session import PostgresAppSessions
@@ -75,12 +79,18 @@ DEFAULT_OUTPUTS = {'SelectCreativeAssets': media(2)}
 
 
 class ScriptedGateway:
-    def __init__(self, script=None):
+    def __init__(self, script=None, *, patched=True):
         self.script = {name: list(steps) for name, steps in (script or {}).items()}
         self.requests = []
         self.sleeps = []
         self._grants = 0
         self._identities = {}
+        self.patch_enabled = patched
+        self.patched_calls = []
+
+    def patched(self, patch_id):
+        self.patched_calls.append(patch_id)
+        return self.patch_enabled
 
     async def issue_grant(self, stage_run_id, allowed_operation, input_fingerprint, worker_lease_id):
         self._grants += 1
@@ -384,3 +394,203 @@ async def test_waiting_waits_on_the_temporal_timer_and_resumes_at_the_same_stage
     timers = [e for e in history.events if e.event_type == EventType.EVENT_TYPE_TIMER_STARTED]
     assert len(timers) == 1
     assert timers[0].timer_started_event_attributes.start_to_fire_timeout.seconds == 60
+
+
+# --- PW-CAT2-FIX2: cô lập lỗi từng nguồn trong fan-out CollectSource ----------------------------------------------------
+
+def collection_sources(count):
+    return [{'ref_type': 'collection_source', 'ref_id': 'src-' + str(i)} for i in range(count)]
+
+
+def make_daily_flow(collect_steps, *, sources=3, patched=True):
+    gateway = ScriptedGateway(
+        {'PlanCollectionCycle': [{'outputs': collection_sources(sources)}], 'CollectSource': list(collect_steps)},
+        patched=patched,
+    )
+    flow = StageGraphFlow(
+        get_workflow('DailyCollectionWorkflow'),
+        DAILY_STAGE_ACTIVITIES,
+        make_params(video_job_id=None),
+        SETTINGS,
+        gateway,
+        [],
+        chain_outputs=False,
+    )
+    return flow, gateway
+
+
+def collect_indexes(gateway):
+    return [r['operation_key'].split(':')[-2] for r in requests_of(gateway, 'CollectSource')]
+
+
+def test_isolated_fan_out_is_only_collect_source_and_has_its_own_patch():
+    assert flow_module.ISOLATED_FAN_OUT == frozenset({'CollectSource'})
+    assert flow_module.ISOLATED_FAN_OUT_PATCH_ID == 'fan-out-item-isolation'
+    assert flow_module.ISOLATED_FAN_OUT_PATCH_ID != flow_module.VARIANT_REVALIDATE_PATCH_ID
+    assert flow_module.ISOLATED_FAN_OUT_PATCH_ID not in {
+        definitions.JOB_TERMINAL_PATCH_ID, definitions.BATCH_CONCURRENCY_PATCH_ID, definitions.BATCH_START_PATCH_ID,
+        definitions.ILLUSTRATIONS_PATCH_ID,
+    }
+
+
+def test_a_failed_source_is_recorded_and_the_next_sources_still_run():
+    failed = {'disposition': 'failed', 'code': 'ITEM_COMMIT_FAILED'}
+    flow, gateway = make_daily_flow(['succeeded', failed, 'succeeded'])
+    assert asyncio.run(flow.advance()) == STATUS_COMPLETED
+    assert collect_indexes(gateway) == ['0', '1', '2']
+    assert [r['input_refs'][0]['ref_id'] for r in requests_of(gateway, 'CollectSource')] == ['src-0', 'src-1', 'src-2']
+    assert flow.completed == ['select_sources', 'collect'] and flow.failed_stage is None and flow.last_problem is None
+    snapshot = flow.snapshot()
+    assert snapshot['status'] == STATUS_COMPLETED
+    assert snapshot['isolated_failures'] == [{
+        'stage': 'collect', 'activity': 'CollectSource', 'index': 1, 'revision': 1,
+        'input_refs': [{'ref_type': 'collection_source', 'ref_id': 'src-1'}],
+        'problem': {'activity': 'CollectSource', 'disposition': 'failed', 'code': 'ITEM_COMMIT_FAILED'},
+    }]
+    assert [ref['ref_id'] for ref in snapshot['output_refs']['collect']] == [
+        f'{WORKFLOW_ID}:collect:CollectSource:0:r1', f'{WORKFLOW_ID}:collect:CollectSource:2:r1']
+    assert gateway.patched_calls == [flow_module.ISOLATED_FAN_OUT_PATCH_ID]
+    assert gateway.sleeps == []
+
+
+def test_the_collect_stage_fails_only_when_every_source_fails():
+    failed = {'disposition': 'failed', 'code': 'HTTP_STATUS_REJECTED'}
+    flow, gateway = make_daily_flow([failed, failed, {'disposition': 'failed', 'code': 'ITEM_COMMIT_FAILED'}])
+    assert asyncio.run(flow.advance()) == STATUS_FAILED
+    assert collect_indexes(gateway) == ['0', '1', '2']
+    assert flow.failed_stage == 'collect' and 'collect' not in flow.completed
+    assert flow.last_problem == {'activity': 'CollectSource', 'disposition': 'failed', 'code': 'ITEM_COMMIT_FAILED'}
+    assert flow.snapshot()['isolated_failures'] == []
+
+
+def test_a_waiting_source_after_an_isolated_failure_resumes_without_rerunning_the_failure():
+    failed = {'disposition': 'failed', 'code': 'ITEM_COMMIT_FAILED'}
+    waiting = {'disposition': 'waiting', 'code': 'provider_unavailable'}
+    flow, gateway = make_daily_flow([failed, waiting, 'succeeded'])
+    assert asyncio.run(flow.advance()) == STATUS_WAITING_CAPABILITY
+    assert (flow.waiting_stage, flow.wait_reason) == ('collect', 'provider_unavailable')
+    assert asyncio.run(flow.advance()) == STATUS_COMPLETED
+    assert collect_indexes(gateway) == ['0', '1', '1', '2']
+    assert [f['index'] for f in flow.snapshot()['isolated_failures']] == [0]
+
+
+def test_without_the_patch_the_first_failed_source_stops_the_stage_as_before():
+    failed = {'disposition': 'failed', 'code': 'ITEM_COMMIT_FAILED'}
+    flow, gateway = make_daily_flow(['succeeded', failed, 'succeeded'], patched=False)
+    assert asyncio.run(flow.advance()) == STATUS_FAILED
+    assert collect_indexes(gateway) == ['0', '1']
+    assert flow.failed_stage == 'collect'
+    assert flow.last_problem['code'] == 'ITEM_COMMIT_FAILED'
+    assert gateway.patched_calls == [flow_module.ISOLATED_FAN_OUT_PATCH_ID]
+
+
+def test_video_fan_out_still_stops_at_the_first_failed_image_and_never_asks_the_patch():
+    flow, gateway = make_video_flow({'ProbeMedia': [{'disposition': 'failed', 'code': 'PROBE_ERR'}]})
+    assert asyncio.run(flow.advance()) == STATUS_FAILED
+    assert flow.failed_stage == 'process'
+    assert len(requests_of(gateway, 'ProbeMedia')) == 1
+    assert requests_of(gateway, 'AssessImageSafety') == []
+    assert gateway.patched_calls == []
+    assert flow.snapshot()['isolated_failures'] == []
+
+
+def daily_handlers(log, failing_index):
+    def make(name):
+        def handler(request, claims):
+            log.append((name, request['operation_key']))
+            result = {
+                'stage_run_id': claims.stage_run_id,
+                'grant_id': claims.grant_id,
+                'execution_generation': claims.execution_generation,
+                'recovery_epoch': claims.recovery_epoch,
+                'completed_at': '2026-11-04T01:00:00Z',
+            }
+            if name == 'CollectSource' and request['operation_key'].endswith(f':{failing_index}:r1'):
+                result.update(
+                    disposition='failed',
+                    output_refs=[],
+                    problem={'code': 'ITEM_COMMIT_FAILED', 'retryable': False, 'message': 'item commit failed'},
+                )
+                return result
+            outputs = collection_sources(3) if name == 'PlanCollectionCycle' else [
+                {'ref_type': name + '_out', 'ref_id': request['operation_key']}]
+            result.update(disposition='succeeded', output_refs=outputs)
+            return result
+
+        return handler
+
+    return {name: make(name) for name in BINDINGS_BY_NAME}
+
+
+def daily_grants():
+    issued = []
+
+    def issue(stage_run_id, allowed_operation, input_fingerprint, worker_lease_id):
+        issued.append(stage_run_id)
+        return GrantClaims(f'grant-{len(issued)}', stage_run_id, len(issued), '1', worker_lease_id, '2026-11-04T01:00:00Z',
+                           '2026-11-04T02:00:00Z', allowed_operation, input_fingerprint)
+
+    return issue
+
+
+async def run_daily(client):
+    log = []
+    services = build_workflow_services(
+        parameters=PARAMETERS, handlers=daily_handlers(log, 1), clock=lambda: NOW, timezone_approved=False
+    )
+    registration = build_temporal_registration(
+        services, grant_issuer=daily_grants(), capability_reader=lambda: {'desktop_production': {'status': 'available'}}
+    )
+    workflow_queue = 'control-workflows'
+    payload = {'settings': SETTINGS.to_payload(), 'input_fingerprint': 'fp-1', 'worker_lease_id': 'lease-1'}
+    async with AsyncExitStack() as stack:
+        for queue, functions in registration.activities_by_queue.items():
+            extra = {'workflows': list(registration.workflows)} if queue == workflow_queue else {}
+            await stack.enter_async_context(
+                Worker(client, task_queue=queue, activities=list(functions),
+                       workflow_runner=UnsandboxedWorkflowRunner(), **extra)
+            )
+        handle = await client.start_workflow(
+            'DailyCollectionWorkflow', payload, id='pw-cat2-fix2-' + uuid.uuid4().hex[:8], task_queue=workflow_queue
+        )
+        snapshot = await asyncio.wait_for(handle.result(), timeout=300)
+        history = await handle.fetch_history()
+    return snapshot, history, [op for name, op in log if name == 'CollectSource']
+
+
+def isolation_markers(history):
+    return [e for e in history.events
+            if e.HasField('marker_recorded_event_attributes')
+            and flow_module.ISOLATED_FAN_OUT_PATCH_ID in str(e.marker_recorded_event_attributes)]
+
+
+def daily_replayer():
+    return Replayer(workflows=[definitions.DailyCollectionWorkflow], workflow_runner=UnsandboxedWorkflowRunner())
+
+
+@pytest.mark.asyncio
+async def test_temporal_daily_collection_runs_the_source_after_a_failed_one_and_replays(pw_temporal):
+    snapshot, history, collected = await run_daily(pw_temporal)
+    assert snapshot['status'] == 'COMPLETED' and snapshot['failed_stage'] is None
+    assert [op.split(':')[-2] for op in collected] == ['0', '1', '2']
+    assert [(f['index'], f['problem']['code']) for f in snapshot['isolated_failures']] == [(1, 'ITEM_COMMIT_FAILED')]
+    assert len(isolation_markers(history)) == 1
+    await daily_replayer().replay_workflow(history)
+
+
+@pytest.mark.asyncio
+async def test_temporal_history_without_the_marker_replays_the_old_stop_and_breaks_if_the_patch_is_forced(pw_temporal, monkeypatch):
+    original = definitions.workflow.patched
+    patch_id = flow_module.ISOLATED_FAN_OUT_PATCH_ID
+    # Mã trước PW-CAT2-FIX2 không hỏi patch này: ghi một run trả False và không có marker tái tạo đúng lịch sử của nó.
+    monkeypatch.setattr(definitions.workflow, 'patched', lambda pid: False if pid == patch_id else original(pid))
+    snapshot, legacy, collected = await run_daily(pw_temporal)
+    monkeypatch.undo()
+    assert snapshot['status'] == 'FAILED' and snapshot['failed_stage'] == 'collect'
+    assert [op.split(':')[-2] for op in collected] == ['0', '1']
+    assert isolation_markers(legacy) == []
+    await daily_replayer().replay_workflow(legacy)
+    monkeypatch.setattr(definitions.TemporalGateway, 'patched', lambda self, pid: True if pid == patch_id else original(pid))
+    with pytest.raises(Exception) as caught:
+        await daily_replayer().replay_workflow(legacy)
+    assert 'nondetermin' in repr(caught.value).lower() or 'CollectSource' in repr(caught.value)
