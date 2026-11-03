@@ -1,4 +1,9 @@
-"""Reads RenderPresetRevision, the output profile and QualityPolicy from published ConfigRevision of scopes preset and policy and seeds them from the production profile parameters (PW-F3, CT-RND-001, CT-QC-001)."""
+"""Reads RenderPresetRevision, the output profile and QualityPolicy from published ConfigRevision of scopes preset and policy and seeds them from the production profile parameters (PW-F3, CT-RND-001, CT-QC-001).
+
+PRS-LAYOUT-CONFIG: a preset variant may name its presentation layout (render.presets.variants.<name>.layout, one of render.domain.layout.LAYOUT_KEYS, each layout
+at most once); its layout_rules then carry presentation = {layout_key, accent_colour} with the variant highlight colour as accent. A variant without layout keeps the
+old layout_rules. seed_render_config with a scope publishes a new revision when the payload of a seeded scope changed, and nothing when it is unchanged.
+"""
 from __future__ import annotations
 
 import re
@@ -10,6 +15,7 @@ from controlplane.application.idempotency.canonicalization import request_hash
 from controlplane.domain.concurrency import RevisionConflictError
 from controlplane.domain.config_security import ConfigRevisionStatus
 from render.domain.karaoke_plan import KaraokeStyle
+from render.domain.layout import LAYOUT_KEYS
 from render.domain.preset import RenderPresetRevision, build_preset_revision
 from render.domain.quality_report import GateName, QualityPolicy
 from render.domain.render_command import OutputProfile
@@ -123,7 +129,18 @@ def render_config_payloads(
     }
 
     preset_items: list[tuple[str, str, dict]] = []
+    layouts_seen: set[str] = set()
     for name, variant in variants.items():
+        rules = dict(layout_rules)
+        if isinstance(variant, Mapping) and 'layout' in variant:
+            layout_key = variant['layout']
+            if layout_key not in LAYOUT_KEYS or layout_key in layouts_seen:
+                raise ValueError(f'invalid render.presets.variants.{name}.layout')
+            layouts_seen.add(layout_key)
+            rules['presentation'] = {
+                'layout_key': layout_key,
+                'accent_colour': _need(variant, 'highlight_color', f'render.presets.variants.{name}.highlight_color'),
+            }
         typography = {
             'font_name': _need(common, 'font', 'render.presets.common.font'),
             'font_size': _need(common, 'font_size', 'render.presets.common.font_size'),
@@ -139,7 +156,7 @@ def render_config_payloads(
         preset_payload = {
             'preset_key': name,
             'visual_rhythm': dict(_need(sections, 'visual_rhythm', 'supplements.sections.visual_rhythm')),
-            'layout_rules': layout_rules,
+            'layout_rules': rules,
             'thumbnail_overlay_style': dict(_need(sections, 'thumbnail_overlay_style', 'supplements.sections.thumbnail_overlay_style')),
             'typography_karaoke_style': typography,
             'hook_treatment': dict(_need(sections, 'hook_treatment', 'supplements.sections.hook_treatment')),
@@ -217,12 +234,24 @@ def seed_render_config(
     actor_id: str,
     parameters: Mapping,
     supplements: Mapping,
+    scope: ConfigScopePort | None = None,
 ) -> tuple[str, ...]:
+    """Publish every render config payload of the profile; without scope only scopes never seeded (expected revision 0). With scope
+    (PRS-LAYOUT-CONFIG) a scope whose current payload hashes like the new one is skipped and a changed one gets a new revision
+    on top of the current one (idempotency key suffixed with :r<revision>)."""
     items = render_config_payloads(parameters, supplements)
     seeded: list[str] = []
     for kind, key, payload in items:
         digest = request_hash(payload)[:16]
         idempotency_key = f'seed-render-config:{kind}:{key}:{digest}'
+        expected = 0
+        if scope is not None:
+            current = scope.current(workspace_id=workspace_id, scope_kind=kind, scope_key=key)
+            if current is not None:
+                if request_hash(dict(current.payload)) == request_hash(payload):
+                    continue
+                expected = current.revision
+                idempotency_key = f'{idempotency_key}:r{expected}'
         try:
             receipt = config_service.put_config(
                 workspace_id=workspace_id,
@@ -230,7 +259,7 @@ def seed_render_config(
                 idempotency_key=idempotency_key,
                 scope_kind=kind,
                 scope_key=key,
-                expected_revision=0,
+                expected_revision=expected,
                 payload=payload,
             )
         except RevisionConflictError:
