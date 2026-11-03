@@ -5,6 +5,9 @@ Production profile (plan.md 7.4): 1080x1920 (frame placement built by render_com
 Each attempt writes a temporary file next to the output; only exit code 0 renames it atomically to output_ref (the output path of the spec), and an existing output is never overwritten.
 LOCK-DESKTOP-GPU is held by the caller: RenderPipeline.render_video acquires one slot and returns it; run() receives that held GpuLease and never acquires or releases it, so one render takes exactly one slot. The encoder used is written to the metrics (gpu_metrics encoder_h264_nvenc or cpu_metrics encoder_libx264) and to last_encoder.
 command_prefix exists for tests only (an interpreter that runs a fake ffmpeg script); the pin check always applies to ffmpeg_path.
+PRS-LAYOUT-POLISH: a filter graph longer than render_command.LAYOUT_GRAPH_MAX_CHARS (layout videos with many scenes) is written next to the
+temporary output and passed with -/filter_complex <file> (ffmpeg 7.1+ reads the option value from the file), so the Windows command
+line limit (32,767 characters) never caps a render; the file never outlives its attempt. Shorter graphs stay inline as before.
 Loudness (CT-RND-004): a graph with one loudnorm in the audio chain is run in two passes; the measurement pass calls the pinned ffmpeg directly (command_prefix wraps only the render pass), a failed or silent measurement is FAILED loudness_measure_failed and writes no file, and a graph with two loudnorm, loudnorm outside the audio chain or an unmapped output label is FAILED spec_shape_invalid before anything runs. Without loudnorm one command runs as before.
 
 coveredIds: CT-RND-004, CT-STATE-011
@@ -25,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
-from render.domain.render_command import KIND_RENDER, RenderCommandSpec
+from render.domain.render_command import KIND_RENDER, LAYOUT_GRAPH_MAX_CHARS, RenderCommandSpec
 from render.ports.lease import GpuLease, GpuLeasePort
 from render.ports.renderer import OutputObservation, RendererMetrics, RendererOutcome, RendererStatus, RendererTimeout
 
@@ -46,6 +49,8 @@ MP4_ARGS = ('-movflags', '+faststart')
 NVENC_FAILURE_MARKERS = ('nvenc', 'nvcuda', 'cuda', 'could not open encoder', 'error initializing output stream')
 ERROR_TAIL_CHARS = 2000
 CHUNK_BYTES = 1 << 20
+GRAPH_FILE_OPTION = '-/filter_complex'
+GRAPH_FILE_SUFFIX = '.graph.txt'
 
 
 REASON_UNSUPPORTED_KIND = 'unsupported_spec_kind'
@@ -249,6 +254,18 @@ def build_final_argv(spec_argv: Sequence[str], ffmpeg: str, encoder: str, temp_o
     return args
 
 
+def graph_through_file(argv: Sequence[str], path: Path) -> list[str]:
+    """PRS-LAYOUT-POLISH: argv whose -filter_complex graph, when longer than LAYOUT_GRAPH_MAX_CHARS, is written to path (UTF-8) and
+    replaced by GRAPH_FILE_OPTION path; a shorter graph leaves argv unchanged and writes nothing."""
+    args = list(argv)
+    index = args.index('-filter_complex')
+    graph = args[index + 1]
+    if len(graph) <= LAYOUT_GRAPH_MAX_CHARS:
+        return args
+    path.write_bytes(graph.encode('utf-8'))
+    return [*args[:index], GRAPH_FILE_OPTION, str(path), *args[index + 2:]]
+
+
 def _nvenc_unavailable(stderr: str) -> bool:
     text = stderr.lower()
     return any(marker in text for marker in NVENC_FAILURE_MARKERS)
@@ -348,14 +365,18 @@ class RealFfmpegRenderer:
         return RendererOutcome(status=RendererStatus.FAILED, error=failure)
 
     def _execute(self, argv: Sequence[str], encoder: str, temp: Path, timeout: float) -> tuple[int, str]:
-        command = [*self._prefix, *build_final_argv(argv, str(self._ffmpeg), encoder, str(temp))]
+        script = temp.with_name(temp.name + GRAPH_FILE_SUFFIX)
         try:
-            done = subprocess.run(
-                command, capture_output=True, stdin=subprocess.DEVNULL, text=True, encoding='utf-8', errors='replace',
-                timeout=timeout, check=False,
-            )
-        except subprocess.TimeoutExpired:
-            raise RendererTimeout('ffmpeg exceeded the render timeout') from None
+            command = [*self._prefix, *graph_through_file(build_final_argv(argv, str(self._ffmpeg), encoder, str(temp)), script)]
+            try:
+                done = subprocess.run(
+                    command, capture_output=True, stdin=subprocess.DEVNULL, text=True, encoding='utf-8', errors='replace',
+                    timeout=timeout, check=False,
+                )
+            except subprocess.TimeoutExpired:
+                raise RendererTimeout('ffmpeg exceeded the render timeout') from None
+        finally:
+            script.unlink(missing_ok=True)
         return done.returncode, done.stderr or ''
 
     def _publish(self, temp: Path, output_ref: str, encoder: str, started: float) -> RendererOutcome:
@@ -372,5 +393,5 @@ class RealFfmpegRenderer:
 
 __all__ = [
     'FfmpegPinRejected', 'LoudnessMeasureFailed', 'LoudnessMeasurement', 'RealFfmpegRenderer', 'apply_measurement', 'build_final_argv',
-    'build_measure_argv', 'measure_loudness', 'parse_loudness_json', 'sha256_file', 'verify_ffmpeg_pin',
+    'build_measure_argv', 'graph_through_file', 'measure_loudness', 'parse_loudness_json', 'sha256_file', 'verify_ffmpeg_pin',
 ]

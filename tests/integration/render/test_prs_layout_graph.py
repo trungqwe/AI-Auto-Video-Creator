@@ -1,7 +1,8 @@
 """PRS-LAYOUT-DOMAIN: compose_layout dựng đúng năm bố cục qua FFmpeg ghim thật (ảnh nhỏ tự tạo, không mạng, không CSDL).
 
-Mỗi ô ảnh hiện đúng ảnh được giao ở đúng toạ độ của layout_geometry; băng màu nhấn mang màu của preset; ở nhánh render chỉ ô chính
-chuyển động, mọi lớp khác đứng yên; khung đầu của nhánh render trùng khung tĩnh của nhánh QC (cùng một hàm dựng).
+Mỗi ô ảnh hiện đúng ảnh được giao ở đúng toạ độ của layout_geometry; băng màu nhấn mang màu của preset; ở nhánh render ô chính
+chuyển động (Ken Burns) và bắt đầu đúng như khung QC; PRS-LAYOUT-POLISH: ô phụ trượt vào trong ENTER_SECONDS đầu cảnh rồi đứng yên
+đúng như khung QC (cùng một hàm dựng).
 
 coveredIds: FR-PRS-001, FR-PRS-002, FR-PRS-006
 """
@@ -106,9 +107,11 @@ def test_render_branch_moves_only_the_main_cell_and_starts_at_the_qc_frame(tmp_p
         return sum(abs(p - q) for u, v in zip(pa, pb) for p, q in zip(u, v)) / (3 * len(pa))
 
     assert diff((moving[0], main), (moving[-1], main)) > 20
-    assert diff((moving[0], strip), (moving[-1], strip)) < 1
     assert diff((moving[0], main), (still, main)) < 3
-    assert diff((moving[0], strip), (still, strip)) < 1
+    # PRS-LAYOUT-POLISH: the strip slides in, then stays exactly where the QC frame has it.
+    assert diff((moving[0], strip), (still, strip)) > 5
+    assert diff((moving[-1], strip), (still, strip)) < 1
+    assert diff((moving[30], strip), (moving[-1], strip)) < 1
 
 
 def test_frame_with_shared_chrome_equals_the_qc_frame(tmp_path):
