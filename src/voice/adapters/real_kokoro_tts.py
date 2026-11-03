@@ -5,6 +5,8 @@ Weights stay outside the Git tree and their sha256 is checked against tools/laun
 DQ-13: this adapter writes the WAV only as <voice root>/tmp/<sha256 of the WAV bytes>.wav; VoicePipeline names the final file voice-artifact-<sha256> through VoiceArtifactPlacer and the aligner opens that exact name.
 
 SentencePauseKokoro uses the private _split_phonemes and _create_audio API of kokoro-onnx==0.4.9 (pinned in pyproject.toml); a model injected through model_factory replaces the whole model, including the sentence-join rule.
+
+TTS-NUMBERS: for an English voice (language starting with 'en') the text given to the model is speakable_english(script text): espeak, behind phonemize(preserve_punctuation=True), splits '72,000' at the comma and reads 'seventy-two, zero zero zero'. Only the model input changes; ScriptText, usage_metrics['characters'], the aligner and the subtitles keep the digits of the script. The revision carries ';numbers=<SPOKEN_NUMBERS_REVISION>'.
 """
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from voice.domain.spoken_numbers import SPOKEN_NUMBERS_REVISION, speakable_english
 from voice.domain.tts_invocation import ProviderRouteDecision, TtsProviderError, TtsSynthesis
 from voice.domain.voice_track import verify_script_binding
 from voice.ports.script_text import ScriptText
@@ -144,6 +147,10 @@ class SentencePauseKokoro:
         return np.concatenate(pieces), rate
 
 
+def _english(language: str) -> bool:
+    return language.casefold().startswith('en')
+
+
 def _library_version() -> str:
     try:
         return importlib.metadata.version('kokoro-onnx')
@@ -203,7 +210,8 @@ class RealKokoroTts:
                     except Exception as exc:
                         raise self._runtime_error(exc) from None
                     join_tag = ';sentence_joins=model-tail' if isinstance(model, SentencePauseKokoro) else ''
-                    self._revision = f'kokoro-onnx=={_library_version()};model={pins[MODEL_FILE]};voices={pins[VOICES_FILE]};voice={self._config.voice}{join_tag}'
+                    numbers_tag = f';numbers={SPOKEN_NUMBERS_REVISION}' if _english(self._config.language) else ''
+                    self._revision = f'kokoro-onnx=={_library_version()};model={pins[MODEL_FILE]};voices={pins[VOICES_FILE]};voice={self._config.voice}{numbers_tag}{join_tag}'
                     self._model = model
         return self._model
 
@@ -243,9 +251,10 @@ class RealKokoroTts:
         except OSError:
             raise _fail(ERROR_STAGING_MISSING, 'staging temp directory unavailable') from None
         model = self._load()
+        spoken = speakable_english(script_text.text) if _english(config.language) else script_text.text
         started = time.perf_counter()
         try:
-            samples, rate = model.create(script_text.text, voice=config.voice, speed=effective, lang=config.language)
+            samples, rate = model.create(spoken, voice=config.voice, speed=effective, lang=config.language)
             if rate != config.sample_rate:
                 raise _fail(ERROR_SAMPLE_RATE_MISMATCH, 'model sample rate differs from configured sample rate')
             pcm = _to_pcm16(samples)
