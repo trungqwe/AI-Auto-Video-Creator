@@ -20,6 +20,7 @@ from creative.application.roles import AI_ROLES, ROLE_ANALYSIS, ROLE_ANGLES, ROL
 from creative.domain.analysis import parse_content_analysis
 from creative.domain.angles import StoryAngle, build_story_angle_set
 from creative.domain.asset_selection import CreativeAssetSelection, select_creative_assets
+from creative.domain.layout_cap import recheck_layout
 from creative.domain.layout_choice import choose_layout, layout_prompt_data, valid_presets
 from creative.domain.output_metadata import OUTPUT_LANGUAGE, OutputMetadata
 from creative.domain.production_plan import build_production_plan
@@ -741,6 +742,8 @@ class CreativePipeline:
                     preset_revision_ref=preset, layout_choice=choice)
 
             def store(unit: Any, plan: Any, record: Any) -> _Outcome:
+                if layout_presets is not None:
+                    plan = self._recheck_layout_cap(unit, plan, production_plan_id, tuple(layout_options or ()), layout_presets)
                 unit.plans.append(production_plan_id, 1, plan)
                 event = build_production_plan_created(context, aggregate_id=production_plan_id, aggregate_revision=1, plan=plan)
                 return _Outcome(
@@ -751,6 +754,24 @@ class CreativePipeline:
                 context=context, role=ROLE_PLAN, snapshot=snapshot, payload=payload, prior=prior, validate=validate, store=store)
 
         return self._execute(command='BuildProductionPlan', context=context, idempotency_key=idempotency_key, payload=payload, work=work)
+
+    @staticmethod
+    def _recheck_layout_cap(unit: Any, plan: Any, production_plan_id: str, options: tuple[str, ...], presets: Mapping[str, str]) -> Any:
+        """PRS-LAYOUT-QUOTA-FIX1: in the unit that stores the plan, the batch usage read under the batch lock (unit.layout_usage, the
+        PostgreSQL unit only; units without it keep the plan); recheck_layout may move the plan to an offered layout that still has
+        room, and the plan then takes that layout's preset and a new fingerprint."""
+        ledger = getattr(unit, 'layout_usage', None)
+        if ledger is None or plan.layout_choice is None:
+            return plan
+        found = ledger.locked_usage(production_plan_id)
+        if found is None:
+            return plan
+        used, batch_size = found
+        choice = recheck_layout(plan.layout_choice, options=options, used=used, batch_size=batch_size, presets=presets)
+        if choice is None:
+            return plan
+        moved = dataclasses.replace(plan, preset_revision_ref=choice['preset_key'], layout_choice=choice)
+        return dataclasses.replace(moved, plan_fingerprint=moved.compute_fingerprint())
 
     def validate_variant(
         self,
