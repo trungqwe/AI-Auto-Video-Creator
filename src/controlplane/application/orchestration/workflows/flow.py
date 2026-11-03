@@ -37,6 +37,12 @@ REVALIDATE_ON_STALE: Mapping[tuple[str, str], tuple[str, str]] = MappingProxyTyp
     ('CommitVideoCompletion', 'VARIANT_REGISTRY_STALE'): ('qc', 'ValidateVariant'),
 })
 
+# PW-CAT2-FIX2: activity fan-out mà một phần tử hỏng không dừng các phần tử còn lại (một nguồn thu thập FAILED_FINAL không làm
+# các nguồn sau mất lượt cả ngày). Phần tử hỏng sau khi hết lượt thử được ghi vào isolated_failures và stage chạy tiếp; stage chỉ
+# FAILED khi mọi phần tử đều hỏng. Run ghi lịch sử trước bản sửa không có marker nên replay vẫn dừng stage ở phần tử hỏng đầu tiên.
+ISOLATED_FAN_OUT_PATCH_ID = 'fan-out-item-isolation'
+ISOLATED_FAN_OUT: frozenset[str] = frozenset({'CollectSource'})
+
 
 class FlowGateway(Protocol):
     async def issue_grant(
@@ -145,6 +151,7 @@ class StageGraphFlow:
         self._succeeded: set[tuple[str, str, int, int]] = set()
         self._input_refs: dict[tuple[str, str, int, int], list[dict[str, str]]] = {}
         self._revalidations: dict[tuple[str, str, int, int], int] = {}
+        self._isolated: dict[tuple[str, str, int, int], dict[str, Any]] = {}
 
     def signal_retry_stage(self, stage_type: str) -> None:
         self._inbox.append((SIGNAL_RETRY, stage_type))
@@ -230,6 +237,10 @@ class StageGraphFlow:
             'output_refs': {k: [dict(r) for r in v] for k, v in self.output_refs.items()},
             'last_problem': dict(self.last_problem) if self.last_problem is not None else None,
             'rejected_signals': list(self.rejected_signals),
+            'isolated_failures': [
+                {**record, 'input_refs': [dict(r) for r in record['input_refs']], 'problem': dict(record['problem'])}
+                for record in self._isolated.values()
+            ],
         }
 
     def _apply_inbox(self) -> None:
@@ -305,15 +316,44 @@ class StageGraphFlow:
                 self.unbound.append(stage)
             return OUTCOME_SUCCEEDED
         for name in names:
-            for index, refs in enumerate(self._items_for(name)):
-                if (stage, name, index, self.revision) in self._succeeded:
+            items = self._items_for(name)
+            isolated: list[tuple[str, str, int, int]] = []
+            for index, refs in enumerate(items):
+                key = (stage, name, index, self.revision)
+                if key in self._succeeded:
+                    continue
+                if key in self._isolated:
+                    isolated.append(key)
                     continue
                 outcome = await self._run_activity(stage, BINDINGS_BY_NAME[name], index, refs)
                 while outcome == OUTCOME_REVALIDATE:
                     outcome = await self._revalidate_then_rerun(stage, name, index, refs)
+                if outcome == OUTCOME_FAILED and self._isolates_items(name):
+                    self._isolated[key] = {
+                        'stage': stage,
+                        'activity': name,
+                        'index': index,
+                        'revision': self.revision,
+                        'input_refs': [dict(r) for r in refs],
+                        'problem': dict(self.last_problem or {}),
+                    }
+                    isolated.append(key)
+                    continue
                 if outcome != OUTCOME_SUCCEEDED:
                     return outcome
+            if isolated:
+                if len(isolated) == len(items):
+                    # Mọi phần tử hỏng: stage FAILED như trước; bỏ ghi nhận để RetryStage chạy lại đúng các phần tử này.
+                    self.last_problem = dict(self._isolated[isolated[-1]]['problem'])
+                    for key in isolated:
+                        del self._isolated[key]
+                    return OUTCOME_FAILED
+                self.last_problem = None
         return OUTCOME_SUCCEEDED
+
+    # Hỏi patch chỉ khi một phần tử của activity được cô lập vừa hỏng, nên run không có phần tử hỏng không ghi marker nào.
+    def _isolates_items(self, name: str) -> bool:
+        return name in ISOLATED_FAN_OUT and self._gateway.patched(ISOLATED_FAN_OUT_PATCH_ID)
 
     # Chạy lại ValidateVariant của stage đích với input_refs đã đóng băng, operation_key thêm ':v{n}',
     # rồi gọi lại activity vừa stale; số vòng bị chặn theo workflow.retry.
@@ -453,6 +493,8 @@ __all__ = [
     'DEBUG_STAGE_NOT_ALLOWED',
     'FlowGateway',
     'FlowParams',
+    'ISOLATED_FAN_OUT',
+    'ISOLATED_FAN_OUT_PATCH_ID',
     'REVALIDATE_ON_STALE',
     'SIGNAL_REGENERATE',
     'SIGNAL_RETRY',
