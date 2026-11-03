@@ -900,6 +900,7 @@ def assemble_dfe_handlers(
         hook_cand = PostgresHookCandidates(
             open_hooks_fn,
             safety_policy_revision=safety_policy_revision,
+            exclude_placeholders=True,
         )
         thumb_cand = ThumbnailCandidates()
 
