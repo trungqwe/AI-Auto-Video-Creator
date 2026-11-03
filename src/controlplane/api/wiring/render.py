@@ -155,6 +155,10 @@ _OUTPUT_NAME_UNSAFE = re.compile(r'[^A-Za-z0-9_-]')
 _HOOK_PLACEMENT_REFS = ('visual_hook_ref', 'audio_hook_ref', 'thumbnail_ref')
 _THUMBNAIL_REF_PREFIX = 'thumb:'
 _HOOK_MEDIA_SHA_KEY = 'media_sha256'
+# HOOK-QC (FR-HOOK-008): a hook revision whose technical_metadata names a recipe of hooks.json is a generated placeholder
+# (gradient vh-01..05, sweep ah-01..05); render refuses it instead of putting a placeholder in the video.
+_HOOK_PLACEHOLDER_KEY = 'recipe_template'
+HOOK_PLACEHOLDER_REASON = 'hook_placeholder'
 _HOOK_LATEST_SQL = ('SELECT r.payload FROM controlplane.cp_hook_revisions r JOIN controlplane.cp_hooks h ON h.workspace_id = r.workspace_id AND h.hook_id = r.hook_id AND h.current_revision = r.revision WHERE h.workspace_id = %s::uuid AND h.hook_id = %s')
 
 
@@ -661,6 +665,8 @@ class ProductionRenderSources:
         if isinstance(payload, str):
             payload = json.loads(payload)
         pairs = payload.get('technical_metadata') if isinstance(payload, Mapping) else None
+        if isinstance(pairs, list) and any(isinstance(p, (list, tuple)) and len(p) == 2 and p[0] == _HOOK_PLACEHOLDER_KEY for p in pairs):
+            raise _hook_not_ready(hook_id, HOOK_PLACEHOLDER_REASON)
         sha256 = next((p[1] for p in pairs if isinstance(p, (list, tuple)) and len(p) == 2 and p[0] == _HOOK_MEDIA_SHA_KEY), None) if isinstance(pairs, list) else None
         if not isinstance(sha256, str):
             raise _hook_not_ready(hook_id, 'hook_media_sha256_missing')

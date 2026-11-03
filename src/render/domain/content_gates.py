@@ -36,6 +36,7 @@ REASON_NOT_APPLICABLE = 'not_applicable'
 VISUAL_HOOK_NOT_OBSERVED = 'visual_hook_not_observed'
 VISUAL_HOOK_OUTSIDE_RANGE = 'visual_hook_outside_hook_range'
 VISUAL_HOOK_SIMILARITY_LOW = 'visual_hook_similarity_below_threshold'
+VISUAL_HOOK_PLACEHOLDER = 'visual_hook_placeholder'
 AUDIO_HOOK_NOT_OBSERVED = 'audio_hook_not_observed'
 AUDIO_HOOK_OUTSIDE_RANGE = 'audio_hook_outside_hook_range'
 AUDIO_HOOK_LEVEL_LOW = 'audio_hook_level_below_threshold'
@@ -110,8 +111,15 @@ def _interval_ok(start: object, end: object) -> bool:
 
 
 def check_visual_hook_present(evidence: object, package: object, policy: object) -> GateResult:
-    """Verify visual hook timing is within hook range and meets similarity threshold."""
+    """Verify visual hook timing is within hook range and meets similarity threshold.
+
+    HOOK-QC (FR-HOOK-008): a package whose hook_placement marks visual_hook_placeholder True carries a hook generated from a
+    recipe of hooks.json (gradient placeholder); it fails with that reason before any timing or similarity check, because a
+    rendered placeholder matches itself and would otherwise pass.
+    """
     gate = GateName.VISUAL_HOOK_PRESENT
+    if _placement(package).get(VISUAL_HOOK_PLACEHOLDER) is True:
+        return _failed(gate, VISUAL_HOOK_PLACEHOLDER)
     hook = _hook_range(package)
     if hook is None:
         return _not_ready(gate, 'hook_placement.hook_time_range')
