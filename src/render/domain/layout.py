@@ -12,6 +12,7 @@ coveredIds: FR-PRS-001, FR-PRS-002, FR-PRS-006
 """
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -32,6 +33,12 @@ DESIGN_HEIGHT = 1920
 LAYOUT_ZOOM = 0.06
 UNKNOWN_LAYOUT = 'unknown_layout'
 INVALID_LAYOUT_INPUT = 'invalid_layout_input'
+# PRS-LAYOUT-POLISH: drop shadow (opacity, offset down in design pixels) and the entry slide of the side tiles of a scene.
+SHADOW_OPACITY = 0.55
+SHADOW_OFFSET = 10
+ENTER_SECONDS = 0.3
+ENTER_STAGGER = 0.06
+ENTER_SHIFT = 120
 
 # Safe zones of the 1080x1920 design canvas (LAYOUTS.md section 2).
 PLATFORM_TOP_ROWS = (0, 220)
@@ -77,12 +84,20 @@ class Box:
 
 @dataclass(frozen=True)
 class Cell:
-    """An image slot; the picture is cut to cover the box minus the border."""
+    """An image slot; the picture is cut to cover the box minus the border.
+
+    PRS-LAYOUT-POLISH: the border is part of the cell tile (it moves with the picture); radius rounds the tile corners, shadow is the
+    blur sigma of a drop shadow under the tile (0: none), angle turns the tile (degrees, the printed-photo inset), enter is the
+    direction the tile slides in from at the start of a scene ('up' from below, 'down' from above, 'left', 'right'; '' stays still)."""
 
     name: str
     box: Box
     border: int = 0
     border_colour: str = 'white'
+    radius: int = 0
+    shadow: int = 0
+    angle: float = 0.0
+    enter: str = ''
 
 
 @dataclass(frozen=True)
@@ -133,13 +148,16 @@ class LayoutGeometry:
 
 
 def _hero() -> LayoutGeometry:
-    strip = tuple(Cell(f'strip{k}', Box(40 + 340 * k, 1160, 320, 190), 6 if k == 0 else 3, 'accent' if k == 0 else 'white') for k in range(3))
+    strip = tuple(
+        Cell(f'strip{k}', Box(40 + 340 * k, 1160, 320, 190), 6 if k == 0 else 3, 'accent' if k == 0 else 'white', radius=10, enter='up')
+        for k in range(3)
+    )
     return LayoutGeometry(
         key=HERO_STRIP,
         backdrop_level=0.45,
         layers=(
             Shape('title_band', Box(0, 310, 1080, 170), 'accent'),
-            Cell('main', Box(34, 504, 1012, 632), 6, 'white'),
+            Cell('main', Box(34, 504, 1012, 632), 6, 'white', radius=18, shadow=18),
             Shape('number_card', Box(70, 966, 330, 132), 'black', 0.82, 16, 'emphasis'),
             *strip,
             Gradient('subtitle_shade', Box(0, 1340, 1080, 580), 0.0, 0.8),
@@ -155,7 +173,7 @@ def _hero() -> LayoutGeometry:
 
 
 def _mosaic() -> LayoutGeometry:
-    cells = tuple(Cell(f'grid{k}', Box(544 * (k % 2), 476 + 444 * (k // 2), 536, 436)) for k in range(4))
+    cells = tuple(Cell(f'grid{k}', Box(544 * (k % 2), 476 + 444 * (k // 2), 536, 436), enter='up') for k in range(4))
     return LayoutGeometry(
         key=MOSAIC_GRID,
         backdrop_level=0.18,
@@ -186,7 +204,7 @@ def _full_bleed() -> LayoutGeometry:
             Cell('background', Box(0, 0, 1080, 1920)),
             Gradient('top_shade', Box(0, 0, 1080, 560), 0.75, 0.0),
             Gradient('bottom_shade', Box(0, 1240, 1080, 680), 0.0, 0.85),
-            Cell('inset', Box(70, 570, 908, 588), 14, 'white'),
+            Cell('inset', Box(70, 570, 908, 588), 14, 'white', shadow=20, angle=-2.0, enter='down'),
             Shape('quote_card', Box(90, 1210, 900, 150), 'black', 0.8, 14, 'emphasis'),
             Shape('quote_bar', Box(90, 1210, 10, 150), 'accent', 1.0, 0, 'emphasis'),
         ),
@@ -206,7 +224,7 @@ def _split() -> LayoutGeometry:
         backdrop_level=0.3,
         layers=(
             Cell('top', Box(0, 290, 1080, 600)),
-            Cell('bottom', Box(0, 1040, 1080, 880)),
+            Cell('bottom', Box(0, 1040, 1080, 880), enter='right'),
             Shape('middle_band', Box(0, 890, 1080, 150), 'black'),
             Shape('middle_rule_top', Box(0, 890, 1080, 6), 'accent'),
             Shape('middle_rule_bottom', Box(0, 1034, 1080, 6), 'accent'),
@@ -230,9 +248,9 @@ def _data() -> LayoutGeometry:
         backdrop_level=0.22,
         layers=(
             Shape('category_pill', Box(60, 330, 300, 54), 'red', 1.0, 27),
-            Cell('main', Box(60, 580, 960, 540)),
-            Cell('aux0', Box(90, 1050, 208, 138), 4, 'white'),
-            Cell('aux1', Box(310, 1050, 208, 138), 4, 'white'),
+            Cell('main', Box(60, 580, 960, 540), radius=28, shadow=18),
+            Cell('aux0', Box(90, 1050, 208, 138), 4, 'white', radius=12, enter='up'),
+            Cell('aux1', Box(310, 1050, 208, 138), 4, 'white', radius=12, enter='up'),
             Shape('counter_pill', Box(890, 600, 110, 48), 'black', 0.7, 24),
             Shape('number_rule', Box(60, 1210, 960, 4), 'accent', 1.0, 0, 'emphasis'),
         ),
@@ -326,12 +344,80 @@ def _colour(name: str, accent: str) -> str:
     return '0x' + (accent[1:].upper() if name == 'accent' else _COLOURS[name])
 
 
+def _inside(w: int, h: int, r: int, dx: int = 0, dy: int = 0) -> str:
+    """geq expression: 1 inside the w x h box at (dx, dy) with corners rounded by r pixels, else 0 (no rounding: the box itself)."""
+    x = 'X' if dx == 0 else f'(X-{dx})'
+    y = 'Y' if dy == 0 else f'(Y-{dy})'
+    within = '' if dx == 0 and dy == 0 else f'*between({x},0,{w - 1})*between({y},0,{h - 1})'
+    if r == 0:
+        return '1' if not within else within[1:]
+    corner = f'lte(pow(max(max({r}-{x},{x}-({w - 1}-{r})),0),2)+pow(max(max({r}-{y},{y}-({h - 1}-{r})),0),2),{r * r})'
+    return corner + within
+
+
 def _mask(box: Box, radius: int, scale: float, opacity: float, label: str) -> str:
     """Grey alpha mask of a box with rounded corners (radius in design pixels, scaled), multiplied by opacity."""
     r = max(0, round(radius * scale))
-    w, h = box.w, box.h
-    inside = '1' if r == 0 else f'lte(pow(max(max({r}-X,X-({w - 1}-{r})),0),2)+pow(max(max({r}-Y,Y-({h - 1}-{r})),0),2),{r * r})'
-    return f"color=c=white:s={w}x{h}:r=1:d=1,format=gray,geq=lum='{round(255 * opacity)}*{inside}'[{label}]"
+    return f"color=c=white:s={box.w}x{box.h}:r=1:d=1,format=gray,geq=lum='{round(255 * opacity)}*{_inside(box.w, box.h, r)}'[{label}]"
+
+
+def _even(value: float) -> int:
+    return max(2, 2 * math.ceil(value / 2))
+
+
+@dataclass(frozen=True)
+class _Tile:
+    """A cell tile on the scaled canvas: picture box `inner`, bordered tile w x h at (x, y), rounding r, turn angle and its turned size."""
+
+    cell: Cell
+    x: int
+    y: int
+    w: int
+    h: int
+    inner: Box
+    r: int
+    sigma: int
+    turned: tuple[int, int]
+
+    @property
+    def place(self) -> tuple[int, int]:
+        tw, th = self.turned
+        return self.x - (tw - self.w) // 2, self.y - (th - self.h) // 2
+
+    @property
+    def pad(self) -> int:
+        return 3 * self.sigma
+
+
+def _tiles(geometry: LayoutGeometry, width: int, height: int) -> tuple[_Tile, ...]:
+    scale = width / DESIGN_WIDTH
+    tiles = []
+    for cell in geometry.cells:
+        box, inner = _scaled(cell.box, width, height), _scaled(_inner(cell), width, height)
+        bx, by = inner.x - box.x, inner.y - box.y
+        w, h = inner.w + 2 * bx, inner.h + 2 * by
+        turned = (w, h)
+        if cell.angle:
+            a = math.radians(abs(cell.angle))
+            turned = (_even(w * math.cos(a) + h * math.sin(a)), _even(w * math.sin(a) + h * math.cos(a)))
+        sigma = max(1, round(cell.shadow * scale)) if cell.shadow else 0
+        tiles.append(_Tile(cell, box.x, box.y, w, h, Box(bx, by, inner.w, inner.h), max(0, round(cell.radius * scale)), sigma, turned))
+    return tuple(tiles)
+
+
+def _mask_plan(geometry: LayoutGeometry) -> tuple[tuple[str, str], ...]:
+    """(cell name, 'shadow' | 'round') of every still image the cells need, in cell order: shadow before rounding."""
+    plan = []
+    for cell in geometry.cells:
+        if cell.shadow:
+            plan.append((cell.name, 'shadow'))
+        if cell.radius:
+            plan.append((cell.name, 'round'))
+    return tuple(plan)
+
+
+def _rotate(angle: float, size: tuple[int, int], fill: str) -> str:
+    return f'rotate={angle:g}*PI/180:ow={size[0]}:oh={size[1]}:c={fill}'
 
 
 class _Graph:
@@ -347,10 +433,11 @@ class _Graph:
     def box(self, box: Box) -> Box:
         return _scaled(box, self.width, self.height)
 
-    def over(self, base: str, top: str, box: Box, repeat: bool = False) -> str:
+    def over(self, base: str, top: str, box: Box, repeat: bool = False, at: tuple[str, str] | None = None) -> str:
         out = self.label('o')
         tail = ':eof_action=repeat' if repeat else ''
-        self.chains.append(f'[{base}][{top}]overlay=x={box.x}:y={box.y}:format=auto{tail}[{out}]')
+        x, y = at if at is not None else (str(box.x), str(box.y))
+        self.chains.append(f'[{base}][{top}]overlay=x={x}:y={y}:format=auto{tail}[{out}]')
         return out
 
     def flat(self, box: Box, colour: str, opacity: float, radius: int) -> str:
@@ -372,15 +459,22 @@ class _Graph:
         self.chains.append(f'[{fill}][{mask}]alphamerge[{out}]')
         return out
 
-    def ring(self, canvas: str, outer: Box, inner: Box, colour: str) -> str:
-        """The border of a cell: the four bands of outer around inner, painted opaque on a transparent canvas."""
-        out = self.label('r')
-        sides = (
-            (outer.x, outer.y, outer.w, inner.y - outer.y), (outer.x, inner.bottom, outer.w, outer.bottom - inner.bottom),
-            (outer.x, inner.y, inner.x - outer.x, inner.h), (inner.right, inner.y, outer.right - inner.right, inner.h),
+    def shadow(self, tile: _Tile) -> str:
+        """The drop shadow of a tile: black, SHADOW_OPACITY at most, blurred by tile.sigma, on a canvas padded by 3 sigma (turned with the tile)."""
+        mask, fill, out = self.label('m'), self.label('c'), self.label('d')
+        cw, ch = tile.w + 2 * tile.pad, tile.h + 2 * tile.pad
+        turn = f',{_rotate(tile.cell.angle, (cw, ch), "black")}' if tile.cell.angle else ''
+        self.chains.append(
+            f"color=c=white:s={cw}x{ch}:r=1:d=1,format=gray,geq=lum='{round(255 * SHADOW_OPACITY)}*{_inside(tile.w, tile.h, tile.r, tile.pad, tile.pad)}'"
+            f'{turn},gblur=sigma={tile.sigma}[{mask}]'
         )
-        boxes = ','.join(f'drawbox=x={x}:y={y}:w={w}:h={h}:color={colour}@1:t=fill:replace=1' for x, y, w, h in sides if w > 0 and h > 0)
-        self.chains.append(f'[{canvas}]{boxes}[{out}]')
+        self.chains.append(f'color=c=black:s={cw}x{ch}:r=1:d=1,format=rgba[{fill}]')
+        self.chains.append(f'[{fill}][{mask}]alphamerge[{out}]')
+        return out
+
+    def rounding(self, tile: _Tile) -> str:
+        out = self.label('m')
+        self.chains.append(f"color=c=white:s={tile.w}x{tile.h}:r=1:d=1,format=gray,geq=lum='255*{_inside(tile.w, tile.h, tile.r)}'[{out}]")
         return out
 
     def picture(self, source: str, box: Box, motion: str = '') -> str:
@@ -388,6 +482,28 @@ class _Graph:
         self.chains.append(
             f'[{source}]scale={box.w}:{box.h}:force_original_aspect_ratio=increase,crop={box.w}:{box.h},setsar=1{motion}[{out}]'
         )
+        return out
+
+    def tile(self, source: str, tile: _Tile, colour: str, motion: str, mask: str | None) -> str:
+        """Picture cut to the tile's inner box, framed by its border, rounded by mask and turned by its angle."""
+        out = self.picture(source, tile.inner, motion)
+        steps = []
+        if (tile.w, tile.h) != (tile.inner.w, tile.inner.h):
+            steps.append(f'pad={tile.w}:{tile.h}:{tile.inner.x}:{tile.inner.y}:color={colour}')
+        if mask is not None or tile.cell.angle:
+            steps.append('format=rgba')
+        if steps:
+            framed = self.label('t')
+            self.chains.append(f'[{out}]' + ','.join(steps) + f'[{framed}]')
+            out = framed
+        if mask is not None:
+            rounded = self.label('t')
+            self.chains.append(f'[{out}][{mask}]alphamerge[{rounded}]')
+            out = rounded
+        if tile.cell.angle:
+            turned = self.label('t')
+            self.chains.append(f'[{out}]{_rotate(tile.cell.angle, tile.turned, "none")}[{turned}]')
+            out = turned
         return out
 
 
@@ -399,6 +515,19 @@ def _cell_zoom(frames: int, fps: int | float) -> str:
         f",loop=loop={frames - 1}:size=1,setpts=N/{fps}/TB,select='not(mod(n,{ZOOM_FRAME_STEP}))',"
         f"perspective=x0='W*{inset}':y0='H*{inset}':x1='W-W*{inset}':y1='H*{inset}':x2='W*{inset}':y2='H-H*{inset}':x3='W-W*{inset}':y3='H-H*{inset}':eval=frame"
     )
+
+
+def _entry(direction: str, order: int, x: int, y: int, scale: float) -> tuple[str, str]:
+    """overlay x and y of a tile sliding in from `direction`: ENTER_SHIFT design pixels away at the start, in place after ENTER_SECONDS,
+    the order-th entering tile of the scene starting ENTER_STAGGER seconds after the previous one (ease-out)."""
+    start = order * ENTER_STAGGER
+    left = f"pow(max(0,min(1,({start + ENTER_SECONDS:g}-t)/{ENTER_SECONDS:g})),2)"
+    shift = max(2, round(ENTER_SHIFT * scale))
+    moves = {'up': (0, 1), 'down': (0, -1), 'left': (-1, 0), 'right': (1, 0)}
+    mx, my = moves[direction]
+    ex = str(x) if mx == 0 else f"'{x}{'+' if mx > 0 else '-'}{shift}*{left}'"
+    ey = str(y) if my == 0 else f"'{y}{'+' if my > 0 else '-'}{shift}*{left}'"
+    return ex, ey
 
 
 def _checked(key: object, width: object, height: object, accent: object, prefix: object) -> LayoutGeometry:
@@ -413,11 +542,11 @@ def _checked(key: object, width: object, height: object, accent: object, prefix:
 
 
 def compose_chrome(key: object, *, width: int, height: int, accent: str, prefix: str) -> tuple[str, str, str]:
-    """(chains, under, above): two still, transparent, full-frame layers holding every band, card, gradient and cell border of the layout.
+    """(chains, under, above): two still, transparent, full-frame layers holding every band, card and gradient of the layout.
 
     under holds the layers listed before the first cell, above all the others. The render builds them once per video and splits
     them over its scenes (a graph per scene stays short); compose_layout without chrome builds them itself, so the QC frame and the
-    render frame are painted from the same layers."""
+    render frame are painted from the same layers. Cell borders belong to the cell tiles (compose_layout), not to the chrome."""
     geometry = _checked(key, width, height, accent, prefix)
     graph = _Graph(prefix, width, height, accent)
     first = next(index for index, layer in enumerate(geometry.layers) if isinstance(layer, Cell))
@@ -427,8 +556,6 @@ def compose_chrome(key: object, *, width: int, height: int, accent: str, prefix:
         graph.chains.append(f'color=c=black@0:s={width}x{height}:r=1:d=1,format=rgba[{canvas}]')
         for layer in part:
             if isinstance(layer, Cell):
-                if layer.border:
-                    canvas = graph.ring(canvas, graph.box(layer.box), graph.box(_inner(layer)), _colour(layer.border_colour, accent))
                 continue
             box = graph.box(layer.box)
             if isinstance(layer, Gradient):
@@ -438,6 +565,22 @@ def compose_chrome(key: object, *, width: int, height: int, accent: str, prefix:
             canvas = graph.over(canvas, top, box)
         labels.append(canvas)
     return ';'.join(graph.chains), labels[0], labels[1]
+
+
+def compose_masks(key: object, *, width: int, height: int, prefix: str) -> tuple[str, tuple[str, ...]]:
+    """PRS-LAYOUT-POLISH: (chains, labels) of the still images the cell tiles need (drop shadows, rounded-corner masks), one per entry of
+    the layout's mask plan in cell order. The render builds them once per video and splits them over its scenes, like the chrome;
+    compose_layout without masks builds the same chains itself (QC)."""
+    geometry = _checked(key, width, height, '#000000', prefix)
+    graph = _Graph(prefix, width, height, '#000000')
+    tiles = {tile.cell.name: tile for tile in _tiles(geometry, width, height)}
+    labels = tuple(graph.shadow(tiles[name]) if kind == 'shadow' else graph.rounding(tiles[name]) for name, kind in _mask_plan(geometry))
+    return ';'.join(graph.chains), labels
+
+
+def mask_count(key: object) -> int:
+    """Number of labels compose_masks returns for the layout (and compose_layout expects in masks)."""
+    return len(_mask_plan(layout_geometry(key)))
 
 
 def compose_layout(
@@ -452,16 +595,18 @@ def compose_layout(
     frames: int | None = None,
     fps: int | float | None = None,
     chrome: tuple[str, str] | None = None,
+    masks: tuple[str, ...] | None = None,
 ) -> str:
     """The single builder of a layout frame: a filter chain whose last element has no output label (the caller appends to it).
 
     sources holds one single-frame stream label per cell of layout_geometry(key).cells (slot_sources gives them); each label is
     consumed once (the chain splits a label used by the backdrop and a cell). Drawing order: the blurred, darkened backdrop of the
-    first source (FULL_BLEED_INSET: black), the under chrome, the cells in geometry order, the above chrome; chrome is the pair of
-    labels made by compose_chrome, built here when None. 'accent' paints with the preset accent (#RRGGBB). The main cell (with
-    rotating cells the active one, also outlined with the accent) zooms 1.00 to 1.06 over `frames` frames when frames is given:
-    what lies under it is one still frame looped, what lies above it is still frames repeated by overlay; without frames (QC) the
-    result is the still frame at zoom 1.00 with no time expression."""
+    first source (FULL_BLEED_INSET: black), the under chrome, then per cell its drop shadow and its tile (picture, border, rounded
+    corners, turn), then the above chrome; chrome is the pair of labels made by compose_chrome and masks the labels made by
+    compose_masks, both built here when None. 'accent' paints with the preset accent (#RRGGBB). With frames (render) the frame is a
+    clip of `frames` frames: the main cell (with rotating cells the active one, also outlined with the accent) zooms 1.00 to 1.06 and
+    every other tile with an enter direction slides in during the first ENTER_SECONDS (staggered), then stays; without frames (QC)
+    the result is the still final state, zoom 1.00, with no time expression."""
     geometry = _checked(key, width, height, accent, prefix)
     cells = geometry.cells
     if isinstance(sources, str) or len(sources) != len(cells) or not all(isinstance(s, str) and _LABEL_RE.fullmatch(s) for s in sources):
@@ -476,6 +621,14 @@ def compose_layout(
         under, above = chrome
     else:
         raise LayoutRejected(INVALID_LAYOUT_INPUT, 'chrome')
+    plan = _mask_plan(geometry)
+    if masks is None:
+        chains, masks = compose_masks(key, width=width, height=height, prefix=prefix + 'n')
+        if chains:
+            graph.chains.append(chains)
+    elif not (isinstance(masks, tuple) and len(masks) == len(plan) and all(isinstance(m, str) and _LABEL_RE.fullmatch(m) for m in masks)):
+        raise LayoutRejected(INVALID_LAYOUT_INPUT, 'masks')
+    still = dict(zip(plan, masks))
     main = geometry.rotating[active % len(geometry.rotating)] if geometry.rotating else geometry.main
     uses: dict[str, list[str]] = {}
     wanted = list(sources) + ([sources[0]] if geometry.backdrop_level is not None else [])
@@ -501,19 +654,32 @@ def compose_layout(
         )
     whole = Box(0, 0, width, height)
     base = graph.over(base, under, whole)
-    moving = False
-    for cell in cells:
-        box = graph.box(cell.box)
-        inner = graph.box(_inner(cell))
-        if cell.name != main:
-            base = graph.over(base, graph.picture(feed[cell.name], inner), inner, moving)
-            continue
-        if frames is not None:
-            looped = graph.label('l')
-            graph.chains.append(f'[{base}]loop=loop={frames - 1}:size=1,setpts=N/{fps}/TB[{looped}]')
-            base, moving = looped, True
-        base = graph.over(base, graph.picture(feed[cell.name], inner, _cell_zoom(frames, fps) if moving else ''), inner, moving)
-        if geometry.rotating:
+    moving = frames is not None
+    if moving:
+        looped = graph.label('l')
+        graph.chains.append(f'[{base}]loop=loop={frames - 1}:size=1,setpts=N/{fps}/TB[{looped}]')
+        base = looped
+    entering = 0
+    scale = width / DESIGN_WIDTH
+    for tile in _tiles(geometry, width, height):
+        cell = tile.cell
+        is_main = cell.name == main
+        slide = None
+        if moving and not is_main and cell.enter:
+            slide = entering
+            entering += 1
+        if cell.shadow:
+            spot = Box(tile.x - tile.pad, tile.y - tile.pad + max(1, round(SHADOW_OFFSET * scale)), 2, 2)
+            at = _entry(cell.enter, slide, spot.x, spot.y, scale) if slide is not None else None
+            base = graph.over(base, still[(cell.name, 'shadow')], spot, moving, at)
+        motion = _cell_zoom(frames, fps) if moving and is_main else ''
+        colour = _colour(cell.border_colour, accent)
+        top = graph.tile(feed[cell.name], tile, colour, motion, still.get((cell.name, 'round')))
+        x, y = tile.place
+        at = _entry(cell.enter, slide, x, y, scale) if slide is not None else None
+        base = graph.over(base, top, Box(x, y, 2, 2), moving, at)
+        if is_main and geometry.rotating:
+            box = graph.box(cell.box)
             outlined = graph.label('a')
             thick = max(2, round(8 * width / DESIGN_WIDTH))
             graph.chains.append(f'[{base}]drawbox=x={box.x}:y={box.y}:w={box.w}:h={box.h}:color={_colour("accent", accent)}:t={thick}[{outlined}]')

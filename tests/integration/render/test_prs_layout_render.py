@@ -118,10 +118,11 @@ def test_too_few_images_keep_the_single_image_scene_and_say_why(stage, key, refs
 
 
 def test_a_graph_longer_than_the_cap_keeps_the_single_image_scene(stage):
+    # PRS-LAYOUT-POLISH: the cap is LAYOUT_SCRIPT_MAX_CHARS (the graph reaches ffmpeg through a file); 240 scenes exceed it.
     refs = ['ref-a', 'ref-b', 'ref-c', 'ref-d']
-    record = record_for(refs, scene_ms=500, scenes=refs * 12)
+    record = record_for(refs, scene_ms=100, scenes=refs * 60)
     spec = build_render_command(record, preset({'layout_key': 'MOSAIC_GRID', 'accent_colour': '#FF3B30'}), profile(), 'ref-ass', tool(), materialized(stage), voice_duration_ms=24000)
-    assert '{asset:47}' in spec.redacted_argv and '{image:0}' not in spec.redacted_argv
+    assert '{asset:239}' in spec.redacted_argv and '{image:0}' not in spec.redacted_argv
 
 
 @pytest.mark.parametrize('presentation', [{'layout_key': 'GRID', 'accent_colour': '#FFD400'}, {'layout_key': 'HERO_STRIP', 'accent_colour': 'yellow'}, 'HERO_STRIP'])
@@ -138,4 +139,4 @@ def test_twelve_scene_layout_videos_stay_under_the_cap(stage):
         record = record_for(refs, scene_ms=1000, scenes=(refs * 3)[:12])
         spec = build_render_command(record, preset({'layout_key': key, 'accent_colour': '#00F0FF'}), profile(), 'ref-ass', tool(), materialized(stage), voice_duration_ms=12000)
         assert '{image:0}' in spec.redacted_argv, key
-        assert len(spec.argv[spec.argv.index('-filter_complex') + 1]) <= render_command.LAYOUT_GRAPH_MAX_CHARS, key
+        assert len(spec.argv[spec.argv.index('-filter_complex') + 1]) <= render_command.LAYOUT_SCRIPT_MAX_CHARS, key

@@ -107,8 +107,12 @@ def test_minimum_images_and_shared_chrome():
     for key in KEYS:
         chains, under, above = layout.compose_chrome(key, width=1080, height=1920, accent='#FFD400', prefix='c')
         assert chains.endswith(f'[{above}]') and f'[{under}]' in chains
-        shared = layout.compose_layout(key, width=1080, height=1920, sources=_sources(key), accent='#FFD400', prefix='s1', chrome=(under, above))
-        assert 'geq=' not in shared and 'alphamerge' not in shared
+        mask_chains, masks = layout.compose_masks(key, width=1080, height=1920, prefix='n')
+        assert len(masks) == layout.mask_count(key) and all(f'[{m}]' in mask_chains for m in masks)
+        shared = layout.compose_layout(key, width=1080, height=1920, sources=_sources(key), accent='#FFD400', prefix='s1', chrome=(under, above), masks=masks)
+        # PRS-LAYOUT-POLISH: bands, shadows and corner masks are built once per video; a scene only merges a mask into a rounded tile.
+        rounded = sum(1 for cell in layout.layout_geometry(key).cells if cell.radius)
+        assert 'geq=' not in shared and 'gblur=' not in shared.split('[s1b')[1] and shared.count('alphamerge') == rounded
         assert shared.count(f'[{under}]') == 1 and shared.count(f'[{above}]') == 1
         with pytest.raises(layout.LayoutRejected):
             layout.compose_layout(key, width=1080, height=1920, sources=_sources(key), accent='#FFD400', prefix='s1', chrome=('a;b', above))

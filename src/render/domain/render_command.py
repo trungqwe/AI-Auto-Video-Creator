@@ -7,7 +7,10 @@ Pure domain: no I/O, no clock, no process execution.
 PRS-LAYOUT-RENDER: when the preset's layout_rules carry presentation {layout_key, accent_colour} and every scene is a still image, each scene
 is drawn by render.domain.layout.compose_layout (one input per distinct image of the scene, bands and gradients built once per video by
 compose_chrome); otherwise, or when the video has fewer distinct images than the layout needs or the graph would exceed
-LAYOUT_GRAPH_MAX_CHARS, the single-image scene is kept and the argv and the graph are unchanged.
+LAYOUT_SCRIPT_MAX_CHARS, the single-image scene is kept and the argv and the graph are unchanged.
+PRS-LAYOUT-POLISH: the shadows and rounded-corner masks of the cell tiles are built once per video (compose_masks) and split over the
+scenes like the chrome; a graph longer than LAYOUT_GRAPH_MAX_CHARS stays in the spec argv and reaches ffmpeg through a file
+(real_ffmpeg_renderer), so the Windows command line limit no longer caps the number of scenes.
 coveredIds: CT-RND-004, TST-SEC-INV-012, TST-SEC-INV-020 (F side), FR-PRS-002
 """
 from __future__ import annotations
@@ -41,6 +44,7 @@ BACKDROP_SHRINK = 8
 BACKDROP_BLUR_SIGMA = 6
 BACKDROP_LEVEL = 0.5
 LAYOUT_GRAPH_MAX_CHARS = 24000
+LAYOUT_SCRIPT_MAX_CHARS = 400000
 _ACCENT_RE = re.compile(r'#[0-9A-Fa-f]{6}')
 
 
@@ -418,8 +422,8 @@ def _layout_plan(record: RenderPackageRecord, root: str, presentation: tuple[str
 
 
 def _layout_chains(plan: _LayoutPlan, values: dict[str, object]) -> list[str]:
-    """Scene chains [v0]..[vN-1] of a layout video: the chrome once, split over the scenes, then compose_layout per scene."""
-    from render.domain.layout import compose_chrome, compose_layout
+    """Scene chains [v0]..[vN-1] of a layout video: the chrome and the tile masks once, split over the scenes, then compose_layout per scene."""
+    from render.domain.layout import compose_chrome, compose_layout, compose_masks
 
     width, height, fps, pixel_format = values['width'], values['height'], values['fps'], values['pixel_format']
     count = len(plan.scenes)
@@ -429,13 +433,18 @@ def _layout_chains(plan: _LayoutPlan, values: dict[str, object]) -> list[str]:
         f'[{under}]split={count}' + ''.join(f'[ku{index}]' for index in range(count)),
         f'[{above}]split={count}' + ''.join(f'[ka{index}]' for index in range(count)),
     ]
-    users = [[index for index, scene in enumerate(plan.scenes) if image in scene.cells] for image in range(len(plan.images))]
+    still, masks = compose_masks(plan.key, width=width, height=height, prefix='kn')
+    if masks:
+        chains.append(still)
+        chains += [f'[{label}]split={count}' + ''.join(f'[kn{mask}s{index}]' for index in range(count)) for mask, label in enumerate(masks)]
+    users =[[index for index, scene in enumerate(plan.scenes) if image in scene.cells] for image in range(len(plan.images))]
     for image, scenes in enumerate(users):
         chains.append(f'[{image}:v:0]trim=end_frame=1,split={len(scenes)}' + ''.join(f'[i{image}s{index}]' for index in scenes))
     for index, scene in enumerate(plan.scenes):
         body = compose_layout(
             plan.key, width=width, height=height, sources=[f'i{image}s{index}' for image in scene.cells], accent=plan.accent, prefix=f's{index}',
             active=scene.active, frames=_segment_frames(scene.duration_ms, fps), fps=fps, chrome=(f'ku{index}', f'ka{index}'),
+            masks=tuple(f'kn{mask}s{index}' for mask in range(len(masks))),
         )
         chains.append(f'{body},setsar=1,fps={fps},format={pixel_format}[v{index}]')
     return chains
@@ -619,7 +628,7 @@ def build_render_command(record: object, preset: object, profile: object, ass_re
     scenes = [(_is_still_image(record, ref), duration_ms) for _, ref, duration_ms in assets]
     presentation = _presentation(preset)
     layout, layout_skipped = _layout_plan(record, root, presentation)
-    if layout is not None and len(_filter_graph(scenes, values, '{ass}', hook, loudnorm, beds, layout)) > LAYOUT_GRAPH_MAX_CHARS:
+    if layout is not None and len(_filter_graph(scenes, values, '{ass}', hook, loudnorm, beds, layout)) > LAYOUT_SCRIPT_MAX_CHARS:
         layout, layout_skipped = None, 'graph_too_long'
     pairs = [(tool['executable'], '{tool}'), *_plain('-hide_banner', '-nostdin', '-n')]
     if layout is None:
