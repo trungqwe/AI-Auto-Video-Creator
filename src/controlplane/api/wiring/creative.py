@@ -261,7 +261,7 @@ def layout_presets_of(presets: object) -> dict[str, str] | None:
 # batch target_count; the creative pipeline caps a layout at BATCH_SHARE_MAX of the batch with them (creative.domain.layout_choice).
 LAYOUT_USAGE_SQL = (
     "SELECT DISTINCT ON (j.job_id) p.payload->'layout_choice'->>'layout_key' FROM controlplane.cp_video_jobs j "
-    "JOIN controlplane.cp_production_plans p ON p.workspace_id = j.workspace_id AND p.production_plan_id LIKE 'plan:' || j.job_id || ':r%' "
+    "JOIN controlplane.cp_production_plans p ON p.workspace_id = j.workspace_id AND p.production_plan_id LIKE 'plan:' || j.job_id || ':r%%' "
     "WHERE j.workspace_id = %s::uuid AND j.batch_id = (SELECT batch_id FROM controlplane.cp_video_jobs WHERE workspace_id = %s::uuid AND job_id = %s) "
     "AND j.job_id <> %s AND j.status <> 'FAILED_FINAL' ORDER BY j.job_id, p.created_at DESC"
 )
