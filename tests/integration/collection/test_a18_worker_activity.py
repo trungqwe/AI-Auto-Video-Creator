@@ -202,16 +202,22 @@ def test_stale_grant_is_rejected_without_any_commit(unit, stale):
     assert deps.results.get(WORKSPACE, 'op-key-1') is None
 
 
-def test_old_generation_checkpoint_write_is_rejected_even_if_the_grant_port_wrongly_accepts_it(unit):
+def test_a_later_daily_run_with_a_lower_grant_generation_still_commits_after_the_previous_run(unit):
+    # A-06-FIX1: grant generations are counted per stage run, so the next day's run may hold a lower generation than the
+    # run that wrote the checkpoint (aljazeera: checkpoint generation 4 from 31/10, grant generation 2 on 01/11 to 04/11,
+    # 25 of 25 items ITEM_COMMIT_FAILED). The checkpoint chain orders the two runs by revision; generation fencing stays
+    # inside one run attempt (tests/unit/collection/test_a06_checkpoint.py GenerationFencingTests).
     first = handle(make_deps(unit, FakeAdapter([locator_of(1), locator_of(2)])))
     assert first['disposition'] == 'succeeded'
     before = unit.checkpoints.get_latest('src-1')
+    assert before.execution_generation == 3
     deps = make_deps(unit, FakeAdapter([locator_of(1), locator_of(3)]), current=(GRANT, OLD_GENERATION))
     result = handle(deps, request_of(operation_key='op-key-2', day='2026-10-19'), OLD_GENERATION)
-    assert result['disposition'] != 'succeeded'
-    assert unit.checkpoints.get_latest('src-1') == before
-    assert unit.packages.list_by_run('run:op-key-2') == ()
-    assert deps.results.get(WORKSPACE, 'op-key-2') is None
+    assert result['disposition'] == 'succeeded'
+    assert result['metrics']['packages_committed'] == 1 and result['metrics']['failed'] == 0
+    after = unit.checkpoints.get_latest('src-1')
+    assert after.revision > before.revision and (after.execution_generation, after.run_id) == (2, 'run:op-key-2')
+    assert len(unit.packages.list_by_run('run:op-key-2')) == 1
 
 
 def test_same_operation_key_returns_the_stored_result_without_collecting_again(unit):
