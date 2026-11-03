@@ -126,6 +126,10 @@ def advance_checkpoint(
 
     ``durable_item_ids`` are the ids whose unit of work has committed; every id in ``proposed.item_ids``
     must be among them. Otherwise raise ``CheckpointRejected`` and leave ``current`` in force.
+
+    ``execution_generation`` is the fencing token of one grant scope (generations count per stage run), so a
+    lower generation is stale only against a checkpoint of the same run and attempt; a later run or attempt starts
+    a new count and is ordered by ``revision`` alone (A-06-FIX1).
     """
     if isinstance(durable_item_ids, (str, bytes)):
         raise CheckpointRejected("CHECKPOINT_INVALID", "durable_item_ids must be a collection of ids")
@@ -137,7 +141,8 @@ def advance_checkpoint(
     else:
         _ensure_sealed(current)
         _ensure_same_lineage(proposed, current.source_id, current.adapter_type, current.checkpoint_version)
-        if proposed.execution_generation < current.execution_generation:
+        same_attempt = proposed.run_id == current.run_id and proposed.attempt_id == current.attempt_id
+        if same_attempt and proposed.execution_generation < current.execution_generation:
             raise CheckpointRejected(
                 "CHECKPOINT_STALE_GENERATION", f"{proposed.execution_generation} < {current.execution_generation}"
             )

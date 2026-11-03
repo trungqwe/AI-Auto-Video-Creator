@@ -179,6 +179,35 @@ class GenerationFencingTests(unittest.TestCase):
             with self.subTest(generation=generation):
                 self.assertIs(advance_checkpoint(self.current, {'i-9'}, proposed), proposed)
 
+    def test_lower_generation_of_a_later_run_or_attempt_advances(self) -> None:
+        # A-06-FIX1: generation is counted per stage run; aljazeera kept generation 4 from the run of 31/10 and every
+        # later daily run (grant generation 2) failed ITEM_COMMIT_FAILED on 25 of 25 items.
+        current = make_checkpoint(revision=74, execution_generation=4, run_id='run:day-1031', attempt_id='run:day-1031:attempt-1',
+                                  item_ids=('i-8',))
+        for run_id, attempt_id in (('run:day-1101', 'run:day-1101:attempt-1'), ('run:day-1031', 'run:day-1031:attempt-2')):
+            proposed = make_checkpoint(revision=75, execution_generation=2, run_id=run_id, attempt_id=attempt_id,
+                                       item_ids=('i-9',))
+            with self.subTest(run_id=run_id, attempt_id=attempt_id):
+                self.assertIs(advance_checkpoint(current, {'i-9'}, proposed), proposed)
+
+    def test_lower_generation_of_a_later_run_still_follows_the_revision_chain(self) -> None:
+        current = make_checkpoint(revision=74, execution_generation=4, run_id='run:a', attempt_id='run:a:attempt-1')
+        for revision in (74, 76):
+            proposed = make_checkpoint(revision=revision, execution_generation=2, run_id='run:b', attempt_id='run:b:attempt-1',
+                                       item_ids=('i-9',))
+            with self.subTest(revision=revision):
+                with self.assertRaises(CheckpointRejected) as ctx:
+                    advance_checkpoint(current, {'i-9'}, proposed)
+                self.assertEqual(ctx.exception.code, 'CHECKPOINT_REVISION_CONFLICT')
+
+    def test_lower_generation_of_the_same_run_and_attempt_stays_stale(self) -> None:
+        current = make_checkpoint(revision=74, execution_generation=4, run_id='run:a', attempt_id='run:a:attempt-1')
+        proposed = make_checkpoint(revision=75, execution_generation=3, run_id='run:a', attempt_id='run:a:attempt-1',
+                                   item_ids=('i-9',))
+        with self.assertRaises(CheckpointRejected) as ctx:
+            advance_checkpoint(current, {'i-9'}, proposed)
+        self.assertEqual(ctx.exception.code, 'CHECKPOINT_STALE_GENERATION')
+
     def test_revision_must_follow_current(self) -> None:
         for revision in (4, 6):
             proposed = make_checkpoint(revision=revision, execution_generation=3, item_ids=('i-9',))
