@@ -138,6 +138,14 @@ class VisualHookTests(GateTestCase):
         self.assertNotReady(gates.check_visual_hook_present(evidence(), package(), EMPTY_POLICY))
         self.assertNotReady(gates.check_visual_hook_present(None, package(), POLICY))
 
+    def test_placeholder_hook_fails_before_similarity(self):
+        marked = package()
+        marked.hook_placement['visual_hook_placeholder'] = True
+        self.assertFailedWith(gates.check_visual_hook_present(evidence(), marked, POLICY), gates.VISUAL_HOOK_PLACEHOLDER)
+        self.assertFailedWith(gates.check_visual_hook_present(None, marked, EMPTY_POLICY), gates.VISUAL_HOOK_PLACEHOLDER)
+        marked.hook_placement['visual_hook_placeholder'] = False
+        self.assertIs(gates.check_visual_hook_present(evidence(), marked, POLICY).status, PASSED)
+
 
 class AudioHookTests(GateTestCase):
     def test_passes_inside_hook_range(self):
