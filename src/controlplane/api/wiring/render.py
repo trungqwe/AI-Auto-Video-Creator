@@ -51,6 +51,7 @@ from render.application.render_video import RenderPipeline
 from render.domain.content_gates import ExpectedLanguageRevisions
 from render.domain.preconditions_artifacts import LanguageEvidencePolicy
 from render.domain.karaoke_plan import parse_word_timing
+from render.domain.layout_text import LayoutRows, LayoutScene, layout_text_rows
 from render.domain.package_contract import RenderPackageRecord
 from render.domain.preconditions_artifacts import (
     ArtifactLocationState,
@@ -162,6 +163,8 @@ _HOOK_PLACEHOLDER_KEY = 'recipe_template'
 # PRS-LAYOUT-RENDER: preset of a plan without a seeded preset_revision_ref (the preset of the default layout HERO_STRIP).
 DEFAULT_PRESET_KEY = 'bold-yellow'
 HOOK_PLACEHOLDER_REASON = 'hook_placeholder'
+# PRS-LAYOUT-TEXT: script payload of the layout text (hook_intent as category, segment texts for the quote and the side labels).
+_SCRIPT_PAYLOAD_SQL = ('SELECT payload FROM controlplane.cp_script_versions WHERE workspace_id = %s::uuid AND script_version_id = %s ORDER BY revision DESC LIMIT 1')
 _HOOK_LATEST_SQL = ('SELECT r.payload FROM controlplane.cp_hook_revisions r JOIN controlplane.cp_hooks h ON h.workspace_id = r.workspace_id AND h.hook_id = r.hook_id AND h.current_revision = r.revision WHERE h.workspace_id = %s::uuid AND h.hook_id = %s')
 
 
@@ -392,6 +395,66 @@ def illustration_windows(timeline: Any, hook_placement: Any, allowed_fallbacks: 
             cuts.append((span['start_ms'], span['end_ms']))
     pieces = _cut_ranges([(a, b) for a, b in merged], cuts)
     return tuple(sorted((a, b) for a, b in pieces if a < b))
+
+
+def layout_rows_for(
+    preset: Any,
+    plan_payload: Mapping[str, Any] | None,
+    script_payload: Mapping[str, Any] | None,
+    *,
+    timeline: Any,
+    hook_placement: Any,
+    allowed_fallbacks: Any,
+    words: Sequence[Any],
+    end_ms: Any,
+    typography: Mapping[str, Any],
+    profile: Mapping[str, Any],
+) -> LayoutRows | None:
+    """PRS-LAYOUT-TEXT (FR-PRS-006): the layout text of a video whose preset draws a layout (layout_rules.presentation), else None.
+
+    Title and contrast pair come from the plan's layout_choice, the category from the script's hook_intent, the quote and the side
+    labels from the script segment texts, the number from the spoken words; the AI pictures are the ai_generated visuals that no
+    image-safety fallback replaced (same rule as the IMGGEN-LABEL windows); text is hidden under the hook and the thumbnail."""
+    rules = getattr(preset, 'layout_rules', None)
+    presentation = rules.get('presentation') if isinstance(rules, Mapping) else None
+    if not isinstance(presentation, Mapping):
+        return None
+    scenes = []
+    for scene in _mappings(timeline.get('segments') if isinstance(timeline, Mapping) else None):
+        refs = scene.get('visual_asset_refs')
+        if not (_int_ms(scene.get('start_ms')) and _int_ms(scene.get('end_ms'))) or not isinstance(refs, (list, tuple)) or not refs:
+            return None
+        if not all(isinstance(ref, str) and ref for ref in refs):
+            return None
+        scenes.append(LayoutScene(scene['start_ms'], scene['end_ms'], tuple(refs)))
+    choice = plan_payload.get('layout_choice') if isinstance(plan_payload, Mapping) else None
+    choice = choice if isinstance(choice, Mapping) else {}
+    script = script_payload if isinstance(script_payload, Mapping) else {}
+    texts = {
+        s['segment_id']: s['text'] for s in _mappings(script.get('segments'))
+        if isinstance(s.get('segment_id'), str) and isinstance(s.get('text'), str)
+    }
+    placement = hook_placement if isinstance(hook_placement, Mapping) else {}
+    cuts = []
+    for name in ('hook_time_range', 'thumbnail_time_range'):
+        span = placement.get(name)
+        if isinstance(span, Mapping) and _int_ms(span.get('start_ms')) and _int_ms(span.get('end_ms')) and span['start_ms'] < span['end_ms']:
+            cuts.append((span['start_ms'], span['end_ms']))
+    return layout_text_rows(
+        presentation.get('layout_key'),
+        accent=str(presentation.get('accent_colour')),
+        font=str(typography.get('font_name', 'Arial')),
+        play_res=(int(profile['play_res_x']), int(profile['play_res_y'])),
+        scenes=scenes,
+        words=words,
+        end_ms=end_ms if _int_ms(end_ms) else max((s.end_ms for s in scenes), default=0),
+        title=choice.get('title'),
+        category=script.get('hook_intent'),
+        segment_texts=texts,
+        contrast_pair=choice.get('contrast_pair'),
+        ai_refs=_ai_image_refs(timeline, allowed_fallbacks),
+        cuts=cuts,
+    )
 
 
 _REF_AUDIO_BED_CUE = 'audio_bed_cue'
@@ -649,16 +712,38 @@ class ProductionRenderSources:
         infos = read_script_segments(self._manager, workspace_id=self._workspace_id, script_version_ref=script_version_ref)
         inputs_ass = ass_inputs(preset_obj, profile_obj)
         labels = illustration_windows(timeline, hook_placement, allowed_fallbacks, timing_payload.get('voice_duration_ms'))
+        words = parse_word_timing(timing_payload)
+        rows = layout_rows_for(
+            preset_obj, self._plan_payload(plan_ref), self._script_payload(script_version_ref), timeline=timeline,
+            hook_placement=hook_placement, allowed_fallbacks=allowed_fallbacks, words=words.words,
+            end_ms=timing_payload.get('voice_duration_ms'), typography=inputs_ass.typography, profile=inputs_ass.profile,
+        )
         return build_ass_material(
             staging_root=str(self._runtime.staging_root),
-            words=parse_word_timing(timing_payload),
+            words=words,
             typography=inputs_ass.typography,
             safe_area=inputs_ass.safe_area,
             profile=inputs_ass.profile,
             disclosure_style=inputs_ass.disclosure_style,
             segments=infos,
             illustration_windows=labels,
+            layout_rows=rows,
         )
+
+    def _script_payload(self, script_version_ref: str) -> Mapping[str, Any] | None:
+        """PRS-LAYOUT-TEXT: payload of the latest revision of the script version (hook_intent, segment texts), None when unreadable."""
+        try:
+            with self._manager.borrow_connection() as conn:
+                row = conn.execute(_SCRIPT_PAYLOAD_SQL, (self._workspace_id, script_version_ref)).fetchone()
+        except Exception:
+            return None
+        payload = row[0] if row is not None else None
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                return None
+        return payload if isinstance(payload, Mapping) else None
 
     def _hook_source(self, hook_id: str) -> _StagedSource | None:
         with self._manager.borrow_connection() as conn:
