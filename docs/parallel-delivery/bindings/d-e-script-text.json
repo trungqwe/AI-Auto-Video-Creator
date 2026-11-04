@@ -17,7 +17,7 @@
     "sections": [
       "CT-AI-004"
     ],
-    "sha256": "92b74489890f1eaf3915aef809af4cff0585659842f6930bbdf11d1236861b3a"
+    "sha256": "4dae96d9ddcc0f5fadd63cd22e1d7ea11b9444acc7624cc04eccc621611bdaf3"
   },
   "compatibility": {
     "mode": "additive_optional_only",

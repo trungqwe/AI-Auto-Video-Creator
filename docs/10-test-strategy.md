@@ -253,7 +253,7 @@ Không được chọn số mẫu sau khi đã xem kết quả.
 AI/content/media selection dùng ba lớp oracle:
 
 1. Structural validator: schema, provenance, required fields, claim mode và constraint.
-2. Deterministic policy checker: điều cấm/bắt buộc như khác góc, disclosure, hook/thumbnail.
+2. Deterministic policy checker: điều cấm/bắt buộc như khác góc, ~~disclosure~~ *(tắt — MC-POLICY)*, hook/thumbnail.
 3. Human evaluation trên mẫu đã khóa cho tiêu chí phù hợp/chất lượng.
 
 Không dùng duy nhất chính model tạo nội dung làm judge cho output của nó. AI-assisted review chỉ hỗ trợ sàng lọc; kết luận ngưỡng người dùng đã duyệt phải theo protocol G06.
@@ -769,14 +769,14 @@ Không gộp các chỉ số thành một accuracy duy nhất che lỗi quan tr�
 - Recall phát hiện = true positive chia tổng ảnh/yếu tố positive trong bộ mẫu.
 - Ngưỡng ít nhất 95%.
 - `UNCERTAIN`, detector error và unreadable được báo riêng; không loại khỏi mẫu để tăng recall nếu item vẫn thuộc population đánh giá.
-- Kiểm tra transform mask, blur/recolor và preservation của ảnh không cần xử lý.
-- Clip không được đưa qua safety transform; đây là scope test riêng.
+- ~~Kiểm tra transform mask, blur/recolor và preservation.~~ *(tắt — MC-POLICY)*
+- ~~Clip không được đưa qua safety transform.~~ *(tắt — MC-POLICY)*
 
-### 18.6. Góc kể, biến thể và disclosure
+### 18.6. Góc kể, biến thể ~~và disclosure~~ *(MC-POLICY)*
 
 - 100% nhóm 1-3 video cùng lượt phải có StoryAngle khác nhau.
 - 100% video tái khai thác không exact duplicate và ghi ít nhất một khác biệt thực tế.
-- 100% segment inference/creative phải có `claim_mode` và disclosure đầu ra phù hợp.
+- ~~100% segment inference/creative phải có `claim_mode` và disclosure đầu ra phù hợp.~~ *(tắt — MC-POLICY: không nhãn AI)*
 - Hash/embedding chỉ hỗ trợ phát hiện candidate trùng; quyết định khác góc phải dựa trên semantic rubric và plan/script evidence.
 
 ### 18.7. Chống thiên lệch đánh giá

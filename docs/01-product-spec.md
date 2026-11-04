@@ -150,9 +150,9 @@ Chế độ tự động không phải người dùng độc lập. Đây là ch
 - **FR-HOOK-003:** Video hook và âm thanh hook phải được quản lý như hai kho riêng.
 - **FR-HOOK-004:** Mỗi hook phải có thông tin chỉ mục để AI đánh giá mức phù hợp với câu chuyện.
 - **FR-HOOK-005:** AI phải chọn được một video hook và một âm thanh hook phù hợp cho mỗi video.
-- **FR-HOOK-006:** Hook có thể không thuộc sự kiện thật nhưng chỉ được dùng với vai trò minh họa.
+- **FR-HOOK-006:** Hook có thể không thuộc sự kiện thật và được dùng tự do cho mọi câu chuyện (MC-POLICY: cross-story reuse).
 - **FR-HOOK-007:** Phần hook của mỗi video phải có thumbnail liên quan trực tiếp đến câu chuyện.
-- **FR-HOOK-008:** Nếu không tìm được hook đủ điều kiện, công việc phải được đánh dấu rõ thay vì âm thầm render thiếu hook.
+- **FR-HOOK-008:** Nếu không tìm được hook phù hợp nhất, chọn hook chung cùng chủ đề từ kho; không bắt buộc đánh dấu (MC-POLICY).
 - **FR-HOOK-009:** Người dùng phải có khả năng xem và quản lý các mục trong kho hook từ giao diện.
 - **FR-HOOK-010:** Người dùng cung cấp audio hook, cũng như video hook; hệ thống không tự bổ sung nghĩa vụ tạo/cào audio hook (R11).
 
@@ -194,12 +194,16 @@ Chế độ tự động không phải người dùng độc lập. Đây là ch
 
 ### 5.10. Nội dung nhạy cảm
 
-- **FR-SEN-001:** Sản phẩm phải nhận biết ảnh có khuôn mặt trẻ em, máu me hoặc vũ khí.
-- **FR-SEN-002:** Ảnh có khuôn mặt trẻ em phải được đánh dấu để che mặt.
-- **FR-SEN-003:** Ảnh có máu me phải có khả năng được làm mờ hoặc thay đổi màu sắc.
-- **FR-SEN-004:** Ảnh có vũ khí phải có khả năng được xử lý theo quy tắc nhạy cảm đã cấu hình.
-- **FR-SEN-005:** Xử lý ảnh nhạy cảm không được làm mất khả năng tiếp tục sản xuất cả lô nếu một ảnh riêng lẻ bị lỗi.
-- **FR-SEN-006:** Ảnh nhận diện chưa chắc, kiểm tra lỗi hoặc xử lý thất bại vẫn được dùng nguyên gốc nếu đọc được, theo chấp nhận rủi ro R12/R25. Phải ghi đúng trạng thái chưa chắc/lỗi và lý do dùng nguyên gốc; không đánh dấu đã an toàn hoặc đã xử lý thành công. Ảnh không đọc được vẫn là lỗi đầu vào; ảnh đã nhận diện cần xử lý vẫn phải được đưa qua bước xử lý.
+> **MC-POLICY (04/11/2026):** Mục FR-SEN đã tắt, trừ FR-SEN-002 (che mặt trẻ em, ranh giới Control giữ), FR-SEN-005 và FR-SEN-006. Người dùng chịu mọi rủi ro nội dung;
+> ảnh được dùng nguyên gốc không qua bước đánh giá nhạy cảm. Mục đích: đo phản ứng nền tảng
+> và điều chỉnh sau khi có kết quả từ hoạt động thực tế. Xem `docs/MC-POLICY-20261104.md`.
+
+- ~~**FR-SEN-001:**~~ *(tắt — MC-POLICY)*
+- **FR-SEN-002:** *(giữ — ranh giới Control 04/11/2026)* Ảnh có khuôn mặt trẻ em phải được đánh dấu để che mặt.
+- ~~**FR-SEN-003:**~~ *(tắt — MC-POLICY)*
+- ~~**FR-SEN-004:**~~ *(tắt — MC-POLICY)*
+- **FR-SEN-005:** *(giữ)* Lỗi xử lý ảnh không được dừng cả lô.
+- **FR-SEN-006:** *(giữ, nới)* Ảnh luôn dùng nguyên gốc; không cần pipeline đánh giá nhạy cảm.
 
 ### 5.11. Tạo âm thanh
 
