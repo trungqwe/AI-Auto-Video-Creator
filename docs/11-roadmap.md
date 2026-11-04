@@ -104,6 +104,7 @@ G, H và J là năng lực xuyên suốt: được dựng tối thiểu từ M2 
 | M5 | Tạo snapshot, góc kể, script, chọn media và kế hoạch dựng | D, B, C, G, J, H | G06 phần nội dung + user duyệt D | CHƯA BẮT ĐẦU — THEO ỦY QUYỀN AI_SETUP, PHẦN B (18/10/2026) |
 | M6 | Tạo voice/timing, dựng bằng 5 preset, QC và output cloud verified | E, F, I, G, H | G06 media + G07 output/QC | CHƯA BẮT ĐẦU — THEO ỦY QUYỀN AI_SETUP, PHẦN B (18/10/2026) |
 | M7 | Chạy lô không giám sát, phục hồi, đạt gate và phát hành baseline | A-J | G01-G07 đầy đủ + user acceptance | CHƯA BẮT ĐẦU — THEO ỦY QUYỀN AI_SETUP, PHẦN B (18/10/2026) |
+| M8 | Video phong cách tin nóng Mỹ (MC): 4 nhãn nội dung × 5 bố cục, kho hook và âm theo loại cảnh, nguồn mở rộng, chuỗi cập nhật, giọng cảm xúc; lô thử 20 video | A, B, C, D, E, F, J | `GATE-MC-E2E` + `MC-PILOT` 20 video + user xem mẫu một lần (I8) + audit cuối độc lập | THEO ỦY QUYỀN AI_SETUP — kế hoạch `docs/implementation/mc/plan.md` (user duyệt 04/11/2026, audit PASS 05/11/2026); mở sau bàn giao giai đoạn 1 |
 
 Kích hoạt sản xuất vẫn bị chặn (`PRODUCTION_ACTIVATION_BLOCKED`).
 
@@ -717,6 +718,8 @@ Không gán xác suất định lượng cho các rủi ro trên vì chưa có d
 
 ## 21. Quản lý thay đổi và re-plan
 
+> **Delta đã user duyệt 04/11/2026 (M8 — MC):** thay đổi mục tiêu nội dung (chính sách MC-POLICY, `docs/MC-POLICY-20261104.md`), thêm mốc M8 ngoài phạm vi v1 ban đầu (mục 25: "fact-check bắt buộc" đã tắt; "tự đăng" và "đo hiệu quả sau đăng" vẫn ngoài phạm vi theo I6). Bằng chứng duyệt: quyết định D1–D14 và phỏng vấn I1–I8 ngày 04/11/2026 (`user_decisions.json` của Portfolio, bản ghi `CLOSURE_NOTE ALL/MC-POLICY`). Phần bị ảnh hưởng là mốc chưa làm; không sửa hồi tố evidence M0–M7.
+
 Re-plan bắt buộc khi:
 
 - user thay đổi mục tiêu, phạm vi hoặc hard gate;
@@ -828,6 +831,31 @@ User đã xác nhận ngày 13-09-2026:
 Các điều kiện trên đã được chấp thuận cùng baseline 00–12, ADR, contracts, audit và kế hoạch Phân hệ A. M0 chuyển `APPROVED/CLOSED`; quyền code chỉ áp dụng M1 Evidence Prototype. M2, M3 và implementation Phân hệ A tiếp tục bị khóa cho tới khi M1 đạt exit gate, được audit và user xác nhận checkpoint tiếp theo.
 
 Lệnh triển khai M1 đã được nhận ngày 13-09-2026. M1-P0 và M1-P1 đã PASS theo evidence tương ứng; M1 vẫn `IN PROGRESS`, M2/M3/Phân hệ A tiếp tục bị khóa và không được suy ra là đã có quyền triển khai.
+
+## 28. M8 — Video phong cách tin nóng Mỹ (MC)
+
+Mốc mở sau khi bàn giao giai đoạn 1 (M3–M7 và CP7 đạt, nhánh tích hợp đã fast-forward vào main). Kế hoạch gói là `docs/implementation/mc/plan.md` (31 slice `MC-*`, mục 5 là spec cho `IMPL-PLAN-MC`); dữ liệu nghiên cứu ở `docs/implementation/mc/data/`. Chính sách nội dung: `docs/MC-POLICY-20261104.md` (ranh giới Control: che mặt trẻ em, không vượt chống bot, không né kiểm duyệt nền tảng, kịch bản bám bài nguồn).
+
+### Mục tiêu
+
+- Bốn nhãn nội dung (`crime`, `celebrity_scandal`, `trend_viral`, `crime_archive`) và bốn chế độ cào, theme màu theo nhãn trên đúng 5 bố cục hiện có.
+- Nguồn tin mở rộng theo seed thật (`data/sources_seed_mc.json`, `data/sources_extra.json`), adapter mới cho sitemap, video, Bluesky, Wikipedia, mugshots; chuỗi cập nhật theo người và vụ tự vào lô.
+- Kho hook video và âm hook theo loại cảnh (`data/hook_sources.json`, `data/sfx_sources.json`), cắt đoạn nóng bằng ffmpeg, dựng đoạn hook 0–4,5 giây với PiP và băng tiêu đề; lớp chrome chung; chuyển cảnh.
+- Kịch bản theo công thức kể (`data/narrative_formulas.md`), giọng cảm xúc (sidecar Chatterbox, Kokoro dự phòng), caption/hashtag/giờ đăng; ảnh gán theo nhân vật, AI chỉ khi thiếu.
+- Các cổng tuân thủ thành công tắc cấu hình (`content_policy` trong `profile.json`), mặc định theo MC-POLICY.
+
+### Exit gate
+
+- `GATE-MC-E2E` thoả: `MC-E2E` tích hợp (một lô giả lập 4 video, mỗi nhãn một, đi hết chuỗi tới QC).
+- `MC-PILOT` đạt: lô thật 20 video (5 mỗi nhãn), ≥ 18/20 render, báo cáo bộ đo 12 chỉ số so với baseline @mcgi.o đạt ≥ 9/12 khoảng mục tiêu, xuất Drive.
+- Mọi `coveredIds` (`MC-T*`) của kế hoạch có test trong repo; lệnh kiểm của mọi slice đạt trên HEAD tích hợp.
+- Backlog giai đoạn 1 chuyển vào M8 (`MC-BL-*`) đã tích hợp.
+- User xem 20 video mẫu và gật đầu một lần (I8); sau đó audit cuối độc lập trước bàn giao M8. Lane đóng mốc chỉ chuẩn bị bằng chứng, không ghi thay user.
+
+### Điều cấm
+
+- Không sửa main hay backup; không push khi chưa có quyền bàn giao riêng cho M8.
+- Không vượt cơ chế chống bot, không thiết kế né kiểm duyệt nền tảng, không bỏ che mặt trẻ em, không bịa tình tiết ngoài bài nguồn.
 
 ## Trạng thái sau khắc phục audit M1 R1
 

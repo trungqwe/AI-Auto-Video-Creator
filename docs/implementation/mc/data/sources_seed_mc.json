@@ -1,0 +1,410 @@
+[
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://www.fox5ny.com/rss/category/news",
+  "outlet": "Fox5 NY",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://www.q13fox.com/rss/category/news",
+  "outlet": "Fox13 Seattle",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://fox4kc.com/feed/",
+  "outlet": "Fox 4 KC",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://abc7chicago.com/feed/",
+  "outlet": "ABC7 Chicago",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://abc7ny.com/feed/",
+  "outlet": "ABC7 NY",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://lawandcrime.com/feed/",
+  "outlet": "Law&Crime",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://www.courttv.com/feed/",
+  "outlet": "Court TV",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://www.cbsnews.com/latest/rss/crime",
+  "outlet": "CBS News Crime",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://nypost.com/metro/feed/",
+  "outlet": "NY Post Metro",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://ktla.com/feed/",
+  "outlet": "KTLA",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://www.wsbtv.com/arc/outboundfeeds/rss/?outputType=xml",
+  "outlet": "WSB Atlanta",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://www.local10.com/arc/outboundfeeds/rss/?outputType=xml",
+  "outlet": "Local10",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://www.cbsnews.com/chicago/latest/rss/main",
+  "outlet": "CBS Chicago",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "celebrity_scandal",
+  "kind": "rss_feed",
+  "url": "https://www.tmz.com/rss.xml",
+  "outlet": "TMZ",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "celebrity_scandal",
+  "kind": "rss_feed",
+  "url": "https://pagesix.com/feed/",
+  "outlet": "Page Six",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "celebrity_scandal",
+  "kind": "rss_feed",
+  "url": "https://variety.com/feed/",
+  "outlet": "Variety",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "celebrity_scandal",
+  "kind": "rss_feed",
+  "url": "https://www.eonline.com/syndication/feeds/rssfeeds/topstories.xml",
+  "outlet": "E! News",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "celebrity_scandal",
+  "kind": "rss_feed",
+  "url": "https://www.dailymail.co.uk/tvshowbiz/index.rss",
+  "outlet": "Daily Mail Showbiz",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "celebrity_scandal",
+  "kind": "rss_feed",
+  "url": "https://www.usmagazine.com/feed/",
+  "outlet": "Us Weekly",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "celebrity_scandal",
+  "kind": "rss_feed",
+  "url": "https://www.hollywoodreporter.com/feed/",
+  "outlet": "Hollywood Reporter",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "celebrity_scandal",
+  "kind": "rss_feed",
+  "url": "https://deadline.com/feed/",
+  "outlet": "Deadline",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "celebrity_scandal",
+  "kind": "rss_feed",
+  "url": "https://perezhilton.com/feed/",
+  "outlet": "Perez Hilton",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "celebrity_scandal",
+  "kind": "rss_feed",
+  "url": "https://hollywoodlife.com/feed/",
+  "outlet": "Hollywood Life",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "trend_viral",
+  "kind": "rss_feed",
+  "url": "https://mashable.com/feeds/rss/all",
+  "outlet": "Mashable",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "trend_viral",
+  "kind": "rss_feed",
+  "url": "https://www.distractify.com/feed",
+  "outlet": "Distractify",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime_archive",
+  "kind": "atom_feed",
+  "url": "https://en.wikipedia.org/w/api.php?action=featuredfeed&feed=onthisday&feedformat=atom",
+  "outlet": "Wikipedia Current events",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime_archive",
+  "kind": "atom_feed",
+  "url": "https://en.wikipedia.org/w/index.php?title=Special:RecentChanges&feed=atom&namespace=0&limit=50",
+  "outlet": "Wikipedia Current events portal",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime_archive",
+  "kind": "rss_feed",
+  "url": "https://crimeonline.com/feed/",
+  "outlet": "Crime Online",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime_archive",
+  "kind": "rss_feed",
+  "url": "https://crimereads.com/feed/",
+  "outlet": "Crime Reads",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime_archive",
+  "kind": "rss_feed",
+  "url": "https://truecrimedaily.com/feed/",
+  "outlet": "True Crime Daily",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime_archive",
+  "kind": "rss_feed",
+  "url": "https://www.thetrace.org/feed/",
+  "outlet": "The Trace",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "trend_viral",
+  "kind": "rss_feed",
+  "url": "https://trends.google.com/trending/rss?geo=US",
+  "outlet": "Google Trends US",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "trend_viral",
+  "kind": "rss_feed",
+  "url": "https://www.theverge.com/rss/index.xml",
+  "outlet": "The Verge",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "trend_viral",
+  "kind": "rss_feed",
+  "url": "https://uproxx.com/feed/",
+  "outlet": "Uproxx",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "trend_viral",
+  "kind": "rss_feed",
+  "url": "https://www.boredpanda.com/feed/",
+  "outlet": "Bored Panda",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "trend_viral",
+  "kind": "rss_feed",
+  "url": "https://www.dailydot.com/feed/",
+  "outlet": "Daily Dot",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "trend_viral",
+  "kind": "rss_feed",
+  "url": "https://nypost.com/entertainment/feed/",
+  "outlet": "NY Post Entertainment",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime_archive",
+  "kind": "rss_feed",
+  "url": "https://www.theguardian.com/us-news/us-crime/rss",
+  "outlet": "Guardian US Crime",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime_archive",
+  "kind": "rss_feed",
+  "url": "https://rss.nytimes.com/services/xml/rss/nyt/NYRegion.xml",
+  "outlet": "NYT NY Region",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime_archive",
+  "kind": "rss_feed",
+  "url": "https://www.smithsonianmag.com/rss/history/",
+  "outlet": "Smithsonian History",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime_archive",
+  "kind": "rss_feed",
+  "url": "https://www.justice.gov/news/rss?type=press_release&m=1",
+  "outlet": "DOJ press (rss)",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime_archive",
+  "kind": "rss_feed",
+  "url": "https://www.thedailybeast.com/arc/outboundfeeds/rss/articles/?outputType=xml",
+  "outlet": "Daily Beast",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime_archive",
+  "kind": "rss_feed",
+  "url": "https://allthatsinteresting.com/feed",
+  "outlet": "All That's Interesting",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "celebrity_scandal",
+  "kind": "rss_feed",
+  "url": "https://www.theguardian.com/us/culture/rss",
+  "outlet": "Guardian US Culture",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "celebrity_scandal",
+  "kind": "rss_feed",
+  "url": "https://www.thewrap.com/feed/",
+  "outlet": "TheWrap",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "celebrity_scandal",
+  "kind": "rss_feed",
+  "url": "https://www.rollingstone.com/feed/",
+  "outlet": "Rolling Stone",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://www.fox26houston.com/rss/category/news",
+  "outlet": "Fox26 Houston",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://www.foxla.com/rss/category/news",
+  "outlet": "Fox11 LA",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://www.fox32chicago.com/rss/category/news",
+  "outlet": "Fox 32 Chicago",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://www.cbsnews.com/miami/latest/rss/main",
+  "outlet": "CBS Miami",
+  "region": "US",
+  "ua": "browser"
+ },
+ {
+  "topic_hint": "crime",
+  "kind": "rss_feed",
+  "url": "https://abc7.com/feed/",
+  "outlet": "ABC7 LA",
+  "region": "US",
+  "ua": "browser"
+ }
+]
