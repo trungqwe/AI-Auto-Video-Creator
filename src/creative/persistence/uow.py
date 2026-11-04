@@ -5,6 +5,7 @@ import uuid
 from typing import Any
 
 from controlplane.domain.interfaces.uow import IUnitOfWork
+from creative.adapters.batch_layout_usage import PostgresBatchLayoutUsage
 from creative.persistence import repositories as repos
 from creative.persistence.outbox import PostgresCreativeOutboxWriter
 
@@ -44,6 +45,8 @@ class PostgresCreativeUnitOfWork(IUnitOfWork):
         self.invocations = repos.PostgresInvocationRecordRepository(source, workspace)
         self.receipts = repos.PostgresReceiptStore(source, workspace)
         self.outbox = PostgresCreativeOutboxWriter(source, workspace, correlation_id, actor)
+        # PRS-LAYOUT-QUOTA-FIX1: the pipeline checks the batch layout cap again in the transaction that stores a plan.
+        self.layout_usage = PostgresBatchLayoutUsage(source, workspace)
 
     @property
     def active(self) -> bool:
