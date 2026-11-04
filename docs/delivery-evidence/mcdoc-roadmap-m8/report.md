@@ -65,6 +65,11 @@
 - **Probe SHA-256 (bước 13):** Mã thoát 0 (cả 10 tệp trùng sha256 bản tham chiếu).
 - **Probe CR (bước 17):** Mã thoát 0 (toàn bộ LF, không chứa byte CR).
 
+## Cấp lại sau thu hồi (rebase lên 39244296b1a720417f7190bcb83441c6b9326dfd)
+- **Rebase:** Lệnh `git rebase 39244296b1a720417f7190bcb83441c6b9326dfd`, mã thoát 0, output: `Current branch trungqwe/lane-mcdoc-roadmap-m8 is up to date.` (no-op vì cha trực tiếp của HEAD đã là 39244296b1a720417f7190bcb83441c6b9326dfd).
+- **Chạy lại lệnh kiểm của gói:** Bước 2 (so sánh SHA-256 mcdoc-roadmap-m8) mã thoát 0; bước 3 (pytest) mã thoát 0, dòng tổng kết nguyên văn: `25 passed in 2.17s`; bước 4 (probe nội dung 1 - roadmap) mã thoát 0; bước 5 (probe nội dung 2 - plan.md) mã thoát 0; bước 6 (probe nội dung 3 - data) mã thoát 0.
+- **Finding đã xử lý:** Check bị báo hỏng ở lượt trước là lệnh so sha256 của gói MCDOC-POLICY (bản tham chiếu D:/AIAVC_IMGPROTO/ref/mcdoc-policy, hash roadmap `573b4a2fe7bc349189c9431478a46eb0acd3e3f65c073bce72186cadc141e1ea`), không nằm trong lệnh kiểm của gói MCDOC-ROADMAP-M8; gói này thay cả `docs/11-roadmap.md` bằng bản M8 (sha256 `a5e9288a1acfbdea2966b2c1a7f76554efe3c48c70a1b4b4df2ee5a591d33a89`) nên hai hash roadmap không thể cùng đạt; không hoàn tác roadmap về bản policy.
+
 ## Mục mở
 - **Mã mục mở:** OI-MC-ROADMAP-M8
 - **Chi tiết:** Chưa mở M8 trong policy của AI_SETUP (closures.M8, GATE-MC-E2E, IMPL-PLAN-MC), do Control làm sau bàn giao giai đoạn 1 khi Portfolio rảnh. Dữ liệu nghiên cứu là ảnh chụp ngày 04–05/11/2026; nguồn có thể đổi.
