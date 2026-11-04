@@ -124,7 +124,7 @@ Output `QualityReport`:
 | `VOICE_AUDIBLE` | Hard | Có voice và không bị lỗi âm thanh nghiêm trọng |
 | `ENGLISH_OUTPUT_VALID` | Hard | Script, voice, subtitle, title và hashtag có bằng chứng tiếng Anh gắn đúng revision |
 | `OUTPUT_PROFILE_VALID` | Hard | Container/codec/dimensions theo profile |
-| `INFERENCE_DISCLOSURE_PRESENT` | Hard có điều kiện | Các segment suy luận/sáng tạo có biểu đạt rõ |
+| ~~`INFERENCE_DISCLOSURE_PRESENT`~~ | ~~Hard có điều kiện~~ | ~~Các segment suy luận/sáng tạo có biểu đạt rõ~~ *(tắt — MC-POLICY 04/11/2026: không nhãn AI)* |
 | `VISUAL_CONTINUITY` | Warning/score | Không có khoảng trống hoặc frame lỗi đáng kể |
 | `AUDIO_MIX_QUALITY` | Warning/score | Voice, nhạc và SFX ở mức chấp nhận theo policy |
 

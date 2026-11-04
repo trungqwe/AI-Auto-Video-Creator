@@ -380,9 +380,9 @@ Hoàn thành C-I đủ để original, rendition, hook và output tương lai c�
 
 - Probe media thực, không tin extension/MIME.
 - Technical metadata và corruption detection.
-- Image safety assessment contract và transform pipeline cơ bản.
+- ~~Image safety assessment contract và transform pipeline cơ bản.~~ *(tắt — MC-POLICY 04/11/2026)*
 - Original luôn tách rendition; reusable khác temporary.
-- Không chạy safety blur/recolor trên clip.
+- ~~Không chạy safety blur/recolor trên clip.~~ *(tắt — MC-POLICY: không blur gì cả)*
 
 ### Lát cắt user
 
@@ -434,8 +434,8 @@ Hoàn thành D từ snapshot bất biến đến production plan, có biến th�
 2. Content analysis: entities, timeline, claim/evidence, uncertainty và media needs.
 3. StoryAngle generation: 1-3 góc khác nhau trong cùng lượt.
 4. Script generation tiếng Anh, 61-70 giây mục tiêu và pronunciation hints.
-5. `source_backed`, `inference`, `creative_hypothesis`, `transition` theo segment.
-6. Disclosure bắt buộc cho inference/creative content.
+5. ~~`source_backed`, `inference`, `creative_hypothesis`, `transition` theo segment.~~ *(tắt — MC-POLICY)*
+6. ~~Disclosure bắt buộc cho inference/creative content.~~ *(tắt — MC-POLICY)*
 7. `from_then_to_now` chỉ khi có `EventUpdateAccepted`.
 8. Query/chọn visual hook, audio hook, thumbnail, media, music/SFX intent.
 9. Production plan có scene/timeline/fallback/preset intent.
@@ -460,7 +460,7 @@ Hoàn thành D từ snapshot bất biến đến production plan, có biến th�
 - RED/GREEN cho `INV-004`, `INV-005`, `INV-006`, `INV-013`, `INV-014`.
 - Config/source đổi sau snapshot không làm job cũ thay đổi.
 - AI response sai schema, thiếu field, hallucinated ref và timeout/rate limit.
-- 100% inference/creative segment có disclosure.
+- ~~100% inference/creative segment có disclosure.~~ *(tắt — MC-POLICY)*
 - Topic classification đạt ít nhất 90% trên mẫu được user đánh giá.
 - Event links đạt yêu cầu ít nhất 95% không gộp nhầm.
 - Media/thumbnail đạt ít nhất 90%; hook combination đạt ít nhất 90%.
@@ -493,7 +493,7 @@ Hoàn thành E-F để một job được giám sát có thể tạo voice, timi
 ### Năng lực E — Processing, voice và timing
 
 1. Reusable crop/resize/normalize/transcode/extract-frame operations có lineage.
-2. Image safety detection/transform theo policy đã chốt; clip chỉ xử lý kỹ thuật.
+2. ~~Image safety detection/transform theo policy đã chốt~~ *(tắt — MC-POLICY)*; clip chỉ xử lý kỹ thuật.
 3. TTS voice gắn exact script fingerprint.
 4. Word timing gắn exact script/voice hash và có confidence/gap report.
 5. Music/SFX preparation, loudness và mix constraints.
@@ -507,7 +507,7 @@ Hoàn thành E-F để một job được giám sát có thể tạo voice, timi
 4. Render attempt/receipt và outcome-unknown reconciliation.
 5. QC tự động cho playability, duration, output profile, hook, thumbnail, voice, subtitle và bằng chứng tiếng Anh của exact revisions.
 6. Burn-in English subtitle và karaoke timing từng từ.
-7. Kiểm tra disclosure đầu ra khi có inference/creative segment.
+7. ~~Kiểm tra disclosure đầu ra khi có inference/creative segment.~~ *(tắt — MC-POLICY)*
 8. Đồng bộ cloud, verify output rồi G mới commit completion ledger.
 
 ### Lát cắt user
@@ -789,8 +789,8 @@ Các giả định kỹ thuật `AS-CTR-001..004` vẫn được xử lý bằng
 - SaaS nhiều tenant, billing, public remote access hoặc SLA nhiều khách.
 - Google Sheets làm cơ sở dữ liệu chính hoặc bắt buộc trong runtime path.
 - Trình sửa article/script/event relation hoặc approval workflow.
-- Fact-check đa nguồn bắt buộc.
-- Safety blur/recolor cho clip.
+- ~~Fact-check đa nguồn bắt buộc.~~ *(tắt — MC-POLICY: không kiểm chứng nguồn)*
+- ~~Safety blur/recolor cho clip.~~ *(tắt — MC-POLICY)*
 - Cam kết viral hoặc đo hiệu quả sau đăng.
 - Tự thêm dịch vụ AI trả phí khi fallback.
 - Cam kết khôi phục sau mất toàn bộ kho ngoài phạm vi user đã chốt.

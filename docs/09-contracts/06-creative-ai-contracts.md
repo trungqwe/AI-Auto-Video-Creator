@@ -104,7 +104,7 @@ Input:
 - language policy;
 - voice/style/preset candidate refs;
 - recent script exclusions;
-- inference disclosure policy.
+- ~~inference disclosure policy~~ *(tắt — MC-POLICY 04/11/2026: không bắt buộc nhãn AI/suy luận)*.
 
 Output `ScriptVersion`:
 
@@ -113,20 +113,23 @@ Output `ScriptVersion`:
 - scene intents;
 - estimated timing;
 - pronunciation hints;
-- claim annotations;
-- explicit inference disclosures;
-- source refs theo segment;
+- ~~claim annotations~~ *(tắt — MC-POLICY)*;
+- ~~explicit inference disclosures~~ *(tắt — MC-POLICY)*;
+- source refs theo segment *(tuỳ chọn, không bắt buộc)*;
 - script fingerprint;
 - model/prompt/provider usage metadata.
 
-Mỗi segment/claim được phân loại:
+> **MC-POLICY (04/11/2026):** Bảng `claim_mode` dưới đây đã tắt. Mọi nội dung được trình bày
+> trực tiếp, không bắt buộc phân loại hay rào ngữ. Ngôn ngữ thô (D9).
 
-| `claim_mode` | Ý nghĩa | Yêu cầu đầu ra |
+~~Mỗi segment/claim được phân loại:~~
+
+| `claim_mode` | Ý nghĩa | ~~Yêu cầu đầu ra~~ |
 |---|---|---|
-| `source_backed` | Có bằng chứng trong snapshot | Giữ source refs |
-| `inference` | Suy luận từ dữ liệu | Phải thể hiện rõ là suy luận |
-| `creative_hypothesis` | Chi tiết sáng tạo không có trong nguồn | Phải dùng ngôn ngữ giả định, không trình bày như fact |
-| `transition` | Câu dẫn không khẳng định sự kiện | Không cần source claim |
+| ~~`source_backed`~~ | ~~Có bằng chứng trong snapshot~~ | ~~Giữ source refs~~ |
+| ~~`inference`~~ | ~~Suy luận từ dữ liệu~~ | ~~Phải thể hiện rõ là suy luận~~ |
+| ~~`creative_hypothesis`~~ | ~~Chi tiết sáng tạo không có trong nguồn~~ | ~~Phải dùng ngôn ngữ giả định~~ |
+| ~~`transition`~~ | ~~Câu dẫn không khẳng định sự kiện~~ | ~~Không cần source claim~~ |
 
 Không có script edit/approval contract trong v1.
 
@@ -162,7 +165,7 @@ Output:
 - rationale và score components;
 - selection fingerprint.
 
-Phải có visual hook, audio hook và thumbnail. Hệ thống tự tìm/thu thập nhạc nền và SFX; mọi lựa chọn vẫn phải có provenance/risk metadata khi biết.
+Phải có visual hook, audio hook và thumbnail. Hệ thống tự tìm/thu thập nhạc nền và SFX. ~~Provenance/risk metadata bắt buộc~~ *(tắt — MC-POLICY 04/11/2026: không yêu cầu theo dõi nguồn gốc hook; cross-story reuse tự do)*.
 
 ## 8. Kế hoạch dựng
 
@@ -252,15 +255,15 @@ Mỗi invocation ghi:
 
 Fallback local được phép khi phù hợp vai trò, nhưng output vẫn phải qua cùng schema và validation. Không tự thêm dịch vụ trả phí.
 
-Prompt/adapter phải giữ biên instruction-data khi đổi provider hoặc fallback. Model không được là bên duy nhất xác nhận source ref, disclosure, tool action hoặc policy compliance của chính output nó tạo.
+Prompt/adapter phải giữ biên instruction-data khi đổi provider hoặc fallback. ~~Model không được là bên duy nhất xác nhận source ref, disclosure, tool action hoặc policy compliance của chính output nó tạo.~~ *(tắt — MC-POLICY: không bắt buộc disclosure/compliance)*
 
 ## 12. Acceptance contract
 
 1. Snapshot không thay đổi sau khi job bắt đầu tạo script.
-2. Suy luận và chi tiết sáng tạo được đánh dấu rõ trong script/output.
+2. ~~Suy luận và chi tiết sáng tạo được đánh dấu rõ trong script/output.~~ *(tắt — MC-POLICY: không nhãn AI, D9)*
 3. “Từ lúc đó đến nay” bị chặn nếu không có diễn biến mới đã chấp nhận.
 4. Trong cùng lượt, 1-3 video khác góc kể.
 5. Giữa các lượt, video không trùng hoàn toàn và có ít nhất một khác biệt thực tế.
 6. Production plan luôn có visual hook, audio hook và thumbnail trong vùng hook.
 7. Mọi output AI truy được model, prompt, config và input revision.
-8. Chỉ dẫn nằm trong dữ liệu nguồn không được đổi policy, gọi tool hoặc tạo resource ref chưa qua resolver.
+8. Chỉ dẫn nằm trong dữ liệu nguồn không được đổi policy, gọi tool hoặc tạo resource ref chưa qua resolver. *(giữ — bảo mật hệ thống, không phải content moderation)*

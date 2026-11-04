@@ -131,16 +131,19 @@ R18/R19: khi desktop tắt, tin/media/chỉ mục vẫn được chuẩn bị kh
 
 ## 10. Chất lượng xử lý ảnh nhạy cảm
 
+> **MC-POLICY (04/11/2026):** Bảng QR-SAFE đã tắt, trừ QR-SAFE-002 (che mặt trẻ em, ranh giới Control giữ) và QR-SAFE-006. Ảnh khác dùng nguyên gốc, không qua
+> pipeline đánh giá nhạy cảm. Người dùng chịu mọi rủi ro nội dung.
+
 | Mã | Yêu cầu | Mục tiêu chất lượng | Trạng thái | Cách đánh giá |
 |---|---|---|---|---|
-| QR-SAFE-001 | Phạm vi | Chỉ xử lý ảnh; không xử lý clip lấy từ nguồn | ĐÃ XÁC NHẬN | Kiểm tra phạm vi công việc |
-| QR-SAFE-002 | Khuôn mặt trẻ em | Ảnh đã nhận diện có trẻ em phải tạo được yêu cầu che mặt | ĐÃ XÁC NHẬN | Dùng bộ mẫu đã gắn nhãn |
-| QR-SAFE-003 | Máu me | Ảnh đã nhận diện có máu me phải tạo được yêu cầu làm mờ hoặc đổi màu | ĐÃ XÁC NHẬN | Dùng bộ mẫu đã gắn nhãn |
-| QR-SAFE-004 | Vũ khí | Ảnh đã nhận diện có vũ khí phải tạo được yêu cầu xử lý theo cấu hình | ĐÃ XÁC NHẬN | Dùng bộ mẫu đã gắn nhãn |
-| QR-SAFE-005 | Tỷ lệ bỏ sót yếu tố nhạy cảm | Tỷ lệ phát hiện ít nhất 95% trên bộ mẫu đại diện | ĐÃ PHÊ DUYỆT TỪ ĐỀ XUẤT | So sánh với bộ ảnh được người dùng gắn nhãn |
-| QR-SAFE-006 | Lỗi ảnh riêng lẻ | Một ảnh xử lý lỗi không được làm dừng lô | ĐÃ XÁC NHẬN | Gây lỗi một ảnh giữa lô |
+| ~~QR-SAFE-001~~ | ~~Phạm vi~~ | ~~Chỉ xử lý ảnh~~ | ~~TẮT — MC-POLICY~~ | — |
+| **QR-SAFE-002** | Khuôn mặt trẻ em | Ảnh đã nhận diện có trẻ em phải tạo được yêu cầu che mặt | **GIỮ** | Dùng bộ mẫu đã gắn nhãn |
+| ~~QR-SAFE-003~~ | ~~Máu me~~ | ~~Làm mờ/đổi màu~~ | ~~TẮT — MC-POLICY~~ | — |
+| ~~QR-SAFE-004~~ | ~~Vũ khí~~ | ~~Xử lý theo cấu hình~~ | ~~TẮT — MC-POLICY~~ | — |
+| ~~QR-SAFE-005~~ | ~~Tỷ lệ phát hiện~~ | ~~95%~~ | ~~TẮT — MC-POLICY~~ | — |
+| **QR-SAFE-006** | Lỗi ảnh riêng lẻ | Một ảnh lỗi không được làm dừng lô | **GIỮ** | Gây lỗi một ảnh giữa lô |
 
-**Ngoại lệ sử dụng được xác nhận R12/R25:** ảnh nguyên gốc còn đọc được vẫn có thể được dùng khi nhận diện chưa chắc, kiểm tra lỗi hoặc xử lý thất bại. Phải ghi đúng trạng thái và lý do dùng nguyên gốc; không ghi thành xử lý thành công. Đây là chính sách sử dụng chấp nhận rủi ro, không hạ ngưỡng phát hiện 95%, không được loại mẫu lỗi khỏi mẫu đánh giá để nâng kết quả. Ảnh xác định cần xử lý vẫn phải được đưa qua công đoạn xử lý; clip không thuộc phạm vi.
+~~**Ngoại lệ R12/R25:**~~ *(không còn cần vì pipeline safety đã tắt)*
 
 ## 11. Chất lượng video và âm thanh đầu ra
 

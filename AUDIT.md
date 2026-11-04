@@ -161,8 +161,8 @@ Các vị trí dòng dưới đây thuộc bản tài liệu tại thời điể
 
 - Giữ 10 phân hệ A–J làm ranh giới trách nhiệm; không suy ra cần 10 repo hoặc microservice.
 - Giữ PostgreSQL là dữ liệu nghiệp vụ, Drive là nơi chứa artifact, SQLite là journal/cache desktop; không chuyển Google Sheets thành lõi.
-- Giữ phạm vi chỉ xử lý ảnh nhạy cảm, không xử lý clip; giữ ngoại lệ R25 và provenance/risk metadata.
-- Giữ kiểm tra đầy đủ dữ liệu/truy được nguồn, không tự thêm bước duyệt hoặc kiểm chứng sự thật đa nguồn.
+- ~~Giữ phạm vi chỉ xử lý ảnh nhạy cảm; giữ ngoại lệ R25 và provenance/risk metadata.~~ *(tắt — MC-POLICY 04/11/2026)*
+- ~~Giữ kiểm tra đầy đủ dữ liệu/truy được nguồn, không tự thêm bước duyệt hoặc kiểm chứng sự thật đa nguồn.~~ *(tắt — MC-POLICY)*
 - Giữ snapshot tại mốc tạo script, retry khác tạo biến thể, cloud thu thập khi desktop offline và cleanup có điều kiện.
 - Không hạ mục tiêu 100 video/12 giờ hoặc ngân sách để làm đẹp kết luận. G01–G07 phải tiếp tục được kiểm chứng đúng roadmap.
 

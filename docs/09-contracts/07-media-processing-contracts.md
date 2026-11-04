@@ -74,6 +74,8 @@ Analysis là versioned output; model mới không ghi đè kết quả cũ.
 
 ## 4. An toàn hình ảnh
 
+> **MC-POLICY (04/11/2026):** hai hợp đồng dưới đây giữ nguyên định nghĩa; việc có chạy chúng hay không là công tắc cấu hình `content_policy.image_safety.enabled_categories` (gói MC-POLICY-SWITCHES), mặc định chỉ còn `minor_child` (che mặt trẻ em). Các nhóm khác tắt theo quyết định user; xem `docs/MC-POLICY-20261104.md`.
+
 ### CT-PROC-005 — `AssessImageSafety`
 
 Chỉ áp dụng cho **ảnh** từ nguồn và thumbnail liên quan. Không áp dụng xử lý nhạy cảm cho clip trong phạm vi hiện tại.
