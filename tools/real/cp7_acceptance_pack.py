@@ -1,10 +1,9 @@
-"""CP7-14 / RG-13, gói nghiệm thu R1–R6 và lô mẫu 20 video (quyết định user 04/11/2026: lô mẫu là 20 thay cho 10; không sửa profile.json, `batch.target.sample_run` giữ 10; trần 120 lời gọi AI, ledger +10 USD, Drive 3 GiB, 4 giờ; cách dừng `python tools/launcher/launcher.py stop`, `Deadline`, `CostGuard`; không in capability, cookie, token)."""
+"""CP7-14 / RG-13, gói nghiệm thu R1–R6 và đọc lại lô mẫu đã chạy xong (đính chính Control 05/11/2026 theo quyết định user seq 18: mẫu nghiệm thu là 10 video; không chạy lô mới, không khởi launcher, chỉ đọc CSDL và Drive; trần kế hoạch 60 lời gọi AI, ledger +5 USD, Drive 1,5 GiB, 3 giờ; cách dừng `python tools/launcher/launcher.py stop`, `Deadline`, `CostGuard`; không in capability, cookie, token)."""
 from __future__ import annotations
 
 import hashlib
 import json
 import re
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -16,12 +15,12 @@ import cp7_overnight_monitor as m
 
 REPO = Path(__file__).resolve().parents[2]
 GIB = 1024 ** 3
-SAMPLE_VIDEOS = 20
+SAMPLE_VIDEOS = 10
 HOLDOUT_PAIRS = 40
-AI_CALL_CAP = 120
-LEDGER_CEILING_USD = Decimal('10')
-DRIVE_CAP_BYTES = 3 * GIB
-DEADLINE_SECONDS = 4 * 3600
+AI_CALL_CAP = 60
+LEDGER_CEILING_USD = Decimal('5')
+DRIVE_CAP_BYTES = 3 * GIB // 2
+DEADLINE_SECONDS = 3 * 3600
 MANIFEST_PATH = REPO / 'tests' / 'real' / 'fixtures' / 'cp7_holdout_manifest.json'
 REPORT_PATH = REPO / 'docs' / 'delivery-evidence' / 'cp7-14' / 'report.md'
 RG13_ITEMS = (
@@ -39,6 +38,7 @@ RG13_ITEMS = (
 USER_HEADERS = ('Nhãn topic (user)', 'Nhãn media/hook (user)', 'Nhãn event-link (user)')
 SAFETY_OK = ('SAFE', 'TRANSFORM_REQUIRED')
 ARTICLE_ORIGINS = ('article', 'ai_generated')
+UNVERIFIED_KEYS = ('safe', 'masked', 'unmasked_minor_child', 'other_unmasked', 'unassessed')
 
 GATE_EVIDENCE: dict[str, tuple[str, ...]] = {
     'RG-01': ('docs/delivery-evidence/cp7-1/report.md', 'docs/delivery-evidence/cp7-2/report.md'),
@@ -272,6 +272,16 @@ def budget_violations(ai_calls: int, spent_usd: str | Decimal, drive_bytes: int,
     return bad
 
 
+
+
+def budget_gate_violations(ai_calls: int, spent_usd: str | Decimal, drive_bytes: int, elapsed_s: float) -> list[str]:
+    """Số lời gọi AI chỉ là số đo (Control 05/11/2026, 9 lần provider timeout), không phải khoá nghiệm thu."""
+    return [k for k in budget_violations(ai_calls, spent_usd, drive_bytes, elapsed_s) if k != 'ai_calls']
+
+
+def select_sheet(videos: list[dict]) -> list[dict]:
+    """videos theo thứ tự hoàn tất; sheet là SAMPLE_VIDEOS video hợp lệ và cloud verified đầu tiên."""
+    return [v for v in videos if v.get('valid') and v.get('cloud_ok')][:SAMPLE_VIDEOS]
 def group_key_of(article_ids: list[str] | tuple[str, ...]) -> tuple[str, ...]:
     return tuple(sorted(set(article_ids)))
 
@@ -307,7 +317,7 @@ def angle_distinct(videos: list[dict]) -> dict:
     }
 
 
-def visual_violations(visuals: list[dict], safety_by_media: dict, processed_ok: dict) -> list[str]:
+def visual_violations(visuals: list[dict], categories_by_media: dict, processed_ok: dict) -> list[str]:
     violations: list[str] = []
     for v in visuals:
         m_id = str(v.get('media_asset_id') or '')
@@ -317,18 +327,46 @@ def visual_violations(visuals: list[dict], safety_by_media: dict, processed_ok: 
             violations.append(f'origin_missing:{id6}')
             continue
         if origin in ARTICLE_ORIGINS:
-            outcome = safety_by_media.get(m_id)
-            if not outcome:
-                violations.append(f'safety_missing:{id6}')
-            elif outcome not in SAFETY_OK:
-                violations.append(f'safety_not_ok:{id6}:{outcome}')
-            elif outcome == 'TRANSFORM_REQUIRED' and not processed_ok.get(m_id, False):
-                violations.append(f'not_processed:{id6}')
+            if 'minor_child' in (categories_by_media.get(m_id) or ()) and not processed_ok.get(m_id, False):
+                violations.append(f'minor_child_unmasked:{id6}')
 
     if not visuals or all(v.get('origin') == 'seed' for v in visuals):
         violations.append('only_seed_background')
     return violations
 
+
+def classify_unverified(
+    visuals: list[dict],
+    safety_by_media: dict,
+    categories_by_media: dict,
+    processed_ok: dict,
+) -> dict[str, int]:
+    counts = {k: 0 for k in UNVERIFIED_KEYS}
+    for v in visuals:
+        if v.get('origin') != 'article':
+            continue
+        m_id = str(v.get('media_asset_id') or '')
+        outcome = safety_by_media.get(m_id)
+        if outcome is None:
+            counts['unassessed'] += 1
+        elif processed_ok.get(m_id):
+            counts['masked'] += 1
+        elif outcome == 'SAFE':
+            counts['safe'] += 1
+        elif 'minor_child' in (categories_by_media.get(m_id) or ()):
+            counts['unmasked_minor_child'] += 1
+        else:
+            counts['other_unmasked'] += 1
+    return counts
+
+
+def sum_unverified(videos: list[dict]) -> dict[str, int]:
+    total = {k: 0 for k in UNVERIFIED_KEYS}
+    for v in videos:
+        u = v.get('unverified') or {}
+        for k in UNVERIFIED_KEYS:
+            total[k] += int(u.get(k, 0))
+    return total
 
 def evaluate_items(run: dict) -> dict[str, tuple[str, str]]:
     videos = run.get('videos', [])
@@ -339,40 +377,39 @@ def evaluate_items(run: dict) -> dict[str, tuple[str, str]]:
     user_ok = run.get('user_ok', False)
     secret_matches = run.get('secret_matches', 0)
 
+    sheet = select_sheet(videos)
+    valid_all = [v for v in videos if v.get('valid')]
+
     # 1. sample_10_valid
-    sample_valid = len(videos) == SAMPLE_VIDEOS and all(bool(v.get('valid')) for v in videos)
+    sample_valid = len(valid_all) >= SAMPLE_VIDEOS
     sample_status = 'PASS' if sample_valid else 'FAIL'
-    valid_count = sum(1 for v in videos if v.get('valid'))
-    sample_detail = f"valid={valid_count}/{len(videos)}"
+    valid_count = len(valid_all)
+    sample_detail = f"valid={valid_count}/{len(videos)} need>={SAMPLE_VIDEOS}"
 
     # 2. cloud_verified_10
-    cloud_count = sum(1 for v in videos if v.get('cloud_ok'))
+    cloud_count = sum(1 for v in videos if v.get('valid') and v.get('cloud_ok'))
     drive_matches = sum(1 for dc in drive_checks if dc.get('md5_match') and dc.get('sha256_match'))
-    cloud_verified = (
-        len(videos) == SAMPLE_VIDEOS
-        and cloud_count == SAMPLE_VIDEOS
-        and len(drive_checks) == SAMPLE_VIDEOS
-        and drive_matches == SAMPLE_VIDEOS
-    )
+    cloud_verified = cloud_count >= SAMPLE_VIDEOS and drive_matches >= SAMPLE_VIDEOS
     cloud_status = 'PASS' if cloud_verified else 'FAIL'
-    cloud_detail = f"cloud_ok={cloud_count}/{len(videos)} drive_matches={drive_matches}/{len(drive_checks)}"
+    cloud_detail = f"cloud_ok={cloud_count}/{len(videos)} drive_matches={drive_matches}/{len(drive_checks)} need>={SAMPLE_VIDEOS}"
 
     # 3. trace_per_video
-    trace_clean = len(videos) > 0 and all(len(v.get('trace_missing', [])) == 0 for v in videos)
-    missing_trace_count = sum(len(v.get('trace_missing', [])) for v in videos)
+    trace_clean = len(sheet) == SAMPLE_VIDEOS and all(len(v.get('trace_missing', [])) == 0 for v in sheet)
+    missing_trace_count = sum(len(v.get('trace_missing', [])) for v in sheet)
     trace_status = 'PASS' if trace_clean else 'FAIL'
-    trace_detail = f"missing={missing_trace_count}"
+    trace_detail = f"missing={missing_trace_count} sheet={len(sheet)}"
 
     # 4. story_angle_distinct
-    angle_eval = angle_distinct(videos)
+    angle_eval = angle_distinct(valid_all)
     angle_status = 'PASS' if angle_eval['ok'] else 'FAIL'
     angle_detail = f"groups={angle_eval['groups']} multi={angle_eval['multi_groups']} dups={len(angle_eval['duplicates'])}"
 
     # 5. rights_unverified_excluded
-    viol_clean = len(videos) > 0 and all(len(v.get('violations', [])) == 0 for v in videos)
-    viol_total = sum(len(v.get('violations', [])) for v in videos)
+    viol_clean = len(sheet) == SAMPLE_VIDEOS and all(len(v.get('violations', [])) == 0 for v in sheet)
+    viol_total = sum(len(v.get('violations', [])) for v in sheet)
+    u = sum_unverified(sheet)
     rights_status = 'PASS' if viol_clean else 'FAIL'
-    rights_detail = f"violations={viol_total}"
+    rights_detail = f"violations={viol_total} sheet={len(sheet)} unverified_safe={u['safe']} masked={u['masked']} unmasked_minor_child={u['unmasked_minor_child']} other_unmasked={u['other_unmasked']} unassessed={u['unassessed']}"
 
     # 6. holdout_sheet_40
     holdout_status = 'PASS' if holdout_ok else 'FAIL'
@@ -466,7 +503,7 @@ def render_report(
     repo: Path = REPO,
 ) -> str:
     lines = [
-        "# CP7-14 — Mẫu 20 video và gói bằng chứng nghiệm thu R1–R6 (RG-13)",
+        "# CP7-14 — Mẫu 10 video và gói bằng chứng nghiệm thu R1–R6 (RG-13)",
         "",
         "## Kết quả",
         "",
@@ -489,24 +526,42 @@ def render_report(
         if hasattr(run, 'elapsed_seconds')
         else run.get('elapsed_seconds', 0.0)
     )
-    lines.append(f"- Lời gọi AI: {ai_calls} (trần: {AI_CALL_CAP})")
+    lines.append(f"- Lời gọi AI: {ai_calls} (số đo; trần kế hoạch {AI_CALL_CAP} không phải khoá nghiệm thu)")
     lines.append(f"- Chi phí ledger: {spent_usd} USD (trần: {LEDGER_CEILING_USD} USD)")
-    lines.append(f"- Dung lượng Drive: {drive_bytes} byte ({drive_bytes / GIB:.2f} GiB, trần: 3 GiB)")
-    lines.append(f"- Thời gian chạy: {elapsed_seconds:.1f} giây ({elapsed_seconds / 3600:.2f} giờ, trần: 4 giờ)")
+    lines.append(f"- Dung lượng Drive: {drive_bytes} byte ({drive_bytes / GIB:.2f} GiB, trần: 1,5 GiB)")
+    lines.append(f"- Thời gian chạy: {elapsed_seconds:.1f} giây ({elapsed_seconds / 3600:.2f} giờ, trần: 3 giờ)")
     lines.append("")
     lines.append(f"Batch ID: `{batch_id}`")
     lines.append("")
     lines.append(
-        "Theo quyết định của user ngày 04/11/2026, lô mẫu nghiệm thu được nâng lên 20 video (thay vì 10 video); "
-        "profile.json không sửa (`batch.target.sample_run` giữ 10); trần ngân sách nhân đôi: ≤ 120 lời gọi AI, "
-        "ledger +10 USD, Drive ≤ 3 GiB, ≤ 4 giờ; giữ nguyên tên các khóa báo cáo dạng *_10 để tương thích probe kiểm tra."
+        f"Đính chính của Control ngày 05/11/2026 theo quyết định của user (seq 18, CLOSURE_NOTE CP7/RG-10): "
+        f"mẫu nghiệm thu là 10 video, không phải 20. Lô `{batch_id}` đã chạy xong từ trước; báo cáo này chỉ "
+        f"đọc lại CSDL và Drive của lô đó, không chạy lô mới và không khởi launcher. `sample_10_valid` và "
+        f"`cloud_verified_10` PASS khi lô có ít nhất 10 video hợp lệ và cloud verified; bảng chấm video lấy "
+        f"10 video hợp lệ đầu theo thứ tự hoàn tất. Theo CLOSURE_NOTE seq 17 (MC-POLICY) và seq 15 (RG-13), "
+        f"ảnh UNVERIFIED được dùng; `rights_unverified_excluded` PASS khi 0 ảnh có nhãn minor_child vào "
+        f"10 video mà chưa che. Số lời gọi AI là số đo (lô có 9 lần provider timeout), không phải khoá nghiệm thu."
+    )
+    lines.append("")
+    videos = getattr(run, 'videos', []) if hasattr(run, 'videos') else run.get('videos', [])
+    sheet = select_sheet(videos)
+    u = sum_unverified(sheet)
+    cloud_verified_count = sum(1 for v in videos if v.get('valid') and v.get('cloud_ok'))
+    lines.append("## Lô")
+    lines.append("")
+    lines.append(f"- Video hoàn tất trong lô: {len(videos)}")
+    lines.append(f"- Video hợp lệ và cloud verified: {cloud_verified_count}")
+    lines.append(
+        f"- Ảnh UNVERIFIED trong 10 video mẫu theo trạng thái xử lý: an toàn không cần che={u['safe']}; "
+        f"đã che={u['masked']}; cần che (minor_child) nhưng chưa che={u['unmasked_minor_child']}; "
+        f"nhãn khác chưa che, dùng nguyên bản theo chính sách={u['other_unmasked']}; "
+        f"chưa có đánh giá an toàn={u['unassessed']}"
     )
     lines.append("")
     r_rows = build_r_rows(repo)
     lines.append(render_r_section(r_rows))
     lines.append("")
-    videos = getattr(run, 'videos', []) if hasattr(run, 'videos') else run.get('videos', [])
-    lines.append(render_video_sheet(videos))
+    lines.append(render_video_sheet(select_sheet(videos)))
     lines.append("")
     lines.append(render_holdout_sheet(manifest, digest))
     lines.append("")
@@ -524,13 +579,32 @@ class SampleDb(m.OvernightDb):
     def angle_title(self, angle_id: str) -> str:
         if not angle_id:
             return ''
+        candidates = []
+        for cand in (angle_id, angle_id.removeprefix('angle:')):
+            if cand and cand not in candidates:
+                candidates.append(cand)
+        for cand in candidates:
+            rows = self.query(
+                'SELECT payload FROM controlplane.cp_story_angles WHERE workspace_id = %s AND angle_id = %s',
+                cand,
+            )
+            if rows and rows[0][0]:
+                t = d._find_key(rows[0][0], 'title')
+                if isinstance(t, dict):
+                    t = t.get('value')
+                if t:
+                    return str(t)
         rows = self.query(
-            "SELECT payload->>'title' FROM controlplane.cp_story_angles "
-            "WHERE workspace_id = %s AND (angle_id = %s OR position(%s in angle_id) > 0) LIMIT 1",
-            angle_id,
+            'SELECT payload FROM controlplane.cp_story_angles WHERE workspace_id = %s AND (position(%s in angle_id) > 0) LIMIT 1',
             angle_id,
         )
-        return (rows[0][0] or '') if rows else ''
+        if rows and rows[0][0]:
+            t = d._find_key(rows[0][0], 'title')
+            if isinstance(t, dict):
+                t = t.get('value')
+            if t:
+                return str(t)
+        return ''
 
     def snapshot_article_ids(self, snapshot_id: str) -> list[str]:
         snap = self.query(
@@ -551,7 +625,7 @@ class SampleDb(m.OvernightDb):
                     out.append(ref_id)
         return out
 
-    def image_safety_outcome(self, media_asset_id: str) -> str | None:
+    def _safety_payload(self, media_asset_id: str) -> dict | None:
         rows = self.query(
             'SELECT record_key, revision, payload FROM controlplane.cp_image_safety_assessments '
             'WHERE workspace_id = %s AND position(%s in record_key) > 0 '
@@ -559,10 +633,7 @@ class SampleDb(m.OvernightDb):
             media_asset_id,
         )
         if rows:
-            val = d._find_key(rows[0][2], 'outcome')
-            if isinstance(val, dict):
-                return val.get('value')
-            return val
+            return rows[0][2]
         p_rows = self.query(
             'SELECT payload FROM controlplane.cp_production_plans '
             'WHERE workspace_id = %s AND position(%s in cast(payload as text)) > 0 ORDER BY created_at DESC LIMIT 1',
@@ -600,10 +671,33 @@ class SampleDb(m.OvernightDb):
         )
         if not a_rows:
             return None
-        val = d._find_key(a_rows[0][2], 'outcome')
+        return a_rows[0][2]
+
+    def image_safety_outcome(self, media_asset_id: str) -> str | None:
+        payload = self._safety_payload(media_asset_id)
+        if payload is None:
+            return None
+        val = d._find_key(payload, 'outcome')
         if isinstance(val, dict):
             return val.get('value')
         return val
+
+    def image_safety_categories(self, media_asset_id: str) -> tuple:
+        payload = self._safety_payload(media_asset_id)
+        if payload is None:
+            return ()
+        raw = d._find_key(payload, 'categories')
+        if isinstance(raw, dict) and '@tuple' in raw:
+            raw = raw['@tuple']
+        if not isinstance(raw, (list, tuple)):
+            return ()
+        items = []
+        for x in raw:
+            if isinstance(x, dict):
+                items.append(x.get('value'))
+            else:
+                items.append(x)
+        return tuple(str(x) for x in items if x)
 
     def processed_ok(self, media_asset_id: str) -> bool:
         rows = self.query(
@@ -647,12 +741,23 @@ class SampleDb(m.OvernightDb):
             val2 = val2.get('value')
         return str(val2).lower() == 'success'
 
+    def completed_in_order(self, batch_id: str) -> list[str]:
+        rows = self.query(
+            'SELECT cl.job_id FROM controlplane.cp_completion_ledger cl '
+            'JOIN controlplane.cp_video_jobs v ON v.workspace_id = cl.workspace_id AND v.job_id = cl.job_id '
+            'WHERE cl.workspace_id = %s AND v.batch_id = %s ORDER BY cl.completed_at, cl.job_id',
+            batch_id,
+        )
+        return [r[0] for r in rows]
 
-class SampleWatch(d.CostWatch):
-    def check(self) -> None:
-        c.CostGuard(LEDGER_CEILING_USD, self.spent).check()
-        if self.calls() > AI_CALL_CAP:
-            raise c.CostCeilingExceeded('AI call cap exceeded')
+    def batch_window(self, batch_id: str) -> tuple:
+        rows = self.query(
+            'SELECT min(v.created_at), max(cl.completed_at) FROM controlplane.cp_video_jobs v '
+            'LEFT JOIN controlplane.cp_completion_ledger cl ON cl.workspace_id = v.workspace_id AND cl.job_id = v.job_id '
+            'WHERE v.workspace_id = %s AND v.batch_id = %s',
+            batch_id,
+        )
+        return (rows[0][0], rows[0][1])
 
 
 def require_restored_db(db: SampleDb) -> bool:
@@ -706,6 +811,7 @@ def audit_video(db: SampleDb, job_id: str) -> dict:
                 'origin': vis.get('origin'),
             })
     safety_by_media: dict[str, str | None] = {}
+    categories_by_media: dict[str, tuple] = {}
     processed_ok_map: dict[str, bool] = {}
     for vis in visuals:
         m_id = vis.get('media_asset_id')
@@ -713,10 +819,13 @@ def audit_video(db: SampleDb, job_id: str) -> dict:
         if m_id and origin in ARTICLE_ORIGINS:
             if m_id not in safety_by_media:
                 safety_by_media[m_id] = db.image_safety_outcome(m_id)
+            if m_id not in categories_by_media:
+                categories_by_media[m_id] = db.image_safety_categories(m_id)
             if m_id not in processed_ok_map:
                 processed_ok_map[m_id] = db.processed_ok(m_id)
-    violations = visual_violations(visuals, safety_by_media, processed_ok_map)
-    topic = db.angle_title(angle_id)
+    violations = visual_violations(visuals, categories_by_media, processed_ok_map)
+    unverified = classify_unverified(visuals, safety_by_media, categories_by_media, processed_ok_map)
+    topic = db.angle_title(angle_id) or angle_id
     art_count = sum(1 for v in visuals if v.get('origin') == 'article')
     ai_count = sum(1 for v in visuals if v.get('origin') == 'ai_generated')
     seed_count = sum(1 for v in visuals if v.get('origin') == 'seed')
@@ -732,94 +841,52 @@ def audit_video(db: SampleDb, job_id: str) -> dict:
         'group': group,
         'angle_id': angle_id,
         'violations': violations,
+        'unverified': unverified,
         'topic': topic,
         'media_summary': media_summary,
     }
 
 
-def run_sample(work_dir: str | Path, deadline_seconds: float = DEADLINE_SECONDS) -> SampleRun:
+def reaudit_batch(batch_id: str) -> SampleRun:
     launcher = d.load_launcher()
     db = SampleDb(launcher)
     require_restored_db(db)
-    window_start = db.db_now()
-    watch = SampleWatch(db, window_start)
-    watch.check()
-    t0 = time.monotonic()
-    run = SampleRun(window_start=window_start)
-    try:
-        d.stop_until_exited()
-        run.other_workflows_running = d.require_no_other_workflows()
-        launch_path, _, _ = d.start_capturing(work_dir, 'first')
-        d.require_render_config(db)
-        session = m.OvernightSession(db.layout.cert_file)
-        session.open(launch_path)
-        run.concurrency = session.get_batch_settings()
-        batch_id = session.post_overnight_batch(SAMPLE_VIDEOS, run.concurrency['default'])
-        run.batch_id = batch_id
-        prefix = d.video_key_prefix(db.workspace_id, batch_id)
-        run.record_prefix = prefix
-        watch.bind_prefix(prefix)
+    start, end = db.batch_window(batch_id)
+    if start is None:
+        raise d.BlockedError('BLOCKED: lô không có job trong CSDL: ' + batch_id[:8])
+    run = SampleRun(batch_id=batch_id, window_start=start)
+    prefix = d.video_key_prefix(db.workspace_id, batch_id)
+    run.record_prefix = prefix
+    run.stop_reason = 'reaudit_read_only'
+    jobs = db.batch_jobs(batch_id)
+    run.job_counts = db.batch_job_counts(batch_id)
+    run.failed_final_jobs = [j for j, s in jobs if s == 'FAILED_FINAL']
+    run.videos = [audit_video(db, j) for j in db.completed_in_order(batch_id)]
+    drive_checks = []
+    for v in run.videos:
+        for l in db.locations(v['job_id']):
+            if d.is_drive(l):
+                chk = d.drive_md5_check(db, l)
+                drive_checks.append({
+                    'job_id': v['job_id'],
+                    'md5_match': chk.get('md5_match', False),
+                    'sha256_match': chk.get('sha256_match', False),
+                    'size': chk.get('size', 0),
+                })
+    run.drive_checks = drive_checks
+    run.ai_calls = db.ai_invocation_count(prefix)
+    run.spent_usd = str(d.CostWatch(db, start).spent())
+    run.drive_bytes = db.batch_drive_bytes(batch_id)
+    run.elapsed_seconds = (end - start).total_seconds() if end is not None else 0.0
 
-        deadline = c.Deadline(deadline_seconds)
-        stop_reason = ''
-        while True:
-            try:
-                watch.check()
-            except c.CostCeilingExceeded:
-                stop_reason = 'cost_cap'
-                break
-            except c.DeadlineExceeded:
-                stop_reason = 'deadline'
-                break
-            if deadline.remaining() <= 0:
-                stop_reason = 'deadline'
-                break
-            valid_count = db.valid_synced_count(batch_id)
-            if valid_count >= SAMPLE_VIDEOS:
-                stop_reason = 'target_reached'
-                break
-            status = db.batch_status(batch_id)
-            if status in m.TERMINAL_BATCH:
-                stop_reason = 'batch_terminal'
-                break
-            time.sleep(30)
-        run.stop_reason = stop_reason
-
-        d.stop_until_exited()
-        jobs = db.batch_jobs(batch_id)
-        run.job_counts = db.batch_job_counts(batch_id)
-        run.failed_final_jobs = [j for j, s in jobs if s == 'FAILED_FINAL']
-        completed_jobs = [j for j, s in jobs if s == 'COMPLETED']
-        run.videos = [audit_video(db, j) for j in completed_jobs[:SAMPLE_VIDEOS]]
-        drive_checks = []
-        for v in run.videos:
-            for l in db.locations(v['job_id']):
-                if d.is_drive(l):
-                    chk = d.drive_md5_check(db, l)
-                    drive_checks.append({
-                        'md5_match': chk.get('md5_match', False),
-                        'sha256_match': chk.get('sha256_match', False),
-                        'size': chk.get('size', 0),
-                    })
-        run.drive_checks = drive_checks
-        run.ai_calls = db.ai_invocation_count(prefix)
-        run.spent_usd = str(watch.spent())
-        run.drive_bytes = db.batch_drive_bytes(batch_id)
-        run.elapsed_seconds = time.monotonic() - t0
-
-        paths = [p for p in Path(db.layout.logs_dir).glob('*.log')] if Path(db.layout.logs_dir).is_dir() else []
-        if Path(db.layout.serve_log).is_file():
-            paths.append(Path(db.layout.serve_log))
-        matches = 0
-        for path in paths:
-            try:
-                matches += len(c.scan_secrets(path.read_text(encoding='utf-8', errors='replace')))
-            except OSError:
-                continue
-        run.secret_matches = matches
-        return run
-    finally:
+    paths = [p for p in Path(db.layout.logs_dir).glob('*.log')] if Path(db.layout.logs_dir).is_dir() else []
+    if Path(db.layout.serve_log).is_file():
+        paths.append(Path(db.layout.serve_log))
+    matches = 0
+    for path in paths:
         try:
-            d.stop_until_exited()
-        except Exception:
-            pass
+            matches += len(c.scan_secrets(path.read_text(encoding='utf-8', errors='replace')))
+        except OSError:
+            continue
+    run.secret_matches = matches
+    return run

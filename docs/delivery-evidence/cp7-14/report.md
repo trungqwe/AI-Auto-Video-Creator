@@ -1,39 +1,45 @@
-# CP7-14 — Mẫu 20 video và gói bằng chứng nghiệm thu R1–R6 (RG-13)
+# CP7-14 — Mẫu 10 video và gói bằng chứng nghiệm thu R1–R6 (RG-13)
 
 ## Kết quả
 
-RG-13.sample_10_valid: FAIL
-RG-13.cloud_verified_10: FAIL
+RG-13.sample_10_valid: PASS
+RG-13.cloud_verified_10: PASS
 RG-13.trace_per_video: PASS
 RG-13.story_angle_distinct: PASS
-RG-13.rights_unverified_excluded: FAIL
+RG-13.rights_unverified_excluded: PASS
 RG-13.holdout_sheet_40: PASS
-RG-13.video_sheet_10: FAIL
+RG-13.video_sheet_10: PASS
 RG-13.pack_r1_r6_complete: PASS
 RG-13.no_user_field_filled: PASS
 RG-13.secret_scan: PASS
 
-- sample_10_valid: valid=16/16
-- cloud_verified_10: cloud_ok=16/16 drive_matches=16/16
-- trace_per_video: missing=0
+- sample_10_valid: valid=16/16 need>=10
+- cloud_verified_10: cloud_ok=16/16 drive_matches=16/16 need>=10
+- trace_per_video: missing=0 sheet=10
 - story_angle_distinct: groups=9 multi=7 dups=0
-- rights_unverified_excluded: violations=85
+- rights_unverified_excluded: violations=0 sheet=10 unverified_safe=29 masked=1 unmasked_minor_child=0 other_unmasked=5 unassessed=0
 - holdout_sheet_40: holdout_ok=True
-- video_sheet_10: sheets_ok=False
+- video_sheet_10: sheets_ok=True
 - pack_r1_r6_complete: missing=0
 - no_user_field_filled: user_ok=True
 - secret_scan: matches=0
 
 ## Ngân sách
 
-- Lời gọi AI: 124 (trần: 120)
-- Chi phí ledger: 0 USD (trần: 10 USD)
-- Dung lượng Drive: 307516118 byte (0.29 GiB, trần: 3 GiB)
-- Thời gian chạy: 3479.5 giây (0.97 giờ, trần: 4 giờ)
+- Lời gọi AI: 124 (số đo; trần kế hoạch 60 không phải khoá nghiệm thu)
+- Chi phí ledger: 0 USD (trần: 5 USD)
+- Dung lượng Drive: 307516118 byte (0.29 GiB, trần: 1,5 GiB)
+- Thời gian chạy: 2706.1 giây (0.75 giờ, trần: 3 giờ)
 
 Batch ID: `43fb05ea-f976-4bee-a0c4-e393db5502f4`
 
-Theo quyết định của user ngày 04/11/2026, lô mẫu nghiệm thu được nâng lên 20 video (thay vì 10 video); profile.json không sửa (`batch.target.sample_run` giữ 10); trần ngân sách nhân đôi: ≤ 120 lời gọi AI, ledger +10 USD, Drive ≤ 3 GiB, ≤ 4 giờ; giữ nguyên tên các khóa báo cáo dạng *_10 để tương thích probe kiểm tra.
+Đính chính của Control ngày 05/11/2026 theo quyết định của user (seq 18, CLOSURE_NOTE CP7/RG-10): mẫu nghiệm thu là 10 video, không phải 20. Lô `43fb05ea-f976-4bee-a0c4-e393db5502f4` đã chạy xong từ trước; báo cáo này chỉ đọc lại CSDL và Drive của lô đó, không chạy lô mới và không khởi launcher. `sample_10_valid` và `cloud_verified_10` PASS khi lô có ít nhất 10 video hợp lệ và cloud verified; bảng chấm video lấy 10 video hợp lệ đầu theo thứ tự hoàn tất. Theo CLOSURE_NOTE seq 17 (MC-POLICY) và seq 15 (RG-13), ảnh UNVERIFIED được dùng; `rights_unverified_excluded` PASS khi 0 ảnh có nhãn minor_child vào 10 video mà chưa che. Số lời gọi AI là số đo (lô có 9 lần provider timeout), không phải khoá nghiệm thu.
+
+## Lô
+
+- Video hoàn tất trong lô: 16
+- Video hợp lệ và cloud verified: 16
+- Ảnh UNVERIFIED trong 10 video mẫu theo trạng thái xử lý: an toàn không cần che=29; đã che=1; cần che (minor_child) nhưng chưa che=0; nhãn khác chưa che, dùng nguyên bản theo chính sách=5; chưa có đánh giá an toàn=0
 
 ## Bảng R1–R6
 
@@ -72,22 +78,16 @@ Kết luận R1–R6 là của user; gói này chỉ chuẩn bị bằng chứng
 
 | STT | Job | Topic | Media/hook | Cloud verified | Nhãn topic (user) | Nhãn media/hook (user) |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:1 |  | article=5 ai=1 seed=0 hook=pxb-2723 | PASS |  |  |
-| 2 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:2 |  | article=2 ai=4 seed=0 hook=pxb-1490 | PASS |  |  |
-| 3 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:3 |  | article=3 ai=2 seed=0 hook=pxb-1490 | PASS |  |  |
-| 4 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:4 |  | article=3 ai=3 seed=0 hook=pxb-2723 | PASS |  |  |
-| 5 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:5 |  | article=2 ai=2 seed=0 hook=pxb-2723 | PASS |  |  |
-| 6 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:6 |  | article=7 ai=0 seed=0 hook=pxb-2723 | PASS |  |  |
-| 7 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:7 |  | article=5 ai=0 seed=0 hook=pxb-2723 | PASS |  |  |
-| 8 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:8 |  | article=2 ai=4 seed=0 hook=pxb-2723 | PASS |  |  |
-| 9 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:9 |  | article=1 ai=3 seed=0 hook=pxb-2723 | PASS |  |  |
-| 10 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:10 |  | article=1 ai=3 seed=0 hook=pxb-1358 | PASS |  |  |
-| 11 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:11 |  | article=5 ai=0 seed=0 hook=pxb-2723 | PASS |  |  |
-| 12 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:12 |  | article=2 ai=3 seed=0 hook=pxb-2723 | PASS |  |  |
-| 13 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:13 |  | article=6 ai=0 seed=0 hook=pxb-2723 | PASS |  |  |
-| 14 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:14 |  | article=3 ai=2 seed=0 hook=pxb-2723 | PASS |  |  |
-| 15 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:15 |  | article=3 ai=3 seed=0 hook=pxb-2723 | PASS |  |  |
-| 16 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:16 |  | article=2 ai=3 seed=0 hook=pxb-2723 | PASS |  |  |
+| 1 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:6 | The Texas Realignment: How Democrats Toppled Abbott and Paxton | article=7 ai=0 seed=0 hook=pxb-2723 | PASS |  |  |
+| 2 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:5 | Burnham's Global Gamble: Can US Midterm Fallout Ease Britain's Cost of Living? | article=2 ai=2 seed=0 hook=pxb-2723 | PASS |  |  |
+| 3 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:7 | The Texas Political Earthquake: How Democrats Ended Decades of GOP Dominance | article=5 ai=0 seed=0 hook=pxb-2723 | PASS |  |  |
+| 4 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:4 | Spain's High-Speed Crisis: Deadly Rail Disasters Shake Government Ahead of Snap | article=3 ai=3 seed=0 hook=pxb-2723 | PASS |  |  |
+| 5 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:3 | Targeting Cold Chains: The Cyber Threat to France's Blood Supply | article=3 ai=2 seed=0 hook=pxb-1490 | PASS |  |  |
+| 6 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:1 | Ten Mayors in Ten Years: Can Broken Coalitions Fix Johannesburg's Taps? | article=5 ai=1 seed=0 hook=pxb-2723 | PASS |  |  |
+| 7 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:8 | Jordan vs. Scalise 2.0: The Fight for House GOP Minority Leader | article=2 ai=4 seed=0 hook=pxb-2723 | PASS |  |  |
+| 8 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:9 | The Fall of the Gavel: Why Mike Johnson Bowed Out | article=1 ai=3 seed=0 hook=pxb-2723 | PASS |  |  |
+| 9 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:12 | Burnham's Diplomatic Gamble: Can Post-Midterm US Politics Ease UK Cost of Living | article=2 ai=3 seed=0 hook=pxb-2723 | PASS |  |  |
+| 10 | 43fb05ea-f976-4bee-a0c4-e393db5502f4:job:11 | Ballot Box Backlash: How Border State Voters Punished Trump's Tariffs | article=5 ai=0 seed=0 hook=pxb-2723 | PASS |  |  |
 
 ## Bảng 40 cặp holdout (event-link)
 

@@ -25,6 +25,7 @@ import cp7_batch_driver as d
 
 LIVE = os.environ.get('CP7_RG13_LIVE') == '1'
 PROFILE = json.loads(d.PROFILE_JSON.read_text(encoding='utf-8'))
+REAUDIT_BATCH_ID = '43fb05ea-f976-4bee-a0c4-e393db5502f4'
 
 
 def _pass(emit, item: str, *details: str) -> None:
@@ -35,12 +36,12 @@ def _pass(emit, item: str, *details: str) -> None:
             emit(f"- {item}: {det}")
 
 def test_unit_constants():
-    assert p.SAMPLE_VIDEOS == 20
+    assert p.SAMPLE_VIDEOS == 10
     assert PROFILE['batch']['target']['value']['sample_run'] == 10
-    assert p.AI_CALL_CAP == 120
-    assert p.LEDGER_CEILING_USD == Decimal('10')
-    assert p.DRIVE_CAP_BYTES == 3 * p.GIB
-    assert p.DEADLINE_SECONDS == 14400
+    assert p.AI_CALL_CAP == 60
+    assert p.LEDGER_CEILING_USD == Decimal('5')
+    assert p.DRIVE_CAP_BYTES == 3 * p.GIB // 2
+    assert p.DEADLINE_SECONDS == 10800
     assert p.RG13_ITEMS == (
         'sample_10_valid',
         'cloud_verified_10',
@@ -101,17 +102,19 @@ def test_unit_md_table():
     assert '|' not in rendered2.splitlines()[0][1:-1].replace(' | ', '')
 
 def test_unit_budget():
-    assert p.budget_violations(120, '10', 3 * p.GIB, 14400) == []
-    assert p.budget_violations(121, '10', 3 * p.GIB, 14400) == ['ai_calls']
-    assert p.budget_violations(120, '10.01', 3 * p.GIB, 14400) == ['ledger_usd']
-    assert p.budget_violations(120, '10', 3 * p.GIB + 1, 14400) == ['drive_bytes']
-    assert p.budget_violations(120, '10', 3 * p.GIB, 14401) == ['elapsed']
-    assert p.budget_violations(121, '10.01', 3 * p.GIB + 1, 14401) == [
+    assert p.budget_violations(60, '5', p.DRIVE_CAP_BYTES, 10800) == []
+    assert p.budget_violations(61, '5', p.DRIVE_CAP_BYTES, 10800) == ['ai_calls']
+    assert p.budget_violations(60, '5.01', p.DRIVE_CAP_BYTES, 10800) == ['ledger_usd']
+    assert p.budget_violations(60, '5', p.DRIVE_CAP_BYTES + 1, 10800) == ['drive_bytes']
+    assert p.budget_violations(60, '5', p.DRIVE_CAP_BYTES, 10801) == ['elapsed']
+    assert p.budget_violations(61, '5.01', p.DRIVE_CAP_BYTES + 1, 10801) == [
         'ai_calls',
         'ledger_usd',
         'drive_bytes',
         'elapsed',
     ]
+    assert p.budget_gate_violations(124, '0', 307516118, 3479.5) == []
+    assert p.budget_gate_violations(61, '5.01', p.DRIVE_CAP_BYTES + 1, 10801) == ['ledger_usd', 'drive_bytes', 'elapsed']
 
 
 def test_unit_angle_distinct():
@@ -133,30 +136,91 @@ def test_unit_angle_distinct():
 
 
 def test_unit_visual_violations():
-    assert p.visual_violations([{'media_asset_id': 'm1', 'origin': 'article'}], {'m1': 'SAFE'}, {'m1': False}) == []
-    for outcome in ('UNCERTAIN', 'DETECTION_FAILED', 'TRANSFORM_FAILED', 'UNREADABLE'):
-        assert len(p.visual_violations([{'media_asset_id': 'm1', 'origin': 'article'}], {'m1': outcome}, {})) > 0
-    assert len(p.visual_violations([{'media_asset_id': 'm1', 'origin': 'article'}], {}, {})) > 0
+    # Article without labels and non-only-seed visual -> []
+    visuals_clean = [
+        {'media_asset_id': 'm1', 'origin': 'article'},
+        {'media_asset_id': 'a1', 'origin': 'ai_generated'},
+    ]
+    assert p.visual_violations(visuals_clean, {}, {}) == []
 
-    viols = p.visual_violations(
-        [{'media_asset_id': 'm12345678', 'origin': 'article'}],
-        {'m12345678': 'TRANSFORM_REQUIRED'},
-        {'m12345678': False},
-    )
-    assert 'not_processed:m12345' in viols
+    # Article with minor_child and processed_ok False -> contains minor_child_unmasked:m12345
+    v_mc = [
+        {'media_asset_id': 'm12345678', 'origin': 'article'},
+        {'media_asset_id': 'a1', 'origin': 'ai_generated'},
+    ]
+    viols_mc = p.visual_violations(v_mc, {'m12345678': ('minor_child',)}, {'m12345678': False})
+    assert 'minor_child_unmasked:m12345' in viols_mc
 
-    assert (
-        p.visual_violations(
-            [{'media_asset_id': 'm12345678', 'origin': 'article'}],
-            {'m12345678': 'TRANSFORM_REQUIRED'},
-            {'m12345678': True},
-        )
-        == []
-    )
+    # processed_ok True -> no violation
+    assert p.visual_violations(v_mc, {'m12345678': ('minor_child',)}, {'m12345678': True}) == []
 
+    # Other label ('weapon',) unmasked -> no violation
+    assert p.visual_violations(v_mc, {'m12345678': ('weapon',)}, {'m12345678': False}) == []
+
+    # All seed -> contains only_seed_background
     assert 'only_seed_background' in p.visual_violations([{'media_asset_id': 's1', 'origin': 'seed'}], {}, {})
+
+    # Origin None -> contains origin_missing:
     assert any('origin_missing:' in v for v in p.visual_violations([{'media_asset_id': 'm1', 'origin': None}], {}, {}))
 
+    # classify_unverified 5 states
+    test_vis = [
+        {'media_asset_id': 'm_unassessed', 'origin': 'article'},
+        {'media_asset_id': 'm_masked', 'origin': 'article'},
+        {'media_asset_id': 'm_safe', 'origin': 'article'},
+        {'media_asset_id': 'm_minor', 'origin': 'article'},
+        {'media_asset_id': 'm_other', 'origin': 'article'},
+        {'media_asset_id': 'm_seed', 'origin': 'seed'},
+    ]
+    safety_map = {
+        'm_masked': 'TRANSFORM_REQUIRED',
+        'm_safe': 'SAFE',
+        'm_minor': 'TRANSFORM_REQUIRED',
+        'm_other': 'TRANSFORM_REQUIRED',
+    }
+    cat_map = {
+        'm_minor': ('minor_child',),
+        'm_other': ('weapon',),
+    }
+    proc_map = {
+        'm_masked': True,
+    }
+    classified = p.classify_unverified(test_vis, safety_map, cat_map, proc_map)
+    assert classified == {
+        'safe': 1,
+        'masked': 1,
+        'unmasked_minor_child': 1,
+        'other_unmasked': 1,
+        'unassessed': 1,
+    }
+
+    # sum_unverified
+    vids_mock = [
+        {'unverified': {'safe': 2, 'masked': 1, 'unmasked_minor_child': 0, 'other_unmasked': 1, 'unassessed': 0}},
+        {'unverified': {'safe': 1, 'masked': 0, 'unmasked_minor_child': 0, 'other_unmasked': 0, 'unassessed': 3}},
+    ]
+    summed = p.sum_unverified(vids_mock)
+    assert summed == {
+        'safe': 3,
+        'masked': 1,
+        'unmasked_minor_child': 0,
+        'other_unmasked': 1,
+        'unassessed': 3,
+    }
+
+    # select_sheet: 12 videos with 2 videos valid False or cloud_ok False at index 0 and 3 -> exactly 10 videos
+    twelve_vids = []
+    for idx in range(12):
+        is_valid = (idx != 0)
+        is_cloud = (idx != 3)
+        twelve_vids.append({'job_id': f'job-{idx}', 'valid': is_valid, 'cloud_ok': is_cloud})
+    sheet = p.select_sheet(twelve_vids)
+    assert len(sheet) == 10
+    sheet_jobs = [v['job_id'] for v in sheet]
+    assert 'job-0' not in sheet_jobs
+    assert 'job-3' not in sheet_jobs
+    expected_jobs = [f'job-{i}' for i in range(12) if i not in (0, 3)]
+    assert sheet_jobs == expected_jobs
 def _make_mock_video(idx: int, valid: bool = True, cloud_ok: bool = True, trace_missing: list | None = None, group: tuple = ('art1',), angle_id: str | None = None, violations: list | None = None) -> dict:
     return {
         'job_id': f'job-{idx:02d}',
@@ -166,20 +230,19 @@ def _make_mock_video(idx: int, valid: bool = True, cloud_ok: bool = True, trace_
         'group': group,
         'angle_id': angle_id or f'ang-{idx:02d}',
         'violations': violations or [],
+        'unverified': {'safe': 1, 'masked': 1, 'unmasked_minor_child': 0, 'other_unmasked': 0, 'unassessed': 0},
         'topic': f'Topic {idx}',
         'media_summary': 'article=2 ai=2 seed=1 hook=12345678',
     }
-
-
 def test_unit_evaluate_items():
-    # Base 20 valid videos with 2 groups (multi_groups >= 1)
+    # Base 16 videos (8 group art1, 8 group art2)
     base_videos = []
-    for i in range(10):
+    for i in range(8):
         base_videos.append(_make_mock_video(i, group=('art1',), angle_id=f'ang1-{i}'))
-    for i in range(10, 20):
+    for i in range(8, 16):
         base_videos.append(_make_mock_video(i, group=('art2',), angle_id=f'ang2-{i}'))
 
-    base_drive = [{'md5_match': True, 'sha256_match': True, 'size': 1000}] * 20
+    base_drive = [{'md5_match': True, 'sha256_match': True, 'size': 1000}] * 16
     base_run = {
         'videos': base_videos,
         'drive_checks': base_drive,
@@ -193,39 +256,51 @@ def test_unit_evaluate_items():
     for k in p.RG13_ITEMS:
         assert items[k][0] == 'PASS', f'{k} not PASS: {items[k]}'
 
-    # Counterexamples
-    # 19 videos
-    r = dict(base_run, videos=base_videos[:19])
-    assert p.evaluate_items(r)['sample_10_valid'][0] == 'FAIL'
-    assert p.evaluate_items(r)['cloud_verified_10'][0] == 'FAIL'
+    # Counterexamples:
+    # 9 videos -> sample_10_valid and cloud_verified_10 FAIL
+    r9 = dict(base_run, videos=base_videos[:9], drive_checks=base_drive[:9])
+    assert p.evaluate_items(r9)['sample_10_valid'][0] == 'FAIL'
+    assert p.evaluate_items(r9)['cloud_verified_10'][0] == 'FAIL'
 
-    # valid False
-    v_bad = list(base_videos)
-    v_bad[0] = dict(v_bad[0], valid=False)
-    assert p.evaluate_items(dict(base_run, videos=v_bad))['sample_10_valid'][0] == 'FAIL'
+    # 16 videos with 6 videos valid False -> sample_10_valid PASS (10 remain valid)
+    v16_6bad = list(base_videos)
+    for i in range(6):
+        v16_6bad[i] = dict(v16_6bad[i], valid=False)
+    assert p.evaluate_items(dict(base_run, videos=v16_6bad))['sample_10_valid'][0] == 'PASS'
 
-    # cloud_ok False
-    v_bad = list(base_videos)
-    v_bad[0] = dict(v_bad[0], cloud_ok=False)
-    assert p.evaluate_items(dict(base_run, videos=v_bad))['cloud_verified_10'][0] == 'FAIL'
+    # 16 videos with 7 videos valid False -> sample_10_valid FAIL (9 remain valid)
+    v16_7bad = list(base_videos)
+    for i in range(7):
+        v16_7bad[i] = dict(v16_7bad[i], valid=False)
+    assert p.evaluate_items(dict(base_run, videos=v16_7bad))['sample_10_valid'][0] == 'FAIL'
 
-    # missing drive_check
-    assert p.evaluate_items(dict(base_run, drive_checks=base_drive[:19]))['cloud_verified_10'][0] == 'FAIL'
+    # drive_checks only 9 matching items -> cloud FAIL
+    assert p.evaluate_items(dict(base_run, drive_checks=base_drive[:9]))['cloud_verified_10'][0] == 'FAIL'
 
-    # trace_missing non-empty
+    # trace_missing at video 0 (in sheet) -> trace_per_video FAIL
     v_bad = list(base_videos)
     v_bad[0] = dict(v_bad[0], trace_missing=['snapshot'])
     assert p.evaluate_items(dict(base_run, videos=v_bad))['trace_per_video'][0] == 'FAIL'
 
-    # duplicate angle
-    v_bad = list(base_videos)
-    v_bad[1] = dict(v_bad[1], angle_id=v_bad[0]['angle_id'])
-    assert p.evaluate_items(dict(base_run, videos=v_bad))['story_angle_distinct'][0] == 'FAIL'
+    # trace_missing at video 15 (outside sheet) -> still PASS
+    v_outside_trace = list(base_videos)
+    v_outside_trace[15] = dict(v_outside_trace[15], trace_missing=['snapshot'])
+    assert p.evaluate_items(dict(base_run, videos=v_outside_trace))['trace_per_video'][0] == 'PASS'
 
-    # violations non-empty
-    v_bad = list(base_videos)
-    v_bad[0] = dict(v_bad[0], violations=['origin_missing:123456'])
-    assert p.evaluate_items(dict(base_run, videos=v_bad))['rights_unverified_excluded'][0] == 'FAIL'
+    # duplicate angle in same group -> story_angle_distinct FAIL
+    v_bad_angle = list(base_videos)
+    v_bad_angle[1] = dict(v_bad_angle[1], angle_id=v_bad_angle[0]['angle_id'])
+    assert p.evaluate_items(dict(base_run, videos=v_bad_angle))['story_angle_distinct'][0] == 'FAIL'
+
+    # violations at video 0 -> rights FAIL
+    v_bad_viol = list(base_videos)
+    v_bad_viol[0] = dict(v_bad_viol[0], violations=['minor_child_unmasked:123456'])
+    assert p.evaluate_items(dict(base_run, videos=v_bad_viol))['rights_unverified_excluded'][0] == 'FAIL'
+
+    # violations at video 15 (outside sheet) -> still PASS
+    v_outside_viol = list(base_videos)
+    v_outside_viol[15] = dict(v_outside_viol[15], violations=['minor_child_unmasked:123456'])
+    assert p.evaluate_items(dict(base_run, videos=v_outside_viol))['rights_unverified_excluded'][0] == 'PASS'
 
     # holdout_ok False
     assert p.evaluate_items(dict(base_run, holdout_ok=False))['holdout_sheet_40'][0] == 'FAIL'
@@ -241,14 +316,13 @@ def test_unit_evaluate_items():
 
     # secret_matches 1
     assert p.evaluate_items(dict(base_run, secret_matches=1))['secret_scan'][0] == 'FAIL'
-
 def test_unit_render_report():
     mock_videos = []
-    for i in range(10):
+    for i in range(6):
         mock_videos.append(_make_mock_video(i, group=('art1',), angle_id=f'ang1-{i}'))
-    for i in range(10, 20):
+    for i in range(6, 12):
         mock_videos.append(_make_mock_video(i, group=('art2',), angle_id=f'ang2-{i}'))
-    mock_drive = [{'md5_match': True, 'sha256_match': True, 'size': 1000}] * 20
+    mock_drive = [{'md5_match': True, 'sha256_match': True, 'size': 1000}] * 12
     manifest, digest = p.load_holdout()
     items = p.evaluate_items({
         'videos': mock_videos,
@@ -270,15 +344,18 @@ def test_unit_render_report():
     for k in p.RG13_ITEMS:
         assert re.search(r'(?m)^RG-13[.]' + k + r': (PASS|FAIL|BLOCKED|NOT_OBSERVED)$', text)
 
-    # 20 video rows, 40 holdout rows
+    # 10 video rows, 40 holdout rows
     v_sheet_lines = [l for l in text.split('## Bảng chấm video')[1].split('## Bảng 40 cặp holdout')[0].splitlines() if l.strip().startswith('|') and not l.strip().startswith('| ---') and 'STT' not in l]
-    assert len(v_sheet_lines) == 20
+    assert len(v_sheet_lines) == 10
 
     h_sheet_lines = [l for l in text.split('## Bảng 40 cặp holdout')[1].splitlines() if l.strip().startswith('|') and not l.strip().startswith('| ---') and 'STT' not in l]
     assert len(h_sheet_lines) == 40
 
-    assert p.user_fields_empty(text) == (True, 60)
+    assert p.user_fields_empty(text) == (True, 50)
     assert p.approval_claims(text) == []
+    assert 'Đính chính của Control ngày 05/11/2026' in text
+    assert 'Mẫu 10 video' in text
+    assert '## Lô' in text
     for line in text.splitlines():
         assert not line.endswith(' '), f'Trailing whitespace in: {repr(line)}'
     assert 'Bảng chấm video' in text
@@ -289,7 +366,7 @@ def test_unit_render_report():
     assert p.user_fields_empty(bad_text)[0] is False
 
     # Adding 'đã duyệt' makes approval_claims non-empty
-    bad_claim_text = text + '\nđã duyệt\n'
+    bad_claim_text = text + chr(10) + 'đã duyệt' + chr(10)
     assert len(p.approval_claims(bad_claim_text)) > 0
 
 
@@ -306,36 +383,25 @@ def test_unit_pack_is_read_only():
     assert c.scan_secrets(text) == []
 
 
-def test_unit_run_sample_order():
+def test_unit_reaudit_is_read_only():
     text = (p.REPO / 'tools' / 'real' / 'cp7_acceptance_pack.py').read_text(encoding='utf-8')
-    idx = text.find('def run_sample(')
-    sub = text[idx:]
-    p1 = sub.find('require_restored_db(db)')
-    p2 = sub.find('d.stop_until_exited()')
-    p3 = sub.find('d.require_no_other_workflows()')
-    p4 = sub.find("d.start_capturing(work_dir")
-    p5 = sub.find('d.require_render_config(db)')
-    p6 = sub.find('post_overnight_batch(SAMPLE_VIDEOS')
-    assert p1 < p2 < p3 < p4 < p5 < p6, f'Order check failed: {p1}, {p2}, {p3}, {p4}, {p5}, {p6}'
-    assert sub.count('post_overnight_batch(') == 1
-    finally_idx = sub.find('finally:')
-    last_stop = sub.rfind('d.stop_until_exited()')
-    assert finally_idx < last_stop
-
+    assert 'def reaudit_batch(' in text
+    assert 'def run_sample(' not in text
+    for forbidden in ('start_capturing', 'post_overnight_batch', 'OvernightSession', 'stop_until_exited', 'require_no_other_workflows'):
+        assert forbidden not in text, f'{forbidden} found in cp7_acceptance_pack.py'
 @pytest.fixture(scope='module')
-def sample_run(tmp_path_factory):
+def sample_run():
     if not LIVE:
-        pytest.skip('lô thật chỉ chạy khi đặt CP7_RG13_LIVE=1; mặc định kiểm bằng chứng đã ghi (test_recorded_report_rg13)')
-    work = tmp_path_factory.mktemp('cp7_rg13')
+        pytest.skip('đọc lại lô đã chạy xong chỉ khi đặt CP7_RG13_LIVE=1 (chỉ đọc CSDL và Drive, không khởi launcher); mặc định kiểm bằng chứng đã ghi (test_recorded_report_rg13)')
     try:
-        run = p.run_sample(work)
-    except (d.BlockedError, c.CostCeilingExceeded, c.DeadlineExceeded) as exc:
+        run = p.reaudit_batch(REAUDIT_BATCH_ID)
+    except d.BatchDriverError as exc:
         pytest.fail(str(exc))
 
     manifest, digest = p.load_holdout()
     r_rows = p.build_r_rows()
     holdout_ok = len(p.holdout_rows(manifest)) == 40
-    sheets_ok = len(run.videos) == p.SAMPLE_VIDEOS
+    sheets_ok = len(p.select_sheet(run.videos)) == p.SAMPLE_VIDEOS
     r_missing = [path for r in r_rows for path, sha in r['evidence'] if sha == 'MISSING']
 
     draft_body = p.render_report(run, {}, run.batch_id, manifest, digest)
@@ -359,8 +425,6 @@ def sample_run(tmp_path_factory):
         handle.write(final_body)
 
     return run, items
-
-
 def test_rg13_sample_10_valid(sample_run, emit):
     run, items = sample_run
     st, det = items['sample_10_valid']
@@ -453,8 +517,8 @@ def test_rg13_secret_scan(sample_run, emit):
 
 def test_rg13_budget(sample_run, emit):
     run, _ = sample_run
-    assert p.budget_violations(run.ai_calls, run.spent_usd, run.drive_bytes, run.elapsed_seconds) == []
-    emit(f'- budget: ai_calls={run.ai_calls} spent_usd={run.spent_usd} drive_bytes={run.drive_bytes} elapsed_s={run.elapsed_seconds:.1f} caps=120/10/3GiB/14400')
+    assert p.budget_gate_violations(run.ai_calls, run.spent_usd, run.drive_bytes, run.elapsed_seconds) == []
+    emit(f'- budget: ai_calls={run.ai_calls} (measure; plan cap {p.AI_CALL_CAP} is not an acceptance gate) spent_usd={run.spent_usd} drive_bytes={run.drive_bytes} elapsed_s={run.elapsed_seconds:.1f} caps=60/5/1.5GiB/10800')
 
 
 def test_rg13_run_facts(sample_run, emit):
@@ -472,6 +536,9 @@ def test_recorded_report_rg13(emit):
     assert not re.search(r'(?m)^RG-[0-9]{2}[.]\w+: (?:FAIL|BLOCKED)', text), 'Found FAIL/BLOCKED item in report'
 
     assert re.search(r'Batch ID: `[0-9a-fA-F-]+`', text), 'Missing Batch ID UUID in report'
+    assert f'Batch ID: `{REAUDIT_BATCH_ID}`' in text
+    assert 'Đính chính của Control ngày 05/11/2026' in text
+    assert 'Mẫu 10 video' in text
 
     v_lines = [l for l in text.split('## Bảng chấm video')[1].split('## Bảng 40 cặp holdout')[0].splitlines() if l.strip().startswith('|') and not l.strip().startswith('| ---') and 'STT' not in l]
     assert len(v_lines) == p.SAMPLE_VIDEOS, f'Expected {p.SAMPLE_VIDEOS} video rows, got {len(v_lines)}'
@@ -488,7 +555,7 @@ def test_recorded_report_rg13(emit):
                 assert len(sha) == 64 and all(c in '0123456789abcdef' for c in sha)
 
     uf = p.user_fields_empty(text)
-    assert uf[0] is True and uf[1] == 60, f'user_fields_empty mismatch: {uf}'
+    assert uf[0] is True and uf[1] == 50, f'user_fields_empty mismatch: {uf}'
     assert p.approval_claims(text) == []
 
     manifest, digest = p.load_holdout()
